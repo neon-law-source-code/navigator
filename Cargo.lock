@@ -2149,6 +2149,7 @@ dependencies = [
 name = "cloud"
 version = "26.9.10"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "async-trait",
  "aws-credential-types",
@@ -2165,6 +2166,7 @@ dependencies = [
  "reqwest 0.13.4",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "symphonia",
  "telemetry",
  "tempfile",
@@ -2173,6 +2175,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "walkdir",
  "wiremock",
 ]
@@ -10835,6 +10838,7 @@ version = "26.9.10"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.23.1",
  "chrono",
  "cloud",
  "pdf",

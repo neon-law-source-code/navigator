@@ -19,6 +19,7 @@ use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 /// same shape — see [`is_valid_code`].
 pub const PROJECT_CODE_MAX_LEN: usize = cloud::workspace::SLUG_MAX_LEN;
 const SLACK_CHANNEL_ID_INVALID: &str = "Slack channel id is invalid.";
+const NOTION_PAGE_URL_INVALID: &str = "Notion page URL is invalid.";
 
 /// A Project read from the SurrealDB projects cluster.
 ///
@@ -1595,6 +1596,41 @@ pub async fn set_internal_slack_channel_id(
         ))
         .bind(("id", record_id(PROJECT_TABLE, project_id)))
         .bind(("channel_id", channel_id.to_string()))
+        .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    let updated: Option<ProjectRow> = response
+        .take(0)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    Ok(updated.and_then(ProjectRow::into_project))
+}
+
+/// Record the firm-private Notion page provisioned for a Project. This is a
+/// system-managed coordinate; client-facing project payloads must redact it.
+pub async fn set_private_notion_page_url(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    page_url: &str,
+) -> Result<Option<Project>, ProjectCommandError> {
+    let page_url = page_url.trim();
+    if page_url.is_empty() || !is_valid_resource_url(page_url) {
+        return Err(ProjectCommandError::Invalid(NOTION_PAGE_URL_INVALID));
+    }
+    if find_by_id(surreal, project_id)
+        .await
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let mut response = surreal
+        .query(format!(
+            "UPDATE $id SET private_notion_page_url = $page_url, updated_at = $updated_at \
+             RETURN {PROJECT_SELECT}"
+        ))
+        .bind(("id", record_id(PROJECT_TABLE, project_id)))
+        .bind(("page_url", page_url.to_string()))
         .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
         .await
         .and_then(surrealdb::IndexedResults::check)

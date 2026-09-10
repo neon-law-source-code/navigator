@@ -23,6 +23,7 @@ use toml::{Table, Value};
 /// members appear alongside third-party crates because members depend on each
 /// other through the same table.
 const WORKSPACE_DEPENDENCIES: &[&str] = &[
+    "aes-gcm",
     "anyhow",
     "archives",
     "arrow",

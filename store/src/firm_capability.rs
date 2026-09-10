@@ -45,6 +45,12 @@ pub enum FirmCapability {
     ManageMembership,
     /// Appoint or transfer the Firm's Admin DRI designation.
     ManageAdminDri,
+    /// Create, replace, or revoke a typed integration secret. Only the
+    /// Firm's Admin DRI holds this capability; Owner governs the DRI but is
+    /// intentionally not an ordinary secret writer.
+    ManageIntegrationSecrets,
+    /// Inspect integration-secret metadata without receiving plaintext.
+    ViewIntegrationSecretMetadata,
 }
 
 impl FirmCapability {
@@ -59,6 +65,9 @@ impl FirmCapability {
             Self::ViewDirectory => true,
             Self::ManageMembership => membership == FirmMembership::Admin,
             Self::ManageAdminDri => false,
+            Self::ManageIntegrationSecrets | Self::ViewIntegrationSecretMetadata => {
+                membership == FirmMembership::Admin
+            }
         }
     }
 
@@ -71,7 +80,20 @@ impl FirmCapability {
             Self::ViewDirectory => "view_directory",
             Self::ManageMembership => "manage_membership",
             Self::ManageAdminDri => "manage_admin_dri",
+            Self::ManageIntegrationSecrets => "manage_integration_secrets",
+            Self::ViewIntegrationSecretMetadata => "view_integration_secret_metadata",
         }
+    }
+
+    /// Resolve this capability against one Firm.
+    pub async fn resolve(
+        self,
+        surreal: &SurrealDb,
+        actor_role: Role,
+        actor_person_id: Option<Uuid>,
+        target_firm_id: Uuid,
+    ) -> Result<FirmCapabilityDecision, FirmError> {
+        resolve(surreal, actor_role, actor_person_id, target_firm_id, self).await
     }
 }
 
@@ -148,7 +170,17 @@ async fn resolve_inner(
         return Ok((FirmCapabilityDecision::FirmNotFound, "firm_not_found"));
     }
     if actor_role == Role::Owner {
-        return Ok((FirmCapabilityDecision::Allowed, "owner_bypass"));
+        return Ok((
+            match capability {
+                FirmCapability::ManageIntegrationSecrets => FirmCapabilityDecision::Forbidden,
+                _ => FirmCapabilityDecision::Allowed,
+            },
+            if capability == FirmCapability::ManageIntegrationSecrets {
+                "owner_not_secret_writer"
+            } else {
+                "owner_bypass"
+            },
+        ));
     }
     if actor_role == Role::Client {
         return Ok((
@@ -161,6 +193,22 @@ async fn resolve_inner(
     };
     let member = firms::membership_for_person(surreal, person_id, target_firm_id).await?;
     Ok(match member {
+        Some(row)
+            if matches!(
+                capability,
+                FirmCapability::ManageIntegrationSecrets
+                    | FirmCapability::ViewIntegrationSecretMetadata
+            ) =>
+        {
+            if row.membership == FirmMembership::Admin && row.is_dri {
+                (
+                    FirmCapabilityDecision::Allowed,
+                    "admin_dri_membership_admits",
+                )
+            } else {
+                (FirmCapabilityDecision::Forbidden, "not_admin_dri")
+            }
+        }
         Some(row) if capability.admits(row.membership) => {
             (FirmCapabilityDecision::Allowed, "membership_admits")
         }

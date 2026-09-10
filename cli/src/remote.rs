@@ -872,6 +872,141 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
     .await
 }
 
+/// `navigator site projects notion <ensure|reconcile>` — post one Project
+/// code, or `--all`, to the server's Notion integration door. The Firm's
+/// provider credential is resolved server-side from the Project's `firm_id`,
+/// so no provider token is read, accepted, or printed by the CLI.
+async fn notion_command(
+    host: Option<&str>,
+    action: &str,
+    project_code: Option<&str>,
+    all: bool,
+    json: bool,
+) -> ExitCode {
+    run(async {
+        if project_code.is_none() && !all {
+            return Err(anyhow!("provide a Project code or --all"));
+        }
+        let (base, token) = resolve(host)?;
+        let url = format!("{base}/app/api/integrations/notion/{action}");
+        let response = reqwest::Client::new()
+            .post(&url)
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "project_code": project_code,
+                "all": all,
+            }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "Notion {action} failed: {status}: {}",
+                first_line(&body)
+            ));
+        }
+        if json {
+            println!("{body}");
+        } else {
+            println!("Notion {action} completed");
+            if !body.trim().is_empty() {
+                println!("{}", first_line(&body));
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+pub async fn notion_ensure(
+    host: Option<&str>,
+    project_code: Option<&str>,
+    all: bool,
+    json: bool,
+) -> ExitCode {
+    notion_command(host, "ensure", project_code, all, json).await
+}
+
+pub async fn notion_reconcile(
+    host: Option<&str>,
+    project_code: Option<&str>,
+    all: bool,
+    json: bool,
+) -> ExitCode {
+    notion_command(host, "reconcile", project_code, all, json).await
+}
+
+/// `navigator site projects slack <ensure|notify>` — post one Project code,
+/// and for `notify` one closed event kind, to the server's Slack integration
+/// door. The event vocabulary is validated here so an unsupported kind fails
+/// before the request, and no free-text message body is accepted.
+async fn slack_command(
+    host: Option<&str>,
+    action: &str,
+    project_code: &str,
+    event: Option<&str>,
+    json: bool,
+) -> ExitCode {
+    run(async {
+        if let Some(event) = event {
+            if !matches!(
+                event,
+                "project_opened"
+                    | "project_closed"
+                    | "project_reconciled"
+                    | "integration_unavailable"
+            ) {
+                return Err(anyhow!("unsupported Slack event {event}"));
+            }
+        }
+        let (base, token) = resolve(host)?;
+        let url = format!("{base}/app/api/integrations/slack/{action}");
+        let response = reqwest::Client::new()
+            .post(&url)
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "project_code": project_code,
+                "event": event,
+            }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "Slack {action} failed: {status}: {}",
+                first_line(&body)
+            ));
+        }
+        if json {
+            println!("{body}");
+        } else {
+            println!("Slack {action} completed for {project_code}");
+            if !body.trim().is_empty() {
+                println!("{}", first_line(&body));
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+pub async fn slack_ensure(host: Option<&str>, project_code: &str, json: bool) -> ExitCode {
+    slack_command(host, "ensure", project_code, None, json).await
+}
+
+pub async fn slack_notify(
+    host: Option<&str>,
+    project_code: &str,
+    event: &str,
+    json: bool,
+) -> ExitCode {
+    slack_command(host, "notify", project_code, Some(event), json).await
+}
+
 /// `navigator site projects close <project-code>` — move a matter directly to
 /// `closed` through the REST lifecycle door
 /// (`POST /app/api/projects/{id}/lifecycle`), rather than the local-only

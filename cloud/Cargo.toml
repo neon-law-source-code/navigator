@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+aes-gcm.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
@@ -25,6 +26,7 @@ rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 symphonia.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -32,6 +34,7 @@ telemetry.workspace = true
 tracing.workspace = true
 walkdir.workspace = true
 tracing-subscriber.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 cloud = { path = "." }

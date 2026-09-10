@@ -548,6 +548,75 @@ enum ProjectsCmd {
         #[command(flatten)]
         host: HostOpt,
     },
+    /// Ensure or reconcile Firm-private Notion Project pages.
+    Notion {
+        #[command(subcommand)]
+        action: NotionAction,
+    },
+    /// Ensure a Firm-private Slack channel or post a mechanism-only notice.
+    Slack {
+        #[command(subcommand)]
+        action: SlackAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum NotionAction {
+    /// Create or adopt the private page for one Project or every Project.
+    Ensure {
+        /// Project code. Omit only when `--all` is supplied.
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        project_code: Option<String>,
+        /// Ensure every Project visible to this login.
+        #[arg(long)]
+        all: bool,
+        /// Emit the server's structured result.
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
+    /// Reconcile the environment-selected Notion database for one or every Project.
+    Reconcile {
+        /// Project code. Omit only when `--all` is supplied.
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        project_code: Option<String>,
+        /// Reconcile every Project visible to this login.
+        #[arg(long)]
+        all: bool,
+        /// Emit the server's structured result.
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
+}
+
+#[derive(Subcommand)]
+enum SlackAction {
+    /// Create or adopt the private Slack channel for one Project.
+    Ensure {
+        /// Project code.
+        project_code: String,
+        /// Emit the server's structured result.
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
+    /// Post one closed-vocabulary mechanism notice to a Project channel.
+    Notify {
+        /// Project code.
+        project_code: String,
+        /// Closed event kind, such as `project_opened` or `project_reconciled`.
+        #[arg(long)]
+        event: String,
+        /// Emit the server's structured result.
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2173,6 +2242,7 @@ async fn open_surreal() -> Result<store::surreal::SurrealDb, ExitCode> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn run_projects(action: ProjectsCmd) -> ExitCode {
     match action {
         ProjectsCmd::Create {
@@ -2246,6 +2316,39 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             dir,
             host,
         } => remote::archive_repository(host.host.as_deref(), &project_code, &dir).await,
+        ProjectsCmd::Notion { action } => match action {
+            NotionAction::Ensure {
+                project_code,
+                all,
+                json,
+                host,
+            } => {
+                remote::notion_ensure(host.host.as_deref(), project_code.as_deref(), all, json)
+                    .await
+            }
+            NotionAction::Reconcile {
+                project_code,
+                all,
+                json,
+                host,
+            } => {
+                remote::notion_reconcile(host.host.as_deref(), project_code.as_deref(), all, json)
+                    .await
+            }
+        },
+        ProjectsCmd::Slack { action } => match action {
+            SlackAction::Ensure {
+                project_code,
+                json,
+                host,
+            } => remote::slack_ensure(host.host.as_deref(), &project_code, json).await,
+            SlackAction::Notify {
+                project_code,
+                event,
+                json,
+                host,
+            } => remote::slack_notify(host.host.as_deref(), &project_code, &event, json).await,
+        },
     }
 }
 

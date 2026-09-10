@@ -202,8 +202,10 @@ fn projects_help_lists_the_project_workspace_verbs() {
             "gate",
             "lifecycle",
             "list",
+            "notion",
             "open",
             "repository",
+            "slack",
             "surfaces",
             "help"
         ]

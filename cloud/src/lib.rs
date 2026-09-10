@@ -25,8 +25,12 @@ pub mod forge;
 pub mod fs;
 pub mod gcloud;
 pub mod gcs;
+pub mod kms;
+pub mod notion;
+pub mod notion_reconcile;
 pub mod redirect;
 pub mod s3;
+pub mod slack;
 pub mod speech;
 pub mod workspace;
 
@@ -41,7 +45,22 @@ pub use forge::{
 };
 pub use fs::FsStorage;
 pub use gcs::{GcsStorage, GcsStorageConfig};
+pub use kms::{
+    open, seal, FakeKms, GoogleKms, GoogleKmsConfig, KmsContext, KmsError, KmsTokenSource,
+    RuntimeKms, WrappedDataKey,
+};
+pub use notion::{
+    ensure_private_page, FakeNotion, NotionClient, NotionError, NotionPage, NotionService,
+};
+pub use notion_reconcile::{
+    reconcile as reconcile_notion_project, NotionDatabaseConfig, NotionPageSnapshot,
+    NotionProjectInput, NotionReconcileError, NotionRepairDecision,
+};
 pub use s3::{S3Storage, S3StorageConfig};
+pub use slack::{
+    ensure_private_channel, FakeSlack, SlackChannel as FirmSlackChannel, SlackClient, SlackError,
+    SlackMemberId, SlackService,
+};
 pub use speech::{GoogleSpeechConfig, GoogleSpeechTranscriptProvider, SpeechError};
 pub use workspace::{
     documents_prefix, is_navigator_repository, is_valid_slug, DeploymentWorkspace,

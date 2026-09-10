@@ -1,110 +1,112 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1916" height="5410" viewBox="0 0 1916 5410" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" width="1892" height="5498" viewBox="0 0 1892 5498" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
 <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#666"/></marker></defs>
 <style>.t{fill:#fff;stroke:#666;stroke-width:1}.tt{fill:#eef;stroke:#666;stroke-width:1}.tn{fill:#222;font-weight:600}.cn{fill:#222}.ct{fill:#888}.cpk{fill:#c33;font-weight:600}.cfk{fill:#36c}.e{fill:none;stroke:#888;stroke-width:1.2}</style>
 <g class="edges">
 <path class="e" d="M326,137 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M326,225 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M886,93 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M886,137 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M886,159 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M886,181 L30,4213" marker-end="url(#arrow)"/>
-<path class="e" d="M1310,247 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M1726,181 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M382,631 L998,45" marker-end="url(#arrow)"/>
+<path class="e" d="M326,225 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M886,93 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M886,137 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M886,159 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M886,181 L494,4301" marker-end="url(#arrow)"/>
+<path class="e" d="M1238,247 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1702,181 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M382,631 L926,45" marker-end="url(#arrow)"/>
 <path class="e" d="M782,631 L30,583" marker-end="url(#arrow)"/>
-<path class="e" d="M782,719 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M1262,675 L998,2173" marker-end="url(#arrow)"/>
-<path class="e" d="M1710,785 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M422,949 L1454,583" marker-end="url(#arrow)"/>
-<path class="e" d="M422,971 L998,45" marker-end="url(#arrow)"/>
-<path class="e" d="M422,1081 L30,2929" marker-end="url(#arrow)"/>
+<path class="e" d="M782,719 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1190,675 L926,2173" marker-end="url(#arrow)"/>
+<path class="e" d="M1686,785 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M422,949 L1430,583" marker-end="url(#arrow)"/>
+<path class="e" d="M422,971 L926,45" marker-end="url(#arrow)"/>
+<path class="e" d="M422,1081 L494,3039" marker-end="url(#arrow)"/>
 <path class="e" d="M422,1147 L30,901" marker-end="url(#arrow)"/>
 <path class="e" d="M846,949 L494,583" marker-end="url(#arrow)"/>
-<path class="e" d="M1350,949 L998,45" marker-end="url(#arrow)"/>
-<path class="e" d="M1350,971 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1350,1125 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M1734,949 L998,45" marker-end="url(#arrow)"/>
-<path class="e" d="M1734,1015 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1734,1037 L494,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M366,1311 L30,2677" marker-end="url(#arrow)"/>
-<path class="e" d="M366,1355 L1454,2929" marker-end="url(#arrow)"/>
+<path class="e" d="M1278,949 L926,45" marker-end="url(#arrow)"/>
+<path class="e" d="M1278,971 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1278,1125 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1710,949 L926,45" marker-end="url(#arrow)"/>
+<path class="e" d="M1710,1015 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M1710,1037 L926,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M366,1311 L494,2787" marker-end="url(#arrow)"/>
+<path class="e" d="M366,1355 L30,3357" marker-end="url(#arrow)"/>
 <path class="e" d="M806,1289 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M806,1355 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M1414,1289 L1454,1241" marker-end="url(#arrow)"/>
-<path class="e" d="M1886,1289 L1454,583" marker-end="url(#arrow)"/>
-<path class="e" d="M1886,1333 L30,901" marker-end="url(#arrow)"/>
-<path class="e" d="M414,1717 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M414,1783 L1454,4213" marker-end="url(#arrow)"/>
-<path class="e" d="M822,1673 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M822,1695 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1382,1651 L494,1559" marker-end="url(#arrow)"/>
-<path class="e" d="M1694,1673 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M366,1969 L998,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M366,2035 L30,2677" marker-end="url(#arrow)"/>
-<path class="e" d="M686,1947 L1454,2929" marker-end="url(#arrow)"/>
+<path class="e" d="M806,1355 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1342,1289 L1430,1241" marker-end="url(#arrow)"/>
+<path class="e" d="M1862,1289 L1430,583" marker-end="url(#arrow)"/>
+<path class="e" d="M1862,1333 L30,901" marker-end="url(#arrow)"/>
+<path class="e" d="M414,1717 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M414,1783 L30,4575" marker-end="url(#arrow)"/>
+<path class="e" d="M822,1673 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M822,1695 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1310,1651 L494,1559" marker-end="url(#arrow)"/>
+<path class="e" d="M1670,1673 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M366,1969 L926,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M366,2035 L494,2787" marker-end="url(#arrow)"/>
+<path class="e" d="M686,1947 L30,3357" marker-end="url(#arrow)"/>
 <path class="e" d="M686,1991 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M1806,1947 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1806,2101 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M454,2221 L998,45" marker-end="url(#arrow)"/>
-<path class="e" d="M454,2243 L1454,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M454,2309 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M454,2331 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M454,2353 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M766,2265 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1294,2221 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M1694,2221 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M238,2517 L998,2173" marker-end="url(#arrow)"/>
-<path class="e" d="M806,2539 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M806,2561 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M806,2769 L998,2677" marker-end="url(#arrow)"/>
-<path class="e" d="M806,2791 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M1254,2725 L30,45" marker-end="url(#arrow)"/>
-<path class="e" d="M1806,2725 L998,45" marker-end="url(#arrow)"/>
-<path class="e" d="M1806,2791 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1806,2813 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M326,2999 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M326,3065 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M326,3087 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M326,3153 L30,4805" marker-end="url(#arrow)"/>
-<path class="e" d="M886,2977 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M886,3043 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1334,2977 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1334,3087 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1334,3153 L30,4805" marker-end="url(#arrow)"/>
-<path class="e" d="M414,3449 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M414,3493 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M414,3581 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M414,3647 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M734,3493 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1238,3427 L998,2173" marker-end="url(#arrow)"/>
-<path class="e" d="M1238,3515 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1694,3427 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M286,3855 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M286,3877 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M734,3789 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M1350,3877 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M1350,3921 L998,2173" marker-end="url(#arrow)"/>
-<path class="e" d="M1838,3789 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1838,3855 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M958,4305 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M958,4305 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M958,4371 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M958,4371 L30,1899" marker-end="url(#arrow)"/>
-<path class="e" d="M958,4393 L998,4213" marker-end="url(#arrow)"/>
-<path class="e" d="M958,4393 L494,1241" marker-end="url(#arrow)"/>
-<path class="e" d="M1342,4283 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1726,4327 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M806,4601 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M1350,4579 L30,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1350,4667 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M1710,4601 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M342,4853 L998,45" marker-end="url(#arrow)"/>
-<path class="e" d="M342,5007 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M774,4941 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M774,4963 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M1310,4853 L494,901" marker-end="url(#arrow)"/>
-<path class="e" d="M1310,5007 L1454,2929" marker-end="url(#arrow)"/>
-<path class="e" d="M286,5281 L998,3719" marker-end="url(#arrow)"/>
+<path class="e" d="M1782,1947 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1782,2101 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M454,2221 L926,45" marker-end="url(#arrow)"/>
+<path class="e" d="M454,2243 L1430,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M454,2309 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M454,2331 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M454,2353 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M766,2265 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M1222,2221 L30,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M1670,2221 L30,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M238,2517 L926,2173" marker-end="url(#arrow)"/>
+<path class="e" d="M726,2495 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M726,2561 L926,2173" marker-end="url(#arrow)"/>
+<path class="e" d="M1238,2539 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1238,2561 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1238,2879 L1430,2787" marker-end="url(#arrow)"/>
+<path class="e" d="M1238,2901 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1686,2835 L30,45" marker-end="url(#arrow)"/>
+<path class="e" d="M382,3087 L926,45" marker-end="url(#arrow)"/>
+<path class="e" d="M382,3153 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M382,3175 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M790,3109 L30,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M790,3175 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M790,3197 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M790,3263 L494,4893" marker-end="url(#arrow)"/>
+<path class="e" d="M1318,3087 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1318,3153 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M1766,3087 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1766,3197 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M1766,3263 L494,4893" marker-end="url(#arrow)"/>
+<path class="e" d="M878,3427 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M878,3471 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M878,3559 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M878,3625 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1166,3471 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1670,3405 L926,2173" marker-end="url(#arrow)"/>
+<path class="e" d="M1670,3493 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M270,3855 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M750,3943 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M750,3965 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1166,3877 L30,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M1782,3965 L30,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M1782,4009 L926,2173" marker-end="url(#arrow)"/>
+<path class="e" d="M414,4371 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M414,4437 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1390,4393 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1390,4393 L30,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M1390,4459 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1390,4459 L30,1899" marker-end="url(#arrow)"/>
+<path class="e" d="M1390,4481 L1430,4301" marker-end="url(#arrow)"/>
+<path class="e" d="M1390,4481 L494,1241" marker-end="url(#arrow)"/>
+<path class="e" d="M1774,4371 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M302,4689 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M1238,4689 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1782,4667 L494,3039" marker-end="url(#arrow)"/>
+<path class="e" d="M1782,4755 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M286,5007 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M806,4941 L926,45" marker-end="url(#arrow)"/>
+<path class="e" d="M806,5095 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1206,5029 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M1206,5051 L1430,3807" marker-end="url(#arrow)"/>
+<path class="e" d="M1742,4941 L494,901" marker-end="url(#arrow)"/>
+<path class="e" d="M1742,5095 L30,3357" marker-end="url(#arrow)"/>
+<path class="e" d="M750,5369 L1430,3807" marker-end="url(#arrow)"/>
 </g>
 <g class="tables">
 <g transform="translate(30,30)">
@@ -159,7 +161,7 @@
 <text class="cn" x="12" y="243">value</text>
 <text class="ct" x="380" y="243" text-anchor="end">any</text>
 </g>
-<g transform="translate(998,30)">
+<g transform="translate(926,30)">
 <rect class="t" width="312" height="514"/>
 <rect class="tt" width="312" height="30"/>
 <text class="tn" x="156" y="20" text-anchor="middle">asset</text>
@@ -208,7 +210,7 @@
 <text class="cn" x="12" y="507">visibility</text>
 <text class="ct" x="300" y="507" text-anchor="end">string</text>
 </g>
-<g transform="translate(1454,30)">
+<g transform="translate(1430,30)">
 <rect class="t" width="272" height="294"/>
 <rect class="tt" width="272" height="30"/>
 <text class="tn" x="136" y="20" text-anchor="middle">attestation</text>
@@ -287,7 +289,7 @@
 <text class="cn" x="12" y="199">updated_at</text>
 <text class="ct" x="276" y="199" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,568)">
+<g transform="translate(926,568)">
 <rect class="t" width="264" height="272"/>
 <rect class="tt" width="264" height="30"/>
 <text class="tn" x="132" y="20" text-anchor="middle">brand</text>
@@ -314,7 +316,7 @@
 <text class="cn" x="12" y="265">updated_at</text>
 <text class="ct" x="252" y="265" text-anchor="end">string</text>
 </g>
-<g transform="translate(1454,568)">
+<g transform="translate(1430,568)">
 <rect class="t" width="256" height="272"/>
 <rect class="tt" width="256" height="30"/>
 <text class="tn" x="128" y="20" text-anchor="middle">case</text>
@@ -393,7 +395,7 @@
 <text class="cn" x="12" y="199">why</text>
 <text class="ct" x="340" y="199" text-anchor="end">string</text>
 </g>
-<g transform="translate(998,886)">
+<g transform="translate(926,886)">
 <rect class="t" width="352" height="316"/>
 <rect class="tt" width="352" height="30"/>
 <text class="tn" x="176" y="20" text-anchor="middle">communication</text>
@@ -424,7 +426,7 @@
 <text class="cn" x="12" y="309">updated_at</text>
 <text class="ct" x="340" y="309" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,886)">
+<g transform="translate(1430,886)">
 <rect class="t" width="280" height="228"/>
 <rect class="tt" width="280" height="30"/>
 <text class="tn" x="140" y="20" text-anchor="middle">contract_review</text>
@@ -483,7 +485,7 @@
 <text class="cn" x="12" y="177">updated_at</text>
 <text class="ct" x="300" y="177" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,1226)">
+<g transform="translate(926,1226)">
 <rect class="t" width="416" height="206"/>
 <rect class="tt" width="416" height="30"/>
 <text class="tn" x="208" y="20" text-anchor="middle">discovery_item</text>
@@ -504,7 +506,7 @@
 <text class="cn" x="12" y="199">updated_at</text>
 <text class="ct" x="404" y="199" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,1226)">
+<g transform="translate(1430,1226)">
 <rect class="t" width="432" height="294"/>
 <rect class="tt" width="432" height="30"/>
 <text class="tn" x="216" y="20" text-anchor="middle">discovery_request</text>
@@ -585,7 +587,7 @@
 <text class="cn" x="12" y="243">updated_at</text>
 <text class="ct" x="316" y="243" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,1544)">
+<g transform="translate(926,1544)">
 <rect class="t" width="384" height="316"/>
 <rect class="tt" width="384" height="30"/>
 <text class="tn" x="192" y="20" text-anchor="middle">email_conversation_message</text>
@@ -616,7 +618,7 @@
 <text class="cn" x="12" y="309">updated_at</text>
 <text class="ct" x="372" y="309" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,1544)">
+<g transform="translate(1430,1544)">
 <rect class="t" width="240" height="228"/>
 <rect class="tt" width="240" height="30"/>
 <text class="tn" x="120" y="20" text-anchor="middle">email_token</text>
@@ -681,7 +683,7 @@
 <text class="cn" x="12" y="155">updated_at</text>
 <text class="ct" x="180" y="155" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,1884)">
+<g transform="translate(926,1884)">
 <rect class="t" width="192" height="118"/>
 <rect class="tt" width="192" height="30"/>
 <text class="tn" x="96" y="20" text-anchor="middle">entity_type</text>
@@ -694,7 +696,7 @@
 <text class="cn" x="12" y="111">updated_at</text>
 <text class="ct" x="180" y="111" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,1884)">
+<g transform="translate(1430,1884)">
 <rect class="t" width="352" height="250"/>
 <rect class="tt" width="352" height="30"/>
 <text class="tn" x="176" y="20" text-anchor="middle">expunge_record</text>
@@ -767,7 +769,7 @@
 <text class="cn" x="12" y="221">updated_at</text>
 <text class="ct" x="260" y="221" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,2158)">
+<g transform="translate(926,2158)">
 <rect class="t" width="296" height="162"/>
 <rect class="tt" width="296" height="30"/>
 <text class="tn" x="148" y="20" text-anchor="middle">firm</text>
@@ -784,7 +786,7 @@
 <text class="cn" x="12" y="155">updated_at</text>
 <text class="ct" x="284" y="155" text-anchor="end">string</text>
 </g>
-<g transform="translate(1454,2158)">
+<g transform="translate(1430,2158)">
 <rect class="t" width="240" height="74"/>
 <rect class="tt" width="240" height="30"/>
 <text class="tn" x="120" y="20" text-anchor="middle">firm_anchor</text>
@@ -809,6 +811,37 @@
 <text class="ct" x="196" y="133" text-anchor="end">string</text>
 </g>
 <g transform="translate(494,2432)">
+<rect class="t" width="232" height="316"/>
+<rect class="tt" width="232" height="30"/>
+<text class="tn" x="116" y="20" text-anchor="middle">firm_integration_secret</text>
+<text class="cn" x="12" y="45">id</text>
+<text class="cpk" x="220" y="45" text-anchor="end">record PK</text>
+<text class="cn" x="12" y="67">actor_id</text>
+<text class="cfk" x="220" y="67" text-anchor="end">record_person FK</text>
+<text class="cn" x="12" y="89">ciphertext</text>
+<text class="ct" x="220" y="89" text-anchor="end">string</text>
+<text class="cn" x="12" y="111">created_at</text>
+<text class="ct" x="220" y="111" text-anchor="end">string</text>
+<text class="cn" x="12" y="133">firm_id</text>
+<text class="cfk" x="220" y="133" text-anchor="end">record_firm FK</text>
+<text class="cn" x="12" y="155">kind</text>
+<text class="ct" x="220" y="155" text-anchor="end">string</text>
+<text class="cn" x="12" y="177">kms_context</text>
+<text class="ct" x="220" y="177" text-anchor="end">string</text>
+<text class="cn" x="12" y="199">kms_key_version</text>
+<text class="ct" x="220" y="199" text-anchor="end">string</text>
+<text class="cn" x="12" y="221">provider</text>
+<text class="ct" x="220" y="221" text-anchor="end">string</text>
+<text class="cn" x="12" y="243">status</text>
+<text class="ct" x="220" y="243" text-anchor="end">string</text>
+<text class="cn" x="12" y="265">updated_at</text>
+<text class="ct" x="220" y="265" text-anchor="end">string</text>
+<text class="cn" x="12" y="287">version</text>
+<text class="ct" x="220" y="287" text-anchor="end">int</text>
+<text class="cn" x="12" y="309">wrapped_dek</text>
+<text class="ct" x="220" y="309" text-anchor="end">string</text>
+</g>
+<g transform="translate(926,2432)">
 <rect class="t" width="312" height="206"/>
 <rect class="tt" width="312" height="30"/>
 <text class="tn" x="156" y="20" text-anchor="middle">git_access_token</text>
@@ -829,7 +862,7 @@
 <text class="cn" x="12" y="199">updated_at</text>
 <text class="ct" x="300" y="199" text-anchor="end">string</text>
 </g>
-<g transform="translate(998,2432)">
+<g transform="translate(1430,2432)">
 <rect class="t" width="208" height="140"/>
 <rect class="tt" width="208" height="30"/>
 <text class="tn" x="104" y="20" text-anchor="middle">git_repository</text>
@@ -844,7 +877,7 @@
 <text class="cn" x="12" y="133">updated_at</text>
 <text class="ct" x="196" y="133" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,2432)">
+<g transform="translate(30,2772)">
 <rect class="t" width="192" height="162"/>
 <rect class="tt" width="192" height="30"/>
 <text class="tn" x="96" y="20" text-anchor="middle">glossary_term</text>
@@ -861,7 +894,7 @@
 <text class="cn" x="12" y="155">updated_at</text>
 <text class="ct" x="180" y="155" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(30,2662)">
+<g transform="translate(494,2772)">
 <rect class="t" width="224" height="162"/>
 <rect class="tt" width="224" height="30"/>
 <text class="tn" x="112" y="20" text-anchor="middle">jurisdiction</text>
@@ -878,7 +911,7 @@
 <text class="cn" x="12" y="155">updated_at</text>
 <text class="ct" x="212" y="155" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(494,2662)">
+<g transform="translate(926,2772)">
 <rect class="t" width="312" height="228"/>
 <rect class="tt" width="312" height="30"/>
 <text class="tn" x="156" y="20" text-anchor="middle">letter</text>
@@ -901,7 +934,7 @@
 <text class="cn" x="12" y="221">updated_at</text>
 <text class="ct" x="300" y="221" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,2662)">
+<g transform="translate(1430,2772)">
 <rect class="t" width="256" height="140"/>
 <rect class="tt" width="256" height="30"/>
 <text class="tn" x="128" y="20" text-anchor="middle">mailroom</text>
@@ -916,7 +949,7 @@
 <text class="cn" x="12" y="133">updated_at</text>
 <text class="ct" x="244" y="133" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,2662)">
+<g transform="translate(30,3024)">
 <rect class="t" width="352" height="228"/>
 <rect class="tt" width="352" height="30"/>
 <text class="tn" x="176" y="20" text-anchor="middle">notarization</text>
@@ -939,7 +972,7 @@
 <text class="cn" x="12" y="221">updated_at</text>
 <text class="ct" x="340" y="221" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(30,2914)">
+<g transform="translate(494,3024)">
 <rect class="t" width="296" height="272"/>
 <rect class="tt" width="296" height="30"/>
 <text class="tn" x="148" y="20" text-anchor="middle">notation</text>
@@ -966,7 +999,7 @@
 <text class="cn" x="12" y="265">updated_at</text>
 <text class="ct" x="284" y="265" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(494,2914)">
+<g transform="translate(926,3024)">
 <rect class="t" width="392" height="184"/>
 <rect class="tt" width="392" height="30"/>
 <text class="tn" x="196" y="20" text-anchor="middle">notation_clause</text>
@@ -985,7 +1018,7 @@
 <text class="cn" x="12" y="177">updated_at</text>
 <text class="ct" x="380" y="177" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,2914)">
+<g transform="translate(1430,3024)">
 <rect class="t" width="336" height="294"/>
 <rect class="tt" width="336" height="30"/>
 <text class="tn" x="168" y="20" text-anchor="middle">notation_event</text>
@@ -1014,7 +1047,7 @@
 <text class="cn" x="12" y="287">updated_at</text>
 <text class="ct" x="324" y="287" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,2914)">
+<g transform="translate(30,3342)">
 <rect class="t" width="280" height="426"/>
 <rect class="tt" width="280" height="30"/>
 <text class="tn" x="140" y="20" text-anchor="middle">person</text>
@@ -1055,7 +1088,7 @@
 <text class="cn" x="12" y="419">xero_contact_id</text>
 <text class="ct" x="268" y="419" text-anchor="end">option_string</text>
 </g>
-<g transform="translate(30,3364)">
+<g transform="translate(494,3342)">
 <rect class="t" width="384" height="316"/>
 <rect class="tt" width="384" height="30"/>
 <text class="tn" x="192" y="20" text-anchor="middle">person_delegate</text>
@@ -1086,7 +1119,7 @@
 <text class="cn" x="12" y="309">updated_at</text>
 <text class="ct" x="372" y="309" text-anchor="end">string</text>
 </g>
-<g transform="translate(494,3364)">
+<g transform="translate(926,3342)">
 <rect class="t" width="240" height="184"/>
 <rect class="tt" width="240" height="30"/>
 <text class="tn" x="120" y="20" text-anchor="middle">person_external_identity</text>
@@ -1105,7 +1138,7 @@
 <text class="cn" x="12" y="177">updated_at</text>
 <text class="ct" x="228" y="177" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,3364)">
+<g transform="translate(1430,3342)">
 <rect class="t" width="240" height="184"/>
 <rect class="tt" width="240" height="30"/>
 <text class="tn" x="120" y="20" text-anchor="middle">person_firm_role</text>
@@ -1124,7 +1157,7 @@
 <text class="cn" x="12" y="177">updated_at</text>
 <text class="ct" x="228" y="177" text-anchor="end">string</text>
 </g>
-<g transform="translate(1454,3364)">
+<g transform="translate(30,3792)">
 <rect class="t" width="240" height="74"/>
 <rect class="tt" width="240" height="30"/>
 <text class="tn" x="120" y="20" text-anchor="middle">person_mailbox</text>
@@ -1133,7 +1166,7 @@
 <text class="cn" x="12" y="67">person_id</text>
 <text class="cfk" x="228" y="67" text-anchor="end">record_person FK</text>
 </g>
-<g transform="translate(30,3704)">
+<g transform="translate(494,3792)">
 <rect class="t" width="256" height="206"/>
 <rect class="tt" width="256" height="30"/>
 <text class="tn" x="128" y="20" text-anchor="middle">person_project_role</text>
@@ -1154,7 +1187,7 @@
 <text class="cn" x="12" y="199">updated_at</text>
 <text class="ct" x="244" y="199" text-anchor="end">string</text>
 </g>
-<g transform="translate(494,3704)">
+<g transform="translate(926,3792)">
 <rect class="t" width="240" height="184"/>
 <rect class="tt" width="240" height="30"/>
 <text class="tn" x="120" y="20" text-anchor="middle">playbook</text>
@@ -1173,7 +1206,7 @@
 <text class="cn" x="12" y="177">updated_at</text>
 <text class="ct" x="228" y="177" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,3704)">
+<g transform="translate(1430,3792)">
 <rect class="t" width="352" height="470"/>
 <rect class="tt" width="352" height="30"/>
 <text class="tn" x="176" y="20" text-anchor="middle">project</text>
@@ -1218,7 +1251,7 @@
 <text class="cn" x="12" y="463">updated_at</text>
 <text class="ct" x="340" y="463" text-anchor="end">string</text>
 </g>
-<g transform="translate(1454,3704)">
+<g transform="translate(30,4286)">
 <rect class="t" width="384" height="184"/>
 <rect class="tt" width="384" height="30"/>
 <text class="tn" x="192" y="20" text-anchor="middle">project_module</text>
@@ -1237,7 +1270,7 @@
 <text class="cn" x="12" y="177">updated_at</text>
 <text class="ct" x="372" y="177" text-anchor="end">string</text>
 </g>
-<g transform="translate(30,4198)">
+<g transform="translate(494,4286)">
 <rect class="t" width="192" height="184"/>
 <rect class="tt" width="192" height="30"/>
 <text class="tn" x="96" y="20" text-anchor="middle">question</text>
@@ -1256,7 +1289,7 @@
 <text class="cn" x="12" y="177">updated_at</text>
 <text class="ct" x="180" y="177" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(494,4198)">
+<g transform="translate(926,4286)">
 <rect class="t" width="464" height="250"/>
 <rect class="tt" width="464" height="30"/>
 <text class="tn" x="232" y="20" text-anchor="middle">relationship</text>
@@ -1281,7 +1314,7 @@
 <text class="cn" x="12" y="243">updated_at</text>
 <text class="ct" x="452" y="243" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,4198)">
+<g transform="translate(1430,4286)">
 <rect class="t" width="344" height="206"/>
 <rect class="tt" width="344" height="30"/>
 <text class="tn" x="172" y="20" text-anchor="middle">relationship_log</text>
@@ -1302,7 +1335,7 @@
 <text class="cn" x="12" y="199">updated_at</text>
 <text class="ct" x="332" y="199" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,4198)">
+<g transform="translate(30,4560)">
 <rect class="t" width="272" height="206"/>
 <rect class="tt" width="272" height="30"/>
 <text class="tn" x="136" y="20" text-anchor="middle">review_document</text>
@@ -1323,7 +1356,7 @@
 <text class="cn" x="12" y="199">updated_at</text>
 <text class="ct" x="260" y="199" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(30,4472)">
+<g transform="translate(494,4560)">
 <rect class="t" width="184" height="96"/>
 <rect class="tt" width="184" height="30"/>
 <text class="tn" x="92" y="20" text-anchor="middle">schema_version</text>
@@ -1334,7 +1367,7 @@
 <text class="cn" x="12" y="89">version</text>
 <text class="ct" x="172" y="89" text-anchor="end">int</text>
 </g>
-<g transform="translate(494,4472)">
+<g transform="translate(926,4560)">
 <rect class="t" width="312" height="294"/>
 <rect class="tt" width="312" height="30"/>
 <text class="tn" x="156" y="20" text-anchor="middle">sent_email</text>
@@ -1363,7 +1396,7 @@
 <text class="cn" x="12" y="287">updated_at</text>
 <text class="ct" x="300" y="287" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(998,4472)">
+<g transform="translate(1430,4560)">
 <rect class="t" width="352" height="250"/>
 <rect class="tt" width="352" height="30"/>
 <text class="tn" x="176" y="20" text-anchor="middle">signature</text>
@@ -1388,7 +1421,7 @@
 <text class="cn" x="12" y="243">updated_at</text>
 <text class="ct" x="340" y="243" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(1454,4472)">
+<g transform="translate(30,4878)">
 <rect class="t" width="256" height="250"/>
 <rect class="tt" width="256" height="30"/>
 <text class="tn" x="128" y="20" text-anchor="middle">statutory_deadline</text>
@@ -1413,7 +1446,7 @@
 <text class="cn" x="12" y="243">updated_at</text>
 <text class="ct" x="244" y="243" text-anchor="end">string</text>
 </g>
-<g transform="translate(30,4790)">
+<g transform="translate(494,4878)">
 <rect class="t" width="312" height="316"/>
 <rect class="tt" width="312" height="30"/>
 <text class="tn" x="156" y="20" text-anchor="middle">template</text>
@@ -1444,7 +1477,7 @@
 <text class="cn" x="12" y="309">updated_at</text>
 <text class="ct" x="300" y="309" text-anchor="end">datetime</text>
 </g>
-<g transform="translate(494,4790)">
+<g transform="translate(926,4878)">
 <rect class="t" width="280" height="250"/>
 <rect class="tt" width="280" height="30"/>
 <text class="tn" x="140" y="20" text-anchor="middle">testimonial</text>
@@ -1469,7 +1502,7 @@
 <text class="cn" x="12" y="243">updated_at</text>
 <text class="ct" x="268" y="243" text-anchor="end">string</text>
 </g>
-<g transform="translate(998,4790)">
+<g transform="translate(1430,4878)">
 <rect class="t" width="312" height="228"/>
 <rect class="tt" width="312" height="30"/>
 <text class="tn" x="156" y="20" text-anchor="middle">verification</text>
@@ -1492,7 +1525,7 @@
 <text class="cn" x="12" y="221">verifier_person_id</text>
 <text class="cfk" x="300" y="221" text-anchor="end">record_person FK</text>
 </g>
-<g transform="translate(1454,4790)">
+<g transform="translate(30,5218)">
 <rect class="t" width="192" height="250"/>
 <rect class="tt" width="192" height="30"/>
 <text class="tn" x="96" y="20" text-anchor="middle">visitor_route_count</text>
@@ -1517,7 +1550,7 @@
 <text class="cn" x="12" y="243">visits</text>
 <text class="ct" x="180" y="243" text-anchor="end">int</text>
 </g>
-<g transform="translate(30,5130)">
+<g transform="translate(494,5218)">
 <rect class="t" width="256" height="250"/>
 <rect class="tt" width="256" height="30"/>
 <text class="tn" x="128" y="20" text-anchor="middle">xero_invoice</text>

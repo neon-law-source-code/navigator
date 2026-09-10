@@ -20,10 +20,15 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 const KEY: &str = "api-reads-test-key";
+/// Synthetic Firm-private coordinates the fixture matter carries so the
+/// client-payload redaction has something to redact.
+const PRIVATE_NOTION: &str = "https://notion.example/private-workup";
+const INTERNAL_SLACK_ID: &str = "C0FIRMONLY1";
 
 struct Fixture {
     app: axum::Router,
     project_id: Uuid,
+    project_code: String,
     notation_id: Uuid,
     lawyer: String,
     client: String,
@@ -51,6 +56,14 @@ async fn build_fixture() -> Fixture {
     )
     .await
     .unwrap();
+    store::projects::set_private_notion_page_url(&surreal, project.id, PRIVATE_NOTION)
+        .await
+        .unwrap()
+        .expect("the fixture matter records a private Notion page");
+    store::projects::set_internal_slack_channel_id(&surreal, project.id, INTERNAL_SLACK_ID)
+        .await
+        .unwrap()
+        .expect("the fixture matter records a firm-only Slack channel");
     let lawyer = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role("Lawyer", "lawyer@example.com", Role::Lawyer),
@@ -124,6 +137,7 @@ async fn build_fixture() -> Fixture {
     Fixture {
         app: server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR)),
         project_id: project.id,
+        project_code: project.code.clone(),
         notation_id,
         lawyer: bearer(lawyer.id, Role::Lawyer),
         client: bearer(client.id, Role::Client),
@@ -141,6 +155,21 @@ async fn get(fx: &Fixture, path: &str, auth: Option<&str>) -> axum::http::Respon
         .oneshot(req.body(Body::empty()).unwrap())
         .await
         .unwrap()
+}
+
+/// The caller's own view of the fixture matter, read through the list door
+/// so the assertion covers the payload a portal actually receives.
+async fn project_json(fx: &Fixture, auth: Option<&str>) -> serde_json::Value {
+    let resp = get(fx, "/app/api/projects", auth).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    serde_json::from_slice::<serde_json::Value>(&bytes)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .first()
+        .cloned()
+        .expect("the caller sees the fixture matter")
 }
 
 async fn json_array_len(resp: axum::http::Response<Body>) -> usize {
@@ -175,6 +204,57 @@ async fn list_projects_is_scoped_to_the_caller() {
     assert_eq!(
         get(&fx, "/app/api/projects", None).await.status(),
         StatusCode::UNAUTHORIZED
+    );
+}
+
+/// The Firm-private integration coordinates are the reason
+/// `/app/api/projects` serializes a narrower struct for a client caller.
+/// Navigator stores an address only, so a leaked private Notion URL or a
+/// private Slack channel id is a live handle to firm-only work product on a
+/// matter the client is otherwise entitled to read — the row is in scope and
+/// the coordinate is not. The paired assertion on the lawyer payload is what
+/// keeps this a redaction rather than a column nobody reads.
+#[tokio::test]
+async fn a_client_project_payload_redacts_the_firm_private_coordinates() {
+    let fx = build_fixture().await;
+
+    let client_view = project_json(&fx, Some(&fx.client)).await;
+    for field in [
+        "private_notion_page_url",
+        "internal_slack_channel_id",
+        "internal_slack_channel_url",
+        "firm_id",
+        "repository_url",
+        "drive_folder_id",
+        "git_initialized_at",
+        "forge_provisioned_at",
+        "closed_at",
+    ] {
+        assert!(
+            client_view.get(field).is_none(),
+            "a client payload must not carry `{field}`: {client_view}"
+        );
+    }
+    assert_eq!(
+        client_view.get("code").and_then(serde_json::Value::as_str),
+        Some(fx.project_code.as_str()),
+        "the client still reads the matter itself"
+    );
+
+    let firm_view = project_json(&fx, Some(&fx.lawyer)).await;
+    assert_eq!(
+        firm_view
+            .get("private_notion_page_url")
+            .and_then(serde_json::Value::as_str),
+        Some(PRIVATE_NOTION),
+        "the firm tier still reads the private page: {firm_view}"
+    );
+    assert_eq!(
+        firm_view
+            .get("internal_slack_channel_id")
+            .and_then(serde_json::Value::as_str),
+        Some(INTERNAL_SLACK_ID),
+        "the firm tier still reads the private channel id: {firm_view}"
     );
 }
 

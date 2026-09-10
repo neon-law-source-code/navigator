@@ -9,9 +9,19 @@
 //! This test pins the table to the code the same way
 //! `cli`'s `devx::gcp::deploy_workshop_prose_matches_the_dry_run_pipeline` pins
 //! the deploy workshop: every env prefix the catalog names must exist in
-//! `.env.example`, the binding/platform split must be exactly the six
-//! services we ship, and the stub-fallback claim the doc makes for the
+//! `.env.example`, the kind column must stay a closed vocabulary over exactly
+//! the services we ship, and the stub-fallback claim the doc makes for the
 //! feature vendors must be backed by a real stub the code constructs.
+//!
+//! A row's kind decides how its credential is configured, so it decides what
+//! there is to ground. `binding` and `platform` are deployment-wide: one set
+//! of `<VENDOR>_*` variables per deployment, which must appear in
+//! `.env.example`. `firm-owned` is not — the credential is a typed row the
+//! Firm's Admin DRI writes, resolved from the Project's `firm_id`, so there
+//! is no environment variable to find and asserting one would be asserting
+//! the wrong contract. Naming an env prefix on a firm-owned row is therefore
+//! itself a failure: it would mean a Firm credential had acquired a
+//! deployment-wide fallback.
 
 use std::path::Path;
 
@@ -75,8 +85,19 @@ fn catalog_rows() -> Vec<Row> {
     rows
 }
 
+/// Every kind a catalog row may declare, and whether its credential is
+/// configured per deployment.
+const KINDS: [(&str, bool); 3] = [("binding", true), ("platform", true), ("firm-owned", false)];
+
+fn deployment_configured(kind: &str) -> Option<bool> {
+    KINDS
+        .iter()
+        .find(|(name, _)| *name == kind)
+        .map(|(_, configured)| *configured)
+}
+
 #[test]
-fn catalog_lists_exactly_the_six_services_we_ship() {
+fn catalog_lists_exactly_the_services_we_ship() {
     let rows = catalog_rows();
     let mut services: Vec<&str> = rows.iter().map(|r| r.service.as_str()).collect();
     services.sort_unstable();
@@ -85,24 +106,27 @@ fn catalog_lists_exactly_the_six_services_we_ship() {
         [
             "DocuSign",
             "Google Cloud",
+            "Notion",
             "Restate Cloud",
             "SendGrid",
+            "Slack",
             "Vertex AI",
             "Xero",
         ],
-        "catalog must name exactly the six external services the app dials",
+        "catalog must name exactly the external services the app dials",
     );
 }
 
 #[test]
-fn catalog_binding_platform_split_is_correct() {
+fn catalog_kind_split_is_correct() {
     let rows = catalog_rows();
     for row in &rows {
         assert!(
-            row.kind == "binding" || row.kind == "platform",
-            "{} has kind `{}` — must be binding or platform",
+            deployment_configured(&row.kind).is_some(),
+            "{} has kind `{}` — must be one of {:?}",
             row.service,
             row.kind,
+            KINDS.map(|(name, _)| name),
         );
     }
     let binding: Vec<&str> = rows
@@ -111,11 +135,23 @@ fn catalog_binding_platform_split_is_correct() {
         .map(|r| r.service.as_str())
         .collect();
     // Binding vendors take legally/financially weighty action and follow
-    // the two-account convention; everything else is platform.
+    // the two-account convention.
     assert_eq!(
         binding,
         ["DocuSign", "Xero"],
         "only DocuSign and Xero are binding vendors",
+    );
+    let firm_owned: Vec<&str> = rows
+        .iter()
+        .filter(|r| r.kind == "firm-owned")
+        .map(|r| r.service.as_str())
+        .collect();
+    // A firm-owned vendor's credential is a Firm row resolved from the
+    // Project's `firm_id`, never a deployment-wide variable.
+    assert_eq!(
+        firm_owned,
+        ["Notion", "Slack"],
+        "only Notion and Slack are firm-owned vendors",
     );
 }
 
@@ -124,6 +160,21 @@ fn every_catalog_env_prefix_exists_in_env_example() {
     let env_example = repo_file(".env.example");
     let rows = catalog_rows();
     for row in &rows {
+        if deployment_configured(&row.kind) == Some(false) {
+            // An env prefix is a screaming-snake `<VENDOR>_*` name, so an
+            // uppercase letter in this cell is the tell.
+            assert!(
+                row.env_tokens
+                    .iter()
+                    .all(|token| !token.chars().any(char::is_uppercase)),
+                "{} is firm-owned, so its credential is resolved from the \
+                 Project's `firm_id` — naming an env prefix in `{:?}` would \
+                 mean a Firm credential had gained a deployment-wide fallback",
+                row.service,
+                row.env_tokens,
+            );
+            continue;
+        }
         assert!(
             !row.env_tokens.is_empty(),
             "{} names no env prefix in the catalog",

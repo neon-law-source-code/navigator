@@ -74,6 +74,15 @@ const NAVIGATOR_MANIFEST: &[ManifestEntry] = &[
                   question bank, or show the team what broke when you used it.",
         filename: "CONTRIBUTE.md",
     },
+    ManifestEntry {
+        category: "workshops",
+        slug: "lsat",
+        title: "LSAT Study Aid",
+        description: "An independent study aid with fresh prompts for practicing LSAT reasoning and a short writing-centered plan.",
+        audience: "For prospective law students",
+        benefit: "You walk out with a short study loop, original prompts you can copy into your own notes, and a way to review a missed question without saving anything here.",
+        filename: "LSAT.md",
+    },
     // A conference talk. Every code slide is an exact copy of the workspace
     // file it cites; the
     // `rust_in_peace_snippets_are_exact_copies_of_cited_sources` test fails

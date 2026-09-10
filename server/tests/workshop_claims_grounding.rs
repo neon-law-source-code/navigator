@@ -48,10 +48,11 @@ const README: &str = "server/content/workshops/navigator/README.md";
 const CONTRIBUTE: &str = "server/content/workshops/navigator/CONTRIBUTE.md";
 const DEPLOY: &str = "server/content/workshops/navigator/DEPLOY.md";
 const RUST_IN_PEACE: &str = "server/content/workshops/navigator/RUST_IN_PEACE.md";
+const LSAT: &str = "server/content/workshops/navigator/LSAT.md";
 
 /// Every deck the loader publishes, so a fifth one cannot be added without
 /// deciding what it owes.
-const DECKS: &[&str] = &[README, CONTRIBUTE, DEPLOY, RUST_IN_PEACE];
+const DECKS: &[&str] = &[README, CONTRIBUTE, DEPLOY, LSAT, RUST_IN_PEACE];
 
 /// Collapse a markdown file's whitespace so a claim split across a reflowed
 /// line still matches. The decks are hard-wrapped at 120 characters and `S102`

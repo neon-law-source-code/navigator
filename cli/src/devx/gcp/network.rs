@@ -80,6 +80,15 @@ fn router_path(project_id: &str, region: &str, router_name: &str) -> String {
     format!("/compute/v1/projects/{project_id}/regions/{region}/routers/{router_name}")
 }
 
+/// The one NAT gateway this deployment owns.
+fn nat_body(nat_name: &str) -> serde_json::Value {
+    json!({
+        "name": nat_name,
+        "natIpAllocateOption": "AUTO_ONLY",
+        "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
+    })
+}
+
 fn router_body(
     project_id: &str,
     network_name: &str,
@@ -90,11 +99,55 @@ fn router_body(
         "name": router_name,
         "network": format!("projects/{project_id}/global/networks/{network_name}"),
         "bgp": { "asn": 64514 },
-        "nats": [{
-            "name": nat_name,
-            "natIpAllocateOption": "AUTO_ONLY",
-            "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
-        }],
+        "nats": [nat_body(nat_name)],
+    })
+}
+
+/// A Compute resource reference stripped of the API host and version a live
+/// response carries.
+///
+/// `routers.get` answers with a full selfLink
+/// (`https://www.googleapis.com/compute/v1/projects/…`) while the create body
+/// carries the relative `projects/…` form. Comparing the two verbatim never
+/// matches, which would report every converged router as drifted.
+fn relative_resource(reference: &str) -> &str {
+    reference
+        .rsplit_once("/compute/v1/")
+        .map_or(reference, |(_, tail)| tail)
+}
+
+/// Whether a live router sits on the VPC this deployment is provisioning.
+fn network_matches(router: &serde_json::Value, expected: &serde_json::Value) -> bool {
+    match (
+        router.get("network").and_then(serde_json::Value::as_str),
+        expected.get("network").and_then(serde_json::Value::as_str),
+    ) {
+        (Some(live), Some(wanted)) => relative_resource(live) == relative_resource(wanted),
+        _ => false,
+    }
+}
+
+/// The NAT gateways a live router currently carries.
+fn live_nats(router: &serde_json::Value) -> &[serde_json::Value] {
+    router
+        .get("nats")
+        .and_then(serde_json::Value::as_array)
+        .map_or(&[], Vec::as_slice)
+}
+
+/// Whether the router already carries this deployment's gateway with the
+/// egress settings private nodes need.
+fn has_expected_nat(router: &serde_json::Value, nat_name: &str) -> bool {
+    live_nats(router).iter().any(|nat| {
+        nat.get("name").and_then(serde_json::Value::as_str) == Some(nat_name)
+            && nat
+                .get("natIpAllocateOption")
+                .and_then(serde_json::Value::as_str)
+                == Some("AUTO_ONLY")
+            && nat
+                .get("sourceSubnetworkIpRangesToNat")
+                .and_then(serde_json::Value::as_str)
+                == Some("ALL_SUBNETWORKS_ALL_IP_RANGES")
     })
 }
 
@@ -103,31 +156,52 @@ fn router_has_expected_nat(
     expected: &serde_json::Value,
     nat_name: &str,
 ) -> bool {
-    router.get("network") == expected.get("network")
-        && router
-            .get("nats")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|nats| {
-                nats.iter().any(|nat| {
-                    nat.get("name").and_then(serde_json::Value::as_str) == Some(nat_name)
-                        && nat
-                            .get("natIpAllocateOption")
-                            .and_then(serde_json::Value::as_str)
-                            == Some("AUTO_ONLY")
-                        && nat
-                            .get("sourceSubnetworkIpRangesToNat")
-                            .and_then(serde_json::Value::as_str)
-                            == Some("ALL_SUBNETWORKS_ALL_IP_RANGES")
-                })
-            })
+    network_matches(router, expected) && has_expected_nat(router, nat_name)
+}
+
+/// The `nats` list a drift patch is entitled to submit.
+///
+/// `compute.routers.patch` replaces a repeated field wholesale rather than
+/// merging into it, so submitting this deployment's single gateway would
+/// delete every other NAT on a router the project shares. Carry the live
+/// entries through untouched and rewrite only the gateway this deployment owns
+/// by name, so convergence can never remove topology setup did not create.
+fn merged_nats(existing: &serde_json::Value, nat_name: &str) -> Vec<serde_json::Value> {
+    let mut nats: Vec<serde_json::Value> = live_nats(existing)
+        .iter()
+        .filter(|nat| nat.get("name").and_then(serde_json::Value::as_str) != Some(nat_name))
+        .cloned()
+        .collect();
+    nats.push(nat_body(nat_name));
+    nats
+}
+
+/// The drift patch itself: this deployment's gateway alongside every unrelated
+/// one, and nothing else.
+///
+/// `bgp` is deliberately absent. The create seeds a placeholder ASN because a
+/// router needs one, and replaying it here would rewrite the ASN of a router
+/// carrying real BGP sessions.
+fn nat_patch_body(
+    existing: &serde_json::Value,
+    router_name: &str,
+    nat_name: &str,
+) -> serde_json::Value {
+    json!({
+        "name": router_name,
+        "nats": merged_nats(existing, nat_name),
+    })
 }
 
 /// Ensure the named Cloud Router and its NAT configuration.
 ///
 /// The normal path reads first: a matching router is a no-op and an existing
-/// router with NAT drift receives a patch. An absent router is created and its
-/// Compute LRO is polled. A conflict on that create is another actor having
-/// won the same idempotent race, so it succeeds without a second poll.
+/// router missing this deployment's gateway receives a patch that adds it
+/// without disturbing any other gateway on the same router. A router of this
+/// name on a different VPC is somebody else's resource, not drift, so setup
+/// stops rather than moving it. An absent router is created and its Compute
+/// LRO is polled. A conflict on that create is another actor having won the
+/// same idempotent race, so it succeeds without a second poll.
 async fn ensure_named_router_and_nat(
     client: &GcpClient,
     project_id: &str,
@@ -143,6 +217,8 @@ async fn ensure_named_router_and_nat(
     // A dry run cannot learn whether a router already exists. Record the
     // create that a fresh deployment requires, matching the rest of setup's
     // create-oriented preview rather than inventing a synthetic drift patch.
+    // The live drift path only ever adds this deployment's gateway, so the
+    // preview omits no destructive step an operator would want to confirm.
     if client.mode() == Mode::DryRun {
         return create_router(client, project_id, region, &router_name, &nat_name, &body).await;
     }
@@ -156,10 +232,20 @@ async fn ensure_named_router_and_nat(
                     what: "Cloud Router lookup response",
                     source,
                 })?;
-            if router_has_expected_nat(&existing, &body, &nat_name) {
+            if !network_matches(&existing, &body) {
+                return Err(SetupError::AmbiguousLiveState {
+                    operation: format!("read Cloud Router {router_name}"),
+                    detail: format!(
+                        "a router named {router_name} already exists on a different network; \
+                         refusing to move it onto {network_name}"
+                    ),
+                });
+            }
+            if has_expected_nat(&existing, &nat_name) {
                 return Ok(());
             }
-            patch_router(client, project_id, region, &path, &router_name, &body).await
+            let converged = nat_patch_body(&existing, &router_name, &nat_name);
+            patch_router(client, project_id, region, &path, &router_name, &converged).await
         }
         status => Err(SetupError::BadStatus {
             operation: format!("read Cloud Router {router_name}"),
@@ -598,6 +684,141 @@ mod tests {
         ensure_router_and_nat(&client_for(&server), "p", &config)
             .await
             .unwrap();
+    }
+
+    /// `compute.routers.patch` replaces `nats` wholesale, so a convergence
+    /// patch that carried only this deployment's gateway would silently delete
+    /// every other one on a shared router.
+    #[tokio::test]
+    async fn drift_patch_preserves_nat_gateways_this_deployment_does_not_own() {
+        let server = MockServer::start().await;
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        let nat = nat_name(&config.cluster_name);
+        let router_path = format!(
+            "/compute/v1/projects/p/regions/{}/routers/{router}",
+            config.region
+        );
+        Mock::given(method("GET"))
+            .and(path(&router_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network": "projects/p/global/networks/navigator-vpc",
+                "bgp": { "asn": 65001 },
+                "nats": [
+                    {
+                        "name": "unrelated-nat",
+                        "natIpAllocateOption": "MANUAL_ONLY",
+                        "sourceSubnetworkIpRangesToNat": "LIST_OF_SUBNETWORKS",
+                    },
+                    {
+                        "name": nat,
+                        "natIpAllocateOption": "MANUAL_ONLY",
+                        "sourceSubnetworkIpRangesToNat": "LIST_OF_SUBNETWORKS",
+                    },
+                ],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(&router_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": "router-patch",
+                "status": "DONE"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        ensure_router_and_nat(&client_for(&server), "p", &config)
+            .await
+            .unwrap();
+
+        let patch = server
+            .received_requests()
+            .await
+            .expect("wiremock records the requests")
+            .into_iter()
+            .find(|request| request.method == wiremock::http::Method::PATCH)
+            .expect("the drifted router receives a patch");
+        let body: serde_json::Value =
+            serde_json::from_slice(&patch.body).expect("the patch body is JSON");
+        let nats = body["nats"].as_array().expect("the patch submits nats");
+        assert_eq!(nats.len(), 2, "the unrelated gateway survives: {body}");
+        assert_eq!(nats[0]["name"], "unrelated-nat", "{body}");
+        assert_eq!(nats[0]["natIpAllocateOption"], "MANUAL_ONLY", "{body}");
+        assert_eq!(nats[1]["name"], json!(nat), "{body}");
+        assert_eq!(nats[1]["natIpAllocateOption"], "AUTO_ONLY", "{body}");
+        assert_eq!(
+            nats[1]["sourceSubnetworkIpRangesToNat"], "ALL_SUBNETWORKS_ALL_IP_RANGES",
+            "{body}"
+        );
+        assert!(
+            body.get("bgp").is_none(),
+            "a drift patch must not rewrite the ASN of a router carrying real BGP sessions: {body}"
+        );
+    }
+
+    /// Compute answers `routers.get` with a full selfLink while the create
+    /// body carries the relative form. A verbatim comparison would call every
+    /// converged router drifted and patch it on every run.
+    #[tokio::test]
+    async fn a_converged_router_returned_as_a_self_link_is_left_alone() {
+        let server = MockServer::start().await;
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        let nat = nat_name(&config.cluster_name);
+        // No PATCH mock: wiremock 404s an unmatched request, so a patch here
+        // fails the test.
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/compute/v1/projects/p/regions/{}/routers/{router}",
+                config.region
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network":
+                    "https://www.googleapis.com/compute/v1/projects/p/global/networks/navigator-vpc",
+                "nats": [{
+                    "name": nat,
+                    "natIpAllocateOption": "AUTO_ONLY",
+                    "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
+                }],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        ensure_router_and_nat(&client_for(&server), "p", &config)
+            .await
+            .unwrap();
+    }
+
+    /// A router of this name on another VPC belongs to somebody else. Setup
+    /// stops rather than patching its gateway list.
+    #[tokio::test]
+    async fn stops_when_a_router_of_the_same_name_sits_on_another_network() {
+        let server = MockServer::start().await;
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/compute/v1/projects/p/regions/{}/routers/{router}",
+                config.region
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network": "projects/p/global/networks/somebody-elses-vpc",
+                "nats": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let result = ensure_router_and_nat(&client_for(&server), "p", &config).await;
+
+        assert!(
+            matches!(result, Err(SetupError::AmbiguousLiveState { .. })),
+            "got {result:?}"
+        );
     }
 
     #[tokio::test]

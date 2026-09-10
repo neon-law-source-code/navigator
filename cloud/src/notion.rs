@@ -13,6 +13,9 @@ use serde_json::json;
 use thiserror::Error;
 
 const NOTION_VERSION: &str = "2022-06-28";
+/// The title property the reconciler writes and reads. It is the only
+/// property a page is matched on, so the name is stated once.
+const PROJECT_CODE_PROPERTY: &str = "Project code";
 
 #[derive(Debug, Error)]
 pub enum NotionError {
@@ -168,6 +171,30 @@ struct PageResponse {
     properties: serde_json::Value,
 }
 
+/// Read the whole `Project code` title out of one search result.
+///
+/// The match has to be the assembled title compared for equality, not a
+/// substring of the serialized properties: a code is a prefix of other codes
+/// (`sample-project` of `sample-project-two`), and any property text can
+/// contain it, so a substring test adopts another matter's page and the next
+/// update writes this Project's code over it. Notion splits a title into rich
+/// text runs, so the runs are joined before the comparison.
+fn project_code_title(properties: &serde_json::Value) -> Option<String> {
+    let runs = properties
+        .get(PROJECT_CODE_PROPERTY)?
+        .get("title")?
+        .as_array()?;
+    let mut title = String::new();
+    for run in runs {
+        let text = run
+            .get("plain_text")
+            .or_else(|| run.pointer("/text/content"))?
+            .as_str()?;
+        title.push_str(text);
+    }
+    Some(title)
+}
+
 /// Notion REST adapter. The credential is injected by the Firm-secret
 /// resolver; there is no environment fallback or ambient provider login.
 pub struct NotionClient {
@@ -242,12 +269,13 @@ impl NotionService for NotionClient {
             .await
             .map_err(|_| NotionError::Transport)?;
         Ok(body.results.into_iter().find_map(|page| {
-            let matches_code = page.properties.to_string().contains(project_code);
-            matches_code.then_some(NotionPage {
-                id: page.id,
-                url: page.url,
-                project_code: project_code.to_string(),
-            })
+            (project_code_title(&page.properties).as_deref() == Some(project_code)).then_some(
+                NotionPage {
+                    id: page.id,
+                    url: page.url,
+                    project_code: project_code.to_string(),
+                },
+            )
         }))
     }
 
@@ -255,7 +283,7 @@ impl NotionService for NotionClient {
         let response = self
             .checked(self.http.post(format!("{}/pages", self.base_url)).json(&json!({
                 "parent": { "database_id": self.parent_database_id },
-                "properties": { "Project code": { "title": [{ "text": { "content": project_code } }] } }
+                "properties": { PROJECT_CODE_PROPERTY: { "title": [{ "text": { "content": project_code } }] } }
             })))
             .await?;
         let page = response
@@ -276,7 +304,7 @@ impl NotionService for NotionClient {
     ) -> Result<NotionPage, NotionError> {
         let response = self
             .checked(self.http.patch(format!("{}/pages/{page_id}", self.base_url)).json(&json!({
-                "properties": { "Project code": { "title": [{ "text": { "content": project_code } }] } }
+                "properties": { PROJECT_CODE_PROPERTY: { "title": [{ "text": { "content": project_code } }] } }
             })))
             .await?;
         let page = response
@@ -293,7 +321,55 @@ impl NotionService for NotionClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_private_page, FakeNotion, NotionError, NotionService};
+    use super::{
+        ensure_private_page, project_code_title, FakeNotion, NotionError, NotionService,
+        PROJECT_CODE_PROPERTY,
+    };
+    use serde_json::json;
+
+    fn properties(title: &str) -> serde_json::Value {
+        json!({
+            PROJECT_CODE_PROPERTY: {
+                "type": "title",
+                "title": [{ "type": "text", "plain_text": title }]
+            },
+            "Notes": { "rich_text": [{ "plain_text": "sample-project overview" }] }
+        })
+    }
+
+    #[test]
+    fn a_page_matches_only_its_whole_project_code_title() {
+        assert_eq!(
+            project_code_title(&properties("sample-project")).as_deref(),
+            Some("sample-project")
+        );
+        // Both of these contain `sample-project` somewhere in their
+        // properties, and neither is that Project's page.
+        assert_eq!(
+            project_code_title(&properties("sample-project-two")).as_deref(),
+            Some("sample-project-two")
+        );
+        assert_eq!(
+            project_code_title(&json!({ "Notes": { "rich_text": [] } })),
+            None
+        );
+    }
+
+    #[test]
+    fn a_split_title_is_joined_before_the_comparison() {
+        let split = json!({
+            PROJECT_CODE_PROPERTY: {
+                "title": [
+                    { "plain_text": "sample-" },
+                    { "plain_text": "project" }
+                ]
+            }
+        });
+        assert_eq!(
+            project_code_title(&split).as_deref(),
+            Some("sample-project")
+        );
+    }
 
     #[tokio::test]
     async fn ensure_adopts_without_duplicate_creation() {

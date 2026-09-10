@@ -8910,6 +8910,16 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
         !delete_your_data_body.contains("Everyone deserves to be seen."),
         "{delete_your_data_body}"
     );
+    for (brand, body) in [
+        ("Neon Law", neon_body.as_str()),
+        ("DeleteYourData.com", delete_your_data_body.as_str()),
+    ] {
+        assert!(
+            body.contains(r#"class="home-service""#)
+                && body.contains(r#"aria-labelledby="home-service-heading""#),
+            "{brand} home must render the engagements band: {body}"
+        );
+    }
 
     let litigation = app
         .oneshot(
@@ -9212,6 +9222,23 @@ async fn host_brand_path_matrix_resolves_every_combination() {
                 assert!(
                     !page_declares_og_site_name(&body, other_brand),
                     "{host}: page must not declare {other_brand:?} as its og:site_name: {body}"
+                );
+            }
+        }
+        if host == lawyer_shook_host {
+            assert!(
+                body.contains(r#"class="holding-page""#)
+                    && body.contains(r#"class="holding-page__heading""#),
+                "the holding host renders its bare notice: {body}"
+            );
+            for shared_marker in [
+                r#"class="site-header""#,
+                r#"class="site-footer""#,
+                "nav-theme public-shell",
+            ] {
+                assert!(
+                    !body.contains(shared_marker),
+                    "the holding host must omit shared chrome marker {shared_marker:?}: {body}"
                 );
             }
         }

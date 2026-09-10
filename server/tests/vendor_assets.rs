@@ -428,6 +428,129 @@ fn the_home_hero_carries_its_own_opaque_shade_under_the_wordmark() {
     );
 }
 
+#[test]
+fn the_home_band_and_footer_share_the_theme_wash_and_hairline() {
+    let theme = std::fs::read_to_string(public_dir().join("css/theme.css"))
+        .expect("read the shared theme stylesheet");
+    let home = std::fs::read_to_string(public_dir().join("css/home.css"))
+        .expect("read the firm home stylesheet");
+
+    let theme_tokens = theme
+        .split_once(".nav-theme {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("theme.css must carry the public theme rule");
+    assert!(
+        theme_tokens.contains("--nav-public-wash:")
+            && theme_tokens.contains("radial-gradient(")
+            && theme_tokens.contains("--nav-public-hairline:")
+            && theme_tokens.contains("linear-gradient(\n    90deg,"),
+        "theme.css must own the shared public wash and hairline values: {theme_tokens}"
+    );
+
+    let service_before = home
+        .split_once(".home-service::before {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements wash rule");
+    assert!(
+        service_before.contains("background: var(--nav-public-wash);"),
+        "the engagements band must consume the theme wash: {service_before}"
+    );
+    assert!(
+        !service_before.contains("radial-gradient("),
+        "the engagements band must not duplicate the theme wash: {service_before}"
+    );
+
+    let service_after = home
+        .split_once(".home-service::after {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements hairline rule");
+    assert!(
+        service_after.contains("background: var(--nav-public-hairline);"),
+        "the engagements hairline must consume the theme value: {service_after}"
+    );
+
+    let footer = theme
+        .split_once(".site-footer {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("theme.css must carry the footer rule");
+    assert!(
+        footer.contains("background: var(--nav-public-wash);"),
+        "the footer must consume the theme wash: {footer}"
+    );
+
+    let footer_before = theme
+        .split_once(".site-footer::before {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("theme.css must carry the footer hairline rule");
+    assert!(
+        footer_before.contains("background: var(--nav-public-hairline);"),
+        "the footer hairline must consume the theme value: {footer_before}"
+    );
+}
+
+#[test]
+fn the_home_service_band_contract_keeps_its_clip_bleed_and_shared_left_edge() {
+    let home = std::fs::read_to_string(public_dir().join("css/home.css"))
+        .expect("read the firm home stylesheet");
+
+    let shell = home
+        .split_once(".public-shell:has(.home-service) {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must scope the service-band clip to its shell");
+    assert!(
+        shell.contains("overflow-x: clip;"),
+        "the shell must clip the band's viewport bleed: {shell}"
+    );
+
+    let band = home
+        .split_once(".home-service {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements band rule");
+    assert!(
+        band.contains("margin: clamp(1.5rem, 4vw, 2.5rem) 0 0;"),
+        "the band must keep the shell's shared horizontal edge: {band}"
+    );
+
+    let bleed = home
+        .split_once(".home-service::before {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements bleed rule");
+    for declaration in [
+        "position: absolute;",
+        "inset-block: 0;",
+        "inset-inline: calc(50% - 50vw);",
+    ] {
+        assert!(
+            bleed.contains(declaration),
+            "the band bleed must retain {declaration:?}: {bleed}"
+        );
+    }
+
+    let hairline = home
+        .split_once(".home-service::after {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements hairline rule");
+    for declaration in [
+        "inset: 0 auto auto 50%;",
+        "width: min(72rem, calc(100% + 2rem));",
+        "transform: translateX(-50%);",
+    ] {
+        assert!(
+            hairline.contains(declaration),
+            "the band hairline must retain {declaration:?}: {hairline}"
+        );
+    }
+}
+
 /// Motion may move normal-size text into place, but it may not fade it below
 /// the contrast floor while the page first renders. The browser gate caught
 /// the Fractional GC virtue cards mid-fade in the release KIND image; this

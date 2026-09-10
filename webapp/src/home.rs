@@ -252,6 +252,8 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
                         for run in bare.sign_in.iter() {
                             if let Some(href) = run.href.as_ref() {
                                 a { class: "holding-page__link", href: "{href}", "{run.text}" }
+                            } else if run.emphasis {
+                                strong { "{run.text}" }
                             } else {
                                 "{run.text}"
                             }
@@ -861,6 +863,39 @@ mod tests {
         let out = statement_only_html();
         assert!(!out.contains("home-service"), "no empty section: {out}");
         assert!(!out.contains("neon-card"), "no empty card: {out}");
+    }
+
+    #[test]
+    fn a_bare_emphasised_run_renders_as_strong_markup() {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome::default(),
+                    content: HomeContent {
+                        head_title: "Holding page".to_string(),
+                        meta_description: "A holding page.".to_string(),
+                        bare: Some(BareStatement {
+                            heading: "Holding page".to_string(),
+                            paragraph: "A statement.".to_string(),
+                            sign_in: vec![CopyRun {
+                                text: "Existing client".to_string(),
+                                emphasis: true,
+                                href: None,
+                            }],
+                        }),
+                        ..HomeContent::default()
+                    },
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+
+        assert!(
+            out.contains("<strong>Existing client</strong>"),
+            "a bare emphasised run is strong: {out}"
+        );
     }
 
     /// The boxes at the foot of the page point at the practice pages.

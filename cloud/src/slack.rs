@@ -69,18 +69,21 @@ pub trait SlackService: Send + Sync {
 }
 
 /// Idempotent find-then-create channel provisioning. A failed lookup never
-/// creates a second channel.
+/// creates a second channel. The returned flag distinguishes a channel this
+/// call created from one it adopted: an operator reading `ensure` output has
+/// to be able to tell a first provisioning from a re-run, and an unconditional
+/// `true` would report every re-run as a new Firm-private channel.
 pub async fn ensure_private_channel<S: SlackService + ?Sized>(
     service: &S,
     project_code: &str,
     members: &[SlackMemberId],
 ) -> Result<(SlackChannel, bool), SlackError> {
-    let channel = match service.find_private_channel(project_code).await? {
-        Some(channel) => channel,
-        None => service.create_private_channel(project_code).await?,
+    let (channel, created) = match service.find_private_channel(project_code).await? {
+        Some(channel) => (channel, false),
+        None => (service.create_private_channel(project_code).await?, true),
     };
     service.invite_firm_members(&channel.id, members).await?;
-    Ok((channel, true))
+    Ok((channel, created))
 }
 
 #[derive(Clone, Default)]
@@ -347,13 +350,18 @@ mod tests {
             SlackMemberId::new("U123").unwrap(),
             SlackMemberId::new("U456").unwrap(),
         ];
-        let (first, _) = ensure_private_channel(&slack, "sample-project", &members)
+        let (first, created) = ensure_private_channel(&slack, "sample-project", &members)
             .await
             .unwrap();
-        let (second, _) = ensure_private_channel(&slack, "sample-project", &members)
+        let (second, created_again) = ensure_private_channel(&slack, "sample-project", &members)
             .await
             .unwrap();
         assert_eq!(first, second);
+        assert!(created, "the first ensure creates the Firm-private channel");
+        assert!(
+            !created_again,
+            "a re-run adopts the existing channel and must not report a creation"
+        );
         assert_eq!(slack.invited_members(&first.id), vec!["U123", "U456"]);
     }
 

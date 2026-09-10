@@ -356,6 +356,19 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
 
 /// The engagements section, in prose: a full-width band, not a card, so the
 /// heading shares the statement's left edge.
+///
+/// A linked run renders as a **classless** `<a>`, and that is load-bearing
+/// rather than incidental. `theme.css` gives every inline prose link its
+/// non-colour cue through `.nav-theme :is(p, li) > a:not([class])` — keyed on
+/// the absence of a class precisely so no new prose page has to be remembered
+/// into an allow-list. A class here, even a decorative one, opts these links
+/// out of that rule and leaves them distinguishable by colour alone, which is
+/// the `link-in-text-block` violation axe reports — and did report, on this
+/// page in the dark scheme, where the shared link stop is 1.50:1 against body
+/// text. The class this replaces styled nothing observable: `.nav-theme a`
+/// carries one type selector more, so it won both the colour and
+/// `text-decoration: none`, leaving a declared thickness and offset shaping a
+/// line that was never drawn.
 #[component]
 fn ServiceProse(service: ServiceSection) -> Element {
     rsx! {
@@ -365,7 +378,7 @@ fn ServiceProse(service: ServiceSection) -> Element {
                 p { class: "home-service__paragraph",
                     for run in paragraph.iter() {
                         if let Some(href) = run.href.as_ref() {
-                            a { class: "home-service__link", href: "{href}", "{run.text}" }
+                            a { href: "{href}", "{run.text}" }
                         } else if run.emphasis {
                             strong { "{run.text}" }
                         } else {
@@ -466,7 +479,7 @@ fn ProvenanceBand(provenance: ProvenanceSection) -> Element {
                         p { class: "home-provenance__note",
                             for run in paragraph.iter() {
                                 if let Some(href) = run.href.as_ref() {
-                                    a { class: "home-service__link", href: "{href}", "{run.text}" }
+                                    a { href: "{href}", "{run.text}" }
                                 } else if run.emphasis {
                                     strong { "{run.text}" }
                                 } else {
@@ -776,12 +789,52 @@ mod tests {
     fn a_linking_run_renders_as_an_inline_anchor() {
         let out = html();
         assert!(
-            out.contains(r#"<a class="home-service__link" href="/navigator">"#),
+            out.contains(r#"<a href="/navigator">"#),
             "the linking run is an anchor: {out}"
         );
         assert!(
             out.contains("Neon Law Navigator</a>"),
             "the anchor carries the run's text: {out}"
+        );
+    }
+
+    /// Every link inside a prose paragraph on this page carries no class.
+    ///
+    /// `theme.css` cues inline prose links through
+    /// `.nav-theme :is(p, li) > a:not([class])`, so a class on one of these
+    /// anchors — even a decorative one — opts it out of the WCAG 1.4.1
+    /// underline and leaves colour as the only signal that the run leaves the
+    /// page. That is axe's `link-in-text-block`, and it is how this page failed
+    /// the public accessibility gate on the 26.9.10 release in the dark scheme,
+    /// where the shared link stop is 1.50:1 against body text.
+    ///
+    /// Scoped to the paragraphs rather than the whole document: the page's
+    /// *controls* are anchors too — the statement's filled call to action, each
+    /// practice card — and those carry the class that styles them and bring
+    /// their own affordance. A run inside a sentence has neither.
+    ///
+    /// The gate that caught it needs a live KIND cluster and a browser; this
+    /// reads the rendered markup, so the regression is caught in the ordinary
+    /// workspace run.
+    #[test]
+    fn a_link_inside_a_prose_paragraph_carries_no_class() {
+        let out = html();
+        let mut linked = 0;
+        for class in ["home-service__paragraph", "home-provenance__note"] {
+            for chunk in out.split(&format!(r#"class="{class}""#)).skip(1) {
+                let paragraph = chunk.split_once("</p>").map_or(chunk, |(head, _)| head);
+                assert!(
+                    !paragraph.contains("<a class="),
+                    "a link inside `.{class}` must carry no class, or it opts \
+                     out of the WCAG 1.4.1 underline rule: {paragraph}"
+                );
+                linked += paragraph.matches("<a href=").count();
+            }
+        }
+        assert!(
+            linked > 0,
+            "the fixture must still link from inside a sentence, or the \
+             assertion above passes on prose that has no link to check: {out}"
         );
     }
 

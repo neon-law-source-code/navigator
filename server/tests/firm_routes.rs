@@ -1593,13 +1593,19 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     // One paragraph links the litigation practice from inside the sentence,
     // which is what `CopyRun::href` exists for: the method is stated there
     // rather than restated here.
+    //
+    // Classless on purpose: `theme.css` cues inline prose links through
+    // `.nav-theme :is(p, li) > a:not([class])`, so a class here would leave
+    // these two links distinguishable by colour alone (axe
+    // `link-in-text-block`, which is how this page failed the public
+    // accessibility gate on the 26.9.10 release in the dark scheme).
     assert!(
-        body.contains(r#"class="home-service__link" href="/litigation""#),
-        "the prose links the litigation practice inline: {body}"
+        body.contains(r#"<a href="/litigation""#),
+        "the prose links the litigation practice inline, with no class: {body}"
     );
     assert!(
-        body.contains(r#"class="home-service__link" href="/team""#),
-        "the prose links the team: {body}"
+        body.contains(r#"<a href="/team""#),
+        "the prose links the team, with no class: {body}"
     );
 
     // The page's sections, in the order the page argues in: the statement, what

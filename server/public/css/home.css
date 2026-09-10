@@ -227,14 +227,6 @@
   font-weight: 600;
 }
 
-/* A run that links, inside a paragraph. The brand layer owns the link colour;
-   this only keeps the underline from crowding the serif's descenders. */
-.home-service__link {
-  color: var(--firm-brand-strong);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.15em;
-}
-
 /* ---- The other practices ------------------------------------------------ */
 
 /* Three boxes at the foot of the page. The page leads with one offering; these

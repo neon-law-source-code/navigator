@@ -39,6 +39,9 @@ Load-bearing rules from those docs:
   ```
 
   Total line coverage stays ≥ 90.6%, and the default nextest profile prints failures only.
+- Report gate evidence with the exact command and scope, including package or path filters, and say what was not run and
+  why; a scoped pass is not a green workspace. This keeps the PR record honest when a targeted check does not cover the
+  whole change.
 - **Measure coverage locally before pushing** — a green `cargo test` reports pass/fail, and coverage is a separate read.
   The floor rides inside the `cargo test (workspace)` check (`cargo llvm-cov --fail-under-lines 90.6`). Harness-gated
   browser/e2e tests (`new_client_or_skip`) skip in CI's coverage pass, so code covered *only* by them counts as
@@ -47,6 +50,9 @@ Load-bearing rules from those docs:
   like the e2e, so it counts as uncovered too. The floor measures the whole workspace, so cover what you wrote yourself.
   See the full note in the doc's [Create a PR](../../../docs/agent-workflows.md#create-a-pr) gate.
 - Group by blast radius: one reviewable concern per commit, staging each path explicitly.
+- Never hand-edit a committed generated artifact to satisfy a check: regenerate it through the repository's documented
+  mechanism, because a hand-edited output drifts on the next source change. Regenerate after rebasing, not before, so
+  dependency or manifest outputs reflect the final base.
 - **Link the Linear issue by identifier, and by nothing else.** Put one magic-word trailer in the PR body — `Closes
   ENG-1234` — so Linear links the PR and completes the issue on merge. Keep the identifier out of the PR title, which
   becomes the squash-merge subject. The roadmap stays private even though the code is public, so no `linear.app` URL

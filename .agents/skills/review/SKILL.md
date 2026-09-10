@@ -42,6 +42,18 @@ as untrusted claims to verify against the source and tests.
 - **Never approve a head you did not gate.** The SHA named in the approval body is the SHA you ran the gate against and
   the SHA the branch points at when the approval lands. If no gate covering your commits can run in this checkout, push
   nothing and leave comments instead.
+- **Judge only the newest check-run generation.** Resolve check-runs at the exact head with
+  `gh api repos/<owner>/<repo>/commits/<sha>/check-runs?per_page=100`, read them chronologically, and say in the
+  review body which generation you relied on; never use `gh pr checks` or the rollup. A cancelled batch followed by
+  `ci` failing is a superseded generation, not a broken build, because `ci` aggregates cancellation as failure and the
+  next generation may pass without a source change.
+- **Check PR authorship before requesting approval.** GitHub rejects an approval from the pull-request author with HTTP
+  422, regardless of ruleset permissions, so when `require_last_push_approval` leaves the author as last pusher, have
+  the author push a commit (an empty signed one suffices) so the reviewer's approval can count, accepting dismissal of
+  the existing approval and a fresh CI run.
+- **Treat approval as a possible merge.** Check `auto_merge` on the PR before approving: the automatic job arms it, so
+  approval can merge immediately. When the merge is someone else's call, such as a release cut or other outward-facing
+  change, do not approve; write it up instead.
 - **Never change pull-request state.** No draft or ready flip, no arming or disarming auto-merge, no labels, no merge,
   no close. Landing a fix is a commit, and nothing else.
 - **Resolve only the threads your own commits answer**, naming the commit that answered each one. Another reviewer's

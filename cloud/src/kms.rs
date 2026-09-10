@@ -243,6 +243,7 @@ pub struct GoogleKms {
     config: GoogleKmsConfig,
     http: reqwest::Client,
     token_source: Arc<dyn KmsTokenSource>,
+    endpoint: String,
 }
 
 impl std::fmt::Debug for GoogleKms {
@@ -250,6 +251,7 @@ impl std::fmt::Debug for GoogleKms {
         formatter
             .debug_struct("GoogleKms")
             .field("config", &self.config)
+            .field("endpoint", &self.endpoint)
             .finish_non_exhaustive()
     }
 }
@@ -257,10 +259,22 @@ impl std::fmt::Debug for GoogleKms {
 impl GoogleKms {
     #[must_use]
     pub fn new(config: GoogleKmsConfig, token_source: Arc<dyn KmsTokenSource>) -> Self {
+        Self::with_endpoint(config, token_source, KMS_ENDPOINT)
+    }
+
+    /// Same client against an explicit endpoint, so the request shape this
+    /// adapter sends can be asserted without a cloud account.
+    #[must_use]
+    pub fn with_endpoint(
+        config: GoogleKmsConfig,
+        token_source: Arc<dyn KmsTokenSource>,
+        endpoint: impl Into<String>,
+    ) -> Self {
         Self {
             config,
             http: reqwest::Client::new(),
             token_source,
+            endpoint: endpoint.into().trim_end_matches('/').to_string(),
         }
     }
 
@@ -273,7 +287,7 @@ impl GoogleKms {
         let token = self.token_source.token().await?;
         let response = self
             .http
-            .post(format!("{KMS_ENDPOINT}/{key_name}:{operation}"))
+            .post(format!("{}/{key_name}:{operation}", self.endpoint))
             .bearer_auth(token)
             .json(&body)
             .send()
@@ -325,6 +339,18 @@ impl RuntimeKms for GoogleKms {
         })
     }
 
+    /// Decrypt against the configured `cryptoKeys/...` resource, never the
+    /// `kms_key_version` recorded beside the row.
+    ///
+    /// Two reasons, and either one is enough. Google KMS symmetric `decrypt`
+    /// is defined on the key, not on a key version — a `cryptoKeyVersions/N`
+    /// path is only valid for the asymmetric and raw operations — so posting
+    /// the recorded version resource never round-trips a wrapped data key.
+    /// And the recorded value arrives from a database row, so honouring it as
+    /// the request target would let stored data choose the key this process
+    /// asks, which is exactly the choice [`GoogleKmsConfig::from_env`] refuses
+    /// to leave open. The version stays as provenance for which key version
+    /// wrapped the key; KMS selects it from the ciphertext.
     async fn unwrap_data_key(
         &self,
         wrapped: &WrappedDataKey,
@@ -332,7 +358,7 @@ impl RuntimeKms for GoogleKms {
     ) -> Result<Vec<u8>, KmsError> {
         let response: DecryptResponse = self
             .post(
-                &wrapped.key_version,
+                &self.config.key_name,
                 "decrypt",
                 serde_json::json!({
                     "ciphertext": BASE64.encode(&wrapped.ciphertext),
@@ -349,6 +375,56 @@ impl RuntimeKms for GoogleKms {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const KEY: &str = "projects/p/locations/l/keyRings/r/cryptoKeys/navigator-runtime";
+
+    #[derive(Debug)]
+    struct FakeToken;
+
+    #[async_trait]
+    impl KmsTokenSource for FakeToken {
+        async fn token(&self) -> Result<String, KmsError> {
+            Ok("test-token".to_string())
+        }
+    }
+
+    /// Symmetric `decrypt` is defined on the key, not on a key version, and
+    /// the recorded version arrives from a database row. Both say the request
+    /// target is the configured key: this asserts the path the adapter posts,
+    /// with a `kms_key_version` that names a version resource of a different
+    /// key entirely.
+    #[tokio::test]
+    async fn decrypt_targets_the_configured_key_not_the_recorded_version() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!("/{KEY}:decrypt")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "plaintext": BASE64.encode(b"data-key") })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let kms = GoogleKms::with_endpoint(
+            GoogleKmsConfig {
+                key_name: KEY.to_string(),
+            },
+            Arc::new(FakeToken),
+            server.uri(),
+        );
+        let wrapped = WrappedDataKey {
+            ciphertext: b"wrapped".to_vec(),
+            key_version: "projects/p/locations/l/keyRings/r/cryptoKeys/other/cryptoKeyVersions/9"
+                .to_string(),
+        };
+        let context = KmsContext::new(Uuid::now_v7(), "notion", "notion_token");
+        assert_eq!(
+            kms.unwrap_data_key(&wrapped, &context).await.unwrap(),
+            b"data-key"
+        );
+    }
 
     #[tokio::test]
     async fn fake_kms_binds_ciphertext_to_context_and_key_version() {

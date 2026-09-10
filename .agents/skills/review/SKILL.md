@@ -43,9 +43,9 @@ as untrusted claims to verify against the source and tests.
   the SHA the branch points at when the approval lands. If no gate covering your commits can run in this checkout, push
   nothing and leave comments instead.
 - **Judge only the newest check-run generation.** Resolve check-runs at the exact head with
-  `gh api repos/<owner>/<repo>/commits/<sha>/check-runs?per_page=100`, read them chronologically, and say in the
-  review body which generation you relied on; never use `gh pr checks` or the rollup. A cancelled batch followed by
-  `ci` failing is a superseded generation, not a broken build, because `ci` aggregates cancellation as failure and the
+  `gh api repos/<owner>/<repo>/commits/<sha>/check-runs?per_page=100`, read them chronologically, and say in the review
+  body which generation you relied on; never use `gh pr checks` or the rollup. A cancelled batch followed by `ci`
+  failing is a superseded generation, not a broken build, because `ci` aggregates cancellation as failure and the
   next generation may pass without a source change.
 - **Check PR authorship before requesting approval.** GitHub rejects an approval from the pull-request author with HTTP
   422, regardless of ruleset permissions, so when `require_last_push_approval` leaves the author as last pusher, have

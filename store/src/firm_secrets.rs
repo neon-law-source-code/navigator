@@ -258,9 +258,15 @@ async fn authorize(
     }
 }
 
-/// Create or replace the current version. Encryption completes before the
-/// current version is revoked, so KMS failure cannot discard the last valid
-/// credential.
+/// Create or replace the current version.
+///
+/// Two orderings protect the last valid credential. Encryption and the KMS
+/// wrap complete before any write, so a KMS fault leaves the current version
+/// untouched. And the revoke and the create are one transaction, so a create
+/// that fails — the unique `(firm, provider, kind, version)` index, a store
+/// fault — cannot leave the Firm with every version revoked and none to
+/// resolve. Without the transaction each statement commits on its own, and
+/// the failure mode is a Firm whose integration has no working credential.
 pub async fn put(
     surreal: &SurrealDb,
     request: SecretPutRequest<'_>,
@@ -317,11 +323,13 @@ pub async fn put(
     let now = chrono::Utc::now().to_rfc3339();
     surreal
         .query(format!(
-            "UPDATE {TABLE} SET status = 'revoked', updated_at = $now WHERE \
+            "BEGIN; \
+             UPDATE {TABLE} SET status = 'revoked', updated_at = $now WHERE \
              firm_id = $firm_id AND provider = $provider AND kind = $kind AND status = 'active'; \
              CREATE $id SET firm_id = $firm_id, provider = $provider, kind = $kind, version = $version, \
              ciphertext = $ciphertext, wrapped_dek = $wrapped_dek, kms_key_version = $kms_key_version, \
-             kms_context = $kms_context, status = 'active', actor_id = $actor_id, created_at = $now, updated_at = $now"
+             kms_context = $kms_context, status = 'active', actor_id = $actor_id, created_at = $now, updated_at = $now; \
+             COMMIT;"
         ))
         .bind(("id", record_id(TABLE, Uuid::now_v7())))
         .bind(("firm_id", record_id(FIRM_TABLE, firm_id)))

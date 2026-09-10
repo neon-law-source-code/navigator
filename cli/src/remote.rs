@@ -872,16 +872,10 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
     .await
 }
 
-/// `navigator site projects close <project-code>` — move a matter directly to
-/// `closed` through the REST lifecycle door
-/// (`POST /app/api/projects/{id}/lifecycle`), rather than the local-only
-/// `surfaces reconcile` style commands that require a
-/// `NAVIGATOR_SURREAL_ENDPOINT`. Resolves the human-facing code to the matter
-/// id the same way `document upload` does, through the visible-projects
-/// list, then posts the transition and optional effective time. The server
-/// derives `closed_at` from those command inputs; without an effective time,
-/// closing an already-`closed` matter reports it unchanged, while an
-/// `archived` matter refuses with a caller-readable error.
+/// `navigator site projects notion <ensure|reconcile>` — post one Project
+/// code, or `--all`, to the server's Notion integration door. The Firm's
+/// provider credential is resolved server-side from the Project's `firm_id`,
+/// so no provider token is read, accepted, or printed by the CLI.
 async fn notion_command(
     host: Option<&str>,
     action: &str,
@@ -944,6 +938,10 @@ pub async fn notion_reconcile(
     notion_command(host, "reconcile", project_code, all, json).await
 }
 
+/// `navigator site projects slack <ensure|notify>` — post one Project code,
+/// and for `notify` one closed event kind, to the server's Slack integration
+/// door. The event vocabulary is validated here so an unsupported kind fails
+/// before the request, and no free-text message body is accepted.
 async fn slack_command(
     host: Option<&str>,
     action: &str,
@@ -1009,6 +1007,16 @@ pub async fn slack_notify(
     slack_command(host, "notify", project_code, Some(event), json).await
 }
 
+/// `navigator site projects close <project-code>` — move a matter directly to
+/// `closed` through the REST lifecycle door
+/// (`POST /app/api/projects/{id}/lifecycle`), rather than the local-only
+/// `surfaces reconcile` style commands that require a
+/// `NAVIGATOR_SURREAL_ENDPOINT`. Resolves the human-facing code to the matter
+/// id the same way `document upload` does, through the visible-projects
+/// list, then posts the transition and optional effective time. The server
+/// derives `closed_at` from those command inputs; without an effective time,
+/// closing an already-`closed` matter reports it unchanged, while an
+/// `archived` matter refuses with a caller-readable error.
 pub async fn matter_close(
     host: Option<&str>,
     project_code: &str,

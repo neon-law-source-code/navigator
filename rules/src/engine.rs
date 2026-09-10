@@ -92,8 +92,9 @@ pub trait FileFilter: Send + Sync {
 }
 
 /// The default filter: include the canonical `.agents/` skill catalog, skip
-/// other hidden directories (`.git`, `.build`, `.claude`, `.codex`, …) and
-/// `target/`, and lint every other `*.md` file.
+/// other hidden directories (`.git`, `.build`, `.claude`, `.codex`, …),
+/// dependency and build output directories (`node_modules/`, `dist/`, and
+/// `target/`), and lint every other `*.md` file.
 ///
 /// Classification (`classify_source`) is what now decides a file's rule
 /// set — a file with no notation frontmatter classifies as prose
@@ -118,7 +119,7 @@ impl FileFilter for DefaultFileFilter {
         if name.starts_with('.') && name != ".agents" {
             return false;
         }
-        if name == "target" {
+        if matches!(name, "target" | "node_modules" | "dist") {
             return false;
         }
         !self.excluded_directories.iter().any(|n| n == name)
@@ -808,6 +809,8 @@ mod tests {
         assert!(!f.include_dir(Path::new("foo/.claude")));
         assert!(!f.include_dir(Path::new("foo/.codex")));
         assert!(!f.include_dir(Path::new("foo/target")));
+        assert!(!f.include_dir(Path::new("foo/node_modules")));
+        assert!(!f.include_dir(Path::new("foo/dist")));
         assert!(f.include_dir(Path::new("foo/src")));
     }
 

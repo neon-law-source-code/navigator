@@ -19,6 +19,12 @@ cargo run -p cli --quiet -- validate [dir]
 from the repository root to check everything, or point it at a narrower directory (e.g. `docs`, `templates`) to check
 just that subtree.
 
+The walk covers authored content only. It descends into everything except the trees nobody authors: `.git/`, `target/`,
+`.worktrees/`, `node_modules/`, and `dist/`, plus — for the Markdown passes — every other hidden directory apart from
+the canonical `.agents/` skill catalog. The match is on a whole directory name, so `distributions/` and
+`node_modules_policy/` are authored trees and stay in the gate. The one pass that still reads a build is the origin pass
+below: `Y009` opens each application's `dist/` directly, because a built bundle is exactly what it exists to check.
+
 This is also the exact command every Project repository's generated CI gate runs against its own tree — see
 [`project-repositories.md`](project-repositories.md) for how `navigator site projects repository scaffold` wires it up.
 

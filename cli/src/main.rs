@@ -2343,6 +2343,15 @@ fn is_yaml_path(path: &std::path::Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml"))
 }
 
+fn include_authored_tree_entry(entry: &walkdir::DirEntry) -> bool {
+    let name = entry.file_name().to_string_lossy();
+    !entry.file_type().is_dir()
+        || !matches!(
+            name.as_ref(),
+            ".git" | "target" | ".worktrees" | "node_modules" | "dist"
+        )
+}
+
 /// Parse every `.yaml`/`.yml` file under `dir` as part of `validate`. Prints
 /// one line per parse error plus a `Parsed N …` summary, and returns the
 /// errors so the run can recapitulate them. Standalone YAML (k8s manifests,
@@ -2354,11 +2363,7 @@ fn yaml_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
     let mut errors: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
-        .filter_entry(|entry| {
-            let name = entry.file_name().to_string_lossy();
-            !entry.file_type().is_dir()
-                || (name != ".git" && name != "target" && name != ".worktrees")
-        })
+        .filter_entry(include_authored_tree_entry)
     {
         let entry = entry.map_err(std::io::Error::other)?;
         if !entry.file_type().is_file() || !is_yaml_path(entry.path()) {
@@ -2513,11 +2518,7 @@ fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> 
     let mut errors: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
-        .filter_entry(|entry| {
-            let name = entry.file_name().to_string_lossy();
-            !entry.file_type().is_dir()
-                || (name != ".git" && name != "target" && name != ".worktrees")
-        })
+        .filter_entry(include_authored_tree_entry)
     {
         let entry = entry.map_err(std::io::Error::other)?;
         let path = entry.path();
@@ -2562,11 +2563,7 @@ fn locale_document_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>
     let mut errors: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
-        .filter_entry(|entry| {
-            let name = entry.file_name().to_string_lossy();
-            !entry.file_type().is_dir()
-                || (name != ".git" && name != "target" && name != ".worktrees")
-        })
+        .filter_entry(include_authored_tree_entry)
     {
         let entry = entry.map_err(std::io::Error::other)?;
         let path = entry.path();
@@ -2796,16 +2793,13 @@ fn detect_mutable_tags(path: &std::path::Path, contents: &str) -> Vec<(usize, St
 /// [navigator#540](https://github.com/neon-law-source-code/navigator/issues/540).
 /// Prints one line per offence and returns them. Runs over YAML manifests,
 /// Containerfiles, and workflow files alike; the `.git`, `target`, and
-/// `.worktrees` trees are skipped, as in [`yaml_pass`].
+/// `.worktrees`, `node_modules`, and `dist` trees are skipped, as in
+/// [`yaml_pass`].
 fn mutable_tag_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
     let mut findings: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
-        .filter_entry(|entry| {
-            let name = entry.file_name().to_string_lossy();
-            !entry.file_type().is_dir()
-                || (name != ".git" && name != "target" && name != ".worktrees")
-        })
+        .filter_entry(include_authored_tree_entry)
     {
         let entry = entry.map_err(std::io::Error::other)?;
         let path = entry.path();

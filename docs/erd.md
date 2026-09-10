@@ -419,6 +419,21 @@ erDiagram
         string inserted_at
         string updated_at
     }
+    firm_integration_secret {
+        record id PK
+        record_person actor_id FK
+        string ciphertext
+        string created_at
+        record_firm firm_id FK
+        string kind
+        string kms_context
+        string kms_key_version
+        string provider
+        string status
+        string updated_at
+        int version
+        string wrapped_dek
+    }
     git_access_token {
         record id PK
         string expires_at
@@ -693,6 +708,7 @@ erDiagram
         string provider_id
         option_string signed_at
         option_record_person signer_person_id FK
+        string state
         datetime updated_at
     }
     statutory_deadline {
@@ -821,6 +837,8 @@ erDiagram
     entity ||--o{ firm : "entity_id"
     entity ||--o{ firm_anchor : "entity_id"
     firm ||--o{ firm_brand : "firm_id"
+    person ||--o{ firm_integration_secret : "actor_id"
+    firm ||--o{ firm_integration_secret : "firm_id"
     person ||--o{ git_access_token : "person_id"
     project ||--o{ git_access_token : "project_id"
     mailroom ||--o{ letter : "mailroom_id"

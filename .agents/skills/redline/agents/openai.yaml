@@ -1,0 +1,4 @@
+interface:
+  display_name: "Redline"
+  short_description: "Create precise Word redlines without drafting churn."
+  default_prompt: "Use $redline to produce a true Word redline that preserves the source voice, structure, numbering, and requested substance."

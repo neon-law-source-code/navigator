@@ -46,8 +46,8 @@ pub use forge::{
 pub use fs::FsStorage;
 pub use gcs::{GcsStorage, GcsStorageConfig};
 pub use kms::{
-    open, seal, FakeKms, GoogleKms, GoogleKmsConfig, KmsContext, KmsError, KmsTokenSource,
-    RuntimeKms, WrappedDataKey,
+    open, seal, AdcTokenSource, FakeKms, GoogleKms, GoogleKmsConfig, KmsContext, KmsError,
+    KmsTokenSource, RuntimeKms, WrappedDataKey,
 };
 pub use notion::{
     ensure_private_page, FakeNotion, NotionClient, NotionError, NotionPage, NotionService,

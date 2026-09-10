@@ -11,6 +11,13 @@ use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
 
+const SLACK_BASE_URL: &str = "https://slack.com/api";
+/// Slack's own cap for one `conversations.list` page.
+const CHANNEL_PAGE_SIZE: u32 = 200;
+/// A Firm past this many pages of private channels is not a matter list.
+/// Bounded so a cursor the provider never clears cannot spin forever.
+const MAX_CHANNEL_PAGES: usize = 20;
+
 #[derive(Debug, Error)]
 pub enum SlackError {
     #[error("Slack credential is unavailable")]
@@ -86,7 +93,7 @@ pub async fn ensure_private_channel<S: SlackService + ?Sized>(
     Ok((channel, created))
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct FakeSlack {
     channels: Arc<Mutex<BTreeMap<String, SlackChannel>>>,
     members: Arc<Mutex<BTreeMap<String, BTreeSet<String>>>>,
@@ -187,6 +194,8 @@ struct ChannelResponse {
     ok: bool,
     #[serde(default)]
     channel: Option<SlackChannelBody>,
+    #[serde(default)]
+    error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,6 +207,10 @@ struct SlackChannelBody {
 #[derive(Debug, Deserialize)]
 struct BasicResponse {
     ok: bool,
+    /// Slack's machine-readable error slug. Carried so a refusal can be told
+    /// apart rather than reported as whatever the last caller assumed.
+    #[serde(default)]
+    error: Option<String>,
 }
 
 /// Slack Web API adapter. The bot token is injected by the Firm-secret
@@ -218,6 +231,13 @@ impl std::fmt::Debug for SlackClient {
 }
 
 impl SlackClient {
+    /// The production client. The bot token is the Firm's resolved provider
+    /// credential, so `SLACK_BOT_TOKEN` is never consulted here.
+    #[must_use]
+    pub fn new(token: impl Into<String>) -> Self {
+        Self::with_base_url(token, SLACK_BASE_URL)
+    }
+
     #[must_use]
     pub fn with_base_url(token: impl Into<String>, base_url: impl Into<String>) -> Self {
         Self {
@@ -225,6 +245,29 @@ impl SlackClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             token: token.into(),
         }
+    }
+
+    /// Slack's read methods are `GET` with query parameters, and they do not
+    /// accept a JSON body — a JSON `POST` to `conversations.list` comes back
+    /// as `invalid_form_data` rather than a channel list. The write methods
+    /// below do accept JSON, so the two transports are separate here.
+    async fn get(
+        &self,
+        method: &str,
+        query: &[(&str, String)],
+    ) -> Result<serde_json::Value, SlackError> {
+        let response = self
+            .http
+            .get(format!("{}/{method}", self.base_url))
+            .bearer_auth(&self.token)
+            .query(query)
+            .send()
+            .await
+            .map_err(|_| SlackError::Transport)?;
+        if !response.status().is_success() {
+            return Err(SlackError::HttpStatus(response.status().as_u16()));
+        }
+        response.json().await.map_err(|_| SlackError::Transport)
     }
 
     async fn post(
@@ -253,22 +296,40 @@ impl SlackService for SlackClient {
         &self,
         project_code: &str,
     ) -> Result<Option<SlackChannel>, SlackError> {
-        let body = self
-            .post(
-                "conversations.list",
-                json!({ "types": "private_channel", "limit": 200 }),
-            )
-            .await?;
-        let response: ChannelListResponse =
-            serde_json::from_value(body).map_err(|_| SlackError::IncompleteResponse)?;
-        Ok(response
-            .channels
-            .into_iter()
-            .find(|channel| channel.name == project_code)
-            .map(|channel| SlackChannel {
-                id: channel.id,
-                name: channel.name,
-            }))
+        let mut cursor = String::new();
+        for _ in 0..MAX_CHANNEL_PAGES {
+            let mut query = vec![
+                ("types", "private_channel".to_string()),
+                ("limit", CHANNEL_PAGE_SIZE.to_string()),
+                ("exclude_archived", "true".to_string()),
+            ];
+            if !cursor.is_empty() {
+                query.push(("cursor", cursor.clone()));
+            }
+            let body = self.get("conversations.list", &query).await?;
+            let response: ChannelListResponse =
+                serde_json::from_value(body).map_err(|_| SlackError::IncompleteResponse)?;
+            if !response.ok {
+                return Err(SlackError::Api);
+            }
+            if let Some(channel) = response
+                .channels
+                .into_iter()
+                .find(|channel| channel.name == project_code)
+            {
+                return Ok(Some(SlackChannel {
+                    id: channel.id,
+                    name: channel.name,
+                }));
+            }
+            // An empty `next_cursor` is how Slack says "last page"; it is
+            // present and empty rather than absent, so both are the end.
+            match response.response_metadata.and_then(|meta| meta.next_cursor) {
+                Some(next) if !next.is_empty() => cursor = next,
+                _ => return Ok(None),
+            }
+        }
+        Ok(None)
     }
 
     async fn create_private_channel(&self, project_code: &str) -> Result<SlackChannel, SlackError> {
@@ -281,7 +342,15 @@ impl SlackService for SlackClient {
         let response: ChannelResponse =
             serde_json::from_value(body).map_err(|_| SlackError::IncompleteResponse)?;
         if !response.ok {
-            return Err(SlackError::NameTaken);
+            // Only `name_taken` means the name is taken. Reporting every
+            // refusal as a name collision sends an operator to rename a
+            // channel when the real answer is a missing scope or a revoked
+            // token.
+            return Err(if response.error.as_deref() == Some("name_taken") {
+                SlackError::NameTaken
+            } else {
+                SlackError::Api
+            });
         }
         let channel = response.channel.ok_or(SlackError::IncompleteResponse)?;
         Ok(SlackChannel {
@@ -309,7 +378,11 @@ impl SlackService for SlackClient {
             .await?;
         let response: BasicResponse =
             serde_json::from_value(body).map_err(|_| SlackError::IncompleteResponse)?;
-        if response.ok {
+        // `already_in_channel` is what Slack answers when the member this
+        // call names is already there, which is the steady state of an
+        // idempotent ensure — treating it as a failure would make every
+        // re-run of a provisioned channel report an error.
+        if response.ok || response.error.as_deref() == Some("already_in_channel") {
             Ok(())
         } else {
             Err(SlackError::Api)
@@ -336,12 +409,105 @@ impl SlackService for SlackClient {
 #[derive(Debug, Deserialize)]
 struct ChannelListResponse {
     #[serde(default)]
+    ok: bool,
+    #[serde(default)]
     channels: Vec<SlackChannelBody>,
+    #[serde(default)]
+    response_metadata: Option<ResponseMetadata>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseMetadata {
+    #[serde(default)]
+    next_cursor: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_private_channel, FakeSlack, SlackError, SlackMemberId};
+    use super::{
+        ensure_private_channel, FakeSlack, SlackClient, SlackError, SlackMemberId, SlackService,
+    };
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// Slack's read methods are `GET` with query parameters. This asserts the
+    /// transport and the cursor: the channel lives on the second page, so a
+    /// client that read one page and stopped would report it missing — and
+    /// `ensure` would then create a duplicate of a channel that exists.
+    #[tokio::test]
+    async fn channel_lookup_is_a_get_that_follows_the_cursor() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/conversations.list"))
+            .and(query_param("cursor", "page-2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "channels": [{ "id": "C2", "name": "sample-project" }],
+                "response_metadata": { "next_cursor": "" }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/conversations.list"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "channels": [{ "id": "C1", "name": "another-matter" }],
+                "response_metadata": { "next_cursor": "page-2" }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SlackClient::with_base_url("test-token", server.uri());
+        let found = client
+            .find_private_channel("sample-project")
+            .await
+            .unwrap()
+            .expect("the channel on the second page is found");
+        assert_eq!(found.id, "C2");
+    }
+
+    /// Only `name_taken` means the name is taken. A missing scope reported as
+    /// a name collision sends an operator to rename a channel that is fine.
+    #[tokio::test]
+    async fn a_refusal_is_reported_as_itself_not_as_a_name_collision() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/conversations.create"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "ok": false, "error": "missing_scope" })),
+            )
+            .mount(&server)
+            .await;
+        let client = SlackClient::with_base_url("test-token", server.uri());
+        assert!(matches!(
+            client.create_private_channel("sample-project").await,
+            Err(SlackError::Api)
+        ));
+    }
+
+    /// A member already in the channel is the steady state of an idempotent
+    /// ensure, so the re-run must succeed rather than report a failure.
+    #[tokio::test]
+    async fn an_invite_for_an_existing_member_is_not_a_failure() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/conversations.invite"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({ "ok": false, "error": "already_in_channel" }),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let client = SlackClient::with_base_url("test-token", server.uri());
+        client
+            .invite_firm_members("C1", &[SlackMemberId::new("U123").unwrap()])
+            .await
+            .unwrap();
+    }
 
     #[tokio::test]
     async fn private_channel_invites_only_external_firm_ids_and_is_idempotent() {

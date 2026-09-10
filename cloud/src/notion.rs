@@ -16,6 +16,15 @@ const NOTION_VERSION: &str = "2022-06-28";
 /// The title property the reconciler writes and reads. It is the only
 /// property a page is matched on, so the name is stated once.
 const PROJECT_CODE_PROPERTY: &str = "Project code";
+const NOTION_BASE_URL: &str = "https://api.notion.com/v1";
+/// Notion caps `/search` at 100 results a page. The reconciler has to see
+/// every page carrying a code to report a duplicate, so the search follows
+/// the cursor instead of reading the first page and stopping.
+const SEARCH_PAGE_SIZE: u32 = 100;
+/// A Firm past this many search pages is a misconfigured parent database,
+/// not a matter list. Bounded so a provider that never clears `has_more`
+/// cannot spin a request forever.
+const MAX_SEARCH_PAGES: usize = 20;
 
 #[derive(Debug, Error)]
 pub enum NotionError {
@@ -46,6 +55,19 @@ pub trait NotionService: Send + Sync {
         &self,
         project_code: &str,
     ) -> Result<Option<NotionPage>, NotionError>;
+    /// Every page carrying this Project code, not just the first.
+    ///
+    /// Reconciliation distinguishes a missing page from a duplicated one, and
+    /// a lookup that can only answer `Option` collapses those two into the
+    /// same answer. The default delegates, so an adapter that genuinely has
+    /// one page per code needs no extra work; the REST client overrides it.
+    async fn list_private_pages(&self, project_code: &str) -> Result<Vec<NotionPage>, NotionError> {
+        Ok(self
+            .find_private_page(project_code)
+            .await?
+            .into_iter()
+            .collect())
+    }
     async fn create_private_page(&self, project_code: &str) -> Result<NotionPage, NotionError>;
     async fn update_private_page(
         &self,
@@ -67,9 +89,12 @@ pub async fn ensure_private_page<S: NotionService + ?Sized>(
 }
 
 /// Deterministic fake used by provider and durable-workflow tests.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct FakeNotion {
     pages: Arc<Mutex<BTreeMap<String, NotionPage>>>,
+    /// Extra pages carrying a code the fake did not create, so a test can
+    /// drive the duplicate outcome the reconciler reports.
+    duplicates: Arc<Mutex<BTreeMap<String, Vec<NotionPage>>>>,
     create_calls: Arc<Mutex<usize>>,
     unavailable: Arc<Mutex<bool>>,
 }
@@ -82,6 +107,21 @@ impl FakeNotion {
 
     pub fn set_unavailable(&self, unavailable: bool) {
         *self.unavailable.lock().expect("Notion fake lock poisoned") = unavailable;
+    }
+
+    /// Seed a second page carrying `project_code`, as a Firm's workspace can
+    /// hold when someone created one by hand beside the provisioned page.
+    pub fn add_duplicate(&self, project_code: &str, page_id: &str) {
+        self.duplicates
+            .lock()
+            .expect("Notion fake lock poisoned")
+            .entry(project_code.to_string())
+            .or_default()
+            .push(NotionPage {
+                id: page_id.to_string(),
+                url: format!("https://notion.example/{page_id}"),
+                project_code: project_code.to_string(),
+            });
     }
 
     #[must_use]
@@ -120,6 +160,27 @@ impl NotionService for FakeNotion {
             .expect("Notion fake lock poisoned")
             .get(project_code)
             .cloned())
+    }
+
+    async fn list_private_pages(&self, project_code: &str) -> Result<Vec<NotionPage>, NotionError> {
+        self.check_available()?;
+        let mut pages: Vec<NotionPage> = self
+            .pages
+            .lock()
+            .expect("Notion fake lock poisoned")
+            .get(project_code)
+            .cloned()
+            .into_iter()
+            .collect();
+        pages.extend(
+            self.duplicates
+                .lock()
+                .expect("Notion fake lock poisoned")
+                .get(project_code)
+                .cloned()
+                .unwrap_or_default(),
+        );
+        Ok(pages)
     }
 
     async fn create_private_page(&self, project_code: &str) -> Result<NotionPage, NotionError> {
@@ -161,6 +222,10 @@ impl NotionService for FakeNotion {
 struct SearchResponse {
     #[serde(default)]
     results: Vec<PageResponse>,
+    #[serde(default)]
+    has_more: bool,
+    #[serde(default)]
+    next_cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -215,6 +280,13 @@ impl std::fmt::Debug for NotionClient {
 }
 
 impl NotionClient {
+    /// The production client. The credential is the Firm's resolved provider
+    /// token, so there is no environment fallback to read here.
+    #[must_use]
+    pub fn new(token: impl Into<String>, parent_database_id: impl Into<String>) -> Self {
+        Self::with_base_url(token, parent_database_id, NOTION_BASE_URL)
+    }
+
     #[must_use]
     pub fn with_base_url(
         token: impl Into<String>,
@@ -254,29 +326,51 @@ impl NotionService for NotionClient {
         &self,
         project_code: &str,
     ) -> Result<Option<NotionPage>, NotionError> {
-        let response = self
-            .checked(
-                self.http
-                    .post(format!("{}/search", self.base_url))
-                    .json(&json!({
-                        "query": project_code,
-                        "page_size": 100,
-                    })),
-            )
-            .await?;
-        let body = response
-            .json::<SearchResponse>()
-            .await
-            .map_err(|_| NotionError::Transport)?;
-        Ok(body.results.into_iter().find_map(|page| {
-            (project_code_title(&page.properties).as_deref() == Some(project_code)).then_some(
-                NotionPage {
-                    id: page.id,
-                    url: page.url,
-                    project_code: project_code.to_string(),
-                },
-            )
-        }))
+        Ok(self
+            .list_private_pages(project_code)
+            .await?
+            .into_iter()
+            .next())
+    }
+
+    async fn list_private_pages(&self, project_code: &str) -> Result<Vec<NotionPage>, NotionError> {
+        let mut matches = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_SEARCH_PAGES {
+            let mut body = json!({
+                "query": project_code,
+                "page_size": SEARCH_PAGE_SIZE,
+                "filter": { "property": "object", "value": "page" },
+            });
+            if let Some(cursor) = &cursor {
+                body["start_cursor"] = json!(cursor);
+            }
+            let response = self
+                .checked(
+                    self.http
+                        .post(format!("{}/search", self.base_url))
+                        .json(&body),
+                )
+                .await?;
+            let page = response
+                .json::<SearchResponse>()
+                .await
+                .map_err(|_| NotionError::Transport)?;
+            matches.extend(page.results.into_iter().filter_map(|result| {
+                (project_code_title(&result.properties).as_deref() == Some(project_code)).then_some(
+                    NotionPage {
+                        id: result.id,
+                        url: result.url,
+                        project_code: project_code.to_string(),
+                    },
+                )
+            }));
+            match (page.has_more, page.next_cursor) {
+                (true, Some(next)) => cursor = Some(next),
+                _ => return Ok(matches),
+            }
+        }
+        Ok(matches)
     }
 
     async fn create_private_page(&self, project_code: &str) -> Result<NotionPage, NotionError> {
@@ -352,6 +446,62 @@ mod tests {
         assert_eq!(
             project_code_title(&json!({ "Notes": { "rich_text": [] } })),
             None
+        );
+    }
+
+    /// The reconciler reports a duplicate only if the search saw both pages,
+    /// and Notion caps a page of results. The second copy lives on the second
+    /// page here, so a client that read one page and stopped would report the
+    /// Firm's workspace as clean.
+    #[tokio::test]
+    async fn the_search_follows_the_cursor_so_a_duplicate_is_visible() {
+        use super::{NotionClient, PROJECT_CODE_PROPERTY};
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        fn result(id: &str, title: &str) -> serde_json::Value {
+            json!({
+                "id": id,
+                "url": format!("https://notion.example/{id}"),
+                "properties": { PROJECT_CODE_PROPERTY: { "title": [{ "plain_text": title }] } }
+            })
+        }
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .and(body_string_contains("start_cursor"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "results": [result("page-2", "sample-project")],
+                "has_more": false,
+                "next_cursor": null
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "results": [
+                    result("page-1", "sample-project"),
+                    result("page-9", "sample-project-two")
+                ],
+                "has_more": true,
+                "next_cursor": "cursor-2"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::with_base_url("test-token", "db-1", server.uri());
+        let pages = client.list_private_pages("sample-project").await.unwrap();
+        assert_eq!(
+            pages
+                .iter()
+                .map(|page| page.id.as_str())
+                .collect::<Vec<_>>(),
+            ["page-1", "page-2"],
+            "both copies are seen, and the prefix match is not"
         );
     }
 

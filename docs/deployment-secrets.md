@@ -2,10 +2,11 @@
 
 A repository is the operator source for both deployment coordinates and key material. Coordinates are plaintext and
 reviewable; key material is encrypted per value against that deployment's own Google Cloud KMS key. A command decrypts
-and writes Google Secret Manager, and the Secret Manager CSI driver projects it into the pod.
+and writes Google Secret Manager and the Kubernetes Secret the pod reads.
 
 ```text
-deploy repo (SOPS) --> ops secrets apply --> Secret Manager --> CSI --> <name>-web-secrets --> pod
+deploy repo (SOPS) --> ops secrets apply --> Secret Manager
+                                  \--> <name>-web-secrets --> pod envFrom
 ```
 
 ## The tree is not in this repository
@@ -123,8 +124,8 @@ gcloud kms keys add-iam-policy-binding deployment-config \
     --member "$OPERATOR" --role roles/cloudkms.cryptoKeyEncrypterDecrypter
 ```
 
-Grant no runtime service account on this key. The pods read Secret Manager through `roles/secretmanager.secretAccessor`;
-nothing in a cluster ever decrypts a repository file.
+Grant no runtime service account on this key. `ops secrets apply` performs the decrypt and writes the Kubernetes Secret;
+nothing in a cluster decrypts a repository file.
 
 Prove the isolation rather than assuming it, by enumerating every path that grants access to a `CryptoKey` — the key
 itself, the keyring above it, the project, and the organization. An attempted decrypt under an impersonated service
@@ -178,7 +179,7 @@ refuses the filenames a decrypted working copy usually takes, and `navigator ops
 tree is not `ENC[…]` — including a file that was never encrypted at all. Neither guard can help after a push: at that
 point the value is disclosed and the only remedy is rotating it at the provider.
 
-## Apply to Secret Manager
+## Apply secrets
 
 Dry run first. It reads names only — it does not shell out to `sops`, needs no KMS permission, and cannot print a value:
 
@@ -187,13 +188,13 @@ navigator ops secrets apply --deployment <row> --deployments-dir . --dry-run
 ```
 
 The dry run names the target project and every object, grouped by which file supplies it, and fails closed listing any
-object the `SecretProviderClass` projects that neither file carries.
+object in the Secret Manager catalog that neither file carries.
 
 Read the *skipped* line as carefully as the failure. A skipped object is one the shared list names and this deployment
 will not write, and each skip carries its reason — scoped to another deployment, integration not declared by this
 deployment, or requirement satisfied another way. Those are exactly the entries `ops ship` omits from this deployment's
-rendered class, so the line doubles as the list of what its mount will *not* ask for. Read it to confirm the deployment
-is declining what you meant it to decline. The empty case is held in CI by
+rendered catalog, so the line doubles as the list of what the deployment will not write. Read it to confirm the
+deployment is declining what you meant it to decline. The empty case is held in CI by
 `the_automation_home_supplies_every_object_the_manifest_references`, against the synthetic automation-home row, and `ops
 ship` resolves every surviving reference against live Secret Manager before it reconciles anything. Correct the tree
 until the dry run is clean, then:
@@ -202,69 +203,35 @@ until the dry run is clean, then:
 navigator ops secrets apply --deployment <row> --deployments-dir .
 ```
 
-Each object is created if absent and receives a new version, which becomes `versions/latest`. Values ride in a JSON
-request body: never in `argv`, never in an error message, never in a log line. Run it per deployment, staging first;
-never against a production row before the same tag has proven itself on staging.
+Each object is created if absent and receives a new Secret Manager version, which becomes `versions/latest`. The same
+decrypted payload is then applied as that deployment's `<name>-web-secrets` Kubernetes Secret. The CLI derives the
+context, namespace, and Secret name from the selected deployment row and sends the Kubernetes manifest only on `kubectl`
+standard input. Values never enter `argv`, an error message, or a log line. Run it per deployment, staging first.
 
-Applying a value does not restart anything. The CSI driver picks up a new `versions/latest` on its next rotation poll,
-and `navigator ops ship --deployment <name> --deployments-dir . --restart-only` forces the pods to re-read immediately.
+Applying a value does not restart anything. `web` and `workflows-service` read the Kubernetes Secret through `envFrom`
+when they start, so `navigator ops ship --deployment <name> --deployments-dir . --restart-only` forces them to re-read
+it immediately.
 
-## The CSI projection
+## Secret Manager catalog and pod contract
 
-The Secret Manager CSI driver projects each deployment's Secret into the pod. Both halves —
-`secrets/secret-provider-class.yaml` and `secrets/web-secrets-csi-mount.yaml` — are wired into
-`examples/deploy/k8s/gke/kustomization.yaml`, and the class alone projects nothing, so they are added and removed
-together: the GKE driver reconciles the projected Secret only while a pod mounts the volume.
+`secrets/secret-provider-class.yaml` remains the per-deployment catalog for Secret Manager values. `ops ship` renders
+that catalog with the selected project and namespace, removes objects the deployment intentionally skips, and verifies
+each surviving `versions/latest` by metadata only. It does not decrypt, access, or write credential values.
 
-The manifests are per-deployment. `ops ship` substitutes the project, namespace, and projected Secret name from the
-deployment being shipped, so the one embedded file renders one disjoint `SecretProviderClass` per deployment, each
-reading only its own project's Secret Manager. Two render guards in `cli/src/devx/ship.rs` fail the build if a literal
-is left behind.
+The pod contract is separate and direct: `patches/web-env.yaml` supplies `envFrom.secretRef` for the deployment's
+`<name>-web-secrets` Secret. The `ops secrets apply` harness verifies the values written to that Secret by digest, and
+the rendered-manifest guard verifies the `web` container actually receives it through `envFrom`.
 
-A CSI mount fails outright on any object it cannot read, so a deployment may only mount this class once its own project
-holds every object the *rendered* class references. `ops ship` resolves all of them to an `ENABLED` `versions/latest`
-before it reconciles anything and aborts naming the gap, so a deployment that is not ready fails at deploy rather than
-as a crash-looping pod.
+Before a first roll:
 
-The object list in the embedded manifest is the superset, not what every deployment mounts. `ops ship` renders it per
-deployment, dropping every entry `ops secrets apply` reports as skipped — from both the `parameters.secrets` mounts and
-the `secretObjects` mappings — so the class each deployment applies references exactly what that deployment writes
-(`ship::omit_unwritten_objects`). One shared list cannot state an object that is required in one project and forbidden
-in another, and this is what resolves that:
+```bash
+navigator ops secrets apply --deployment <name> --deployments-dir .
+navigator ops ship --deployment <name> --tag <YY.M.D> --dry-run
+```
 
-- **Scoped to another deployment.** The trigger-submitted Restate ingress pair — `RESTATE_INGRESS_URL`,
-  `RESTATE_AUTH_TOKEN` — belongs to `store::deployment::GITHUB_AUTOMATION_HOME_PROJECT`. Every other deployment renders
-  without it.
-- **Integration declined.** A deployment that supplies no `DOCUSIGN_BASE_URL` declares no DocuSign and renders none of
-  its nine objects. The production deployment is that case; it runs `StubSignatureProvider`, which `portal::signature`
-  reaches only through genuine absence.
-
-Adding an object to the manifest is therefore safe once **any** deployment carries it; the rows that do not carry it
-render without it, and `ship::tests::the_rendered_class_references_exactly_what_the_deployment_writes` holds that for
-every deployment in the tree.
-
-The production deployment is live on the projected Secret. Bringing another deployment onto it, one at a time and never
-two in one sitting:
-
-1. **Reconcile the naming.** The `SecretProviderClass` references uppercase object names (`SESSION_SECRET`,
-   `SESSION_SECRET`, …). Migrate or delete any object in that project under another convention so nothing is ambiguous.
-2. **Render every key into Secret Manager** with `navigator ops secrets apply --deployment <name>` — the `--dry-run`
-   first: it names any object the tree does not supply, and any object it reports as *skipped* is one the class
-   references and this deployment will not write — a mount blocker, not a footnote.
-3. **Confirm the driver name**: `kubectl get csidrivers` should show `secrets-store-gke.csi.k8s.io`. The `provider: gke`
-   field and that driver name are the GKE-specific pieces.
-4. **Confirm the bound GSA** holds `roles/secretmanager.secretAccessor` in that project.
-5. **Rehearse with `navigator ops ship --deployment <name> --tag <YY.M.D> --dry-run`.** It resolves every referenced
-   object read-only and reports the referenced and resolved counts; they must match before anything is applied. The
-   operator needs `secretmanager.versions.get` in that project — the states are read, never the payloads, so
-   `versions.access` is deliberately not required and no projected credential passes through the operator's machine.
-6. **Deploy and verify** with `navigator ops ship --deployment <name> --tag <YY.M.D>`, then confirm the projected Secret
-   carries every expected key and that `web` and `workflows-service` are healthy.
-7. **Retire the plain Secret** only after step 6 proves the projected one works, and only for that deployment. The
-   projected Secret takes the same name, so delete the plain one and let the driver recreate it, then run `navigator ops
-   ship --deployment <name> --restart-only` so the pods re-read it.
-
-A deployment holding real client matters goes last, in the risk-ascending order the release itself uses.
+`ops ship` remains metadata-only: it reads Secret Manager version state and validates the live Secret's key set but
+never reads payloads or writes secret material. Deploy and verify the selected deployment before proceeding to the next
+one.
 
 ## Known gaps
 
@@ -275,8 +242,8 @@ recorded in the production deployment's `config.toml` as well; a green gate here
 is the one case where the gate reports satisfied without the deployment being usable, which is why it is written down
 twice.
 
-Objects that no deployment supplies are trimmed from the manifest rather than stubbed, because a stub is a value the
-mount succeeds on and the feature then fails against. Three sets have been trimmed on those grounds: the four Workspace
+Objects that no deployment supplies are trimmed from the catalog rather than stubbed, because a stub is a value an
+application accepts before the feature fails against. Three sets have been trimmed on those grounds: the four Workspace
 Drive ids (documented in [`environments.md`](environments.md) but unconfigured; only
 `NAVIGATOR_DRIVE_GCP_SERVICE_ACCOUNT_ID` exists), the three Xero ids (required only where that capability is enabled),
 and `DOCUSIGN_ACCESS_TOKEN` (the alternative to the DocuSign JWT triple, which every deployment authenticates with

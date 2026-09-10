@@ -68,10 +68,21 @@ volumes unless the user approves the data loss. Full teardown is for a deliberat
 
 ## GCP setup
 
-`navigator ops gcp setup` is the persistent, production-shaped environment provisioner. It owns one deployment's Cloud
-SQL instance, four GCS lanes, runtime identity, Fleet membership, and Autopilot cluster. It runs once per runtime
-project; every deployment's `config.toml` selects the `production` runtime and credential profile. They omit
-`NAVIGATOR_CONFIG_SYNC_REPO`; `navigator ops ship` is their sole manifest owner.
+`navigator ops gcp setup` is the persistent, production-shaped environment provisioner. It runs once per runtime project
+and creates the cloud substrate a hostable deployment needs: APIs, a custom VPC and subnet, a regional Cloud Router and
+Cloud NAT, five private GCS lanes, runtime identities and IAM, registry access, an Autopilot cluster, the Gateway static
+IP, workload-identity and Fleet integrations, and the deployment KMS key. Every deployment's `config.toml` selects the
+`production` runtime and credential profile. Navigator's rows omit `NAVIGATOR_CONFIG_SYNC_REPO`; `navigator ops ship` is
+their sole manifest owner.
+
+The remaining hosting work is deliberately adjacent, not a missing setup stage:
+
+| Need | Owner and boundary |
+| --- | --- |
+| DNS | `navigator ops dns setup`; the DNS provider may sit outside GCP, so setup only reserves the stable Gateway IP. |
+| TLS and Gateway manifests | `navigator ops ship`; it renders and applies Gateway, certificate, and route manifests. |
+| Restate | The Restate operator and its manifests provision the broker; `ops ship` re-registers the worker. |
+| Secret values | `navigator ops secrets apply`; decrypts and writes Secret Manager plus the Kubernetes Secret. |
 
 ### The image hub
 

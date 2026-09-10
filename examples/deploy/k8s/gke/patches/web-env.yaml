@@ -12,26 +12,17 @@
 # required by the `enforce_deployment_invariants` boot check —
 # XERO_TENANT_ID + XERO_CLIENT_ID + XERO_CLIENT_SECRET for the Xero billing
 # custom connection, and SENDGRID_FROM_EMAIL) come in via `envFrom` from the
-# `navigator-web-secrets` Kubernetes Secret. That Secret is
-# currently maintained out-of-band via `kubectl create secret
-# generic`; syncing it from Secret Manager is a deferred follow-up.
+# `navigator-web-secrets` Kubernetes Secret. `navigator ops secrets apply`
+# decrypts the deployment tree in-process, updates Secret Manager, and applies
+# the same values to this Secret. `ops ship` remains metadata-only.
 # The same Secret is also
 # `envFrom`'d by the `workflows-service` Deployment so the
 # `email_send__welcome` worker handler picks up SendGrid without
 # a parallel secret to maintain.
 #
-# `RESTATE_BROKER_URL` is the Restate Cloud tenant ingress URL.
-# Pull it from the CLI's stored config rather than the web console,
-# so the value doesn't leak through shell history:
-#
-#   restate -y cloud login
-#   restate -y cloud env config --env navigator-prod
-#   restate -y cloud env describe --env navigator-prod
-#   # Add the broker + admin token to the K8s Secret:
-#   kubectl -n navigator create secret generic navigator-web-secrets \
-#       --from-literal=RESTATE_BROKER_URL=https://<id>.restate.cloud \
-#       --from-literal=RESTATE_AUTH_TOKEN=<token> \
-#       --dry-run=client -o yaml | kubectl apply -f -
+# `RESTATE_BROKER_URL` and `RESTATE_AUTH_TOKEN` are secret material. Store
+# them in the encrypted deployment tree and use `navigator ops secrets apply`;
+# do not put them in a shell command or maintain a second Secret by hand.
 #
 # `OAUTH_CLIENT_ID` is committed in clear — OAuth client IDs are
 # public identifiers (they appear in browser-visible authorize URLs
@@ -102,7 +93,7 @@ spec:
             # Committed in clear like OAUTH_CLIENT_ID below: a Chatwoot website
             # token is a public identifier that appears in the HTML every
             # visitor's browser receives, so it rides inline env rather than the
-            # projected Secret. NAVIGATOR_CHATWOOT_BASE_URL defaults to
+            # deployment Secret. NAVIGATOR_CHATWOOT_BASE_URL defaults to
             # Chatwoot Cloud; set it in the deployment config for self-hosting.
             - name: NAVIGATOR_CHATWOOT_WEBSITE_TOKEN
               value: "YOUR_CHATWOOT_WEBSITE_TOKEN"

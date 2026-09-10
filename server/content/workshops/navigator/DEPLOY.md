@@ -144,36 +144,37 @@ cargo run -p cli -- ops gcp setup --project-id your-project-id --dry-run
 ---
 
 `gcloud` has no universal dry-run equivalent, so we built one — it prints the plan without sending traffic or touching
-your `gcloud` session. You will see the plan in order: REST calls that enable APIs, create the VPC, and create five
-buckets. It then creates a deployment-specific Google service account and its direct Secret Manager, bucket, and
-signed-URL permissions. A single-project install also provisions its private Artifact Registry; our three deployments
-instead point at the shared `ghcr` hub. The last three stages grant registry access, reserve the gateway IP and create
-the cluster, then attach Kubernetes Workload Identity and the cluster integrations. Read the project, region, and every
-resource prefix, then drop `--dry-run` to execute. Every step is idempotent, so a re-run after a partial failure never
-produces duplicates.
+your `gcloud` session. You will see the plan in order: REST calls that enable APIs, create the VPC and subnet, create a
+regional Cloud Router and Cloud NAT, and create five buckets. It then creates a deployment-specific Google service
+account and its direct Secret Manager, bucket, and signed-URL permissions. A single-project install also provisions its
+private Artifact Registry; our three deployments instead point at the shared `ghcr` hub. The last stages grant registry
+access, reserve the gateway IP and create the cluster, then attach Kubernetes Workload Identity and the cluster
+integrations. Read the project, region, and every resource prefix, then drop `--dry-run` to execute. Every step is
+idempotent, so a re-run after a partial failure never produces duplicates.
 
 The CLI waits for each control-plane write at that API's own operation endpoint before starting its dependent step.
-Compute VPC operations are global and subnet operations are regional; their REST resources report completion with a
-`DONE` status. Service Usage and Artifact Registry use Google long-running operations and report a true `done` flag. A
-newly enabled Compute API can still return `SERVICE_DISABLED` for a short propagation window after its Service Usage
-operation completes. The VPC step recognizes only that exact `compute.googleapis.com` response, prints the bounded retry
-count, and retries the idempotent insert for up to two minutes. Other `403` responses fail immediately because they may
-be real IAM or organization-policy problems. If a terminal or network interruption stops setup after GCP accepted a
-write, run the exact same deployment command again. Existing resources return idempotent conflicts. The pipeline
-generates no credential of its own, so a run — first or tenth — prints no secret for you to record. The store is
-SurrealDB, and its endpoint and root credentials come from your store provider.
+Compute VPC operations are global; subnet, Router, and NAT operations are regional. Their REST resources report
+completion with a `DONE` status. Service Usage and Artifact Registry use Google long-running operations and report a
+true `done` flag. A newly enabled Compute API can still return `SERVICE_DISABLED` for a short propagation window after
+its Service Usage operation completes. The VPC step recognizes only that exact `compute.googleapis.com` response, prints
+the bounded retry count, and retries the idempotent insert for up to two minutes. Other `403` responses fail immediately
+because they may be real IAM or organization-policy problems. If a terminal or network interruption stops setup after
+GCP accepted a write, run the exact same deployment command again. Existing resources return idempotent conflicts. The
+pipeline generates no credential of its own, so a run — first or tenth — prints no secret for you to record. The store
+is SurrealDB, and its endpoint and root credentials come from your store provider.
 
-Live setup prints fifteen secret-free stages, including the project and exact resource name:
+Live setup prints sixteen secret-free stages, including the project and exact resource name:
 
 ```text
-gcp setup [neon-law-stg] 01/15 enable required APIs
-gcp setup [neon-law-stg] 04/15 private assets bucket neon-law-stg-assets
-gcp setup [neon-law-stg] 08/15 private applications bucket neon-law-stg-applications
-gcp setup [neon-law-stg] 11/15 runtime identities and IAM bindings (neon-law-stg-web)
-gcp setup [neon-law-stg] 12/15 container registry access
-gcp setup [neon-law-stg] 13/15 GKE Autopilot cluster neon-law-stg
-gcp setup [neon-law-stg] 14/15 Kubernetes workload identity and cluster integrations
-gcp setup [neon-law-stg] 15/15 projects/neon-law-stg/locations/us-west4/keyRings/navigator-secrets/cryptoKeys/deployment-config
+gcp setup [neon-law-stg] 01/16 enable required APIs
+gcp setup [neon-law-stg] 04/16 Cloud Router neon-law-stg-router and NAT neon-law-stg-nat
+gcp setup [neon-law-stg] 05/16 private assets bucket neon-law-stg-assets
+gcp setup [neon-law-stg] 09/16 private applications bucket neon-law-stg-applications
+gcp setup [neon-law-stg] 12/16 runtime identities and IAM bindings (neon-law-stg-web)
+gcp setup [neon-law-stg] 13/16 container registry access
+gcp setup [neon-law-stg] 14/16 GKE Autopilot cluster neon-law-stg
+gcp setup [neon-law-stg] 15/16 Kubernetes workload identity and cluster integrations
+gcp setup [neon-law-stg] 16/16 projects/neon-law-stg/locations/us-west4/keyRings/navigator-secrets/cryptoKeys/deployment-config
 gcp setup [neon-law-stg] COMPLETE
 ```
 
@@ -185,7 +186,7 @@ On a newly activated project, one of these additional lines can appear between s
 activation window meets the VPC insert or its operation poll:
 
 ```text
-gcp api [compute.googleapis.com] activation is still propagating for neon-law-prod; retrying VPC neon-law-prod-vpc (1/25)
+gcp api [compute.googleapis.com] activation is still propagating for neon-law-stg; retrying VPC neon-law-stg-vpc (1/25)
 gcp operation [Compute] operation-123: compute.googleapis.com activation is still propagating; retrying poll
 ```
 
@@ -706,6 +707,26 @@ the cluster as a Fleet member. If you point `--config-sync-repo` at your fork, i
 Sync](https://cloud.google.com/kubernetes-engine/enterprise/config-sync/docs/overview) `RootSync` so the cluster pulls
 its manifests from Git. All three Navigator configs omit that flag: deployment-rendered `navigator ops ship` is their
 sole manifest owner, so a `RootSync` cannot revert one site's environment-specific render.
+
+### What setup owns — and what follows it
+
+`ops gcp setup` provisions the hostable cloud substrate: APIs, VPC and subnet, Cloud Router/NAT, private buckets,
+identities, registry access, GKE, Gateway IP, workload identity, Fleet integration, and KMS. It deliberately stops at
+the cloud/cluster boundary. Finish the deployment through these adjacent owners:
+
+| Need | Adjacent operation |
+| --- | --- |
+| DNS | Run `navigator ops dns setup`; DNS may be outside GCP, while setup owns only the stable Gateway IP. |
+| TLS and Gateway manifests | Run `navigator ops ship`; it renders and applies Gateway, certificate, and routes. |
+| Restate | Apply the Restate operator and manifests, then let `ops ship` re-register the worker. |
+| Secret values | Run `navigator ops secrets apply`; decrypts and writes Secret Manager plus the Kubernetes Secret. |
+
+---
+
+Setup completes when the cloud substrate exists, not when all adjacent operator actions have run. Emphasize that DNS is
+external to the cloud substrate, `ops ship` owns rendered Gateway and TLS manifests, Restate needs its operator before
+the worker can register, and `ops secrets apply` is the one command that handles decrypted values. This division keeps
+setup idempotent and keeps credential payloads out of `ops ship`.
 
 ## Environment Matrix
 

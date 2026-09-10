@@ -34,19 +34,11 @@ resources:
   - iap/backendconfig.yaml
   - iap/navigator-web-mcp-service.yaml
   - iam.yaml
-  # Secret Manager CSI sync. `ops ship` refuses to reconcile unless every
-  # object this class references resolves to an ENABLED version in the
-  # deployment's own project — a mount fails outright on one it cannot read.
+  # `ops ship` refuses to reconcile unless every object this class references
+  # resolves to an ENABLED version in the deployment's own project.
   - secrets/secret-provider-class.yaml
 
 patches:
-  # Second half of the CSI sync. The GKE driver only writes the projected
-  # Secret while a pod mounts the volume, so `web` carries the mount and
-  # both services read the values through their existing `envFrom`.
-  - path: secrets/web-secrets-csi-mount.yaml
-    target:
-      kind: Deployment
-      name: navigator-web
   - path: patches/web-service-account.yaml
     target:
       kind: Deployment

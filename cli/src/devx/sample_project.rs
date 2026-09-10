@@ -429,6 +429,19 @@ pub(super) fn build_from_repository(repo: &str, git_ref: Option<&str>) -> Result
     })
 }
 
+/// The refusal a bundle earns when it declares a different matter than the one
+/// it is being staged for.
+///
+/// One literal with an explicit line continuation, so the operator reads a
+/// single space where the sentence wraps, and named so a test can assert on the
+/// rendered string without running a clone and a build.
+fn project_mismatch_message(repo: &str, declared: &str, expected: &str) -> String {
+    format!(
+        "{repo} declares Project `{declared}`, but it is being staged for `{expected}`. \
+         One matter's application must not mount on another's portal."
+    )
+}
+
 /// Clone, build, and stage one matter's application, returning how many files
 /// landed in its staging directory.
 fn stage_one(
@@ -448,8 +461,8 @@ fn stage_one(
     // earlier, clearer failure.
     if built.code != project_code {
         bail!(
-            "{repo} declares Project `{}`, but it is being staged for `{project_code}`.              One matter's application must not mount on another's portal.",
-            built.code
+            "{}",
+            project_mismatch_message(repo, &built.code, project_code)
         );
     }
 
@@ -578,6 +591,16 @@ mod tests {
         assert!(
             !message.contains("compiled-in"),
             "a cleared URL must not be silently refilled from the default: {message}"
+        );
+    }
+
+    #[test]
+    fn project_mismatch_message_has_no_reflow_gap() {
+        let message = project_mismatch_message("sample-repo", "declared", "expected");
+
+        assert!(
+            !message.contains("  "),
+            "the refusal must not contain a run of spaces: {message}"
         );
     }
 

@@ -2035,7 +2035,8 @@ pub fn document_with_base(base: &str) -> Value {
                lawyer or admin, and the caller must participate in the matter (out-of-scope → 404). \
                A blank filename, a missing or blank `kind`, undecodable base64, or a `kind` \
                outside the accepted set is `400`. `kind` is required and must be one of the \
-               documented enum values. `visibility` defaults to internal work product; pass \
+               documented enum values. Uploads over 25 MiB are refused with `400 \
+               document_too_large`. `visibility` defaults to internal work product; pass \
                `\"client\"` to make it client-visible.",
             "parameters": [
               { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
@@ -2074,7 +2075,7 @@ pub fn document_with_base(base: &str) -> Value {
                   "previous_version": { "type": "string", "format": "uuid" }
                 } }
               } } },
-              "400": { "description": "Blank filename, missing or blank `kind` (error `kind_required`), undecodable base64, or an unaccepted `kind` (error `invalid_kind`). Both kind errors name the accepted values.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "400": { "description": "Blank filename, missing or blank `kind` (error `kind_required`), undecodable base64, an unaccepted `kind` (error `invalid_kind`), or a document over 25 MiB (error `document_too_large`, with maximum and received byte counts). Both kind errors name the accepted values.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "404": { "description": "No such matter, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },

@@ -598,6 +598,22 @@ pub(crate) struct MailFileResponse {
     pub(crate) filed: Vec<store::document_pointers::DocumentPointer>,
 }
 
+fn validate_document_upload_size(file: &Path) -> Result<()> {
+    // Reject locally so an oversized file never opens a remote upload.
+    let actual = usize::try_from(
+        file.metadata()
+            .with_context(|| format!("read metadata for {}", file.display()))?
+            .len(),
+    )
+    .context("document size does not fit in memory")?;
+    if actual > store::documents::MAX_DOCUMENT_UPLOAD_BYTES {
+        return Err(anyhow!(store::documents::document_upload_size_message(
+            actual
+        )));
+    }
+    Ok(())
+}
+
 /// `navigator site document upload --project <code> --file … --kind …`
 /// — file a local document into a matter through the REST door
 /// (`POST /app/api/projects/{id}/documents`). `--kind` is required and must
@@ -614,6 +630,7 @@ pub async fn document_upload(
     slug: Option<&str>,
 ) -> ExitCode {
     run(async {
+        validate_document_upload_size(file)?;
         let client = DocumentClient::connect(host, project_code).await?;
         let pointer = client
             .upload(file, kind, visibility, description, content_type, slug)
@@ -2956,6 +2973,32 @@ mod tests {
             .await,
             ExitCode::SUCCESS
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_upload_rejects_an_oversized_file_before_any_request() {
+        let server = MockServer::start().await;
+        let dir = tempfile::tempdir().unwrap();
+        let named = dir.path().join("synthetic-document.bin");
+        let file = std::fs::File::create(&named).unwrap();
+        file.set_len((store::documents::MAX_DOCUMENT_UPLOAD_BYTES + 1) as u64)
+            .unwrap();
+
+        assert_eq!(
+            document_upload(
+                Some(server.uri().as_str()),
+                "synthetic-project",
+                &named,
+                "unclassified",
+                None,
+                None,
+                None,
+                None,
+            )
+            .await,
+            ExitCode::from(2)
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
 
     #[tokio::test(flavor = "current_thread")]

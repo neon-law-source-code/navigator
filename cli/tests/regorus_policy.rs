@@ -212,19 +212,19 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   rather than silently make the route unreachable in production.
     // 427 + 1 = 428.
     //
-    // + 8 for `/app/profile`, the self-service profile page: every
-    //   authenticated tier admitted at the page and at its `/app/avatar`
-    //   upload twin (six page cases: five tiers plus anonymous denied; two
-    //   upload cases: a client admitted, anonymous denied — the person id
-    //   comes from the session, never the URL, so this is a flat authenticated
-    //   rule rather than a per-tier one).
-    // 428 + 8 = 436.
+    // + 9 for `/app/profile`, the self-service profile page: every
+    //   authenticated tier admitted at the page, at nested
+    //   `/app/profile/avatar`, and at sibling `/app/avatar` (six page cases:
+    //   five tiers plus anonymous denied; three upload cases: a client
+    //   admitted on each POST path, anonymous denied on `/app/avatar` — the
+    //   person id comes from the session, never the URL).
+    // 428 + 9 = 437.
     //
     // + 6 for `/app/people/{id}/avatar`: every authenticated tier admitted at
     //   the route, anonymous denied. Rego has no participation data to narrow
     //   further; `store::access::avatar_visible_to` in the handler carries the
     //   actual, participation-scoped rule (docs/access-model.md).
-    // 436 + 6 = 442.
+    // 437 + 6 = 443.
     //
     // + 8 for the Firm integration doors, POST
     //   /app/api/integrations/{notion,slack}/{verb} (ENG-491): Admin and Owner
@@ -232,10 +232,10 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   the rule at exactly five segments and POST, and one pins the
     //   noun-isolation that keeps a provisioning door off the client-reachable
     //   `projects` prefix.
-    // 442 + 8 = 450.
+    // 443 + 8 = 451.
     assert_eq!(
         test_names.len(),
-        450,
+        451,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

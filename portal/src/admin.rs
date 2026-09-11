@@ -209,8 +209,16 @@ pub fn routes(
             // every authenticated tier reaches this, but the target is always
             // the caller's own row, resolved from the session — never a
             // person id supplied by the request. Sibling of `/app/profile`
-            // (not nested under it) so the native form action and the
-            // browser's relative resolution agree. Same body-limit reasoning.
+            // so a native form on that page and the browser's relative
+            // resolution of a nested `avatar` action both land here.
+            // Same body-limit reasoning.
+            post(profile_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
+        )
+        .route(
+            "/app/profile/avatar",
+            // Same handler as `/app/avatar`. An absolute nested action on
+            // `/app/profile` posts here; a relative `avatar` action posts
+            // to `/app/avatar`. Both write the caller's row.
             post(profile_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
         .route(

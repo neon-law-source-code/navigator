@@ -16236,6 +16236,69 @@ async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to
     assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
 }
 
+/// The same upload posted at `/app/profile/avatar`, the nested action a
+/// browser uses when the form's `action` is that absolute path.
+#[tokio::test]
+async fn client_profile_avatar_upload_accepts_the_nested_form_action() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra Scales",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&viewer);
+    let boundary = "----navigator-test-nested-profile-avatar-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/profile/avatar")
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{:?}", resp.status());
+    assert_eq!(
+        resp.headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some("/app/profile"),
+    );
+
+    let row = store::persons::find_by_id(&surreal, viewer.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    let key = row
+        .profile_image_url
+        .expect("the nested upload must set profile_image_url");
+    assert_eq!(
+        key,
+        format!("people/{}/avatars/{}.png", viewer.id, viewer.id)
+    );
+    let stored = state.storage.get(&key).await.unwrap();
+    assert_eq!(stored.bytes, ONE_PIXEL_PNG);
+    assert_eq!(stored.content_type, "image/png");
+}
+
 /// An anonymous POST to the self-service upload is refused — the person id
 /// comes from the session, so there is nothing to write without one.
 #[tokio::test]

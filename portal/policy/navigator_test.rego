@@ -2051,6 +2051,10 @@ test_client_reaches_app_avatar_upload if {
 	authz.allow with input as {"path": ["app", "avatar"], "method": "POST", "session": client_session}
 }
 
+test_client_reaches_app_profile_avatar_upload if {
+	authz.allow with input as {"path": ["app", "profile", "avatar"], "method": "POST", "session": client_session}
+}
+
 test_anonymous_denied_app_avatar_upload if {
 	not authz.allow with input as {"path": ["app", "avatar"], "method": "POST", "session": null}
 }

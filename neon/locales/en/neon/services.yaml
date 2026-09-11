@@ -1,52 +1,52 @@
-head_title: "Legal Services — {site_name}"
+head_title: "Plans & services — {site_name}"
 meta_description: >-
-  Flat-fee legal services from Neon Law: wills, trusts, name changes,
-  formations, trademarks, and tenant defense, each on a fixed fee and reviewed
-  by a licensed attorney. Requires an active Fractional GC or Personal
-  Plan.
-title: Legal Services
+  Choose a plan for regular legal help, ask about an individual service, or
+  start a free consultation for a dispute.
+title: Plans & services
 hero_mark: gavel
-tagline: Once-Billed Legal Services
+tagline: Find the help you need.
 hero_lines:
-  - text: Once-Billed
-    accent_words: 1
-  - text: Legal Services
+  - text: Plans & services
     accent_words: 0
 hero_lead: >-
-  Available to clients on an active Fractional GC or Personal Plan:
-  the routine matters you walk in with, each scoped and quoted before any work
-  begins.
+  Choose a plan for regular help, or ask us about a single service.
 hero_cta:
   href: "mailto:{firm_email}"
   label: Contact us
 skin: practice
 bands:
   - kind: statement
-    heading: Who this is for
-    lead: ""
+    heading: A lawyer you can turn to.
+    lead: >-
+      Choose a plan for ongoing help with your business or personal legal
+      needs. Individual services are also available when you need help with
+      one thing.
     body:
-      - - text: "These flat fees require an active "
-        - text: Fractional GC
+      - - text: "See the "
+        - text: Business plan
           href: /fractional-gc
         - text: " or "
-        - text: Personal Plan
+        - text: Personal plan
           href: /personal-plan
         - text: >-
-            . Recurring business filings are already included in your
-            Fractional GC plan, and a dispute is
-        - text: " litigation"
+            . Forms are free with a plan or $50 each otherwise. Legal work
+            outside your plan and government fees cost extra.
+      - - text: >-
+            Custom contract reviews and trademarks require a plan and cost
+            extra. The listed contract-review prices apply after you have a
+            plan.
+      - - text: "Have a dispute? Start with a "
+        - text: free consultation
           href: /litigation
-        - text: ", which we quote per engagement."
+        - text: ". You do not need a subscription for that first conversation."
   - kind: cards
     anchor: fees
-    overline: Flat fees
-    heading: The work we do at a flat fee
+    overline: Individual services
+    heading: Need help with one thing?
     description: >-
-      Each of these is a fixed-fee matter: one scope, one price, agreed before
-      we start. Contract reviews run $100–$500 depending on the contract type.
-      Where a government body charges its own fee we pass it through at cost —
-      we do not mark it up, and we cannot control it. Email us for the fee on
-      the matter you need.
+      Choose the help you need. We will explain what it includes and what it
+      costs before work starts. Government fees are separate. Contract reviews
+      require a plan and run $100–$500 depending on the contract type.
     items:
       - title: Simple will
         body:
@@ -90,6 +90,8 @@ bands:
                 Articles, bylaws, a conflict-of-interest policy, and the Form
                 1023 application. The IRS sets its own user fee.
       - title: Trademark application
+        chips:
+          - "$50 + government filing fees"
         body:
           - - text: >-
                 A clearance search and one class of one application, through
@@ -133,9 +135,9 @@ bands:
         body:
           - - text: >-
                 Filling out and reviewing one government or intake form,
-                returned by a licensed attorney. Add a form to the same filing
-                packet for $5 more. Any government or third-party fee passes
-                through at cost.
+                returned by a licensed attorney. Forms are free with a plan or
+                $50 each otherwise. Any government or third-party fee is
+                separate.
       - title: Nevada business address
         chips:
           - "$350/year"
@@ -158,10 +160,10 @@ bands:
   - kind: steps
     anchor: how
     overline: How it works
-    heading: Our process is designed with speed in mind
+    heading: How it works
     description: >-
-      Create an account, answer some questions, upload your documentation, and
-      we will turn around and file what you need expeditiously.
+      Tell us what you need. We will explain the service, its cost, and what we
+      need from you before work begins.
     items:
       - title: Create an account
         body:
@@ -172,14 +174,13 @@ bands:
       - title: Upload your documentation
         body:
           - - text: Add the documents your matter calls for; we tell you which ones.
-      - title: We file what you need, expeditiously
+      - title: We complete the work we agree on
         body:
-          - - text: A licensed attorney reviews it, then we file it and send you
-            - text: " the confirmation when it comes back."
+          - - text: A licensed attorney reviews the work and we keep you informed.
   - kind: cta
-    heading: Ready to get started?
+    heading: Tell us what you need.
     body: >-
-      Tell us which matter you need and we will send you the flat fee for it
-      before any work begins. Email the firm to start.
+      If you are not sure which service fits, email us. We will help you choose
+      your next step.
     email: "{firm_email}"
     email_subject: Legal Services

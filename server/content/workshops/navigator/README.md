@@ -368,6 +368,13 @@ The real run downloads through the same authenticated API `sync` uses, verifies 
 after a full checkout prints `0 pulled`. It hydrates only: a live document the checkout carries no pointer for is
 `sync`'s lane, not `pull`'s. A pointer the signed-in account cannot read is reported, not silently skipped.
 
+`pull` is all-or-nothing for document bytes. It first downloads every missing or stale revision into a task-owned
+temporary staging area, then publishes the staged files only after every pointer is present, authorized, downloaded, and
+verified against its `sha256`. If a pointer vanishes, access is denied, a download fails, or a digest mismatches, the
+command fails without changing any pre-existing target bytes and without creating any newly hydrated target. The
+`documents/.gitignore` file may still be created or retained; that file is outside the document-byte guarantee. Correct
+the failure and rerun `pull`: a successful run hydrates the complete set, and the next run reports `0 pulled`.
+
 ---
 
 Delete the exhibit `sync` just uploaded, run `pull --dry-run` so the room sees the plan, then the real `pull` and show

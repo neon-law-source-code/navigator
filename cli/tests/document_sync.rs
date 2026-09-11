@@ -521,6 +521,194 @@ async fn pull_round_trips_synced_bytes_and_a_second_pull_writes_nothing() {
         ));
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn pull_publishes_nothing_when_a_later_download_fails() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let project_id = Uuid::now_v7();
+    let first_asset = Uuid::now_v7();
+    let second_asset = Uuid::now_v7();
+    let first_bytes = b"fresh first document";
+    let second_bytes = b"fresh second document";
+
+    write(
+        root.path(),
+        "documents/pleadings/a.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(
+            first_asset,
+            &sha256(first_bytes),
+            i64::try_from(first_bytes.len()).unwrap(),
+        ))
+        .unwrap(),
+    );
+    write(
+        root.path(),
+        "documents/pleadings/b.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(
+            second_asset,
+            &sha256(second_bytes),
+            i64::try_from(second_bytes.len()).unwrap(),
+        ))
+        .unwrap(),
+    );
+    write(
+        root.path(),
+        "documents/pleadings/b.pdf",
+        b"pre-existing document bytes",
+    );
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{first_asset}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(first_bytes.to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{second_asset}/download"
+        )))
+        .respond_with(ResponseTemplate::new(503).set_body_string("late failure"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "pull"])
+        .assert()
+        .failure();
+
+    assert!(!root.path().join("documents/pleadings/a.pdf").exists());
+    assert_eq!(
+        fs::read(root.path().join("documents/pleadings/b.pdf")).unwrap(),
+        b"pre-existing document bytes"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pull_publishes_nothing_when_a_download_digest_mismatches() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    let expected_bytes = b"expected document bytes";
+
+    write(
+        root.path(),
+        "documents/pleadings/motion.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(
+            asset_id,
+            &sha256(expected_bytes),
+            i64::try_from(expected_bytes.len()).unwrap(),
+        ))
+        .unwrap(),
+    );
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{asset_id}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"wrong bytes".to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "pull"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("sha256 mismatch"));
+
+    assert!(!root.path().join("documents/pleadings/motion.pdf").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pull_replaces_an_existing_mismatched_target_after_verification() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    let expected_bytes = b"current document bytes";
+    write(
+        root.path(),
+        "documents/pleadings/motion.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(
+            asset_id,
+            &sha256(expected_bytes),
+            i64::try_from(expected_bytes.len()).unwrap(),
+        ))
+        .unwrap(),
+    );
+    write(
+        root.path(),
+        "documents/pleadings/motion.pdf",
+        b"stale document bytes",
+    );
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{asset_id}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(expected_bytes.to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "pull"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 pulled"));
+
+    assert_eq!(
+        fs::read(root.path().join("documents/pleadings/motion.pdf")).unwrap(),
+        expected_bytes
+    );
+}
+
 #[test]
 fn pull_dry_run_lists_pending_pulls_without_logging_in() {
     let root = TempDir::new().unwrap();

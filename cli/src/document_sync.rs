@@ -191,8 +191,13 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
     }
 
     let client = DocumentClient::connect(manifest.host.as_deref(), manifest.project.trim()).await?;
+    let staging = tempfile::Builder::new()
+        .prefix(".navigator-pull-")
+        .tempdir_in(root)
+        .with_context(|| format!("create pull staging area in {}", root.display()))?;
     let mut pulled = 0usize;
     let mut failures = Vec::new();
+    let mut staged = Vec::new();
     for relative in &pointers {
         let pointer_path = root.join(relative);
         let Some(pointer) = read_pointer(&pointer_path)? else {
@@ -223,12 +228,10 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
                     ));
                     continue;
                 }
-                if let Some(parent) = target.parent() {
-                    std::fs::create_dir_all(parent)
-                        .with_context(|| format!("create {}", parent.display()))?;
-                }
-                std::fs::write(&target, &bytes)
-                    .with_context(|| format!("write {}", target.display()))?;
+                let staged_path = staging.path().join(staged.len().to_string());
+                std::fs::write(&staged_path, &bytes)
+                    .with_context(|| format!("stage {}", target.display()))?;
+                staged.push((target, staged_path));
                 pulled += 1;
             }
             Err(error) => {
@@ -245,6 +248,14 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
             failures.len(),
             pointers.len()
         ));
+    }
+    for (target, staged_path) in staged {
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create {}", parent.display()))?;
+        }
+        std::fs::copy(&staged_path, &target)
+            .with_context(|| format!("publish {}", target.display()))?;
     }
     println!("{pulled} pulled");
     Ok(())

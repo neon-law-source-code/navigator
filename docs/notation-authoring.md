@@ -345,6 +345,16 @@ press H to hide the hint. The same stage is at `/app/outline`, which switches am
 offboarding letter (`?doc=onboarding`, `offboarding`). A notation on a matter — the letter given to a client — is
 `/app/projects/{code}/{notation_id}/outline`. This command does not lint the outline and does not change PDF numbering.
 
+**Canonical Word import.** A DOCX import resolves OOXML numbering definitions and paragraph properties into the shared
+`word::CanonicalDocument` model before it becomes Notation Markdown. The model carries the root scheme, all seven depths
+(`I.`, `A.`, `1.`, `a.`, `(1)`, `(a)`, `(i)`), list identity, restart metadata, displayed marker, cumulative path, and
+source anchor. A paragraph with a manually typed marker is retained as ordinary text with a diagnostic; a skipped level,
+unsupported numbering format, ambiguous root, or eighth depth produces a diagnostic instead of an invented marker.
+Tables, signature-styled paragraphs, section breaks, headers, footers, bookmarks, hyperlinks, and fields remain typed
+and ordered in canonical stories. The editable Markdown projection uses ordinary headings and block quotes for the same
+seven levels, with invisible `navigator-anchor` comments preserving source identity. Imported Markdown is returned to
+the caller for governed persistence and is never written into a repository template.
+
 **Output formats — the letterhead seam.** How the document is dressed is an `OutputFormat` (`pdf::format`): `plain`
 (page geometry + firm typeface); `letter` (the firm letterhead — mark, letterspaced wordmark, a rule across the page,
 and a contact line carrying the firm mailbox and website rather than a street address, with every page numbered), plus

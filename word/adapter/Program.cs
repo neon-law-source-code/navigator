@@ -201,13 +201,55 @@ internal static class WordPackageParser
                 based_on = style.BasedOn?.Val?.Value,
                 next_style = style.NextParagraphStyle?.Val?.Value
             }).Cast<object>().ToList() ?? new List<object>();
-        var numbering = main.NumberingDefinitionsPart?.Numbering?.Elements<NumberingInstance>()
-            .Select(number => new
+        var numberingRoot = main.NumberingDefinitionsPart?.Numbering;
+        var abstractNumbers = numberingRoot?.Elements<AbstractNum>()
+            .ToDictionary(number => number.AbstractNumberId?.Value ?? -1)
+            ?? new Dictionary<int, AbstractNum>();
+        var numbering = numberingRoot?.Elements<NumberingInstance>()
+            .Select(number =>
             {
-                numbering_id = number.NumberID?.Value.ToString() ?? string.Empty,
-                abstract_numbering_id = number.AbstractNumId?.Val?.Value.ToString(),
-                levels = new List<string>()
-            }).Cast<object>().ToList() ?? new List<object>();
+                var abstractId = number.AbstractNumId?.Val?.Value;
+                var abstractNumber = abstractId is not null
+                    && abstractNumbers.TryGetValue(abstractId.Value, out var found)
+                    ? found
+                    : null;
+                var overrides = number.Elements<LevelOverride>()
+                    .ToDictionary(value => value.LevelIndex?.Value ?? 0);
+                var levelDefinitions = abstractNumber?.Elements<Level>()
+                    .Select(level =>
+                    {
+                        var levelIndex = level.LevelIndex?.Value ?? 0;
+                        overrides.TryGetValue(levelIndex, out var levelOverride);
+                        var overrideLevel = levelOverride?.GetFirstChild<Level>();
+                        var overrideStart = UInt(
+                            levelOverride?.GetFirstChild<StartOverrideNumberingValue>());
+                        return new
+                        {
+                            level = levelIndex,
+                            number_format = Value(overrideLevel, "numFmt")
+                                ?? Value(level, "numFmt")
+                                ?? string.Empty,
+                            level_text = Value(overrideLevel, "lvlText")
+                                ?? Value(level, "lvlText")
+                                ?? string.Empty,
+                            start = overrideStart ?? (uint.TryParse(Value(level, "start"), out var start)
+                                ? start
+                                : 1U),
+                            restart_level = Byte(Value(level, "lvlRestart")),
+                            style_id = Value(level, "pStyle"),
+                            override_start = overrideStart
+                        };
+                    }).Cast<object>().ToList() ?? new List<object>();
+                return (object)new
+                {
+                    numbering_id = number.NumberID?.Value.ToString() ?? string.Empty,
+                    abstract_numbering_id = abstractId?.ToString(),
+                    levels = abstractNumber?.Elements<Level>()
+                        .Select(level => Value(level, "lvlText") ?? string.Empty)
+                        .ToList() ?? new List<string>(),
+                    level_definitions = levelDefinitions
+                };
+            }).ToList() ?? new List<object>();
 
         var model = new
         {
@@ -222,6 +264,20 @@ internal static class WordPackageParser
         };
         return new AdapterResponse(Protocol.Version, true, model, null);
     }
+
+    private static string? Value(OpenXmlElement? element, string localName) => element?
+        .ChildElements
+        .FirstOrDefault(child => child.LocalName == localName)?
+        .GetAttributes()
+        .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value;
+
+    private static byte? Byte(string? value) => byte.TryParse(value, out var parsed) ? parsed : null;
+
+    private static uint? UInt(OpenXmlElement? element) =>
+        uint.TryParse(element?.GetAttributes()
+            .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value, out var parsed)
+            ? parsed
+            : null;
 }
 
 internal static class PackageSafety
@@ -539,13 +595,15 @@ internal sealed class StoryReader
     public List<object> Revisions { get; } = new();
 
     public object Story(string kind, string partUri, OpenXmlElement root) =>
-        new { kind, part_uri = partUri, blocks = Blocks(root) };
+        new { kind, part_uri = partUri, blocks = Blocks(root, partUri) };
 
     public IEnumerable<object> TextBoxes(string kind, string partUri, OpenXmlElement root) =>
         root.Descendants().Where(element => element.LocalName == "txbxContent")
             .Select(element => Story(kind, partUri, element));
 
-    public List<object> Blocks(OpenXmlElement root)
+    public List<object> Blocks(OpenXmlElement root) => Blocks(root, root.LocalName);
+
+    private List<object> Blocks(OpenXmlElement root, string partUri)
     {
         var blocks = new List<object>();
         foreach (var child in root.ChildElements)
@@ -553,35 +611,45 @@ internal sealed class StoryReader
             switch (child.LocalName)
             {
                 case "p":
-                    blocks.Add(Paragraph((Paragraph)child));
+                    blocks.Add(Paragraph((Paragraph)child, partUri, blocks.Count));
                     break;
                 case "tbl":
-                    blocks.Add(Table((Table)child));
+                    blocks.Add(Table((Table)child, partUri, blocks.Count));
                     break;
                 case "sectPr":
-                    blocks.Add(new { kind = "section_break", break_kind = "page" });
+                    blocks.Add(new
+                    {
+                        kind = "section_break",
+                        break_kind = "page",
+                        anchor = $"{partUri}:section-break:{blocks.Count}"
+                    });
                     break;
                 case "txbxContent":
-                    blocks.AddRange(Blocks(child));
+                    blocks.AddRange(Blocks(child, partUri));
                     break;
                 case "footnote":
                 case "endnote":
                 case "comment":
-                    blocks.AddRange(Blocks(child));
+                    blocks.AddRange(Blocks(child, partUri));
                     break;
             }
         }
         return blocks;
     }
 
-    private object Paragraph(Paragraph paragraph)
+    private object Paragraph(Paragraph paragraph, string partUri, int ordinal)
     {
         var properties = paragraph.ParagraphProperties;
         var numbering = properties?.NumberingProperties;
         var revisions = RevisionProperties(properties);
+        var paragraphId = paragraph.GetAttributes()
+            .FirstOrDefault(attribute => attribute.LocalName == "paraId")?.Value;
         return new
         {
             kind = "paragraph",
+            anchor = paragraphId is null
+                ? $"{partUri}:paragraph:{ordinal}"
+                : $"{partUri}:paragraph:{paragraphId}",
             style_id = properties?.ParagraphStyleId?.Val?.Value,
             numbering = numbering is null ? null : new
             {
@@ -593,16 +661,18 @@ internal sealed class StoryReader
         };
     }
 
-    private object Table(Table table)
+    private object Table(Table table, string partUri, int ordinal)
     {
         var revisions = RevisionProperties(table.TableProperties);
         var rows = table.Elements<TableRow>().Select(row => new
         {
-            cells = row.Elements<TableCell>().Select(cell => new { blocks = Blocks(cell) }).ToList()
+            cells = row.Elements<TableCell>()
+                .Select(cell => new { blocks = Blocks(cell, partUri) }).ToList()
         }).ToList();
         return new
         {
             kind = "table",
+            anchor = $"{partUri}:table:{ordinal}",
             style_id = table.TableProperties?.TableStyle?.Val?.Value,
             rows,
             revisions
@@ -793,4 +863,18 @@ internal sealed class StoryReader
         }
         return revisions;
     }
+
+    private static string? Value(OpenXmlElement? element, string localName) => element?
+        .ChildElements
+        .FirstOrDefault(child => child.LocalName == localName)?
+        .GetAttributes()
+        .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value;
+
+    private static byte? Byte(string? value) => byte.TryParse(value, out var parsed) ? parsed : null;
+
+    private static uint? UInt(OpenXmlElement? element) =>
+        uint.TryParse(element?.GetAttributes()
+            .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value, out var parsed)
+            ? parsed
+            : null;
 }

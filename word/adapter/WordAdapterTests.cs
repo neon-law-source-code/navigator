@@ -48,6 +48,19 @@ public sealed class WordAdapterTests
             style.GetProperty("id").GetString() == "SyntheticBody");
         Assert.Contains(model.GetProperty("numbering").EnumerateArray(), numbering =>
             numbering.GetProperty("numbering_id").GetString() == "7");
+        var numbering = model.GetProperty("numbering").EnumerateArray().Single();
+        Assert.Equal(7, numbering.GetProperty("level_definitions").GetArrayLength());
+        Assert.Equal("upperRoman",
+            numbering.GetProperty("level_definitions")[0].GetProperty("number_format").GetString());
+        Assert.Equal("%1.",
+            numbering.GetProperty("level_definitions")[0].GetProperty("level_text").GetString());
+        Assert.Equal(4,
+            numbering.GetProperty("level_definitions")[0].GetProperty("override_start").GetUInt32());
+        var main = model.GetProperty("stories").EnumerateArray()
+            .Single(story => story.GetProperty("kind").GetString() == "main_document");
+        Assert.Contains(main.GetProperty("blocks").EnumerateArray(), block =>
+            block.GetProperty("kind").GetString() == "paragraph"
+                && block.GetProperty("anchor").GetString()?.Contains(":paragraph:") == true);
         Assert.Contains(model.GetProperty("revision_nodes").EnumerateArray(), revision =>
             revision.GetProperty("kind").GetString() == "insertion");
         Assert.Contains(model.GetProperty("revision_nodes").EnumerateArray(), revision =>
@@ -136,6 +149,42 @@ public sealed class WordAdapterTests
                         new BookmarkEnd { Id = "1" },
                         new Run(new Break { Type = BreakValues.Page }),
                         new CommentReference { Id = "4" }),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 6 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("deep clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 1 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("letter clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 2 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("decimal clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 3 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("lower-letter clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 4 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("parenthesized decimal clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 5 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("parenthesized letter clause"))),
                     new Table(
                         new TableRow(
                             new TableCell(new Paragraph(new Run(new Text("cell one")))),
@@ -155,9 +204,30 @@ public sealed class WordAdapterTests
                 });
 
                 var numbering = main.AddNewPart<NumberingDefinitionsPart>();
+                var levels = new[]
+                {
+                    (NumberFormatValues.UpperRoman, "%1."),
+                    (NumberFormatValues.UpperLetter, "%2."),
+                    (NumberFormatValues.Decimal, "%3."),
+                    (NumberFormatValues.LowerLetter, "%4."),
+                    (NumberFormatValues.Decimal, "(%5)"),
+                    (NumberFormatValues.LowerLetter, "(%6)"),
+                    (NumberFormatValues.LowerRoman, "(%7)")
+                }.Select((entry, index) => new Level
+                {
+                    LevelIndex = index,
+                    NumberingFormat = new NumberingFormat { Val = entry.Item1 },
+                    LevelText = new LevelText { Val = entry.Item2 },
+                    StartNumberingValue = new StartNumberingValue { Val = 1 }
+                }).ToArray();
+                var instance = new NumberingInstance(new AbstractNumId { Val = 3 })
+                {
+                    NumberID = 7
+                };
+                instance.Append(new LevelOverride(
+                    new StartOverrideNumberingValue { Val = 4 }) { LevelIndex = 0 });
                 numbering.Numbering = new Numbering(
-                    new AbstractNum(new Level { LevelIndex = 0 }) { AbstractNumberId = 3 },
-                    new NumberingInstance(new AbstractNumId { Val = 3 }) { NumberID = 7 });
+                    new AbstractNum(levels) { AbstractNumberId = 3 }, instance);
 
                 var header = main.AddNewPart<HeaderPart>();
                 header.Header = new Header(new Paragraph(new Run(new Text("header"))));

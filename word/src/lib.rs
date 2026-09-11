@@ -6,7 +6,9 @@
 //! orchestration, diagnostics contract, and the typed document model.
 
 mod adapter;
+pub mod anchor;
 mod model;
+pub mod outline;
 mod preflight;
 pub mod protocol;
 
@@ -16,6 +18,10 @@ pub use model::{
     DocumentModel, FieldKind, Inline, NumberingDefinition, NumberingIdentity, OriginalSource,
     PackageInventory, PackagePart, PackageRelationship, Paragraph, RevisionKind, RevisionNode,
     Story, StoryKind, StyleDefinition, Table, TableCell, TableRow,
+};
+pub use outline::{
+    CanonicalBlock, CanonicalBlockKind, CanonicalDocument, CanonicalInline, CanonicalStory,
+    ListIdentity, NumberingLevel, OutlineScheme, OutlineUnit, HARVARD_OUTLINE_PATTERN, MAX_DEPTH,
 };
 pub use preflight::is_docx_filename;
 
@@ -148,6 +154,7 @@ mod tests {
                 kind: StoryKind::MainDocument,
                 part_uri: "/word/document.xml".into(),
                 blocks: vec![Block::Paragraph(Paragraph {
+                    anchor: "document:paragraph:1".into(),
                     style_id: Some("BodyText".into()),
                     numbering: None,
                     nodes: vec![

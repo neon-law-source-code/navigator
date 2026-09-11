@@ -8113,6 +8113,7 @@ dependencies = [
  "typst-as-lib",
  "typst-layout",
  "typst-pdf",
+ "word",
 ]
 
 [[package]]
@@ -13399,6 +13400,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "word",
 ]
 
 [[package]]

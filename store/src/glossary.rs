@@ -53,6 +53,21 @@ const TABLE: &str = "glossary_term";
 pub const GLOSSARY_MD: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md"));
 
+/// The authored glossary on disk — the same file [`GLOSSARY_MD`] embeds,
+/// named by the same expression so the two cannot point at different
+/// copies.
+///
+/// [`with_rendered_index`] is checked against the embedded bytes by the
+/// workspace gate, so a writer that resolved its own target from the
+/// working directory could rewrite one file while the gate kept reading
+/// another. Sharing this constant is what makes that mismatch
+/// unrepresentable.
+pub const GLOSSARY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md");
+
+/// How [`GLOSSARY_PATH`] is spelled in prose: the repository-relative path
+/// a reader can act on, rather than the absolute build path.
+pub const GLOSSARY_LABEL: &str = "docs/glossary.md";
+
 /// One parsed glossary term.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Term {
@@ -206,6 +221,134 @@ pub fn slugify(text: &str) -> String {
     out
 }
 
+/// The line that opens the alphabetical index block, and the marker
+/// [`with_rendered_index`] looks for.
+///
+/// The index sits in the preamble, above the first `## ` heading, so
+/// [`parse`] never sees it: a letter group is navigation, not a term,
+/// and materializing one as a `glossary_term` row would file a heading
+/// like "A" beside Participation.
+pub const INDEX_LEAD: &str = "**Alphabetical index.**";
+
+/// The widest line the index renderer emits — `S101`'s limit, which the
+/// reflow rule `S102` also expects a wrapped paragraph to fill.
+const INDEX_WIDTH: usize = 120;
+
+/// The separator between two entries in one letter's bullet.
+const INDEX_SEPARATOR: &str = " \u{b7} ";
+
+/// Render the alphabetical index: one bullet per initial letter, listing
+/// that letter's terms as in-page links.
+///
+/// Ordering is by [`slugify`] output rather than by raw title, so a term
+/// whose heading opens with punctuation (`` `ctx.run` ``) files under
+/// the letter a reader looks for it under instead of sorting ahead of
+/// the whole alphabet.
+#[must_use]
+pub fn render_index(terms: &[Term]) -> String {
+    let mut sorted: Vec<&Term> = terms.iter().filter(|term| !term.slug.is_empty()).collect();
+    sorted.sort_by(|a, b| a.slug.cmp(&b.slug));
+
+    let mut out = format!("{INDEX_LEAD} Every term on this page, grouped by initial letter.\n\n");
+    let mut letter: Option<char> = None;
+    let mut items: Vec<String> = Vec::new();
+    for term in sorted {
+        let next = initial(&term.slug);
+        if letter != Some(next) {
+            if let Some(previous) = letter {
+                out.push_str(&bullet(previous, &items));
+            }
+            letter = Some(next);
+            items.clear();
+        }
+        items.push(format!(
+            "[{title}](#{slug})",
+            title = term.title,
+            slug = term.slug
+        ));
+    }
+    if let Some(last) = letter {
+        out.push_str(&bullet(last, &items));
+    }
+    out
+}
+
+/// The index letter a slug files under.
+fn initial(slug: &str) -> char {
+    slug.chars().next().map_or('#', |c| c.to_ascii_uppercase())
+}
+
+/// One letter's bullet, greedily wrapped at [`INDEX_WIDTH`] with the
+/// continuation indented two spaces (`M005`).
+///
+/// The wrap breaks on spaces, not on link boundaries, because `S102`
+/// measures a line's spare room in words: a title like "Directly
+/// Responsible Individual (DRI)" has to be allowed to straddle the
+/// break, exactly as the hand-written entries below the index do.
+/// CommonMark reads a newline inside link text as a space, so the link
+/// survives it.
+fn bullet(letter: char, items: &[String]) -> String {
+    let head = format!("- **{letter}** \u{2014} ");
+    let body = items.join(INDEX_SEPARATOR);
+
+    let mut out = String::new();
+    let mut line = head;
+    for word in body.split(' ') {
+        if line.ends_with(' ') {
+            line.push_str(word);
+        } else if line.chars().count() + 1 + word.chars().count() > INDEX_WIDTH {
+            out.push_str(&line);
+            out.push('\n');
+            line = format!("  {word}");
+        } else {
+            line.push(' ');
+            line.push_str(word);
+        }
+    }
+    out.push_str(&line);
+    out.push('\n');
+    out
+}
+
+/// Replace the index block in authored glossary Markdown with one
+/// rendered from that same document's headings.
+///
+/// The block runs from the [`INDEX_LEAD`] line through the end of the
+/// bullet list beneath it. `None` when the document carries no index
+/// block to refresh — the caller decides whether that is a failure or a
+/// file it does not own.
+#[must_use]
+pub fn with_rendered_index(markdown: &str) -> Option<String> {
+    let lines: Vec<&str> = markdown.lines().collect();
+    let start = lines.iter().position(|l| l.starts_with(INDEX_LEAD))?;
+    let mut end = start;
+    for (offset, line) in lines.iter().enumerate().skip(start + 1) {
+        if line.is_empty() || line.starts_with("- **") || line.starts_with("  ") {
+            end = offset;
+        } else {
+            break;
+        }
+    }
+    // The blank line separating the list from whatever follows belongs
+    // to the document, not to the block being replaced.
+    while end > start && lines[end].is_empty() {
+        end -= 1;
+    }
+
+    let rendered = render_index(&parse(markdown));
+    let mut out = String::with_capacity(markdown.len());
+    for line in &lines[..start] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(&rendered);
+    for line in &lines[end + 1..] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    Some(out)
+}
+
 /// Materialize the authored glossary into `glossary_term` rows, keyed by
 /// slug.
 ///
@@ -311,7 +454,25 @@ pub async fn all(db: &SurrealDb) -> Result<Vec<GlossaryTerm>, GlossaryError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, slugify, GLOSSARY_MD};
+    use super::{parse, slugify, GLOSSARY_LABEL, GLOSSARY_MD, GLOSSARY_PATH};
+
+    /// `glossary-index --write` writes [`GLOSSARY_PATH`] while the workspace
+    /// gate compares what [`GLOSSARY_MD`] embedded. If the two ever named
+    /// different files the writer would rewrite one copy and the gate would
+    /// keep failing on the other, so hold them to the same bytes.
+    #[test]
+    fn the_glossary_path_names_the_file_the_glossary_embeds() {
+        let on_disk = std::fs::read_to_string(GLOSSARY_PATH)
+            .expect("GLOSSARY_PATH must name a readable file");
+        assert_eq!(
+            on_disk, GLOSSARY_MD,
+            "GLOSSARY_PATH and GLOSSARY_MD must name the same glossary"
+        );
+        assert!(
+            GLOSSARY_PATH.ends_with(GLOSSARY_LABEL),
+            "the prose label must be how GLOSSARY_PATH actually ends, got {GLOSSARY_PATH}"
+        );
+    }
 
     #[test]
     fn slug_matches_the_published_docs_anchor_shape() {

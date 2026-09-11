@@ -18,6 +18,48 @@ plural `store::persons` and `store::projects` are Rust module names.
 For task-oriented navigation, start at [`index`](index.md). Its glossary quick links map the most common terms to the
 docs that explain how those terms behave in code, operations, and workflows.
 
+**Alphabetical index.** Every term on this page, grouped by initial letter.
+
+- **A** — [Actor Class](#actor-class) · [Address](#address) · [AIDA](#aida) · [Analysis](#analysis) · [Asset](#asset) ·
+  [Authority](#authority)
+- **B** — [Brand](#brand) · [Brand Seed](#brand-seed)
+- **C** — [Certified Mail](#certified-mail) · [Client Review](#client-review) · [Closed Repository](#closed-repository)
+  · [Conflict-Check Graph](#conflict-check-graph) · [Council](#council) · [Counsel](#counsel) · [Coverage
+  Finding](#coverage-finding) · [Credential](#credential) · [`ctx.run`](#ctxrun)
+- **D** — [Data Export](#data-export) · [Deadline](#deadline) · [Deployment Environment](#deployment-environment) ·
+  [Deployment Operator](#deployment-operator) · [`devx`](#devx) · [Directly Responsible Individual
+  (DRI)](#directly-responsible-individual-dri) · [Disclosure](#disclosure) · [Docket Entry](#docket-entry) ·
+  [Document](#document) · [Document Drafts](#document-drafts) · [Document Identity](#document-identity) · [Document
+  Intake](#document-intake) · [Document Open](#document-open) · [Durable execution](#durable-execution)
+- **E** — [E-Filing](#e-filing) · [Email Send](#email-send) · [Engagement / Retainer](#engagement--retainer) ·
+  [Entity](#entity) · [Entity Type](#entity-type) · [External System Identity](#external-system-identity) ·
+  [Extract](#extract)
+- **F** — [Filing](#filing) · [Firm](#firm) · [Firm Brand](#firm-brand) · [Firm Signature](#firm-signature)
+- **G** — [GitHub Issue](#github-issue)
+- **H** — [Harvard Outline](#harvard-outline)
+- **I** — [Ingestion](#ingestion) · [Inquiry](#inquiry) · [Intake Persisted](#intake-persisted)
+- **J** — [Jurisdiction](#jurisdiction)
+- **L** — [Lawyer Review](#lawyer-review) · [Letter](#letter) · [Live Inquiry Session](#live-inquiry-session)
+- **M** — [Mailroom](#mailroom) · [Mailroom Receive](#mailroom-receive) · [Mailroom Send](#mailroom-send) ·
+  [Matter](#matter) · [Module](#module)
+- **N** — [Neon Law Navigator](#neon-law-navigator) · [Notarization](#notarization) · [Notation Event](#notation-event)
+- **O** — [Offboarding](#offboarding) · [On-Chain Record](#on-chain-record) · [Onboarding](#onboarding)
+- **P** — [Participation](#participation) · [Person](#person) · [Person–Entity Role](#personentity-role) · [Person–Firm
+  Role](#personfirm-role) · [Person–Project Role](#personproject-role) · [Presentation](#presentation) ·
+  [Project](#project)
+- **Q** — [Question Type](#question-type)
+- **R** — [Re-ask](#re-ask) · [Referral](#referral) · [Relationship Edge](#relationship-edge) · [Relationship
+  Log](#relationship-log) · [Repository](#repository) · [Resource](#resource) · [Restate](#restate) · [Restate context
+  (`ctx`)](#restate-context-ctx) · [Revision](#revision) · [Role](#role)
+- **S** — [Sample Matter Fixture](#sample-matter-fixture) · [Sent for Signature](#sent-for-signature) ·
+  [Signature](#signature) · [Signature Block](#signature-block) · [Standing Data Store](#standing-data-store) ·
+  [State](#state) · [Statement of Legal Aid (SOLA)](#statement-of-legal-aid-sola) · [Statement of the
+  present](#statement-of-the-present) · [Step](#step)
+- **T** — [Template](#template) · [Transcript Segment](#transcript-segment) · [Transition](#transition)
+- **V** — [Validate](#validate) · [Verification](#verification)
+- **W** — [Witnesses](#witnesses) · [Workflow](#workflow) · [Workflow Runtime](#workflow-runtime) · [Workflow
+  Spec](#workflow-spec) · [Workshop](#workshop)
+
 ---
 
 ## Actor Class

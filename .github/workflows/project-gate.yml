@@ -42,6 +42,8 @@ jobs:
           node-version: "22"
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        with:
+          package_json_file: portal/package.json
       - name: Install application dependencies
         if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
         shell: bash
@@ -91,6 +93,8 @@ jobs:
           node-version: "22"
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        with:
+          package_json_file: portal/package.json
       - name: Install application dependencies
         if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
         shell: bash
@@ -202,31 +206,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ inputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          case "${VERSION}" in
-            latest|main|HEAD|"")
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-              ;;
-          esac
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
-      - name: navigator validate
-        run: navigator validate .
+      - uses: neon-law-source-code/navigator/.github/actions/validate@${{ inputs.version }}
+        with:
+          version: "${{ inputs.version }}"
+          project_repository: true
 
   documents:
     permissions:

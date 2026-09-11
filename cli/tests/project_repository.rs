@@ -171,7 +171,19 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     let workflow = fs::read_to_string(dir.path().join(".github/workflows/ci.yml")).unwrap();
     assert!(workflow.contains("project-gate.yml@"));
     assert!(!workflow.contains("project_repository: true"));
-    assert!(workflow.contains("id-token: write"));
+    let workflow_yaml: serde_yaml::Value =
+        serde_yaml::from_str(&workflow).expect("scaffolded ci.yml parses as YAML");
+    for (permission, expected) in [
+        ("contents", "write"),
+        ("id-token", "write"),
+        ("pull-requests", "write"),
+    ] {
+        assert_eq!(
+            workflow_yaml["permissions"][permission].as_str(),
+            Some(expected),
+            "scaffolded caller must grant {permission}: {expected}"
+        );
+    }
     let cd = fs::read_to_string(dir.path().join(".github/workflows/publish.yml")).unwrap();
     assert!(
         !cd.contains("TBD"),

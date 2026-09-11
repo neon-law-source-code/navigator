@@ -135,6 +135,14 @@ not admit to read is reported rather than silently skipped, and the command refu
 written bytes stay exactly where `sync` already keeps them out of Git: the repository gate refuses a raw document byte
 whether it was staged before a `sync` or just materialised by a `pull`.
 
+`pull` is all-or-nothing for document bytes. It downloads every nonmatching revision into a task-owned temporary staging
+area and publishes nothing until every pointer is still present, readable by the caller, downloaded successfully, and
+verified against its recorded `sha256`. If a pointer vanishes, authorization fails, a download fails, or a digest
+mismatches, the command reports failure, leaves every pre-existing target byte unchanged, and creates no missing target.
+Creating or retaining `documents/.gitignore` is outside that document-byte guarantee. Fix the pointer, access, or
+storage failure and run `pull` again; a completed pull hydrates every missing or stale target, and a later pull reports
+`0 pulled` because matching digests are skipped.
+
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
 anywhere offers a control that changes a document's key (`slug`, the chain identity a revision belongs to). Both stay

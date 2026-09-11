@@ -539,7 +539,11 @@ mod tests {
             content.contact_href,
             format!("mailto:{}", views::brand::firm_email())
         );
-        assert_eq!(content.heading, "Everyone deserves to be seen.");
+        assert_eq!(content.heading, "What is your legal need?");
+        assert!(content
+            .service
+            .as_ref()
+            .is_some_and(|service| service.heading == "Everyone deserves to be seen."));
         assert_eq!(
             content
                 .practices
@@ -547,10 +551,10 @@ mod tests {
                 .map(|practice| practice.heading.as_str())
                 .collect::<Vec<_>>(),
             [
-                "Litigation",
-                "Fractional GC",
-                "Personal Plan",
-                "One-Time Services",
+                "Business plan",
+                "Personal plan",
+                "Individual services",
+                "Disputes",
             ]
         );
     }

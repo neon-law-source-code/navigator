@@ -1042,11 +1042,13 @@ fn missing_subcommand_prints_usage_and_fails() {
 fn validate_fix_writes_back_autofixable_edits_and_reports_remaining() {
     let dir = TempDir::new().unwrap();
     // Three trailing spaces (M009 violates — two-space hard break is
-    // exempt, three is not) + a hard tab (M010). Both autofixable.
+    // exempt, three is not) + a hard tab (M010). Both autofixable. The
+    // two sit in separate paragraphs so this stays a test of those two
+    // fixes: adjacent, they would also be packed together by S102.
     write(
         dir.path(),
         "Mixed.md",
-        "Body line with trailing spaces   \nTabbed\there\n",
+        "Body line with trailing spaces   \n\nTabbed\there\n",
     );
     navigator()
         .args(["validate", "--fix"])
@@ -1056,9 +1058,55 @@ fn validate_fix_writes_back_autofixable_edits_and_reports_remaining() {
         .stdout(str::contains("Fixed 1 file(s)"));
     let after = fs::read_to_string(dir.path().join("Mixed.md")).unwrap();
     assert_eq!(
-        after, "Body line with trailing spaces\nTabbed  here\n",
+        after, "Body line with trailing spaces\n\nTabbed  here\n",
         "expected M009 + M010 autofixes; got: {after:?}",
     );
+}
+
+/// `S102` asks for prose packed as close to the 120-character limit as
+/// it goes, and `--fix` now answers it: the whole paragraph is repacked,
+/// not one word pulled up per run.
+#[test]
+fn validate_fix_packs_a_loosely_wrapped_paragraph() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "Loose.md",
+        "A paragraph wrapped\nfar short of the\nline limit.\n\nA second one,\nalso loose.\n",
+    );
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 1 file(s)"));
+    let after = fs::read_to_string(dir.path().join("Loose.md")).unwrap();
+    assert_eq!(
+        after, "A paragraph wrapped far short of the line limit.\n\nA second one, also loose.\n",
+        "expected each paragraph packed in place; got: {after:?}",
+    );
+}
+
+/// One fix uncovers another: `M009` trimming the trailing whitespace off
+/// a short line hands that line to `S102`, which could not have flagged
+/// it while it still looked like a hard break. A single `--fix` run has
+/// to land both, or the command reports work it is able to do itself.
+#[test]
+fn validate_fix_keeps_going_until_the_file_stops_changing() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "Cascade.md",
+        "Short line.   \nAnother short line.\n",
+    );
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("0 remaining violation"));
+    let after = fs::read_to_string(dir.path().join("Cascade.md")).unwrap();
+    assert_eq!(after, "Short line. Another short line.\n", "got: {after:?}");
 }
 
 #[test]

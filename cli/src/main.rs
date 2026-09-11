@@ -296,12 +296,14 @@ enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
         /// Apply every safe-by-construction rule autofix
-        /// (whitespace, ATX heading spacing, blockquote spacing) to
-        /// the files in place, then re-validate. Diagnostic-only
-        /// rules (N-family notation-template, M024 duplicate headings,
-        /// M026 trailing punctuation) are still reported but not
-        /// auto-fixed. The autofixed-source view is what the
-        /// `navigator-lsp` `source.fixAll` action ships in editors.
+        /// (whitespace, ATX heading spacing, blockquote spacing, S102
+        /// paragraph packing) to the files in place, re-scanning each
+        /// file until it stops changing, then re-validate.
+        /// Diagnostic-only rules (N-family notation-template, M024
+        /// duplicate headings, M026 trailing punctuation) are still
+        /// reported but not auto-fixed. The autofixed-source view is
+        /// what the `navigator-lsp` `source.fixAll` action ships in
+        /// editors.
         #[arg(long)]
         fix: bool,
         /// Print only the findings that fail the gate, hiding the
@@ -3296,12 +3298,20 @@ struct FixReport {
     remaining: Vec<rules::Violation>,
 }
 
+/// The most passes `fix_directory` will make over one file before
+/// giving up. A pass that changes nothing ends the loop, so this bound
+/// is only reached by two rules that disagree — and reaching it leaves
+/// the file valid, just not finished.
+const MAX_FIX_PASSES: usize = 8;
+
 /// Walk `dir` honoring `filter`, apply every safe-by-construction
 /// autofix to each markdown file in place, and then re-lint to
 /// collect the diagnostic-only violations a human still needs to
 /// address. Edits within a file are applied highest-offset-first so
 /// earlier offsets stay valid; on overlap the rule with the lower
-/// code string wins (deterministic).
+/// code string wins (deterministic), and the file is re-scanned until
+/// it stops changing so a deferred or newly uncovered fix still lands
+/// in the same run.
 fn fix_directory(
     dir: &std::path::Path,
     filter: &dyn rules::FileFilter,
@@ -3333,16 +3343,27 @@ fn fix_directory(
             path: path.to_path_buf(),
             contents,
         };
-        let rule_set = rules_for_file(&file);
-        let mut edits: Vec<(rules::TextEdit, &'static str)> = Vec::new();
-        for rule in &rule_set {
-            for v in rule.lint(&file) {
-                if let Some(edit) = rule.fix(&file, &v) {
-                    edits.push((edit, rule.code()));
+        let original = file.contents.clone();
+        // Repeat until the file stops changing: one fix routinely
+        // uncovers another. Dropping an overlapping edit defers it to
+        // the next pass, and a fix can create a fresh violation outright
+        // — trimming a hard break off a short line hands that line to
+        // `S102`. The bound only guards against a pair of rules that
+        // undo each other; every pass either changes the file or is the
+        // last one.
+        for _ in 0..MAX_FIX_PASSES {
+            let rule_set = rules_for_file(&file);
+            let mut edits: Vec<(rules::TextEdit, &'static str)> = Vec::new();
+            for rule in &rule_set {
+                for v in rule.lint(&file) {
+                    if let Some(edit) = rule.fix(&file, &v) {
+                        edits.push((edit, rule.code()));
+                    }
                 }
             }
-        }
-        if !edits.is_empty() {
+            if edits.is_empty() {
+                break;
+            }
             // Sort ascending by start; resolve overlap by keeping the
             // lower-coded edit. Then apply descending.
             edits.sort_by(|a, b| a.0.range.start.cmp(&b.0.range.start).then(a.1.cmp(b.1)));
@@ -3360,13 +3381,16 @@ fn fix_directory(
             for (edit, _) in &kept {
                 new_contents.replace_range(edit.range.clone(), &edit.new_text);
             }
-            if new_contents != file.contents {
-                std::fs::write(path, &new_contents)?;
-                fixed_files.push(path.to_path_buf());
-                file.contents = new_contents;
+            if new_contents == file.contents {
+                break;
             }
+            file.contents = new_contents;
         }
-        for rule in &rule_set {
+        if file.contents != original {
+            std::fs::write(path, &file.contents)?;
+            fixed_files.push(path.to_path_buf());
+        }
+        for rule in &rules_for_file(&file) {
             remaining.extend(rule.lint(&file));
         }
     }

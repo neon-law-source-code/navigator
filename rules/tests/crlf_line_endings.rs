@@ -86,6 +86,14 @@ fn cases() -> Vec<(&'static str, Box<dyn Rule>, &'static str)> {
             Box::new(rules::m047::M047SingleTrailingNewline),
             "a\n\n",
         ),
+        // Three 50-character lines pack to two, so the reflow has to
+        // author a line ending of its own — the one fix in the table
+        // that can leave a lone LF behind in a CRLF document.
+        (
+            "S102",
+            Box::new(rules::s102::S102LinePacking::default()),
+            "The quick brown fox jumps over the lazy dog again.\nThe quick brown fox jumps over the lazy dog again.\nThe quick brown fox jumps over the lazy dog again.\n",
+        ),
     ]
 }
 

@@ -18,8 +18,51 @@ pub enum OutlineScheme {
     Arabic,
 }
 
-/// The seven marker groups used by the agreement outline.
+/// The seven marker groups used by the agreement outline, most significant
+/// first. This is the one vocabulary: the Typst pattern below is these
+/// groups concatenated, and `pdf` builds its own numbering table from this
+/// array rather than restating the literals.
+pub const MARKER_GROUPS: [&str; MAX_DEPTH as usize] =
+    ["I.", "A.", "1.", "a.", "(1)", "(a)", "(i)"];
+
+/// The seven marker groups as one Typst `numbering()` pattern.
 pub const HARVARD_OUTLINE_PATTERN: &str = "I.A.1.a.(1)(a)(i)";
+
+/// The OOXML `w:numFmt` a Harvard level must declare at each depth. A
+/// depth-one root is the one choice in the scheme — upper roman for
+/// contracts and letters, decimal for motion practice — so it carries two
+/// accepted formats and every deeper level carries exactly one.
+const LEVEL_FORMATS: [&[&str]; MAX_DEPTH as usize] = [
+    &["upperRoman", "upper_roman", "decimal", "decimalZero", "decimal_zero"],
+    &["upperLetter", "upper_letter"],
+    &["decimal", "decimalZero", "decimal_zero"],
+    &["lowerLetter", "lower_letter"],
+    &["decimal", "decimalZero", "decimal_zero"],
+    &["lowerLetter", "lower_letter"],
+    &["lowerRoman", "lower_roman"],
+];
+
+/// The OOXML `w:lvlText` a Harvard level must declare at each depth: its
+/// own placeholder in its own marker group. A cumulative `%1.%2.` or a
+/// `%3)` is a different outline, and rendering it as `1.` would invent a
+/// marker the source document never displayed.
+fn expected_level_text(depth: u8) -> String {
+    let group = MARKER_GROUPS[usize::from(depth) - 1];
+    if group.starts_with('(') {
+        format!("(%{depth})")
+    } else {
+        format!("%{depth}.")
+    }
+}
+
+/// Whether a resolved level can be displayed with this depth's marker
+/// group without inventing anything. A level that cannot is an ambiguity
+/// for an attorney to resolve, not a marker for Navigator to guess.
+fn level_matches_depth(level: &NumberingLevel, depth: u8) -> bool {
+    let index = usize::from(depth) - 1;
+    LEVEL_FORMATS[index].contains(&level.number_format.as_str())
+        && level.level_text == expected_level_text(depth)
+}
 
 /// A resolved numbering level from an OOXML abstract numbering definition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,57 +185,20 @@ pub struct CanonicalDocument {
 }
 
 impl CanonicalDocument {
-    /// Emit the governed, editable Markdown representation of the main story.
-    /// Anchors and typed blocks use invisible Navigator comments, so the
-    /// visible legal prose remains ordinary Markdown.
+    /// Emit the governed, editable Markdown representation of this import.
+    /// The visible prose is ordinary Markdown; the structural identity that
+    /// Markdown cannot express rides beside it in `navigator-*` comments.
+    /// See [`crate::notation`].
     #[must_use]
     pub fn to_markdown(&self) -> String {
-        use std::fmt::Write as _;
+        crate::notation::to_markdown(self)
+    }
 
-        let Some(story) = self
-            .stories
-            .iter()
-            .find(|story| story.kind == StoryKind::MainDocument)
-        else {
-            return String::new();
-        };
-        let mut out = String::new();
-        for block in &story.blocks {
-            let _ = writeln!(out, "<!-- navigator-anchor:{} -->", block.anchor);
-            match block.kind {
-                CanonicalBlockKind::Outline => {
-                    if let Some(unit) = &block.outline {
-                        if unit.depth == 1 {
-                            let _ = writeln!(out, "# {}. {}\n", unit.marker, block.text);
-                        } else if unit.depth == 2 {
-                            let _ = writeln!(out, "> **{}. {}**\n>\n", unit.marker, block.text);
-                        } else {
-                            let _ = writeln!(out, "> {}. {}\n>\n", unit.marker, block.text);
-                        }
-                    }
-                }
-                CanonicalBlockKind::Paragraph => {
-                    if let Some(label) = &block.manual_label {
-                        let _ = writeln!(out, "{label} {}\n", block.text);
-                    } else {
-                        let _ = writeln!(out, "{}\n", block.text);
-                    }
-                }
-                CanonicalBlockKind::Signature => {
-                    out.push_str("<!-- navigator-block:signature -->\n");
-                    let _ = writeln!(out, "{}\n", block.text);
-                }
-                CanonicalBlockKind::Table => {
-                    out.push_str("<!-- navigator-block:table -->\n");
-                    out.push_str("| Content |\n| --- |\n");
-                    let _ = writeln!(out, "| {} |\n", block.text);
-                }
-                CanonicalBlockKind::SectionBreak => {
-                    out.push_str("<!-- pagebreak -->\n\n");
-                }
-            }
-        }
-        out
+    /// Read a governed Markdown projection back into the canonical model
+    /// through the workspace's one CommonMark grammar.
+    #[must_use]
+    pub fn from_markdown(source: &str) -> Self {
+        crate::notation::from_markdown(source)
     }
 }
 
@@ -213,11 +219,16 @@ pub fn from_stories(
 
     for story in stories {
         let mut counters = HashMap::new();
+        // One ordinal sequence per part: a table cell restarts its own child
+        // index, so a per-container ordinal would hand two distinct blocks
+        // the same fallback anchor.
+        let mut ordinal = 0_usize;
         let blocks = canonical_blocks(
             &story.blocks,
             &story.part_uri,
             &definitions,
             &mut counters,
+            &mut ordinal,
             &mut scheme,
             &mut diagnostics,
         );
@@ -240,13 +251,16 @@ fn canonical_blocks(
     part_uri: &str,
     definitions: &HashMap<&str, &NumberingDefinition>,
     counters: &mut HashMap<String, Vec<u32>>,
+    ordinals: &mut usize,
     scheme: &mut Option<OutlineScheme>,
     diagnostics: &mut Vec<crate::Diagnostic>,
 ) -> Vec<CanonicalBlock> {
     blocks
         .iter()
-        .enumerate()
-        .map(|(ordinal, block)| match block {
+        .map(|block| {
+            let ordinal = *ordinals;
+            *ordinals += 1;
+            match block {
             Block::Paragraph(paragraph) => canonical_paragraph(
                 paragraph,
                 part_uri,
@@ -275,6 +289,7 @@ fn canonical_blocks(
                             part_uri,
                             definitions,
                             counters,
+                            ordinals,
                             scheme,
                             diagnostics,
                         )
@@ -311,7 +326,7 @@ fn canonical_blocks(
                     children: Vec::new(),
                 }
             }
-        })
+        }})
         .collect()
 }
 
@@ -380,20 +395,21 @@ fn canonical_paragraph(
         diagnostics.push(crate::Diagnostic::unsupported_numbering(&anchor));
         return paragraph_block(anchor, text, inlines, paragraph.style_id.as_deref());
     };
+    // No fallback to level zero: a level this definition does not declare is
+    // an unresolved list, and borrowing another level's format would invent
+    // a marker the source document never displayed.
     let Some(level_definition) = definition
         .level_definitions
         .iter()
         .find(|definition| definition.level == level)
-        .or_else(|| {
-            definition
-                .level_definitions
-                .iter()
-                .find(|definition| definition.level == 0)
-        })
     else {
         diagnostics.push(crate::Diagnostic::unsupported_numbering(&anchor));
         return paragraph_block(anchor, text, inlines, paragraph.style_id.as_deref());
     };
+    if !level_matches_depth(level_definition, depth) {
+        diagnostics.push(crate::Diagnostic::unsupported_numbering(&anchor));
+        return paragraph_block(anchor, text, inlines, paragraph.style_id.as_deref());
+    }
 
     let detected_scheme = match level_definition.number_format.as_str() {
         "upper_roman" | "upperRoman" => Some(OutlineScheme::Roman),
@@ -421,8 +437,12 @@ fn canonical_paragraph(
     let counters = counters
         .entry(identity.numbering_id.clone())
         .or_insert_with(|| vec![0_u32; usize::from(MAX_DEPTH)]);
+    // A depth reached without its ancestors has no cumulative path, and a
+    // path with a hole in it is a guess. Stop at the diagnostic and keep the
+    // paragraph as anchored text instead.
     if depth > 1 && counters[..usize::from(depth - 1)].contains(&0) {
         diagnostics.push(crate::Diagnostic::skipped_outline_level(&anchor, depth));
+        return paragraph_block(anchor, text, inlines, paragraph.style_id.as_deref());
     }
     if level_definition.override_start.is_some() && counters[usize::from(depth - 1)] == 0 {
         diagnostics.push(crate::Diagnostic::list_restart(&anchor));
@@ -444,15 +464,11 @@ fn canonical_paragraph(
         .take(index + 1)
         .enumerate()
         .map(|(level, count)| {
-            if *count == 0 {
-                "?".to_string()
-            } else {
-                marker_for(
-                    display_scheme,
-                    u8::try_from(level + 1).unwrap_or(MAX_DEPTH),
-                    *count,
-                )
-            }
+            marker_for(
+                display_scheme,
+                u8::try_from(level + 1).unwrap_or(MAX_DEPTH),
+                *count,
+            )
         })
         .collect::<Vec<_>>()
         .join(".");
@@ -882,6 +898,195 @@ mod tests {
             canonical.stories[0].blocks[3].kind,
             CanonicalBlockKind::Paragraph
         );
+    }
+
+    /// The seven Harvard levels an OOXML definition must declare for a
+    /// document to import as an outline at all.
+    fn harvard_levels(root: &str) -> Vec<NumberingLevel> {
+        let formats = [
+            root,
+            "upperLetter",
+            "decimal",
+            "lowerLetter",
+            "decimal",
+            "lowerLetter",
+            "lowerRoman",
+        ];
+        formats
+            .into_iter()
+            .enumerate()
+            .map(|(index, format)| {
+                let depth = index + 1;
+                let text = if depth >= 5 {
+                    format!("(%{depth})")
+                } else {
+                    format!("%{depth}.")
+                };
+                level(u8::try_from(index).unwrap_or_default(), format, &text)
+            })
+            .collect()
+    }
+
+    fn seven_deep(root: &str) -> crate::outline::CanonicalDocument {
+        let blocks = (0_u8..7)
+            .map(|depth| paragraph(&format!("p{depth}"), Some(depth), "clause"))
+            .collect();
+        model(blocks, harvard_levels(root)).canonical_outline()
+    }
+
+    #[test]
+    fn a_roman_import_round_trips_through_notation_markdown() {
+        let imported = seven_deep("upperRoman");
+        let reparsed = crate::outline::CanonicalDocument::from_markdown(&imported.to_markdown());
+
+        assert!(imported.diagnostics.is_empty(), "{:?}", imported.diagnostics);
+        assert_eq!(reparsed.scheme, Some(OutlineScheme::Roman));
+        assert_eq!(units(&reparsed), units(&imported));
+        assert_eq!(
+            units(&imported),
+            vec![
+                (1, "I".into(), "I".into()),
+                (2, "A".into(), "I.A".into()),
+                (3, "1".into(), "I.A.1".into()),
+                (4, "a".into(), "I.A.1.a".into()),
+                (5, "(1)".into(), "I.A.1.a.(1)".into()),
+                (6, "(a)".into(), "I.A.1.a.(1).(a)".into()),
+                (7, "(i)".into(), "I.A.1.a.(1).(a).(i)".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_arabic_motion_import_round_trips_through_notation_markdown() {
+        let imported = seven_deep("decimal");
+        let reparsed = crate::outline::CanonicalDocument::from_markdown(&imported.to_markdown());
+
+        assert_eq!(imported.scheme, Some(OutlineScheme::Arabic));
+        assert_eq!(reparsed.scheme, Some(OutlineScheme::Arabic));
+        assert_eq!(units(&reparsed), units(&imported));
+        assert_eq!(units(&imported)[0], (1, "1".into(), "1".into()));
+        // `(1)` is depth five under both roots. Reading depth off the marker
+        // would call this one depth three.
+        assert_eq!(units(&imported)[4], (5, "(1)".into(), "1.A.1.a.(1)".into()));
+    }
+
+    #[test]
+    fn source_anchors_survive_the_markdown_round_trip_and_table_nesting() {
+        let table = Table {
+            anchor: String::new(),
+            style_id: None,
+            rows: vec![TableRow {
+                cells: vec![
+                    TableCell {
+                        blocks: vec![paragraph("", None, "first cell")],
+                    },
+                    TableCell {
+                        blocks: vec![paragraph("", None, "second cell")],
+                    },
+                ],
+            }],
+            revisions: Vec::new(),
+        };
+        let imported = model(
+            vec![paragraph("", None, "preamble"), Block::Table(table)],
+            harvard_levels("upperRoman"),
+        )
+        .canonical_outline();
+
+        let anchors = flat_anchors(&imported);
+        let reparsed = crate::outline::CanonicalDocument::from_markdown(&imported.to_markdown());
+
+        // A cell restarts its own child index, so a per-container ordinal
+        // would give two distinct blocks one anchor.
+        assert_eq!(anchors.len(), 4);
+        assert_eq!(
+            anchors.iter().collect::<std::collections::HashSet<_>>().len(),
+            4
+        );
+        assert_eq!(flat_anchors(&reparsed), anchors);
+        assert_eq!(reparsed.stories[0].blocks[1].children.len(), 2);
+    }
+
+    #[test]
+    fn an_unsupported_or_mixed_level_is_diagnosed_rather_than_given_a_marker() {
+        // `%1)` is expressible OOXML and is not this outline's depth-one
+        // group; `lowerLetter` at depth one is not a Harvard root at all.
+        let document = model(
+            vec![
+                paragraph("wrong-text", Some(0), "one"),
+                paragraph("wrong-format", Some(1), "two"),
+                paragraph("undeclared", Some(2), "three"),
+            ],
+            vec![
+                level(0, "upperRoman", "%1)"),
+                level(1, "decimal", "%2."),
+            ],
+        );
+
+        let canonical = document.canonical_outline();
+
+        assert!(canonical.stories[0]
+            .blocks
+            .iter()
+            .all(|block| block.outline.is_none()));
+        assert_eq!(
+            canonical
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic.code,
+                    crate::DiagnosticCode::UnsupportedNumbering
+                ))
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn a_skipped_level_stops_instead_of_inventing_a_path() {
+        let document = model(
+            vec![
+                paragraph("root", Some(0), "one"),
+                paragraph("skipped", Some(3), "four"),
+            ],
+            harvard_levels("upperRoman"),
+        );
+
+        let canonical = document.canonical_outline();
+
+        assert_eq!(canonical.stories[0].blocks[1].outline, None);
+        assert!(canonical.diagnostics.iter().any(|diagnostic| matches!(
+            diagnostic.code,
+            crate::DiagnosticCode::SkippedOutlineLevel
+        )));
+        // No path anywhere in the document is a guess.
+        assert!(units(&canonical)
+            .iter()
+            .all(|(_, _, path)| !path.contains('?')));
+    }
+
+    fn units(document: &crate::outline::CanonicalDocument) -> Vec<(u8, String, String)> {
+        document
+            .stories
+            .iter()
+            .flat_map(|story| story.blocks.iter())
+            .filter_map(|block| block.outline.as_ref())
+            .map(|unit| (unit.depth, unit.marker.clone(), unit.path.clone()))
+            .collect()
+    }
+
+    fn flat_anchors(document: &crate::outline::CanonicalDocument) -> Vec<String> {
+        fn walk(blocks: &[crate::outline::CanonicalBlock], out: &mut Vec<String>) {
+            for block in blocks {
+                out.push(block.anchor.clone());
+                walk(&block.children, out);
+            }
+        }
+        let mut out = Vec::new();
+        for story in &document.stories {
+            walk(&story.blocks, &mut out);
+        }
+        out
     }
 
     #[test]

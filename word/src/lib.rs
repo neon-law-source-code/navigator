@@ -8,6 +8,7 @@
 mod adapter;
 pub mod anchor;
 mod model;
+pub mod notation;
 pub mod outline;
 mod preflight;
 pub mod protocol;
@@ -19,9 +20,11 @@ pub use model::{
     PackageInventory, PackagePart, PackageRelationship, Paragraph, RevisionKind, RevisionNode,
     Story, StoryKind, StyleDefinition, Table, TableCell, TableRow,
 };
+pub use notation::{from_markdown, to_markdown};
 pub use outline::{
     CanonicalBlock, CanonicalBlockKind, CanonicalDocument, CanonicalInline, CanonicalStory,
-    ListIdentity, NumberingLevel, OutlineScheme, OutlineUnit, HARVARD_OUTLINE_PATTERN, MAX_DEPTH,
+    ListIdentity, NumberingLevel, OutlineScheme, OutlineUnit, HARVARD_OUTLINE_PATTERN,
+    MARKER_GROUPS, MAX_DEPTH,
 };
 pub use preflight::is_docx_filename;
 

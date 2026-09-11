@@ -346,14 +346,46 @@ offboarding letter (`?doc=onboarding`, `offboarding`). A notation on a matter �
 `/app/projects/{code}/{notation_id}/outline`. This command does not lint the outline and does not change PDF numbering.
 
 **Canonical Word import.** A DOCX import resolves OOXML numbering definitions and paragraph properties into the shared
-`word::CanonicalDocument` model before it becomes Notation Markdown. The model carries the root scheme, all seven depths
-(`I.`, `A.`, `1.`, `a.`, `(1)`, `(a)`, `(i)`), list identity, restart metadata, displayed marker, cumulative path, and
-source anchor. A paragraph with a manually typed marker is retained as ordinary text with a diagnostic; a skipped level,
-unsupported numbering format, ambiguous root, or eighth depth produces a diagnostic instead of an invented marker.
-Tables, signature-styled paragraphs, section breaks, headers, footers, bookmarks, hyperlinks, and fields remain typed
-and ordered in canonical stories. The editable Markdown projection uses ordinary headings and block quotes for the same
-seven levels, with invisible `navigator-anchor` comments preserving source identity. Imported Markdown is returned to
-the caller for governed persistence and is never written into a repository template.
+`word::CanonicalDocument` model before it becomes Notation Markdown. `word::MARKER_GROUPS` is the one marker vocabulary
+— `I.`, `A.`, `1.`, `a.`, `(1)`, `(a)`, `(i)` — and both the Typst numbering pattern in `pdf::outline` and the narration
+scheme in `views::harvard_outline` are that array rather than a restatement of it. The model carries the root scheme,
+depth, displayed marker, cumulative path, source anchor, and the full list identity: `numId`, `abstractNumId`, level,
+number format, level text, the abstract level's own start, and any list-instance start override, which are separate
+fields because a list instance overriding a start does not erase the definition it overrides. Numbering that arrives
+through a paragraph style rather than the paragraph is resolved along the `w:basedOn` chain, so a style-linked clause
+imports as an outline unit rather than prose.
+
+**The import fails closed.** A level the definition does not declare, a number format that is not this depth's Harvard
+format, a level text that is not this depth's marker group, a depth reached without its ancestors, a root whose scheme
+cannot be determined or conflicts with an earlier one, a manually typed marker, and an eighth depth each raise a
+diagnostic and leave the paragraph as anchored text. Navigator never displays a marker the source document did not, and
+never writes a cumulative path with a hole in it; the diagnostics are what an attorney resolves.
+
+**The editable Markdown projection** (`word::notation`) keeps prose and structure apart. The visible Markdown is
+ordinary headings, block quotes, and paragraphs an attorney edits; every structural fact travels beside it in a
+`navigator-*` HTML comment, which CommonMark passes through verbatim:
+
+```markdown
+<!-- navigator-document scheme="roman" -->
+<!-- navigator-story kind="main_document" part="/word/document.xml" -->
+<!-- navigator-block kind="outline" anchor="/word/document.xml:paragraph:7A3B" depth="5" marker="(1)"
+     path="I.A.1.a.(1)" num-id="3" abstract-num-id="7" level="4" num-fmt="decimal" lvl-text="(%5)" start="1" -->
+> (1) Each party bears its own fees.
+```
+
+Reading the document back is therefore a lookup, not a guess — which matters because the visible marker alone is
+ambiguous about depth in both directions: `(1)` is the depth-five group under a Roman *and* an Arabic root, and `(i)` is
+a lower letter at depth six and a lower roman at depth seven. `word::notation::from_markdown` parses that surface with
+`pulldown-cmark`, the workspace's one CommonMark grammar; there is no second Markdown parser. Prose that would otherwise
+read as structure — a leading `#`, emphasis, or something comment-shaped — is backslash-escaped on the way out and comes
+back as prose.
+
+Tables, signature-styled paragraphs, section breaks, bookmarks, hyperlinks, fields, revisions, and comment references
+stay typed and ordered. Table cells are emitted as their own anchored blocks carrying a `parent` attribute, and inline
+structure is carried as an ordered typed sequence attached to its block, because the prose is what an editor rewrites
+and the sequence is what has to stay identifiable. Non-main stories — headers, footers, footnotes, endnotes, comments,
+text boxes — each follow their own `navigator-story` comment. Imported Markdown is matter work product: it is returned
+to the caller for governed persistence and is never written into a repository template.
 
 **Output formats — the letterhead seam.** How the document is dressed is an `OutputFormat` (`pdf::format`): `plain`
 (page geometry + firm typeface); `letter` (the firm letterhead — mark, letterspaced wordmark, a rule across the page,

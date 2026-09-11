@@ -404,15 +404,13 @@ fn blocks(body: &str) -> Vec<Block> {
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(anchor) = line
-            .trim()
-            .strip_prefix("<!-- navigator-anchor:")
-            .and_then(|value| value.strip_suffix(" -->"))
-        {
-            pending_anchor = Some(anchor.to_string());
-            continue;
-        }
-        if line.trim().starts_with("<!-- navigator-block:") {
+        // `word::notation` carries a canonical import's structural identity
+        // in `navigator-*` comments. Narration needs only the source anchor
+        // out of them; the rest is invisible to this presentation parser.
+        if let Some(directive) = navigator_directive(line) {
+            if let Some(anchor) = comment_attribute(directive, "anchor") {
+                pending_anchor = Some(anchor);
+            }
             continue;
         }
         if line.trim().eq_ignore_ascii_case("<!-- pagebreak -->") {
@@ -465,6 +463,22 @@ fn blocks(body: &str) -> Vec<Block> {
         });
     }
     out
+}
+
+/// The body of a `<!-- navigator-… -->` comment occupying a whole line.
+fn navigator_directive(line: &str) -> Option<&str> {
+    line.trim()
+        .strip_prefix("<!-- navigator-")?
+        .strip_suffix("-->")
+        .map(str::trim_end)
+}
+
+fn comment_attribute(directive: &str, key: &str) -> Option<String> {
+    let needle = format!("{key}=\"");
+    let start = directive.find(&needle)? + needle.len();
+    let rest = &directive[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 fn set_last_anchor(units: &mut [Unit], anchor: Option<String>) {
@@ -735,50 +749,74 @@ mod tests {
     }
 
     #[test]
-    fn canonical_projection_round_trips_all_seven_depths_and_source_anchors() {
-        let source = "# I. Root\n\n<!-- navigator-anchor:root -->\n\n> **A. Branch**\n>\n\n\
-            > 1. Third\n>\n\n> a. Fourth\n>\n\n> (1) Fifth\n>\n\n\
-            > (a) Sixth\n>\n\n> (i) Seventh\n";
-        let first = canonical_model(&parse(source));
-        let markdown = first.to_markdown();
-        let second = canonical_model(&parse(&markdown));
-        let first_units: Vec<_> = first.stories[0]
-            .blocks
-            .iter()
-            .filter_map(|block| block.outline.as_ref())
-            .map(|unit| (unit.depth, unit.marker.clone(), unit.path.clone()))
-            .collect();
-        let second_units: Vec<_> = second.stories[0]
-            .blocks
-            .iter()
-            .filter_map(|block| block.outline.as_ref())
-            .map(|unit| (unit.depth, unit.marker.clone(), unit.path.clone()))
-            .collect();
-        assert_eq!(first.scheme, Some(DepthOneScheme::Roman));
-        assert_eq!(first_units, second_units);
-        assert_eq!(second.stories[0].blocks[0].anchor, "markdown:unit:0");
+    fn narration_carries_the_source_anchors_of_a_canonical_word_import() {
+        // The canonical projection is `word::notation`; narration is the
+        // presentation stage downstream of it. What narration owes the
+        // import is the source anchor, so an edit made here still names the
+        // same clause in the imported document.
+        let document = word::CanonicalDocument {
+            scheme: Some(DepthOneScheme::Roman),
+            stories: vec![word::CanonicalStory {
+                kind: word::StoryKind::MainDocument,
+                part_uri: "/word/document.xml".into(),
+                blocks: vec![outline_block("/word/document.xml:paragraph:7A", 1, "I", "Term")],
+            }],
+            diagnostics: Vec::new(),
+        };
+
+        let narrated = parse(&document.to_markdown());
+
+        assert_eq!(narrated.scheme, Some(DepthOneScheme::Roman));
+        assert_eq!(
+            narrated
+                .units
+                .iter()
+                .map(|unit| unit.anchor.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/word/document.xml:paragraph:7A"]
+        );
+        assert_eq!(narrated.units[0].path, "I");
     }
 
     #[test]
-    fn canonical_markdown_keeps_insertion_stable_anchors_visible_to_the_parser() {
-        let before = canonical_model(&parse(
-            "<!-- navigator-anchor:first -->\n# I. First\n\n<!-- navigator-anchor:second -->\n# II. Second\n",
-        ));
-        let after = canonical_model(&parse(
-            "# I. Inserted\n\n<!-- navigator-anchor:first -->\n# II. First\n\n<!-- navigator-anchor:second -->\n# III. Second\n",
-        ));
-        assert_eq!(before.stories[0].blocks[0].anchor, "first");
-        assert_eq!(before.stories[0].blocks[1].anchor, "second");
-        assert_eq!(after.stories[0].blocks[1].anchor, "first");
-        assert_eq!(after.stories[0].blocks[2].anchor, "second");
+    fn narration_units_that_never_saw_word_still_carry_a_stable_anchor() {
+        let doc = parse("# I. First\n\n# II. Second\n");
+        assert_eq!(doc.units[0].anchor, "markdown:unit:0");
+        assert_eq!(doc.units[1].anchor, "markdown:unit:1");
         assert_eq!(
-            after.stories[0].blocks[1].outline.as_ref().unwrap().path,
-            "II"
+            canonical_model(&doc).stories[0].blocks[1].anchor,
+            "markdown:unit:1"
         );
-        assert_eq!(
-            after.stories[0].blocks[2].outline.as_ref().unwrap().path,
-            "III"
-        );
+    }
+
+    fn outline_block(anchor: &str, depth: u8, marker: &str, text: &str) -> word::CanonicalBlock {
+        word::CanonicalBlock {
+            anchor: anchor.into(),
+            kind: word::CanonicalBlockKind::Outline,
+            text: text.into(),
+            outline: Some(word::OutlineUnit {
+                anchor: anchor.into(),
+                depth,
+                marker: marker.into(),
+                path: marker.into(),
+                text: text.into(),
+                list: word::ListIdentity {
+                    numbering_id: "1".into(),
+                    abstract_numbering_id: None,
+                    level: depth - 1,
+                    number_format: "upperRoman".into(),
+                    level_text: format!("%{depth}."),
+                    start: 1,
+                    restart_level: None,
+                    override_start: None,
+                    style_id: None,
+                },
+                manual_label: None,
+            }),
+            manual_label: None,
+            inlines: vec![word::CanonicalInline::Text { text: text.into() }],
+            children: Vec::new(),
+        }
     }
 
     #[test]

@@ -2,22 +2,18 @@ head_title: "{site_name} | Disputes"
 meta_description: >-
   Start with a free consultation to talk about a dispute, what happened, what
   you need, and any deadline.
-eyebrow: Help with a dispute
+eyebrow: "{shared:litigation.eyebrow}"
 heading:
-  text: Your story deserves to be heard.
+  text: "{shared:litigation.title}"
   accent_words: 1
-lead: >-
-  Start with a free consultation. Tell us what happened, what you need, and
-  whether you have a deadline.
-cta_label: Request a free consultation
+lead: "{shared:litigation.lede}"
+cta_label: "{shared:litigation.cta}"
 body:
   - - text: >-
         If you want to sue someone or someone is suing you, tell us your story.
         We will talk about what you want to change and whether we can help. You
         do not need a subscription for this first conversation.
-  - - text: >-
-        We care about cases that can make life better for you and for others
-        facing the same problem.
+  - - text: "{shared:litigation.cases_help_others}"
   - - text: >-
         If we can take your case, we will explain what we can do and what it
         costs before you decide.

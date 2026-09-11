@@ -2,11 +2,11 @@ head_title: "{site_name} | Personal plan"
 meta_description: >-
   A Personal plan from Neon Law for help with taxes and personal information,
   for $365 per year.
-title: Personal plan
+title: "{shared:personal_plan.eyebrow}"
 hero_mark: technology
-tagline: Help with the things you need to take care of.
+tagline: "{shared:personal_plan.title}"
 hero_lines:
-  - text: Help with the things you need to take care of.
+  - text: "{shared:personal_plan.title}"
     accent_words: 1
 hero_lead: >-
   You do not have to handle everything alone. Get help with your taxes and
@@ -48,14 +48,14 @@ bands:
     items:
       - title: Personal plan
         chips:
-          - "$365"
+          - "{shared:personal_plan.price}"
         cadence: /year
         body:
           - - text: "About $1 a day for help with taxes and personal information."
         features:
           - Help with federal and state tax filings
-          - Help asking companies to remove your personal information
-          - Optional credit monitoring
+          - "{shared:personal_plan.included.data_removal}"
+          - "{shared:personal_plan.included.credit_monitoring}"
         href: "mailto:{firm_email}"
         href_label: Contact us
         day_rate_bill: 1

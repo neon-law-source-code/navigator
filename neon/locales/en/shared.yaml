@@ -1,0 +1,55 @@
+# The shared public marketing catalog.
+#
+# Every sentence here is published by both this repository and
+# `neon-law-source-code/navigator-ux`. Navigator's page catalogs reference a
+# key with `{shared:<key>}` rather than repeating the words, and navigator-ux
+# consumes the exported catalog pinned to one Navigator revision.
+#
+# Rules, enforced by `views::locales::shared` through `navigator validate`
+# (`Y002`): the version is explicit, every key in `REQUIRED_KEYS` must be
+# present, a value is one line with no double quote, and the only placeholders
+# are `{site_name}` and `{firm_email}`.
+#
+# Copy that differs between the two renderers today is deliberately *not*
+# here. This catalog removes duplication; it does not decide wording.
+catalog_version: 1
+
+entries:
+  # `/` — the question the home page opens on.
+  home.need_prompt: What is your legal need?
+  home.mission_heading: Everyone deserves to be seen.
+  home.mission_north_star: Our north star is improving access to justice.
+  home.mission_promise: You deserve a lawyer who listens, explains your options, and tells you what help will cost.
+
+  # `/services`
+  services.eyebrow: Plans & services
+  services.title: Find the help you need.
+  services.lede: Choose a plan for regular help, or ask us about a single service.
+  services.subscriptions_heading: A lawyer you can turn to.
+  services.catalog_heading: Need help with one thing?
+
+  # `/fractional-gc` — the Business plan.
+  fractional_gc.eyebrow: Business plan
+  fractional_gc.title: A lawyer for your business.
+  fractional_gc.lede: Get help with contracts, hiring, and the paperwork that comes with running a business.
+  fractional_gc.price: $3,650
+  fractional_gc.included.records: Help keeping your company records up to date
+  fractional_gc.included.hiring_forms: Forms for hiring employees and contractors
+  fractional_gc.included.response_window: Answers from a lawyer within three business days
+  fractional_gc.included.ownership: Help keeping track of who owns your company
+  fractional_gc.included.privacy_forms: Forms for keeping business information private and working with customers
+  fractional_gc.included.tax_and_state: Help with business taxes and state paperwork
+
+  # `/personal-plan`
+  personal_plan.eyebrow: Personal plan
+  personal_plan.title: Help with the things you need to take care of.
+  personal_plan.price: $365
+  personal_plan.included.data_removal: Help asking companies to remove your personal information
+  personal_plan.included.credit_monitoring: Optional credit monitoring
+
+  # `/litigation` — disputes.
+  litigation.eyebrow: Help with a dispute
+  litigation.title: Your story deserves to be heard.
+  litigation.lede: Start with a free consultation. Tell us what happened, what you need, and whether you have a deadline.
+  litigation.cta: Request a free consultation
+  litigation.cases_help_others: We care about cases that can make life better for you and for others facing the same problem.

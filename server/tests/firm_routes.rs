@@ -2657,3 +2657,149 @@ async fn the_firm_footer_publishes_no_registered_address_row() {
         "the office the band publishes is untouched: {body}"
     );
 }
+
+/// The words a reader actually sees, with markup removed.
+///
+/// A hero statement is rendered one word per element so each word can take
+/// the brand colour, and an ampersand is escaped on the way out. Neither is
+/// visible to the reader, so neither should decide whether a copy assertion
+/// passes: compare against the text content, not the markup.
+fn text_content(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut inside_tag = false;
+    for character in html.chars() {
+        match character {
+            '<' => {
+                inside_tag = true;
+                text.push(' ');
+            }
+            '>' => inside_tag = false,
+            _ if inside_tag => {}
+            _ => text.push(character),
+        }
+    }
+    let text = text
+        .replace("&amp;", "&")
+        .replace("&#38;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">");
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The shared marketing catalog as authored on disk — the same document the
+/// exporter hands `navigator-ux`.
+fn shared_catalog() -> views::locales::shared::SharedCatalog {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the server crate sits in the workspace")
+        .join("neon/locales/en/shared.yaml");
+    let raw = std::fs::read_to_string(&path).expect("the shared catalog");
+    views::locales::shared::SharedCatalog::parse(&raw).expect("the shared catalog is valid")
+}
+
+/// The shared catalog is not a build-time curiosity: every sentence it
+/// authors reaches the reader on the page that references it.
+///
+/// This drives the real route — loader, brand interpolation, Dioxus render —
+/// rather than comparing two constants that came from the same place. Change
+/// a value in `neon/locales/en/shared.yaml` and this test is what notices
+/// that the served HTML changed with it.
+#[tokio::test]
+async fn every_firm_page_renders_the_shared_catalog_it_references() {
+    let app = site_app().await;
+    let catalog = shared_catalog();
+
+    for (path, keys) in [
+        (
+            "/",
+            &[
+                "home.need_prompt",
+                "home.mission_heading",
+                "home.mission_north_star",
+                "home.mission_promise",
+            ][..],
+        ),
+        (
+            "/services",
+            &[
+                "services.eyebrow",
+                "services.lede",
+                "services.subscriptions_heading",
+                "services.catalog_heading",
+            ][..],
+        ),
+        (
+            "/fractional-gc",
+            &[
+                "fractional_gc.eyebrow",
+                "fractional_gc.title",
+                "fractional_gc.lede",
+                "fractional_gc.price",
+                "fractional_gc.included.records",
+                "fractional_gc.included.hiring_forms",
+                "fractional_gc.included.response_window",
+                "fractional_gc.included.ownership",
+                "fractional_gc.included.privacy_forms",
+                "fractional_gc.included.tax_and_state",
+            ][..],
+        ),
+        (
+            "/personal-plan",
+            &[
+                "personal_plan.eyebrow",
+                "personal_plan.title",
+                "personal_plan.price",
+                "personal_plan.included.data_removal",
+                "personal_plan.included.credit_monitoring",
+            ][..],
+        ),
+        (
+            "/litigation",
+            &[
+                "litigation.eyebrow",
+                "litigation.title",
+                "litigation.lede",
+                "litigation.cta",
+                "litigation.cases_help_others",
+            ][..],
+        ),
+    ] {
+        let rendered = text_content(&body_string(anon_get(&app, path).await).await);
+        for key in keys {
+            let authored = catalog
+                .lookup(views::brand::BrandKey::Neon.as_str(), key)
+                .unwrap_or_else(|| panic!("the shared catalog must author `{key}`"));
+            assert!(
+                rendered.contains(authored),
+                "{path} must publish the shared `{key}`: {authored}"
+            );
+        }
+    }
+}
+
+/// No page leaks an unresolved reference. A `{shared:…}` that reached the
+/// reader would be a brace where a sentence belongs, and it would render
+/// perfectly well in every test that only checks for the words around it.
+#[tokio::test]
+async fn no_firm_page_publishes_an_unresolved_placeholder() {
+    let app = site_app().await;
+    for path in [
+        "/",
+        "/services",
+        "/fractional-gc",
+        "/personal-plan",
+        "/litigation",
+        "/navigator",
+    ] {
+        let body = body_string(anon_get(&app, path).await).await;
+        for token in ["{shared:", "{site_name}", "{firm_email}"] {
+            assert!(
+                !body.contains(token),
+                "{path} published the unresolved placeholder {token}"
+            );
+        }
+    }
+}

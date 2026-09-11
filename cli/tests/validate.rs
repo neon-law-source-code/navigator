@@ -4,6 +4,7 @@
 //! exercises the real argv parsing, exit codes, and stdout the user
 //! will see — not just the library it wraps.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -787,6 +788,146 @@ fn validate_refuses_an_unknown_locale_page_stem() {
         .code(1)
         .stdout(str::contains("Y002"))
         .stdout(str::contains("unknown locale page `about`"));
+}
+
+/// A complete shared catalog, so a test can break exactly one rule.
+fn shared_catalog_fixture() -> String {
+    let mut yaml = String::from("catalog_version: 1\nentries:\n");
+    for key in views::locales::shared::REQUIRED_KEYS {
+        writeln!(yaml, "  {key}: Words for {key}.").expect("write to a String");
+    }
+    yaml
+}
+
+/// The shared catalog is validated by the same gate the page catalogs are, so
+/// a copy-only edit to it cannot land a document either repository refuses.
+#[test]
+fn validate_accepts_a_complete_shared_catalog() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/shared.yaml",
+        &shared_catalog_fixture(),
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains(
+            "Validated 1 locale catalog(s), found 0 error(s)",
+        ));
+}
+
+/// Required copy fails the gate when it is absent. A page cannot render a
+/// headline nobody authored, so the build stops rather than shipping a gap.
+#[test]
+fn validate_refuses_a_shared_catalog_missing_required_copy() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/shared.yaml",
+        &shared_catalog_fixture().replace("  litigation.title:", "  litigation.other:"),
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("required key `litigation.title` is missing"));
+}
+
+/// A consumer is built against one catalog version. A document that declares
+/// a different one must fail here rather than render half of itself there.
+#[test]
+fn validate_refuses_an_unsupported_shared_catalog_version() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/shared.yaml",
+        &shared_catalog_fixture().replace("catalog_version: 1", "catalog_version: 99"),
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("catalog version 99 is not supported"));
+}
+
+/// Only the two brand placeholders are fillable. Anything else would reach a
+/// reader as a literal brace.
+#[test]
+fn validate_refuses_an_unsupported_placeholder_in_shared_copy() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/shared.yaml",
+        &shared_catalog_fixture().replace(
+            "  litigation.cta: Words for litigation.cta.",
+            "  litigation.cta: Write to {support_email}.",
+        ),
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("unsupported placeholder `{support_email}`"));
+}
+
+/// A brand may override shared wording, but only for a key the shared
+/// defaults define — otherwise a brand could smuggle a key into a contract
+/// the other repository does not know about.
+#[test]
+fn validate_refuses_a_brand_override_of_an_unknown_shared_key() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/shared.yaml",
+        &format!(
+            "{}brands:\n  neon:\n    litigation.invented: Something new.\n",
+            shared_catalog_fixture()
+        ),
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("which the shared defaults do not define"));
+}
+
+/// A page catalog may reference shared copy and the two brand placeholders.
+/// A typo in either is an error, not a brace on the page.
+#[test]
+fn validate_refuses_an_unsupported_placeholder_in_a_page_catalog() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/home.yaml",
+        "head_title: \"{site_name} | Home\"\n\
+         meta_description: Everyone deserves to be seen.\n\
+         heading: \"{shared:home.need_prompt}\"\n\
+         lead: \"{sitename} fights for people.\"\n\
+         contact_label: Contact us\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("unsupported placeholder `{sitename}`"));
 }
 
 #[test]

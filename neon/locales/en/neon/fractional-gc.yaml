@@ -2,13 +2,11 @@ head_title: "{site_name} | Business plan"
 meta_description: >-
   Ongoing legal help for your business, including contracts, hiring, company
   records, and paperwork, for $3,650 per year.
-eyebrow: Business plan
+eyebrow: "{shared:fractional_gc.eyebrow}"
 heading:
-  text: A lawyer for your business.
+  text: "{shared:fractional_gc.title}"
   accent_words: 1
-lead: >-
-  Get help with contracts, hiring, and the paperwork that comes with running a
-  business.
+lead: "{shared:fractional_gc.lede}"
 cta_label: Ask about joining
 virtues:
   - word: Clear
@@ -30,17 +28,17 @@ fee_body: >-
   explain the cost before we begin additional work.
 pricing:
   - title: Business plan
-    price: "$3,650"
+    price: "{shared:fractional_gc.price}"
     cadence: /year
     blurb: >-
       About $10 a day for ongoing help with the legal side of your business.
     features:
-      - Help keeping your company records up to date
-      - Forms for hiring employees and contractors
-      - Answers from a lawyer within three business days
-      - Help keeping track of who owns your company
-      - Forms for keeping business information private and working with customers
-      - Help with business taxes and state paperwork
+      - "{shared:fractional_gc.included.records}"
+      - "{shared:fractional_gc.included.hiring_forms}"
+      - "{shared:fractional_gc.included.response_window}"
+      - "{shared:fractional_gc.included.ownership}"
+      - "{shared:fractional_gc.included.privacy_forms}"
+      - "{shared:fractional_gc.included.tax_and_state}"
       - Custom contract reviews cost extra, from $100 to $500 depending on the contract
       - DocuSign sent & tracked for you at $5 per contract
     day_rate_bill: 10

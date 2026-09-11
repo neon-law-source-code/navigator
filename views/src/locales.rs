@@ -4,8 +4,9 @@
 //! crate that publishes it (a fixture may still use the flat
 //! `locales/en/<page>.yaml` layout). The site still publishes one language:
 //! these files are an authoring catalog, not a translated surface.
-//! `{site_name}` and `{firm_email}` are the only substitutions; everything a
-//! visitor reads is otherwise the YAML.
+//! `{site_name}` and `{firm_email}` are the brand substitutions, and
+//! `{shared:<key>}` pulls one sentence from the cross-repository catalog in
+//! [`shared`]; everything a visitor reads is otherwise the YAML.
 //!
 //! [`parse_locale_file`] is the typed check `navigator validate` runs so a
 //! copy-only edit cannot land a document the brand crate cannot load.
@@ -13,6 +14,8 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+pub mod shared;
 
 /// The only locale directory the site publishes.
 pub const DEFAULT_LOCALE: &str = "en";
@@ -401,6 +404,8 @@ pub enum LocalePageKind {
     Litigation,
     Transactional,
     Marketing,
+    /// `shared.yaml` — the cross-repository copy catalog, not a page.
+    Shared,
 }
 
 /// The page kind for a catalog stem, if the stem is one this catalog publishes.
@@ -411,6 +416,7 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "litigation" => Some(LocalePageKind::Litigation),
         "fractional-gc" => Some(LocalePageKind::Transactional),
         "navigator" | "personal-plan" | "services" => Some(LocalePageKind::Marketing),
+        shared::SHARED_CATALOG_STEM => Some(LocalePageKind::Shared),
         _ => None,
     }
 }
@@ -472,15 +478,25 @@ pub fn locale_yaml_parts(path: &Path) -> Option<LocaleYamlParts<'_>> {
 pub fn parse_locale_file(stem: &str, yaml: &str) -> Result<(), String> {
     let kind = locale_page_kind(stem).ok_or_else(|| {
         format!(
-            "unknown locale page `{stem}`; expected one of {}",
-            KNOWN_PAGES.join(", ")
+            "unknown locale page `{stem}`; expected one of {}, or `{}`",
+            KNOWN_PAGES.join(", "),
+            shared::SHARED_CATALOG_STEM
         )
     })?;
+    if kind == LocalePageKind::Shared {
+        return shared::SharedCatalog::parse(yaml).map(|_| ());
+    }
+    // A page catalog is checked as authored: `{site_name}`, `{firm_email}`,
+    // and `{shared:<key>}` all stay in the strings, so validate needs neither
+    // a mounted brand nor the shared catalog beside it. What it can still
+    // prove is that no *other* brace reaches a reader as a literal.
+    shared::check_page_placeholders(stem, yaml)?;
     match kind {
         LocalePageKind::Home => deserialize::<HomeCopy>(stem, yaml),
         LocalePageKind::Litigation => deserialize::<LitigationCopy>(stem, yaml),
         LocalePageKind::Transactional => deserialize::<TransactionalCopy>(stem, yaml),
         LocalePageKind::Marketing => deserialize::<MarketingPageCopy>(stem, yaml),
+        LocalePageKind::Shared => unreachable!("handled above"),
     }
 }
 

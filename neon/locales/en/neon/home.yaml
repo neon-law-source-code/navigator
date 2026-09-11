@@ -2,7 +2,7 @@ head_title: "{site_name} | Home"
 meta_description: >-
   Tell Neon Law what legal help you need. Choose a Business or Personal plan,
   ask about an individual service, or start a free consultation for a dispute.
-heading: What is your legal need?
+heading: "{shared:home.need_prompt}"
 lead: >-
   Tell us whether you need help with a contract, your business, your family,
   or a dispute. If you are not sure where to start, contact us and we will help
@@ -12,11 +12,9 @@ hero:
   alt: New York City skyline at sunset, viewed from above Lower Manhattan.
   asset: img/new-york/new-york.png
 service:
-  heading: Everyone deserves to be seen.
+  heading: "{shared:home.mission_heading}"
   body:
-    - - text: >-
-          Our north star is improving access to justice. You deserve a lawyer
-          who listens, explains your options, and tells you what help will cost.
+    - - text: "{shared:home.mission_north_star} {shared:home.mission_promise}"
     - - text: "Choose the "
       - text: Business plan
         href: /fractional-gc

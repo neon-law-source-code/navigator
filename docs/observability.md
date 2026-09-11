@@ -17,7 +17,7 @@ There is no per-binary subscriber wiring anymore — web, the `workflows-service
 share the one crate. The endpoint and OpenObserve variables select one of three process contracts:
 
 | | Unset (stdout-only) | Plain collector contract | Complete OpenObserve contract |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | stdout | human-readable `fmt` | **structured JSON** and OTLP | **structured JSON** and OTLP |
 | traces | — | OTLP/gRPC → collector | OTLP/gRPC → OpenObserve |
 | metrics | — | OTLP/gRPC → collector | OTLP/gRPC → OpenObserve |
@@ -30,6 +30,11 @@ those four values is set, an endpoint is a plain collector contract with no auth
 are set, the process rejects the partial OpenObserve contract and remains stdout-only. The guard's drop flushes batched
 spans/metrics — important for the short-lived trigger jobs, which would otherwise exit before the periodic exporter
 fires.
+
+Nothing about the plain collector contract replaces the OpenTelemetry environment variables.
+`OTEL_EXPORTER_OTLP_HEADERS` and its per-signal variants still apply in every exporting mode — the OpenObserve metadata
+is merged with them rather than substituted for them — so pointing the collector contract at a backend that needs its
+own header is a deployment change, not a Rust change.
 
 ## What is instrumented
 

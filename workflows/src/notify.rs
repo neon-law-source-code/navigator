@@ -32,6 +32,10 @@
 //! boundary, violating the standing no-content rule (see the `observability`
 //! skill). The boundary is enforced at the wiring point in `workflows-service`'s
 //! `main.rs`, not by per-message inspection here.
+//!
+//! The persistent staging deployment (`NAVIGATOR_SIMULATED_MATTERS=true` on the
+//! production profile) appends a final `from Staging` line at the real Slack
+//! clients. In-memory capturing backends used by KIND and tests do not.
 
 use std::sync::{Arc, Mutex};
 
@@ -97,25 +101,51 @@ pub struct SlackBotClient {
     http: reqwest::Client,
     base_url: String,
     token: String,
+    from_staging: bool,
 }
 
 impl SlackBotClient {
     /// The production Slack Web API origin.
     pub const DEFAULT_BASE_URL: &'static str = "https://slack.com/api";
 
-    /// Build a client for Slack's Web API.
+    /// Build a client for Slack's Web API. Staging labeling follows
+    /// [`cloud::labels_slack_from_staging_env`].
     #[must_use]
     pub fn new(token: impl Into<String>) -> Self {
-        Self::with_base_url(token, Self::DEFAULT_BASE_URL)
+        Self::from_parts(
+            token,
+            Self::DEFAULT_BASE_URL,
+            cloud::labels_slack_from_staging_env(),
+        )
     }
 
-    /// Build a client against an explicit origin for tests.
+    /// Build a client against an explicit origin for tests. Process staging
+    /// labels are not applied, so a local simulated-matters shell cannot
+    /// rewrite the asserted request body.
     #[must_use]
     pub fn with_base_url(token: impl Into<String>, base_url: impl Into<String>) -> Self {
+        Self::from_parts(token, base_url, false)
+    }
+
+    #[cfg(test)]
+    fn with_staging_origin(
+        token: impl Into<String>,
+        base_url: impl Into<String>,
+        from_staging: bool,
+    ) -> Self {
+        Self::from_parts(token, base_url, from_staging)
+    }
+
+    fn from_parts(
+        token: impl Into<String>,
+        base_url: impl Into<String>,
+        from_staging: bool,
+    ) -> Self {
         Self {
             http: reqwest::Client::new(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             token: token.into(),
+            from_staging,
         }
     }
 
@@ -178,6 +208,7 @@ impl SlackBot for SlackBotClient {
     }
 
     async fn post_message(&self, channel_id: &str, text: &str) -> Result<(), SlackBotError> {
+        let text = cloud::outbound_slack_text(text, self.from_staging);
         let response: PostMessageResponse = self
             .post(
                 "chat.postMessage",
@@ -289,16 +320,28 @@ impl Notifier for CapturingNotifier {
 pub struct SlackNotifier {
     http: reqwest::Client,
     webhook_url: String,
+    from_staging: bool,
 }
 
 impl SlackNotifier {
     /// Production constructor: targets the given incoming-webhook URL
-    /// (`SLACK_WEBHOOK_URL`).
+    /// (`SLACK_WEBHOOK_URL`). Staging labeling follows
+    /// [`cloud::labels_slack_from_staging_env`].
     #[must_use]
     pub fn new(webhook_url: impl Into<String>) -> Self {
         Self {
             http: reqwest::Client::new(),
             webhook_url: webhook_url.into(),
+            from_staging: cloud::labels_slack_from_staging_env(),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_staging_origin(webhook_url: impl Into<String>, from_staging: bool) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            webhook_url: webhook_url.into(),
+            from_staging,
         }
     }
 
@@ -313,6 +356,7 @@ impl SlackNotifier {
 #[async_trait]
 impl Notifier for SlackNotifier {
     async fn notify(&self, text: String) -> Result<(), NotifyError> {
+        let text = cloud::outbound_slack_text(&text, self.from_staging);
         let resp = self
             .http
             .post(&self.webhook_url)
@@ -516,6 +560,51 @@ mod tests {
         bot.post_message(&channel.id, "hello")
             .await
             .expect("Slack post succeeds");
+    }
+
+    #[tokio::test]
+    async fn staging_bot_post_appends_from_staging() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let server = wiremock::MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .and(body_partial_json(serde_json::json!({
+                "channel": "C123",
+                "text": "hello\nfrom Staging"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let bot = SlackBotClient::with_staging_origin("xoxb-test", server.uri(), true);
+        bot.post_message("C123", "hello")
+            .await
+            .expect("Slack post succeeds");
+    }
+
+    #[tokio::test]
+    async fn staging_webhook_notify_appends_from_staging() {
+        use wiremock::matchers::{body_json, method};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let server = wiremock::MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_json(serde_json::json!({
+                "text": "hello ops\nfrom Staging"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let notifier = SlackNotifier::with_staging_origin(server.uri(), true);
+        notifier
+            .notify("hello ops".into())
+            .await
+            .expect("webhook post succeeds");
     }
 
     #[test]

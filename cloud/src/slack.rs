@@ -18,6 +18,54 @@ const CHANNEL_PAGE_SIZE: u32 = 200;
 /// Bounded so a cursor the provider never clears cannot spin forever.
 const MAX_CHANNEL_PAGES: usize = 20;
 
+/// Line appended to every outbound Slack body from the persistent staging
+/// deployment. Same spelling `store::NAVIGATOR_SIMULATED_MATTERS` documents.
+pub const SLACK_STAGING_MARK: &str = "from Staging";
+
+/// Same name as `store::NAVIGATOR_ENVIRONMENT`.
+const NAVIGATOR_ENVIRONMENT: &str = "NAVIGATOR_ENVIRONMENT";
+/// Same name as `store::NAVIGATOR_SIMULATED_MATTERS`.
+const NAVIGATOR_SIMULATED_MATTERS: &str = "NAVIGATOR_SIMULATED_MATTERS";
+
+/// Persistent staging is the production runtime profile over simulated
+/// matters. `NAVIGATOR_ENVIRONMENT` admits only `dev` or `production`;
+/// staging is never a profile value. The hosted staging row sets
+/// `NAVIGATOR_SIMULATED_MATTERS=true` in its `config.toml` so a process
+/// that otherwise matches production can still label its Slack traffic.
+#[must_use]
+pub fn labels_slack_from_staging_from<F: Fn(&str) -> Option<String>>(get: F) -> bool {
+    let production_profile = matches!(
+        get(NAVIGATOR_ENVIRONMENT).as_deref(),
+        None | Some("" | "production")
+    );
+    production_profile && get(NAVIGATOR_SIMULATED_MATTERS).as_deref() == Some("true")
+}
+
+/// [`labels_slack_from_staging_from`] against the process environment.
+#[must_use]
+pub fn labels_slack_from_staging_env() -> bool {
+    labels_slack_from_staging_from(|key| std::env::var(key).ok())
+}
+
+/// Append [`SLACK_STAGING_MARK`] as its own last line when this process is
+/// the persistent staging deployment. Idempotent on a body that already
+/// ends with that line.
+#[must_use]
+pub fn outbound_slack_text(text: &str, from_staging: bool) -> String {
+    if !from_staging {
+        return text.to_string();
+    }
+    let trimmed = text.trim_end();
+    let last_line = trimmed.rsplit('\n').next().unwrap_or(trimmed);
+    if last_line == SLACK_STAGING_MARK {
+        return text.to_string();
+    }
+    if trimmed.is_empty() {
+        return SLACK_STAGING_MARK.to_string();
+    }
+    format!("{trimmed}\n{SLACK_STAGING_MARK}")
+}
+
 #[derive(Debug, Error)]
 pub enum SlackError {
     #[error("Slack credential is unavailable")]
@@ -219,6 +267,7 @@ pub struct SlackClient {
     http: reqwest::Client,
     base_url: String,
     token: String,
+    from_staging: bool,
 }
 
 impl std::fmt::Debug for SlackClient {
@@ -232,18 +281,40 @@ impl std::fmt::Debug for SlackClient {
 
 impl SlackClient {
     /// The production client. The bot token is the Firm's resolved provider
-    /// credential, so `SLACK_BOT_TOKEN` is never consulted here.
+    /// credential, so `SLACK_BOT_TOKEN` is never consulted here. Staging
+    /// labeling follows [`labels_slack_from_staging_env`].
     #[must_use]
     pub fn new(token: impl Into<String>) -> Self {
-        Self::with_base_url(token, SLACK_BASE_URL)
+        Self::from_parts(token, SLACK_BASE_URL, labels_slack_from_staging_env())
     }
 
+    /// Build a client against an explicit origin. Transport tests use this
+    /// and do not inherit process staging labels, so a local
+    /// `NAVIGATOR_SIMULATED_MATTERS=true` shell cannot rewrite their bodies.
     #[must_use]
     pub fn with_base_url(token: impl Into<String>, base_url: impl Into<String>) -> Self {
+        Self::from_parts(token, base_url, false)
+    }
+
+    #[cfg(test)]
+    fn with_staging_origin(
+        token: impl Into<String>,
+        base_url: impl Into<String>,
+        from_staging: bool,
+    ) -> Self {
+        Self::from_parts(token, base_url, from_staging)
+    }
+
+    fn from_parts(
+        token: impl Into<String>,
+        base_url: impl Into<String>,
+        from_staging: bool,
+    ) -> Self {
         Self {
             http: reqwest::Client::new(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             token: token.into(),
+            from_staging,
         }
     }
 
@@ -390,6 +461,7 @@ impl SlackService for SlackClient {
     }
 
     async fn post_message(&self, channel_id: &str, text: &str) -> Result<(), SlackError> {
+        let text = outbound_slack_text(text, self.from_staging);
         let body = self
             .post(
                 "chat.postMessage",
@@ -425,7 +497,8 @@ struct ResponseMetadata {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_private_channel, FakeSlack, SlackClient, SlackError, SlackMemberId, SlackService,
+        ensure_private_channel, labels_slack_from_staging_from, outbound_slack_text, FakeSlack,
+        SlackClient, SlackError, SlackMemberId, SlackService, SLACK_STAGING_MARK,
     };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -546,5 +619,82 @@ mod tests {
     #[test]
     fn member_ids_reject_email_shaped_values() {
         assert!(SlackMemberId::new("person@example.com").is_err());
+    }
+
+    /// Persistent staging is production-profile plus an explicit simulated
+    /// matters flag. Local KIND (`dev`) and real production do not label.
+    #[test]
+    fn staging_slack_label_follows_simulated_matters_on_production_profile() {
+        let lookup = |pairs: &[(&str, &str)]| {
+            let owned: Vec<(String, String)> = pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect();
+            move |key: &str| owned.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+        };
+        assert!(
+            labels_slack_from_staging_from(lookup(&[("NAVIGATOR_SIMULATED_MATTERS", "true")])),
+            "unset NAVIGATOR_ENVIRONMENT is production"
+        );
+        assert!(labels_slack_from_staging_from(lookup(&[
+            ("NAVIGATOR_ENVIRONMENT", "production"),
+            ("NAVIGATOR_SIMULATED_MATTERS", "true"),
+        ])));
+        assert!(!labels_slack_from_staging_from(lookup(&[
+            ("NAVIGATOR_ENVIRONMENT", "dev"),
+            ("NAVIGATOR_SIMULATED_MATTERS", "true"),
+        ])));
+        assert!(!labels_slack_from_staging_from(lookup(&[(
+            "NAVIGATOR_ENVIRONMENT",
+            "production"
+        )])));
+        assert!(!labels_slack_from_staging_from(lookup(&[
+            ("NAVIGATOR_ENVIRONMENT", "production"),
+            ("NAVIGATOR_SIMULATED_MATTERS", "false"),
+        ])));
+    }
+
+    #[test]
+    fn outbound_slack_text_appends_from_staging_once() {
+        assert_eq!(outbound_slack_text("hello", false), "hello");
+        assert_eq!(
+            outbound_slack_text("hello", true),
+            format!("hello\n{SLACK_STAGING_MARK}")
+        );
+        assert_eq!(
+            outbound_slack_text("hello\nfrom Staging", true),
+            "hello\nfrom Staging"
+        );
+        assert_eq!(outbound_slack_text("", true), SLACK_STAGING_MARK);
+        assert_eq!(
+            outbound_slack_text("*Heartbeat*\n```\nok\n```", true),
+            format!("*Heartbeat*\n```\nok\n```\n{SLACK_STAGING_MARK}")
+        );
+    }
+
+    #[tokio::test]
+    async fn staging_post_message_appends_from_staging() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .and(body_partial_json(serde_json::json!({
+                "channel": "C1",
+                "text": "A client viewed this Project in the portal.\nfrom Staging"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "ok": true })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SlackClient::with_staging_origin("test-token", server.uri(), true);
+        client
+            .post_message("C1", "A client viewed this Project in the portal.")
+            .await
+            .unwrap();
     }
 }

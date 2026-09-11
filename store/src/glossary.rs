@@ -53,6 +53,21 @@ const TABLE: &str = "glossary_term";
 pub const GLOSSARY_MD: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md"));
 
+/// The authored glossary on disk — the same file [`GLOSSARY_MD`] embeds,
+/// named by the same expression so the two cannot point at different
+/// copies.
+///
+/// [`with_rendered_index`] is checked against the embedded bytes by the
+/// workspace gate, so a writer that resolved its own target from the
+/// working directory could rewrite one file while the gate kept reading
+/// another. Sharing this constant is what makes that mismatch
+/// unrepresentable.
+pub const GLOSSARY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md");
+
+/// How [`GLOSSARY_PATH`] is spelled in prose: the repository-relative path
+/// a reader can act on, rather than the absolute build path.
+pub const GLOSSARY_LABEL: &str = "docs/glossary.md";
+
 /// One parsed glossary term.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Term {
@@ -439,7 +454,25 @@ pub async fn all(db: &SurrealDb) -> Result<Vec<GlossaryTerm>, GlossaryError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, slugify, GLOSSARY_MD};
+    use super::{parse, slugify, GLOSSARY_LABEL, GLOSSARY_MD, GLOSSARY_PATH};
+
+    /// `glossary-index --write` writes [`GLOSSARY_PATH`] while the workspace
+    /// gate compares what [`GLOSSARY_MD`] embedded. If the two ever named
+    /// different files the writer would rewrite one copy and the gate would
+    /// keep failing on the other, so hold them to the same bytes.
+    #[test]
+    fn the_glossary_path_names_the_file_the_glossary_embeds() {
+        let on_disk = std::fs::read_to_string(GLOSSARY_PATH)
+            .expect("GLOSSARY_PATH must name a readable file");
+        assert_eq!(
+            on_disk, GLOSSARY_MD,
+            "GLOSSARY_PATH and GLOSSARY_MD must name the same glossary"
+        );
+        assert!(
+            GLOSSARY_PATH.ends_with(GLOSSARY_LABEL),
+            "the prose label must be how GLOSSARY_PATH actually ends, got {GLOSSARY_PATH}"
+        );
+    }
 
     #[test]
     fn slug_matches_the_published_docs_anchor_shape() {

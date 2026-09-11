@@ -239,6 +239,50 @@ fn the_two_doctors_keep_distinct_headlines() {
     );
 }
 
+/// The two glossary helpers sit next to each other under one parent and do
+/// opposite things: one rewrites the index inside the repository, the other
+/// prints a page for a push out of it. Each has to say which it is on its own
+/// `--help`, or an operator reaching for the safe one runs the writer.
+#[test]
+fn the_two_glossary_sync_helpers_keep_distinct_headlines() {
+    let index = unwrapped(&help(&["dev", "docs", "glossary-index", "--help"]));
+    assert!(
+        index.contains("Check the alphabetical index block at the top of `docs/glossary.md`"),
+        "glossary-index headline: {index}"
+    );
+    assert!(
+        !index.contains("Notion page can hold"),
+        "glossary-index must not carry glossary-notion's headline: {index}"
+    );
+
+    let notion = unwrapped(&help(&["dev", "docs", "glossary-notion", "--help"]));
+    assert!(
+        notion.contains("Print the glossary as Markdown a Notion page can hold"),
+        "glossary-notion headline: {notion}"
+    );
+    assert!(
+        !notion.contains("Check the alphabetical index block"),
+        "glossary-notion must not carry glossary-index's headline: {notion}"
+    );
+}
+
+/// The index command takes no target. There is one authored glossary, and the
+/// workspace gate compares the rendered index against the copy the binary
+/// embedded from that same path, so a caller-supplied path could only name a
+/// file the gate does not read.
+#[test]
+fn glossary_index_offers_no_path_to_point_somewhere_else() {
+    let index = unwrapped(&help(&["dev", "docs", "glossary-index", "--help"]));
+    assert!(
+        index.contains("--write"),
+        "glossary-index must still offer --write: {index}"
+    );
+    assert!(
+        !index.contains("--path"),
+        "glossary-index must not take a path: {index}"
+    );
+}
+
 /// `docs` becomes a `dev` member once `erd` moves to `db`: what is left are
 /// the developer/agent reference helpers, needing no cluster and no database.
 /// The two glossary sync helpers qualify on the same terms — one reads

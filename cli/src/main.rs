@@ -1716,22 +1716,19 @@ enum DocsAction {
         /// Optional term or glossary anchor slug to look up.
         term: Option<String>,
     },
-    /// Check the alphabetical index block at the top of `docs/glossary.md`
-    /// against the page's own `## ` headings, or rewrite it with
-    /// `--write`. The index is derived data; hand-editing it is what
-    /// lets a Notion round trip drift.
     /// Print the glossary as Markdown a Notion page can hold: every
     /// repository-relative and sibling-doc link resolved to a public
     /// GitHub URL, in-page anchors unlinked, frontmatter and H1 dropped.
     /// The push half of the Notion round trip.
     GlossaryNotion,
+    /// Check the alphabetical index block at the top of `docs/glossary.md`
+    /// against the page's own `## ` headings, or rewrite it with
+    /// `--write`. The index is derived data; hand-editing it is what
+    /// lets a Notion round trip drift.
     GlossaryIndex {
         /// Rewrite the index in place instead of only reporting drift.
         #[arg(long)]
         write: bool,
-        /// The authored glossary to read.
-        #[arg(long, default_value = "docs/glossary.md")]
-        path: PathBuf,
     },
 }
 
@@ -2011,7 +2008,7 @@ fn main() -> ExitCode {
         Command::Dev(DevCmd::Docs { action }) => match action {
             DocsAction::List => docs::list(),
             DocsAction::Glossary { term } => docs::glossary(term.as_deref()),
-            DocsAction::GlossaryIndex { write, path } => docs::glossary_index(&path, write),
+            DocsAction::GlossaryIndex { write } => docs::glossary_index(write),
             DocsAction::GlossaryNotion => docs::glossary_notion(),
         },
         Command::Erd { format } => runtime().block_on(run_erd(format)),

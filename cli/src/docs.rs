@@ -4,10 +4,11 @@
 //! `/documents/glossary`: parsed from `docs/glossary.md` by
 //! [`store::glossary::parse`] so the CLI cannot drift from the page.
 
-use std::path::Path;
 use std::process::ExitCode;
 
-use store::glossary::{parse, with_rendered_index, Term, GLOSSARY_MD};
+use store::glossary::{
+    parse, with_rendered_index, Term, GLOSSARY_LABEL, GLOSSARY_MD, GLOSSARY_PATH,
+};
 
 use crate::palette;
 
@@ -69,46 +70,44 @@ fn matches_entry(entry: &Term, needle: &str) -> bool {
 /// than by hand is what keeps the two halves of a Notion round trip
 /// honest, since both sides regenerate the same block from the same
 /// headings instead of hand-editing a list of ninety-nine links.
+///
+/// The target is [`GLOSSARY_PATH`] and takes no flag. There is exactly
+/// one authored glossary, the workspace gate compares the rendered index
+/// against the copy [`GLOSSARY_MD`] embeds from that same path, and a
+/// caller-supplied target could only disagree with the file the gate
+/// reads.
 #[must_use]
-pub fn glossary_index(path: &Path, write: bool) -> ExitCode {
-    let raw = match std::fs::read_to_string(path) {
+pub fn glossary_index(write: bool) -> ExitCode {
+    let raw = match std::fs::read_to_string(GLOSSARY_PATH) {
         Ok(raw) => raw,
         Err(error) => {
-            eprintln!(
-                "navigator: docs glossary-index: {path}: {error}",
-                path = path.display()
-            );
+            eprintln!("navigator: docs glossary-index: {GLOSSARY_LABEL}: {error}");
             return ExitCode::from(1);
         }
     };
     let Some(rendered) = with_rendered_index(&raw) else {
         eprintln!(
-            "navigator: docs glossary-index: {path} has no `{lead}` line to refresh",
-            path = path.display(),
+            "navigator: docs glossary-index: {GLOSSARY_LABEL} has no `{lead}` line to refresh",
             lead = store::glossary::INDEX_LEAD,
         );
         return ExitCode::from(1);
     };
     if rendered == raw {
-        println!("{path}: index is current", path = path.display());
+        println!("{GLOSSARY_LABEL}: index is current");
         return ExitCode::SUCCESS;
     }
     if !write {
         eprintln!(
-            "navigator: docs glossary-index: {path} index is stale; \
-             re-run with --write",
-            path = path.display()
+            "navigator: docs glossary-index: {GLOSSARY_LABEL} index is stale; \
+             re-run with --write"
         );
         return ExitCode::from(1);
     }
-    if let Err(error) = std::fs::write(path, rendered) {
-        eprintln!(
-            "navigator: docs glossary-index: {path}: {error}",
-            path = path.display()
-        );
+    if let Err(error) = std::fs::write(GLOSSARY_PATH, rendered) {
+        eprintln!("navigator: docs glossary-index: {GLOSSARY_LABEL}: {error}");
         return ExitCode::from(1);
     }
-    println!("{path}: index rewritten", path = path.display());
+    println!("{GLOSSARY_LABEL}: index rewritten");
     ExitCode::SUCCESS
 }
 

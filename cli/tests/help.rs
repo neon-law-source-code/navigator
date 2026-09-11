@@ -241,11 +241,20 @@ fn the_two_doctors_keep_distinct_headlines() {
 
 /// `docs` becomes a `dev` member once `erd` moves to `db`: what is left are
 /// the developer/agent reference helpers, needing no cluster and no database.
+/// The two glossary sync helpers qualify on the same terms — one reads
+/// `docs/glossary.md` and rewrites its own derived index, the other prints the
+/// page a Notion push sends. Neither reaches an engine.
 #[test]
 fn dev_docs_keeps_only_the_reference_helpers() {
     assert_eq!(
         command_names(&help(&["dev", "docs", "--help"])),
-        vec!["glossary", "list", "help"]
+        vec![
+            "glossary",
+            "glossary-index",
+            "glossary-notion",
+            "list",
+            "help"
+        ]
     );
 }
 

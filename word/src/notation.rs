@@ -30,6 +30,12 @@
 
 use pulldown_cmark::{Event, Options, Parser, TagEnd};
 
+/// The CommonMark specification Notation Markdown is written against.
+/// `pulldown-cmark` is pinned at 0.13 in the workspace manifest and states
+/// conformance with this revision; the constant exists so a dependency bump
+/// that moves the grammar has to move a documented number with it.
+pub const COMMONMARK_VERSION: &str = "0.31.2";
+
 use crate::outline::{
     CanonicalBlock, CanonicalBlockKind, CanonicalDocument, CanonicalInline, CanonicalStory,
     ListIdentity, OutlineScheme, OutlineUnit,
@@ -935,6 +941,55 @@ mod tests {
             .map(|block| block.anchor.clone())
             .collect();
         assert_eq!(original, vec!["clause-a", "clause-b"]);
+    }
+
+    /// Notation Markdown uses a small, fixed corner of CommonMark, and the
+    /// projection is only safe if that corner behaves the way the emitter
+    /// assumes. These are the official specification's own examples for the
+    /// constructs it emits, run through the one grammar the workspace has,
+    /// so a `pulldown-cmark` bump that changes any of them fails here rather
+    /// than silently changing what a clause means.
+    #[test]
+    fn the_commonmark_constructs_the_projection_relies_on_behave_as_specified() {
+        use pulldown_cmark::{Event, Options, Parser};
+
+        fn events(source: &str) -> Vec<Event<'_>> {
+            Parser::new_ext(source, Options::empty()).collect()
+        }
+
+        assert_eq!(super::COMMONMARK_VERSION, "0.31.2");
+
+        // Example 148: a comment is an HTML block, handed back verbatim.
+        let html: Vec<_> = events("<!-- foo -->\n")
+            .into_iter()
+            .filter_map(|event| match event {
+                Event::Html(raw) => Some(raw.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(html, vec!["<!-- foo -->\n".to_string()]);
+
+        // Example 62: an ATX heading is a heading and its `#` is not text.
+        assert!(events("# foo\n")
+            .iter()
+            .any(|event| matches!(event, Event::Start(pulldown_cmark::Tag::Heading { .. }))));
+        // Example 12: a backslash escape makes the same `#` ordinary text.
+        assert!(!events("\\# foo\n")
+            .iter()
+            .any(|event| matches!(event, Event::Start(pulldown_cmark::Tag::Heading { .. }))));
+
+        // Example 228: `>` opens a block quote.
+        assert!(events("> foo\n")
+            .iter()
+            .any(|event| matches!(event, Event::Start(pulldown_cmark::Tag::BlockQuote(_)))));
+
+        // Example 350: `**` is strong emphasis; example 12 escapes it.
+        assert!(events("**foo**\n")
+            .iter()
+            .any(|event| matches!(event, Event::Start(pulldown_cmark::Tag::Strong))));
+        assert!(!events("\\*\\*foo\\*\\*\n")
+            .iter()
+            .any(|event| matches!(event, Event::Start(pulldown_cmark::Tag::Strong))));
     }
 
     #[test]

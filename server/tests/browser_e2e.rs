@@ -1725,8 +1725,17 @@ async fn public_marketing_pages_have_no_horizontal_overflow_on_mobile() {
     c.close().await.unwrap();
 }
 
-/// A minimal valid 1x1 PNG, reused by every avatar test below so the fixture
-/// bytes are typed once rather than per role.
+/// A second 1x1 PNG (red RGB) used by the fetch-POST path so a later
+/// profile-form upload of [`SYNTHETIC_PNG`] is a visible overwrite.
+const SYNTHETIC_PNG_RED: [u8; 69] = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+    0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+    0x00, 0x03, 0x01, 0x01, 0x00, 0xc9, 0xfe, 0x92, 0xef, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
+    0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+/// A minimal valid 1x1 PNG, reused by every profile-form avatar upload.
 const SYNTHETIC_PNG: [u8; 67] = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
@@ -1783,6 +1792,27 @@ async fn fetch_content_type(c: &Client, url: &str) -> String {
         .as_str()
         .expect("fetch resolves a content-type string")
         .to_string()
+}
+
+/// Body bytes of `url` through the authenticated session.
+async fn fetch_bytes(c: &Client, url: &str) -> Vec<u8> {
+    let value = c
+        .execute_async(
+            "const [url, callback] = arguments; \
+             fetch(url, {credentials: 'same-origin'}) \
+                .then(r => r.arrayBuffer()) \
+                .then(buf => callback(Array.from(new Uint8Array(buf)))) \
+                .catch(() => callback([]));",
+            vec![serde_json::Value::String(url.to_string())],
+        )
+        .await
+        .expect("read the avatar bytes from inside the authenticated page");
+    value
+        .as_array()
+        .expect("fetch resolves a byte array")
+        .iter()
+        .map(|n| n.as_u64().expect("byte") as u8)
+        .collect()
 }
 
 /// Upload a real avatar for `person_id` through the admin editor, so a
@@ -1852,8 +1882,8 @@ async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
 
     let before = fetch_content_type(c, &format!("{}/app/me/avatar", base_url())).await;
     assert!(
-        before.starts_with("image/svg+xml"),
-        "before upload the preview must be the initials fallback, got {before}"
+        before.starts_with("image/svg+xml") || before.starts_with("image/png"),
+        "the preview must already be the initials SVG or a stored PNG, got {before}"
     );
 
     scroll_and_js_click(c, "#profile-avatar form button[type='submit']").await;
@@ -1875,6 +1905,11 @@ async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
     assert!(
         after.starts_with("image/png"),
         "the just-uploaded PNG must replace the initials fallback, got {after}"
+    );
+    let body = fetch_bytes(c, &format!("{}/app/me/avatar", base_url())).await;
+    assert_eq!(
+        body, SYNTHETIC_PNG,
+        "the preview must serve the PNG the profile form just posted"
     );
 
     std::fs::remove_file(path).ok();
@@ -1898,7 +1933,7 @@ async fn post_synthetic_png_to_path(c: &Client, path: &str) {
         .await
         .unwrap()
         .expect("the CSRF field has a value");
-    let bytes: Vec<serde_json::Value> = SYNTHETIC_PNG
+    let bytes: Vec<serde_json::Value> = SYNTHETIC_PNG_RED
         .iter()
         .map(|b| serde_json::Value::from(*b))
         .collect();
@@ -1929,6 +1964,12 @@ async fn post_synthetic_png_to_path(c: &Client, path: &str) {
     assert!(
         after.starts_with("image/png"),
         "POST {path} must store a PNG the preview serves, got {after}"
+    );
+    let body = fetch_bytes(c, &format!("{}/app/me/avatar", base_url())).await;
+    assert_eq!(
+        body.as_slice(),
+        SYNTHETIC_PNG_RED.as_slice(),
+        "POST {path} must serve the PNG just posted"
     );
 }
 
@@ -1989,9 +2030,8 @@ async fn clerk_uploads_their_own_avatar_through_the_profile_page() {
     c.close().await.unwrap();
 }
 
-/// The page form posts to whichever registered action it declares. Both
-/// `/app/avatar` and `/app/profile/avatar` must accept the same PNG upload
-/// so a relative resolution and an absolute nested action both succeed.
+/// Both `/app/avatar` and `/app/profile/avatar` must accept the same PNG
+/// upload so a relative resolution and an absolute nested action both succeed.
 #[tokio::test]
 async fn client_posts_png_to_both_self_service_avatar_routes() {
     let Some(c) = new_client_or_skip().await else {

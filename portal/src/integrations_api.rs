@@ -22,6 +22,13 @@
 //! every Project the login can see, so the gate matches rather than being
 //! loosened for convenience.
 //!
+//! The tier is not the whole gate. Admin tier says the caller provisions
+//! external resources at all; `FirmCapability::UseIntegrations` says whose
+//! credentials they may spend. Every door resolves that capability against the
+//! target Project's owning Firm before a provider is looked up, so an Admin of
+//! one Firm cannot reach another Firm's integrations through a Project the
+//! visibility lens happens to show them.
+//!
 //! The gate is [`AdminSession`], an extractor, and not a check in the handler
 //! body. Extractors run before the body is deserialized, so a caller outside
 //! the tier gets a 403 whatever they sent; a tier check placed after `Json`
@@ -107,9 +114,12 @@ fn selector_error() -> ApiError {
 
 /// Resolve the selector to the matters this login may act on.
 ///
-/// `--all` means "every Project visible to this login", which is
-/// `store::access::visible_projects` — the same scoping the list door uses,
-/// so an admin sweep can never reach a matter the read surface would hide.
+/// Two layers, and both are needed. `store::access::visible_projects` is the
+/// same scoping the list door uses, so an admin sweep can never reach a matter
+/// the read surface would hide. [`authorize_project`] then asks whether this
+/// caller may spend the owning Firm's integrations at all — visibility is not
+/// that permission, so `--all` sweeps the Projects that clear both, and a
+/// Project only the lens admits is dropped rather than provisioned.
 async fn targets(
     state: &ApiState,
     authed: &AdminSession,
@@ -149,6 +159,13 @@ async fn one_target(
     authorize_project(state, authed, project).await
 }
 
+/// Whether this caller may use the owning Firm's integrations for `project`.
+///
+/// Runs before any provider lookup, so a refusal costs no credential
+/// resolution and no provider call. A Project whose Firm denies the caller and
+/// a Project with no owning Firm both collapse to `NotFound`, the same answer a
+/// code nobody can see gets: which of the three it was is a Firm-boundary fact
+/// the caller is not owed.
 async fn authorize_project(
     state: &ApiState,
     authed: &AdminSession,

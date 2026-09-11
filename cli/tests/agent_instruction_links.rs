@@ -74,6 +74,61 @@ fn harness_skill_catalogs_match_the_canonical_catalog() {
     assert_harness_catalogs_resolve(&repo_root()).unwrap_or_else(|error| panic!("{error}{REMEDY}"));
 }
 
+/// The redline skill must establish that its native Word capabilities exist
+/// before it describes how to construct or verify tracked changes.
+#[test]
+fn redline_skill_preflights_native_word_capabilities() {
+    let root = repo_root();
+    let skill_path = root.join(CANONICAL_SKILLS).join("redline/SKILL.md");
+    let skill = fs::read_to_string(&skill_path).expect("read canonical redline skill");
+
+    let preflight_start = skill
+        .find("## Capability preflight")
+        .expect("redline skill must have a capability preflight");
+    let construction_start = skill
+        .find("## Build true tracked changes")
+        .expect("redline skill must describe tracked-change construction");
+    assert!(
+        preflight_start < construction_start,
+        "capability preflight must precede tracked-change construction"
+    );
+
+    let preflight = &skill[preflight_start..construction_start];
+    let preflight_words = preflight.split_whitespace().collect::<Vec<_>>().join(" ");
+    for capability in [
+        "supported native Word writer",
+        "accept/reject verification",
+        "render-and-inspect path",
+    ] {
+        assert!(
+            preflight.contains(capability),
+            "capability preflight must name {capability}"
+        );
+    }
+    assert!(
+        preflight.contains("stop, explain the missing capability"),
+        "capability preflight must stop when a required capability is unavailable"
+    );
+    assert!(
+        preflight_words.contains("must not claim"),
+        "capability preflight must prohibit a fabricated completion claim"
+    );
+
+    let routing = fs::read_to_string(
+        root.join(CANONICAL_SKILLS)
+            .join("redline/agents/openai.yaml"),
+    )
+    .expect("read redline OpenAI routing metadata");
+    assert!(
+        routing.contains("capability preflight first"),
+        "OpenAI routing must require the capability preflight"
+    );
+    assert!(
+        routing.contains("do not claim that a true Word redline was produced"),
+        "OpenAI routing must preserve the preflight stop condition"
+    );
+}
+
 /// The guard itself must reject the regular-file form Git writes when it cannot
 /// materialise `CLAUDE.md` as a symlink.
 #[test]

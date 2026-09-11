@@ -1,4 +1,4 @@
 interface:
   display_name: "Redline"
   short_description: "Create precise Word redlines without drafting churn."
-  default_prompt: "Use $redline to produce a true Word redline that preserves the source voice, structure, numbering, and requested substance."
+  default_prompt: "Use $redline. Complete the capability preflight first; if a supported native Word writer, accept/reject verification, or render-and-inspect path is unavailable, stop, explain the missing capability, and do not claim that a true Word redline was produced."

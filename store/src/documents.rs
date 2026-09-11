@@ -53,8 +53,18 @@ pub const MAX_DOCUMENT_UPLOAD_BYTES: usize = 25 * 1024 * 1024;
 /// Maximum REST request size needed to carry the document limit as base64 JSON.
 ///
 /// The request body is larger than the document bytes because the REST door
-/// carries the content as base64 plus a small JSON envelope.
-pub const MAX_DOCUMENT_UPLOAD_REQUEST_BYTES: usize = MAX_DOCUMENT_UPLOAD_BYTES * 4 / 3 + 4096;
+/// carries the content as base64 plus a small JSON envelope. The expansion
+/// uses `div_ceil` so a maximum-size document does not spend JSON allowance
+/// on the encoding.
+pub const MAX_DOCUMENT_UPLOAD_REQUEST_BYTES: usize =
+    MAX_DOCUMENT_UPLOAD_BYTES.div_ceil(3) * 4 + MAX_DOCUMENT_UPLOAD_JSON_BYTES;
+
+/// Room the request cap leaves for the upload's own JSON fields.
+///
+/// Everything in the request that is not the encoded document: `filename`,
+/// `kind`, `visibility`, `description`, `slug`, and the free-form `metadata`
+/// the caller passes through verbatim.
+pub const MAX_DOCUMENT_UPLOAD_JSON_BYTES: usize = 4096;
 
 /// Explain a document-size rejection with the configured maximum and actual size.
 #[must_use]
@@ -451,6 +461,27 @@ mod tests {
             Arc::new(FsStorage::new(tmp.path().to_path_buf()).await.unwrap());
         let project_id = crate::test_support::seed_project_surreal(&db, "Test Matter").await;
         (db, storage, tmp, project_id)
+    }
+
+    #[test]
+    fn the_request_cap_covers_a_maximum_document_as_base64_plus_its_json() {
+        // base64 spends four characters on every three bytes, rounding the
+        // final partial group up. Truncating that division instead spends
+        // part of the JSON allowance on the encoding, so a maximum-size
+        // document carrying a `description` or `metadata` would be refused
+        // by the framework's body cap rather than by the door's own size
+        // check — the raw buffering error ENG-602 set out to replace.
+        use base64::Engine as _;
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        for len in 0..=9usize {
+            assert_eq!(len.div_ceil(3) * 4, engine.encode(vec![0u8; len]).len());
+        }
+
+        assert!(
+            MAX_DOCUMENT_UPLOAD_REQUEST_BYTES
+                >= MAX_DOCUMENT_UPLOAD_BYTES.div_ceil(3) * 4 + MAX_DOCUMENT_UPLOAD_JSON_BYTES
+        );
     }
 
     #[tokio::test]

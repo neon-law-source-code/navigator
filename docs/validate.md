@@ -73,7 +73,9 @@ same fix the `navigator-lsp` `source.fixAll` editor action ships.
 ## Flags
 
 - **`--fix`** — apply every autofixable rule's fix in place (see the Autofix column below), then re-validate and report
-  what remains. Exits `0` only if no violation remains after fixing; a remaining violation is always one a human has to
+  what remains. Each file is re-scanned until it stops changing, because one fix routinely uncovers another — trimming
+  trailing whitespace off a short line hands that line to `S102`, which could not flag it while it still looked like a
+  hard break. Exits `0` only if no violation remains after fixing; a remaining violation is always one a human has to
   resolve, never a bug in the fixer.
 - **`--errors-only`** — print only the findings that fail the gate, hiding the Warning-severity advisories. The summary
   line still counts both and the exit code is unchanged: this narrows the listing for a CI-triage read, not the gate. It
@@ -127,7 +129,7 @@ for that violation without a human decision; every other code needs a person to 
 | Code | Severity | Rule | Autofix |
 | --- | --- | --- | --- |
 | `S101` | Error | A line exceeds the 120-character limit. | No |
-| `S102` | Error | A line could absorb more text from the next line before hitting the limit (prose only). | No |
+| `S102` | Error | A line could absorb more text from the next line before hitting the limit (prose only). | Yes |
 | `S103` | Error | The declared `kind:` must be a recognized document kind. | No |
 | `S104` | Error | A file's declared `kind:` must agree with its notation/event structure. | No |
 

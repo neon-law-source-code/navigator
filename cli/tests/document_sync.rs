@@ -2,6 +2,8 @@
 //! against their authorized API.
 
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use assert_cmd::Command;
@@ -522,6 +524,163 @@ async fn pull_round_trips_synced_bytes_and_a_second_pull_writes_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[allow(clippy::too_many_lines)]
+#[cfg(unix)]
+async fn pull_rolls_back_publication_when_second_target_fails_after_first_would_change() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    write(
+        root.path(),
+        "documents/.gitignore",
+        b"keep this ignore file\n",
+    );
+    let project_id = Uuid::now_v7();
+    let first_asset = Uuid::now_v7();
+    let second_asset = Uuid::now_v7();
+    let first_bytes = b"fresh first document";
+    let second_bytes = b"fresh second document";
+    let first_pointer = root.path().join("documents/pleadings/a.pdf.yml");
+    let second_pointer = root.path().join("documents/pleadings/b.pdf.yml");
+    let first_target = root.path().join("documents/pleadings/a.pdf");
+    let second_target = root.path().join("documents/pleadings/b.pdf");
+
+    write(
+        root.path(),
+        "documents/pleadings/a.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(
+            first_asset,
+            &sha256(first_bytes),
+            i64::try_from(first_bytes.len()).unwrap(),
+        ))
+        .unwrap(),
+    );
+    write(
+        root.path(),
+        "documents/pleadings/b.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(
+            second_asset,
+            &sha256(second_bytes),
+            i64::try_from(second_bytes.len()).unwrap(),
+        ))
+        .unwrap(),
+    );
+    write(
+        root.path(),
+        "documents/pleadings/a.pdf",
+        b"old first document",
+    );
+    write(
+        root.path(),
+        "documents/pleadings/b.pdf",
+        b"old second document",
+    );
+    fs::set_permissions(&second_target, fs::Permissions::from_mode(0o444)).unwrap();
+    let first_pointer_before = fs::read(&first_pointer).unwrap();
+    let second_pointer_before = fs::read(&second_pointer).unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{first_asset}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(first_bytes.to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{second_asset}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(second_bytes.to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "pull"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("document targets are unchanged"));
+
+    assert_eq!(fs::read(&first_target).unwrap(), b"old first document");
+    assert_eq!(fs::read(&second_target).unwrap(), b"old second document");
+    assert_eq!(fs::read(&first_pointer).unwrap(), first_pointer_before);
+    assert_eq!(fs::read(&second_pointer).unwrap(), second_pointer_before);
+    assert_eq!(
+        fs::read(root.path().join("documents/.gitignore")).unwrap(),
+        b"keep this ignore file\n"
+    );
+    assert!(fs::read_dir(root.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .all(|entry| !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".navigator-pull-")));
+
+    fs::set_permissions(&second_target, fs::Permissions::from_mode(0o644)).unwrap();
+
+    let retry_server = MockServer::start().await;
+    let retry_host = retry_server.uri();
+    manifest(root.path(), &retry_host);
+    let retry_credentials = credentials(creds.path(), &retry_host);
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(1)
+        .mount(&retry_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{first_asset}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(first_bytes.to_vec()))
+        .expect(1)
+        .mount(&retry_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{second_asset}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(second_bytes.to_vec()))
+        .expect(1)
+        .mount(&retry_server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", retry_credentials)
+        .args(["site", "pull"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 pulled"));
+
+    assert_eq!(fs::read(&first_target).unwrap(), first_bytes);
+    assert_eq!(fs::read(&second_target).unwrap(), second_bytes);
+    assert_eq!(fs::read(&first_pointer).unwrap(), first_pointer_before);
+    assert_eq!(fs::read(&second_pointer).unwrap(), second_pointer_before);
+    assert_eq!(
+        fs::read(root.path().join("documents/.gitignore")).unwrap(),
+        b"keep this ignore file\n"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn pull_publishes_nothing_when_a_later_download_fails() {
     let server = MockServer::start().await;
     let host = server.uri();
@@ -591,7 +750,8 @@ async fn pull_publishes_nothing_when_a_later_download_fails() {
         .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
         .args(["site", "pull"])
         .assert()
-        .failure();
+        .failure()
+        .stderr(predicate::str::contains("document targets are unchanged"));
 
     assert!(!root.path().join("documents/pleadings/a.pdf").exists());
     assert_eq!(
@@ -646,7 +806,8 @@ async fn pull_publishes_nothing_when_a_download_digest_mismatches() {
         .args(["site", "pull"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("sha256 mismatch"));
+        .stderr(predicate::str::contains("sha256 mismatch"))
+        .stderr(predicate::str::contains("document targets are unchanged"));
 
     assert!(!root.path().join("documents/pleadings/motion.pdf").exists());
 }
@@ -770,7 +931,8 @@ async fn a_pointer_the_caller_cannot_read_is_reported_and_no_file_is_written() {
         .args(["site", "pull"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("privileged.pdf.yml"));
+        .stderr(predicate::str::contains("privileged.pdf.yml"))
+        .stderr(predicate::str::contains("document targets are unchanged"));
 
     assert!(!root
         .path()

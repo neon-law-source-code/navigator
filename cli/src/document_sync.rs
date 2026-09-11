@@ -1,10 +1,11 @@
 //! Project document staging: upload bytes, retain only source-safe pointers.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{anyhow, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::remote::DocumentClient;
 
@@ -157,50 +158,363 @@ fn matches_digest(path: &Path, expected_sha256: &str) -> Result<bool> {
     }
 }
 
-async fn pull(root: &Path, dry_run: bool) -> Result<()> {
-    let manifest = read_manifest(root)?;
-    let pointers = crate::document_read::discover_pointers(root)?;
-    if pointers.is_empty() {
-        println!("no documents/ pointers to pull");
-        return Ok(());
-    }
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+enum PullTransactionPhase {
+    Staging,
+    Prepared,
+    Publishing,
+    Committed,
+}
 
-    if dry_run {
-        let mut planned = 0usize;
-        for relative in &pointers {
-            let pointer_path = root.join(relative);
-            let pointer = read_pointer(&pointer_path)?
-                .ok_or_else(|| anyhow!("{} vanished mid-scan", pointer_path.display()))?;
-            let target = pull_target(root, relative)?;
-            if !matches_digest(&target, &pointer.current_version.sha256)? {
-                println!("would pull {}", display_relative(root, &target));
-                planned += 1;
+#[derive(Debug, Deserialize, Serialize)]
+struct PullTransactionState {
+    phase: PullTransactionPhase,
+    targets: Vec<PullTransactionTarget>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PullTransactionTarget {
+    target: PathBuf,
+    backup: PathBuf,
+    existed: bool,
+}
+
+struct StagedPull {
+    target: PathBuf,
+    staged: PathBuf,
+}
+
+struct PullTransaction {
+    path: PathBuf,
+    state: PullTransactionState,
+    staged: Vec<StagedPull>,
+}
+
+enum PublicationFailure {
+    BeforeCommit(anyhow::Error),
+    AfterCommit(anyhow::Error),
+}
+
+fn document_targets_unchanged(error: impl std::fmt::Display) -> anyhow::Error {
+    anyhow!(
+        "{error:#}; document targets are unchanged (documents/.gitignore may have been created)"
+    )
+}
+
+fn pull_transaction_path(root: &Path) -> PathBuf {
+    let root_key = store::documents::sha256_hex(root.to_string_lossy().as_bytes());
+    std::env::temp_dir().join("navigator-pull").join(root_key)
+}
+
+fn pull_transaction_state_path(transaction: &Path) -> PathBuf {
+    transaction.join("state.json")
+}
+
+fn write_pull_transaction_state(transaction: &Path, state: &PullTransactionState) -> Result<()> {
+    let path = pull_transaction_state_path(transaction);
+    let temporary = transaction.join(format!("state.tmp-{}", uuid::Uuid::now_v7()));
+    let result = (|| {
+        let bytes = serde_json::to_vec(state).context("serialize pull transaction state")?;
+        let mut file = std::fs::File::create(&temporary)
+            .with_context(|| format!("create {}", temporary.display()))?;
+        file.write_all(&bytes)
+            .with_context(|| format!("write {}", temporary.display()))?;
+        file.sync_all()
+            .with_context(|| format!("flush {}", temporary.display()))?;
+        std::fs::rename(&temporary, &path)
+            .with_context(|| format!("publish {}", path.display()))?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn ensure_pull_target_parent_is_safe(root: &Path, target: &Path) -> Result<()> {
+    let documents = crate::document_read::lexical(root, Path::new("documents"));
+    if !target.starts_with(&documents) {
+        return Err(anyhow!(
+            "refusing to write {} outside {}",
+            target.display(),
+            documents.display()
+        ));
+    }
+    let relative = target
+        .strip_prefix(root)
+        .map_err(|_| anyhow!("{} is outside {}", target.display(), root.display()))?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        if current == target {
+            break;
+        }
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(anyhow!(
+                    "refusing to write through symlink {}",
+                    current.display()
+                ));
+            }
+            Ok(metadata) if !metadata.is_dir() => {
+                return Err(anyhow!("{} is not a directory", current.display()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                return Err(error).with_context(|| format!("inspect {}", current.display()));
             }
         }
-        println!("{planned} pull(s) planned");
+    }
+    Ok(())
+}
+
+fn ensure_pull_target_is_safe(root: &Path, target: &Path) -> Result<()> {
+    ensure_pull_target_parent_is_safe(root, target)?;
+    match std::fs::symlink_metadata(target) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(anyhow!(
+            "refusing to write through symlink {}",
+            target.display()
+        )),
+        Ok(metadata) if metadata.file_type().is_file() => Ok(()),
+        Ok(_) => Err(anyhow!("{} is not a regular file", target.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("inspect {}", target.display())),
+    }
+}
+
+fn remove_pull_target(path: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => {
+            std::fs::remove_dir(path).with_context(|| format!("remove {}", path.display()))?;
+        }
+        Ok(_) => {
+            std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).with_context(|| format!("inspect {}", path.display())),
+    }
+    Ok(())
+}
+
+fn rollback_pull_transaction(
+    root: &Path,
+    transaction: &Path,
+    state: &PullTransactionState,
+) -> Result<()> {
+    for entry in state.targets.iter().rev() {
+        let target = crate::document_read::lexical(root, &entry.target);
+        ensure_pull_target_parent_is_safe(root, &target)?;
+        remove_pull_target(&target)?;
+        if entry.existed {
+            let backup = transaction.join(&entry.backup);
+            let Some(parent) = target.parent() else {
+                return Err(anyhow!("{} has no parent directory", target.display()));
+            };
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create {}", parent.display()))?;
+            std::fs::copy(&backup, &target)
+                .with_context(|| format!("restore {}", target.display()))?;
+        }
+    }
+    std::fs::remove_dir_all(transaction)
+        .with_context(|| format!("remove pull transaction {}", transaction.display()))?;
+    Ok(())
+}
+
+fn recover_interrupted_pull(root: &Path) -> Result<()> {
+    let transaction = pull_transaction_path(root);
+    if !transaction.exists() {
         return Ok(());
     }
+    if !transaction.is_dir() {
+        return Err(anyhow!(
+            "pull recovery path {} is not a directory",
+            transaction.display()
+        ));
+    }
+    let state_path = pull_transaction_state_path(&transaction);
+    let state = match std::fs::read(&state_path) {
+        Ok(bytes) => serde_json::from_slice::<PullTransactionState>(&bytes)
+            .with_context(|| format!("read {}", state_path.display()))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::remove_dir_all(&transaction)
+                .with_context(|| format!("remove {}", transaction.display()))?;
+            return Ok(());
+        }
+        Err(error) => return Err(error).with_context(|| format!("read {}", state_path.display())),
+    };
+    match state.phase {
+        PullTransactionPhase::Staging | PullTransactionPhase::Committed => {
+            std::fs::remove_dir_all(&transaction)
+                .with_context(|| format!("remove {}", transaction.display()))?;
+        }
+        PullTransactionPhase::Prepared | PullTransactionPhase::Publishing => {
+            rollback_pull_transaction(root, &transaction, &state)?;
+        }
+    }
+    Ok(())
+}
 
-    let documents = root.join("documents");
-    std::fs::create_dir_all(&documents)
-        .with_context(|| format!("create {}", documents.display()))?;
-    let ignore = documents.join(".gitignore");
-    if !ignore.exists() {
-        std::fs::write(&ignore, GITIGNORE)
-            .with_context(|| format!("write {}", ignore.display()))?;
+fn begin_pull_transaction(
+    root: &Path,
+    staging: tempfile::TempDir,
+    staged: Vec<StagedPull>,
+) -> Result<PullTransaction> {
+    let transaction = pull_transaction_path(root);
+    let parent = transaction
+        .parent()
+        .ok_or_else(|| anyhow!("pull transaction has no parent directory"))?;
+    std::fs::create_dir_all(parent)
+        .with_context(|| format!("create pull transaction parent {}", parent.display()))?;
+    let staging_path = staging.keep();
+    if let Err(error) = std::fs::rename(&staging_path, &transaction) {
+        let _ = std::fs::remove_dir_all(&staging_path);
+        return Err(error)
+            .with_context(|| format!("move pull staging area {}", transaction.display()));
     }
 
-    let client = DocumentClient::connect(manifest.host.as_deref(), manifest.project.trim()).await?;
-    let staging = tempfile::Builder::new()
-        .prefix(".navigator-pull-")
-        .tempdir_in(root)
-        .with_context(|| format!("create pull staging area in {}", root.display()))?;
+    let state = PullTransactionState {
+        phase: PullTransactionPhase::Staging,
+        targets: Vec::new(),
+    };
+    if let Err(error) = write_pull_transaction_state(&transaction, &state) {
+        let _ = std::fs::remove_dir_all(&transaction);
+        return Err(error);
+    }
+
+    let backups = transaction.join("backups");
+    if let Err(error) = std::fs::create_dir_all(&backups) {
+        let _ = std::fs::remove_dir_all(&transaction);
+        return Err(error).with_context(|| format!("create {}", backups.display()));
+    }
+
+    let mut prepared = state;
+    for (index, item) in staged.iter().enumerate() {
+        ensure_pull_target_is_safe(root, &item.target)?;
+        let target = item
+            .target
+            .strip_prefix(root)
+            .map_err(|_| anyhow!("{} is outside {}", item.target.display(), root.display()))?
+            .to_path_buf();
+        let existed = match std::fs::symlink_metadata(&item.target) {
+            Ok(metadata) if metadata.file_type().is_file() => true,
+            Ok(_) => {
+                return Err(anyhow!("{} is not a regular file", item.target.display()));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => {
+                return Err(error).with_context(|| format!("inspect {}", item.target.display()));
+            }
+        };
+        let backup = PathBuf::from(format!("backups/{index}"));
+        if existed {
+            std::fs::copy(&item.target, transaction.join(&backup))
+                .with_context(|| format!("backup {}", item.target.display()))?;
+        }
+        prepared.targets.push(PullTransactionTarget {
+            target,
+            backup,
+            existed,
+        });
+    }
+    prepared.phase = PullTransactionPhase::Prepared;
+    write_pull_transaction_state(&transaction, &prepared)?;
+
+    let staged = staged
+        .into_iter()
+        .map(|item| {
+            let file_name = item
+                .staged
+                .file_name()
+                .ok_or_else(|| anyhow!("staged pull has no file name"))?;
+            Ok(StagedPull {
+                staged: transaction.join("downloads").join(file_name),
+                target: item.target,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(PullTransaction {
+        path: transaction,
+        state: prepared,
+        staged,
+    })
+}
+
+fn publish_pull_transaction(
+    root: &Path,
+    transaction: &mut PullTransaction,
+) -> std::result::Result<usize, PublicationFailure> {
+    transaction.state.phase = PullTransactionPhase::Publishing;
+    write_pull_transaction_state(&transaction.path, &transaction.state)
+        .map_err(PublicationFailure::BeforeCommit)?;
+
+    for item in &transaction.staged {
+        ensure_pull_target_is_safe(root, &item.target).map_err(PublicationFailure::BeforeCommit)?;
+        let Some(parent) = item.target.parent() else {
+            return Err(PublicationFailure::BeforeCommit(anyhow!(
+                "{} has no parent directory",
+                item.target.display()
+            )));
+        };
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create {}", parent.display()))
+            .map_err(PublicationFailure::BeforeCommit)?;
+        std::fs::copy(&item.staged, &item.target)
+            .with_context(|| format!("publish {}", item.target.display()))
+            .map_err(PublicationFailure::BeforeCommit)?;
+    }
+
+    transaction.state.phase = PullTransactionPhase::Committed;
+    write_pull_transaction_state(&transaction.path, &transaction.state)
+        .map_err(PublicationFailure::BeforeCommit)?;
+    let pulled = transaction.staged.len();
+    if let Err(error) = std::fs::remove_dir_all(&transaction.path) {
+        return Err(PublicationFailure::AfterCommit(anyhow!(
+            "remove completed pull transaction {}: {error}",
+            transaction.path.display()
+        )));
+    }
+    Ok(pulled)
+}
+
+fn pull_dry_run(root: &Path, pointers: &[PathBuf]) -> Result<()> {
+    let mut planned = 0usize;
+    for relative in pointers {
+        let pointer_path = root.join(relative);
+        let pointer = read_pointer(&pointer_path)
+            .map_err(document_targets_unchanged)?
+            .ok_or_else(|| anyhow!("{} vanished mid-scan", pointer_path.display()))
+            .map_err(document_targets_unchanged)?;
+        let target = pull_target(root, relative).map_err(document_targets_unchanged)?;
+        ensure_pull_target_is_safe(root, &target).map_err(document_targets_unchanged)?;
+        if !matches_digest(&target, &pointer.current_version.sha256)
+            .map_err(document_targets_unchanged)?
+        {
+            println!("would pull {}", display_relative(root, &target));
+            planned += 1;
+        }
+    }
+    println!("{planned} pull(s) planned");
+    Ok(())
+}
+
+async fn stage_pull_downloads(
+    root: &Path,
+    pointers: &[PathBuf],
+    client: &DocumentClient,
+    staging: &tempfile::TempDir,
+) -> Result<(usize, Vec<StagedPull>)> {
+    let downloads = staging.path().join("downloads");
+    std::fs::create_dir_all(&downloads)
+        .with_context(|| format!("create {}", downloads.display()))
+        .map_err(document_targets_unchanged)?;
     let mut pulled = 0usize;
     let mut failures = Vec::new();
     let mut staged = Vec::new();
-    for relative in &pointers {
+    for relative in pointers {
         let pointer_path = root.join(relative);
-        let Some(pointer) = read_pointer(&pointer_path)? else {
+        let Some(pointer) = read_pointer(&pointer_path).map_err(document_targets_unchanged)? else {
             failures.push(format!("{} vanished mid-scan", pointer_path.display()));
             continue;
         };
@@ -211,7 +525,13 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
                 continue;
             }
         };
-        if matches_digest(&target, &pointer.current_version.sha256)? {
+        if let Err(error) = ensure_pull_target_is_safe(root, &target) {
+            failures.push(format!("{}: {error}", pointer_path.display()));
+            continue;
+        }
+        if matches_digest(&target, &pointer.current_version.sha256)
+            .map_err(document_targets_unchanged)?
+        {
             continue;
         }
         match client
@@ -228,10 +548,14 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
                     ));
                     continue;
                 }
-                let staged_path = staging.path().join(staged.len().to_string());
+                let staged_path = downloads.join(staged.len().to_string());
                 std::fs::write(&staged_path, &bytes)
-                    .with_context(|| format!("stage {}", target.display()))?;
-                staged.push((target, staged_path));
+                    .with_context(|| format!("stage {}", target.display()))
+                    .map_err(document_targets_unchanged)?;
+                staged.push(StagedPull {
+                    target,
+                    staged: staged_path,
+                });
                 pulled += 1;
             }
             Err(error) => {
@@ -241,24 +565,84 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
     }
     if !failures.is_empty() {
         for failure in &failures {
-            eprintln!("{failure}");
+            eprintln!(
+                "{failure} (document targets are unchanged; documents/.gitignore may have been created)"
+            );
         }
-        return Err(anyhow!(
+        return Err(document_targets_unchanged(anyhow!(
             "{} of {} pointer(s) failed to pull",
             failures.len(),
             pointers.len()
-        ));
+        )));
     }
-    for (target, staged_path) in staged {
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("create {}", parent.display()))?;
+    Ok((pulled, staged))
+}
+
+async fn pull(root: &Path, dry_run: bool) -> Result<()> {
+    let root = root
+        .canonicalize()
+        .map_err(|error| document_targets_unchanged(anyhow!("resolve checkout: {error}")))?;
+    recover_interrupted_pull(&root).map_err(|error| {
+        anyhow!(
+            "recover interrupted pull: {error:#}; document targets may be in an interrupted publication state; retry pull to attempt recovery"
+        )
+    })?;
+    let manifest = read_manifest(&root).map_err(document_targets_unchanged)?;
+    let pointers =
+        crate::document_read::discover_pointers(&root).map_err(document_targets_unchanged)?;
+    if pointers.is_empty() {
+        println!("no documents/ pointers to pull");
+        return Ok(());
+    }
+
+    if dry_run {
+        return pull_dry_run(&root, &pointers);
+    }
+
+    let documents = root.join("documents");
+    std::fs::create_dir_all(&documents)
+        .with_context(|| format!("create {}", documents.display()))
+        .map_err(document_targets_unchanged)?;
+    let ignore = documents.join(".gitignore");
+    if !ignore.exists() {
+        std::fs::write(&ignore, GITIGNORE)
+            .with_context(|| format!("write {}", ignore.display()))
+            .map_err(document_targets_unchanged)?;
+    }
+
+    let client = DocumentClient::connect(manifest.host.as_deref(), manifest.project.trim())
+        .await
+        .map_err(document_targets_unchanged)?;
+    let staging = tempfile::tempdir().map_err(|error| {
+        document_targets_unchanged(anyhow!(
+            "create pull staging area outside checkout: {error}"
+        ))
+    })?;
+    let (pulled, staged) = stage_pull_downloads(&root, &pointers, &client, &staging).await?;
+    if staged.is_empty() {
+        println!("{pulled} pulled");
+        return Ok(());
+    }
+
+    let mut transaction =
+        begin_pull_transaction(&root, staging, staged).map_err(document_targets_unchanged)?;
+    match publish_pull_transaction(&root, &mut transaction) {
+        Ok(_) => {
+            println!("{pulled} pulled");
+            Ok(())
         }
-        std::fs::copy(&staged_path, &target)
-            .with_context(|| format!("publish {}", target.display()))?;
+        Err(PublicationFailure::BeforeCommit(error)) => {
+            match rollback_pull_transaction(&root, &transaction.path, &transaction.state) {
+                Ok(()) => Err(document_targets_unchanged(error)),
+                Err(recovery) => Err(anyhow!(
+                    "{error:#}; document targets may be mixed because automatic rollback failed: {recovery:#}; retry pull to attempt recovery"
+                )),
+            }
+        }
+        Err(PublicationFailure::AfterCommit(error)) => Err(anyhow!(
+            "{error:#}; document targets contain the complete after-publication state; retry pull to finish cleanup"
+        )),
     }
-    println!("{pulled} pulled");
-    Ok(())
 }
 
 fn discover(documents: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
@@ -351,7 +735,11 @@ pub(crate) fn read_pointer(
 
 #[cfg(test)]
 mod tests {
-    use super::{matches_digest, pull_target};
+    use super::{
+        matches_digest, pull_target, pull_transaction_path, recover_interrupted_pull,
+        write_pull_transaction_state, PullTransactionPhase, PullTransactionState,
+        PullTransactionTarget,
+    };
     use std::path::Path;
 
     #[test]
@@ -384,5 +772,43 @@ mod tests {
         let sha256 = store::documents::sha256_hex(b"hello");
         assert!(matches_digest(&path, &sha256).unwrap());
         assert!(!matches_digest(&path, &"0".repeat(64)).unwrap());
+    }
+
+    #[test]
+    fn recovery_restores_the_before_state_after_an_interrupted_publication() {
+        let root = tempfile::tempdir().unwrap();
+        let transaction = pull_transaction_path(root.path());
+        let backups = transaction.join("backups");
+        std::fs::create_dir_all(&backups).unwrap();
+        let first_target = root.path().join("documents/pleadings/a.pdf");
+        let second_target = root.path().join("documents/pleadings/b.pdf");
+        std::fs::create_dir_all(first_target.parent().unwrap()).unwrap();
+        std::fs::write(&first_target, b"before first").unwrap();
+        std::fs::write(&second_target, b"before second").unwrap();
+        std::fs::copy(&first_target, backups.join("0")).unwrap();
+        std::fs::copy(&second_target, backups.join("1")).unwrap();
+        let state = PullTransactionState {
+            phase: PullTransactionPhase::Publishing,
+            targets: vec![
+                PullTransactionTarget {
+                    target: Path::new("documents/pleadings/a.pdf").to_path_buf(),
+                    backup: Path::new("backups/0").to_path_buf(),
+                    existed: true,
+                },
+                PullTransactionTarget {
+                    target: Path::new("documents/pleadings/b.pdf").to_path_buf(),
+                    backup: Path::new("backups/1").to_path_buf(),
+                    existed: true,
+                },
+            ],
+        };
+        write_pull_transaction_state(&transaction, &state).unwrap();
+        std::fs::write(&first_target, b"after first").unwrap();
+
+        recover_interrupted_pull(root.path()).unwrap();
+
+        assert_eq!(std::fs::read(&first_target).unwrap(), b"before first");
+        assert_eq!(std::fs::read(&second_target).unwrap(), b"before second");
+        assert!(!transaction.exists());
     }
 }

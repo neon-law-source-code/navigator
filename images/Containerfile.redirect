@@ -43,6 +43,7 @@ COPY telemetry         telemetry
 COPY README.md         README.md
 COPY workflows         workflows
 COPY workflows-service workflows-service
+COPY word              word
 COPY cloud             cloud
 COPY mcp               mcp
 COPY features          features

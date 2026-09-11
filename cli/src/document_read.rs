@@ -316,12 +316,12 @@ pub(crate) async fn get(pointer: &Path, version: Option<usize>, out: &Path) -> E
 }
 
 /// Extensions `diff` can extract readable text from directly (UTF-8 plain
-/// text). A PDF is handled separately, via `pdf-extract`; anything else is
-/// "unsupported" rather than a binary diff.
+/// text). A PDF is handled separately, via `pdf-extract`; Word packages go
+/// through the loss-aware managed Open XML boundary.
 const PLAIN_TEXT_EXTENSIONS: &[&str] = &["txt", "md", "markdown", "yml", "yaml", "json", "csv"];
 
 /// Extract readable text from one revision's bytes, or say why not.
-fn extract_text(filename: &str, bytes: &[u8]) -> Result<String> {
+async fn extract_text(filename: &str, bytes: &[u8]) -> Result<String> {
     let extension = Path::new(filename)
         .extension()
         .and_then(|ext| ext.to_str())
@@ -330,6 +330,10 @@ fn extract_text(filename: &str, bytes: &[u8]) -> Result<String> {
         Some("pdf") => pdf_extract::extract_text_from_mem(bytes).map_err(|error| {
             anyhow!("`{filename}` is a PDF `diff` could not read text from: {error}")
         }),
+        Some("docx") => word::parse(filename, bytes)
+            .await
+            .map(|document| document.accepted_view_text())
+            .map_err(|error| anyhow!("Word package rejected: {error}")),
         Some(ext) if PLAIN_TEXT_EXTENSIONS.contains(&ext) => String::from_utf8(bytes.to_vec())
             .with_context(|| format!("`{filename}` is not valid UTF-8")),
         Some(ext) => Err(anyhow!(
@@ -418,8 +422,8 @@ pub(crate) async fn diff(pointer: &Path, a: usize, b: usize) -> ExitCode {
         let client = DocumentClient::connect(host.as_deref(), &project_code).await?;
         let bytes_a = client.download_revision(rev_a.asset_id).await?;
         let bytes_b = client.download_revision(rev_b.asset_id).await?;
-        let text_a = extract_text(&rev_a.filename, &bytes_a)?;
-        let text_b = extract_text(&rev_b.filename, &bytes_b)?;
+        let text_a = extract_text(&rev_a.filename, &bytes_a).await?;
+        let text_b = extract_text(&rev_b.filename, &bytes_b).await?;
 
         println!("--- version {} ({})", rev_a.version, rev_a.filename);
         println!("+++ version {} ({})", rev_b.version, rev_b.filename);
@@ -747,15 +751,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn plain_text_extracts_verbatim() {
-        assert_eq!(extract_text("notice.txt", b"hello").unwrap(), "hello");
+    #[tokio::test]
+    async fn plain_text_extracts_verbatim() {
+        assert_eq!(extract_text("notice.txt", b"hello").await.unwrap(), "hello");
     }
 
-    #[test]
-    fn docx_is_unsupported_rather_than_a_binary_diff() {
-        let error = extract_text("agreement.docx", b"PK\x03\x04").unwrap_err();
-        assert!(error.to_string().contains("unsupported"), "{error}");
+    #[tokio::test]
+    async fn docx_uses_the_word_boundary_instead_of_a_binary_diff() {
+        let error = extract_text("synthetic.docx", b"PK\x03\x04")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("corrupt"), "{error}");
     }
 
     #[test]

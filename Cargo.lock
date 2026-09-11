@@ -2141,6 +2141,7 @@ dependencies = [
  "walkdir",
  "webp",
  "wiremock",
+ "word",
  "workflows",
  "zip",
 ]
@@ -8527,6 +8528,7 @@ dependencies = [
  "walkdir",
  "webapp",
  "wiremock",
+ "word",
  "workflows",
  "zip",
 ]
@@ -14133,6 +14135,20 @@ dependencies = [
  "ff 0.14.0",
  "group 0.14.0",
  "hybrid-array",
+]
+
+[[package]]
+name = "word"
+version = "26.9.11"
+dependencies = [
+ "async-trait",
+ "base64 0.23.1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.20",
+ "tokio",
+ "zip",
 ]
 
 [[package]]

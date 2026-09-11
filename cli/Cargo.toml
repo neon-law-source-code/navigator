@@ -58,6 +58,7 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 views.workspace = true
+word.workspace = true
 walkdir.workspace = true
 webp.workspace = true
 # `ops notices` parses `Cargo.lock` to enumerate the third-party crates whose

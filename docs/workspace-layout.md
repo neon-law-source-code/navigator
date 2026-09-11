@@ -10,6 +10,9 @@ The repository is one Cargo workspace. `Cargo.toml` is the authoritative member 
   over it; the binary is the site.
 - `workflows-service`, `archives`, and `billing-workflows` each consume `restate-sdk` directly; `workflows` itself
   carries no `restate-sdk` dependency.
+- `word` owns the Rust loss-aware DOCX protocol and typed model. Its local managed adapter is built from the pinned
+  .NET SDK and official `DocumentFormat.OpenXml` package, then invoked without network access at runtime; the adapter
+  never becomes a second Rust OOXML schema.
 - `features` uses its custom Cucumber harness and runs with `cargo test -p features`.
 
 ## The browser surface
@@ -39,7 +42,8 @@ build if one reaches for `store`, `workflows`, or the auth machinery. A page tha
 
 ## Adding a new crate
 
-A new Cargo member must also enter every affected `images/Containerfile.*` `COPY` list. See
+A new Cargo member must also enter every affected `images/Containerfile.*` `COPY` list. The `word` member additionally
+ships its managed adapter through the `neon` image's pinned .NET build stage. See
 [`durable-workflows.md`](durable-workflows.md) and [`rust-programming.md`](rust-programming.md).
 
 `portal::bootstrap` owns authenticated, protocol, and operational routes; a host supplies public routes as

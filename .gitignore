@@ -96,3 +96,8 @@ pyproject.toml
 # Dioxus client bundle — built by `navigator dev build-webapp` (issue #641),
 # staged into the image by images/Containerfile.web. A build artifact, never committed.
 server/public/dioxus/
+
+# Managed DOCX adapter build outputs — the source project and lock files are
+# tracked, but SDK restore/build artifacts are not.
+/word/adapter/bin/
+/word/adapter/obj/

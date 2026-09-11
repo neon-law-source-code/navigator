@@ -1686,7 +1686,7 @@ pub fn bootstrap(
     // composition is merged behind this same boundary.
     let boundary_sessions = state.sessions.clone();
     let boundary_auth = state.auth.clone();
-    let footer_store = state.surreal.clone();
+    let firm_context_store = state.surreal.clone();
     let mut router = mount_brand_assets(router, brand_bundle.as_ref())
         .nest_service("/public", static_files)
         // Axum forbids `{key}` inside a mixed path segment (`brand-{key}-tokens.css`).
@@ -1930,8 +1930,8 @@ pub fn bootstrap(
         ))
         .layer(tower_cookies::CookieManagerLayer::new())
         .layer(axum::middleware::from_fn_with_state(
-            footer_store,
-            inject_firm_footer_model,
+            firm_context_store,
+            inject_resolved_firm_context,
         ))
         .layer(axum::middleware::from_fn_with_state(
             branding,
@@ -2336,12 +2336,16 @@ fn mount_brand_assets(
     router
 }
 
-/// Resolve the [`webapp::firm_footer::FirmFooterModel`] for the Firm that
-/// wears this request's brand — the legal entity name and the brand list
-/// every footer (`/app`'s and the public chrome's) draws from. Runs inside
+/// Resolve store-backed request extensions for the Firm that wears this
+/// request's brand: the [`webapp::firm_footer::FirmFooterModel`] every
+/// footer (`/app`'s and the public chrome's) draws from, and the
+/// [`webapp::app_chrome::AppBrandMark`] the `/app` navbar draws from (ENG-590:
+/// preferring an uploaded brand logo over the compiled one). Runs inside
 /// `host_layer` so the resolved [`views::brand::BrandKey`] is already on the
-/// request.
-async fn inject_firm_footer_model(
+/// request, and wraps the whole merged router once rather than per route, so
+/// every per-route layer that reads either extension — `inject_app_brand_mark`
+/// included — finds it already resolved.
+async fn inject_resolved_firm_context(
     State(surreal): State<store::surreal::SurrealDb>,
     mut request: Request<axum::body::Body>,
     next: Next,
@@ -2363,7 +2367,9 @@ async fn inject_firm_footer_model(
             .to_string(),
     )
     .await;
+    let mark = webapp::app_chrome::resolve_app_brand_mark(&surreal, current).await;
     request.extensions_mut().insert(model);
+    request.extensions_mut().insert(mark);
     next.run(request).await
 }
 

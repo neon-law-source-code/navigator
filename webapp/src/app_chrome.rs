@@ -134,6 +134,13 @@ pub fn firm_app_logo() -> Option<AppLogo> {
 
 /// The running deploy's brand identity, resolved where the brand `task_local`
 /// is live. `portal`'s pre-layer calls this; a server function must not.
+///
+/// The store-free fallback: an uploaded logo (ENG-586) is not available
+/// without a database round trip, so this always renders the compiled
+/// `logo_href`. [`resolve_app_brand_mark`] is the store-aware version
+/// `portal`'s global pre-layer actually uses; this stays as the seam's
+/// defensive fallback for the middleware-free test paths and the one
+/// synchronous call site inside [`inject_app_brand_mark`].
 #[cfg(feature = "server")]
 #[must_use]
 pub fn firm_brand_mark() -> AppBrandMark {
@@ -141,6 +148,47 @@ pub fn firm_brand_mark() -> AppBrandMark {
         logo: firm_app_logo(),
         firm_name: views::brand::FIRM_BRAND.site_name.to_string(),
         tokens_href: crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str()),
+    }
+}
+
+/// [`firm_brand_mark`], but preferring the resolved brand's uploaded logo
+/// (ENG-586: `store::brands::Brand::logo_object_key`, servable at
+/// `/assets/{object_key}`) over the compiled `logo_href` when the brand row
+/// carries one. A brand with neither renders the wordmark only, matching a
+/// compiled brand that configures no logo.
+///
+/// `current` is the request's already-resolved brand key — the same one
+/// `views::brand::brand_key()` reads from the live `task_local` — passed in
+/// explicitly because this needs it before the store round trip, not after.
+///
+/// # Errors
+///
+/// Never returns an error: a store failure degrades to [`firm_brand_mark`]'s
+/// compiled answer rather than breaking the navbar.
+#[cfg(feature = "server")]
+pub async fn resolve_app_brand_mark(
+    surreal: &store::surreal::SurrealDb,
+    current: views::brand::BrandKey,
+) -> AppBrandMark {
+    let compiled = firm_brand_mark();
+    let Ok(Some(brand)) = store::brands::find_by_key(surreal, current.as_str()).await else {
+        return compiled;
+    };
+    let Some(object_key) = brand.logo_object_key else {
+        return compiled;
+    };
+    let home_href = current
+        .resolve_branding(&views::brand::DEFAULT_BRANDING)
+        .firm
+        .home_href
+        .to_string();
+    AppBrandMark {
+        logo: Some(AppLogo {
+            src: format!("/assets/{object_key}"),
+            href: home_href,
+            brand_name: compiled.firm_name.clone(),
+        }),
+        ..compiled
     }
 }
 
@@ -420,5 +468,45 @@ mod tests {
             );
         })
         .await;
+    }
+
+    /// ENG-590: a brand with no uploaded logo renders the compiled one,
+    /// unchanged from today.
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn resolve_app_brand_mark_falls_back_to_the_compiled_logo_with_no_upload() {
+        let surreal = store::surreal::test_support::mem().await;
+        let mark = resolve_app_brand_mark(&surreal, views::brand::BrandKey::Neon).await;
+        assert_eq!(mark, firm_brand_mark());
+    }
+
+    /// A brand with an uploaded logo (ENG-586) renders it in preference to
+    /// the compiled one, keeping the same home href and firm name.
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn resolve_app_brand_mark_prefers_an_uploaded_logo() {
+        let surreal = store::surreal::test_support::mem().await;
+        let brand = store::brands::find_by_key(&surreal, "neon")
+            .await
+            .unwrap()
+            .unwrap();
+        store::brands::set_logo(
+            &surreal,
+            store::persons::Role::Owner,
+            None,
+            brand.id,
+            "brands/neon/logo.svg",
+            "image/svg+xml",
+        )
+        .await
+        .unwrap();
+
+        let mark = resolve_app_brand_mark(&surreal, views::brand::BrandKey::Neon).await;
+        let compiled = firm_brand_mark();
+        let logo = mark.logo.expect("the uploaded logo renders");
+        assert_eq!(logo.src, "/assets/brands/neon/logo.svg");
+        assert_eq!(logo.brand_name, compiled.firm_name);
+        assert_eq!(mark.firm_name, compiled.firm_name);
+        assert_eq!(mark.tokens_href, compiled.tokens_href);
     }
 }

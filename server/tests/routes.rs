@@ -19120,3 +19120,41 @@ async fn a_code_naming_no_matter_is_refused_on_every_matter_route() {
         "the per-document page must not echo a code it could not resolve: {body}"
     );
 }
+
+/// ENG-590: the `/app` navbar mark already resolves the request's brand
+/// correctly by host (`FIRM_BRAND` reads the live `task_local`, not a
+/// compiled default) — this pins that as intentional, proven behavior rather
+/// than an accident, and adds the one piece that was genuinely missing: a
+/// brand's uploaded logo (`store::brands::Brand::logo_object_key`, ENG-586)
+/// takes precedence over the compiled `logo_href` on `/app` too, not only on
+/// the public site.
+#[tokio::test]
+async fn the_app_navbar_prefers_an_uploaded_logo_over_the_compiled_one() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    store::brands::set_logo(
+        &surreal,
+        store::persons::Role::Owner,
+        None,
+        store::brands::find_by_key(&surreal, "neon")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "brands/neon/logo.svg",
+        "image/svg+xml",
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = get_with_role(app, "/app/team", store::persons::Role::Lawyer).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains(r#"src="/assets/brands/neon/logo.svg""#),
+        "the uploaded logo takes precedence over the compiled one: {body}"
+    );
+}

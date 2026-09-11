@@ -137,6 +137,13 @@ entry. Deleting a row is refused while any `firm_brand` or `project.brand` value
 touches the three compiled keys' own served hosts, marketing pages, or fallback presentation — editing `neon`'s row
 changes what `/public/css/brand-neon-tokens.css` renders, not which hosts resolve to it.
 
+An uploaded logo also renders on `/app` (ENG-590), not only on the public site:
+`webapp::app_chrome::resolve_app_brand_mark` prefers the resolved brand's `brand.logo_object_key` over the compiled
+`SiteBrand.logo_href` in the navbar mark, resolved by the same portal-wide request layer that resolves
+[`FirmFooterModel`](#firm-brand). The `/app` document title is deliberately unaffected — every `/app/*` page's tab title
+still leads with "Navigator", because `/app` is the firm's own internal tool rather than a client-facing surface a
+white-label deploy needs to rebrand in the reader's eyes.
+
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local

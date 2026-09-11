@@ -519,14 +519,27 @@ async fn inject_viewer_role(mut req: Request, next: Next) -> Response {
 /// [`webapp::app_chrome::AppBrandMark`] request extension, so an `/app` page's
 /// navbar renders the mounted brand's logo and its copy names the mounted firm.
 ///
-/// Resolved here, on the request task, where the brand `tokio::task_local`
-/// (`scope_branding`) is live: a Dioxus server function runs on a task that does
-/// not inherit it, so `app_logo_from_context` resolving the brand itself would
-/// publish the DEFAULT mark under a mounted white-label bundle — the same reason
-/// [`inject_public_utility`] resolves the public chrome here rather than there.
+/// Prefers an `AppBrandMark` the portal-wide `inject_firm_footer_model` layer
+/// already resolved with store access (ENG-590: an uploaded brand logo takes
+/// precedence over the compiled one there) — that layer wraps every route, so
+/// its extension is already on the request by the time any per-route layer
+/// runs. Falls back to the store-free [`webapp::app_chrome::firm_brand_mark`]
+/// for the middleware-free test paths, resolved here, on the request task,
+/// where the brand `tokio::task_local` (`scope_branding`) is live: a Dioxus
+/// server function runs on a task that does not inherit it, so
+/// `app_logo_from_context` resolving the brand itself would publish the
+/// DEFAULT mark under a mounted white-label bundle — the same reason
+/// [`inject_public_utility`] resolves the public chrome here rather than
+/// there.
 async fn inject_app_brand_mark(mut req: Request, next: Next) -> Response {
-    req.extensions_mut()
-        .insert(webapp::app_chrome::firm_brand_mark());
+    if req
+        .extensions()
+        .get::<webapp::app_chrome::AppBrandMark>()
+        .is_none()
+    {
+        req.extensions_mut()
+            .insert(webapp::app_chrome::firm_brand_mark());
+    }
     next.run(req).await
 }
 

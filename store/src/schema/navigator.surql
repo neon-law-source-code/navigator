@@ -146,10 +146,23 @@ DEFINE INDEX OVERWRITE xero_invoice_project ON xero_invoice FIELDS project_id;
 -- record id equal to its own `project_id`. Re-create it under its Xero
 -- invoice id, carrying `inserted_at` forward as the best available
 -- `issued_at` until the next nightly reconcile corrects it, and drop the
--- legacy row. Idempotent: a row already keyed on its Xero invoice id has
--- `meta::id(id) = xero_invoice_id` already, so a second apply finds
--- nothing left to migrate.
+-- legacy row. A collision is a deliberate, named failure (ENG-627), not an
+-- implicit merge: the preflight runs before the loop, so a target left by an
+-- interrupted run or two legacy rows with the same Xero id leave every row
+-- intact for an operator to repair. Idempotent after that repair: a row
+-- already keyed on its Xero invoice id has `meta::id(id) = xero_invoice_id`,
+-- so a second apply finds nothing left to migrate.
 LET $legacy_xero_invoices = (SELECT * FROM xero_invoice WHERE meta::id(id) != xero_invoice_id);
+FOR $legacy IN $legacy_xero_invoices {
+    LET $xero_invoice_rekey_collision = (
+        SELECT id FROM xero_invoice
+        WHERE xero_invoice_id = $legacy.xero_invoice_id AND id != $legacy.id
+        LIMIT 1
+    );
+    IF array::len($xero_invoice_rekey_collision) > 0 {
+        THROW string::concat('xero invoice re-key collision: ', $legacy.xero_invoice_id);
+    };
+};
 FOR $legacy IN $legacy_xero_invoices {
     CREATE type::record('xero_invoice', $legacy.xero_invoice_id) SET
         project_id = $legacy.project_id,

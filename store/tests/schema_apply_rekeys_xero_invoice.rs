@@ -10,6 +10,47 @@ use store::schema;
 use store::test_support::{mem_surreal, seed_entity};
 use store::xero_invoices;
 
+async fn create_legacy_invoice(
+    db: &store::surreal::SurrealDb,
+    project_id: uuid::Uuid,
+    xero_invoice_id: &str,
+) {
+    db.query(
+        "CREATE $id SET
+         project_id = $project_id,
+         xero_invoice_id = $xero_invoice_id, reference = 'Legacy invoice',
+         status = 'AUTHORISED', amount_cents = 250000, amount_paid_cents = 0,
+         currency = 'USD', issued_at = <datetime>'2026-01-15T00:00:00Z',
+         inserted_at = <datetime>'2026-01-15T00:00:00Z',
+         updated_at = <datetime>'2026-01-15T00:00:00Z'",
+    )
+    .bind(("id", store::surreal::record_id("xero_invoice", project_id)))
+    .bind((
+        "project_id",
+        store::surreal::record_id("project", project_id),
+    ))
+    .bind(("xero_invoice_id", xero_invoice_id.to_string()))
+    .await
+    .and_then(surrealdb::IndexedResults::check)
+    .expect("create a legacy project_id-keyed mirror row");
+}
+
+async fn create_project(db: &store::surreal::SurrealDb, code: &str) -> store::projects::Project {
+    let entity_id = seed_entity(db).await;
+    store::projects::create(
+        db,
+        &store::projects::NewProject {
+            code: code.to_string(),
+            name: format!("{code} matter"),
+            status: "open".to_string(),
+            entity_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create the matter the legacy mirror row bills")
+}
+
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn a_legacy_project_keyed_row_is_rekeyed_to_its_xero_invoice_id_and_stays_readable() {
@@ -151,5 +192,118 @@ async fn a_legacy_project_keyed_row_is_rekeyed_to_its_xero_invoice_id_and_stays_
             .len(),
         2,
         "a repeat apply must not duplicate or drop either row"
+    );
+}
+
+/// A partially completed prior apply leaves the new Xero-id record alongside
+/// its legacy source. That is ambiguous: choosing either row would discard
+/// the other record's possible reconciliation state. The migration must name
+/// the collision and leave both untouched until an operator resolves it.
+#[tokio::test]
+async fn a_preexisting_xero_key_fails_without_losing_the_legacy_or_target_row_and_retries_after_repair(
+) {
+    let db = mem_surreal().await;
+    let project = create_project(&db, "existing-target-invoice").await;
+    create_legacy_invoice(&db, project.id, "already-migrated-xero-id").await;
+    xero_invoices::upsert(
+        &db,
+        &xero_invoices::UpsertXeroInvoice {
+            project_id: project.id,
+            xero_invoice_id: "already-migrated-xero-id".to_string(),
+            reference: "Target invoice".to_string(),
+            status: "AUTHORISED".to_string(),
+            amount_cents: 75_000,
+            currency: "USD".to_string(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
+        },
+    )
+    .await
+    .expect("create the already-migrated target row");
+
+    let error = schema::apply(&db)
+        .await
+        .expect_err("a target collision must be reported rather than merged or dropped");
+    assert!(
+        error
+            .to_string()
+            .contains("xero invoice re-key collision: already-migrated-xero-id"),
+        "the migration error must identify the invoice that needs repair: {error}"
+    );
+    assert_eq!(
+        xero_invoices::for_projects(&db, &[project.id])
+            .await
+            .expect("read both preserved rows")
+            .len(),
+        2,
+        "a collision must not delete either the legacy source or the target"
+    );
+
+    db.query("DELETE $id")
+        .bind((
+            "id",
+            surrealdb::types::RecordId::new("xero_invoice", "already-migrated-xero-id"),
+        ))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("operator resolves the collision by removing the known duplicate target");
+    schema::apply(&db)
+        .await
+        .expect("a retry after an explicit repair re-keys the preserved legacy row");
+    assert_eq!(
+        xero_invoices::for_projects(&db, &[project.id])
+            .await
+            .expect("read the repaired mirror")
+            .len(),
+        1
+    );
+}
+
+/// Duplicated legacy invoice IDs must be rejected before the loop moves even
+/// one row; otherwise the first row becomes a target and the second one aborts
+/// the apply, leaving a half-migrated database behind.
+#[tokio::test]
+async fn duplicate_legacy_xero_ids_fail_before_any_row_is_rekeyed_and_retry_after_repair() {
+    let db = mem_surreal().await;
+    let first = create_project(&db, "duplicate-legacy-first").await;
+    let second = create_project(&db, "duplicate-legacy-second").await;
+    create_legacy_invoice(&db, first.id, "duplicated-legacy-xero-id").await;
+    create_legacy_invoice(&db, second.id, "duplicated-legacy-xero-id").await;
+
+    let error = schema::apply(&db)
+        .await
+        .expect_err("duplicate legacy invoice IDs must be reported before a partial migration");
+    assert!(
+        error
+            .to_string()
+            .contains("xero invoice re-key collision: duplicated-legacy-xero-id"),
+        "the migration error must identify the duplicate invoice id: {error}"
+    );
+    let legacy_keys: Vec<bool> = db
+        .query(
+            "SELECT VALUE meta::id(id) != xero_invoice_id FROM xero_invoice
+             WHERE xero_invoice_id = 'duplicated-legacy-xero-id'",
+        )
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("read the untouched legacy rows")
+        .take(0)
+        .expect("deserialize the legacy-row check");
+    assert_eq!(legacy_keys, vec![true, true]);
+
+    db.query("UPDATE $id SET xero_invoice_id = 'repaired-legacy-xero-id'")
+        .bind(("id", store::surreal::record_id("xero_invoice", second.id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("operator gives the second legacy invoice its correct Xero id");
+    schema::apply(&db)
+        .await
+        .expect("a retry after repair re-keys both preserved legacy rows");
+    assert_eq!(
+        xero_invoices::for_projects(&db, &[first.id, second.id])
+            .await
+            .expect("read both repaired invoices")
+            .len(),
+        2
     );
 }

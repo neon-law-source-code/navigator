@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 38;
+pub const SCHEMA_VERSION: u32 = 39;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -102,6 +102,11 @@ pub type Introspection = BTreeMap<String, TableDefinition>;
 pub enum SchemaError {
     #[error("apply the Surreal schema definitions")]
     Apply(#[source] SurrealQueryError),
+    /// The Xero invoice historical re-key cannot safely choose between two
+    /// rows that claim the same Xero invoice id. The schema's preflight
+    /// detects it before changing either row.
+    #[error("xero invoice re-key collision: {0}")]
+    XeroInvoiceRekeyCollision(String),
     #[error("record the applied schema version")]
     RecordVersion(#[source] SurrealQueryError),
     #[error("read the applied schema version")]
@@ -110,6 +115,17 @@ pub enum SchemaError {
     UnreadableVersion(i64),
     #[error("read the applied schema back from the engine")]
     Introspect(#[source] SurrealQueryError),
+}
+
+const XERO_INVOICE_REKEY_COLLISION_PREFIX: &str =
+    "An error occurred: xero invoice re-key collision: ";
+
+fn classify_apply(error: SurrealQueryError) -> SchemaError {
+    let message = error.to_string();
+    match message.strip_prefix(XERO_INVOICE_REKEY_COLLISION_PREFIX) {
+        Some(invoice_id) => SchemaError::XeroInvoiceRekeyCollision(invoice_id.to_string()),
+        None => SchemaError::Apply(error),
+    }
 }
 
 /// Apply the schema and record [`SCHEMA_VERSION`].
@@ -121,7 +137,7 @@ pub async fn apply(db: &SurrealDb) -> Result<(), SchemaError> {
     db.query(DEFINITIONS)
         .await
         .and_then(surrealdb::IndexedResults::check)
-        .map_err(SchemaError::Apply)?;
+        .map_err(classify_apply)?;
 
     db.query(format!(
         "UPSERT {VERSION_RECORD} SET version = $version, applied_at = time::now()"

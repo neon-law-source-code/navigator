@@ -1,18 +1,16 @@
-head_title: "{site_name} | Personal Plan"
+head_title: "{site_name} | Personal plan"
 meta_description: >-
-  A personal legal plan from Neon Law: tax filing, privacy protection, and
-  credit monitoring (beta), on one flat annual or daily fee.
-title: Personal Plan
+  A Personal plan from Neon Law for help with taxes and personal information,
+  for $365 per year.
+title: Personal plan
 hero_mark: technology
-tagline: Personal Legal Plan
+tagline: Help with the things you need to take care of.
 hero_lines:
-  - text: Protected.
+  - text: Help with the things you need to take care of.
     accent_words: 1
-  - text: Personally.
-    accent_words: 0
 hero_lead: >-
-  One simple flat fee — just $1 a day — for the legal work a person returns to
-  year after year: taxes filed, your data kept private, and your credit watched.
+  You do not have to handle everything alone. Get help with your taxes and
+  personal information.
 hero_cta:
   href: "mailto:{firm_email}"
   label: Contact us
@@ -21,72 +19,71 @@ bands:
   - kind: cards
     anchor: virtues
     overline: Why it works
-    heading: Private. Simple. Attentive.
+    heading: Warm, clear help.
     description: ""
     items:
-      - title: Private
+      - title: Your information
         body:
           - - text: >-
-                What you tell us stays between us. We handle your data the
-                way we would want our own handled.
-      - title: Simple
+                We help you understand the next step for your taxes and your
+                personal information.
+      - title: Your questions
         body:
           - - text: >-
-                One flat fee, the same every year. No surprise bill for
-                asking a question.
-      - title: Attentive
+                We explain what is included and what may cost extra before we
+                begin additional work.
+      - title: A lawyer's review
         body:
           - - text: >-
-                A licensed attorney reviews the work — not a form that fills
-                itself in.
+                A licensed attorney reviews the work.
   - kind: cards
     anchor: plan
     overline: Personal Legal Plan
-    heading: One flat annual fee
+    heading: One annual price
     description: >-
-      We take on a limited number of Personal Plan members at a time — reach
-      out early to hold a spot.
+      The Personal plan is $365 per year, about $1 a day. Work outside the
+      plan and government fees cost extra. We will explain the cost before we
+      begin additional work.
     pricing_style: true
     items:
-      - title: Personal Legal Plan
+      - title: Personal plan
         chips:
           - "$365"
         cadence: /year
         body:
-          - - text: "That's just $1 a day — and every leap day is free."
+          - - text: "About $1 a day for help with taxes and personal information."
         features:
-          - Tax filing and preparation
-          - Privacy protection requests
-          - Credit monitoring (beta)
+          - Help with federal and state tax filings
+          - Help asking companies to remove your personal information
+          - Optional credit monitoring
         href: "mailto:{firm_email}"
         href_label: Contact us
         day_rate_bill: 1
   - kind: cards
     anchor: included
     overline: What's included
-    heading: Three areas, one flat fee
+    heading: Three ways we can help
     description: ""
     items:
       - title: Taxes
         body:
           - - text: >-
-                Personal tax return preparation and filing. A licensed
-                attorney is one of the three professional categories — with
-                CPAs and enrolled agents — authorized to represent a
-                taxpayer before the IRS.
-      - title: Privacy protection
+                Help with federal and state tax filings. We will explain what
+                information we need and whether additional work costs extra.
+      - title: Personal information
         body:
           - - text: >-
                 Requests to companies that hold your personal data, asking
-                them to delete it.
-      - title: Credit monitoring (beta)
+                them to remove it. We cannot promise that every company will
+                remove every record.
+      - title: Optional credit monitoring
         body:
           - - text: >-
-                Early access while we build this out. Contact us to join
-                the beta.
+                Choose whether to opt in. We will explain setup, coverage, and
+                any additional cost before you enroll.
   - kind: cta
-    heading: Ready to get protected?
+    heading: Ready to get help?
     body: >-
-      Email the firm to start your Personal Legal Plan.
+      Email the firm to ask whether the Personal plan fits your needs.
     email: "{firm_email}"
     email_subject: Personal Plan

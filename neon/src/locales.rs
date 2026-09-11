@@ -601,6 +601,18 @@ mod tests {
     #[test]
     fn personal_plan_publishes_its_one_dollar_day_rate() {
         let content = personal_plan(&views::brand::DEFAULT_BRANDING);
+        let plan = content
+            .bands
+            .iter()
+            .find_map(|band| match band {
+                webapp::marketing_page::Band::Cards { items, pricing_style, .. }
+                    if *pricing_style => items.first(),
+                _ => None,
+            })
+            .expect("the Personal plan offer");
+        assert_eq!(plan.chips.first().map(String::as_str), Some("$365"));
+        assert_eq!(plan.cadence.as_deref(), Some("/year"));
+        assert!(plan.features.contains(&"Optional credit monitoring".to_string()));
         let day_rate = content.bands.iter().find_map(|band| match band {
             webapp::marketing_page::Band::Cards { items, .. } => {
                 items.first().and_then(|card| card.day_rate.clone())

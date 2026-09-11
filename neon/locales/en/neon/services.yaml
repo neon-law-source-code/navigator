@@ -2,21 +2,20 @@ head_title: "Plans & services — {site_name}"
 meta_description: >-
   Choose a plan for regular legal help, ask about an individual service, or
   start a free consultation for a dispute.
-title: Plans & services
+title: "{shared:services.eyebrow}"
 hero_mark: gavel
-tagline: Find the help you need.
+tagline: "{shared:services.title}"
 hero_lines:
-  - text: Plans & services
+  - text: "{shared:services.eyebrow}"
     accent_words: 0
-hero_lead: >-
-  Choose a plan for regular help, or ask us about a single service.
+hero_lead: "{shared:services.lede}"
 hero_cta:
   href: "mailto:{firm_email}"
   label: Contact us
 skin: practice
 bands:
   - kind: statement
-    heading: A lawyer you can turn to.
+    heading: "{shared:services.subscriptions_heading}"
     lead: >-
       Choose a plan for ongoing help with your business or personal legal
       needs. Individual services are also available when you need help with
@@ -42,7 +41,7 @@ bands:
   - kind: cards
     anchor: fees
     overline: Individual services
-    heading: Need help with one thing?
+    heading: "{shared:services.catalog_heading}"
     description: >-
       Choose the help you need. We will explain what it includes and what it
       costs before work starts. Government fees are separate. Contract reviews

@@ -1,7 +1,9 @@
 //! Load each house brand's English marketing catalog and map it onto page types.
 //!
-//! The words live in `locales/en/<brand-key>/*.yaml`. This module is the only
-//! Rust that reads them: pick the directory for the request's `BrandKey`,
+//! The words live in `locales/en/<brand-key>/*.yaml`, and the sentences this
+//! repository shares with `navigator-ux` live once in `locales/en/shared.yaml`.
+//! This module is the only Rust that reads either: pick the directory for the
+//! request's `BrandKey`, resolve `{shared:<key>}` against the shared catalog,
 //! interpolate the brand placeholders, deserialize, and fill the few runtime
 //! fields a YAML file cannot know (the hero asset URL, the CLI release
 //! archives). Editing published copy is a YAML change.
@@ -19,6 +21,11 @@ use webapp::marketing_page::{
     Band, Card, Download, HeroCta, PackageInstall, PageContent, ProjectNetworkNode, Run, Step,
 };
 
+/// The cross-repository copy catalog. `navigator-ux` consumes an export of
+/// this same file, pinned to one Navigator revision, so the two repositories
+/// publish the same sentence without keeping two copies of it.
+const SHARED_CATALOG_YAML: &str = include_str!("../locales/en/shared.yaml");
+
 const NEON_HOME_YAML: &str = include_str!("../locales/en/neon/home.yaml");
 const NEON_LITIGATION_YAML: &str = include_str!("../locales/en/neon/litigation.yaml");
 const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractional-gc.yaml");
@@ -29,6 +36,23 @@ const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
 const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shook/services.yaml");
+
+/// The shipped shared catalog, parsed and validated once.
+///
+/// Every page load resolves references against it, so it is parsed on first
+/// use and kept. `navigator validate` (`Y002`) is the gate that keeps the
+/// parse infallible, and the `shared_catalog_is_valid` test below proves it
+/// in the Rust suite.
+#[must_use]
+pub fn shared_catalog() -> &'static views::locales::shared::SharedCatalog {
+    static CATALOG: std::sync::OnceLock<views::locales::shared::SharedCatalog> =
+        std::sync::OnceLock::new();
+    CATALOG.get_or_init(|| {
+        views::locales::shared::SharedCatalog::parse(SHARED_CATALOG_YAML).expect(
+            "invariant: locales/en/shared.yaml is valid; navigator validate Y002 is the gate",
+        )
+    })
+}
 
 /// The shipped YAML for `key`'s `page` stem, if that brand publishes it.
 #[must_use]
@@ -47,9 +71,19 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
     }
 }
 
-/// Load one catalog file as `T`, after substituting the mounted brand.
+/// Load one catalog file as `T`, after resolving shared copy and the mounted
+/// brand.
+///
+/// Shared references resolve first, so a shared sentence may itself carry a
+/// brand placeholder and still be filled for the brand that mounted it.
 fn load<T: serde::de::DeserializeOwned>(yaml: &str, branding: &views::brand::Branding) -> T {
-    let raw = interpolate(yaml, branding.firm.site_name, branding.firm_email);
+    let shared = views::locales::shared::resolve_references(
+        yaml,
+        shared_catalog(),
+        branding.brand_key.as_str(),
+    )
+    .expect("invariant: every `{shared:…}` reference resolves; the catalog test is the gate");
+    let raw = interpolate(&shared, branding.firm.site_name, branding.firm_email);
     serde_yaml::from_str(&raw)
         .expect("invariant: shipped locale YAML deserializes; navigator validate Y002 is the gate")
 }
@@ -508,6 +542,67 @@ mod tests {
     use super::*;
     use views::brand::BrandKey;
     use views::locales::parse_locale_file;
+
+    /// The shipped shared catalog is the contract both repositories consume.
+    /// If it stops parsing, the export the other repository pins stops being
+    /// producible — so this fails here rather than in the exporter.
+    #[test]
+    fn shared_catalog_is_valid() {
+        let catalog = shared_catalog();
+        assert_eq!(
+            catalog.catalog_version,
+            views::locales::shared::SUPPORTED_CATALOG_VERSION
+        );
+        for key in views::locales::shared::REQUIRED_KEYS {
+            assert!(
+                catalog.lookup(BrandKey::Neon.as_str(), key).is_some(),
+                "the shared catalog must publish `{key}`"
+            );
+        }
+    }
+
+    /// Every `{shared:…}` a shipped page references must name a key the
+    /// catalog defines, for every brand that publishes that page. An
+    /// unresolved reference would otherwise reach a reader as a brace.
+    #[test]
+    fn every_shared_reference_a_shipped_page_makes_resolves() {
+        let catalog = shared_catalog();
+        for key in BrandKey::ALL {
+            for page in key.catalog_pages() {
+                let yaml = catalog_yaml(*key, page).expect("shipped catalog");
+                for referenced in views::locales::shared::referenced_keys(yaml) {
+                    assert!(
+                        catalog.lookup(key.as_str(), &referenced).is_some(),
+                        "{} `{page}` references `{referenced}`, which the shared catalog does not define",
+                        key.as_str()
+                    );
+                }
+                views::locales::shared::resolve_references(yaml, catalog, key.as_str())
+                    .unwrap_or_else(|err| panic!("{} `{page}`: {err}", key.as_str()));
+            }
+        }
+    }
+
+    /// The shared catalog is not decoration: the pages that reference it must
+    /// actually be the ones that carry the duplicated sentences.
+    #[test]
+    fn the_shared_catalog_is_the_source_the_neon_pages_read() {
+        let referenced: std::collections::BTreeSet<String> = BrandKey::ALL
+            .iter()
+            .flat_map(|key| {
+                key.catalog_pages()
+                    .iter()
+                    .filter_map(|page| catalog_yaml(*key, page))
+                    .flat_map(views::locales::shared::referenced_keys)
+            })
+            .collect();
+        for key in shared_catalog().keys() {
+            assert!(
+                referenced.contains(key),
+                "`{key}` is authored in the shared catalog but no page reads it"
+            );
+        }
+    }
 
     /// Every registry key ships every catalog page it declares, and each file
     /// deserializes as that page. A missing file fails here, not at first request.

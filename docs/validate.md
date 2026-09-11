@@ -243,7 +243,7 @@ for that violation without a human decision; every other code needs a person to 
 | Code | Severity | Rule | Autofix |
 | --- | --- | --- | --- |
 | `Y001` | Error | A `seeds/*.yaml` document must be accepted by `navigator site import`. | No |
-| `Y002` | Error | An English `locales/` catalog must deserialize as the page its stem names. | No |
+| `Y002` | Error | An English `locales/` catalog deserializes as its stem's page, or as the shared-copy contract. | No |
 | `Y003` | Error | A Project repository's `documents/**/*.yml` pointer must name a valid asset revision. | No |
 | `Y004` | Error | A Project manifest `host` must be a hostname (no scheme, port, or path). | No |
 | `Y005` | Error | A Project manifest `project` must be a valid Navigator Project code. | No |

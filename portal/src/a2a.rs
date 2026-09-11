@@ -701,7 +701,6 @@ async fn handle_message_send(
             principal_kind = %principal_kind(principal_email),
             skill = %named_skill,
             task_id = %task_id,
-            context_id = %context_id,
             routed_via_llm = false,
             "a2a: message/send accepted (direct skill)"
         );
@@ -3899,6 +3898,64 @@ mod tests {
         assert!(
             !line.contains('@'),
             "no email address may reach the audit stream: {line}"
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_skill_acceptance_telemetry_uses_only_server_task_correlation() {
+        let caller_context = "caller-selected context text";
+        let (engines, person_id) = welcome_fixture().await;
+        let (_, rpc) = routes(state_with(engines));
+
+        let mut request =
+            direct_skill(54, "send_welcome_email", &json!({ "person_id": person_id }));
+        request["params"]["message"]["contextId"] = json!(caller_context);
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let task_id;
+        {
+            let _guard = capture_into(&buf);
+            let (_, body) = post_rpc_as(rpc, request, "lawyer@neonlaw.com").await;
+            task_id = body["result"]["id"]
+                .as_str()
+                .expect("server-generated task id")
+                .to_string();
+            assert_eq!(
+                body["result"]["contextId"], caller_context,
+                "the caller-supplied contextId remains part of the A2A task response"
+            );
+            assert_eq!(body["result"]["status"]["state"], "input-required");
+        }
+
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).expect("utf-8 log");
+        let line = logged
+            .lines()
+            .find(|line| line.contains("a2a: message/send accepted (direct skill)"))
+            .unwrap_or_else(|| panic!("expected a direct-skill acceptance record in: {logged}"));
+        assert_eq!(
+            field_names(line),
+            vec![
+                "message",
+                "principal_kind",
+                "routed_via_llm",
+                "skill",
+                "task_id",
+            ],
+            "the acceptance record's field set is the contract; got: {line}"
+        );
+
+        let parsed: Value = serde_json::from_str(line).expect("JSON line");
+        assert_eq!(
+            parsed["fields"]["task_id"], task_id,
+            "the server-generated task id remains the telemetry join: {line}"
+        );
+        assert!(
+            parsed["fields"].get("context_id").is_none(),
+            "caller context must not become an exported telemetry attribute: {line}"
+        );
+        assert!(
+            !line.contains(caller_context),
+            "arbitrary caller context text must not reach ordinary telemetry: {line}"
         );
     }
 

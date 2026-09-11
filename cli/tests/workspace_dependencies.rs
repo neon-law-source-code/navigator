@@ -124,6 +124,7 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "webapp",
     "webp",
     "wiremock",
+    "word",
     "workflows",
     "zip",
 ];

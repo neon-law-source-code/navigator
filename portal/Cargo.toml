@@ -61,6 +61,7 @@ views.workspace = true
 walkdir.workspace = true
 webapp = { workspace = true, features = ["server"] }
 workflows.workspace = true
+word.workspace = true
 zip.workspace = true
 
 [dev-dependencies]

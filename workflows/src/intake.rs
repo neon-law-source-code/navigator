@@ -53,6 +53,9 @@ pub enum IntakeArtifact {
         bytes_base64: String,
         content_type: String,
     },
+    /// An already-filed immutable asset. Durable workflow payloads carry this
+    /// identifier instead of document bytes or a caller-supplied filename.
+    Stored { asset_id: Uuid },
     /// An external link (a Zoom recording URL, a shared-drive link).
     /// Stored as a `text/uri-list` pointer; we record what was provided.
     Link { url: String },
@@ -61,7 +64,8 @@ pub enum IntakeArtifact {
 impl IntakeArtifact {
     /// Resolve the artifact to the bytes + content type that land in
     /// storage. The only fallible arm is [`IntakeArtifact::File`], whose
-    /// base64 may be malformed.
+    /// base64 may be malformed; [`IntakeArtifact::Stored`] is already
+    /// resolved by the intake boundary and cannot be converted here.
     fn to_bytes(&self) -> Result<(Vec<u8>, String), IntakeError> {
         match self {
             Self::Text { text } => Ok((text.clone().into_bytes(), "text/plain".to_string())),
@@ -72,6 +76,7 @@ impl IntakeArtifact {
                 let bytes = BASE64.decode(bytes_base64)?;
                 Ok((bytes, content_type.clone()))
             }
+            Self::Stored { .. } => Err(IntakeError::StoredAssetRequired),
             Self::Link { url } => Ok((url.clone().into_bytes(), "text/uri-list".to_string())),
         }
     }
@@ -88,7 +93,7 @@ pub struct IntakePayload {
     /// does not recognize.
     pub kind: String,
     /// Caller-visible filename / title. Goes into `documents.filename`.
-    pub filename: String,
+    pub filename: Option<String>,
     /// The provided artifact.
     pub artifact: IntakeArtifact,
 }
@@ -102,12 +107,22 @@ pub enum IntakeError {
     NotationNotFound(Uuid),
     #[error("ingest: {0}")]
     Ingest(#[from] store::documents::IngestError),
+    #[error("asset: {0}")]
+    Asset(#[from] store::assets::AssetError),
     #[error("database: {0}")]
     Db(String),
     #[error("notation store: {0}")]
     Notation(#[from] store::notations::NotationError),
     #[error("`{0}` is not a recognized document kind (see rules::kind::Kind)")]
     UnknownKind(String),
+    #[error("stored asset must be resolved by the intake boundary")]
+    StoredAssetRequired,
+    #[error("stored asset is missing")]
+    StoredAssetMissing,
+    #[error("stored asset belongs to a different project")]
+    StoredAssetProjectMismatch,
+    #[error("stored asset kind does not match the intake kind")]
+    StoredAssetKindMismatch,
 }
 
 impl From<String> for IntakeError {
@@ -143,11 +158,29 @@ pub async fn dispatch_document_intake(
         return Err(IntakeError::UnknownKind(payload.kind.clone()));
     }
     let project_id = notation_project_id(surreal, notation_id).await?;
+    if let IntakeArtifact::Stored { asset_id } = &payload.artifact {
+        let asset = store::assets::find_by_id(surreal, *asset_id)
+            .await?
+            .ok_or(IntakeError::StoredAssetMissing)?;
+        if asset.project_id != Some(project_id) {
+            return Err(IntakeError::StoredAssetProjectMismatch);
+        }
+        if asset.kind.as_deref() != Some(payload.kind.as_str()) {
+            return Err(IntakeError::StoredAssetKindMismatch);
+        }
+        return Ok(store::documents::IngestedDocument {
+            asset_id: asset.id,
+            storage_key: asset.storage_key,
+            sha256_hex: asset.sha256_hex,
+            byte_size: asset.byte_size,
+            reused: true,
+        });
+    }
     let (bytes, content_type) = payload.artifact.to_bytes()?;
     let args = store::documents::IngestArgs {
         project_id,
         source: store::documents::source::UPLOAD,
-        filename: &payload.filename,
+        filename: payload.filename.as_deref().unwrap_or("inbound-artifact"),
         kind: &payload.kind,
         content_type: &content_type,
         description: None,
@@ -191,6 +224,37 @@ mod tests {
         })
         .unwrap();
         assert_eq!(link["kind"], "link");
+        let stored = serde_json::to_value(IntakeArtifact::Stored {
+            asset_id: uuid::Uuid::nil(),
+        })
+        .unwrap();
+        assert_eq!(stored["kind"], "stored");
+    }
+
+    #[test]
+    fn stored_payload_contains_only_the_immutable_asset_identifier() {
+        let payload = IntakePayload {
+            kind: "inbound_contract".into(),
+            filename: None,
+            artifact: IntakeArtifact::Stored {
+                asset_id: uuid::Uuid::nil(),
+            },
+        };
+        let json = serde_json::to_value(payload).unwrap();
+        assert_eq!(json["filename"], serde_json::Value::Null);
+        assert_eq!(json["artifact"]["kind"], "stored");
+        assert!(json["artifact"].get("asset_id").is_some());
+        assert!(json["artifact"].get("bytes_base64").is_none());
+    }
+
+    #[test]
+    fn stored_artifact_cannot_be_reinterpreted_as_new_bytes() {
+        let err = IntakeArtifact::Stored {
+            asset_id: uuid::Uuid::nil(),
+        }
+        .to_bytes()
+        .unwrap_err();
+        assert!(matches!(err, super::IntakeError::StoredAssetRequired));
     }
 
     #[test]
@@ -243,7 +307,7 @@ mod tests {
     fn payload_round_trips_through_json() {
         let payload = IntakePayload {
             kind: "transcript".into(),
-            filename: "sitting-transcript.txt".into(),
+            filename: Some("sitting-transcript.txt".into()),
             artifact: IntakeArtifact::Text {
                 text: "consent given; people named".into(),
             },

@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'WordAdapter'">
+    <BaseIntermediateOutputPath>obj/adapter/</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin/adapter/</BaseOutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'WordAdapter.Tests'">
+    <BaseIntermediateOutputPath>obj/tests/</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin/tests/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

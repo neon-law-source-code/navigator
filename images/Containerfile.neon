@@ -11,8 +11,8 @@
 
 # ---------- Stage 1: builder ----------
 #
-# Compile the `neon` brand binary statically against musl: a fully static
-# binary is what the `gcr.io/distroless/static` runtime stage below runs.
+# Compile the `neon` brand binary statically against musl. The runtime stage
+# also carries the dynamically linked self-contained DOCX adapter.
 # The TLS stack arrives through `store`, which registers rustls's
 # `aws-lc-rs` provider for `wss://` Surreal endpoints; it and `ring` both
 # musl-target fine. We pin to the project's Rust 1.98.0 toolchain.
@@ -59,7 +59,7 @@ RUN rustup target add "$(cat /tmp/rust-target)"
 # `navigator dev build-webapp`); the CLI subcommand needs the full worktree,
 # which this build context intentionally does not carry.
 RUN rustup target add wasm32-unknown-unknown \
-    && cargo install dioxus-cli --version 0.7.9 --locked
+    && cargo install dioxus-cli --version 0.7.10 --locked
 
 # Stage `dx`'s three build-time tools here instead of letting `dx build` fetch
 # them (#935). `dx` resolves wasm-bindgen, esbuild, and wasm-opt inside the
@@ -126,6 +126,7 @@ COPY telemetry         telemetry
 COPY forms             forms
 COPY workflows         workflows
 COPY workflows-service workflows-service
+COPY word              word
 COPY cloud             cloud
 COPY mcp               mcp
 COPY features          features
@@ -183,6 +184,26 @@ RUN NO_DOWNLOADS=1 dx build --package webapp --platform web --release --debug-sy
          exit 1; \
        fi
 
+# Build the local, network-free DOCX adapter from the pinned official SDK and
+# the locked DocumentFormat.OpenXml package. The runtime receives a single
+# self-contained executable; no SDK or package restore is present there.
+FROM mcr.microsoft.com/dotnet/sdk:8.0.418-bookworm-slim@sha256:bfb6ed602caa605141700aea7dc7d42574b74b704368e67d683c71a002123808 AS word-adapter-builder
+
+WORKDIR /src
+COPY word/adapter word/adapter
+WORKDIR /src/word/adapter
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      amd64) dotnet_rid=linux-x64 ;; \
+      arm64) dotnet_rid=linux-arm64 ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH:-unset}" >&2; exit 1 ;; \
+    esac \
+    && dotnet restore WordAdapter.csproj --locked-mode \
+    && dotnet publish WordAdapter.csproj --no-restore --configuration Release \
+         --runtime "$dotnet_rid" --self-contained true \
+         --output /word-adapter/publish \
+         -p:PublishSingleFile=true -p:PublishTrimmed=false
+
 # ---------- Stage 2: runtime ----------
 #
 # distroless/static gives us a minimal scratch-equivalent base
@@ -190,7 +211,7 @@ RUN NO_DOWNLOADS=1 dx build --package webapp --platform web --release --debug-sy
 # carries only the statically linked binary plus the static asset
 # directories the server reads from disk at boot.
 
-FROM gcr.io/distroless/static:nonroot AS runtime
+FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 
 WORKDIR /app
 
@@ -201,6 +222,7 @@ COPY --from=builder /src/server/public  /app/public
 COPY --from=builder /dioxus-bundle   /app/public/dioxus
 COPY --from=builder /src/server/content /app/content
 COPY --from=builder /src/templates    /app/templates
+COPY --from=word-adapter-builder /word-adapter/publish/navigator-word-adapter /app/navigator-word-adapter
 
 # Identify the build. The daily `deploy.yml` publish job passes
 # `--build-arg RELEASE_TAG=$YY.M.D` (the Artifact Registry tag it publishes
@@ -221,6 +243,7 @@ ENV NAVIGATOR_RELEASE_TAG=$RELEASE_TAG \
 # Tell the binary where to find its assets. Override at deploy time
 # if you mount these in from a ConfigMap or PVC.
 ENV NAVIGATOR_PUBLIC_DIR=/app/public \
+    NAVIGATOR_WORD_ADAPTER=/app/navigator-word-adapter \
     NAVIGATOR_BLOG_DIR=/app/content/blog \
     NAVIGATOR_WORKSHOPS_DIR=/app/content/workshops \
     APP_ENV=production \

@@ -31,6 +31,7 @@ use std::sync::Arc;
 use axum::extract::{Extension, Multipart, Path as AxumPath, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
+use base64::Engine as _;
 use tower_cookies::Cookies;
 use uuid::Uuid;
 use workflows::{IntakeArtifact, IntakePayload, MachineKind, StateMachineRuntime};
@@ -65,6 +66,12 @@ pub enum ContractReviewError {
     Db(String),
     #[error("asset: {0}")]
     Asset(#[from] store::assets::AssetError),
+    #[error("document ingest: {0}")]
+    DocumentIngest(#[from] store::documents::IngestError),
+    #[error("decode document bytes: {0}")]
+    Base64(#[from] base64::DecodeError),
+    #[error("Word package: {0}")]
+    Word(#[from] word::WordError),
     #[error("template: {0}")]
     Template(#[from] store::templates::TemplateError),
     #[error("workflow runtime: {0}")]
@@ -144,7 +151,13 @@ pub async fn upload(
     let Some(artifact) = form.into_artifact() else {
         return Redirect::to(&redirect_back).into_response();
     };
-    let contract_text = artifact.contract_text();
+    let Ok(contract_text) = contract_text_for_review(&artifact).await else {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "This document could not be read for review.",
+        )
+            .into_response();
+    };
     let filename = artifact.default_filename();
 
     let deps = ReviewDeps {
@@ -176,6 +189,37 @@ pub async fn upload(
             tracing::error!(error = %e, %project_id, "contract-review upload failed");
             (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response()
         }
+    }
+}
+
+async fn contract_text_for_review(
+    artifact: &ParsedArtifact,
+) -> Result<String, ContractReviewError> {
+    if let ParsedArtifact::File {
+        bytes: _, filename, ..
+    } = artifact
+    {
+        if word::is_docx_filename(filename) {
+            let adapter = word::ManagedAdapter::from_env();
+            return contract_text_for_review_with_adapter(artifact, &adapter).await;
+        }
+    }
+    Ok(artifact.contract_text())
+}
+
+async fn contract_text_for_review_with_adapter<A: word::WordAdapter + ?Sized>(
+    artifact: &ParsedArtifact,
+    adapter: &A,
+) -> Result<String, ContractReviewError> {
+    match artifact {
+        ParsedArtifact::File {
+            bytes, filename, ..
+        } if word::is_docx_filename(filename) => {
+            Ok(word::parse_with_adapter(adapter, filename, bytes)
+                .await?
+                .accepted_view_text())
+        }
+        _ => Ok(artifact.contract_text()),
     }
 }
 
@@ -229,6 +273,13 @@ pub async fn drive_contract_review(
     let (template_row, questionnaire_snapshot) =
         contract_review_template_and_snapshot(deps.surreal, deps.storage, project_id).await?;
 
+    // File the immutable source asset before signaling the workflow. The
+    // durable signal carries only this asset id; bytes, text, and the caller's
+    // filename never enter the journal payload.
+    let filed_artifact =
+        stage_contract_artifact(deps.surreal, deps.storage, project_id, filename, &artifact)
+            .await?;
+
     // Open the notation at BEGIN, bound to the client Entity.
     let new_notation = store::notations::NewNotation::new(
         template_row.id,
@@ -255,8 +306,8 @@ pub async fn drive_contract_review(
 
     let payload = IntakePayload {
         kind: INBOUND_CONTRACT_KIND.to_string(),
-        filename: filename.to_string(),
-        artifact,
+        filename: None,
+        artifact: filed_artifact,
     };
     let value = serde_json::to_string(&payload).map_err(ContractReviewError::Payload)?;
     let s = StateMachineRuntime::signal(
@@ -329,6 +380,50 @@ pub async fn drive_contract_review(
         "contract review: analysis complete, parked at lawyer_review"
     );
     Ok(review_id)
+}
+
+async fn stage_contract_artifact(
+    surreal: &store::surreal::SurrealDb,
+    storage: &Arc<dyn cloud::StorageService>,
+    project_id: Uuid,
+    filename: &str,
+    artifact: &IntakeArtifact,
+) -> Result<IntakeArtifact, ContractReviewError> {
+    let (bytes, content_type) = match artifact {
+        IntakeArtifact::Text { text } => (text.as_bytes().to_vec(), "text/plain".to_string()),
+        IntakeArtifact::File {
+            bytes_base64,
+            content_type,
+        } => (
+            base64::engine::general_purpose::STANDARD.decode(bytes_base64)?,
+            content_type.clone(),
+        ),
+        IntakeArtifact::Link { url } => (url.as_bytes().to_vec(), "text/uri-list".to_string()),
+        IntakeArtifact::Stored { asset_id } => {
+            return Ok(IntakeArtifact::Stored {
+                asset_id: *asset_id,
+            });
+        }
+    };
+    let ingested = store::documents::ingest_bytes(
+        surreal,
+        storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::UPLOAD,
+            filename,
+            kind: INBOUND_CONTRACT_KIND,
+            content_type: &content_type,
+            description: None,
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::INTERNAL,
+        },
+        &bytes,
+    )
+    .await?;
+    Ok(IntakeArtifact::Stored {
+        asset_id: ingested.asset_id,
+    })
 }
 
 async fn contract_review_template_and_snapshot(
@@ -416,10 +511,10 @@ impl ParsedArtifact {
         }
     }
 
-    /// The contract text the reviewer reads: a paste directly, or a file
-    /// decoded as UTF-8. A non-UTF-8 file (a binary PDF) yields an empty
-    /// string for now — PDF text extraction is a flagged follow-up; the
-    /// blob is still filed and the attorney reviews against the playbook.
+    /// The fallback text for non-DOCX captures: a paste directly, or a file
+    /// decoded as UTF-8. DOCX captures are parsed through
+    /// `contract_text_for_review`, which preserves accepted revision semantics
+    /// instead of treating the package as binary text.
     pub(crate) fn contract_text(&self) -> String {
         match self {
             Self::Text(text) => text.clone(),
@@ -503,7 +598,66 @@ pub(crate) async fn parse_form(mut multipart: Multipart) -> Option<ContractForm>
 
 #[cfg(test)]
 mod tests {
-    use super::{ContractForm, ParsedArtifact};
+    use std::io::Write as _;
+
+    use super::{contract_text_for_review_with_adapter, ContractForm, ParsedArtifact};
+    use word::{
+        Block, DocumentModel, Inline, Paragraph, RevisionKind, RevisionNode, Story, StoryKind,
+        WordAdapter,
+    };
+
+    struct FixtureAdapter;
+
+    #[async_trait::async_trait]
+    impl WordAdapter for FixtureAdapter {
+        async fn parse(
+            &self,
+            _request: word::protocol::AdapterRequest,
+        ) -> Result<word::protocol::AdapterReply, word::AdapterError> {
+            let mut model = DocumentModel::empty();
+            model.stories.push(Story {
+                kind: StoryKind::MainDocument,
+                part_uri: "/word/document.xml".into(),
+                blocks: vec![Block::Paragraph(Paragraph {
+                    style_id: None,
+                    numbering: None,
+                    nodes: vec![
+                        Inline::Text {
+                            text: "kept".into(),
+                            style_id: None,
+                            revision: None,
+                        },
+                        Inline::Revision {
+                            revision: RevisionNode {
+                                kind: RevisionKind::Insertion,
+                                id: Some("1".into()),
+                                anchor: "document:ins".into(),
+                            },
+                            children: vec![Inline::Text {
+                                text: " added".into(),
+                                style_id: None,
+                                revision: None,
+                            }],
+                        },
+                        Inline::Revision {
+                            revision: RevisionNode {
+                                kind: RevisionKind::Deletion,
+                                id: Some("2".into()),
+                                anchor: "document:del".into(),
+                            },
+                            children: vec![Inline::Text {
+                                text: " removed".into(),
+                                style_id: None,
+                                revision: None,
+                            }],
+                        },
+                    ],
+                    revisions: Vec::new(),
+                })],
+            });
+            Ok(word::protocol::AdapterReply::success(model))
+        }
+    }
 
     #[test]
     fn file_capture_wins_over_text_and_decodes_utf8() {
@@ -549,5 +703,32 @@ mod tests {
     #[test]
     fn empty_form_yields_nothing() {
         assert!(ContractForm::default().into_artifact().is_none());
+    }
+
+    #[tokio::test]
+    async fn docx_review_uses_the_loss_aware_accepted_view() {
+        let artifact = ParsedArtifact::File {
+            bytes: valid_docx_container(),
+            content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                .into(),
+            filename: "synthetic.docx".into(),
+        };
+        let text = contract_text_for_review_with_adapter(&artifact, &FixtureAdapter)
+            .await
+            .expect("synthetic DOCX parses through the boundary");
+        assert_eq!(text, "kept added\n");
+        assert!(!text.contains("removed"));
+    }
+
+    fn valid_docx_container() -> Vec<u8> {
+        let mut output = std::io::Cursor::new(Vec::new());
+        let mut archive = zip::ZipWriter::new(&mut output);
+        let options = zip::write::SimpleFileOptions::default();
+        archive.start_file("[Content_Types].xml", options).unwrap();
+        archive.write_all(b"<Types/>").unwrap();
+        archive.start_file("word/document.xml", options).unwrap();
+        archive.write_all(b"<document/>").unwrap();
+        archive.finish().unwrap();
+        output.into_inner()
     }
 }

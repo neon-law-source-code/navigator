@@ -250,7 +250,7 @@ async fn issue_certificate(world: &mut NaturalizationWorld) {
     // closes the workflow.
     let intake = serde_json::to_string(&IntakePayload {
         kind: "certificate_of_naturalization".into(),
-        filename: "certificate-of-naturalization.txt".into(),
+        filename: Some("certificate-of-naturalization.txt".into()),
         artifact: IntakeArtifact::Text {
             text: "Certificate of Naturalization (Form N-550) issued by USCIS.".into(),
         },

@@ -42,7 +42,7 @@ async fn document_intake_files_a_text_transcript_into_the_matter() {
 
     let payload = serde_json::to_string(&IntakePayload {
         kind: "transcript".into(), // rules::kind::Kind::Transcript — asset-lane only
-        filename: "sitting-transcript.txt".into(),
+        filename: Some("sitting-transcript.txt".into()),
         artifact: IntakeArtifact::Text {
             text: "Consent given. Executor: Aries. Trustee: Capricorn.".into(),
         },
@@ -94,7 +94,7 @@ async fn document_intake_link_artifact_files_a_uri_list_pointer() {
 
     let payload = serde_json::to_string(&IntakePayload {
         kind: "transcript".into(), // rules::kind::Kind::Transcript — asset-lane only
-        filename: "zoom-recording.url".into(),
+        filename: Some("zoom-recording.url".into()),
         artifact: IntakeArtifact::Link {
             url: "https://zoom.example/rec/abc123".into(),
         },
@@ -138,7 +138,7 @@ async fn document_intake_rejects_a_kind_the_closed_vocabulary_does_not_recognize
 
     let payload = serde_json::to_string(&IntakePayload {
         kind: "sitting_notes".into(), // not in rules::kind::Kind
-        filename: "sitting-transcript.txt".into(),
+        filename: Some("sitting-transcript.txt".into()),
         artifact: IntakeArtifact::Text {
             text: "Consent given.".into(),
         },
@@ -164,5 +164,65 @@ async fn document_intake_rejects_a_kind_the_closed_vocabulary_does_not_recognize
     assert!(
         filed.is_empty(),
         "a rejected document_intake dispatch must not file a partial asset"
+    );
+}
+
+#[tokio::test]
+async fn document_intake_reuses_a_prefiled_immutable_asset() {
+    let surreal = mem_surreal().await;
+    let notation_id = store::test_support::seed_notation(&surreal).await;
+    let project_id = store::notations::find_by_id(&surreal, notation_id)
+        .await
+        .unwrap()
+        .expect("seeded notation")
+        .project_id;
+    let storage = fs_storage().await;
+    let original = b"immutable synthetic contract bytes";
+    let filed = store::documents::ingest_bytes(
+        &surreal,
+        &storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::UPLOAD,
+            filename: "synthetic-contract.docx",
+            kind: "inbound_contract",
+            content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            description: None,
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::INTERNAL,
+        },
+        original,
+    )
+    .await
+    .unwrap();
+    let deps = deps(surreal.clone(), storage.clone());
+    let payload = serde_json::to_string(&IntakePayload {
+        kind: "inbound_contract".into(),
+        filename: None,
+        artifact: IntakeArtifact::Stored {
+            asset_id: filed.asset_id,
+        },
+    })
+    .unwrap();
+
+    let output = dispatch_step(
+        &deps,
+        notation_id,
+        &StateName::from("document_intake__inbound_contract"),
+        Some(&payload),
+    )
+    .await
+    .expect("prefiled asset dispatch succeeds");
+    assert!(output.is_none());
+    assert_eq!(
+        storage.get(&filed.storage_key).await.unwrap().bytes,
+        original
+    );
+    assert_eq!(
+        store::assets::for_project(&surreal, project_id)
+            .await
+            .unwrap()
+            .len(),
+        1
     );
 }

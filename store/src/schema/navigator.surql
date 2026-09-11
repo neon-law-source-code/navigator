@@ -111,13 +111,15 @@ DEFINE FIELD OVERWRITE inserted_at ON project TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON project TYPE string;
 DEFINE INDEX OVERWRITE project_code ON project FIELDS code UNIQUE;
 
--- `xero_invoice`: local mirror of the one Xero invoice per Project. Xero
--- remains the receivables ledger and the place an invoice is raised; this
--- pointer supplies the portal card and lawyer link without a live provider
--- request. The unique project index is the idempotency and concurrency
--- boundary for the nightly reconcile's journaled write: several rows may
--- carry `NONE` under a Surreal unique index, but a real duplicate Project
--- must still be refused.
+-- `xero_invoice`: local mirror of a Project's Xero invoices — many per
+-- Project over time (ENG-588), not one. Xero remains the receivables
+-- ledger and the place an invoice is raised; this mirror supplies the
+-- portal card and lawyer link without a live provider request. The row's
+-- own record id is the Xero invoice id itself, so a re-run of `upsert` for
+-- the same Xero invoice lands on the one row it already wrote, and two
+-- different Xero invoices for the same matter are two rows rather than a
+-- collision — see `store::xero_invoices`' module docs for why the record
+-- id, not a unique index, is the concurrency boundary.
 DEFINE TABLE IF NOT EXISTS xero_invoice SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE project_id ON xero_invoice TYPE record<project>;
 DEFINE FIELD OVERWRITE xero_invoice_id ON xero_invoice TYPE string;
@@ -126,9 +128,42 @@ DEFINE FIELD OVERWRITE status ON xero_invoice TYPE string;
 DEFINE FIELD OVERWRITE amount_cents ON xero_invoice TYPE int;
 DEFINE FIELD OVERWRITE amount_paid_cents ON xero_invoice TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE currency ON xero_invoice TYPE string;
+DEFINE FIELD OVERWRITE issued_at ON xero_invoice TYPE datetime;
+DEFINE FIELD OVERWRITE due_at ON xero_invoice TYPE option<datetime>;
 DEFINE FIELD OVERWRITE inserted_at ON xero_invoice TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON xero_invoice TYPE datetime DEFAULT time::now();
-DEFINE INDEX OVERWRITE xero_invoice_project ON xero_invoice FIELDS project_id UNIQUE;
+
+-- The per-matter read no longer assumes one row: several invoices may now
+-- share a `project_id`, so this is a plain lookup index rather than the
+-- table's concurrency boundary (dropped from ENG-588's pre-existing
+-- `UNIQUE`). Redefined before the backfill below runs, so a legacy row's
+-- momentarily-duplicated `project_id` — the old row and its re-keyed
+-- replacement briefly coexist mid-migration — never trips a constraint
+-- that no longer applies.
+DEFINE INDEX OVERWRITE xero_invoice_project ON xero_invoice FIELDS project_id;
+
+-- Backfill (ENG-588): a row from before this change still lives under a
+-- record id equal to its own `project_id`. Re-create it under its Xero
+-- invoice id, carrying `inserted_at` forward as the best available
+-- `issued_at` until the next nightly reconcile corrects it, and drop the
+-- legacy row. Idempotent: a row already keyed on its Xero invoice id has
+-- `meta::id(id) = xero_invoice_id` already, so a second apply finds
+-- nothing left to migrate.
+LET $legacy_xero_invoices = (SELECT * FROM xero_invoice WHERE meta::id(id) != xero_invoice_id);
+FOR $legacy IN $legacy_xero_invoices {
+    CREATE type::record('xero_invoice', $legacy.xero_invoice_id) SET
+        project_id = $legacy.project_id,
+        xero_invoice_id = $legacy.xero_invoice_id,
+        reference = $legacy.reference,
+        status = $legacy.status,
+        amount_cents = $legacy.amount_cents,
+        amount_paid_cents = $legacy.amount_paid_cents,
+        currency = $legacy.currency,
+        issued_at = $legacy.inserted_at,
+        inserted_at = $legacy.inserted_at,
+        updated_at = $legacy.updated_at;
+    DELETE $legacy.id;
+};
 
 DEFINE TABLE IF NOT EXISTS person_project_role SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON person_project_role TYPE record<person>;

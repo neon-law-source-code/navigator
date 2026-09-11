@@ -739,7 +739,7 @@ pub async fn matter_directory_for(
 /// becoming a name the caller cannot produce. The set has no inherent order,
 /// so each project's names come back sorted rather than left in row-scan
 /// order.
-async fn dri_names_by_project(
+pub(crate) async fn dri_names_by_project(
     surreal: &SurrealDb,
     flag_column: &str,
 ) -> Result<std::collections::HashMap<Uuid, Vec<String>>, ProjectStoreError> {

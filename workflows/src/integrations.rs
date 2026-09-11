@@ -79,6 +79,23 @@ pub enum SlackNoticeEvent {
 }
 
 impl SlackNoticeEvent {
+    /// Every event kind, so a door can answer with the closed vocabulary it
+    /// accepts rather than leaving a caller to guess at the spelling.
+    pub const ALL: [Self; 4] = [
+        Self::ProjectOpened,
+        Self::ProjectClosed,
+        Self::ProjectReconciled,
+        Self::IntegrationUnavailable,
+    ];
+
+    /// Parse one event kind. The vocabulary is closed, so an unrecognized
+    /// value is refused here rather than becoming free text on the way to a
+    /// Firm-private channel.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|event| event.as_str() == value)
+    }
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -126,6 +143,18 @@ mod tests {
         assert_ne!(
             IntegrationJob::notion(project, "sample-project").job_id,
             IntegrationJob::slack(project, "sample-project").job_id
+        );
+    }
+
+    #[test]
+    fn the_event_vocabulary_round_trips_and_refuses_free_text() {
+        for event in SlackNoticeEvent::ALL {
+            assert_eq!(SlackNoticeEvent::parse(event.as_str()), Some(event));
+        }
+        assert_eq!(SlackNoticeEvent::parse("project_opened "), None);
+        assert_eq!(
+            SlackNoticeEvent::parse("the client called about the hearing"),
+            None
         );
     }
 

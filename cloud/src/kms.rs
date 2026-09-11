@@ -237,6 +237,52 @@ pub trait KmsTokenSource: Send + Sync {
     async fn token(&self) -> Result<String, KmsError>;
 }
 
+const CLOUD_PLATFORM_SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
+
+/// Application Default Credentials as the runtime KMS token source.
+///
+/// This is the production arm of [`KmsTokenSource`] — on GKE it resolves the
+/// workload identity the deployment runs as. It is constructed only when a
+/// runtime key is configured, so a deployment carrying no Firm integrations
+/// never reaches for a cloud credential at boot.
+pub struct AdcTokenSource {
+    inner: Arc<dyn google_cloud_token::TokenSource>,
+}
+
+impl std::fmt::Debug for AdcTokenSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AdcTokenSource")
+    }
+}
+
+impl AdcTokenSource {
+    pub async fn new() -> Result<Self, KmsError> {
+        let scopes = [CLOUD_PLATFORM_SCOPE];
+        let auth_config = google_cloud_auth::project::Config::default().with_scopes(&scopes);
+        let provider = google_cloud_auth::token::DefaultTokenSourceProvider::new(auth_config)
+            .await
+            .map_err(|_| KmsError::MissingConfiguration)?;
+        Ok(Self {
+            inner: google_cloud_token::TokenSourceProvider::token_source(&provider),
+        })
+    }
+}
+
+#[async_trait]
+impl KmsTokenSource for AdcTokenSource {
+    async fn token(&self) -> Result<String, KmsError> {
+        // The provider hands back a whole `Authorization` value; `post` adds
+        // the scheme itself, so the prefix comes off here rather than being
+        // sent twice.
+        let raw = self
+            .inner
+            .token()
+            .await
+            .map_err(|_| KmsError::Unavailable)?;
+        Ok(raw.strip_prefix("Bearer ").unwrap_or(&raw).to_string())
+    }
+}
+
 /// Google Cloud KMS REST adapter. Its token source is injected so tests never
 /// need provider credentials and production can supply workload identity.
 pub struct GoogleKms {

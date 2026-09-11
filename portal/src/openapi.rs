@@ -494,6 +494,106 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/integrations/notion/ensure": {
+          "post": {
+            "summary": "Create or adopt each Project's Firm-private Notion page (admin)",
+            "description":
+              "Find-then-create against the Firm's own Notion credential, resolved from the Project's `firm_id` — never a deployment-wide token. A failed lookup does not fall through to a create, so a provider outage cannot produce a duplicate page. The page address is recorded on the Project row before the outcome is reported. Outcomes: `created`, `adopted`, `runtime_not_configured`, `credential_missing`, `credential_unusable`, `no_owning_firm`, `provider_unavailable`, `address_not_recorded`. The response carries outcomes only — the page id and URL are Firm-private coordinates and do not cross this door. Authorization: admin-tier, matching `POST /app/api/project-surfaces/{id}`, and `all` sweeps only the Projects visible to the caller.",
+            "requestBody": { "required": true, "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectSelector" }
+            } } },
+            "responses": {
+              "200": { "description": "One outcome per selected Project", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntegrationReport" } } } },
+              "400": { "description": "The selector or the event kind is not accepted", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
+        "/app/api/integrations/notion/reconcile": {
+          "post": {
+            "summary": "Reconcile each Project against the selected Notion database (admin)",
+            "description":
+              "Compares the Project's recorded page address against every page in the environment-selected `NAVIGATOR_NOTION_DATABASE_ID` carrying its code, and reports the repair decision. A missing, moved, duplicated, conflicting, or unshared page is an operator-visible outcome rather than a silent second page: outcomes are `unchanged`, `repaired`, `missing`, `duplicate`, `conflict`, `unavailable`, `not_recorded`, plus the resolution outcomes `ensure` reports. Only a `Repair` writes, and it preserves manual Notion fields. Authorization: admin-tier.",
+            "requestBody": { "required": true, "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectSelector" }
+            } } },
+            "responses": {
+              "200": { "description": "One outcome per selected Project", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntegrationReport" } } } },
+              "400": { "description": "The selector or the event kind is not accepted", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
+        "/app/api/integrations/slack/ensure": {
+          "post": {
+            "summary": "Create or adopt one Project's Firm-private Slack channel (admin)",
+            "description":
+              "Find-then-create a private channel named for the Project code, using the Firm's own bot token resolved from the Project's `firm_id`. The invite list is empty by construction: the adapter accepts only provider-issued member ids, Navigator stores none, and it will not turn a participation row or an email address into an invite — so the Firm's own Slack membership governs who joins. The channel id is recorded on the Project row. Outcomes: `created`, `adopted`, and the resolution outcomes. Authorization: admin-tier.",
+            "requestBody": { "required": true, "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/SlackIntegrationRequest" }
+            } } },
+            "responses": {
+              "200": { "description": "One outcome per selected Project", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntegrationReport" } } } },
+              "400": { "description": "The selector or the event kind is not accepted", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
+        "/app/api/integrations/slack/notify": {
+          "post": {
+            "summary": "Post one mechanism-only notice to a Project's Firm-private channel (admin)",
+            "description":
+              "`event` must be one of `project_opened`, `project_closed`, `project_reconciled`, or `integration_unavailable`; anything else is a 400 before any provider call. The vocabulary is closed precisely so this door cannot carry arbitrary text — a client name, a document title, a provider URL — into a channel; the posted message is derived from the event kind alone. Notify never provisions: a Project with no channel reports `no_channel` so an operator runs `ensure` deliberately. Outcomes: `notified`, `no_channel`, and the resolution outcomes. Authorization: admin-tier.",
+            "requestBody": { "required": true, "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/SlackIntegrationRequest" }
+            } } },
+            "responses": {
+              "200": { "description": "One outcome per selected Project", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntegrationReport" } } } },
+              "400": { "description": "The selector or the event kind is not accepted", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/project-repositories": {
           "get": {
             "summary": "Reconcile every matter against the repository it records (admin)",
@@ -2569,6 +2669,46 @@ pub fn document_with_base(base: &str) -> Value {
               "closed_at":          { "type": ["string", "null"] },
               "inserted_at":        { "type": "string" },
               "updated_at":         { "type": "string" }
+            }
+          },
+          "ProjectSelector": {
+            "type": "object",
+            "description": "Exactly one of the two selects the work. Both together, or neither, is a 400 — `all` beside a code would leave it ambiguous whether the code narrowed the sweep or was ignored.",
+            "properties": {
+              "project_code": { "type": ["string", "null"],
+                                "description": "One Project code. Omit when `all` is true." },
+              "all": { "type": "boolean", "default": false,
+                       "description": "Act on every Project visible to the caller — the same participation-scoped lens `GET /app/api/projects` uses, so an admin sweep can never reach a matter the read surface would hide." }
+            }
+          },
+          "SlackIntegrationRequest": {
+            "type": "object",
+            "required": ["project_code"],
+            "properties": {
+              "project_code": { "type": "string" },
+              "event": { "type": ["string", "null"],
+                         "enum": ["project_opened", "project_closed", "project_reconciled", "integration_unavailable", null],
+                         "description": "Required by `notify`, absent for `ensure`. A closed vocabulary: the notice text is derived from the kind, so no caller-supplied prose reaches a channel." }
+            }
+          },
+          "IntegrationReport": {
+            "type": "object",
+            "required": ["results"],
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["project_code", "outcome"],
+                  "properties": {
+                    "project_code": { "type": "string" },
+                    "outcome": { "type": "string",
+                                 "description": "A closed slug naming what happened. Never a provider URL, page id, or channel id — those stay on the firm side." },
+                    "detail": { "type": "string",
+                                "description": "Present only for an outcome that names a mechanism the operator must act on, such as how many pages carry one code." }
+                  }
+                }
+              }
             }
           },
           "OpenMatterRequest": {

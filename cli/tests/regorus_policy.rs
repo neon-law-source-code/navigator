@@ -225,9 +225,17 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   further; `store::access::avatar_visible_to` in the handler carries the
     //   actual, participation-scoped rule (docs/access-model.md).
     // 436 + 6 = 442.
+    //
+    // + 8 for the Firm integration doors, POST
+    //   /app/api/integrations/{notion,slack}/{verb} (ENG-491): Admin and Owner
+    //   admitted; Lawyer, Clerk, Client, and anonymous denied; one case pins
+    //   the rule at exactly five segments and POST, and one pins the
+    //   noun-isolation that keeps a provisioning door off the client-reachable
+    //   `projects` prefix.
+    // 442 + 8 = 450.
     assert_eq!(
         test_names.len(),
-        442,
+        450,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

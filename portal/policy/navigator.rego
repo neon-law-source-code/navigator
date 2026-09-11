@@ -674,6 +674,21 @@ allow if {
     is_authenticated(input.session)
 }
 
+# Ensure or reconcile a Project's Firm-private provider resources:
+# POST /app/api/integrations/{notion,slack}/{verb}. Admin-only, and on its own
+# noun rather than under `projects` for the same reason `project-surfaces` is —
+# the projects GET rule admits any authenticated caller up to five segments, so
+# nesting a provisioning path there would make it policy-reachable by a client.
+# Five segments and POST; the handler owns which verbs exist.
+allow if {
+	input.path[0] == "app"
+	input.path[1] == "api"
+	input.path[2] == "integrations"
+	count(input.path) == 5
+	input.method == "POST"
+	is_admin(input.session)
+}
+
 # Reconcile every matter against the repository it records: GET
 # /app/api/project-repositories. Admin-only, and it carries its own noun rather
 # than sitting under `projects` on purpose — the projects GET rule above admits

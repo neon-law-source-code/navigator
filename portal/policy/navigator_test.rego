@@ -809,6 +809,49 @@ test_a_client_reaches_a_projects_subpath_but_not_project_lifecycle if {
 	not authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": client_session}
 }
 
+# ---------- POST /app/api/integrations/{provider}/{verb} (ADMIN tier only — provisions Firm-private resources) ----------
+
+test_admin_can_ensure_a_firm_private_notion_page if {
+	authz.allow with input as {"path": ["app", "api", "integrations", "notion", "ensure"], "method": "POST", "session": admin_session}
+}
+
+test_owner_can_ensure_a_firm_private_slack_channel if {
+	authz.allow with input as {"path": ["app", "api", "integrations", "slack", "ensure"], "method": "POST", "session": owner_session}
+}
+
+test_lawyer_denied_integrations if {
+	not authz.allow with input as {"path": ["app", "api", "integrations", "notion", "ensure"], "method": "POST", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "api", "integrations", "slack", "notify"], "method": "POST", "session": lawyer_session}
+}
+
+test_clerk_denied_integrations if {
+	not authz.allow with input as {"path": ["app", "api", "integrations", "notion", "reconcile"], "method": "POST", "session": clerk_session}
+}
+
+test_client_denied_integrations if {
+	not authz.allow with input as {"path": ["app", "api", "integrations", "slack", "notify"], "method": "POST", "session": client_session}
+}
+
+test_anonymous_denied_integrations if {
+	not authz.allow with input as {"path": ["app", "api", "integrations", "notion", "ensure"], "method": "POST", "session": null}
+}
+
+# The rule is five segments and POST. A GET, a shorter path, or a deeper one
+# is not admitted by it — so a read surface cannot appear on this noun by
+# accident, and neither can a nested sub-resource.
+test_integrations_rule_is_exactly_five_segments_and_post if {
+	not authz.allow with input as {"path": ["app", "api", "integrations", "notion", "ensure"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "api", "integrations", "notion"], "method": "POST", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "api", "integrations", "notion", "ensure", "extra"], "method": "POST", "session": lawyer_session}
+}
+
+# Same noun-isolation as project-surfaces: a path nested under `projects` is
+# policy-reachable by a client, and a provisioning door must not be.
+test_a_client_reaches_a_projects_subpath_but_not_integrations if {
+	authz.allow with input as {"path": ["app", "api", "projects", "integrations"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["app", "api", "integrations", "notion", "ensure"], "method": "POST", "session": client_session}
+}
+
 # ---------- POST /app/api/project-surfaces/{id} (ADMIN tier only — provisions one matter's handles) ----------
 
 test_admin_can_reconcile_project_surfaces if {

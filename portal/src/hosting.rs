@@ -254,6 +254,13 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
             },
         );
 
+    // Firm-private provider resolution: the real resolver when both a
+    // runtime KMS key and a parent Notion database are configured, else a
+    // refusing one. Deliberately not a stub that answers with a fake page —
+    // a Firm credential has no deployment-wide fallback, so "not configured"
+    // is the honest answer rather than a provider that pretends.
+    let integration_providers = crate::integrations::from_env().await;
+
     // Real Xero provider when the env is configured; otherwise the stub
     // (KIND / local dev), so a fork boots and self-tests without a Xero
     // custom connection. Mirrors the signature-provider wiring above.
@@ -376,6 +383,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         questionnaire_runtime,
         signature_provider,
         billing_provider,
+        integration_providers,
         // Inbound-contract reviewer: Vertex Gemini when configured, else
         // the deterministic stub — selected here exactly like the A2A
         // router (chosen inside `bootstrap`). The

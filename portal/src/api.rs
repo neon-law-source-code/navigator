@@ -110,6 +110,10 @@ pub struct ApiState {
     /// The contract-review deviation analyzer (the LLM reviewer, or the stub),
     /// for `POST /app/api/projects/{id}/contract-review`.
     pub contract_reviewer: Arc<dyn crate::contract_review::ContractReviewer>,
+    /// Resolves one Project's Firm-private provider client from its Firm's
+    /// stored credential, for the `/app/api/integrations/*` doors. Refuses on
+    /// a deployment with no runtime KMS key — see [`crate::integrations`].
+    pub integration_providers: Arc<dyn crate::integrations::IntegrationProviders>,
 }
 
 impl FromRef<ApiState> for store::surreal::SurrealDb {
@@ -151,6 +155,30 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("DELETE", "/app/api/entities/{id}", delete(delete_entity)),
         ("GET", "/app/api/jurisdictions", get(list_jurisdictions)),
         ("GET", "/app/api/entity-types", get(list_entity_types)),
+        // The Firm-private provider doors, on their own noun for the same
+        // reason as `project-surfaces` below: nesting a provisioning path
+        // under `projects` would make it policy-reachable by a client. See
+        // [`crate::integrations_api`].
+        (
+            "POST",
+            "/app/api/integrations/notion/ensure",
+            post(crate::integrations_api::notion_ensure_door),
+        ),
+        (
+            "POST",
+            "/app/api/integrations/notion/reconcile",
+            post(crate::integrations_api::notion_reconcile_door),
+        ),
+        (
+            "POST",
+            "/app/api/integrations/slack/ensure",
+            post(crate::integrations_api::slack_ensure_door),
+        ),
+        (
+            "POST",
+            "/app/api/integrations/slack/notify",
+            post(crate::integrations_api::slack_notify_door),
+        ),
         // Deliberately *not* under `/app/api/projects/`: the policy rule for
         // that prefix admits any authenticated caller up to five segments, so a
         // reconciliation path nested there would be policy-reachable by a
@@ -639,7 +667,7 @@ where
 /// own review document). The per-matter scope (client-lens or firm-lens) is
 /// then enforced in the handler, so this extractor only proves "someone is
 /// logged in".
-struct AuthedSession(SessionData);
+pub(crate) struct AuthedSession(pub(crate) SessionData);
 
 impl<S> FromRequestParts<S> for AuthedSession
 where
@@ -657,7 +685,13 @@ where
 
 /// Owner or Admin only. Lawyer is lawyer-tier, not this extractor: brand
 /// presentation writes are never a lawyer command.
-struct AdminSession(SessionData);
+///
+/// Being an extractor rather than a check in the handler body is the point:
+/// extractors run before the request body is deserialized, so a caller
+/// outside the tier is refused with a 403 whatever their body looked like. A
+/// tier check after `Json` reports a malformed body to someone who was never
+/// allowed to send one.
+pub(crate) struct AdminSession(pub(crate) SessionData);
 
 impl<S> FromRequestParts<S> for AdminSession
 where
@@ -4843,6 +4877,7 @@ mod tests {
             forms_registry: app.forms_registry.clone(),
             signature_provider: app.signature_provider.clone(),
             contract_reviewer: app.contract_reviewer.clone(),
+            integration_providers: app.integration_providers.clone(),
         };
         let session = crate::SessionData {
             person_id: Some(mixed_role_person.id),
@@ -4899,6 +4934,7 @@ mod tests {
             forms_registry: app.forms_registry.clone(),
             signature_provider: app.signature_provider.clone(),
             contract_reviewer: app.contract_reviewer.clone(),
+            integration_providers: app.integration_providers.clone(),
         };
         // Owner/Admin bypass project-scoping only at route admission; a
         // matter-content route like this one still applies the participation
@@ -5043,6 +5079,7 @@ filename*=UTF-8''signed%20intake.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\
             forms_registry: app.forms_registry.clone(),
             signature_provider: app.signature_provider.clone(),
             contract_reviewer: app.contract_reviewer.clone(),
+            integration_providers: app.integration_providers.clone(),
         };
         let session = crate::SessionData {
             person_id: Some(lawyer_person.id),
@@ -5129,6 +5166,7 @@ filename*=UTF-8''signed%20intake.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\
             forms_registry: app.forms_registry.clone(),
             signature_provider: app.signature_provider.clone(),
             contract_reviewer: app.contract_reviewer.clone(),
+            integration_providers: app.integration_providers.clone(),
         };
         let session = crate::SessionData {
             person_id: Some(lawyer_person.id),

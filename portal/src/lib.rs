@@ -6,7 +6,7 @@
 // The OpenAPI document in `openapi.rs` is one large `serde_json::json!`
 // literal; each documented path/schema nests it deeper, so the default 128
 // recursion limit no longer expands it. Raise the ceiling for the whole crate.
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 //! Neon Law Navigator web server library.
 //!
 //! Exposes [`bootstrap`] so a brand binary and the integration tests that
@@ -123,6 +123,8 @@ pub mod hosting;
 pub mod idp_admin;
 pub mod inbound_email;
 pub mod intake;
+pub mod integrations;
+pub(crate) mod integrations_api;
 pub mod marketing;
 pub mod matter_documents;
 pub mod mcp_principal;
@@ -374,6 +376,12 @@ pub struct AppState {
     /// tests). The `analysis__contract_deviations` step runs this web-side
     /// — the worker has no LLM access.
     pub contract_reviewer: Arc<dyn contract_review::ContractReviewer>,
+    /// Resolves one Project's Firm-private provider client from the
+    /// credential its owning Firm stored. A factory rather than a client,
+    /// because the token is per Firm — see [`integrations`].
+    /// [`integrations::UnconfiguredIntegrations`] is the default and refuses,
+    /// which is the correct answer for a checkout with no provider account.
+    pub integration_providers: Arc<dyn integrations::IntegrationProviders>,
     /// Pluggable billing provider. The stub is the default; the real
     /// `XeroBillingProvider` drops in behind the same trait when the
     /// `XERO_*` env is configured. No `web` handler raises an invoice
@@ -796,6 +804,7 @@ pub fn bootstrap(
                 forms_registry: state.forms_registry.clone(),
                 signature_provider: state.signature_provider.clone(),
                 contract_reviewer: state.contract_reviewer.clone(),
+                integration_providers: state.integration_providers.clone(),
             })
             .layer(axum::middleware::from_fn_with_state(
                 (state.sessions.clone(), crate::csrf::CsrfMode::Strict),

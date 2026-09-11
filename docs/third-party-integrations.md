@@ -61,6 +61,36 @@ Notion reconciliation uses the explicitly selected `NAVIGATOR_NOTION_DATABASE_ID
 or unshared page is an operator-visible repair outcome; the reconciler never silently creates a second page. It writes
 the canonical Project code and stable Person IDs while preserving manual Notion fields.
 
+### The Firm integration doors
+
+Four admin-tier operations act on a Firm's own provider resources, and the `navigator` CLI is their only client today:
+
+| Command | Door |
+| --- | --- |
+| `navigator site projects notion ensure <code>` / `--all` | `POST /app/api/integrations/notion/ensure` |
+| `navigator site projects notion reconcile <code>` / `--all` | `POST /app/api/integrations/notion/reconcile` |
+| `navigator site projects slack ensure <code>` | `POST /app/api/integrations/slack/ensure` |
+| `navigator site projects slack notify <code> --event <kind>` | `POST /app/api/integrations/slack/notify` |
+
+They carry their own noun rather than nesting under `projects`, for the reason `project-surfaces` does: the `projects`
+policy rule admits any authenticated caller several segments deep, so a provisioning path nested there would be
+policy-reachable by a client even though the handler refuses one. The tier matches `project-surfaces` too — creating or
+adopting a Project's external resources is one kind of act — and `--all` sweeps only the Projects visible to the calling
+login, never every row in the deployment.
+
+Each response is one outcome slug per Project and nothing else. No page id, no channel id, no provider URL: those are
+the Firm-private coordinates this boundary exists to keep on the firm side, and they are recorded on the Project row for
+the surfaces entitled to read them. `ensure` reports `created` or `adopted`, so an operator can tell a first
+provisioning from a re-run; `reconcile` reports `unchanged`, `repaired`, `missing`, `duplicate`, `conflict`, or
+`unavailable`, and only a repair writes. A deployment with no runtime KMS key reports `runtime_not_configured` rather
+than falling back to a deployment-wide token — a Project must never reach a credential its Firm did not write.
+
+`slack notify` accepts only the closed event vocabulary (`project_opened`, `project_closed`, `project_reconciled`,
+`integration_unavailable`) and derives the message from the kind, so no caller-supplied prose reaches a channel. It
+never provisions: a Project with no channel reports `no_channel` so `ensure` stays a deliberate act. `slack ensure`
+invites nobody — the adapter takes only provider-issued member ids, Navigator stores none, and it will not turn a
+participation row or an email address into an invite, so the Firm's own Slack membership governs who joins.
+
 Normal staging requires real non-production SendGrid and DocuSign demo configuration. Each cloud deployment uses the
 matching attachment row described in [`provider-environment-parity.md`](provider-environment-parity.md). Only the
 explicit `NAVIGATOR_CI_HARNESS=1` staging test surface may use in-process fakes; production rejects that flag.

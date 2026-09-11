@@ -1314,6 +1314,49 @@ async fn seed_sample_portfolio_into(
     seed_answers(surreal, r).await?;
     seed_person_project_roles(surreal, r).await?;
     seed_project_firm_ownership(surreal).await?;
+    seed_sample_invoices(surreal).await?;
+    Ok(())
+}
+
+/// One trailing-30-day Xero invoice per sample matter (ENG-591), invented
+/// exactly like every other row this table carries, so the local Firm show
+/// page's invoice graphs have something to draw. One is fully paid, one is
+/// partly paid, and one is unpaid, across the fixture's two house brands.
+async fn seed_sample_invoices(surreal: &SurrealDb) -> anyhow::Result<()> {
+    let now = chrono::Utc::now();
+    for (matter, amount_cents, paid_cents, days_ago) in [
+        (&SAMPLE_MATTERS[0], 480_000_i64, 480_000_i64, 3_i64),
+        (&SAMPLE_MATTERS[1], 250_000_i64, 0_i64, 10_i64),
+        (&SAMPLE_MATTERS[2], 120_000_i64, 60_000_i64, 20_i64),
+    ] {
+        let Some(project) = crate::projects::find_by_name(surreal, matter.name).await? else {
+            continue;
+        };
+        let xero_invoice_id = format!("sample-invoice-{}", matter.code);
+        crate::xero_invoices::upsert(
+            surreal,
+            &crate::xero_invoices::UpsertXeroInvoice {
+                project_id: project.id,
+                xero_invoice_id: xero_invoice_id.clone(),
+                reference: format!("Sample invoice for {}", matter.code),
+                status: "AUTHORISED".to_string(),
+                amount_cents,
+                currency: "USD".to_string(),
+                issued_at: now - chrono::Duration::days(days_ago),
+                due_at: None,
+            },
+        )
+        .await?;
+        if paid_cents > 0 {
+            let status = if paid_cents >= amount_cents {
+                "PAID"
+            } else {
+                "AUTHORISED"
+            };
+            crate::xero_invoices::record_reconcile(surreal, &xero_invoice_id, status, paid_cents)
+                .await?;
+        }
+    }
     Ok(())
 }
 

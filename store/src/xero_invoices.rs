@@ -122,6 +122,10 @@ pub enum XeroInvoiceError {
     /// [`for_firm_since`] only.
     #[error(transparent)]
     Projects(#[from] crate::projects::ProjectStoreError),
+    /// Resolving a brand key to its display name failed —
+    /// [`firm_thirty_day_rollup`] only.
+    #[error(transparent)]
+    Brands(#[from] crate::brands::BrandError),
     /// Another writer created this Xero invoice's mirror row after this
     /// writer checked. [`upsert`] resolves this race by applying the
     /// metadata update to that row directly, since its id is the Xero
@@ -374,6 +378,9 @@ pub struct FirmInvoice {
     pub amount_cents: i64,
     pub amount_paid_cents: i64,
     pub issued_at: DateTime<Utc>,
+    /// ISO 4217 currency code. The rollup ([`firm_thirty_day_rollup`]) groups
+    /// on this rather than assuming every invoice shares one currency.
+    pub currency: String,
     /// The Project's brand key, for grouping by brand.
     pub brand: String,
     /// The Project's lawyer DRI names, alphabetical, or empty when
@@ -423,9 +430,158 @@ pub async fn for_firm_since(
                 amount_cents: invoice.amount_cents,
                 amount_paid_cents: invoice.amount_paid_cents,
                 issued_at: invoice.issued_at,
+                currency: invoice.currency,
             })
         })
         .collect())
+}
+
+/// One label's (a brand's, or a lawyer DRI's) summed cents within a
+/// [`CurrencyInvoiceRollup`] — one bar-pair in the Firm show page's graphs
+/// (ENG-591).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct InvoiceGroupTotal {
+    /// A brand's display name, a lawyer DRI's display name, or
+    /// `"Unassigned"` — never a Project code, matter name, or Xero id.
+    pub label: String,
+    pub invoiced_cents: i64,
+    pub paid_cents: i64,
+}
+
+/// The trailing-window rollup for one currency. Kept separate per currency
+/// because summing across currencies would silently misreport a total —
+/// [`firm_thirty_day_rollup`] never does that.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CurrencyInvoiceRollup {
+    pub currency: String,
+    pub total_invoiced_cents: i64,
+    pub total_paid_cents: i64,
+    /// Sorted by label for a deterministic render.
+    pub by_brand: Vec<InvoiceGroupTotal>,
+    /// Sorted by label for a deterministic render.
+    pub by_lawyer_dri: Vec<InvoiceGroupTotal>,
+}
+
+/// The Firm show page's trailing-30-day invoice rollup (ENG-591): one
+/// [`CurrencyInvoiceRollup`] per currency that appeared in the window. Empty
+/// when no invoice on any of the Firm's Projects falls in the window.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Default)]
+pub struct FirmInvoiceRollup {
+    pub currencies: Vec<CurrencyInvoiceRollup>,
+}
+
+const UNASSIGNED_DRI: &str = "Unassigned";
+
+/// `label -> (invoiced_cents, paid_cents)`, accumulated across every invoice
+/// seen so far for one group axis (brand, or lawyer DRI).
+type GroupTotals = std::collections::BTreeMap<String, (i64, i64)>;
+
+/// Fold one invoice's cents into a `(label -> totals)` map, creating the
+/// entry on first sight.
+fn accumulate(totals: &mut GroupTotals, label: &str, invoiced_cents: i64, paid_cents: i64) {
+    let entry = totals.entry(label.to_string()).or_insert((0, 0));
+    entry.0 = entry.0.saturating_add(invoiced_cents);
+    entry.1 = entry.1.saturating_add(paid_cents);
+}
+
+fn totals_into_groups(totals: GroupTotals) -> Vec<InvoiceGroupTotal> {
+    totals
+        .into_iter()
+        .map(|(label, (invoiced_cents, paid_cents))| InvoiceGroupTotal {
+            label,
+            invoiced_cents,
+            paid_cents,
+        })
+        .collect()
+}
+
+/// The Firm show page's trailing-30-day invoice rollup (ENG-591): every
+/// invoice issued in `[now - 30 days, now]` on one of the Firm's Projects,
+/// grouped by brand and by lawyer DRI, summed in cents, and never summed
+/// across currencies.
+///
+/// # Errors
+///
+/// [`XeroInvoiceError::Db`] or [`XeroInvoiceError::Projects`] if the
+/// underlying read fails ([`for_firm_since`]); [`XeroInvoiceError::Brands`]
+/// if resolving the Firm's brand names fails.
+pub async fn firm_thirty_day_rollup(
+    db: &SurrealDb,
+    firm_id: Uuid,
+    now: DateTime<Utc>,
+) -> Result<FirmInvoiceRollup, XeroInvoiceError> {
+    let since = now - chrono::Duration::days(30);
+    let invoices = for_firm_since(db, firm_id, since).await?;
+    if invoices.is_empty() {
+        return Ok(FirmInvoiceRollup::default());
+    }
+
+    // A Project's brand may be a system-wide compiled key or one of this
+    // Firm's own scoped brands (ENG-587 validates `project.brand` against
+    // either), so each key is resolved individually via `find_by_key` rather
+    // than assumed to be one or the other.
+    let mut brand_name_by_key: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for key in invoices
+        .iter()
+        .map(|invoice| invoice.brand.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        if let Some(brand) = crate::brands::find_by_key(db, key).await? {
+            brand_name_by_key.insert(key.to_string(), brand.name);
+        }
+    }
+
+    let mut by_currency: std::collections::BTreeMap<String, (GroupTotals, GroupTotals)> =
+        std::collections::BTreeMap::new();
+
+    for invoice in &invoices {
+        let (by_brand, by_lawyer_dri) = by_currency.entry(invoice.currency.clone()).or_default();
+        let brand_label = brand_name_by_key
+            .get(&invoice.brand)
+            .cloned()
+            .unwrap_or_else(|| invoice.brand.clone());
+        accumulate(
+            by_brand,
+            &brand_label,
+            invoice.amount_cents,
+            invoice.amount_paid_cents,
+        );
+        if invoice.lawyer_dris.is_empty() {
+            accumulate(
+                by_lawyer_dri,
+                UNASSIGNED_DRI,
+                invoice.amount_cents,
+                invoice.amount_paid_cents,
+            );
+        } else {
+            for name in &invoice.lawyer_dris {
+                accumulate(
+                    by_lawyer_dri,
+                    name,
+                    invoice.amount_cents,
+                    invoice.amount_paid_cents,
+                );
+            }
+        }
+    }
+
+    Ok(FirmInvoiceRollup {
+        currencies: by_currency
+            .into_iter()
+            .map(|(currency, (by_brand, by_lawyer_dri))| {
+                let total_invoiced_cents = by_brand.values().map(|(i, _)| *i).sum();
+                let total_paid_cents = by_brand.values().map(|(_, p)| *p).sum();
+                CurrencyInvoiceRollup {
+                    currency,
+                    total_invoiced_cents,
+                    total_paid_cents,
+                    by_brand: totals_into_groups(by_brand),
+                    by_lawyer_dri: totals_into_groups(by_lawyer_dri),
+                }
+            })
+            .collect(),
+    })
 }
 
 /// The mirror rows that the nightly reconcile should re-check: anything not
@@ -448,8 +604,8 @@ pub async fn needing_reconcile(db: &SurrealDb) -> Result<Vec<XeroInvoice>, XeroI
 #[cfg(test)]
 mod tests {
     use super::{
-        for_firm_since, for_projects, needing_reconcile, record_reconcile, upsert,
-        UpsertXeroInvoice,
+        firm_thirty_day_rollup, for_firm_since, for_projects, needing_reconcile, record_reconcile,
+        upsert, UpsertXeroInvoice,
     };
     use crate::surreal::SurrealDb;
     use chrono::{Duration, TimeZone, Utc};
@@ -838,5 +994,269 @@ mod tests {
         assert_eq!(rows[0].xero_invoice_id, "xero-in-window");
         assert_eq!(rows[0].brand, owned.brand);
         assert_eq!(rows[0].lawyer_dris, vec!["Firm Admin".to_string()]);
+        assert_eq!(rows[0].currency, "USD");
+    }
+
+    /// One Firm, one entity, ready for a Project. Shared by the
+    /// [`firm_thirty_day_rollup`] tests below.
+    async fn seed_firm(surreal: &SurrealDb) -> (crate::firms::Firm, uuid::Uuid) {
+        let admin = crate::test_support::ensure_person(
+            surreal,
+            &crate::persons::NewPerson::with_role(
+                "Firm Admin",
+                "firm-admin@example.com",
+                crate::persons::Role::Admin,
+            ),
+        )
+        .await;
+        let firm = crate::firms::create(
+            surreal,
+            &crate::firms::NewFirm {
+                name: "Rollup Firm".to_string(),
+                status: "active".to_string(),
+                entity_id: crate::test_support::seed_entity(surreal).await,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .unwrap();
+        (firm, admin.id)
+    }
+
+    async fn seed_project_on_firm(
+        surreal: &SurrealDb,
+        firm_id: uuid::Uuid,
+        code: &str,
+        brand: &str,
+    ) -> crate::projects::Project {
+        let entity_id = crate::test_support::seed_entity(surreal).await;
+        crate::projects::create(
+            surreal,
+            &crate::projects::NewProject {
+                code: code.to_string(),
+                name: code.to_string(),
+                status: "open".to_string(),
+                entity_id,
+                firm_id: Some(firm_id),
+                brand: brand.to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// ENG-591: two Projects on two brands, each with its own lawyer DRI —
+    /// the rollup groups and sums cents on both axes independently.
+    #[tokio::test]
+    async fn firm_thirty_day_rollup_groups_by_brand_and_lawyer_dri() {
+        let surreal = crate::surreal::test_support::mem().await;
+        let (firm, _) = seed_firm(&surreal).await;
+        let neon_matter = seed_project_on_firm(&surreal, firm.id, "neon-matter", "neon").await;
+        let other_matter =
+            seed_project_on_firm(&surreal, firm.id, "other-brand-matter", "delete-your-data").await;
+        let lawyer_one = crate::test_support::ensure_person(
+            &surreal,
+            &crate::persons::NewPerson::with_role(
+                "Lawyer One",
+                "lawyer-one@example.com",
+                crate::persons::Role::Lawyer,
+            ),
+        )
+        .await;
+        let lawyer_two = crate::test_support::ensure_person(
+            &surreal,
+            &crate::persons::NewPerson::with_role(
+                "Lawyer Two",
+                "lawyer-two@example.com",
+                crate::persons::Role::Lawyer,
+            ),
+        )
+        .await;
+        crate::projects::designate_dri_in_surreal(
+            &surreal,
+            neon_matter.id,
+            lawyer_one.id,
+            crate::projects::DriSide::Lawyer,
+        )
+        .await
+        .unwrap();
+        crate::projects::designate_dri_in_surreal(
+            &surreal,
+            other_matter.id,
+            lawyer_two.id,
+            crate::projects::DriSide::Lawyer,
+        )
+        .await
+        .unwrap();
+
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 0, 0, 0).unwrap();
+        let mut neon_invoice = input(neon_matter.id, "xero-neon", 10_000);
+        neon_invoice.issued_at = now - Duration::days(1);
+        let mut other_invoice = input(other_matter.id, "xero-other", 5_000);
+        other_invoice.issued_at = now - Duration::days(2);
+        upsert(&surreal, &neon_invoice).await.unwrap();
+        upsert(&surreal, &other_invoice).await.unwrap();
+        record_reconcile(&surreal, "xero-neon", "PAID", 10_000)
+            .await
+            .unwrap();
+
+        let rollup = firm_thirty_day_rollup(&surreal, firm.id, now)
+            .await
+            .unwrap();
+        assert_eq!(rollup.currencies.len(), 1, "one currency, USD");
+        let usd = &rollup.currencies[0];
+        assert_eq!(usd.currency, "USD");
+        assert_eq!(usd.total_invoiced_cents, 15_000);
+        assert_eq!(usd.total_paid_cents, 10_000);
+
+        assert_eq!(usd.by_brand.len(), 2);
+        let neon_group = usd.by_brand.iter().find(|g| g.label == "neon").unwrap();
+        assert_eq!(neon_group.invoiced_cents, 10_000);
+        assert_eq!(neon_group.paid_cents, 10_000);
+        let other_group = usd
+            .by_brand
+            .iter()
+            .find(|g| g.label == "delete-your-data")
+            .unwrap();
+        assert_eq!(other_group.invoiced_cents, 5_000);
+        assert_eq!(other_group.paid_cents, 0);
+
+        assert_eq!(usd.by_lawyer_dri.len(), 2);
+        let one_group = usd
+            .by_lawyer_dri
+            .iter()
+            .find(|g| g.label == "Lawyer One")
+            .unwrap();
+        assert_eq!(one_group.invoiced_cents, 10_000);
+        let two_group = usd
+            .by_lawyer_dri
+            .iter()
+            .find(|g| g.label == "Lawyer Two")
+            .unwrap();
+        assert_eq!(two_group.invoiced_cents, 5_000);
+    }
+
+    /// ENG-591: a Project with no lawyer DRI groups under "Unassigned"
+    /// rather than being dropped from the by-DRI series.
+    #[tokio::test]
+    async fn firm_thirty_day_rollup_groups_unassigned_dri_when_no_lawyer_dri() {
+        let surreal = crate::surreal::test_support::mem().await;
+        let (firm, _) = seed_firm(&surreal).await;
+        let matter = seed_project_on_firm(&surreal, firm.id, "unassigned-matter", "neon").await;
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 0, 0, 0).unwrap();
+        let mut invoice = input(matter.id, "xero-unassigned", 7_500);
+        invoice.issued_at = now - Duration::days(1);
+        upsert(&surreal, &invoice).await.unwrap();
+
+        let rollup = firm_thirty_day_rollup(&surreal, firm.id, now)
+            .await
+            .unwrap();
+        let usd = &rollup.currencies[0];
+        assert_eq!(usd.by_lawyer_dri.len(), 1);
+        assert_eq!(usd.by_lawyer_dri[0].label, "Unassigned");
+        assert_eq!(usd.by_lawyer_dri[0].invoiced_cents, 7_500);
+    }
+
+    /// ENG-591: the 30-day window is computed from `now`, not from a caller-
+    /// supplied `since` — an invoice 31 days old falls outside it and one 29
+    /// days old falls inside, proving the subtraction itself, not just
+    /// `for_firm_since`'s own inclusive-edge behaviour.
+    #[tokio::test]
+    async fn firm_thirty_day_rollup_computes_the_window_from_now() {
+        let surreal = crate::surreal::test_support::mem().await;
+        let (firm, _) = seed_firm(&surreal).await;
+        let matter = seed_project_on_firm(&surreal, firm.id, "window-matter", "neon").await;
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 0, 0, 0).unwrap();
+        let mut too_old = input(matter.id, "xero-too-old", 100);
+        too_old.issued_at = now - Duration::days(31);
+        let mut in_window = input(matter.id, "xero-in-window", 200);
+        in_window.issued_at = now - Duration::days(29);
+        upsert(&surreal, &too_old).await.unwrap();
+        upsert(&surreal, &in_window).await.unwrap();
+
+        let rollup = firm_thirty_day_rollup(&surreal, firm.id, now)
+            .await
+            .unwrap();
+        let usd = &rollup.currencies[0];
+        assert_eq!(
+            usd.total_invoiced_cents, 200,
+            "the 31-day-old invoice is excluded"
+        );
+    }
+
+    /// ENG-591: invoices on another Firm's Projects never appear in this
+    /// Firm's rollup.
+    #[tokio::test]
+    async fn firm_thirty_day_rollup_isolates_two_firms() {
+        let surreal = crate::surreal::test_support::mem().await;
+        let (firm_a, _) = seed_firm(&surreal).await;
+        let (firm_b, _) = seed_firm(&surreal).await;
+        let matter_a = seed_project_on_firm(&surreal, firm_a.id, "firm-a-matter", "neon").await;
+        let matter_b =
+            seed_project_on_firm(&surreal, firm_b.id, "firm-b-matter", "delete-your-data").await;
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 0, 0, 0).unwrap();
+        let mut invoice_a = input(matter_a.id, "xero-firm-a", 1_000);
+        invoice_a.issued_at = now - Duration::days(1);
+        let mut invoice_b = input(matter_b.id, "xero-firm-b", 2_000);
+        invoice_b.issued_at = now - Duration::days(1);
+        upsert(&surreal, &invoice_a).await.unwrap();
+        upsert(&surreal, &invoice_b).await.unwrap();
+
+        let rollup_a = firm_thirty_day_rollup(&surreal, firm_a.id, now)
+            .await
+            .unwrap();
+        assert_eq!(rollup_a.currencies[0].total_invoiced_cents, 1_000);
+        assert_eq!(rollup_a.currencies[0].by_brand[0].label, "neon");
+    }
+
+    /// ENG-591: two currencies on the same Firm never sum together — each
+    /// gets its own [`CurrencyInvoiceRollup`].
+    #[tokio::test]
+    async fn firm_thirty_day_rollup_keeps_currencies_separate() {
+        let surreal = crate::surreal::test_support::mem().await;
+        let (firm, _) = seed_firm(&surreal).await;
+        let matter = seed_project_on_firm(&surreal, firm.id, "mixed-currency-matter", "neon").await;
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 0, 0, 0).unwrap();
+        let mut usd_invoice = input(matter.id, "xero-usd", 1_000);
+        usd_invoice.issued_at = now - Duration::days(1);
+        let mut eur_invoice = input(matter.id, "xero-eur", 2_000);
+        eur_invoice.issued_at = now - Duration::days(1);
+        eur_invoice.currency = "EUR".to_string();
+        upsert(&surreal, &usd_invoice).await.unwrap();
+        upsert(&surreal, &eur_invoice).await.unwrap();
+
+        let rollup = firm_thirty_day_rollup(&surreal, firm.id, now)
+            .await
+            .unwrap();
+        assert_eq!(rollup.currencies.len(), 2, "USD and EUR stay separate");
+        let usd = rollup
+            .currencies
+            .iter()
+            .find(|c| c.currency == "USD")
+            .unwrap();
+        let eur = rollup
+            .currencies
+            .iter()
+            .find(|c| c.currency == "EUR")
+            .unwrap();
+        assert_eq!(usd.total_invoiced_cents, 1_000);
+        assert_eq!(eur.total_invoiced_cents, 2_000);
+    }
+
+    /// ENG-591: a Firm with no invoice in the window renders no currency
+    /// groups at all, so the caller can distinguish "nothing to draw" from
+    /// "drew a zero-height bar".
+    #[tokio::test]
+    async fn firm_thirty_day_rollup_is_empty_without_in_window_invoices() {
+        let surreal = crate::surreal::test_support::mem().await;
+        let (firm, _) = seed_firm(&surreal).await;
+        seed_project_on_firm(&surreal, firm.id, "no-invoices-matter", "neon").await;
+
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 0, 0, 0).unwrap();
+        let rollup = firm_thirty_day_rollup(&surreal, firm.id, now)
+            .await
+            .unwrap();
+        assert!(rollup.currencies.is_empty());
     }
 }

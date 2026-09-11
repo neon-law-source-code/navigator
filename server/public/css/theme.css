@@ -3276,6 +3276,31 @@ a.nav-link:hover {
   padding: 0;
 }
 
+/* ENG-591: the Firm show page's trailing-30-day invoice graphs. Bar colour
+   comes from the brand's own primary-colour token rather than a literal, so
+   the chart wears whichever brand the request resolved to; "paid" reuses
+   the same colour at reduced opacity rather than a second literal. */
+.firm-invoice-chart {
+  margin-top: 1rem;
+}
+
+.firm-invoice-bar-label {
+  font-size: 0.8rem;
+  fill: var(--nav-color-text);
+}
+
+.firm-invoice-bar {
+  fill: var(--nav-color-primary);
+}
+
+.firm-invoice-bar--paid {
+  fill-opacity: 0.55;
+}
+
+.firm-invoice-currency__code {
+  color: var(--nav-color-text-muted);
+}
+
 .project-kpi-rows li + li {
   border-top: 1px solid var(--nav-color-border);
 }

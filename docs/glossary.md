@@ -711,6 +711,15 @@ Owner opens a second (or subsequent) Firm at `/app/owner/firms/new` (ENG-585), n
 in one submission — `store::firms::create`'s own atomic guarantee. That Firm's Admin DRI (or Owner) then edits its name,
 status, and Entity at `/app/admin/firms/{id}/edit`.
 
+The Firm show page also renders a trailing-30-day billing rollup (ENG-591), from
+`store::xero_invoices::firm_thirty_day_rollup`, which sums every mirrored Xero invoice issued on one of the Firm's
+Projects in the last 30 days, in cents, grouped by brand and by lawyer DRI (a Project with none groups under
+`"Unassigned"`), and never sums across currencies — a Firm billing in two currencies gets two independent totals rather
+than one misleading sum. `webapp::firm_invoice_graphs` draws the result as two horizontal grouped bar charts (invoiced
+cents beside paid cents) in inline server-rendered SVG, following the no-charting-library precedent
+`webapp::lawyer_dashboard`'s status pie already set. Every label the chart draws is a brand's or a person's display name
+(or `"Unassigned"`) — never a Project code, matter name, or Xero invoice id, which stay out of this surface entirely.
+
 - Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
 

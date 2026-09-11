@@ -95,6 +95,10 @@ tokio = { workspace = true, features = ["time"], optional = true }
 # renderer itself. Still a dev-dependency in spirit for every other module —
 # the component tests use it the same way.
 dioxus-ssr = { version = "0.7.9", optional = true }
+# Server-only: the Firm show page's invoice graphs (ENG-591) resolve the
+# trailing-30-day window from the request clock. Gated behind `server` like
+# `store` — the wasm client build never computes this window itself.
+chrono = { workspace = true, optional = true }
 
 # The workspace pin carries `v7`, which compiles `uuid`'s `rng` module. On
 # `wasm32-unknown-unknown` that module has no randomness source of its own and
@@ -130,7 +134,7 @@ web = ["dioxus/web"]
 # Selected transitively by `web`; pulls the server-side renderer so
 # `dioxus-server`'s `render_handler` can SSR `App`, plus the `store` query
 # layer the server functions run against and the request-extraction helper.
-server = ["dioxus/server", "dep:store", "dep:dioxus-fullstack-core", "dep:axum", "dep:views", "dep:cloud", "dep:tracing", "dep:dioxus-ssr", "dep:reqwest", "dep:tokio", "dep:rules", "dep:workflows"]
+server = ["dioxus/server", "dep:store", "dep:dioxus-fullstack-core", "dep:axum", "dep:views", "dep:cloud", "dep:tracing", "dep:dioxus-ssr", "dep:reqwest", "dep:tokio", "dep:rules", "dep:workflows", "dep:chrono"]
 
 [lints]
 workspace = true

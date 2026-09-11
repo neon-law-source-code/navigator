@@ -1308,8 +1308,9 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
+  pull-requests: write
 
 jobs:
   {REQUIRED_CHECK}:

@@ -2041,12 +2041,22 @@ test_anonymous_denied_app_profile if {
 	not authz.allow with input as {"path": ["app", "profile"], "method": "GET", "session": null}
 }
 
+# ---------- /app/avatar ----------
+# The self-service avatar upload. Sibling of `/app/profile` so the native
+# form action and the browser's relative resolution agree. Every
+# authenticated tier is admitted; the handler resolves the person from the
+# session. Only an anonymous caller is denied.
+
+test_client_reaches_app_avatar_upload if {
+	authz.allow with input as {"path": ["app", "avatar"], "method": "POST", "session": client_session}
+}
+
 test_client_reaches_app_profile_avatar_upload if {
 	authz.allow with input as {"path": ["app", "profile", "avatar"], "method": "POST", "session": client_session}
 }
 
-test_anonymous_denied_app_profile_avatar_upload if {
-	not authz.allow with input as {"path": ["app", "profile", "avatar"], "method": "POST", "session": null}
+test_anonymous_denied_app_avatar_upload if {
+	not authz.allow with input as {"path": ["app", "avatar"], "method": "POST", "session": null}
 }
 
 # ---------- /app/people/{id}/avatar ----------

@@ -230,14 +230,21 @@ allow if {
 }
 
 # `/app/profile` is the self-service profile page: every authenticated tier
-# updates their own avatar there and sees (but cannot edit) their email. Same
-# reasoning as `/app/me/avatar` just above — the handler resolves the person
-# from the signed session, never from the URL — so this is a flat
-# authenticated rule rather than a tier-scoped one, and `/app/profile/avatar`
-# (the upload POST) is admitted as the same prefix.
+# sees (but cannot edit) their email here. The handler resolves the person
+# from the signed session, never from the URL, so this is a flat
+# authenticated rule rather than a tier-scoped one. The nested
+# `/app/profile/avatar` POST is admitted as the same prefix.
 allow if {
     input.path[0] == "app"
     input.path[1] == "profile"
+    is_authenticated(input.session)
+}
+
+# A native form on `/app/profile` may also post to the sibling `/app/avatar`
+# when the browser replaces the last path segment. Same session-resolved
+# person id as `/app/me/avatar` above.
+allow if {
+    input.path == ["app", "avatar"]
     is_authenticated(input.session)
 }
 

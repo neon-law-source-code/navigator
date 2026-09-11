@@ -1,9 +1,11 @@
 //! The self-service `/app/profile` page — every authenticated tier, Client
 //! included, updates their own avatar here through the native `POST
-//! /app/profile/avatar` multipart form. No tier gate at all: unlike the
-//! admin-only `/app/admin/people/{id}/avatar`, the target is always the
-//! caller's own row, resolved server-side from the signed session, never a
-//! person id supplied by the page.
+//! /app/avatar` multipart form. The upload is a sibling of `/app/profile`,
+//! not a nested child: a nested `/app/profile/avatar` action resolves in the
+//! browser as `/app/avatar` (the last path segment is replaced). No tier
+//! gate at all: unlike the admin-only `/app/admin/people/{id}/avatar`, the
+//! target is always the caller's own row, resolved server-side from the
+//! signed session, never a person id supplied by the page.
 //!
 //! Email renders read-only: the account's mailbox is also its sign-in
 //! identity, so a self-service edit here would drift from the OIDC identity
@@ -18,8 +20,9 @@ use crate::people::ViewerRole;
 
 /// The profile page path.
 pub const PROFILE_PATH: &str = "/app/profile";
-/// The native multipart upload the page's avatar card posts to.
-pub const PROFILE_AVATAR_PATH: &str = "/app/profile/avatar";
+/// The native multipart upload the page's avatar card posts to. Sibling of
+/// [`PROFILE_PATH`] so a relative resolution from that page still lands here.
+pub const PROFILE_AVATAR_PATH: &str = "/app/avatar";
 
 /// The rendered self-service profile page.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -261,8 +264,8 @@ mod tests {
             "the avatar form must be multipart: {out}"
         );
         assert!(
-            out.contains(PROFILE_AVATAR_PATH),
-            "posts to the self-service avatar route: {out}"
+            out.contains(r#"action="/app/avatar""#),
+            "posts to the sibling /app/avatar route, not a nested child of /app/profile: {out}"
         );
         assert!(
             out.contains(r#"src="/app/me/avatar""#),

@@ -16107,6 +16107,238 @@ async fn current_viewer_avatar_serves_initials_then_the_private_upload() {
     assert_eq!(uploaded_body.as_ref(), ONE_PIXEL_PNG);
 }
 
+/// The `/app/profile` page's avatar card posts to the sibling `/app/avatar`
+/// route. A nested `/app/profile/avatar` action is resolved by the browser as
+/// `/app/avatar` (it replaces the last path segment), so the form action and
+/// the handler must agree on that sibling path.
+#[tokio::test]
+async fn profile_page_avatar_form_posts_to_the_sibling_upload_route() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra Scales",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&viewer);
+
+    let page = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/profile")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = body_string(page).await;
+    assert!(
+        html.contains(r#"action="/app/avatar""#),
+        "the avatar form must post to /app/avatar: {html}"
+    );
+    assert!(
+        !html.contains("/app/profile/avatar"),
+        "a nested action under /app/profile is not the upload route: {html}"
+    );
+    assert!(
+        html.contains(&format!(r#"name="_csrf" value="{csrf}""#))
+            || html.contains(&format!(r#"value="{csrf}" name="_csrf""#))
+            || html.contains(&csrf),
+        "the form must carry the session CSRF token: {html}"
+    );
+}
+
+/// `POST /app/avatar` writes the caller's own image to the private documents
+/// bucket, points `profile_image_url` at the key, and redirects back to
+/// `/app/profile`. A Client session succeeds — the handler resolves the
+/// person from the signed session, never from the URL.
+#[tokio::test]
+async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to_profile() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra Scales",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&viewer);
+    let boundary = "----navigator-test-profile-avatar-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/avatar")
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{:?}", resp.status());
+    assert_eq!(
+        resp.headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some("/app/profile"),
+    );
+
+    let row = store::persons::find_by_id(&surreal, viewer.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    let key = row
+        .profile_image_url
+        .expect("the upload must set profile_image_url");
+    assert_eq!(
+        key,
+        format!("people/{}/avatars/{}.png", viewer.id, viewer.id)
+    );
+    let stored = state.storage.get(&key).await.unwrap();
+    assert_eq!(stored.bytes, ONE_PIXEL_PNG);
+    assert_eq!(stored.content_type, "image/png");
+
+    let download = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/me/avatar")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(download.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(download.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
+}
+
+/// The same upload posted at `/app/profile/avatar`, the nested action a
+/// browser uses when the form's `action` is that absolute path.
+#[tokio::test]
+async fn client_profile_avatar_upload_accepts_the_nested_form_action() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra Scales",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&viewer);
+    let boundary = "----navigator-test-nested-profile-avatar-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/profile/avatar")
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{:?}", resp.status());
+    assert_eq!(
+        resp.headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some("/app/profile"),
+    );
+
+    let row = store::persons::find_by_id(&surreal, viewer.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    let key = row
+        .profile_image_url
+        .expect("the nested upload must set profile_image_url");
+    assert_eq!(
+        key,
+        format!("people/{}/avatars/{}.png", viewer.id, viewer.id)
+    );
+    let stored = state.storage.get(&key).await.unwrap();
+    assert_eq!(stored.bytes, ONE_PIXEL_PNG);
+    assert_eq!(stored.content_type, "image/png");
+}
+
+/// An anonymous POST to the self-service upload is refused — the person id
+/// comes from the session, so there is nothing to write without one.
+#[tokio::test]
+async fn profile_avatar_upload_requires_a_session() {
+    let (state, _surreal) = state_with_engines().await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let boundary = "----navigator-test-anon-avatar-boundary";
+    let body = avatar_multipart_body(boundary, "unused", "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/avatar")
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let location = resp
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(
+        resp.status(),
+        StatusCode::SEE_OTHER,
+        "anonymous upload must bounce to login, not run the handler: {:?}",
+        resp.status()
+    );
+    assert_eq!(
+        location, "/auth/login?return_to=/app/avatar",
+        "anonymous upload must not write an avatar: {location}"
+    );
+}
+
 /// `POST /app/admin/entities/{id}/avatar` writes the image to the private
 /// documents bucket at `entities/{id}/avatars/…` and redirects to the edit
 /// page; `GET` on the same path streams it back. A **lawyer** session

@@ -3,7 +3,7 @@
 //! The engine the cluster lane runs is a one-container Deployment with
 //! `memory` as its storage argument and no volume — so the native
 //! counterpart is genuinely just the same binary with the same argument,
-//! bound to this worktree's slot port instead of a Service.
+//! bound to the host-wide native port instead of a Service.
 //!
 //! Memory-backed here too, and for the same reason it is memory-backed in
 //! the cluster: local Surreal data resets with the process, which is a
@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use super::supervisor::Service;
 
@@ -55,15 +55,42 @@ pub(super) fn service(root: &Path, port: u16) -> Result<Service> {
     })
 }
 
+/// Drop one worktree database from the shared in-memory engine.
+pub(super) fn remove_database(cfg: &super::super::KindConfig, database: &str) -> Result<()> {
+    if !database
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '_')
+    {
+        anyhow::bail!("refusing to remove invalid SurrealDB database name {database:?}");
+    }
+    let config = super::super::surreal::host_config(cfg, database);
+    runtime()?.block_on(async {
+        let db = store::surreal::connect(&config)
+            .await
+            .with_context(|| format!("connect to SurrealDB at {}", config.endpoint))?;
+        db.query(format!("REMOVE DATABASE `{database}`"))
+            .await
+            .with_context(|| format!("remove SurrealDB database {database}"))?;
+        Ok(())
+    })
+}
+
+fn runtime() -> Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("build tokio runtime for native SurrealDB operations")
+}
+
 #[cfg(test)]
 mod tests {
     use super::start_args;
 
-    /// The slot port is what keeps two worktrees' engines apart, and the
-    /// loopback bind is what keeps this one off the network. Both are in
-    /// a single flag, so the flag is asserted.
+    /// The fixed host port is shared by the native engine, and the loopback
+    /// bind keeps it off the network. Both are in a single flag, so the flag
+    /// is asserted.
     #[test]
-    fn the_engine_binds_loopback_on_the_slots_port() {
+    fn the_engine_binds_loopback_on_the_host_port() {
         let args = start_args(21_259);
 
         let bind = args

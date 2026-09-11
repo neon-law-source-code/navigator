@@ -57,6 +57,20 @@ The host ports split into two categories with very different blast radius:
 The CLI renders a temporary KIND config and changes only requested `hostPort` values. Port-forward changes, including
 Garage, require no cluster recreation.
 
+## Native shared runtime
+
+`navigator dev worktree-env up --runtime native` uses the same host lock and descriptor-based slot reservation as KIND
+lane. Restate, workflows-service, and host `web` keep their worktree slot; SurrealDB, Rauthy, and Garage are one shared
+host process set. The native registry records each process's PID, complete command, and process-start identity together
+with each worktree's private SurrealDB database and Garage bucket/key set. A second worktree adopts a verified listener,
+and a recycled PID is treated as stale unless all identity fields still match.
+
+`down` removes only the calling worktree's database, buckets, and claim. Shared processes remain until the final live
+claim leaves. `worktree-env sweep` is a dry run by default: it reports native claims whose checkout is gone alongside
+KIND orphans; `--apply` removes only those orphaned tenants and task-owned state, and never a shared process claimed by
+a live worktree. The registry lives at `~/.navigator/native-runtime.json` by default and may be relocated with
+`NAVIGATOR_NATIVE_REGISTRY`; its sibling `native-runtime/` directory holds shared process state.
+
 ## Testing
 
 Tests in `cli/src/devx/mod.rs` require default/override coverage, ports in generated `.devx/env`, byte-identical default

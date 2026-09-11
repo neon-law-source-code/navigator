@@ -375,7 +375,7 @@ Every profile applies the canonical seed and the [Brand Seed](#brand-seed). Whet
 Fixture](#sample-matter-fixture) is applied on top is a *separate* selector, `NAVIGATOR_SIMULATED_MATTERS`, which
 defaults to following this one and can be set explicitly either way. The combination that needs the second selector is
 the persistent staging deployment: it runs the `production` profile deliberately, so nothing in the process could
-otherwise tell it apart from the deployment holding real matters.
+otherwise tell it apart from the deployment holding real matters. Slack from that row ends with `from Staging`.
 
 ## Deployment Operator
 

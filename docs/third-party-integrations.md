@@ -91,6 +91,11 @@ never provisions: a Project with no channel reports `no_channel` so `ensure` sta
 invites nobody — the adapter takes only provider-issued member ids, Navigator stores none, and it will not turn a
 participation row or an email address into an invite, so the Firm's own Slack membership governs who joins.
 
+The persistent staging deployment (`NAVIGATOR_ENVIRONMENT=production` and `NAVIGATOR_SIMULATED_MATTERS=true`) appends a
+final `from Staging` line to every outbound Slack body: the ops incoming webhook, the per-Project bot, and Firm-private
+`chat.postMessage` calls. Production holding real matters does not. Local KIND is `dev` and does not. GitHub Actions
+deploy narration is a workflow secret, not this runtime path.
+
 Normal staging requires real non-production SendGrid and DocuSign demo configuration. Each cloud deployment uses the
 matching attachment row described in [`provider-environment-parity.md`](provider-environment-parity.md). Only the
 explicit `NAVIGATOR_CI_HARNESS=1` staging test surface may use in-process fakes; production rejects that flag.

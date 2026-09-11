@@ -120,8 +120,11 @@ Security Policy widens to name the Chatwoot installation on the deployment carry
 
 Every hosted row uses `NAVIGATOR_ENVIRONMENT=production` and `NAVIGATOR_CREDENTIAL_ENVIRONMENT=production`.
 `neon-law-stg` remains the proving release ring through its config, namespace, data plane, and hostname—not through a
-weaker runtime profile. Set `GOOGLE_OAUTH_REQUIRED_HD=neonlaw.com` on both rows. This value is the selected Workspace
-login domain, not necessarily the site's public hostname.
+weaker runtime profile. The same `NAVIGATOR_SIMULATED_MATTERS=true` coordinate that discloses the synthetic data plane
+also appends a final `from Staging` line to every Slack body that deployment posts (ops webhook, Project-channel bot,
+and Firm-private notices). Local KIND is `NAVIGATOR_ENVIRONMENT=dev` and does not. Set
+`GOOGLE_OAUTH_REQUIRED_HD=neonlaw.com` on both rows. This value is the selected Workspace login domain, not necessarily
+the site's public hostname.
 
 The login domain names one Workspace tenant. An identity in another organization's Workspace holds none here, which is
 why the value is the selected login domain rather than the site's public hostname.

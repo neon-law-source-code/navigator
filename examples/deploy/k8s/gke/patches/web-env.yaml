@@ -78,7 +78,8 @@ spec:
             # `config.toml`. It has to: its runtime profile is `production`
             # deliberately, so the profile alone cannot tell the two apart,
             # and without this it would serve an empty portfolio with no
-            # banner. See docs/environments.md.
+            # banner. The same value appends a `from Staging` line to every
+            # Slack body this process posts. See docs/environments.md.
             - name: NAVIGATOR_SIMULATED_MATTERS
               value: "YOUR_SIMULATED_MATTERS"
             - name: NAVIGATOR_STORAGE_BACKEND

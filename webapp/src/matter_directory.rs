@@ -4,8 +4,8 @@
 //! they hold no `person_project_roles` row, because a membership row is what
 //! grants access to what a matter *contains*. This page is the other question:
 //! which matters exist, and who is accountable for each. It renders exactly
-//! `store::projects::matter_directory`'s four fields — code, name, status, and
-//! the person on the matter's `is_lawyer_dri` row — and nothing else.
+//! `store::projects::matter_directory`'s fields — code, name, status, brand,
+//! and the person on the matter's `is_lawyer_dri` row — and nothing else.
 //!
 //! A matter nobody has taken accountability for is the case the page exists to
 //! surface, so an absent DRI renders as its own emphasized cell rather than as
@@ -27,7 +27,7 @@ pub const MATTER_DIRECTORY_PATH: &str = "/app/admin/projects";
 /// The `?sort=` keys the headers advertise. The route's pre-handler answers
 /// anything else with a `400` before the render, so a header can never link to
 /// a query the route refuses.
-pub const MATTER_DIRECTORY_SORT: &[&str] = &["code", "name", "status", "dri"];
+pub const MATTER_DIRECTORY_SORT: &[&str] = &["code", "name", "status", "brand", "dri"];
 
 /// One matter as the directory lens shows it, in a wasm-safe shape (plain
 /// fields — no `store` types cross to the client build).
@@ -40,6 +40,8 @@ pub struct MatterRow {
     pub code: String,
     pub name: String,
     pub status: String,
+    /// The brand key the matter's portal wears (ENG-587).
+    pub brand: String,
     /// The accountable lawyers' names, alphabetical; empty when the matter has
     /// no `is_lawyer_dri` row at all.
     pub lawyer_dris: Vec<String>,
@@ -138,6 +140,7 @@ pub async fn matter_directory_view() -> Result<MatterDirectoryView, ServerFnErro
             code: entry.code,
             name: entry.name,
             status: entry.status,
+            brand: entry.brand,
             lawyer_dris: entry.lawyer_dris,
         })
         .collect();
@@ -171,6 +174,7 @@ fn sort_rows(rows: &mut [MatterRow], sort: &str) {
                         "code" => a.code.cmp(&b.code),
                         "name" => a.name.cmp(&b.name),
                         "status" => a.status.cmp(&b.status),
+                        "brand" => a.brand.cmp(&b.brand),
                         "dri" => a.dri_label().cmp(&b.dri_label()),
                         _ => std::cmp::Ordering::Equal,
                     };
@@ -213,6 +217,7 @@ pub fn matter_directory_body(view: &MatterDirectoryView) -> Element {
         Column::sortable("code", "Code"),
         Column::sortable("name", "Project"),
         Column::sortable("status", "Status"),
+        Column::sortable("brand", "Brand"),
         Column::sortable("dri", "Lawyer DRI"),
     ];
     let is_empty = view.rows.is_empty();
@@ -244,6 +249,7 @@ pub fn matter_directory_body(view: &MatterDirectoryView) -> Element {
                             td { class: "project-code", code { "{row.code}" } }
                             td { class: "project-name", "{row.name}" }
                             td { class: "project-status", "{row.status}" }
+                            td { class: "project-brand", "{row.brand}" }
                             td { class: "matter-directory-dri",
                                 if row.lawyer_dris.is_empty() {
                                     span { class: "matter-flag", "Unassigned" }
@@ -268,6 +274,7 @@ mod tests {
             code: code.to_string(),
             name: format!("{code} matter"),
             status: status.to_string(),
+            brand: "neon".to_string(),
             lawyer_dris: dris.iter().map(|d| (*d).to_string()).collect(),
         }
     }
@@ -287,7 +294,7 @@ mod tests {
         }
     }
 
-    /// The four fields the lens carries, and no fifth.
+    /// The fields the lens carries, and no others.
     #[test]
     fn the_directory_renders_code_name_status_and_dri() {
         let out = html(&directory(
@@ -298,6 +305,22 @@ mod tests {
         assert!(out.contains("acme-llc matter"), "{out}");
         assert!(out.contains("open"), "{out}");
         assert!(out.contains("Nick Shook"), "{out}");
+    }
+
+    /// ENG-587: the directory shows each matter's brand key as its own
+    /// column, not folded into name or status.
+    #[test]
+    fn the_directory_renders_a_brand_column() {
+        let out = html(&directory(
+            vec![row("acme-llc", "open", &["Nick Shook"])],
+            ViewerRole::Owner,
+        ));
+        assert!(out.contains(r#"class="project-brand""#), "{out}");
+        assert!(out.contains("neon"), "{out}");
+        assert!(
+            out.contains("sort=brand"),
+            "the brand header must be sortable: {out}"
+        );
     }
 
     /// A matter two lawyers answer for names both. Showing one and dropping the

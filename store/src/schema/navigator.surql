@@ -57,20 +57,18 @@ DEFINE FIELD OVERWRITE code ON project TYPE string
     ASSERT $value != 'new';
 DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;
--- Which house brand's storefront this matter was opened through — a closed
--- key from `views::brand::BrandKey`, written by the server from the
--- resolved request `Host:`, never accepted from a client-submitted form (see
--- `docs/glossary.md#project`). `option<string>` rather than a required,
--- defaulted `string`: a `DEFAULT` is write-time only and never reached the
--- Projects opened before this field existed, so a required `string` makes
--- the engine re-validate and reject *any* later partial `UPDATE` against one
--- of those rows — including something as unrelated as a DRI designation —
--- with a coercion error, not just the read that first surfaced the gap in
--- #331. `ProjectRow.brand` stays `option<string>` and `ProjectRow::into_project`
--- collapses an absent value to `'neon'`, so a historical row is tolerated at
--- both the read and the write layer with no live data backfill required.
-DEFINE FIELD OVERWRITE brand ON project TYPE option<string>
-    ASSERT $value = NONE OR $value IN ['neon', 'delete-your-data', 'lawyer-shook'];
+-- Which house brand's storefront this matter was opened through, written by
+-- the server from the resolved request `Host:`, never accepted from a
+-- client-submitted form (see `docs/glossary.md#project`). Required (ENG-587):
+-- the backfill directly below runs before this tightened definition takes
+-- effect, so no row is ever unfilled when it does — apply order is the
+-- guarantee, since this file runs top to bottom on every boot. Validated
+-- against live `brand` rows in `store::projects::create`
+-- (`store::firms::brand_key_exists`, the same check `attach_brand` uses)
+-- rather than restated here as a second closed list: a runtime-created brand
+-- key must be as usable here as one of the three compiled ones.
+UPDATE project SET brand = 'neon' WHERE brand = NONE;
+DEFINE FIELD OVERWRITE brand ON project TYPE string;
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 -- Owning practice. Optional until the one-shot backfill points existing
 -- rows at a `firm` record: `DEFAULT` is write-time only and does not
@@ -548,8 +546,11 @@ DEFINE INDEX OVERWRITE firm_integration_secret_version
 
 DEFINE TABLE IF NOT EXISTS firm_brand SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE firm_id ON firm_brand TYPE record<firm>;
-DEFINE FIELD OVERWRITE brand_key ON firm_brand TYPE string
-    ASSERT $value IN ['neon', 'delete-your-data', 'lawyer-shook'];
+-- No closed `ASSERT` (ENG-587): `store::firms::attach_brand` already
+-- validates against live `brand` rows (`brand_key_exists`), not this fixed
+-- list, so a schema-level closed list would disagree with the store the
+-- moment a runtime-created brand key is attached.
+DEFINE FIELD OVERWRITE brand_key ON firm_brand TYPE string;
 DEFINE FIELD OVERWRITE inserted_at ON firm_brand TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON firm_brand TYPE string;
 DEFINE INDEX OVERWRITE firm_brand_pair ON firm_brand FIELDS firm_id, brand_key UNIQUE;

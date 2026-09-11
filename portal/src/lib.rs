@@ -918,6 +918,7 @@ pub fn bootstrap(
         state.sessions.clone(),
         state.policy.clone(),
         state.auth.clone(),
+        state.surreal.clone(),
     );
     let dioxus_app_brands_edit = dioxus_app::app_brands_edit_router(
         state.sessions.clone(),

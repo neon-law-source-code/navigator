@@ -3339,7 +3339,12 @@ pub fn app_brands_router(
     sessions: crate::session::SessionStore,
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
+    surreal: store::surreal::SurrealDb,
 ) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
     Router::<FullstackState>::new()
         .route(
             APP_BRANDS_PATH,
@@ -3348,10 +3353,7 @@ pub fn app_brands_router(
                 .layer(from_fn(inject_viewer_role))
                 .layer(from_fn(inject_app_brand_mark)),
         )
-        .with_state(FullstackState::new(
-            ServeConfig::new(),
-            webapp::brands_home::BrandsHome,
-        ))
+        .with_state(FullstackState::new(cfg, webapp::brands_home::BrandsHome))
         .route_layer(from_fn_with_state(
             (sessions, policy),
             crate::policy::require_policy,

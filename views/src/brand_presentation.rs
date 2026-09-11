@@ -378,7 +378,9 @@ fn to_hex(rgb: [u8; 3]) -> String {
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn darken(rgb: [u8; 3], factor: f64) -> [u8; 3] {
     rgb.map(|channel| {
-        (f64::from(channel) * (1.0 - factor)).round().clamp(0.0, 255.0) as u8
+        (f64::from(channel) * (1.0 - factor))
+            .round()
+            .clamp(0.0, 255.0) as u8
     })
 }
 

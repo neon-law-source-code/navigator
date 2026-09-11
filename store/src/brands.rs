@@ -706,8 +706,8 @@ mod tests {
             Role::Owner,
             None,
             &NewBrand {
-                name: "Neon Law".to_string(),
-                key: "neon".to_string(),
+                name: "Acme Law".to_string(),
+                key: "acme-law".to_string(),
                 is_law_firm: true,
                 legal_entity: Some("Shook Law PLLC".to_string()),
                 ..NewBrand::default()
@@ -1198,7 +1198,12 @@ mod tests {
     }
 
     /// ENG-586: deleting a brand a Firm wears, or that a Project names, is
-    /// refused; deleting an unworn, unnamed brand removes the row.
+    /// refused; deleting an unworn, unnamed brand removes the row. Uses
+    /// runtime-created keys rather than the three compiled ones: ENG-587
+    /// drops `firm_brand`/`project.brand`'s closed `ASSERT`, so the
+    /// reference check must hold for any key, not only the legacy three
+    /// (which a fresh test engine now seeds as `brand` rows anyway — see
+    /// `store::surreal::test_support::mem`).
     #[tokio::test]
     async fn delete_is_refused_while_referenced_by_a_firm_or_a_project() {
         let db = mem_surreal().await;
@@ -1209,14 +1214,14 @@ mod tests {
             Role::Owner,
             None,
             &NewBrand {
-                name: "Lawyer Shook".to_string(),
-                key: "lawyer-shook".to_string(),
+                name: "Worn Brand".to_string(),
+                key: "worn-brand".to_string(),
                 ..NewBrand::default()
             },
         )
         .await
         .unwrap();
-        crate::firms::attach_brand(&db, firm.id, "lawyer-shook")
+        crate::firms::attach_brand(&db, firm.id, "worn-brand")
             .await
             .unwrap();
         let err = delete(&db, Role::Owner, None, worn.id).await.unwrap_err();
@@ -1227,14 +1232,27 @@ mod tests {
             Role::Owner,
             None,
             &NewBrand {
-                name: "Neon Law".to_string(),
-                key: "neon".to_string(),
+                name: "Named Brand".to_string(),
+                key: "named-brand".to_string(),
                 ..NewBrand::default()
             },
         )
         .await
         .unwrap();
-        crate::test_support::seed_project_surreal(&db, "brand-reference-project").await;
+        let entity_id = crate::test_support::seed_entity(&db).await;
+        crate::projects::create(
+            &db,
+            &crate::projects::NewProject {
+                code: "brand-reference-project".to_string(),
+                name: "Brand Reference Project".to_string(),
+                status: "open".to_string(),
+                brand: "named-brand".to_string(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         let err = delete(&db, Role::Owner, None, named.id).await.unwrap_err();
         assert!(matches!(err, BrandError::StillReferenced));
 

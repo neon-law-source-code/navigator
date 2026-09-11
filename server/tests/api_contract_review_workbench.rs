@@ -68,6 +68,7 @@ async fn harness() -> Harness {
         bootstrap_company: portal::admin::DEFAULT_BOOTSTRAP_COMPANY.into(),
         sessions: portal::SessionStore::new(portal::test_support::TEST_SESSION_KEY),
         secure_cookies: false,
+        attachment_scanner: Arc::new(portal::attachment_scanner::FakeAttachmentScanner::clean()),
     };
     let state = AppState {
         storage: storage.clone(),

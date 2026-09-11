@@ -573,11 +573,36 @@ DEFINE TABLE IF NOT EXISTS brand SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON brand TYPE string;
 DEFINE FIELD OVERWRITE brand_key ON brand TYPE string;
 DEFINE FIELD OVERWRITE firm_id ON brand TYPE option<record<firm>>;
+-- A validated `#rrggbb` hex (ENG-586), not a closed palette id. `store::brands`
+-- validates the format and gates it behind a WCAG AA 4.5:1 contrast check
+-- against its own derived on-primary colour before writing; the schema places
+-- no `ASSERT` on it because free text was already permitted here.
 DEFINE FIELD OVERWRITE primary_color ON brand TYPE option<string>;
 DEFINE FIELD OVERWRITE accent_color ON brand TYPE option<string>;
+-- One more value than the closed `views::brand_presentation::TYPEFACES` ids:
+-- `'uploaded'` means "read `font_family` and the font object below" instead of
+-- a catalog id. `store` does not depend on `views`, so this stays a plain
+-- string; `views::brand_presentation::resolve_presentation` is where the
+-- special value is interpreted.
 DEFINE FIELD OVERWRITE typeface ON brand TYPE option<string>;
 DEFINE FIELD OVERWRITE is_law_firm ON brand TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE legal_entity ON brand TYPE option<string>;
+-- The uploaded logo (ENG-586): the public assets bucket object key and the
+-- content type that was validated at upload time (`image/png` or
+-- `image/svg+xml`). A brand with neither falls back to its compiled
+-- `logo_href`, so the three house brands render unchanged.
+DEFINE FIELD OVERWRITE logo_object_key ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE logo_content_type ON brand TYPE option<string>;
+-- The uploaded font (ENG-586): `font_family` is the CSS `font-family` name the
+-- tokens stylesheet's `@font-face` declares and the `typeface = 'uploaded'`
+-- branch above renders; `font_object_key` is its `.woff2` in the public
+-- assets bucket. `font_licence` is required whenever a font is uploaded, from
+-- a closed list of open licences — never a proof of licensing, only a record
+-- of the operator's own attestation.
+DEFINE FIELD OVERWRITE font_family ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE font_object_key ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE font_licence ON brand TYPE option<string>
+    ASSERT $value = NONE OR $value IN ['OFL-1.1', 'Apache-2.0', 'UFL-1.0'];
 DEFINE FIELD OVERWRITE inserted_at ON brand TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON brand TYPE string;
 DEFINE INDEX OVERWRITE brand_name ON brand FIELDS name UNIQUE;

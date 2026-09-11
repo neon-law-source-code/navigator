@@ -48,7 +48,7 @@ use std::path::PathBuf;
 
 use axum::{
     body::Body,
-    extract::Request,
+    extract::{DefaultBodyLimit, Request},
     http::{header, HeaderValue, StatusCode},
     middleware::{from_fn, from_fn_with_state, Next},
     response::{IntoResponse, Response},
@@ -3389,6 +3389,37 @@ pub fn app_brands_edit_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// `/app/brands/new` — creates a brand row (ENG-586). Owner or Admin at the
+/// route (not `owner_only_path`: that carve-out matches only the exact
+/// two-segment `/app/brands`, not this three-segment path); `store::brands`'
+/// own `authorize` is what refuses an Admin with no Firm DRI standing.
+pub const APP_BRAND_NEW_PATH: &str = "/app/brands/new";
+
+/// Native POST twin of `APP_BRAND_NEW_PATH`'s create form. Registered on the
+/// same path as the GET below so axum merges the two methods.
+pub fn app_brand_new_post_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    admin_state: crate::admin::AdminState,
+) -> Router {
+    Router::new()
+        .route(
+            APP_BRAND_NEW_PATH,
+            axum::routing::post(crate::admin::brands_create),
+        )
+        .with_state(admin_state)
+        .layer(from_fn_with_state(
+            (sessions.clone(), crate::csrf::CsrfMode::Form),
+            crate::csrf::require_csrf,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
 /// Native POST twin of `PATCH /app/api/brands/{key}` so the edit form stays
 /// a classic navigation.
 pub fn app_brands_edit_post_router(
@@ -3403,6 +3434,46 @@ pub fn app_brands_edit_post_router(
             axum::routing::post(crate::brand_edit::post_brand_edit),
         )
         .with_state(surreal)
+        .layer(from_fn_with_state(
+            (sessions.clone(), crate::csrf::CsrfMode::Form),
+            crate::csrf::require_csrf,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
+/// A brand's uploaded logo, ENG-586. Native multipart only — no Dioxus GET
+/// mounts here, since the edit page's own upload form is a fragment of
+/// `APP_BRANDS_EDIT_PATH`'s render, not a page of its own.
+pub const APP_BRAND_LOGO_PATH: &str = "/app/brands/{key}/logo";
+/// A brand's uploaded font, ENG-586. See [`APP_BRAND_LOGO_PATH`].
+pub const APP_BRAND_FONT_PATH: &str = "/app/brands/{key}/font";
+
+/// Native multipart POSTs for a brand's logo and font uploads (ENG-586).
+/// `require_multipart_csrf` runs inside each handler — `CsrfMode::Form`
+/// passes a multipart body through unchecked, matching every other upload
+/// door (the avatar uploads in `portal::admin`).
+pub fn app_brand_assets_post_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    admin_state: crate::admin::AdminState,
+) -> Router {
+    Router::new()
+        .route(
+            APP_BRAND_LOGO_PATH,
+            axum::routing::post(crate::brand_assets::upload_logo)
+                .layer(DefaultBodyLimit::max(crate::brand_assets::MAX_LOGO_BYTES)),
+        )
+        .route(
+            APP_BRAND_FONT_PATH,
+            axum::routing::post(crate::brand_assets::upload_font)
+                .layer(DefaultBodyLimit::max(crate::brand_assets::MAX_FONT_BYTES)),
+        )
+        .with_state(admin_state)
         .layer(from_fn_with_state(
             (sessions.clone(), crate::csrf::CsrfMode::Form),
             crate::csrf::require_csrf,

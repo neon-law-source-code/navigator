@@ -713,13 +713,20 @@ where
     }
 }
 
-/// Closed-list presentation edit. `palette` is stored as `primary_color`
-/// (and `accent_color`); free CSS is not a field.
+/// The presentation fields a brand's colour + font may be edited through.
+/// `primary_color` is a free `#rrggbb` hex behind `store::brands`' own WCAG
+/// AA gate (ENG-586), not a closed palette id. `font_family` names the CSS
+/// family for an already-uploaded font (`typeface = "uploaded"`); uploading
+/// the font object itself is native multipart only, never this JSON/form
+/// door — a blank `font_family` clears it, the same convention every other
+/// text field on this door follows.
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct UpdateBrandPresentation {
     typeface: String,
-    palette: String,
+    primary_color: String,
+    #[serde(default)]
+    font_family: String,
 }
 
 /// Shared by `PATCH /app/api/brands/{key}` and the native edit form.
@@ -737,24 +744,15 @@ pub async fn apply_brand_presentation(
     actor_person_id: Option<uuid::Uuid>,
     key: &str,
     typeface: &str,
-    palette: &str,
+    primary_color: &str,
+    font_family: &str,
 ) -> Result<store::brands::Brand, BrandPresentationError> {
-    if views::brand::typeface_by_id(typeface).is_none() {
+    if typeface != "uploaded" && views::brand::typeface_by_id(typeface).is_none() {
         return Err(BrandPresentationError::UnknownChoice(format!(
-            "typeface must be one of: {}",
+            "typeface must be one of: {}, uploaded",
             views::brand::TYPEFACES
                 .iter()
                 .map(|face| face.id)
-                .collect::<Vec<_>>()
-                .join(", ")
-        )));
-    }
-    if views::brand::palette_by_id(palette).is_none() {
-        return Err(BrandPresentationError::UnknownChoice(format!(
-            "palette must be one of: {}",
-            views::brand::PALETTE
-                .iter()
-                .map(|item| item.id)
                 .collect::<Vec<_>>()
                 .join(", ")
         )));
@@ -770,8 +768,8 @@ pub async fn apply_brand_presentation(
         brand.id,
         &store::brands::BrandEdit {
             typeface: Some(Some(typeface.to_string())),
-            primary_color: Some(Some(palette.to_string())),
-            accent_color: Some(Some(palette.to_string())),
+            primary_color: Some(Some(primary_color.to_string())),
+            font_family: Some((!font_family.is_empty()).then(|| font_family.to_string())),
             ..store::brands::BrandEdit::default()
         },
     )
@@ -780,6 +778,10 @@ pub async fn apply_brand_presentation(
         Ok(updated) => Ok(updated),
         Err(store::brands::BrandError::NotAuthorized) => Err(BrandPresentationError::Forbidden),
         Err(store::brands::BrandError::NoSuchBrand(_)) => Err(BrandPresentationError::NotFound),
+        Err(
+            error @ (store::brands::BrandError::InvalidHex(_)
+            | store::brands::BrandError::InsufficientContrast { .. }),
+        ) => Err(BrandPresentationError::UnknownChoice(error.user_message())),
         Err(error) => Err(BrandPresentationError::Internal(error.to_string())),
     }
 }
@@ -796,7 +798,8 @@ async fn update_brand_presentation(
         session.person_id,
         &key,
         &input.typeface,
-        &input.palette,
+        &input.primary_color,
+        &input.font_family,
     )
     .await
     {

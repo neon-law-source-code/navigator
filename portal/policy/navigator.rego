@@ -153,6 +153,50 @@ allow if {
     is_lawyer(input.session)
 }
 
+# Brand presentation writes (ENG-586), named explicitly rather than resting
+# on the Owner/Admin route bypass — the same convention every other
+# `/app/api` write follows. `store::brands`' own `authorize` is what actually
+# decides Owner-system-wide vs. that Firm's Admin DRI; this admits the tier,
+# not the scope.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "brands"
+    count(input.path) == 4
+    input.method == "PATCH"
+    is_admin(input.session)
+}
+
+# The native create-brand form and the logo/font upload doors it links to
+# (ENG-586) are not `owner_only_path` — that carve-out matches only the
+# literal two-segment `/app/brands` — so they would already pass through the
+# general Owner/Admin bypass above. Naming them here anyway keeps every
+# brand-write path in one place rather than splitting "explicit" writes from
+# ones that merely survive the bypass.
+allow if {
+    input.path == ["app", "brands", "new"]
+    input.method == "POST"
+    is_admin(input.session)
+}
+
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "brands"
+    input.path[3] == "logo"
+    count(input.path) == 4
+    input.method == "POST"
+    is_admin(input.session)
+}
+
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "brands"
+    input.path[3] == "font"
+    count(input.path) == 4
+    input.method == "POST"
+    is_admin(input.session)
+}
+
 # /app/documents is the workspace documentation inside the application. It
 # admits every tier that operates Navigator — Lawyer and Clerk by the two
 # rules below, Owner and Admin through the route bypass at the top of this

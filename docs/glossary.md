@@ -127,6 +127,16 @@ marketing page. The three compiled keys (`neon`, `delete-your-data`, `lawyer-sho
 first boot so the one authorization table names every brand a Firm may attach, but their real presentation — hosts,
 colours, fonts, logos, copy — stays exactly where this entry describes it, unchanged.
 
+Owner (for a system-wide row) or a Firm's Admin DRI (for that Firm's own row) create, edit, and delete `brand` rows at
+`/app/brands`, `/app/brands/new`, and `/app/brands/{key}/edit` (ENG-586). `primary_color` is a free `#rrggbb` hex, gated
+behind a WCAG AA 4.5:1 contrast check against its own derived on-primary colour (white or black, whichever contrasts
+more) — never a closed palette id. A row may also carry an uploaded logo (PNG or SVG, sanitized against script content)
+and an uploaded `.woff2` font (attested under a closed open-licence list), both served from the public assets bucket;
+`typeface = "uploaded"` is what tells the tokens stylesheet to read the row's own font rather than a compiled catalog
+entry. Deleting a row is refused while any `firm_brand` or `project.brand` value still names its key. None of this
+touches the three compiled keys' own served hosts, marketing pages, or fallback presentation — editing `neon`'s row
+changes what `/public/css/brand-neon-tokens.css` renders, not which hosts resolve to it.
+
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local

@@ -81,6 +81,7 @@ pub mod attachment_scanner;
 pub mod audit_fields;
 pub mod auth;
 pub mod blog;
+pub mod brand_assets;
 pub mod brand_edit;
 pub mod brand_fonts;
 pub mod brand_tokens;
@@ -855,6 +856,7 @@ pub fn bootstrap(
         bootstrap_company: admin::bootstrap_company_from_env(),
         sessions: state.sessions.clone(),
         secure_cookies: secure_cookies(&state),
+        attachment_scanner: state.attachment_scanner.clone(),
     };
     // #956 Phase 4: the client self-serve intake page renders through Dioxus at
     // /app/projects/{project_code}/intake/{notation_id}. Its pre-layer resolves the
@@ -928,6 +930,30 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
         state.surreal.clone(),
+    );
+    // ENG-586: a brand's logo and font uploads are native multipart POSTs,
+    // never JSON — this is the only door that writes them.
+    let dioxus_app_brand_assets = dioxus_app::app_brand_assets_post_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        admin_state.clone(),
+    );
+    // ENG-586: the create-brand form renders through Dioxus at
+    // `/app/brands/new`; the native `POST` on the same path creates the row.
+    let dioxus_brand_new = dioxus_app::csrf_page_router(
+        dioxus_app::APP_BRAND_NEW_PATH,
+        webapp::brands_new::BrandNew,
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
+    let dioxus_brand_new_post = dioxus_app::app_brand_new_post_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        admin_state.clone(),
     );
     let dioxus_app_owner = dioxus_app::app_owner_router(
         state.sessions.clone(),
@@ -1780,6 +1806,7 @@ pub fn bootstrap(
         dioxus_firm_show,
         dioxus_firm_new,
         dioxus_firm_edit,
+        dioxus_brand_new,
         dioxus_template_gallery,
         dioxus_template_entry,
     ] {
@@ -1791,6 +1818,16 @@ pub fn bootstrap(
     }
     router = router.merge(session_boundary(
         dioxus_app_brands_edit_post,
+        &boundary_sessions,
+        &boundary_auth,
+    ));
+    router = router.merge(session_boundary(
+        dioxus_app_brand_assets,
+        &boundary_sessions,
+        &boundary_auth,
+    ));
+    router = router.merge(session_boundary(
+        dioxus_brand_new_post,
         &boundary_sessions,
         &boundary_auth,
     ));

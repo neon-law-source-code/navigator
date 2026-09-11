@@ -139,6 +139,9 @@ pub struct AdminState {
     pub sessions: crate::SessionStore,
     /// Whether session cookies should carry `Secure`.
     pub secure_cookies: bool,
+    /// Malware scanner every brand logo/font upload is checked against
+    /// (ENG-586) — same `Arc` as `AppState.attachment_scanner`.
+    pub attachment_scanner: Arc<dyn crate::attachment_scanner::AttachmentScanner>,
 }
 
 impl FromRef<AdminState> for store::surreal::SurrealDb {
@@ -1838,6 +1841,103 @@ async fn firms_update(
             push_query(&mut query, "error", &e.user_message());
             Redirect::to(&format!("/app/admin/firms/{id}/edit?{query}")).into_response()
         }
+    }
+}
+
+// ---- Brands (ENG-586) ----
+
+const BRAND_NEW_PATH: &str = "/app/brands/new";
+
+fn back_to_brand_new_form(query: &str) -> Response {
+    if query.is_empty() {
+        Redirect::to(BRAND_NEW_PATH).into_response()
+    } else {
+        Redirect::to(&format!("{BRAND_NEW_PATH}?{query}")).into_response()
+    }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct BrandCreateInput {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    typeface: String,
+    #[serde(default)]
+    primary_color: String,
+}
+
+/// `POST /app/brands/new` — the same path the create form renders at, so a
+/// refusal reloads it with `?error=` and every field echoed. `firm_id` is
+/// never read from the form: Owner always creates system-wide, and an
+/// Admin's Firm is re-resolved server-side from their own DRI membership,
+/// exactly as `store::brands::create`'s own `authorize` would insist on —
+/// trusting a client-submitted Firm id here would let an Admin DRI of one
+/// Firm name a brand scoped to another.
+pub(crate) async fn brands_create(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<BrandCreateInput>,
+) -> Response {
+    let Some(Extension(session_data)) = session else {
+        return not_found_response();
+    };
+    if !session_data.role.is_admin_tier() {
+        return not_found_response();
+    }
+
+    let refuse = |message: &str| {
+        let mut query = String::new();
+        push_query(&mut query, "error", message);
+        push_query(&mut query, "name", &input.name);
+        push_query(&mut query, "key", &input.key);
+        push_query(&mut query, "typeface", &input.typeface);
+        push_query(&mut query, "primary_color", &input.primary_color);
+        back_to_brand_new_form(&query)
+    };
+
+    let firm_id = if session_data.role.is_owner() {
+        None
+    } else {
+        let Some(person_id) = session_data.person_id else {
+            return refuse("Your session isn't linked to a firm person.");
+        };
+        let memberships =
+            match store::firms::memberships_for_person(&state.surreal, person_id).await {
+                Ok(memberships) => memberships,
+                Err(error) => {
+                    tracing::error!(error = %error, "brands_create: membership lookup failed");
+                    return refuse("Could not resolve your Firm membership.");
+                }
+            };
+        let Some(firm_id) = memberships
+            .iter()
+            .find(|m| m.is_dri && m.membership == store::firms::FirmMembership::Admin)
+            .map(|m| m.firm_id)
+        else {
+            return refuse("You are not the Admin DRI of any Firm.");
+        };
+        Some(firm_id)
+    };
+
+    match store::brands::create(
+        &state.surreal,
+        session_data.role,
+        session_data.person_id,
+        &store::brands::NewBrand {
+            name: input.name.clone(),
+            key: input.key.clone(),
+            firm_id,
+            typeface: (!input.typeface.is_empty()).then(|| input.typeface.clone()),
+            primary_color: (!input.primary_color.is_empty()).then(|| input.primary_color.clone()),
+            ..store::brands::NewBrand::default()
+        },
+    )
+    .await
+    {
+        Ok(created) => Redirect::to(&format!("/app/brands/{}/edit", created.key)).into_response(),
+        Err(error) => refuse(&error.user_message()),
     }
 }
 

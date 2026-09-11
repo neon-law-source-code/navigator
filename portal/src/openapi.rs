@@ -3027,15 +3027,18 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "UpdateBrandPresentationRequest": {
             "type": "object",
-            "required": ["typeface", "palette"],
+            "required": ["typeface", "primary_color"],
             "additionalProperties": false,
             "properties": {
               "typeface": { "type": "string",
-                            "enum": ["gorp-serif", "tinos", "system-serif", "system-sans"] },
-              "palette":  { "type": "string",
-                            "enum": ["neon-teal", "delete-your-data", "lawyer-shook"] }
+                            "description": "A closed catalog id, or \"uploaded\" to use font_family with a font uploaded via the native multipart door.",
+                            "enum": ["gorp-serif", "tinos", "system-serif", "system-sans", "uploaded"] },
+              "primary_color": { "type": "string",
+                            "description": "A #rrggbb hex, refused unless its best on-primary contrast (white or black) clears WCAG AA 4.5:1." },
+              "font_family": { "type": "string",
+                            "description": "The CSS font-family name for an uploaded font. Blank clears it." }
             },
-            "example": { "typeface": "tinos", "palette": "lawyer-shook" }
+            "example": { "typeface": "uploaded", "primary_color": "#007c91", "font_family": "Custom Sans" }
           },
           "Brand": {
             "type": "object",
@@ -3046,7 +3049,12 @@ pub fn document_with_base(base: &str) -> Value {
               "key": { "type": "string" },
               "typeface": { "type": "string" },
               "primary_color": { "type": "string" },
-              "accent_color": { "type": "string" }
+              "accent_color": { "type": "string" },
+              "logo_object_key": { "type": "string" },
+              "logo_content_type": { "type": "string" },
+              "font_family": { "type": "string" },
+              "font_object_key": { "type": "string" },
+              "font_licence": { "type": "string" }
             }
           },
           "CreateEntityRequest": {

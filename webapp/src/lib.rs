@@ -27,6 +27,7 @@ pub mod blog_post;
 pub mod brand_style;
 pub mod brands_edit;
 pub mod brands_home;
+pub mod brands_new;
 pub mod clause_editor;
 pub mod clerk;
 pub mod cli_release;

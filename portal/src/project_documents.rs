@@ -711,6 +711,7 @@ mod tests {
             bootstrap_company: crate::admin::bootstrap_company_from_env(),
             sessions: app.sessions,
             secure_cookies: false,
+            attachment_scanner: app.attachment_scanner,
         };
         (state, project_id)
     }

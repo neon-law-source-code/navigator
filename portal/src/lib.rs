@@ -947,6 +947,27 @@ pub fn bootstrap(
         state.auth.clone(),
         state.surreal.clone(),
     );
+    // ENG-585: Owner opens a Firm from a native form on the shared `FormCard`
+    // + CSRF page router, the same shape the entity create form uses. It
+    // posts to the unchanged `POST /app/owner/firms` handler.
+    let dioxus_firm_new = dioxus_app::csrf_page_router(
+        dioxus_app::APP_OWNER_FIRM_NEW_PATH,
+        webapp::firm_new::OwnerFirmNew,
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
+    // ENG-585: the Firm edit form, prefilled from the record by its `{id}`.
+    // It posts to the unchanged `POST /app/admin/firms/{id}/edit`.
+    let dioxus_firm_edit = dioxus_app::csrf_page_router(
+        dioxus_app::FIRM_EDIT_PATH,
+        webapp::firm_edit::FirmEdit,
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
     // #956 Phase 4: the template gallery renders through Dioxus at /templates
     // and /templates/{*path}. The detail pre-layer keeps owning the alias and
     // kebab redirects, the `/download` raw markdown, and the not-curated 404.
@@ -1757,6 +1778,8 @@ pub fn bootstrap(
         dioxus_app_owner,
         dioxus_app_profile,
         dioxus_firm_show,
+        dioxus_firm_new,
+        dioxus_firm_edit,
         dioxus_template_gallery,
         dioxus_template_entry,
     ] {

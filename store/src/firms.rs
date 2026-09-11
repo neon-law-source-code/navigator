@@ -275,6 +275,52 @@ pub enum FirmError {
     NotAMember(Uuid, Uuid),
 }
 
+impl FirmError {
+    /// The message to show a human on the Firm create/edit forms. Kept here
+    /// so every adapter — this form today, any future JSON API or MCP tool —
+    /// renders the same wording per refusal, the same convention
+    /// `EntityCommandError::user_message` and `PeopleCommandError::user_message`
+    /// already follow.
+    #[must_use]
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::NoSuchEntity(_) => {
+                "Pick an existing entity to open the firm against.".to_string()
+            }
+            Self::NoSuchPerson(_) => "That person could not be found.".to_string(),
+            Self::IneligibleAdminDriTier(_) => {
+                "The Admin DRI must be a person whose role is admin.".to_string()
+            }
+            Self::DuplicateEntity => "That entity already has a firm.".to_string(),
+            Self::NotAuthorized => "You may not make this change.".to_string(),
+            Self::NoSuchFirm(_) => "That firm could not be found.".to_string(),
+            Self::ClientCannotJoinFirm(_) => "A client cannot hold a firm membership.".to_string(),
+            Self::DuplicateMembership => {
+                "That person is already a member of this firm.".to_string()
+            }
+            Self::UnknownBrand(_) => "That brand key is not registered.".to_string(),
+            Self::DuplicateBrand => "That brand is already attached to a firm.".to_string(),
+            Self::WrongAdminDriMembership(_, _) => {
+                "That person's membership on this firm is not admin.".to_string()
+            }
+            Self::AdminDriCrossFirm(_, _) => {
+                "That person is not a member of this firm.".to_string()
+            }
+            Self::WouldLeaveFirmWithoutAdminDri(_) => {
+                "This firm must always have an Admin DRI. Transfer the designation first."
+                    .to_string()
+            }
+            Self::FirmOwnsProjects(_) => {
+                "This firm still owns one or more projects and cannot be deleted.".to_string()
+            }
+            Self::NotAMember(_, _) => "That person is not a member of this firm.".to_string(),
+            Self::Db(_) | Self::Person(_) | Self::Entity(_) | Self::WriteReturnedNothing => {
+                "Could not save firm.".to_string()
+            }
+        }
+    }
+}
+
 fn classify_write(error: surrealdb::Error) -> FirmError {
     match crate::surreal::retry::unique_violation(&error) {
         Some("person_firm_role_pair") => FirmError::DuplicateMembership,
@@ -1217,6 +1263,25 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    /// `user_message` names the refused rule rather than restating the debug
+    /// form — the two refusals ENG-585's create form must show by name.
+    #[test]
+    fn user_message_names_the_rule_for_the_create_form_s_two_refusals() {
+        let person_id = Uuid::now_v7();
+        assert_eq!(
+            FirmError::IneligibleAdminDriTier(person_id).user_message(),
+            "The Admin DRI must be a person whose role is admin."
+        );
+        assert_eq!(
+            FirmError::NoSuchEntity(person_id).user_message(),
+            "Pick an existing entity to open the firm against."
+        );
+        assert_eq!(
+            FirmError::NotAuthorized.user_message(),
+            "You may not make this change."
+        );
     }
 
     #[tokio::test]

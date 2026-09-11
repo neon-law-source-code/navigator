@@ -137,6 +137,7 @@ pub fn owner_home_body(view: &OwnerHomeView) -> Element {
                 p { class: "page-subtitle",
                     "Every practice on this deployment, and the house brands each one wears."
                 }
+                p { a { class: "nav-btn nav-btn--primary", href: "/app/owner/firms/new", "New firm" } }
             }
             div { class: "team-home__cards", "aria-label": "Firms",
                 if view.firms.is_empty() {
@@ -188,5 +189,13 @@ mod tests {
             "{html}"
         );
         assert!(!html.contains("firm-card-"), "{html}");
+    }
+
+    /// ENG-585: Owner opens a second Firm from this listing.
+    #[test]
+    fn offers_a_link_to_create_a_firm() {
+        let html = render(Vec::new());
+        assert!(html.contains(r#"href="/app/owner/firms/new""#), "{html}");
+        assert!(html.contains("New firm"), "{html}");
     }
 }

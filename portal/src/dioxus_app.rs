@@ -3520,6 +3520,21 @@ pub fn firm_show_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// Owner opens a new Firm here (ENG-585). Under `/app/owner`, so embedded
+/// Rego's `owner_only_path` rule carves it out of the Owner/Admin bypass with
+/// no rule of its own — the same reason [`APP_OWNER_PATH`] needs none.
+/// `webapp::admin_listing::require_owner` re-checks the tier inside the
+/// `#[server]` loader as defense in depth.
+pub const APP_OWNER_FIRM_NEW_PATH: &str = "/app/owner/firms/new";
+
+/// The Firm edit form (ENG-585). Lives under `/app/admin`, exactly like
+/// [`FIRM_SHOW_PATH`] it extends: Owner and Admin both pass the Rego route
+/// bypass, and the fine-grained
+/// `store::firm_capability::FirmCapability::ManageMembership` check inside
+/// `webapp::firm_edit::get_firm_edit_form` decides which Firms an Admin may
+/// actually edit.
+pub const FIRM_EDIT_PATH: &str = "/app/admin/firms/{id}/edit";
+
 /// The `/documents` and `/documents/{slug}` pre-layer: canonicalize the slug,
 /// 404 an unknown one, or inject the matched doc for the render. This
 /// reproduces the `docs_page` / `render_doc_page` control flow.

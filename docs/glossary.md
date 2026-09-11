@@ -688,7 +688,11 @@ name/status/entity (`store::firms::update`), changes or removes a person's membe
 [`appoint_admin_dri`](#personfirm-role) does, and each membership-removal door refuses a change that would leave an
 active Firm without one. Deleting a Firm that still owns Projects is refused. The Firm detail view at
 `/app/admin/firms/{id}` (`webapp::firm_show`) is where these are read together: a Firm's own fields, its brands, its
-Admin-DRI standing, and every person on it.
+Admin-DRI standing, and every person on it, with an Edit link for whichever caller holds `ManageMembership` on it.
+
+Owner opens a second (or subsequent) Firm at `/app/owner/firms/new` (ENG-585), naming its Entity and its first Admin DRI
+in one submission — `store::firms::create`'s own atomic guarantee. That Firm's Admin DRI (or Owner) then edits its name,
+status, and Entity at `/app/admin/firms/{id}/edit`.
 
 - Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)

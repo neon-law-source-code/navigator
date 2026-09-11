@@ -69,6 +69,12 @@ pub struct FirmFields {
     /// Firm — `None` when the invariant holds.
     pub admin_dri_problem: Option<String>,
     pub members: Vec<MemberRow>,
+    /// Whether this caller may reach `/app/admin/firms/{id}/edit` — the same
+    /// `FirmCapability::ManageMembership` check `store::firms::update` itself
+    /// authorizes against (ENG-585). `false` hides the Edit link rather than
+    /// rendering it toward a refusal.
+    #[serde(default)]
+    pub can_edit: bool,
 }
 
 #[cfg(feature = "server")]
@@ -102,6 +108,7 @@ fn admin_dri_problem_text(problem: &store::firms::AdminDriProblem) -> String {
 /// `person_firm_role` on. A Firm outside that reach renders the same
 /// `fields: None` a nonexistent id would, so neither discloses the other.
 #[server]
+#[cfg_attr(feature = "server", allow(clippy::too_many_lines))]
 pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
     let role = crate::admin_listing::require_admin().await?;
     let axum::extract::Path(id) =
@@ -196,6 +203,24 @@ pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
         .as_ref()
         .map(admin_dri_problem_text);
 
+    // The Edit link is offered only to a caller who could actually reach the
+    // edit page — the same `ManageMembership` capability `store::firms::update`
+    // itself authorizes against, resolved separately from `ViewDirectory`
+    // above (Owner holds both; a Firm's non-Admin membership holds only the
+    // first).
+    let can_edit = matches!(
+        store::firm_capability::resolve(
+            &surreal,
+            store_role(role),
+            actor_person_id,
+            id,
+            store::firm_capability::FirmCapability::ManageMembership,
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?,
+        store::firm_capability::FirmCapabilityDecision::Allowed
+    );
+
     Ok(FirmShowView {
         fields: Some(FirmFields {
             name: firm.name,
@@ -205,6 +230,7 @@ pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
             admin_dri,
             admin_dri_problem,
             members,
+            can_edit,
         }),
         ..base
     })
@@ -231,6 +257,7 @@ pub fn FirmShow() -> Element {
 }
 
 /// The loaded page. Split from the component so tests render a fixed view.
+#[allow(clippy::too_many_lines)]
 pub fn firm_show_body(view: &FirmShowView) -> Element {
     let role = view.role;
     let firm_name = view.firm_name.clone();
@@ -279,6 +306,15 @@ pub fn firm_show_body(view: &FirmShowView) -> Element {
                 h1 { "{fields.name}" }
                 p { class: "page-subtitle",
                     "Entity: {fields.entity_name}. Status: {fields.status}."
+                }
+                if fields.can_edit {
+                    p {
+                        a {
+                            class: "nav-btn nav-btn--secondary",
+                            href: "{FIRM_SHOW_PATH}/{view.id}/edit",
+                            "Edit",
+                        }
+                    }
                 }
             }
             section { id: "firm-brands",
@@ -374,10 +410,33 @@ mod tests {
                     is_dri: false,
                 },
             ],
+            can_edit: true,
         }));
         assert!(html.contains("Nick Shook (nick@neonlaw.com)"), "{html}");
         assert!(html.contains("Pat Lawyer"), "{html}");
         assert!(html.contains(r#"id="firm-show""#), "{html}");
+        assert!(
+            html.contains(r#"href="/app/admin/firms/firm-1/edit""#),
+            "{html}"
+        );
+    }
+
+    /// A caller without `ManageMembership` sees the Firm's facts but no Edit
+    /// link — the same "offer what the capability admits" rule the create
+    /// form's Owner-only door mirrors from the other side.
+    #[test]
+    fn hides_the_edit_link_when_the_caller_cannot_edit() {
+        let html = render(Some(FirmFields {
+            name: "Read Only Practice".to_string(),
+            status: "active".to_string(),
+            entity_name: "Read Only Entity".to_string(),
+            brand_keys: Vec::new(),
+            admin_dri: None,
+            admin_dri_problem: None,
+            members: Vec::new(),
+            can_edit: false,
+        }));
+        assert!(!html.contains("/edit\""), "{html}");
     }
 
     #[test]
@@ -390,6 +449,7 @@ mod tests {
             admin_dri: None,
             admin_dri_problem: Some("No Admin DRI is designated.".to_string()),
             members: Vec::new(),
+            can_edit: false,
         }));
         assert!(html.contains("No Admin DRI is designated."), "{html}");
         assert!(html.contains("No house brands attached."), "{html}");

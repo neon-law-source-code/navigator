@@ -1,65 +1,60 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Impact litigation, company counsel, a personal legal plan, and one-time
-  filings. We take cases of every kind. Come in. We will listen.
-heading: Everyone deserves to be seen.
+  Tell Neon Law what legal help you need. Choose a Business or Personal plan,
+  ask about an individual service, or start a free consultation for a dispute.
+heading: What is your legal need?
 lead: >-
-  Come in with the case you have. We take cases of every kind. The work we care
-  about most is impact litigation: work whose point is to make a person's life
-  better, and the lives of people in the same position. We listen, we move
-  early, and we work as a team. That is how we work. It is not a promise about
-  a result.
+  Tell us whether you need help with a contract, your business, your family,
+  or a dispute. If you are not sure where to start, contact us and we will help
+  you find the next step.
 contact_label: Contact us
 hero:
   alt: New York City skyline at sunset, viewed from above Lower Manhattan.
   asset: img/new-york/new-york.png
 service:
-  heading: You have a place here.
+  heading: Everyone deserves to be seen.
   body:
-    - - text: "The "
-      - text: "litigation practice "
-        href: /litigation
-      - text: >-
-          is plaintiff and defense. We take the case that walks in, as long as
-          we are not conflicted out. The work we seek is the dispute that
-          changes a person's situation, and that can change it for people like
-          them.
-    - - text: "We work as a team. You can "
-      - text: meet us
-        href: /team
-      - text: >-
-          , and we bring in the specialists a matter needs. Speed is how we
-          work. A person who is not heard loses ground whether or not the case
-          is close. Moving early is how we keep that from happening quietly.
     - - text: >-
-          We are also company counsel, a personal legal plan, and the lawyers
-          for a will, a formation, or a filing. That work is the rest of the
-          firm, not a sideline. Pick the door that fits.
-practices_heading: The whole practice
+          Our north star is improving access to justice. You deserve a lawyer
+          who listens, explains your options, and tells you what help will cost.
+    - - text: "Choose the "
+      - text: Business plan
+        href: /fractional-gc
+      - text: " for ongoing help with your company, or the "
+      - text: Personal plan
+        href: /personal-plan
+      - text: " for help with taxes and personal information."
+    - - text: "Need one thing? See our "
+      - text: individual services
+        href: /services
+      - text: >-
+          . Forms are free with a plan or $50 each otherwise; other legal work
+          and government fees may cost extra.
+    - - text: "If you have a dispute, start with a "
+      - text: free consultation
+        href: /litigation
+      - text: ". You do not need a subscription for that first conversation."
+practices_heading: Choose the help that fits.
 practices:
-  - mark: scales
-    heading: Litigation
-    body: >-
-      Impact litigation, and every other dispute that walks in. Plaintiff and
-      defense. We listen first.
-    href: /litigation
   - mark: handshake
-    heading: Fractional GC
+    heading: Business plan
     body: >-
-      Ongoing company counsel on one flat annual or daily fee: contracts,
-      licences, financings, and the advice under them, at the pace the sales
-      cycle already runs.
+      Ongoing legal help for your business: contracts, hiring, company records,
+      and paperwork.
     href: /fractional-gc
   - mark: technology
-    heading: Personal Plan
+    heading: Personal plan
     body: >-
-      Tax filing, privacy protection, and credit monitoring (beta), on one
-      flat annual or daily fee.
+      Help with taxes and personal information, including optional credit
+      monitoring.
     href: /personal-plan
   - mark: gavel
-    heading: One-Time Services
+    heading: Individual services
     body: >-
-      A will, a trust, a formation, a trademark, an annual report. One scope
-      and one flat fee, agreed before we start. Requires an active Fractional
-      GC or Personal Plan.
+      Ask about a single form, filing, contract review, or other legal service.
     href: /services
+  - mark: scales
+    heading: Disputes
+    body: >-
+      Tell us what happened and what you need in a free consultation.
+    href: /litigation

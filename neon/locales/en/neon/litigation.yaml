@@ -1,48 +1,23 @@
-head_title: "{site_name} | Litigation"
+head_title: "{site_name} | Disputes"
 meta_description: >-
-  Impact litigation, plaintiff and defense. We take cases of every kind, and we
-  focus on work whose point is to make a person's life better. Speed is how we
-  work, not a promise about a result.
-eyebrow: Impact Litigation
+  Start with a free consultation to talk about a dispute, what happened, what
+  you need, and any deadline.
+eyebrow: Help with a dispute
 heading:
-  text: Litigation built for speed.
+  text: Your story deserves to be heard.
   accent_words: 1
 lead: >-
-  Come in with the case you have. We do as much as we can, as early as we can,
-  and we work as a team. That is not the right approach for every case. It
-  could be the right one for yours.
-cta_label: Contact us
+  Start with a free consultation. Tell us what happened, what you need, and
+  whether you have a deadline.
+cta_label: Request a free consultation
 body:
   - - text: >-
-        We represent those who haven’t been justly seen. We take cases of every
-        kind, for people and for companies. We focus on impact litigation: work
-        whose point is to make a person's life better, and the lives of people
-        in the same position. As long as we are not conflicted out, we will
-        listen to your story and bring in the specialists it needs.
+        If you want to sue someone or someone is suing you, tell us your story.
+        We will talk about what you want to change and whether we can help. You
+        do not need a subscription for this first conversation.
   - - text: >-
-        We have litigated trademark and copyright disputes, prison rights
-        litigation, and divorce, among other matters. We have handled
-        restraining orders and domestic violence matters. What these cases share
-        is a person whose rights were taken, phased out, or lost in a situation
-        nobody had a form for. They do not wait, and neither do we.
-  - - text: "All litigation cases run on "
-    - text: Neon Law Navigator
-      href: /navigator
-    - text: >-
-        , the firm’s case system. Work arrives on the matter as an event: a new
-        court docket filing, a letter, or new research. Our event-driven agentic
-        workflows start the work that event implies instead of waiting for
-        someone to notice it.
+        We care about cases that can make life better for you and for others
+        facing the same problem.
   - - text: >-
-        The system is data engineering applied to a case file. We build the
-        matter as a graph and log each relationship in it as the case moves, so
-        the record of who is connected to whom is kept as we go rather than
-        reconstructed later.
-  - - text: >-
-        Filings land on the matter by kind: pleading, motion, opposition, reply,
-        order. The docket, the discovery, and the disclosures sit together, so
-        the next document starts from what the case already holds.
-  - - text: >-
-        Speed is how we work. It is not a promise about your result, and it does
-        not suit every matter. It is why we will not be everyone’s lawyer. If
-        you want to be seen today, we can be your lawyer.
+        If we can take your case, we will explain what we can do and what it
+        costs before you decide.

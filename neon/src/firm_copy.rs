@@ -400,6 +400,24 @@ mod firm_copy_tests {
         );
     }
 
+    #[test]
+    fn the_services_page_explains_plan_requirements_and_separate_fees() {
+        let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
+        let text = page_text(&content.bands).to_lowercase();
+        assert!(text.contains("forms are free with a plan or $50 each otherwise"));
+        assert!(text.contains("legal work outside your plan and government fees cost extra"));
+        assert!(text.contains("custom contract reviews and trademarks require a plan"));
+        assert!(text.contains("free consultation"));
+        let trademark = fee_cards(&content)
+            .iter()
+            .find(|card| card.title == "Trademark application")
+            .expect("the trademark service remains available");
+        assert_eq!(
+            trademark.chips.first().map(String::as_str),
+            Some("$50 + government filing fees")
+        );
+    }
+
     /// Litigation and fractional GC stay off the one-time-matter schedule.
     ///
     /// Litigation is quoted per engagement because its scope is not knowable

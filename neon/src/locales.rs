@@ -539,7 +539,11 @@ mod tests {
             content.contact_href,
             format!("mailto:{}", views::brand::firm_email())
         );
-        assert_eq!(content.heading, "Everyone deserves to be seen.");
+        assert_eq!(content.heading, "What is your legal need?");
+        assert!(content
+            .service
+            .as_ref()
+            .is_some_and(|service| service.heading == "Everyone deserves to be seen."));
         assert_eq!(
             content
                 .practices
@@ -547,10 +551,10 @@ mod tests {
                 .map(|practice| practice.heading.as_str())
                 .collect::<Vec<_>>(),
             [
-                "Litigation",
-                "Fractional GC",
-                "Personal Plan",
-                "One-Time Services",
+                "Business plan",
+                "Personal plan",
+                "Individual services",
+                "Disputes",
             ]
         );
     }
@@ -561,6 +565,26 @@ mod tests {
     #[test]
     fn fractional_gc_publishes_its_ten_dollar_day_rate() {
         let content = fractional_gc(&views::brand::DEFAULT_BRANDING);
+        let offer = content.pricing.first().expect("the Business plan offer");
+        assert_eq!(offer.price, "$3,650");
+        assert_eq!(offer.cadence.as_deref(), Some("/year"));
+        for benefit in [
+            "company records",
+            "hiring employees and contractors",
+            "within three business days",
+            "who owns your company",
+            "business information private",
+            "business taxes and state paperwork",
+        ] {
+            assert!(
+                offer
+                    .features
+                    .iter()
+                    .any(|feature| feature.contains(benefit)),
+                "the Business plan names {benefit:?}: {:?}",
+                offer.features
+            );
+        }
         let badge = content
             .pricing
             .first()
@@ -576,10 +600,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn litigation_starts_with_a_free_consultation_without_a_plan() {
+        let content = litigation(&views::brand::DEFAULT_BRANDING);
+        let text = content
+            .body
+            .iter()
+            .flatten()
+            .map(|run| run.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(content.cta_label, "Request a free consultation");
+        assert!(content.lead.contains("free consultation"));
+        assert!(text.contains("do not need a subscription"));
+        assert!(text.contains("what it costs before you decide"));
+        assert!(!text.contains("Navigator"));
+    }
+
     /// `/personal-plan` publishes its one flat fee as a $1-a-day plan.
     #[test]
     fn personal_plan_publishes_its_one_dollar_day_rate() {
         let content = personal_plan(&views::brand::DEFAULT_BRANDING);
+        let plan = content
+            .bands
+            .iter()
+            .find_map(|band| match band {
+                webapp::marketing_page::Band::Cards {
+                    items,
+                    pricing_style,
+                    ..
+                } if *pricing_style => items.first(),
+                _ => None,
+            })
+            .expect("the Personal plan offer");
+        assert_eq!(plan.chips.first().map(String::as_str), Some("$365"));
+        assert_eq!(plan.cadence.as_deref(), Some("/year"));
+        assert!(plan
+            .features
+            .contains(&"Optional credit monitoring".to_string()));
         let day_rate = content.bands.iter().find_map(|band| match band {
             webapp::marketing_page::Band::Cards { items, .. } => {
                 items.first().and_then(|card| card.day_rate.clone())

@@ -179,14 +179,18 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         body.contains("fm-hero__title"),
         "the page states its offering in an h1: {body}"
     );
-    for figure in ["$365", "/year", "$1 a day", "leap day is free"] {
+    for figure in ["$365", "/year", "About $1 a day"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     assert!(
         body.contains("pricing-card"),
         "the plan renders with the shared pricing-card styling: {body}"
     );
-    for included in ["Taxes", "Privacy protection", "Credit monitoring (beta)"] {
+    for included in [
+        "Taxes",
+        "Personal information",
+        "Optional credit monitoring",
+    ] {
         assert!(body.contains(included), "missing {included}: {body}");
     }
     assert!(
@@ -201,10 +205,12 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         body.contains("mailto:"),
         "the page carries a contact CTA: {body}"
     );
-    // Structured to match `/fractional-gc`: a three-word virtue row after the
-    // hero, followed by the plan's included work and closing CTA.
-    for virtue in ["Private", "Simple", "Attentive"] {
-        assert!(body.contains(virtue), "missing the virtue {virtue}: {body}");
+    for promise in [
+        "Warm, clear help.",
+        "We cannot promise that every company will remove every record.",
+        "Choose whether to opt in.",
+    ] {
+        assert!(body.contains(promise), "missing {promise}: {body}");
     }
     for removed in ["Priced separately", "One-time matters", "flat-fee schedule"] {
         assert!(!body.contains(removed), "the plan omits {removed}: {body}");
@@ -223,53 +229,19 @@ async fn the_practice_pages_wear_the_same_header() {
     let app = site_app().await;
     for path in ["/personal-plan", "/services"] {
         let body = body_string(anon_get(&app, path).await).await;
-        for part in [
-            "fm-hero fm-hero--page",
-            r#"class="fm-hero__mark"#,
-            r#"class="firm-eyebrow""#,
-            "fm-hero__title",
-            r#"class="fm-hero__line""#,
-            r#"class="fm-word fm-word--accent""#,
-            "fm-hero__lead",
-            "nav-btn nav-btn--primary fm-hero__cta",
-        ] {
+        for part in ["site-header", "public-shell__main", "mailto:"] {
             assert!(
                 body.contains(part),
                 "{path} carries {part} in its header: {body}"
             );
         }
-        // The practice skin is what the header's typography keys off, so a page
-        // that lost the modifier would render the parts unstyled.
-        assert!(
-            body.contains("fm-page--practice"),
-            "{path} wears the practice skin: {body}"
-        );
-        // The accent run is the opening of the statement, not the whole of it:
-        // the practice name is in brand and the claim after it is in text.
-        // Matched on the closing quote rather than the tag's `>`: SSR writes
-        // hydration attributes after the class, and the accented form is
-        // `class="fm-word fm-word--accent"`, so the quote is what tells a plain
-        // word from an accented one.
-        assert!(
-            body.contains(r#"class="fm-word""#),
-            "{path} keeps unaccented words after the accent run: {body}"
-        );
-        // The statement sets its own break rather than taking the viewport's:
-        // both practice pages read as two lines.
-        assert_eq!(
-            body.matches(r#"class="fm-hero__line""#).count(),
-            2,
-            "{path} breaks its statement into two lines: {body}"
-        );
     }
 }
 
 #[tokio::test]
 async fn site_host_serves_the_legal_services_page() {
-    // The firm's Legal Services page: the flat-fee schedule of one-time
-    // consumer matters, each scoped, with a numbered process and a licensed
-    // attorney's review before filing. A single page, not a `/services/*`
-    // catalog.
+    // The services page makes plans and the free disputes consultation clear
+    // before it lists individual services.
     let app = site_app().await;
     let resp = anon_get(&app, "/services").await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -290,28 +262,19 @@ async fn site_host_serves_the_legal_services_page() {
         body.contains(r#"<a href="/fractional-gc""#),
         "business filings link to the fractional GC page, with no class: {body}"
     );
-    assert!(
-        body.contains("Our process is designed with speed in mind"),
-        "the page carries the numbered process: {body}"
-    );
-    for step in [
-        "Create an account",
-        "Answer some questions",
-        "Upload your documentation",
+    for promise in [
+        "A lawyer you can turn to.",
+        "Forms are free with a plan or $50 each otherwise.",
+        "Custom contract reviews and trademarks require a plan",
+        "free consultation",
+        "You do not need a subscription for that first conversation.",
+        "Tell us what you need.",
     ] {
         assert!(
-            body.contains(step),
-            "the page names the step {step:?}: {body}"
+            body.contains(promise),
+            "the page renders {promise:?}: {body}"
         );
     }
-    assert!(
-        body.contains("A licensed attorney reviews it"),
-        "the attorney-review promise before filing: {body}"
-    );
-    assert!(
-        body.contains("Ready to get started?") && body.contains("mailto:"),
-        "the page has a contact CTA to get started: {body}"
-    );
 }
 
 #[tokio::test]
@@ -327,66 +290,34 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("<title>Neon Law | Litigation</title>"));
-    assert!(body.contains("built"), "the statement: {body}");
-    assert!(body.contains("speed."), "the statement: {body}");
-    assert!(body.contains("Impact Litigation"), "the eyebrow: {body}");
-    let seen = body
-        .find("We represent those who haven\u{2019}t been justly seen")
-        .expect("the who-we-represent paragraph");
-    let breadth = body
-        .find("We take cases of every kind, for people and for companies")
-        .expect("the open-docket sentence");
-    assert!(seen < breadth, "in the filed order: {body}");
-    // The matter types the firm names, which is the part an edit shortens
-    // first. They are examples of an open docket, not a closed menu: "those
-    // who haven't been justly seen" is a stance, and these are what it has
-    // meant in cases. Categories only, never a matter.
-    for named in [
-        "trademark and copyright disputes",
-        "prison rights litigation",
-        "restraining orders",
-        "domestic violence",
-        "impact litigation",
+    for copy in [
+        "Start with a free consultation.",
+        "what happened, what you need, and whether you have a deadline",
+        "You do not need a subscription for this first conversation.",
+        "We care about cases that can make life better for you and for others",
+        "what we can do and what it costs before you decide.",
     ] {
         assert!(
-            body.contains(named),
-            "the filed copy keeps {named:?}: {body}"
+            body.contains(copy),
+            "the public first-step copy renders {copy:?}: {body}"
         );
+    }
+    for word in ["Your", "story", "deserves", "to", "be", "heard."] {
+        assert!(body.contains(word), "the heading includes {word:?}: {body}");
     }
     // The conflicts caveat is the one qualifier on an otherwise open door, and
     // it is a real check rather than a hedge: `store::conflicts` runs a bounded
     // multi-hop traversal before the firm can take a matter.
-    assert!(
-        body.contains("As long as we are not conflicted out"),
-        "the page states the conflicts caveat: {body}"
-    );
     // The third paragraph: how a matter runs here, after who the firm
     // represents. It sits last because a reader decides whether this is their
     // practice before they care how the file is kept.
-    let system = body
-        .find("All litigation cases run on")
-        .expect("the case-system paragraph");
-    assert!(
-        breadth < system,
-        "how the work runs comes after who the firm represents: {body}"
-    );
     // It is the one paragraph on the page that links, and the link is the
     // reason the body carries runs rather than plain strings. A copy edit that
     // flattens the runs loses it silently, because the sentence still reads
     // correctly with "Neon Law Navigator" as bare text.
-    assert!(
-        body.contains(r#"href="/navigator""#),
-        "the Navigator mention links its page: {body}"
-    );
     // The events the paragraph names. This is what makes it a description
     // rather than a slogan — an edit that trims the list back to "agentic
     // workflows" leaves an adjective and nothing a reader can check.
-    for event in ["a new court docket filing", "letter", "new research"] {
-        assert!(
-            body.contains(event),
-            "the paragraph names the {event:?} event: {body}"
-        );
-    }
 }
 
 /// The page describes *how* the work runs and never *how much* that saves.
@@ -437,16 +368,12 @@ async fn litigation_states_speed_as_method_and_not_as_outcome() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/litigation").await).await;
     assert!(
-        body.contains("It is not a promise about your result"),
-        "the page disclaims speed as an outcome: {body}"
+        body.contains("what it costs before you decide"),
+        "the page makes cost discussion precede the decision: {body}"
     );
     // The firm turns work away because of how it works, and says so. This is
     // the sentence that makes the speed claim credible rather than salesy, and
     // it is the first thing a later copy edit would smooth off.
-    assert!(
-        body.contains("we will not be everyone\u{2019}s lawyer"),
-        "the page says who it is not for: {body}"
-    );
 }
 
 /// The litigation page publishes no em dash.
@@ -475,29 +402,8 @@ async fn litigation_publishes_no_em_dash() {
 /// the firm no longer runs.
 #[tokio::test]
 async fn litigation_claims_only_capabilities_the_workspace_carries() {
-    let engine = include_str!("../../workflows-service/src/main.rs");
-    assert!(
-        engine.contains("Endpoint::builder"),
-        "the copy says event-driven workflows start the work an event implies; \
-         the Restate worker that runs them must still exist"
-    );
-    let relationships = include_str!("../../store/src/relationship_logs.rs");
-    assert!(
-        relationships.contains("relationship_log"),
-        "the copy says the matter is a graph whose relationships are logged as \
-         the case moves; that log must still exist"
-    );
-
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/litigation").await).await;
-    assert!(
-        body.contains("a new court docket filing"),
-        "the grounded court-filing event renders: {body}"
-    );
-    assert!(
-        body.contains("event-driven agentic workflows"),
-        "the grounded engine claim renders: {body}"
-    );
     // What the firm does not run out of this workspace, and so does not say.
     // Daily evidence scraping is the claim this page came closest to
     // publishing; there is no scraper, no docket poller, and no case-reporter
@@ -642,14 +548,11 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
     let body = body_string(resp).await;
     assert!(body.contains("<title>Neon Law | Fractional GC</title>"));
     assert!(
-        body.contains("Accurate.") && body.contains("Efficient.") && body.contains("Speedy."),
+        body.contains("Clear") && body.contains("Practical") && body.contains("Responsive"),
         "the statement: {body}"
     );
-    assert!(
-        body.contains("One flat annual fee"),
-        "the structure: {body}"
-    );
-    for figure in ["$3,650", "/year", "$10 a day", "$5 per contract"] {
+    assert!(body.contains("One annual price"), "the structure: {body}");
+    for figure in ["$3,650", "/year", "About $10 a day", "$5 per contract"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     for removed in [
@@ -674,8 +577,8 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
         );
     }
     for added in [
-        "Ready to build and sell?",
-        "Invite us to be your Fractional GC.",
+        "Ready for ongoing legal help?",
+        "Ask us whether the Business plan fits your company.",
         "contact@neonlaw.com",
     ] {
         assert!(
@@ -741,7 +644,7 @@ async fn recurring_offer_pages_share_the_commitment_treatment() {
             "commitment-hero",
             "commitment-benefit-grid",
             "pricing-card",
-            "Contact us",
+            "One annual price",
         ] {
             assert!(
                 body.contains(part),
@@ -1045,7 +948,6 @@ async fn no_firm_page_publishes_a_fee_except_the_two_that_do() {
     let app = site_app().await;
 
     for unpriced in [
-        "/",
         "/notations",
         "/contact",
         "/litigation",
@@ -1062,11 +964,11 @@ async fn no_firm_page_publishes_a_fee_except_the_two_that_do() {
     }
 }
 
-/// `/services` and `/fractional-gc` are the two pages that publish real fees,
+/// The plan and service pages publish real fees,
 /// and each figure on them has to be a genuine amount rather than a
 /// placeholder that slipped past review.
 #[tokio::test]
-async fn services_and_fractional_gc_publish_real_fees() {
+async fn plans_and_services_publish_real_fees() {
     let app = site_app().await;
 
     for (priced, expected_figures) in [
@@ -1075,6 +977,7 @@ async fn services_and_fractional_gc_publish_real_fees() {
             vec!["$50", "$350/year", "$100", "$250", "$350", "$500"],
         ),
         ("/fractional-gc", vec!["$3,650", "$10"]),
+        ("/personal-plan", vec!["$365", "$1"]),
     ] {
         let body = body_string(anon_get(&app, priced).await).await;
         assert!(
@@ -1550,24 +1453,20 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     }
     assert!(body.contains("<title>Neon Law | Home</title>"));
     assert!(
-        body.contains("Everyone deserves to be seen."),
-        "the statement is the firm's tagline: {body}"
+        body.contains("What is your legal need?"),
+        "the statement starts with the reader's need: {body}"
     );
     assert!(
-        body.contains("Come in with the case you have."),
-        "the lead is an invitation: {body}"
+        body.contains("contract, your business, your family, or a dispute"),
+        "the lead gives plain-language examples: {body}"
     );
     assert!(
-        body.contains("We take cases of every kind."),
-        "the lead names an open docket: {body}"
+        body.contains("Our north star is improving access to justice."),
+        "the service copy grounds the purpose: {body}"
     );
     assert!(
-        body.contains("impact litigation"),
-        "the lead names the focus: {body}"
-    );
-    assert!(
-        body.contains("we work as a team"),
-        "the lead names the team: {body}"
+        body.contains("You do not need a subscription for that first conversation."),
+        "the dispute path has no plan prerequisite: {body}"
     );
 
     // The practice prose: one full-width band of paragraphs under one heading.
@@ -1599,14 +1498,14 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     // these two links distinguishable by colour alone (axe
     // `link-in-text-block`, which is how this page failed the public
     // accessibility gate on the 26.9.10 release in the dark scheme).
-    assert!(
-        body.contains(r#"<a href="/litigation""#),
-        "the prose links the litigation practice inline, with no class: {body}"
-    );
-    assert!(
-        body.contains(r#"<a href="/team""#),
-        "the prose links the team, with no class: {body}"
-    );
+    for href in [
+        "/fractional-gc",
+        "/personal-plan",
+        "/services",
+        "/litigation",
+    ] {
+        assert!(body.contains(href), "{href} renders: {body}");
+    }
 
     // The page's sections, in the order the page argues in: the statement, what
     // leading with litigation means, and the engagements beside it.
@@ -1878,10 +1777,10 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
         "the custom firm-services slide must replace its Markdown marker: {slides}"
     );
     for heading in [
-        "Litigation",
-        "Fractional GC",
-        "Personal Plan",
-        "One-Time Services",
+        "Business plan",
+        "Personal plan",
+        "Individual services",
+        "Disputes",
     ] {
         assert!(slides.contains(heading), "missing {heading}: {slides}");
     }

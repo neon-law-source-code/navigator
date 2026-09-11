@@ -1461,25 +1461,16 @@ a.nav-pagination__link:hover {
   line-height: 0;
 }
 
+/* The platform line: "Powered by", the repository, its stars, and the running
+   release on one row. A flex row because the parts are separate elements — the
+   gap spaces them, so none has to carry a literal space — and it wraps on a
+   narrow viewport rather than overflowing the strip. */
 .site-footer__powered {
-  margin: 0 0 0.35rem;
-}
-
-/* Where to read the software the platform attribution above names. Sized with
-   the strip rather than louder than it: it is a developer surface in fine
-   print, not something the firm is announcing. */
-.site-footer__source {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
-}
-
-/* Separates the repository link from the release number sitting beside it on
-   the same line. Decorative punctuation, not content, so it is hidden from
-   assistive technology rather than announced as a bullet between two links. */
-.site-footer__release-sep {
-  color: var(--nav-color-text-muted);
+  margin: 0;
 }
 
 @media (max-width: 54rem) {

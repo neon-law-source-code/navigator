@@ -2,9 +2,10 @@
 //! people have starred it.
 //!
 //! Navigator is open source, so the footer says so by linking the repository
-//! and printing its star count beside it. The link is a constant: a white-label
-//! deployment runs *this* platform whatever wordmark it wears, exactly as the
-//! "Powered by Neon Law Navigator" line above it already assumes.
+//! and printing its star count beside it, right after "Powered by" — the
+//! repository is how that line names the software. The link is a constant: a
+//! white-label deployment runs *this* platform whatever wordmark it wears,
+//! which is the same assumption the line's unlinked fallback wording makes.
 //!
 //! # The count is read from a cache, never fetched on the render path
 //!

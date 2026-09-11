@@ -30,17 +30,6 @@
 //! One `restate-server` per worktree is the fix, and it is cheap next to
 //! the cluster it replaces.
 //!
-//! # What is implemented here, and what is not
-//!
-//! The sharing above is the destination, not this module's current
-//! behavior. Today every process is started by, recorded in, and
-//! reclaimed with **one worktree** — the registry that lets a second
-//! checkout adopt a running `SurrealDB` instead of starting its own is
-//! ENG-129, and inverting `sweep` so it can never reclaim a shared
-//! process belongs with it. Per-worktree processes are correct in the
-//! meantime because each worktree already owns an exclusive port slot;
-//! sharing is the optimization, not the correctness.
-//!
 //! Two members of the tier have no host process yet. `restate-server`
 //! and `workflows-service` are ENG-130; `OpenObserve` and `ClamAV` are
 //! ENG-131. Both gaps are declared in [`DEFERRED`] rather than dropped
@@ -51,33 +40,26 @@
 mod garage;
 mod preflight;
 mod rauthy;
+mod registry;
 mod supervisor;
 mod surreal;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
 use super::KindConfig;
 
-/// Ledger keys, log-file stems, and `.devx/native/<label>/` directory
-/// names. Stable: a rename orphans a running process's record, which is
-/// how `down` comes to leave a listener behind.
+/// Stable service labels and the host-native process ports.
 const RAUTHY_LABEL: &str = "rauthy";
 const GARAGE_LABEL: &str = "garage";
 const SURREAL_LABEL: &str = "surreal";
 
 /// Ports the tier binds that nothing outside it connects to.
 ///
-/// The slot table in [`super::worktree_env`] reserves a port for every
-/// address the *workspace* reaches — those end up in `.devx/env`. These
-/// four do not: Garage's RPC and admin listeners and Rauthy's two
-/// embedded Hiqlite listeners are internal to their own processes. They
-/// still have to be per-worktree, because at their defaults the second
-/// checkout to start would fail to bind, so they are derived from the
-/// same slot here rather than widening a config the rest of the
-/// workspace reads. The bases sit above `21_299`, past the last range
-/// the slot table claims.
+/// The slot table in [`super::worktree_env`] reserves ports for each
+/// worktree's processes. These listeners are shared and therefore use one
+/// host-wide fixed port set outside that reservation window.
 const GARAGE_RPC_PORT_BASE: u16 = 21_300;
 const GARAGE_ADMIN_PORT_BASE: u16 = 21_400;
 const RAUTHY_RAFT_PORT_BASE: u16 = 21_500;
@@ -135,47 +117,198 @@ pub(super) fn install() -> Result<()> {
 /// reached differently: Garage's layout, keys, and buckets come from the
 /// local binary instead of `kubectl exec`. The Surreal schema apply is
 /// not repeated — it is already lane-neutral and stays with the caller.
-pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig) -> Result<()> {
+pub(super) fn database_name(root: &Path, slug: &str) -> String {
+    format!("navigator_{}_{}", slug.replace('-', "_"), fingerprint(root))
+}
+
+fn fingerprint(root: &Path) -> String {
+    let mut hash = 0x811c_9dc5_u32;
+    for byte in root.display().to_string().bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    format!("{hash:08x}")
+}
+
+fn loaded(path: &Path) -> Result<registry::NativeRegistry> {
+    match registry::load(path) {
+        registry::Load::Loaded(value) => Ok(value),
+        registry::Load::Absent => Ok(registry::NativeRegistry::default()),
+        registry::Load::Unreadable(error) => anyhow::bail!(
+            "native registry {} is unreadable ({error}); refusing to start or alter shared processes until it is repaired",
+            path.display()
+        ),
+    }
+}
+
+fn apply_environment(claim: &registry::NativeClaim) {
+    for (key, value) in &claim.garage_env {
+        std::env::set_var(key, value);
+    }
+}
+
+pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig, database: &str) -> Result<()> {
     preflight::ensure(std::env::consts::OS)?;
+    let registry_path = registry::path();
+    let shared_root = registry::state_dir(&registry_path);
+    let mut state = loaded(&registry_path)?;
     let services = [
-        surreal::service(root, cfg.surreal_port)?,
+        surreal::service(&shared_root, cfg.surreal_port)?,
         garage::service(
-            root,
+            &shared_root,
             cfg.garage_s3_port,
-            GARAGE_RPC_PORT_BASE + slot,
-            GARAGE_ADMIN_PORT_BASE + slot,
+            GARAGE_RPC_PORT_BASE,
+            GARAGE_ADMIN_PORT_BASE,
         )?,
         rauthy::service(
-            root,
+            &shared_root,
             cfg.rauthy_port,
-            RAUTHY_RAFT_PORT_BASE + slot,
-            RAUTHY_API_PORT_BASE + slot,
+            RAUTHY_RAFT_PORT_BASE,
+            RAUTHY_API_PORT_BASE,
         )?,
     ];
-    supervisor::ensure_all(root, &services)?;
-    super::garage::export(&garage::provision(root).context("provision native object storage")?);
+    let registered: Vec<_> = state.services.values().cloned().collect();
+    let records = supervisor::ensure_all_with_existing(&shared_root, &services, &registered)?;
+    state.services = records
+        .iter()
+        .map(|record| (record.label.clone(), record.clone()))
+        .collect();
+    // Publish the process identities before tenant provisioning. If the CLI
+    // is interrupted in the gap, sweep can still see and reclaim a shared
+    // process that has no tenant claim yet.
+    registry::save(&registry_path, &state)?;
+    let tenant = garage::provision(&shared_root, database)
+        .context("provision native object storage tenant")?;
+    registry::claim(
+        &mut state,
+        root,
+        slot,
+        database.to_string(),
+        tenant.buckets,
+        tenant.env,
+    );
+    registry::save(&registry_path, &state)?;
+    let claim = state
+        .claims
+        .get(&registry::key(root))
+        .context("native claim disappeared after registration")?;
+    apply_environment(claim);
     Ok(())
 }
 
-/// Stop every process this worktree started and remove their state.
+pub(super) fn restore_environment(root: &Path) -> Result<()> {
+    let path = registry::path();
+    let state = loaded(&path)?;
+    let claim = state
+        .claims
+        .get(&registry::key(root))
+        .context("native worktree has no host claim; run up without --no-deps")?;
+    apply_environment(claim);
+    Ok(())
+}
+
+/// Remove this worktree's tenants and claim. Shared processes are stopped only
+/// when this was the final claim, and only after PID identity re-checks.
 ///
 /// Idempotent and scoped: only PIDs this worktree recorded, and only
 /// after re-identifying each one, so a teardown can never reach another
 /// checkout's tier or a stranger that inherited a PID.
-pub(super) fn down(root: &Path) -> Result<()> {
-    supervisor::stop_all(root);
-    let state = root.join(".devx").join("native");
-    if state.exists() {
-        std::fs::remove_dir_all(&state).with_context(|| format!("remove {}", state.display()))?;
+pub(super) fn down(root: &Path, cfg: &KindConfig) -> Result<()> {
+    let path = registry::path();
+    let mut state = loaded(&path)?;
+    let Some(claim) = state.claims.get(&registry::key(root)).cloned() else {
+        return Ok(());
+    };
+    let shared_root = registry::state_dir(&path);
+    let tenant = garage::Tenant {
+        buckets: claim.buckets.clone(),
+        env: claim.garage_env.clone(),
+    };
+    garage::remove_tenant(&shared_root, &tenant).context("remove native Garage tenant")?;
+    surreal::remove_database(cfg, &claim.database)?;
+    let Some((_, final_claim, services)) = registry::release(&mut state, root) else {
+        return Ok(());
+    };
+    registry::save(&path, &state)?;
+    if final_claim {
+        for service in services {
+            supervisor::stop(&service);
+        }
+        let _ = std::fs::remove_dir_all(&shared_root);
     }
     Ok(())
 }
 
+pub(super) fn sweep_plan(
+    live_worktrees: &[PathBuf],
+) -> Result<(PathBuf, registry::NativeRegistry, Vec<registry::SweepEntry>)> {
+    let path = registry::path();
+    let state = loaded(&path)?;
+    let plan = registry::plan_sweep(&state, live_worktrees, &|path| path.is_dir());
+    Ok((path, state, plan))
+}
+
+pub(super) fn sweep_report(
+    plan: &[registry::SweepEntry],
+    shared_service_count: usize,
+    apply: bool,
+) -> String {
+    registry::report(plan, shared_service_count, apply)
+}
+
+pub(super) fn service_count(state: &registry::NativeRegistry) -> usize {
+    registry::service_count(state)
+}
+
+pub(super) fn apply_sweep(
+    path: &Path,
+    mut state: registry::NativeRegistry,
+    orphans: &[registry::SweepEntry],
+    cfg: &KindConfig,
+) -> Result<()> {
+    let shared_root = registry::state_dir(path);
+    let services: Vec<_> = state.services.values().cloned().collect();
+    for orphan in orphans {
+        if !orphan.is_orphaned() {
+            continue;
+        }
+        let Some((claim, _, _)) = registry::release(&mut state, &orphan.claim.root) else {
+            continue;
+        };
+        let tenant = garage::Tenant {
+            buckets: claim.buckets.clone(),
+            env: claim.garage_env.clone(),
+        };
+        garage::remove_tenant(&shared_root, &tenant)?;
+        surreal::remove_database(cfg, &claim.database)?;
+    }
+    if state.claims.is_empty() {
+        for service in &services {
+            supervisor::stop(service);
+        }
+        state.services.clear();
+        let _ = std::fs::remove_dir_all(&shared_root);
+    }
+    registry::save(path, &state)
+}
+
 /// `status` lines for the processes this worktree started.
-pub(super) fn status_lines(root: &Path) -> Vec<String> {
-    supervisor::report(root)
-        .into_iter()
-        .map(|(label, pid, port, live)| {
+pub(super) fn status_lines(_root: &Path) -> Vec<String> {
+    let state = match registry::load(&registry::path()) {
+        registry::Load::Loaded(value) => value,
+        registry::Load::Absent => return Vec::new(),
+        registry::Load::Unreadable(error) => {
+            return vec![format!("  native registry: unreadable ({error})")]
+        }
+    };
+    state
+        .services
+        .into_values()
+        .map(|record| {
+            let live = supervisor::is_live(&record);
+            let label = record.label;
+            let pid = record.pid;
+            let port = record.port;
             format!(
                 "  {label} 127.0.0.1:{port} (pid {pid}): {}",
                 if live { "yes" } else { "no" }
@@ -203,10 +336,25 @@ pub(super) fn deferred_lines() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        deferred_lines, DEFERRED, GARAGE_ADMIN_PORT_BASE, GARAGE_RPC_PORT_BASE,
+        database_name, deferred_lines, DEFERRED, GARAGE_ADMIN_PORT_BASE, GARAGE_RPC_PORT_BASE,
         RAUTHY_API_PORT_BASE, RAUTHY_RAFT_PORT_BASE, SUPERVISED,
     };
     use std::collections::BTreeSet;
+    use std::path::Path;
+
+    #[test]
+    fn native_databases_are_stable_per_worktree_and_distinct_between_worktrees() {
+        let first = database_name(Path::new("/tmp/worktree-a"), "feature-129");
+        assert_eq!(
+            first,
+            database_name(Path::new("/tmp/worktree-a"), "feature-129")
+        );
+        assert_ne!(
+            first,
+            database_name(Path::new("/tmp/worktree-b"), "feature-129")
+        );
+        assert!(first.starts_with("navigator_feature_129_"));
+    }
 
     /// The slot table's last range starts at `21_200` and spans 100. An
     /// internal port base below `21_300` would hand a worktree a number

@@ -20,10 +20,9 @@
 //!   timeout thirty seconds later, with the reason sitting unread in a
 //!   file.
 //!
-//! Ownership *across* worktrees — one engine serving every checkout —
-//! is ENG-129. Everything here is scoped to a single worktree's `.devx/`,
-//! which is what makes `down` unambiguous at this stage: every process in
-//! the ledger was started by this checkout and is reclaimed with it.
+//! Ownership across worktrees is recorded by the native registry. This module
+//! answers the process questions that registry transitions need: can a record
+//! be adopted, and can its PID be signalled without touching a reused PID?
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -69,6 +68,12 @@ pub(super) struct Started {
     /// The executable's file name, re-checked against the live process
     /// before `down` signals the PID. See [`owns_pid`].
     pub(super) program: String,
+    /// The complete command line, retained so a missing registry can adopt
+    /// only the expected service rather than an unrelated listener.
+    pub(super) command: String,
+    /// `ps`'s absolute process-start value. A PID and executable can both be
+    /// recycled; this third identity component changes for the replacement.
+    pub(super) start_time: String,
 }
 
 /// Where this worktree records the processes it started.
@@ -126,6 +131,23 @@ pub(super) fn owns_pid(ps_command: &str, program: &str) -> bool {
             .is_some_and(|argv0| Path::new(argv0).file_name().is_some_and(|n| n == program))
 }
 
+/// Whether a live process is the exact command the service definition expects.
+pub(super) fn matches_command(actual: &str, expected: &str) -> bool {
+    actual == expected
+}
+
+pub(super) fn matches_identity(
+    command: &str,
+    expected_command: &str,
+    start_time: &str,
+    expected_start_time: &str,
+    program: &str,
+) -> bool {
+    owns_pid(command, program)
+        && matches_command(command, expected_command)
+        && start_time == expected_start_time
+}
+
 /// Whether a ledger entry still describes the service we are about to
 /// start. A slot change moves a port and a version bump can move a
 /// binary, so a stale entry must be replaced rather than reused.
@@ -156,9 +178,40 @@ fn ps_command(pid: u32) -> Option<String> {
     (!command.is_empty()).then_some(command)
 }
 
+fn ps_start_time(pid: u32) -> Option<String> {
+    let output = Command::new("ps")
+        .args(["-o", "lstart="])
+        .arg("-p")
+        .arg(pid.to_string())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+/// The stable identity fields for a live process.
+pub(super) fn process_identity(pid: u32) -> Option<(String, String)> {
+    Some((ps_command(pid)?, ps_start_time(pid)?))
+}
+
 /// Whether the recorded process is still alive and still ours.
 fn still_ours(record: &Started) -> bool {
-    ps_command(record.pid).is_some_and(|command| owns_pid(&command, &record.program))
+    process_identity(record.pid).is_some_and(|(command, start_time)| {
+        matches_identity(
+            &command,
+            &record.command,
+            &start_time,
+            &record.start_time,
+            &record.program,
+        )
+    })
+}
+
+pub(super) fn is_live(record: &Started) -> bool {
+    still_ours(record) && port_listening(record.port)
 }
 
 fn port_listening(port: u16) -> bool {
@@ -171,20 +224,22 @@ fn port_listening(port: u16) -> bool {
     .is_ok()
 }
 
-/// Start every service that is not already running, health-gate each on
-/// its port, and record the result.
-///
-/// Idempotent, which is what makes a repeated `worktree-env up` cheap: a
-/// service whose ledger entry is still alive, still ours, and still
-/// listening is left exactly as it is.
-pub(super) fn ensure_all(root: &Path, services: &[Service]) -> Result<Vec<Started>> {
+/// Start or adopt shared services, optionally using records from the host
+/// registry. The registry is read and written by the caller while holding the
+/// host lock; this function only performs process identity checks.
+pub(super) fn ensure_all_with_existing(
+    root: &Path,
+    services: &[Service],
+    registered: &[Started],
+) -> Result<Vec<Started>> {
     let existing = read_ledger(root);
     let mut records = Vec::with_capacity(services.len());
     for service in services {
-        let reusable = existing
+        let reusable = registered
             .iter()
+            .chain(existing.iter())
             .find(|record| describes(record, service))
-            .filter(|record| still_ours(record) && port_listening(record.port));
+            .filter(|record| is_live(record));
         match reusable {
             Some(record) => {
                 eprintln!(
@@ -193,11 +248,72 @@ pub(super) fn ensure_all(root: &Path, services: &[Service]) -> Result<Vec<Starte
                 );
                 records.push(record.clone());
             }
-            None => records.push(start(root, service)?),
+            None => records.push(adopt_or_start(root, service)?),
         }
     }
     write_ledger(root, &records)?;
     Ok(records)
+}
+
+/// Find a listener on the service port and adopt it only when its command line
+/// is the command this service would start. A port probe alone is never
+/// ownership proof.
+fn adopt_or_start(root: &Path, service: &Service) -> Result<Started> {
+    if let Some(record) = discover(root, service)? {
+        eprintln!(
+            "==> {} adopted 127.0.0.1:{} (pid {})",
+            service.label, record.port, record.pid
+        );
+        return Ok(record);
+    }
+    start(root, service)
+}
+
+/// Discover a process listening on `service.port`. `lsof` is part of the
+/// supported macOS host and no listener is a normal "start it" result.
+fn discover(_root: &Path, service: &Service) -> Result<Option<Started>> {
+    let output = Command::new("lsof")
+        .args([
+            "-nP",
+            "-t",
+            "-iTCP",
+            &service.port.to_string(),
+            "-sTCP:LISTEN",
+        ])
+        .output()
+        .context("find a native service listening on its port")?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let expected = expected_command(service);
+    for pid in String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse::<u32>().ok())
+    {
+        let Some((command, start_time)) = process_identity(pid) else {
+            continue;
+        };
+        if owns_pid(&command, &program_name(&service.program))
+            && matches_command(&command, &expected)
+        {
+            return Ok(Some(Started {
+                label: service.label.to_string(),
+                pid,
+                port: service.port,
+                program: program_name(&service.program),
+                command,
+                start_time,
+            }));
+        }
+    }
+    Ok(None)
+}
+
+fn expected_command(service: &Service) -> String {
+    std::iter::once(service.program.display().to_string())
+        .chain(service.args.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Spawn one service and wait for its port.
@@ -240,11 +356,20 @@ fn start(root: &Path, service: &Service) -> Result<Started> {
     // `Child::drop` does not kill a process it never waited on.
     std::mem::forget(child);
 
+    let Some((command_identity, start_time)) = process_identity(pid) else {
+        bail!(
+            "{} process {} disappeared before identity could be recorded",
+            service.label,
+            pid
+        );
+    };
     let record = Started {
         label: service.label.to_string(),
         pid,
         port: service.port,
         program: program_name(&service.program),
+        command: command_identity,
+        start_time,
     };
     if let Err(err) = super::super::wait_for_tcp("127.0.0.1", service.port) {
         // The process either died or never bound. Reclaim it before
@@ -264,21 +389,13 @@ fn start(root: &Path, service: &Service) -> Result<Started> {
     Ok(record)
 }
 
-/// Stop every process this worktree recorded, then clear the ledger.
-///
-/// Idempotent and best-effort: a process that already exited, or whose
-/// PID now belongs to something else, is skipped rather than signalled.
-/// Infallible on purpose: a teardown that can fail is a teardown an
-/// operator learns to re-run, and every step here is already a no-op
-/// against a tier that is not there.
-pub(super) fn stop_all(root: &Path) {
-    for record in read_ledger(root) {
-        if still_ours(&record) {
-            eprintln!("==> stopping {} (pid {})", record.label, record.pid);
-            signal(&record);
-        }
+/// Stop one record only when its identity still matches the process that was
+/// recorded. This is the only native path allowed to signal a shared service.
+pub(super) fn stop(record: &Started) {
+    if still_ours(record) {
+        eprintln!("==> stopping {} (pid {})", record.label, record.pid);
+        signal(record);
     }
-    let _ = fs::remove_file(ledger_path(root));
 }
 
 /// `SIGTERM`, then `SIGKILL` if the process is still there.
@@ -287,6 +404,9 @@ pub(super) fn stop_all(root: &Path) {
 /// a `SIGKILL`ed process leaves a data directory that needs recovery on
 /// the next start.
 fn signal(record: &Started) {
+    if !still_ours(record) {
+        return;
+    }
     kill("-TERM", record.pid);
     let deadline = Instant::now() + TERM_GRACE;
     while Instant::now() < deadline {
@@ -307,18 +427,6 @@ fn kill(signal: &str, pid: u32) {
         .status();
 }
 
-/// One line per recorded process for `status`: label, PID, port, and
-/// whether that port is answering right now.
-pub(super) fn report(root: &Path) -> Vec<(String, u32, u16, bool)> {
-    read_ledger(root)
-        .into_iter()
-        .map(|record| {
-            let live = still_ours(&record) && port_listening(record.port);
-            (record.label, record.pid, record.port, live)
-        })
-        .collect()
-}
-
 /// Put the child in its own process group so a Ctrl-C in the terminal
 /// that ran `up` does not tear the tier down with it.
 #[cfg(unix)]
@@ -333,7 +441,8 @@ fn detach(_command: &mut Command) {}
 #[cfg(test)]
 mod tests {
     use super::{
-        describes, ledger_path, owns_pid, program_name, service_dir, tail, Service, Started,
+        describes, ledger_path, matches_command, matches_identity, owns_pid, program_name,
+        service_dir, tail, Service, Started,
     };
     use std::path::{Path, PathBuf};
 
@@ -396,6 +505,8 @@ mod tests {
             pid: 4242,
             port: 20_034,
             program: "surreal".into(),
+            command: "/opt/homebrew/bin/surreal start memory".into(),
+            start_time: "Mon Jan  1 00:00:00 2024".into(),
         };
         assert!(describes(&matching, &service));
 
@@ -416,6 +527,25 @@ mod tests {
             ..matching
         };
         assert!(!describes(&other, &service));
+    }
+
+    #[test]
+    fn a_recycled_pid_with_the_same_binary_has_a_different_command_identity() {
+        assert!(matches_command(
+            "/opt/homebrew/bin/surreal start memory",
+            "/opt/homebrew/bin/surreal start memory"
+        ));
+        assert!(!matches_command(
+            "/opt/homebrew/bin/surreal start --bind 127.0.0.1:8000 memory",
+            "/opt/homebrew/bin/surreal start memory"
+        ));
+        assert!(!matches_identity(
+            "/opt/homebrew/bin/surreal start memory",
+            "/opt/homebrew/bin/surreal start memory",
+            "Tue Jan  2 00:00:00 2024",
+            "Mon Jan  1 00:00:00 2024",
+            "surreal"
+        ));
     }
 
     /// The failure message is the whole diagnostic when a dependency

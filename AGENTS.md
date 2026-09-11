@@ -142,12 +142,15 @@ set -a; source .devx/env; set +a
 cargo run -p neon
 ```
 
-`worktree-env up` creates or reuses a KIND cluster keyed to the worktree path, applies the SurrealDB schema, assigns a
-stable worktree port slot, and writes `.devx/env` plus `.devx/worktree.json`. The tier includes SurrealDB, Rauthy,
-Garage, Restate, `workflows-service`, and telemetry: the host `web` process and its worker therefore share one store and
-one Restate journal, while parallel worktrees do not. Source the generated environment before every local command that
-must target this checkout. It is the complete local application environment; use a gitignored `.env` only for optional
-live third-party sandbox credentials.
+`worktree-env up` creates or reuses a KIND cluster keyed to the worktree path when `--runtime kind` is selected, applies
+the SurrealDB schema, assigns a stable worktree port slot, and writes `.devx/env` plus `.devx/worktree.json`. The native
+lane (`--runtime native`) keeps that descriptor and slot contract for the per-worktree Restate/web processes, while one
+host-level registry owns the shared SurrealDB, Rauthy, and Garage processes. Each native worktree receives its own
+SurrealDB database and Garage bucket/key set; the registry records process identity and worktree claims so adoption,
+teardown, reboot recovery, and sweep cannot signal a recycled or live unrelated process. The host `web` process and its
+worker therefore share one store and one Restate journal per worktree, while parallel worktrees do not. Source the
+generated environment before every local command that must target this checkout. It is the complete local application
+environment; use a gitignored `.env` only for optional live third-party sandbox credentials.
 
 Useful lifecycle commands:
 
@@ -156,9 +159,10 @@ cargo run -p cli -- dev worktree-env status --path "$PWD"
 cargo run -p cli -- dev worktree-env down --path "$PWD"
 ```
 
-`worktree-env down` removes this checkout's port-forwards, KIND cluster, and `.devx` state. It never touches another
-worktree's cluster or database. Run it at handoff: a cluster left behind keeps binding its slot's ports, so every
-skipped teardown permanently narrows the pool the next worktree can choose from.
+`worktree-env down` removes this checkout's port-forwards, KIND cluster or native tenants, and `.devx` state. It never
+touches another worktree's cluster, database, Garage buckets, or a shared native process still claimed by a live
+worktree. Run it at handoff: a cluster left behind keeps binding its slot's ports, and a native claim left behind keeps
+its tenant alive until `sweep` can identify it as orphaned.
 
 ### The shared dependency tier
 

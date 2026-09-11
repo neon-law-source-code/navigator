@@ -385,8 +385,21 @@ fn up_dev(root: &Path, no_deps: bool, runtime: Runtime, base_cfg: &KindConfig) -
     let _setup_lock = acquire_worktree_env_lock(root)?;
     let _host_lock = acquire_host_worktree_env_lock()?;
     let existing = read_descriptor(root);
-    let db_name = "navigator".to_string();
-    let claimed_slots = claimed_worktree_slots(root, &list_kind_cluster_ports)?;
+    let db_name = match runtime {
+        Runtime::Kind => "navigator".to_string(),
+        Runtime::Native => existing
+            .as_ref()
+            .filter(|descriptor| descriptor.runtime == Runtime::Native)
+            .and_then(|descriptor| descriptor.db_name.clone())
+            .unwrap_or_else(|| super::native::database_name(root, &slug)),
+    };
+    let claimed_slots = match runtime {
+        Runtime::Kind => claimed_worktree_slots(root, &list_kind_cluster_ports)?,
+        // Native has no KIND containers. The same descriptor read is still
+        // protected by the shared Git lock and reserves live worktrees while
+        // they are between claim and process startup.
+        Runtime::Native => claimed_worktree_slots(root, &|| Ok(Vec::new()))?,
+    };
     let slot = choose_worktree_slot(
         root,
         existing.as_ref().and_then(WorktreeEnv::dev_slot),
@@ -394,7 +407,15 @@ fn up_dev(root: &Path, no_deps: bool, runtime: Runtime, base_cfg: &KindConfig) -
         base_cfg,
         &port_listening,
     )?;
-    let cfg = worktree_kind_config(base_cfg, root, slot);
+    let mut cfg = worktree_kind_config(base_cfg, root, slot);
+    if runtime == Runtime::Native {
+        // The native lane shares these three listeners host-wide. The slot
+        // still belongs to this descriptor and remains the source of truth
+        // for Restate, web, and every future per-worktree process.
+        cfg.rauthy_port = base_cfg.rauthy_port;
+        cfg.garage_s3_port = base_cfg.garage_s3_port;
+        cfg.surreal_port = base_cfg.surreal_port;
+    }
     let mut sample_project_refreshed = false;
     match runtime {
         Runtime::Kind => eprintln!(
@@ -464,7 +485,10 @@ fn up_dev(root: &Path, no_deps: bool, runtime: Runtime, base_cfg: &KindConfig) -
             // already up, so don't provision it. The readiness gate still
             // runs, because "already up" is a claim worth checking.
             if !no_deps {
-                super::native::up(root, slot, &cfg)?;
+                super::native::up(root, slot, &cfg, &db_name)?;
+            }
+            if no_deps {
+                super::native::restore_environment(root)?;
             }
             ensure_native_deps_ready(&cfg)?;
         }
@@ -518,7 +542,7 @@ fn down(root: &Path, base_cfg: &KindConfig) -> Result<()> {
                 super::down_in(root, &cfg)?;
                 unregister_worktree_cluster(&host_cluster_registry_path(), &cfg.cluster)?;
             }
-            Runtime::Native => super::native::down(root)?,
+            Runtime::Native => super::native::down(root, base_cfg)?,
         }
     } else {
         // A failed setup can stop before writing its descriptor. Reclaim
@@ -526,7 +550,7 @@ fn down(root: &Path, base_cfg: &KindConfig) -> Result<()> {
         // teardown stays scoped to this checkout either way, and the
         // native side only signals PIDs this worktree recorded.
         let cfg = worktree_kind_config(base_cfg, root, derived_worktree_slot(root));
-        super::native::down(root)?;
+        super::native::down(root, base_cfg)?;
         super::down_in(root, &cfg)?;
         unregister_worktree_cluster(&host_cluster_registry_path(), &cfg.cluster)?;
     }
@@ -1594,9 +1618,31 @@ fn sweep(root: &Path, apply: bool, base_cfg: &KindConfig) -> Result<()> {
         &|path| path.is_dir(),
     );
     print!("{}", sweep_report(&plan, apply));
+    let live_worktrees = live_worktree_paths(root)?;
+    let (native_registry_path, native_registry, native_plan) =
+        super::native::sweep_plan(&live_worktrees)?;
+    print!(
+        "{}",
+        super::native::sweep_report(
+            &native_plan,
+            super::native::service_count(&native_registry),
+            apply,
+        )
+    );
     if !apply {
         return Ok(());
     }
+    let native_orphans: Vec<_> = native_plan
+        .iter()
+        .filter(|entry| entry.is_orphaned())
+        .cloned()
+        .collect();
+    super::native::apply_sweep(
+        &native_registry_path,
+        native_registry,
+        &native_orphans,
+        base_cfg,
+    )?;
     let orphans: Vec<&SweptCluster> = plan.iter().filter(|e| e.is_orphaned()).collect();
     if orphans.is_empty() {
         return Ok(());

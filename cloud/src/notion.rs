@@ -211,10 +211,7 @@ impl NotionService for FakeNotion {
         project_code: &str,
     ) -> Result<NotionPage, NotionError> {
         self.check_available()?;
-        *self
-            .update_calls
-            .lock()
-            .expect("Notion fake lock poisoned") += 1;
+        *self.update_calls.lock().expect("Notion fake lock poisoned") += 1;
         let page = NotionPage {
             id: page_id.to_string(),
             url: format!("https://notion.example/{project_code}"),

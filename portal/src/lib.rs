@@ -337,6 +337,9 @@ pub struct AppState {
     /// not a replacement one. Google keeps issuing its own `sub`, so no
     /// existing `persons.oidc_subject` is invalidated by switching it on.
     pub oauth_microsoft: Option<OAuthConfig>,
+    /// Sign in with Apple as an additional browser sign-in provider. Its
+    /// client secret is minted from deployment-held ES256 key material.
+    pub oauth_apple: Option<OAuthConfig>,
     /// Object storage backend (filesystem in dev, Google Cloud
     /// Storage in production via the `cloud` crate).
     pub storage: std::sync::Arc<dyn cloud::StorageService>,
@@ -1210,6 +1213,7 @@ pub fn bootstrap(
             // does not appear and `/auth/login` redirects straight to the
             // primary IdP exactly as before.
             oauth_microsoft: state.oauth_microsoft.clone(),
+            oauth_apple: state.oauth_apple.clone(),
             sessions: state.sessions.clone(),
             surreal: state.surreal.clone(),
             email: state.email.clone(),

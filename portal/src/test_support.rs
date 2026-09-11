@@ -124,6 +124,7 @@ pub async fn app_state(surreal: store::surreal::SurrealDb) -> AppState {
         github_oidc: crate::github_oidc::GitHubOidc::rejecting(),
         oauth: None,
         oauth_microsoft: None,
+        oauth_apple: None,
         // One shared root for both lanes, mirroring dev/KIND. A test
         // that overrides `storage` and drives a form fill must override
         // `assets_storage` (and stage blanks — see [`stage_blank_forms`])

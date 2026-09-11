@@ -1,13 +1,14 @@
 # OIDC + DB-role authorization
 
 Neon Law Navigator separates **identity** (who you are) from **authorization** (what you can do). The OIDC providers
-(Rauthy in local and staging dependency tiers, Google in production, and optionally Microsoft Entra ID alongside it —
-see [A second provider](#a-second-provider-sign-in-with-microsoft)) own identity only — a stable `sub` and an address.
-The `persons` table in our database owns everything else: profile, project memberships, billing relationships, and the
-**single role** column (`owner` / `admin` / `lawyer` / `clerk` / `client`; anonymous is the absence of a row) that gates
-the back-office. The separate `is_admitted` flag decides whether a resolved row may mint a session. Embedded Rego
-evaluates the policy against that DB-sourced role, never against the IdP token. See
-[`docs/access-model.md`](access-model.md) for the role/participation split.
+(Rauthy in local and staging dependency tiers, Google in production, and optionally Microsoft Entra ID and Sign in with
+Apple alongside it — see [A second provider](#a-second-provider-sign-in-with-microsoft) and [A third
+provider](#a-third-provider-sign-in-with-apple)) own identity only — a stable `sub` and an address. The `persons` table
+in our database owns everything else: profile, project memberships, billing relationships, and the **single role**
+column (`owner` / `admin` / `lawyer` / `clerk` / `client`; anonymous is the absence of a row) that gates the
+back-office. The separate `is_admitted` flag decides whether a resolved row may mint a session. Embedded Rego evaluates
+the policy against that DB-sourced role, never against the IdP token. See [`docs/access-model.md`](access-model.md) for
+the role/participation split.
 
 This document is the canonical narrative for the system. The Rust modules link back to it from their rustdoc:
 
@@ -351,6 +352,62 @@ so steps 1 and 2 apply only when standing up a new one. `getuserrealm.srf` still
    approve the application before anyone in that organisation can sign in — common in security-conscious firms, and
    invisible from outside until the first person tries. Sending an admin through the flow with `prompt=consent` resolves
    it in one click. Budget for this being on somebody else's calendar.
+
+## A third provider: Sign in with Apple
+
+Navigator adds Sign in with Apple alongside the primary provider and Microsoft Entra ID. The route is
+`/auth/login/apple`; the shared `OAUTH_REDIRECT_URI`, signed pre-auth cookie, callback, `SessionData.provider`, and
+database-role admission rules stay the same. Apple is a real-deployment-only provider: Rauthy remains the KIND fixture,
+and no Apple credential belongs in a repository or local fixture.
+
+### The client-secret difference
+
+Apple does not issue a static OAuth client secret for this flow. Navigator mints the `client_secret` form field as a JWT
+immediately before each authorization-code token exchange:
+
+- Header: `alg=ES256` and `kid=<Key ID>`.
+- Claims: `iss=<Team ID>`, `sub=<Services ID>`, `aud=https://appleid.apple.com`, `iat`, and `exp`.
+- Signature: ES256 over the deployment-delivered PKCS#8 `.p8` private key.
+
+The JWT expires one day after it is minted. Apple allows up to six months, but a one-day token is enough for a single
+exchange and stays well inside that maximum. Minting per exchange is deliberately simple: there is no cached secret, no
+refresh threshold to miss, and no manual rotation step. The trade-off is one ES256 signature per login rather than
+reusing a cached token. The private key is parsed at boot and remains in memory; it is never logged.
+
+The environment surface is:
+
+- `OAUTH_APPLE_CLIENT_ID` — the Apple Services ID.
+- `OAUTH_APPLE_TEAM_ID` — the Apple Developer Team ID.
+- `OAUTH_APPLE_KEY_ID` — the key identifier.
+- `OAUTH_APPLE_PRIVATE_KEY` — the downloaded `.p8` PEM, supplied only through the deployment secret rail.
+
+When the client id is unset, the provider is off. Once it is set, all four values and the shared redirect URI are
+required at boot. The discovery document supplies Apple's authorization, token, JWKS, and optional logout endpoints; the
+implementation does not hard-code provider URLs other than Apple's issuer.
+
+### Registering Sign in with Apple — a checklist for a human
+
+Apple enrollment is an administrative prerequisite. An owner must accept the Apple Developer team invitation before the
+the identifiers and key can be created.
+
+1. **Accept the team invitation.** Sign in to the Apple Developer account using the invitation and confirm that the
+   account can administer the team's Certificates, Identifiers & Profiles area.
+2. **Create or identify the App ID.** In Certificates, Identifiers & Profiles → Identifiers, create an App ID for the
+   Navigator application or select the existing application identifier. Enable the **Sign in with Apple** capability.
+3. **Create the Services ID.** Add a Services ID and associate it with the App ID. Record that Services ID as
+   `OAUTH_APPLE_CLIENT_ID`. Configure the web domain and the shared `/auth/callback` return URL for the deployment.
+4. **Create the Sign in with Apple key.** In Keys, create a key with **Sign in with Apple** enabled and associate it
+    with the App ID. Record the Key ID as `OAUTH_APPLE_KEY_ID` and the team's Team ID as `OAUTH_APPLE_TEAM_ID`.
+5. **Download the `.p8` exactly once.** Download the private key at creation time, store it in the deployment secret
+    manager as `OAUTH_APPLE_PRIVATE_KEY`, and do not put it in a repository, a KIND fixture, a test, a log, or a second
+    ad-hoc copy. If the download is lost, revoke that key and create a replacement.
+6. **Configure the deployment.** Place the Services ID in the public deployment environment and the Team ID, Key ID, and
+    `.p8` in the deployment secret rail. Roll staging, then test the real callback with an enrolled Apple identity.
+
+Apple's discovery document does not publish an `end_session_endpoint` for this integration. Navigator therefore clears
+its own session and redirects home after Apple logout; it does not invent an Apple logout URL. If a future Apple
+discovery document publishes an end-session endpoint, the existing provider-aware RP-initiated logout seam will use it
+automatically, with the Apple client id and the app origin.
 
 ## Authorization is decided elsewhere
 

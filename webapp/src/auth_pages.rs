@@ -160,6 +160,9 @@ pub const GOOGLE_SIGN_IN: &str = "Sign in with Google";
 /// brands, so the wording is fixed here rather than derived from config.
 pub const MICROSOFT_SIGN_IN: &str = "Sign in with Microsoft";
 
+/// Apple's button label for Sign in with Apple.
+pub const APPLE_SIGN_IN: &str = "Sign in with Apple";
+
 #[derive(Props, Clone, PartialEq)]
 struct AuthPageProps {
     page: Page,
@@ -237,15 +240,16 @@ fn AuthPage(props: AuthPageProps) -> Element {
 }
 
 /// The brand mark for a sign-in button, chosen from the fixed button label
-/// rather than the provider slug: [`GOOGLE_SIGN_IN`] and [`MICROSOFT_SIGN_IN`]
-/// are the only labels [`portal::oauth::ProviderId::button_label`] ever hands
-/// this crate, and each carries its own multi-colour brand mark instead of the
-/// single-colour `currentColor` set in [`crate::components::Icon`].
+/// rather than the provider slug. Each supported provider carries its own
+/// brand mark instead of the single-colour `currentColor` set in
+/// [`crate::components::Icon`].
 fn provider_icon(label: &str) -> Element {
     if label == GOOGLE_SIGN_IN {
         google_mark()
     } else if label == MICROSOFT_SIGN_IN {
         microsoft_mark()
+    } else if label == APPLE_SIGN_IN {
+        apple_mark()
     } else {
         rsx! {}
     }
@@ -287,6 +291,21 @@ fn microsoft_mark() -> Element {
     }
 }
 
+/// Apple's monochrome mark.
+fn apple_mark() -> Element {
+    rsx! {
+        svg {
+            class: "nav-oauth-icon",
+            xmlns: "http://www.w3.org/2000/svg",
+            "viewBox": "0 0 24 24",
+            width: "18",
+            height: "18",
+            "aria-hidden": "true",
+            path { fill: "currentColor", d: "M17.05 12.54c-.02-2.08 1.7-3.08 1.78-3.13-.97-1.42-2.48-1.61-3.01-1.63-1.27-.13-2.5.76-3.15.76-.66 0-1.67-.75-2.75-.73-1.41.02-2.71.82-3.44 2.08-1.48 2.56-.38 6.33 1.05 8.4.71 1.01 1.54 2.14 2.63 2.1 1.06-.04 1.46-.68 2.74-.68 1.28 0 1.64.68 2.75.65 1.14-.02 1.86-1.02 2.55-2.04.8-1.17 1.13-2.3 1.15-2.36-.03-.01-2.27-.87-2.3-3.42zM14.97 6.43c.58-.7.97-1.68.86-2.66-.84.03-1.85.56-2.45 1.26-.54.62-1.01 1.62-.88 2.57.94.07 1.9-.48 2.47-1.17z" }
+        }
+    }
+}
+
 fn header(chrome: &PublicChrome) -> Element {
     rsx! { SiteHeader { brand_name: chrome.brand_name.clone(), home_href: chrome.home_href.clone(), logo_href: chrome.logo_href.clone(), destinations: chrome.destinations.iter().map(|link| SiteNavLink::new(link.label.clone(), link.href.clone())).collect(), utility: chrome.utility.iter().map(|link| SiteNavLink::new(link.label.clone(), link.href.clone())).collect() } }
 }
@@ -298,7 +317,7 @@ fn footer(chrome: &PublicChrome) -> Element {
 mod tests {
     use super::{
         confirm_email, invalid_link, login, password_reset_new, password_reset_request,
-        LoginNotice, SignInProvider, GOOGLE_SIGN_IN, MICROSOFT_SIGN_IN,
+        LoginNotice, SignInProvider, APPLE_SIGN_IN, GOOGLE_SIGN_IN, MICROSOFT_SIGN_IN,
     };
 
     fn provider(slug: &str, label: &str) -> SignInProvider {
@@ -349,6 +368,7 @@ mod tests {
             &[
                 provider("oidc", GOOGLE_SIGN_IN),
                 provider("microsoft", MICROSOFT_SIGN_IN),
+                provider("apple", APPLE_SIGN_IN),
             ],
             false,
             None,
@@ -361,9 +381,14 @@ mod tests {
         let microsoft = html
             .find(MICROSOFT_SIGN_IN)
             .unwrap_or_else(|| panic!("missing {MICROSOFT_SIGN_IN}: {html}"));
+        let apple = html
+            .find(APPLE_SIGN_IN)
+            .unwrap_or_else(|| panic!("missing {APPLE_SIGN_IN}: {html}"));
         assert!(google < microsoft, "primary provider must render first");
+        assert!(microsoft < apple, "Apple must render after Microsoft");
         assert!(html.contains("/auth/login/oidc?return_to=/app/projects"));
         assert!(html.contains("/auth/login/microsoft?return_to=/app/projects"));
+        assert!(html.contains("/auth/login/apple?return_to=/app/projects"));
     }
 
     /// Each provider button carries its own brand mark, not the other's or a
@@ -377,6 +402,7 @@ mod tests {
             &[
                 provider("oidc", GOOGLE_SIGN_IN),
                 provider("microsoft", MICROSOFT_SIGN_IN),
+                provider("apple", APPLE_SIGN_IN),
             ],
             false,
             None,
@@ -390,6 +416,10 @@ mod tests {
         assert!(
             html.contains("fill=\"#f25022\""),
             "missing Microsoft mark: {html}"
+        );
+        assert!(
+            html.contains("Sign in with Apple") && html.contains("currentColor"),
+            "missing Apple mark: {html}"
         );
     }
 

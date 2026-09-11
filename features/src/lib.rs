@@ -150,6 +150,7 @@ pub async fn app_state_with_email(
         // leaving it off here keeps `/auth/login` an immediate redirect rather
         // than a chooser, which is what these scenarios drive.
         oauth_microsoft: None,
+        oauth_apple: None,
         rate_limit: portal::rate_limit::RateLimit::disabled(),
         canonical_host: CanonicalHost::new(None),
         portal_only: portal::PortalOnly::default(),

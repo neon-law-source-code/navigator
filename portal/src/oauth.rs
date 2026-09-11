@@ -30,7 +30,9 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Router};
 use base64::Engine;
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{
+    decode, decode_header, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
@@ -50,6 +52,16 @@ use crate::session::{
 /// `https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration`,
 /// which answers `"issuer": "https://login.microsoftonline.com/{tenantid}/v2.0"`.
 pub const ENTRA_TENANT_TEMPLATE: &str = "{tenantid}";
+
+/// Apple's OIDC issuer. Apple publishes its authorization, token, and JWKS
+/// endpoints from this issuer's discovery document.
+pub const DEFAULT_APPLE_ISSUER: &str = "https://appleid.apple.com";
+
+/// Apple accepts client secrets for at most six months. A one-day token is
+/// enough for one authorization-code exchange and leaves a wide margin below
+/// that cap; the source mints a new one for every exchange, so no rotation
+/// operation or cache invalidation can be missed.
+const APPLE_CLIENT_SECRET_TTL_SECS: i64 = 24 * 60 * 60;
 
 /// Split `OAUTH_MICROSOFT_ALLOWED_TENANTS` into normalised tenant ids.
 ///
@@ -96,6 +108,10 @@ pub enum ProviderId {
     /// provider does not.
     #[serde(rename = "microsoft")]
     Microsoft,
+    /// Sign in with Apple, configured only in a real deployment from
+    /// `OAUTH_APPLE_*` values and a deployment-delivered private key.
+    #[serde(rename = "apple")]
+    Apple,
 }
 
 impl ProviderId {
@@ -107,6 +123,7 @@ impl ProviderId {
         match self {
             Self::Primary => "oidc",
             Self::Microsoft => "microsoft",
+            Self::Apple => "apple",
         }
     }
 
@@ -118,6 +135,7 @@ impl ProviderId {
         match slug {
             "oidc" => Some(Self::Primary),
             "microsoft" => Some(Self::Microsoft),
+            "apple" => Some(Self::Apple),
             _ => None,
         }
     }
@@ -132,6 +150,7 @@ impl ProviderId {
         match self {
             Self::Primary => webapp::auth_pages::GOOGLE_SIGN_IN,
             Self::Microsoft => webapp::auth_pages::MICROSOFT_SIGN_IN,
+            Self::Apple => webapp::auth_pages::APPLE_SIGN_IN,
         }
     }
 
@@ -160,7 +179,7 @@ impl ProviderId {
                 .map(str::to_string)
         };
         match self {
-            Self::Primary => pick(&claims.email),
+            Self::Primary | Self::Apple => pick(&claims.email),
             Self::Microsoft => pick(&claims.preferred_username).or_else(|| pick(&claims.email)),
         }
     }
@@ -211,6 +230,8 @@ pub enum OAuthSetupError {
     /// the control that makes multi-tenant sign-in safe, so it is mandatory.
     #[error("OAUTH_MICROSOFT_ALLOWED_TENANTS must list at least one tenant id")]
     MissingTenantAllowlist,
+    #[error("invalid OAUTH_APPLE_PRIVATE_KEY: {0}")]
+    InvalidApplePrivateKey(String),
 }
 
 #[derive(Clone)]
@@ -225,18 +246,89 @@ struct OAuthConfigInner {
     /// address a `persons` row is matched on.
     provider: ProviderId,
     client_id: String,
-    client_secret: String,
+    client_secret: ClientSecretSource,
     redirect_uri: String,
     authorization_endpoint: String,
     token_endpoint: String,
     end_session_endpoint: Option<String>,
-    /// RS256 id_token verifier, built from the IdP's published JWKS and
-    /// pinned to the discovered `issuer` + our `client_id` audience. Not a
-    /// fixed key set fetched once at boot — see [`IdTokenVerifier`] for how
-    /// it keeps itself current across a provider's key rotation. `None`
-    /// only on the hand-built test config; production always carries one
-    /// and [`callback`] refuses to mint a session without it.
+    /// Provider-algorithm id_token verifier, built from the IdP's published
+    /// JWKS and pinned to the discovered `issuer` + our `client_id` audience.
+    /// Not a fixed key set fetched once at boot — see [`IdTokenVerifier`] for
+    /// how it keeps itself current across a provider's key rotation. `None`
+    /// only on the hand-built test config; production always carries one and
+    /// [`callback`] refuses to mint a session without it.
     id_token_verifier: Option<Arc<IdTokenVerifier>>,
+}
+
+/// The credential sent to an OIDC token endpoint. Existing providers retain
+/// their static `client_secret_post` value; Apple receives a short-lived JWT
+/// signed with the deployment's ES256 private key.
+#[derive(Clone)]
+enum ClientSecretSource {
+    Static(String),
+    Apple(Arc<AppleClientSecret>),
+}
+
+/// Apple client-secret signer. The private key is parsed once at boot and is
+/// held only in memory; the JWT itself is minted immediately before each
+/// token exchange so it cannot age past a refresh threshold.
+struct AppleClientSecret {
+    team_id: String,
+    key_id: String,
+    client_id: String,
+    signing_key: EncodingKey,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AppleClientSecretClaims {
+    iss: String,
+    sub: String,
+    aud: String,
+    iat: i64,
+    exp: i64,
+}
+
+impl AppleClientSecret {
+    fn new(
+        team_id: impl Into<String>,
+        key_id: impl Into<String>,
+        client_id: impl Into<String>,
+        private_key_pem: &[u8],
+    ) -> Result<Self, jsonwebtoken::errors::Error> {
+        Ok(Self {
+            team_id: team_id.into(),
+            key_id: key_id.into(),
+            client_id: client_id.into(),
+            signing_key: EncodingKey::from_ec_pem(private_key_pem)?,
+        })
+    }
+
+    fn mint(&self) -> Result<String, jsonwebtoken::errors::Error> {
+        let iat = now_unix_secs();
+        let claims = AppleClientSecretClaims {
+            iss: self.team_id.clone(),
+            sub: self.client_id.clone(),
+            aud: DEFAULT_APPLE_ISSUER.to_string(),
+            iat,
+            exp: iat + APPLE_CLIENT_SECRET_TTL_SECS,
+        };
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some(self.key_id.clone());
+        encode(&header, &claims, &self.signing_key)
+    }
+}
+
+impl ClientSecretSource {
+    fn static_secret(secret: impl Into<String>) -> Self {
+        Self::Static(secret.into())
+    }
+
+    fn value(&self) -> Result<String, jsonwebtoken::errors::Error> {
+        match self {
+            Self::Static(secret) => Ok(secret.clone()),
+            Self::Apple(source) => source.mint(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -247,6 +339,19 @@ struct DiscoveryDoc {
     jwks_uri: String,
     #[serde(default)]
     end_session_endpoint: Option<String>,
+}
+
+async fn fetch_discovery(issuer: &str) -> Result<DiscoveryDoc, OAuthSetupError> {
+    let url = format!(
+        "{}/.well-known/openid-configuration",
+        issuer.trim_end_matches('/')
+    );
+    reqwest::get(&url)
+        .await
+        .map_err(|e| OAuthSetupError::DiscoveryFetch(e.to_string()))?
+        .json()
+        .await
+        .map_err(|e| OAuthSetupError::DiscoveryParse(e.to_string()))
 }
 
 impl OAuthConfig {
@@ -264,7 +369,7 @@ impl OAuthConfig {
             inner: Arc::new(OAuthConfigInner {
                 provider: ProviderId::Primary,
                 client_id: client_id.into(),
-                client_secret: client_secret.into(),
+                client_secret: ClientSecretSource::static_secret(client_secret),
                 redirect_uri: redirect_uri.into(),
                 authorization_endpoint: authorization_endpoint.into(),
                 token_endpoint: token_endpoint.into(),
@@ -272,6 +377,38 @@ impl OAuthConfig {
                 id_token_verifier: None,
             }),
         }
+    }
+
+    /// Build an Apple config around a deployment-supplied PKCS#8 ES256 key.
+    ///
+    /// The endpoint arguments keep this constructor usable by mocked-provider
+    /// tests. Production calls [`Self::apple_from_env`], which obtains the
+    /// endpoints from Apple's discovery document.
+    pub fn new_apple(
+        client_id: impl Into<String>,
+        team_id: impl Into<String>,
+        key_id: impl Into<String>,
+        private_key_pem: impl AsRef<[u8]>,
+        redirect_uri: impl Into<String>,
+        authorization_endpoint: impl Into<String>,
+        token_endpoint: impl Into<String>,
+    ) -> Result<Self, OAuthSetupError> {
+        let client_id = client_id.into();
+        let signer =
+            AppleClientSecret::new(team_id, key_id, client_id.clone(), private_key_pem.as_ref())
+                .map_err(|error| OAuthSetupError::InvalidApplePrivateKey(error.to_string()))?;
+        Ok(Self {
+            inner: Arc::new(OAuthConfigInner {
+                provider: ProviderId::Apple,
+                client_id,
+                client_secret: ClientSecretSource::Apple(Arc::new(signer)),
+                redirect_uri: redirect_uri.into(),
+                authorization_endpoint: authorization_endpoint.into(),
+                token_endpoint: token_endpoint.into(),
+                end_session_endpoint: None,
+                id_token_verifier: None,
+            }),
+        })
     }
 
     /// Re-label a hand-built config as belonging to `provider`. Tests use it
@@ -305,7 +442,7 @@ impl OAuthConfig {
         }
     }
 
-    /// The RS256 id_token verifier, when configured. `callback` treats
+    /// The provider-algorithm id_token verifier, when configured. `callback` treats
     /// `None` as a misconfiguration and refuses the sign-in rather than
     /// trusting an unverified token.
     #[must_use]
@@ -371,7 +508,7 @@ impl OAuthConfig {
             inner: Arc::new(OAuthConfigInner {
                 provider: ProviderId::Primary,
                 client_id,
-                client_secret,
+                client_secret: ClientSecretSource::static_secret(client_secret),
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
@@ -476,7 +613,57 @@ impl OAuthConfig {
             inner: Arc::new(OAuthConfigInner {
                 provider: ProviderId::Microsoft,
                 client_id,
-                client_secret,
+                client_secret: ClientSecretSource::static_secret(client_secret),
+                redirect_uri,
+                authorization_endpoint: doc.authorization_endpoint,
+                token_endpoint: doc.token_endpoint,
+                end_session_endpoint: doc.end_session_endpoint,
+                id_token_verifier: Some(verifier),
+            }),
+        }))
+    }
+
+    /// Build the **Sign in with Apple** provider from deployment secrets.
+    ///
+    /// Reads `OAUTH_APPLE_CLIENT_ID` (the Services ID), `OAUTH_APPLE_TEAM_ID`,
+    /// `OAUTH_APPLE_KEY_ID`, and `OAUTH_APPLE_PRIVATE_KEY`. The private key is
+    /// a deployment secret containing the downloaded `.p8` PEM and never a
+    /// repository or KIND fixture. An unset client id leaves the provider off;
+    /// once it is set, every sibling is required and boot fails closed.
+    pub async fn apple_from_env() -> Result<Option<Self>, OAuthSetupError> {
+        let Some(client_id) = std::env::var("OAUTH_APPLE_CLIENT_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return Ok(None);
+        };
+        let team_id = std::env::var("OAUTH_APPLE_TEAM_ID")
+            .map_err(|_| OAuthSetupError::Missing("OAUTH_APPLE_TEAM_ID"))?;
+        let key_id = std::env::var("OAUTH_APPLE_KEY_ID")
+            .map_err(|_| OAuthSetupError::Missing("OAUTH_APPLE_KEY_ID"))?;
+        let private_key = std::env::var("OAUTH_APPLE_PRIVATE_KEY")
+            .map_err(|_| OAuthSetupError::Missing("OAUTH_APPLE_PRIVATE_KEY"))?;
+        let redirect_uri = std::env::var("OAUTH_REDIRECT_URI")
+            .map_err(|_| OAuthSetupError::Missing("OAUTH_REDIRECT_URI"))?;
+        let signer = AppleClientSecret::new(&team_id, &key_id, &client_id, private_key.as_bytes())
+            .map_err(|error| OAuthSetupError::InvalidApplePrivateKey(error.to_string()))?;
+
+        let doc = fetch_discovery(DEFAULT_APPLE_ISSUER).await?;
+        let verifier = IdTokenVerifier::from_jwks_url_with_algorithm(
+            &doc.jwks_uri,
+            &doc.issuer,
+            &client_id,
+            IssuerPolicy::Exact,
+            Algorithm::ES256,
+        )
+        .await
+        .map_err(|e| OAuthSetupError::DiscoveryFetch(e.to_string()))?;
+
+        Ok(Some(Self {
+            inner: Arc::new(OAuthConfigInner {
+                provider: ProviderId::Apple,
+                client_id,
+                client_secret: ClientSecretSource::Apple(Arc::new(signer)),
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
@@ -494,6 +681,11 @@ impl OAuthConfig {
     pub fn token_endpoint(&self) -> &str {
         &self.inner.token_endpoint
     }
+
+    fn client_secret(&self) -> Result<String, jsonwebtoken::errors::Error> {
+        self.inner.client_secret.value()
+    }
+
     #[must_use]
     pub fn end_session_endpoint(&self) -> Option<&str> {
         self.inner.end_session_endpoint.as_deref()
@@ -694,6 +886,9 @@ pub struct AuthState {
     /// still reads for deployment-wide facts (the redirect URI's scheme, the
     /// fallback end-session endpoint). A provider added here is additive.
     pub oauth_microsoft: Option<OAuthConfig>,
+    /// Sign in with Apple, when `OAUTH_APPLE_CLIENT_ID` is set. `None` keeps
+    /// the deployment's provider set unchanged.
+    pub oauth_apple: Option<OAuthConfig>,
     pub sessions: SessionStore,
     /// Store handle for the tables the auth flows
     /// touch (participation on a fresh signup, the sent-email log).
@@ -760,6 +955,7 @@ impl AuthState {
         match provider {
             ProviderId::Primary => Some(&self.oauth),
             ProviderId::Microsoft => self.oauth_microsoft.as_ref(),
+            ProviderId::Apple => self.oauth_apple.as_ref(),
         }
     }
 
@@ -769,6 +965,9 @@ impl AuthState {
         let mut out = vec![ProviderId::Primary];
         if self.oauth_microsoft.is_some() {
             out.push(ProviderId::Microsoft);
+        }
+        if self.oauth_apple.is_some() {
+            out.push(ProviderId::Apple);
         }
         out
     }
@@ -1295,7 +1494,7 @@ const JWKS_REFRESH_INTERVAL: Duration = Duration::from_hours(1);
 /// against the provider's JWKS endpoint. See ENG-326.
 const JWKS_REFETCH_FLOOR: Duration = Duration::from_mins(5);
 
-/// RS256 id_token verifier built from an IdP's published JWKS and
+/// An id_token verifier built from an IdP's published JWKS and
 /// pinned to the expected issuer and audience (our `client_id`).
 ///
 /// Verification is **mandatory** on the OIDC redirect callback. We do
@@ -1335,6 +1534,7 @@ pub struct IdTokenVerifier {
     /// refetch.
     last_kid_refetch: AsyncMutex<Option<Instant>>,
     validation: Validation,
+    algorithm: Algorithm,
     /// How `iss` is checked. [`IssuerPolicy::Exact`] delegates to
     /// `validation`; [`IssuerPolicy::EntraTenants`] is enforced in
     /// [`Self::verify`] after decode, because the expected issuer is not known
@@ -1357,7 +1557,21 @@ impl IdTokenVerifier {
         audience: &str,
         issuer_policy: IssuerPolicy,
     ) -> Self {
-        let mut validation = Validation::new(Algorithm::RS256);
+        Self::from_keys_with_algorithm(keys, issuer, audience, issuer_policy, Algorithm::RS256)
+    }
+
+    /// Build a fixed-key verifier for a specific signing algorithm. Apple
+    /// publishes ES256 signing keys; Google, Rauthy, and Microsoft continue
+    /// through [`Self::from_keys`] on the existing RS256 path.
+    #[must_use]
+    pub fn from_keys_with_algorithm(
+        keys: Vec<(String, DecodingKey)>,
+        issuer: &str,
+        audience: &str,
+        issuer_policy: IssuerPolicy,
+        algorithm: Algorithm,
+    ) -> Self {
+        let mut validation = Validation::new(algorithm);
         // `set_issuer`/`set_audience` enable iss/aud enforcement; exp is
         // validated by default. These are the token-confusion defenses.
         //
@@ -1375,6 +1589,7 @@ impl IdTokenVerifier {
             jwks_url: None,
             last_kid_refetch: AsyncMutex::new(None),
             validation,
+            algorithm,
             issuer_policy,
         }
     }
@@ -1388,29 +1603,65 @@ impl IdTokenVerifier {
         audience: &str,
         issuer_policy: IssuerPolicy,
     ) -> Result<Self, AuthSetupError> {
-        let keys = Self::keys_from_document(doc)?;
-        Ok(Self::from_keys(
+        Self::from_jwks_document_with_algorithm(
+            doc,
+            issuer,
+            audience,
+            issuer_policy,
+            Algorithm::RS256,
+        )
+    }
+
+    /// Build a verifier from a JWKS document using the provider's signing
+    /// algorithm. The default method above preserves the existing RS256
+    /// contract for the primary and Microsoft providers.
+    pub fn from_jwks_document_with_algorithm(
+        doc: &JwksDocument,
+        issuer: &str,
+        audience: &str,
+        issuer_policy: IssuerPolicy,
+        algorithm: Algorithm,
+    ) -> Result<Self, AuthSetupError> {
+        let keys = Self::keys_from_document(doc, algorithm)?;
+        Ok(Self::from_keys_with_algorithm(
             keys.into_iter().collect(),
             issuer,
             audience,
             issuer_policy,
+            algorithm,
         ))
     }
 
-    /// Parse a JWKS document into `kid` → key, skipping non-RSA entries.
+    /// Parse a JWKS document into `kid` → key, accepting only entries for the
+    /// algorithm the provider's discovery/configuration selected.
     fn keys_from_document(
         doc: &JwksDocument,
+        algorithm: Algorithm,
     ) -> Result<HashMap<String, DecodingKey>, AuthSetupError> {
         let mut keys = HashMap::new();
         for k in &doc.keys {
-            if k.kty != "RSA" {
-                continue;
+            let key = match algorithm {
+                Algorithm::RS256 => {
+                    if k.kty != "RSA" {
+                        continue;
+                    }
+                    let (Some(n), Some(e)) = (k.n.as_deref(), k.e.as_deref()) else {
+                        continue;
+                    };
+                    DecodingKey::from_rsa_components(n, e)
+                }
+                Algorithm::ES256 => {
+                    if k.kty != "EC" || k.crv.as_deref() != Some("P-256") {
+                        continue;
+                    }
+                    let (Some(x), Some(y)) = (k.x.as_deref(), k.y.as_deref()) else {
+                        continue;
+                    };
+                    DecodingKey::from_ec_components(x, y)
+                }
+                _ => continue,
             }
-            let (Some(n), Some(e)) = (k.n.as_deref(), k.e.as_deref()) else {
-                continue;
-            };
-            let key = DecodingKey::from_rsa_components(n, e)
-                .map_err(|e| AuthSetupError::Key(e.to_string()))?;
+            .map_err(|e| AuthSetupError::Key(e.to_string()))?;
             keys.insert(k.kid.clone().unwrap_or_default(), key);
         }
         if keys.is_empty() {
@@ -1431,7 +1682,22 @@ impl IdTokenVerifier {
         audience: &str,
         issuer_policy: IssuerPolicy,
     ) -> Result<Arc<Self>, AuthSetupError> {
-        let verifier = Arc::new(Self::fetch_and_build(url, issuer, audience, issuer_policy).await?);
+        Self::from_jwks_url_with_algorithm(url, issuer, audience, issuer_policy, Algorithm::RS256)
+            .await
+    }
+
+    /// Fetch a provider JWKS and build the self-refreshing verifier for its
+    /// signing algorithm. Apple uses this method with ES256; the existing
+    /// `from_jwks_url` wrapper remains the RS256 default.
+    pub async fn from_jwks_url_with_algorithm(
+        url: &str,
+        issuer: &str,
+        audience: &str,
+        issuer_policy: IssuerPolicy,
+        algorithm: Algorithm,
+    ) -> Result<Arc<Self>, AuthSetupError> {
+        let verifier =
+            Arc::new(Self::fetch_and_build(url, issuer, audience, issuer_policy, algorithm).await?);
 
         let background = Arc::clone(&verifier);
         tokio::spawn(async move {
@@ -1461,6 +1727,7 @@ impl IdTokenVerifier {
         issuer: &str,
         audience: &str,
         issuer_policy: IssuerPolicy,
+        algorithm: Algorithm,
     ) -> Result<Self, AuthSetupError> {
         let doc: JwksDocument = reqwest::get(url)
             .await
@@ -1468,7 +1735,13 @@ impl IdTokenVerifier {
             .json()
             .await
             .map_err(|e| AuthSetupError::Parse(e.to_string()))?;
-        let mut verifier = Self::from_jwks_document(&doc, issuer, audience, issuer_policy)?;
+        let mut verifier = Self::from_jwks_document_with_algorithm(
+            &doc,
+            issuer,
+            audience,
+            issuer_policy,
+            algorithm,
+        )?;
         verifier.jwks_url = Some(url.to_string());
         Ok(verifier)
     }
@@ -1483,7 +1756,7 @@ impl IdTokenVerifier {
         let Some(url) = self.jwks_url.as_deref() else {
             return;
         };
-        match Self::fetch_keys(url).await {
+        match Self::fetch_keys(url, self.algorithm).await {
             Ok(fresh) => {
                 let kid_count = fresh.len();
                 *self.keys.write().await = fresh;
@@ -1499,14 +1772,17 @@ impl IdTokenVerifier {
         }
     }
 
-    async fn fetch_keys(url: &str) -> Result<HashMap<String, DecodingKey>, AuthSetupError> {
+    async fn fetch_keys(
+        url: &str,
+        algorithm: Algorithm,
+    ) -> Result<HashMap<String, DecodingKey>, AuthSetupError> {
         let doc: JwksDocument = reqwest::get(url)
             .await
             .map_err(|e| AuthSetupError::Fetch(e.to_string()))?
             .json()
             .await
             .map_err(|e| AuthSetupError::Parse(e.to_string()))?;
-        Self::keys_from_document(&doc)
+        Self::keys_from_document(&doc, algorithm)
     }
 
     /// The decoding key for `kid`, refetching once — subject to
@@ -1741,6 +2017,10 @@ async fn exchange_code(
     code: &str,
     pre: &PreAuth,
 ) -> Result<TokenResponse, CallbackError> {
+    let client_secret = cfg.client_secret().map_err(|error| {
+        tracing::warn!(error = %error, "oauth: client secret mint failed");
+        (StatusCode::BAD_GATEWAY, "token client secret unavailable")
+    })?;
     match reqwest::Client::new()
         .post(cfg.token_endpoint())
         .form(&[
@@ -1748,7 +2028,7 @@ async fn exchange_code(
             ("code", code),
             ("redirect_uri", cfg.inner.redirect_uri.as_str()),
             ("client_id", cfg.inner.client_id.as_str()),
-            ("client_secret", cfg.inner.client_secret.as_str()),
+            ("client_secret", client_secret.as_str()),
             ("code_verifier", pre.verifier.as_str()),
         ])
         .send()
@@ -2346,15 +2626,18 @@ pub(crate) fn expired_cookie(name: &'static str) -> Cookie<'static> {
 mod tests {
     use super::{
         authorize_url, bootstrap_owner_email, bootstrap_owner_email_from_env, constant_time_eq,
-        decode_unverified_payload, default_return_to, login_notice, oauth_error_fields,
-        pkce_challenge, pkce_verifier, post_login_landing, reconcile_bootstrap_owner,
-        resolve_existing_after_race, resolve_person_from_claims, self_signup_enabled,
-        session_cookie, urlencode, IdTokenClaims, IdTokenError, IdTokenVerifier,
-        IdentityPasswordConfig, IssuerPolicy, NoticeText, OAuthConfig, PreAuth, ProviderId,
-        ResolveError,
+        decode_unverified_payload, default_return_to, fetch_discovery, login_notice,
+        oauth_error_fields, pkce_challenge, pkce_verifier, post_login_landing,
+        reconcile_bootstrap_owner, resolve_existing_after_race, resolve_person_from_claims,
+        self_signup_enabled, session_cookie, urlencode, AppleClientSecret, AppleClientSecretClaims,
+        IdTokenClaims, IdTokenError, IdTokenVerifier, IdentityPasswordConfig, IssuerPolicy,
+        JwksDocument, NoticeText, OAuthConfig, PreAuth, ProviderId, ResolveError,
+        APPLE_CLIENT_SECRET_TTL_SECS,
     };
+    use crate::auth::JwksKey;
     use crate::session::{now_unix_secs, random_token_32, DEFAULT_SESSION_TTL_SECS};
     use crate::test_support::{oidc_verifier, sign_id_token, sign_id_token_with_kid};
+    use jsonwebtoken::Algorithm;
 
     /// The failure that took `www.neonlaw.com` down on 2026-08-10: a new OAuth
     /// client ID paired with the previous client's secret, which Google answers
@@ -2585,7 +2868,11 @@ mod tests {
 
     #[test]
     fn provider_slugs_round_trip_and_reject_strangers() {
-        for provider in [ProviderId::Primary, ProviderId::Microsoft] {
+        for provider in [
+            ProviderId::Primary,
+            ProviderId::Microsoft,
+            ProviderId::Apple,
+        ] {
             assert_eq!(ProviderId::from_slug(provider.slug()), Some(provider));
         }
         // The historical URL is the primary slot's slug, so existing links and
@@ -2600,10 +2887,160 @@ mod tests {
         // The pre-auth cookie names a provider by serde, the session cookie by
         // `slug()`. They must be the same string or the two cookies disagree
         // about which provider signed a person in.
-        for provider in [ProviderId::Primary, ProviderId::Microsoft] {
+        for provider in [
+            ProviderId::Primary,
+            ProviderId::Microsoft,
+            ProviderId::Apple,
+        ] {
             let encoded = serde_json::to_string(&provider).expect("provider serialises");
             assert_eq!(encoded, format!("\"{}\"", provider.slug()));
         }
+    }
+
+    #[test]
+    fn apple_client_secret_is_an_es256_jwt_verified_by_the_generated_public_key() {
+        use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+        use p256::ecdsa::SigningKey;
+        use p256::elliptic_curve::Generate;
+        use p256::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
+
+        let signing_key = SigningKey::generate();
+        let private_pem = signing_key
+            .to_pkcs8_pem(LineEnding::LF)
+            .expect("test key serialises");
+        let public_pem = signing_key
+            .verifying_key()
+            .to_public_key_pem(LineEnding::LF)
+            .expect("test public key serialises");
+        let source = AppleClientSecret::new(
+            "team-test",
+            "key-test",
+            "client-test",
+            private_pem.as_bytes(),
+        )
+        .expect("test Apple secret source parses");
+
+        let token = source.mint().expect("test Apple client secret mints");
+        let header = decode_header(&token).expect("JWT header decodes");
+        assert_eq!(header.alg, Algorithm::ES256);
+        assert_eq!(header.kid.as_deref(), Some("key-test"));
+
+        let mut validation = Validation::new(Algorithm::ES256);
+        validation.set_issuer(&["team-test"]);
+        validation.set_audience(&["https://appleid.apple.com"]);
+        let decoded = decode::<AppleClientSecretClaims>(
+            &token,
+            &DecodingKey::from_ec_pem(public_pem.as_bytes()).expect("public key parses"),
+            &validation,
+        )
+        .expect("the generated public key must verify the JWT signature");
+        assert_eq!(decoded.claims.iss, "team-test");
+        assert_eq!(decoded.claims.sub, "client-test");
+        assert_eq!(decoded.claims.aud, "https://appleid.apple.com");
+        assert_eq!(
+            decoded.claims.exp - decoded.claims.iat,
+            APPLE_CLIENT_SECRET_TTL_SECS
+        );
+
+        let other_key = SigningKey::generate();
+        let other_public_pem = other_key
+            .verifying_key()
+            .to_public_key_pem(LineEnding::LF)
+            .expect("other public key serialises");
+        assert!(
+            decode::<AppleClientSecretClaims>(
+                &token,
+                &DecodingKey::from_ec_pem(other_public_pem.as_bytes())
+                    .expect("other public key parses"),
+                &validation,
+            )
+            .is_err(),
+            "a different public key must not verify the Apple client secret"
+        );
+    }
+
+    #[tokio::test]
+    async fn apple_discovery_is_read_from_a_mocked_endpoint_without_a_logout_url() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/openid-configuration"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": "https://apple.test",
+                "authorization_endpoint": format!("{}/authorize", server.uri()),
+                "token_endpoint": format!("{}/token", server.uri()),
+                "jwks_uri": format!("{}/jwks", server.uri()),
+            })))
+            .mount(&server)
+            .await;
+
+        let discovery = fetch_discovery(&server.uri())
+            .await
+            .expect("mock Apple discovery parses");
+        assert_eq!(discovery.issuer, "https://apple.test");
+        assert!(discovery.end_session_endpoint.is_none());
+    }
+
+    #[tokio::test]
+    async fn apple_es256_jwks_key_verifies_a_signed_id_token() {
+        use base64::Engine as _;
+        use jsonwebtoken::{encode, EncodingKey, Header};
+        use p256::ecdsa::SigningKey;
+        use p256::elliptic_curve::Generate;
+        use p256::pkcs8::{EncodePrivateKey, LineEnding};
+
+        let signing_key = SigningKey::generate();
+        let private_pem = signing_key
+            .to_pkcs8_pem(LineEnding::LF)
+            .expect("test key serialises");
+        let point = signing_key.verifying_key().to_sec1_point(false);
+        let encode_coordinate =
+            |coordinate: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(coordinate);
+        let doc = JwksDocument {
+            keys: vec![JwksKey {
+                kid: Some("apple-key".into()),
+                kty: "EC".into(),
+                n: None,
+                e: None,
+                crv: Some("P-256".into()),
+                x: Some(encode_coordinate(point.x().expect("x coordinate"))),
+                y: Some(encode_coordinate(point.y().expect("y coordinate"))),
+                alg: Some("ES256".into()),
+            }],
+        };
+        let verifier = IdTokenVerifier::from_jwks_document_with_algorithm(
+            &doc,
+            "https://apple.test",
+            "client-test",
+            IssuerPolicy::Exact,
+            Algorithm::ES256,
+        )
+        .expect("Apple EC JWKS parses");
+        let nonce = test_nonce();
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some("apple-key".into());
+        let token = encode(
+            &header,
+            &serde_json::json!({
+                "iss": "https://apple.test",
+                "aud": "client-test",
+                "exp": now_unix_secs() + 600,
+                "sub": "apple-subject",
+                "email": "apple-user@example.test",
+                "nonce": nonce,
+            }),
+            &EncodingKey::from_ec_pem(private_pem.as_bytes()).expect("private key parses"),
+        )
+        .expect("Apple id_token signs");
+
+        let claims = verifier
+            .verify(&token, &nonce)
+            .await
+            .expect("valid Apple token");
+        assert_eq!(claims.sub, "apple-subject");
+        assert_eq!(claims.email.as_deref(), Some("apple-user@example.test"));
     }
 
     #[test]
@@ -3203,6 +3640,7 @@ mod tests {
             "https://idp.test",
             "client123",
             IssuerPolicy::Exact,
+            Algorithm::RS256,
         )
         .await
         .expect("mock JWKS fetches");

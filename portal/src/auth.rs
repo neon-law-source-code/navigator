@@ -220,7 +220,8 @@ impl AuthConfig {
     }
 }
 
-/// Minimal JWKS document shape, enough to extract RSA `n` and `e`.
+/// Minimal JWKS document shape, enough to extract RSA `n`/`e` or EC
+/// `crv`/`x`/`y` coordinates.
 #[derive(Debug, Clone, Deserialize)]
 pub struct JwksDocument {
     pub keys: Vec<JwksKey>,
@@ -232,6 +233,15 @@ pub struct JwksKey {
     pub kty: String,
     pub n: Option<String>,
     pub e: Option<String>,
+    /// EC curve name, used by OIDC providers whose id_tokens use ES256.
+    #[serde(default)]
+    pub crv: Option<String>,
+    /// EC public-key x coordinate, base64url encoded.
+    #[serde(default)]
+    pub x: Option<String>,
+    /// EC public-key y coordinate, base64url encoded.
+    #[serde(default)]
+    pub y: Option<String>,
     #[serde(default)]
     pub alg: Option<String>,
 }
@@ -244,7 +254,7 @@ pub enum AuthSetupError {
     Parse(String),
     #[error("constructing key: {0}")]
     Key(String),
-    #[error("no RSA keys in JWKS document")]
+    #[error("no usable keys in JWKS document")]
     Empty,
 }
 
@@ -622,6 +632,9 @@ mod tests {
                 kty: "oct".into(),
                 n: None,
                 e: None,
+                crv: None,
+                x: None,
+                y: None,
                 alg: None,
             }],
         };
@@ -640,6 +653,9 @@ mod tests {
                     "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw".into(),
                 ),
                 e: Some("AQAB".into()),
+                crv: None,
+                x: None,
+                y: None,
                 alg: Some("RS256".into()),
             }],
         };
@@ -663,6 +679,9 @@ mod tests {
                     "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw".into(),
                 ),
                 e: Some("AQAB".into()),
+                crv: None,
+                x: None,
+                y: None,
                 alg: Some("RS256".into()),
             }],
         };

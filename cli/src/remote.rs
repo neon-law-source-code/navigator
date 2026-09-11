@@ -476,6 +476,7 @@ impl DocumentClient {
         slug: Option<&str>,
         metadata: Option<serde_json::Value>,
     ) -> Result<store::document_pointers::DocumentPointer> {
+        validate_document_upload_size_in_bytes(bytes.len())?;
         let mut body = serde_json::json!({
             "filename": filename,
             "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
@@ -598,6 +599,26 @@ pub(crate) struct MailFileResponse {
     pub(crate) filed: Vec<store::document_pointers::DocumentPointer>,
 }
 
+/// Refuse a document over the shared maximum before it is encoded or sent.
+///
+/// Every upload this CLI makes routes through here, not just the one that
+/// has a file to stat: `archive-repository` builds its zip in memory, and a
+/// repository snapshot is the payload most likely to run past the limit. A
+/// request carrying more than [`MAX_DOCUMENT_UPLOAD_REQUEST_BYTES`] never
+/// reaches the door's own size check at all — it dies at the framework's
+/// body cap and reports a raw buffering error, which is the failure ENG-602
+/// set out to replace.
+///
+/// [`MAX_DOCUMENT_UPLOAD_REQUEST_BYTES`]: store::documents::MAX_DOCUMENT_UPLOAD_REQUEST_BYTES
+fn validate_document_upload_size_in_bytes(actual: usize) -> Result<()> {
+    if actual > store::documents::MAX_DOCUMENT_UPLOAD_BYTES {
+        return Err(anyhow!(store::documents::document_upload_size_message(
+            actual
+        )));
+    }
+    Ok(())
+}
+
 fn validate_document_upload_size(file: &Path) -> Result<()> {
     // Reject locally so an oversized file never opens a remote upload.
     let actual = usize::try_from(
@@ -606,12 +627,7 @@ fn validate_document_upload_size(file: &Path) -> Result<()> {
             .len(),
     )
     .context("document size does not fit in memory")?;
-    if actual > store::documents::MAX_DOCUMENT_UPLOAD_BYTES {
-        return Err(anyhow!(store::documents::document_upload_size_message(
-            actual
-        )));
-    }
-    Ok(())
+    validate_document_upload_size_in_bytes(actual)
 }
 
 /// `navigator site document upload --project <code> --file … --kind …`
@@ -2649,7 +2665,8 @@ mod tests {
         notation_request_changes, notation_status, notation_update, parse_scripted_selection,
         picker_selection_fields, projects_create, projects_lifecycle, projects_list,
         retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
-        select_candidate, CoverageSummary, SeedCredential, StepQuestion, StepResponse,
+        select_candidate, CoverageSummary, DocumentClient, SeedCredential, StepQuestion,
+        StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
@@ -3295,6 +3312,56 @@ mod tests {
         assert_eq!(body["kind"], "closed_repository");
         assert_eq!(body["metadata"]["commit_sha"], commit_sha);
         assert_eq!(body["content_type"], "application/zip");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn upload_bytes_refuses_an_oversized_document_before_sending_it() {
+        // `archive-repository` has no file to stat — it builds a repository
+        // snapshot in memory and hands it straight to `upload_bytes`, so the
+        // limit has to hold at the shared choke point and not only at the
+        // one command that can check a path's metadata first.
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = DocumentClient::connect(Some(server_uri.as_str()), "acme")
+            .await
+            .expect("connect to the mock door");
+        let oversized = vec![0u8; store::documents::MAX_DOCUMENT_UPLOAD_BYTES + 1];
+        let error = client
+            .upload_bytes(
+                "synthetic-repository.zip",
+                &oversized,
+                "closed_repository",
+                None,
+                None,
+                Some("application/zip"),
+                None,
+                None,
+            )
+            .await
+            .expect_err("an oversized document is refused before the request");
+
+        assert!(error
+            .to_string()
+            .contains(&store::documents::MAX_DOCUMENT_UPLOAD_BYTES.to_string()));
+        assert!(error.to_string().contains(&oversized.len().to_string()));
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|request| !request.url.path().ends_with("/documents")));
     }
 
     #[tokio::test(flavor = "current_thread")]

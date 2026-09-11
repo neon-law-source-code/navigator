@@ -65,6 +65,11 @@ through, rather than each call site deriving its own `person_firm_role` filter:
   documents or notations, which stay gated by [`store::access::matter_viewer`](../store/src/access.rs) and the
   Project-side command rules.
 
+The four Firm-private integration doors — Notion ensure and reconcile, and Slack ensure and notify — use
+`FirmCapability::UseIntegrations` against the Project's owning Firm before resolving a provider or doing provider work.
+The capability resolver therefore authorizes on the caller's membership in that Firm, rather than treating the Project
+visibility listing as permission to use the target Firm's credentials.
+
 A Lawyer or Clerk gets this row the moment they are created, not only once: `store::people_commands::create_person`
 grants it right after the Person write, defaulting to the deployment's anchor Firm (`store::firms::anchor_firm`) unless
 the creating surface names a different one (ENG-495). Before this, only a one-time backfill (ENG-462) pointed *existing*

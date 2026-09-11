@@ -120,24 +120,57 @@ async fn targets(
             .await
             .map_err(ApiError::Db)?;
     match (&selector.project_code, selector.all) {
-        (Some(code), false) => visible
-            .into_iter()
-            .find(|project| project.code == *code)
-            .map(|project| vec![project])
-            .ok_or(ApiError::NotFound),
-        (None, true) => Ok(visible),
+        (Some(code), false) => Ok(vec![one_target(state, authed, visible, code).await?]),
+        (None, true) => {
+            let mut authorized = Vec::new();
+            for project in visible {
+                match authorize_project(state, authed, project).await {
+                    Ok(project) => authorized.push(project),
+                    Err(ApiError::NotFound) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(authorized)
+        }
         _ => Err(selector_error()),
     }
 }
 
-fn one_target(
+async fn one_target(
+    state: &ApiState,
+    authed: &AdminSession,
     visible: Vec<store::projects::Project>,
     code: &str,
 ) -> Result<store::projects::Project, ApiError> {
-    visible
+    let project = visible
         .into_iter()
         .find(|project| project.code == code)
-        .ok_or(ApiError::NotFound)
+        .ok_or(ApiError::NotFound)?;
+    authorize_project(state, authed, project).await
+}
+
+async fn authorize_project(
+    state: &ApiState,
+    authed: &AdminSession,
+    project: store::projects::Project,
+) -> Result<store::projects::Project, ApiError> {
+    let Some(firm_id) = project.firm_id else {
+        return Err(ApiError::NotFound);
+    };
+    let decision = store::firm_capability::resolve(
+        &state.surreal,
+        authed.0.role,
+        authed.0.person_id,
+        firm_id,
+        store::firm_capability::FirmCapability::UseIntegrations,
+    )
+    .await
+    .map_err(|error| ApiError::Db(error.to_string()))?;
+    if decision.is_allowed() {
+        Ok(project)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 async fn visible_for(
@@ -296,7 +329,7 @@ pub(crate) async fn slack_ensure_door(
     Json(request): Json<SlackRequest>,
 ) -> Result<Response, ApiError> {
     let visible = visible_for(&state, &authed).await?;
-    let project = one_target(visible, &request.project_code)?;
+    let project = one_target(&state, &authed, visible, &request.project_code).await?;
     let slack = match state
         .integration_providers
         .slack(&state.surreal, project.id)
@@ -352,7 +385,7 @@ pub(crate) async fn slack_notify_door(
             ))
         })?;
     let visible = visible_for(&state, &authed).await?;
-    let project = one_target(visible, &request.project_code)?;
+    let project = one_target(&state, &authed, visible, &request.project_code).await?;
     let slack = match state
         .integration_providers
         .slack(&state.surreal, project.id)

@@ -470,6 +470,52 @@ async fn integration_doors_authorize_the_target_firm_before_provider_lookup() {
     }
 }
 
+/// The `all` sweep filters by the same capability the single-code door does.
+/// This is the path worth pinning: `admin_a` holds a participation row on the
+/// Firm B matter, so the visibility lens alone would hand them a sweep that
+/// spends Firm B's credentials on Firm B's Project. Only the two selector
+/// doors take `all`; the Slack doors require a code.
+#[tokio::test]
+async fn the_all_sweep_drops_a_visible_project_in_another_firm() {
+    for door in [ALL_DOORS[0], ALL_DOORS[1]] {
+        let fx = build_two_firm_fixture().await;
+        let swept = post(
+            &fx,
+            door,
+            Some(&fx.admin_a),
+            serde_json::json!({ "all": true }),
+        )
+        .await;
+        assert_eq!(swept.status(), StatusCode::OK, "{door}");
+        assert!(
+            outcomes(&json(swept).await).is_empty(),
+            "the sweep reported a Project the caller may not act on: {door}"
+        );
+        assert_eq!(
+            fx.providers.notion_calls(),
+            0,
+            "a dropped Project must not reach the resolver: {door}"
+        );
+
+        let admitted = post(
+            &fx,
+            door,
+            Some(&fx.admin_b),
+            serde_json::json!({ "all": true }),
+        )
+        .await;
+        assert_eq!(admitted.status(), StatusCode::OK, "{door}");
+        assert_eq!(
+            outcomes(&json(admitted).await)
+                .into_iter()
+                .map(|(code, _)| code)
+                .collect::<Vec<_>>(),
+            vec![fx.code.clone()],
+            "the Firm's own Admin still sweeps its matter: {door}"
+        );
+    }
+}
+
 /// Slack ensure records the channel id and invites nobody: the adapter takes
 /// only provider-issued member ids, Navigator stores none, and it will not
 /// turn a participation row into an invite.

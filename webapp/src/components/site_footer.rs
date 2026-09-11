@@ -21,7 +21,7 @@ use dioxus::prelude::*;
 
 /// The platform line every Navigator footer carries, so a white-label
 /// deployment still names the software it runs. Shared with
-/// [`crate::components::AppFooter`] so the wording cannot drift.
+/// [`crate::firm_footer::FirmFooter`] so the wording cannot drift.
 pub const POWERED_BY_NEON_LAW_NAVIGATOR: &str = "Powered by Neon Law Navigator";
 
 use crate::components::{ExternalLink, GitHubStars, Icon, IconName};

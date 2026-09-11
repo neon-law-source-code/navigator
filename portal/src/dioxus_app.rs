@@ -156,8 +156,16 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     // carries the template's `lang="en"`.
     let lang = "en";
     // Captured before `next.run` consumes `req`: the footer below is gated on
-    // the request path, not on anything the render produced.
+    // the request path, not on anything the render produced. The resolved
+    // footer model rides the request extension the portal-wide
+    // `inject_firm_footer_model` layer inserts (outside every route), so it
+    // is here whether or not this specific route also applies its own
+    // per-request layers.
     let path = req.uri().path().to_string();
+    let footer_model = req
+        .extensions()
+        .get::<webapp::firm_footer::FirmFooterModel>()
+        .cloned();
     let response = next.run(req).await;
 
     let is_html = response
@@ -217,13 +225,26 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
         None => html,
     };
 
-    // The minimal `/app` footer — copyright plus the shared platform line.
-    // Gated on the request path rather than on the rendered shell: unlike the
+    // The `/app` footer — copyright naming the resolved Firm's legal entity,
+    // its brands row, and the shared platform line (ENG-589). Gated on the
+    // request path rather than on the rendered shell: unlike the
     // public/authenticated split above, the eight real `/app` pages render
     // their navbar directly rather than through a shared `NavigatorShell`, so
-    // there is no shell marker to key off. See `webapp::components::AppFooter`.
+    // there is no shell marker to key off. See `webapp::firm_footer`.
     let html = if renders_app_footer(&path) {
-        close_with_script(&html, &APP_FOOTER)
+        let model = footer_model.unwrap_or_else(|| {
+            webapp::firm_footer::compiled_firm_footer_model(
+                views::brand::brand_key(),
+                {
+                    use chrono::Datelike;
+                    chrono::Utc::now().year()
+                },
+                views::brand::deployed_release()
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        });
+        close_with_script(&html, &webapp::firm_footer::render_firm_footer(model))
     } else {
         html
     };
@@ -323,15 +344,8 @@ fn close_with_script(html: &str, script: &str) -> String {
 static SAMPLE_MATTERS_BANNER: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(webapp::components::render_sample_matters_banner);
 
-/// The rendered `/app` footer, built once.
-///
-/// `views::brand::FIRM_BRAND` is a process-wide constant, so — like
-/// [`SAMPLE_MATTERS_BANNER`] — there is nothing to re-render per request.
-static APP_FOOTER: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(webapp::components::render_app_footer);
-
 /// Whether the rendered document is an authenticated `/app` page, which is
-/// what [`APP_FOOTER`] renders onto.
+/// what the resolved [`webapp::firm_footer::FirmFooterModel`] renders onto.
 ///
 /// Decided from the request path rather than the rendered shell: unlike
 /// [`is_public_page`], the eight real `/app` pages render `AppNavbar` and
@@ -763,11 +777,20 @@ async fn inject_public_utility(mut req: Request, next: Next) -> Response {
     // white-label bundle (the header logo, wordmark, and footer). Inject the
     // resolved chrome for the server-fn to read back.
     let mut chrome = webapp::public_chrome::firm_public_chrome(utility.clone());
-    if let Some(webapp::public_chrome::ResolvedFooterBrands(brands)) =
-        req.extensions()
-            .get::<webapp::public_chrome::ResolvedFooterBrands>()
+    if let Some(model) = req
+        .extensions()
+        .get::<webapp::firm_footer::FirmFooterModel>()
     {
-        chrome.brands.clone_from(brands);
+        chrome.legal_entity.clone_from(&model.legal_entity);
+        chrome.brands = model
+            .brands
+            .iter()
+            .map(|brand| webapp::public_chrome::ChromeBrand {
+                label: brand.label.clone(),
+                href: brand.href.clone(),
+                current: brand.current,
+            })
+            .collect();
     }
     req.extensions_mut().insert(chrome);
     req.extensions_mut()
@@ -4145,10 +4168,18 @@ mod tests {
         assert!(!renders_app_footer("/app"));
     }
 
-    /// The rendered footer is the one that actually reaches a response.
+    /// The rendered footer is the one that actually reaches a response — the
+    /// compiled fallback `dioxus_document_head` renders when no
+    /// `FirmFooterModel` extension is on the request (every direct unit test,
+    /// matching how `views::brand::brand_key()` itself falls back).
     #[test]
     fn the_rendered_footer_names_the_firm_of_record() {
-        let footer = &*APP_FOOTER;
+        let model = webapp::firm_footer::compiled_firm_footer_model(
+            views::brand::BrandKey::default(),
+            2026,
+            String::new(),
+        );
+        let footer = webapp::firm_footer::render_firm_footer(model);
         assert!(footer.contains("Shook Law PLLC"), "{footer}");
         assert!(footer.contains('©'), "{footer}");
     }

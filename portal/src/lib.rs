@@ -1931,7 +1931,7 @@ pub fn bootstrap(
         .layer(tower_cookies::CookieManagerLayer::new())
         .layer(axum::middleware::from_fn_with_state(
             footer_store,
-            inject_firm_footer_brands,
+            inject_firm_footer_model,
         ))
         .layer(axum::middleware::from_fn_with_state(
             branding,
@@ -2336,10 +2336,12 @@ fn mount_brand_assets(
     router
 }
 
-/// Fill the public footer's brands row from `firm_brand` for the firm that
-/// wears this request's brand. Runs inside `host_layer` so the resolved
-/// [`views::brand::BrandKey`] is already on the request.
-async fn inject_firm_footer_brands(
+/// Resolve the [`webapp::firm_footer::FirmFooterModel`] for the Firm that
+/// wears this request's brand — the legal entity name and the brand list
+/// every footer (`/app`'s and the public chrome's) draws from. Runs inside
+/// `host_layer` so the resolved [`views::brand::BrandKey`] is already on the
+/// request.
+async fn inject_firm_footer_model(
     State(surreal): State<store::surreal::SurrealDb>,
     mut request: Request<axum::body::Body>,
     next: Next,
@@ -2349,10 +2351,19 @@ async fn inject_firm_footer_brands(
         .get::<views::brand::BrandKey>()
         .copied()
         .unwrap_or_default();
-    let brands = webapp::public_chrome::footer_brands_from_store(&surreal, current).await;
-    request
-        .extensions_mut()
-        .insert(webapp::public_chrome::ResolvedFooterBrands(brands));
+    let model = webapp::firm_footer::resolve_firm_footer_model(
+        &surreal,
+        current,
+        {
+            use chrono::Datelike;
+            chrono::Utc::now().year()
+        },
+        views::brand::deployed_release()
+            .unwrap_or_default()
+            .to_string(),
+    )
+    .await;
+    request.extensions_mut().insert(model);
     next.run(request).await
 }
 

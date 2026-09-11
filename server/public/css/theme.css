@@ -202,10 +202,11 @@ textarea {
   gap: 0.75rem;
 }
 
-/* The minimal footer every `/app` page carries — copyright plus the
-   shared platform line, no navigation. Distinct from `.navigator-footer`,
-   which lays out a legal attribution, a link row, and a release stamp
-   for the not yet widely adopted `NavigatorShell`. */
+/* The footer every `/app` page carries — copyright naming the resolved
+   Firm's legal entity, that Firm's brands row, then the shared platform
+   line, no navigation. Distinct from `.navigator-footer`, which lays out a
+   legal attribution, a link row, and a release stamp for the not yet
+   widely adopted `NavigatorShell`. */
 .app-footer {
   padding: 1.5rem 1rem;
   text-align: center;
@@ -216,6 +217,33 @@ textarea {
 
 .app-footer__copyright {
   margin: 0;
+}
+
+.app-footer__brands {
+  margin: 0.5rem 0 0;
+}
+
+.app-footer__brands-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-footer__brands-item {
+  margin: 0;
+}
+
+.app-footer__brands-link,
+.app-footer__brands-current {
+  font-size: 0.875rem;
+}
+
+.app-footer__brands-current {
+  font-weight: 600;
 }
 
 .app-footer__platform {

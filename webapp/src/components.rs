@@ -27,7 +27,6 @@
 //! deadline.
 
 pub mod accordion;
-pub mod app_footer;
 pub mod app_navbar;
 pub mod avatar;
 pub mod bill_mark;
@@ -65,9 +64,6 @@ pub mod testimonial;
 pub mod toast;
 
 pub use accordion::Accordion;
-#[cfg(feature = "server")]
-pub use app_footer::render_app_footer;
-pub use app_footer::AppFooter;
 pub use app_navbar::{AppLogo, AppNavLink, AppNavbar, AppProfileMenu};
 pub use avatar::{initials, Avatar};
 pub(crate) use bill_mark::BillMarkGlyph;

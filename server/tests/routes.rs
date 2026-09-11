@@ -1746,6 +1746,41 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
     );
 }
 
+/// ENG-589: the `/app` footer and the public footer both name the seeded
+/// practice's Entity and list its three brands, current first — resolved
+/// live from `store::firms`/`store::brands`, not the compiled
+/// `FIRM_BRAND` constant every deployment used to render regardless of which
+/// Firm actually owns the request's brand.
+#[tokio::test]
+async fn the_app_and_public_footers_name_the_seeded_firm_and_its_brands() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let team = get_with_role(app.clone(), "/app/team", store::persons::Role::Lawyer).await;
+    assert_eq!(team.status(), StatusCode::OK);
+    let team_html = body_string(team).await;
+    assert!(
+        team_html.contains(r#"class="app-footer__copyright""#),
+        "{team_html}"
+    );
+    assert!(team_html.contains("Shook Law PLLC"), "{team_html}");
+    assert!(
+        team_html.contains(r#"class="app-footer__brands""#),
+        "the seeded practice wears three brands, so the row renders: {team_html}"
+    );
+
+    let home = app
+        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(home.status(), StatusCode::OK);
+    let home_html = body_string(home).await;
+    assert!(home_html.contains("Shook Law PLLC"), "{home_html}");
+}
+
 /// ENG-493: `/app/brands` narrowed to Owner only. A hidden link is not an
 /// authorization boundary, so this proves the route itself refuses a Lawyer
 /// — the same shape `owner_lists_the_seeded_practice_and_its_brands` proves

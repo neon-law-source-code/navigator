@@ -64,6 +64,7 @@ pub mod error_pages;
 pub mod expunge_document;
 pub mod expunge_requests;
 pub mod firm_edit;
+pub mod firm_footer;
 pub mod firm_new;
 pub mod firm_show;
 pub mod gov_forms;

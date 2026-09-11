@@ -718,6 +718,12 @@ carrying that key, not the closed `CLOSED_BRAND_KEYS` array directly. A Firm may
 names, not only the three compiled ones. `store::firms::CLOSED_BRAND_KEYS` names `neon`, `delete-your-data`, and
 `lawyer-shook`; `store::seed` migrates them into `brand` rows on first boot so validation has a catalog from the start.
 
+Every footer names the Firm actually wearing the request's resolved brand, not a compiled constant (ENG-589):
+`webapp::firm_footer::resolve_firm_footer_model` reads the Firm's Entity for the legal name and `firm_brand` for the
+brands row, current first, falling back to the compiled `Branding` only when no Firm wears the key. The `/app` footer
+(`webapp::firm_footer::FirmFooter`) and the public chrome's footer draw from this one resolved model rather than
+duplicating the lookup or rendering a second Firm's brands.
+
 - Schema: [`firm_brand` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
 

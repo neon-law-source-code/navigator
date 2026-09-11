@@ -597,6 +597,12 @@ mod tests {
         assert!(rendered.contains(
             "OTEL_EXPORTER_OTLP_ENDPOINT: \"http://otel-collector.example-a.svc.cluster.local:4317\""
         ));
+        assert!(rendered.contains("name: DASH0_ENDPOINT"));
+        assert!(rendered.contains("value: YOUR_DASH0_ENDPOINT"));
+        assert!(rendered.contains("name: DASH0_DATASET"));
+        assert!(rendered.contains("value: YOUR_DASH0_DATASET"));
+        assert!(rendered.contains("name: DASH0_TOKEN"));
+        assert!(rendered.contains("key: DASH0_TOKEN"));
     }
 
     #[test]

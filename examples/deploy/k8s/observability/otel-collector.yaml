@@ -3,8 +3,9 @@
 # Binaries set OTEL_EXPORTER_OTLP_ENDPOINT to this Service and emit OTLP traces,
 # metrics, AND logs (see telemetry/src/lib.rs — logs now export over OTLP too,
 # while still dual-emitting to stdout). The Collector fans out to Google Cloud
-# (Cloud Trace + Cloud Monitoring + Cloud Logging). Swapping backends is a
-# config change here, never a Rust change.
+# (Cloud Trace + Cloud Monitoring + Cloud Logging) and, when the operator
+# supplies the three DASH0_* values, to Dash0. Swapping backends is a config
+# change here, never a Rust change.
 #
 # Logs DUAL-PATH: each binary keeps writing structured JSON to stdout (Cloud
 # Logging already collects that), AND ships logs over OTLP through this
@@ -240,20 +241,29 @@ data:
         project: YOUR_PROJECT_ID
         log:
           default_log_name: navigator-otel
+      # OTLP/gRPC is inferred from the repository's process exporter and the
+      # receiver contract above; Dash0's exact endpoint/header contract must
+      # be confirmed by the operator before rollout. The endpoint, dataset,
+      # and Bearer token are collector-only coordinates.
+      otlp/dash0:
+        endpoint: ${env:DASH0_ENDPOINT}
+        headers:
+          Authorization: "Bearer ${env:DASH0_TOKEN}"
+          X-Dash0-Dataset: "${env:DASH0_DATASET}"
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, resourcedetection, redaction, tail_sampling, batch]
-          exporters: [googlecloud]
+          exporters: [googlecloud, otlp/dash0]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, resourcedetection, redaction, batch]
-          exporters: [googlecloud]
+          exporters: [googlecloud, otlp/dash0]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, resourcedetection, redaction, batch]
-          exporters: [googlecloud]
+          exporters: [googlecloud, otlp/dash0]
       # Expose the collector's OWN metrics (otelcol_exporter_send_failed_*,
       # otelcol_processor_dropped_*, …) on :8888 so Google Managed Prometheus
       # can scrape them — the "telemetry is silently being lost" signal that
@@ -289,6 +299,20 @@ spec:
           # resourcedetection, and tail_sampling processors.
           image: otel/opentelemetry-collector-contrib:0.116.1
           args: ["--config=/etc/otel/config.yaml"]
+          env:
+            # Operator-supplied non-secret Dash0 coordinates. Keep the
+            # placeholders until the selected account, region, and dataset
+            # are decided; the collector resolves them from its environment.
+            - name: DASH0_ENDPOINT
+              value: YOUR_DASH0_ENDPOINT
+            - name: DASH0_DATASET
+              value: YOUR_DASH0_DATASET
+            - name: DASH0_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: navigator-web-secrets
+                  key: DASH0_TOKEN
+                  optional: false
           ports:
             - containerPort: 4317
               name: otlp-grpc

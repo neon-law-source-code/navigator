@@ -5,19 +5,24 @@
 //! flushes any pending OpenTelemetry export. Every `main` calls it with its
 //! service name; nothing else hand-rolls a subscriber.
 //!
-//! Two modes, chosen by whether `OTEL_EXPORTER_OTLP_ENDPOINT` is set:
+//! Three export decisions, chosen by `OTEL_EXPORTER_OTLP_ENDPOINT` and the
+//! OpenObserve variables:
 //!
 //! - **Unset (dev / CI / OSS fork)** — a human-readable `fmt` layer to stdout
 //!   and nothing else. Zero OTel cost, no network.
+//! - **Set with no OpenObserve variables** — stdout switches to structured JSON
+//!   and the process exports all three signals over plain OTLP/gRPC to a
+//!   collector. The collector owns backend credentials and fan-out.
 //! - **Set with the complete OpenObserve contract** — stdout switches to
 //!   **structured JSON** and the process exports **traces, metrics, and logs**
 //!   directly over OTLP/gRPC to OpenObserve. `OTEL_EXPORTER_OTLP_ENDPOINT`
 //!   selects the endpoint; `NAVIGATOR_OPENOBSERVE_USERNAME`,
 //!   `NAVIGATOR_OPENOBSERVE_PASSWORD`, `NAVIGATOR_OPENOBSERVE_ORGANIZATION`,
 //!   and `NAVIGATOR_OPENOBSERVE_STREAM` authenticate and route every signal.
-//!   A partial contract falls back safely to stdout instead of attempting an
-//!   unauthenticated export. The stdout JSON layer stays on in this mode too,
-//!   so an export outage never means a lost local log line.
+//!   A partial OpenObserve contract falls back safely to stdout instead of
+//!   attempting an unauthenticated export. The stdout JSON layer stays on in
+//!   both exporting modes, so an export outage never means a lost local log
+//!   line.
 //!
 //! **The one rule for anyone adding a span, metric, or log field (legal- and
 //! engineering-council standing order): identifiers and counts, never
@@ -311,6 +316,30 @@ struct OpenObserveExportConfig {
     stream: String,
 }
 
+/// The process-side OTLP contract. A plain collector deliberately carries no
+/// metadata; direct OpenObserve is the only backend-specific branch here.
+#[derive(Debug, Eq, PartialEq)]
+enum OtlpExportConfig {
+    Collector { endpoint: String },
+    OpenObserve(OpenObserveExportConfig),
+}
+
+impl OtlpExportConfig {
+    fn endpoint(&self) -> &str {
+        match self {
+            Self::Collector { endpoint } => endpoint,
+            Self::OpenObserve(config) => &config.endpoint,
+        }
+    }
+
+    fn metadata(&self) -> opentelemetry_otlp::tonic_types::metadata::MetadataMap {
+        match self {
+            Self::Collector { .. } => opentelemetry_otlp::tonic_types::metadata::MetadataMap::new(),
+            Self::OpenObserve(config) => config.metadata(),
+        }
+    }
+}
+
 impl OpenObserveExportConfig {
     fn metadata(&self) -> opentelemetry_otlp::tonic_types::metadata::MetadataMap {
         let mut metadata = opentelemetry_otlp::tonic_types::metadata::MetadataMap::new();
@@ -352,9 +381,10 @@ fn required_config_value(name: &str, raw: Option<String>, missing: &mut Vec<Stri
         })
 }
 
-/// Build the direct OpenObserve export contract. An unset endpoint preserves
-/// stdout-only development. Once an endpoint is set, every credential and
-/// routing value is mandatory: partial configuration must never cause an
+/// Build the process-side OTLP contract. An unset endpoint preserves stdout-
+/// only development. An endpoint with no OpenObserve values is a plain
+/// collector contract. Once any OpenObserve value is set, all four credential
+/// and routing values are mandatory: partial configuration must never cause an
 /// unauthenticated export attempt.
 fn openobserve_export_config(
     endpoint: Option<String>,
@@ -362,10 +392,18 @@ fn openobserve_export_config(
     password: Option<String>,
     organization: Option<String>,
     stream: Option<String>,
-) -> Result<Option<OpenObserveExportConfig>, String> {
+) -> Result<Option<OtlpExportConfig>, String> {
     let Some(endpoint) = normalize_endpoint(endpoint) else {
         return Ok(None);
     };
+
+    let configured = [&username, &password, &organization, &stream]
+        .into_iter()
+        .filter(|value| value.as_ref().is_some_and(|value| !value.trim().is_empty()))
+        .count();
+    if configured == 0 {
+        return Ok(Some(OtlpExportConfig::Collector { endpoint }));
+    }
 
     let mut missing = Vec::new();
     let username = required_config_value("NAVIGATOR_OPENOBSERVE_USERNAME", username, &mut missing);
@@ -388,12 +426,14 @@ fn openobserve_export_config(
         "Basic {}",
         base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"))
     );
-    Ok(Some(OpenObserveExportConfig {
-        endpoint,
-        authorization,
-        organization,
-        stream,
-    }))
+    Ok(Some(OtlpExportConfig::OpenObserve(
+        OpenObserveExportConfig {
+            endpoint,
+            authorization,
+            organization,
+            stream,
+        },
+    )))
 }
 
 /// Build the trace / metric / log OTLP providers for `endpoint`, all sharing a
@@ -402,7 +442,7 @@ fn openobserve_export_config(
 /// connection — tonic connects lazily on first export — so this is safe to call
 /// offline (and the unit tests do exactly that).
 fn build_export_providers(
-    config: &OpenObserveExportConfig,
+    config: &OtlpExportConfig,
     service_name: &str,
     release: Option<&str>,
 ) -> ExportProviders {
@@ -420,7 +460,7 @@ fn build_export_providers(
     // Traces — one batch span exporter.
     let span_exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
-        .with_endpoint(&config.endpoint)
+        .with_endpoint(config.endpoint())
         .with_metadata(config.metadata())
         .build()
         .expect("build OTLP span exporter");
@@ -432,7 +472,7 @@ fn build_export_providers(
     // Metrics — periodic OTLP push.
     let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
-        .with_endpoint(&config.endpoint)
+        .with_endpoint(config.endpoint())
         .with_metadata(config.metadata())
         .build()
         .expect("build OTLP metric exporter");
@@ -446,7 +486,7 @@ fn build_export_providers(
     // resource binds all three signals to one `service.name`.
     let log_exporter = opentelemetry_otlp::LogExporter::builder()
         .with_tonic()
-        .with_endpoint(&config.endpoint)
+        .with_endpoint(config.endpoint())
         .with_metadata(config.metadata())
         .build()
         .expect("build OTLP log exporter");
@@ -776,7 +816,7 @@ pub fn set_span_parent(span: &tracing::Span, traceparent: Option<&str>, tracesta
 mod tests {
     use super::{
         build_export_providers, current_trace_context_headers, normalize_endpoint,
-        openobserve_export_config, parent_context_from, trace_context_headers,
+        openobserve_export_config, parent_context_from, trace_context_headers, OtlpExportConfig,
         SanitizingSubscriber,
     };
 
@@ -800,6 +840,9 @@ mod tests {
         .expect("complete OpenObserve configuration is valid")
         .expect("an endpoint enables export");
 
+        let OtlpExportConfig::OpenObserve(config) = config else {
+            panic!("complete OpenObserve configuration must use the direct contract");
+        };
         assert_eq!(config.endpoint, "http://openobserve:5081");
         assert_eq!(config.organization, "navigator");
         assert_eq!(config.stream, "default");
@@ -807,6 +850,44 @@ mod tests {
             config.authorization,
             "Basic cm9vdEBleGFtcGxlLmNvbTpzZWNyZXQ="
         );
+        let metadata = config.metadata();
+        assert_eq!(
+            metadata
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Basic cm9vdEBleGFtcGxlLmNvbTpzZWNyZXQ=")
+        );
+        assert_eq!(
+            metadata
+                .get("organization")
+                .and_then(|value| value.to_str().ok()),
+            Some("navigator")
+        );
+        assert_eq!(
+            metadata
+                .get("stream-name")
+                .and_then(|value| value.to_str().ok()),
+            Some("default")
+        );
+    }
+
+    #[test]
+    fn openobserve_config_uses_plain_collector_when_no_openobserve_values_are_set() {
+        let config = openobserve_export_config(
+            Some("http://otel-collector:4317".to_string()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("a plain collector endpoint is valid")
+        .expect("an endpoint enables export");
+
+        assert!(matches!(
+            &config,
+            OtlpExportConfig::Collector { endpoint } if endpoint == "http://otel-collector:4317"
+        ));
+        assert!(config.metadata().is_empty());
     }
 
     #[test]

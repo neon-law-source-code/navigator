@@ -98,6 +98,7 @@ pub fn render_firm_footer(model: FirmFooterModel) -> String {
 /// one-entry brands row. What a fresh deployment (no `firm` rows yet) or a
 /// brand key no Firm wears renders — unchanged from the footer every
 /// deployment has always shown.
+#[cfg(feature = "server")]
 #[must_use]
 pub fn compiled_firm_footer_model(
     current: views::brand::BrandKey,

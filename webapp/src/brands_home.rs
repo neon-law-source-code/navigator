@@ -50,6 +50,7 @@ pub struct BrandsHomeView {
     pub cards: Vec<BrandCard>,
 }
 
+#[cfg(feature = "server")]
 fn font_label(brand: &store::brands::Brand) -> String {
     if brand.typeface.as_deref() == Some("uploaded") {
         brand

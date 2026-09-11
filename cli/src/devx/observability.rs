@@ -605,6 +605,41 @@ mod tests {
         assert!(rendered.contains("key: DASH0_TOKEN"));
     }
 
+    /// Every `secretKeyRef` the bundled manifests carry is `optional: true`.
+    ///
+    /// [`docs/cronjobs.md`] states the rule for `navigator-web-secrets`: a key
+    /// a deployment has not adopted must never stop a pod from starting. It
+    /// binds hardest here, because this Deployment is the only path to Cloud
+    /// Trace, Cloud Monitoring, and Cloud Logging — a mandatory reference to
+    /// one optional backend's token would trade all telemetry for it the
+    /// moment `devx observability apply` ran.
+    #[test]
+    fn every_bundled_secret_reference_is_optional() {
+        for (name, manifest) in [
+            ("otel-collector.yaml", OTEL_COLLECTOR_YAML),
+            ("collector-monitoring.yaml", COLLECTOR_MONITORING_YAML),
+        ] {
+            assert!(
+                !manifest.contains("optional: false"),
+                "{name} makes a secret reference mandatory"
+            );
+            let lines: Vec<&str> = manifest.lines().collect();
+            for (index, _) in lines
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| line.trim() == "secretKeyRef:")
+            {
+                assert!(
+                    lines[index..]
+                        .iter()
+                        .take(4)
+                        .any(|line| line.trim() == "optional: true"),
+                    "{name} has a secretKeyRef that never declares `optional: true`"
+                );
+            }
+        }
+    }
+
     #[test]
     fn render_substitutes_namespace_in_self_monitoring_manifest() {
         let rendered = render_manifest(COLLECTOR_MONITORING_YAML, "my-org-prod", "example-b");

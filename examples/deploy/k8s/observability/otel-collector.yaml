@@ -307,12 +307,19 @@ spec:
               value: YOUR_DASH0_ENDPOINT
             - name: DASH0_DATASET
               value: YOUR_DASH0_DATASET
+            # `optional: true` is the repository-wide rule for every
+            # `secretKeyRef` against `navigator-web-secrets` (see
+            # docs/cronjobs.md): a missing key must never block a pod from
+            # starting. It matters most here — this Deployment is the only
+            # path to Cloud Trace, Cloud Monitoring, and Cloud Logging, so a
+            # deployment that has not adopted Dash0 would otherwise lose all
+            # telemetry the moment `devx observability apply` ran.
             - name: DASH0_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: navigator-web-secrets
                   key: DASH0_TOKEN
-                  optional: false
+                  optional: true
           ports:
             - containerPort: 4317
               name: otlp-grpc

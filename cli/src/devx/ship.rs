@@ -5255,8 +5255,10 @@ spec:
     /// Every key the `SecretProviderClass` lists for Secret Manager.
     ///
     /// Stated as a closed set rather than a floor, so adding or removing a
-    /// Secret Manager object stays a visible edit.
+    /// Secret Manager object stays a visible edit. Sorted, so that edit lands
+    /// where a reader looks for it rather than wherever the last one stopped.
     const SECRET_MANAGER_CONTRACT: &[&str] = &[
+        "DASH0_TOKEN",
         "DOCUSIGN_ACCOUNT_ID",
         "DOCUSIGN_BASE_URL",
         "DOCUSIGN_HMAC_KEY",
@@ -5266,7 +5268,6 @@ spec:
         "DOCUSIGN_SIGNER_EMAIL",
         "DOCUSIGN_USER_ID",
         "DOCUSIGN_WEBHOOK_SECRET",
-        "DASH0_TOKEN",
         "NAVIGATOR_CREDENTIAL_ENVIRONMENT",
         "NAVIGATOR_ENVIRONMENT",
         "NAVIGATOR_FORGE_BACKEND",
@@ -5314,6 +5315,24 @@ spec:
              created in Secret Manager and handed to `web` through its Kubernetes Secret, so reconcile \
              examples/deploy/k8s/gke/secrets/secret-provider-class.yaml and SECRET_MANAGER_CONTRACT \
              together.",
+        );
+    }
+
+    /// The contract stays sorted.
+    ///
+    /// The equality above compares `BTreeSet`s, so it reports a missing or
+    /// extra key and says nothing about where a new one was written. Without
+    /// this, a key appended next to an unrelated neighbour reads as noise in
+    /// every later diff of a list whose whole purpose is to make an edit
+    /// visible.
+    #[test]
+    fn the_secret_manager_contract_is_sorted() {
+        let mut sorted = SECRET_MANAGER_CONTRACT.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(
+            SECRET_MANAGER_CONTRACT,
+            &sorted[..],
+            "SECRET_MANAGER_CONTRACT is out of order; insert the key where it belongs",
         );
     }
 

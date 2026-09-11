@@ -85,7 +85,7 @@ fn pricing_card(card: &PricingCard) -> Element {
                             src: badge.image_src.clone(),
                             class: "pricing-card__day-rate-mark".to_string(),
                         }
-                        span { class: "pricing-card__day-rate-label", "just ${badge.amount} a day" }
+                        span { class: "pricing-card__day-rate-label", "about ${badge.amount} a day" }
                     }
                 }
                 p { class: "nav-text-muted", "{card.blurb}" }
@@ -205,7 +205,7 @@ mod tests {
         let html = ssr(app);
         assert!(html.contains("pricing-card__day-rate"), "{html}");
         assert!(html.contains("ten-dollar-bill.jpg"), "{html}");
-        assert!(html.contains("just $10 a day"), "{html}");
+        assert!(html.contains("about $10 a day"), "{html}");
     }
 
     #[test]

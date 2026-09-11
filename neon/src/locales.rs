@@ -565,6 +565,23 @@ mod tests {
     #[test]
     fn fractional_gc_publishes_its_ten_dollar_day_rate() {
         let content = fractional_gc(&views::brand::DEFAULT_BRANDING);
+        let offer = content.pricing.first().expect("the Business plan offer");
+        assert_eq!(offer.price, "$3,650");
+        assert_eq!(offer.cadence.as_deref(), Some("/year"));
+        for benefit in [
+            "company records",
+            "hiring employees and contractors",
+            "within three business days",
+            "who owns your company",
+            "business information private",
+            "business taxes and state paperwork",
+        ] {
+            assert!(
+                offer.features.iter().any(|feature| feature.contains(benefit)),
+                "the Business plan names {benefit:?}: {:?}",
+                offer.features
+            );
+        }
         let badge = content
             .pricing
             .first()

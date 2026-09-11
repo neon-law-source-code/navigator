@@ -1,54 +1,49 @@
-head_title: "{site_name} | Fractional General Counsel"
+head_title: "{site_name} | Business plan"
 meta_description: >-
-  Company counsel on one flat annual fee, just $10 a day, covering our library
-  of standard company documents — with flat per-document pricing for the paper
-  you bring us.
-eyebrow: Fractional General Counsel
+  Ongoing legal help for your business, including contracts, hiring, company
+  records, and paperwork, for $3,650 per year.
+eyebrow: Business plan
 heading:
-  text: Accurate. Efficient. Speedy.
+  text: A lawyer for your business.
   accent_words: 1
 lead: >-
-  One simple flat annual fee for just $10 a day that includes all your company
-  basics with predictable flat fees for the rest.
-cta_label: Contact us
+  Get help with contracts, hiring, and the paperwork that comes with running a
+  business.
+cta_label: Ask about joining
 virtues:
-  - word: Accurate
+  - word: Clear
     body: >-
-      A licensed attorney reads and signs off on every document. The cap table
-      reconciles to the signed instruments, and the agreements say what the deal
-      actually is.
-  - word: Efficient
+      We explain what is included, what costs extra, and what we need from you
+      before work begins.
+  - word: Practical
     body: >-
-      We answer all questions within three business days and often much faster.
-  - word: Speedy
+      Get help with the records, forms, contracts, and recurring paperwork that
+      keep your business moving.
+  - word: Responsive
     body: >-
-      Turnarounds are published rather than negotiated deal by deal: a document
-      from our library goes out the same business day, and a redline of your own
-      paper comes back in one business day.
-fee_heading: One flat annual fee
+      A lawyer answers your questions within three business days. Tell us when
+      something is urgent so we can discuss the right next step.
+fee_heading: One annual price
 fee_body: >-
-  The flat fee covers our library of standard company documents — employee and
-  contractor agreements, NDAs, and the corporate housekeeping that keeps them
-  current. Paper you bring us is priced per document: $100 to redline a Word
-  document of up to 100 pages, or up to 2,500 lines of the same document as
-  Navigator-formatted Markdown.
+  The Business plan is $3,650 per year. That is about $10 a day. Work outside
+  the plan, custom contract reviews, and government fees cost extra. We will
+  explain the cost before we begin additional work.
 pricing:
-  - title: Base package
+  - title: Business plan
     price: "$3,650"
     cadence: /year
     blurb: >-
-      That's just $10 a day for our standard document library, covered by one
-      flat annual fee.
+      About $10 a day for ongoing help with the legal side of your business.
     features:
-      - Cap table management
-      - Standard employee and contractor agreements
-      - NDAs and standard commercial forms
-      - Basic taxes and state filings
-      - Corporate housekeeping
-      - Counsel on call, answered within three business days
-      - Redline of a document you bring us at $100, up to 100 pages
+      - Help keeping your company records up to date
+      - Forms for hiring employees and contractors
+      - Answers from a lawyer within three business days
+      - Help keeping track of who owns your company
+      - Forms for keeping business information private and working with customers
+      - Help with business taxes and state paperwork
+      - Custom contract reviews cost extra, from $100 to $500 depending on the contract
       - DocuSign sent & tracked for you at $5 per contract
     day_rate_bill: 10
-closing_heading: Ready to build and sell?
-closing_body: Invite us to be your Fractional GC.
+closing_heading: Ready for ongoing legal help?
+closing_body: Ask us whether the Business plan fits your company.
 closing_email: "{firm_email}"

@@ -245,8 +245,12 @@ fn the_export_contract_matches_what_the_records_emit() {
 fn dash0_is_an_additive_exporter_after_redaction_for_every_signal() {
     let root = workspace_root();
     let collector = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    // Dash0 routes on the `Dash0-Dataset` header exactly as spelled here. An
+    // unrecognized routing header is ignored rather than rejected, so a typo
+    // (or an `X-` prefix RFC 6648 retired) exports successfully into the
+    // wrong dataset — a failure no exporter metric reports.
     assert!(collector.contains(
-        "otlp/dash0:\n        endpoint: ${env:DASH0_ENDPOINT}\n        headers:\n          Authorization: \"Bearer ${env:DASH0_TOKEN}\"\n          X-Dash0-Dataset: \"${env:DASH0_DATASET}\""
+        "otlp/dash0:\n        endpoint: ${env:DASH0_ENDPOINT}\n        headers:\n          Authorization: \"Bearer ${env:DASH0_TOKEN}\"\n          Dash0-Dataset: \"${env:DASH0_DATASET}\""
     ));
 
     for signal in ["traces", "metrics", "logs"] {

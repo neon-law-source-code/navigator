@@ -241,15 +241,18 @@ data:
         project: YOUR_PROJECT_ID
         log:
           default_log_name: navigator-otel
-      # OTLP/gRPC is inferred from the repository's process exporter and the
-      # receiver contract above; Dash0's exact endpoint/header contract must
-      # be confirmed by the operator before rollout. The endpoint, dataset,
-      # and Bearer token are collector-only coordinates.
+      # OTLP/gRPC over the two headers Dash0 documents for its collector
+      # integration: a bearer token authenticates, and `Dash0-Dataset` routes.
+      # The header name carries no `X-` prefix (RFC 6648, and Dash0's own
+      # integration docs) — a misspelled routing header is not rejected, it is
+      # ignored, and every signal silently lands in the `default` dataset. The
+      # endpoint, dataset, and token are collector-only coordinates; no binary
+      # ever holds them.
       otlp/dash0:
         endpoint: ${env:DASH0_ENDPOINT}
         headers:
           Authorization: "Bearer ${env:DASH0_TOKEN}"
-          X-Dash0-Dataset: "${env:DASH0_DATASET}"
+          Dash0-Dataset: "${env:DASH0_DATASET}"
     service:
       pipelines:
         traces:

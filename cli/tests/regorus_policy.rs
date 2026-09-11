@@ -213,7 +213,7 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // 427 + 1 = 428.
     //
     // + 8 for `/app/profile`, the self-service profile page: every
-    //   authenticated tier admitted at the page and at its `/app/profile/avatar`
+    //   authenticated tier admitted at the page and at its `/app/avatar`
     //   upload twin (six page cases: five tiers plus anonymous denied; two
     //   upload cases: a client admitted, anonymous denied — the person id
     //   comes from the session, never the URL, so this is a flat authenticated

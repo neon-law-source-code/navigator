@@ -230,14 +230,21 @@ allow if {
 }
 
 # `/app/profile` is the self-service profile page: every authenticated tier
-# updates their own avatar there and sees (but cannot edit) their email. Same
-# reasoning as `/app/me/avatar` just above — the handler resolves the person
-# from the signed session, never from the URL — so this is a flat
-# authenticated rule rather than a tier-scoped one, and `/app/profile/avatar`
-# (the upload POST) is admitted as the same prefix.
+# sees (but cannot edit) their email here. The handler resolves the person
+# from the signed session, never from the URL, so this is a flat
+# authenticated rule rather than a tier-scoped one. Exact match: a nested
+# child is not this page.
 allow if {
-    input.path[0] == "app"
-    input.path[1] == "profile"
+    input.path == ["app", "profile"]
+    is_authenticated(input.session)
+}
+
+# The self-service avatar upload is a sibling of `/app/profile`, not a nested
+# child, so a native form on that page posts here rather than replacing the
+# last path segment onto a route that does not exist. Same session-resolved
+# person id as `/app/me/avatar` above.
+allow if {
+    input.path == ["app", "avatar"]
     is_authenticated(input.session)
 }
 

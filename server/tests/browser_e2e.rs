@@ -1817,6 +1817,15 @@ async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
         .send_keys(path.to_str().expect("avatar path is valid UTF-8"))
         .await
         .expect("select the synthetic avatar");
+    let form = c
+        .find(Locator::Css("#profile-avatar form"))
+        .await
+        .expect("the profile page renders the avatar upload form");
+    assert_eq!(
+        form.attr("action").await.unwrap().as_deref(),
+        Some("/app/avatar"),
+        "the live form must post to the sibling /app/avatar route the browser actually hits"
+    );
     scroll_and_js_click(c, "#profile-avatar form button[type='submit']").await;
     wait_for_path(c, "/app/profile", Duration::from_secs(20)).await;
 

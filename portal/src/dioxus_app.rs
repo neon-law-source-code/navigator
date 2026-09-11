@@ -3451,10 +3451,10 @@ pub const APP_PROFILE_PATH: &str = "/app/profile";
 
 /// `/app/profile` — the self-service profile page. No tier gate at all: every
 /// authenticated role, Client included, reaches it and updates their own
-/// avatar there. `inject_person_id` and `inject_csrf_token` carry the two
-/// values the page's `#[server]` loader needs that `webapp` cannot resolve
-/// itself: the caller's own linked person id, and the CSRF token the avatar
-/// upload form embeds.
+/// avatar there via `POST /app/avatar`. `inject_person_id` and
+/// `inject_csrf_token` carry the two values the page's `#[server]` loader
+/// needs that `webapp` cannot resolve itself: the caller's own linked
+/// person id, and the CSRF token the avatar upload form embeds.
 pub fn app_profile_router(
     sessions: crate::session::SessionStore,
     policy: crate::policy::PolicyClient,

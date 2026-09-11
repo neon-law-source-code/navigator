@@ -204,11 +204,13 @@ pub fn routes(
         )
         .route("/app/me/avatar", get(current_viewer_avatar))
         .route(
-            "/app/profile/avatar",
+            "/app/avatar",
             // The self-service twin of `/app/admin/people/{id}/avatar` above:
             // every authenticated tier reaches this, but the target is always
             // the caller's own row, resolved from the session — never a
-            // person id supplied by the request. Same body-limit reasoning.
+            // person id supplied by the request. Sibling of `/app/profile`
+            // (not nested under it) so the native form action and the
+            // browser's relative resolution agree. Same body-limit reasoning.
             post(profile_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
         .route(
@@ -1046,9 +1048,9 @@ fn initials_avatar_response(name: &str) -> Response {
         .into_response()
 }
 
-/// `POST /app/profile/avatar` — the native multipart form behind the
-/// self-service `/app/profile` page's avatar upload card. Every authenticated
-/// tier reaches this handler (no `admin_gate`): the target is always the
+/// `POST /app/avatar` — the native multipart form behind the self-service
+/// `/app/profile` page's avatar upload card. Every authenticated tier
+/// reaches this handler (no `admin_gate`): the target is always the
 /// caller's own row, resolved from the signed session exactly like
 /// [`current_viewer_avatar`], never a person id supplied in the request —
 /// so, unlike [`admin_person_avatar_upload`], this cannot become a write to

@@ -136,7 +136,7 @@ fn admin_registration_sample() -> Vec<String> {
         "/app/admin/people/x/avatar",
         "/app/admin/people/x/welcome",
         "/app/admin/people/x/delete",
-        "/app/profile/avatar",
+        "/app/avatar",
         "/app/people/x/avatar",
         "/app/team/fonts/gorp-serif.zip",
         "/app/notations/x/documents/x",

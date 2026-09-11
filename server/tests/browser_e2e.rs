@@ -1811,7 +1811,9 @@ async fn fetch_bytes(c: &Client, url: &str) -> Vec<u8> {
         .as_array()
         .expect("fetch resolves a byte array")
         .iter()
-        .map(|n| n.as_u64().expect("byte") as u8)
+        .map(|n| {
+            u8::try_from(n.as_u64().expect("byte")).expect("a Uint8Array element fits in a byte")
+        })
         .collect()
 }
 

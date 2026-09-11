@@ -1663,11 +1663,12 @@ fn describe_arguments(arguments: &Value, people: &HashMap<String, String>) -> St
 /// Audit is telemetry with an explicit `audit = true` marker: these records
 /// form the authorization trail for each proposal and its terminal decision.
 /// They retain only bounded context — opaque actor ids, global roles, tool,
-/// decision, and correlation ids — never proposed arguments, their keys, a
-/// digest, or a count. The telemetry export and long-lived archive have their
-/// own value-scrubbing boundary; this event therefore does not claim an
-/// Iceberg row exists at emission time. The in-memory pending store is only
-/// the live, best-effort handle for resuming the paused task.
+/// decision, and the server-generated task id — never proposed arguments,
+/// their keys, caller-selected context, a digest, or a count. The telemetry
+/// export and long-lived archive have their own value-scrubbing boundary; this
+/// event therefore does not claim an Iceberg row exists at emission time. The
+/// in-memory pending store is only the live, best-effort handle for resuming
+/// the paused task.
 fn audit_authorization(
     decision: &str,
     principal_email: &str,
@@ -1686,7 +1687,6 @@ fn audit_authorization(
         proposer_role = pending.proposer.role,
         tool = %pending.pending_call.tool_name,
         task_id = %task_id,
-        context_id = %pending.context_id,
         audit = true,
         "a2a: agent action authorization decision"
     );
@@ -3618,7 +3618,6 @@ mod tests {
             field_names(&line),
             vec![
                 "audit",
-                "context_id",
                 "decision",
                 "event",
                 "message",
@@ -3856,7 +3855,6 @@ mod tests {
             field_names(&line),
             vec![
                 "audit",
-                "context_id",
                 "decision",
                 "event",
                 "message",
@@ -3901,6 +3899,52 @@ mod tests {
         assert!(
             !line.contains('@'),
             "no email address may reach the audit stream: {line}"
+        );
+    }
+
+    #[tokio::test]
+    async fn caller_context_stays_on_the_task_but_not_in_the_audit_record() {
+        let caller_context = "caller-selected context text";
+        let (engines, person_id) = welcome_fixture().await;
+        let (_, rpc) = routes(state_with(engines));
+
+        let mut request =
+            direct_skill(54, "send_welcome_email", &json!({ "person_id": person_id }));
+        request["params"]["message"]["contextId"] = json!(caller_context);
+        let (_, body) = post_rpc_as(rpc.clone(), request, "lawyer@neonlaw.com").await;
+        let task_id = body["result"]["id"].as_str().expect("task id").to_string();
+        assert_eq!(
+            body["result"]["contextId"], caller_context,
+            "the caller-supplied contextId remains part of the A2A task response"
+        );
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        {
+            let _guard = capture_into(&buf);
+            let (_, approved) = post_rpc_as(
+                rpc,
+                confirm_reply(55, &task_id, caller_context, "yes"),
+                "lawyer@neonlaw.com",
+            )
+            .await;
+            assert_eq!(approved["result"]["status"]["state"], "completed");
+            assert_eq!(approved["result"]["contextId"], caller_context);
+        }
+
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).expect("utf-8 log");
+        let line = audit_line(&logged, "agent_action_authorization");
+        let parsed: Value = serde_json::from_str(&line).expect("JSON line");
+        assert_eq!(
+            parsed["fields"]["task_id"], task_id,
+            "the server-generated task id remains the audit join: {line}"
+        );
+        assert!(
+            parsed["fields"].get("context_id").is_none(),
+            "caller context must not become an exported audit attribute: {line}"
+        );
+        assert!(
+            !line.contains(caller_context),
+            "arbitrary caller context text must not reach the audit export: {line}"
         );
     }
 

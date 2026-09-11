@@ -278,9 +278,10 @@ pub fn SiteFooterLegal(
     #[props(default)] trademark_record_url: String,
     /// The public repository the platform is developed in — how it is named
     /// (`owner/name`), where it lives, and how many people have starred it.
-    /// Closes the strip: no box, no attribution prose, just the repository,
-    /// its star count, and the running release beside it on the same line.
-    /// Both strings empty renders no line.
+    /// Closes the strip, standing where the product's name would otherwise be:
+    /// "Powered by", the repository, its star count, and the running release,
+    /// one line and no attribution prose. Both strings empty falls back to
+    /// naming the software in words.
     ///
     /// `source_stars` is independently optional, and `None` is the ordinary
     /// case rather than a failure — see
@@ -293,7 +294,8 @@ pub fn SiteFooterLegal(
     /// describes the platform. Set right beside the repository link rather
     /// than on a line of its own, so the two halves of the same fact read
     /// together in one glance: this is the software, and this is the build of
-    /// it serving the page.
+    /// it serving the page. A reader who wants to know what the number refers
+    /// to follows it to that page.
     ///
     /// A push is visible end to end — the moment a new image is live, the
     /// footer's number changes. Both strings empty renders no line, which is
@@ -567,36 +569,34 @@ pub fn SiteFooterLegal(
                         }
                         p { class: "site-footer__disclaimer", "{disclaimer}" }
                     }
-                    // The platform line names the software this page runs, then
-                    // the repository it is developed in and the release
-                    // serving here. The wording is the shared constant so this
-                    // footer and `/app`'s cannot drift. The repository and
-                    // version halves still stand alone: a deploy publishes
-                    // the repository without a release stamp under `cargo run`.
+                    // One line names the software this page runs: "Powered
+                    // by", the repository it is developed in with its stars,
+                    // and the release serving here — three parts of one fact,
+                    // so they read in a single glance rather than as a
+                    // sentence, a link, and a number stacked three deep.
+                    //
+                    // The repository stands in for the product's name because
+                    // it is the more precise way to say it: `owner/name` is
+                    // where this software actually is. A deploy that publishes
+                    // no repository falls back to the shared wording, which is
+                    // also what `/app`'s footer carries, so neither can drift.
+                    // The release is independent of both: `NAVIGATOR_RELEASE_TAG`
+                    // is unset under `cargo run`.
                     div { class: "site-footer__legal-platform",
-                        p { class: "site-footer__powered", "{POWERED_BY_NEON_LAW_NAVIGATOR}" }
-                        if (!source_repo.is_empty() && !source_href.is_empty())
-                            || (!navigator_version.is_empty() && !navigator_href.is_empty())
-                        {
-                            p { class: "site-footer__source",
-                                if !source_repo.is_empty() && !source_href.is_empty() {
-                                    GitHubStars {
-                                        href: source_href.clone(),
-                                        repo: source_repo.clone(),
-                                        stars: source_stars,
-                                    }
+                        p { class: "site-footer__powered",
+                            if !source_repo.is_empty() && !source_href.is_empty() {
+                                "Powered by"
+                                GitHubStars {
+                                    href: source_href.clone(),
+                                    repo: source_repo.clone(),
+                                    stars: source_stars,
                                 }
-                                if !navigator_version.is_empty() && !navigator_href.is_empty() {
-                                    if !source_repo.is_empty() && !source_href.is_empty() {
-                                        span {
-                                            class: "site-footer__release-sep",
-                                            "aria-hidden": "true",
-                                            "\u{b7}"
-                                        }
-                                    }
-                                    a { class: "site-footer__release", href: "{navigator_href}",
-                                        "#{navigator_version}"
-                                    }
+                            } else {
+                                "{POWERED_BY_NEON_LAW_NAVIGATOR}"
+                            }
+                            if !navigator_version.is_empty() && !navigator_href.is_empty() {
+                                a { class: "site-footer__release", href: "{navigator_href}",
+                                    "#{navigator_version}"
                                 }
                             }
                         }
@@ -773,42 +773,78 @@ mod tests {
             "the star count renders under its own accessible name: {out}"
         );
         let disclaimer = out.find("attorney advertisement").expect("the disclaimer");
-        let source = out.find("site-footer__source").expect("the source line");
+        let platform = out.find("site-footer__powered").expect("the platform line");
         assert!(
-            disclaimer < source,
-            "the source line closes the strip, under the disclaimer: {out}"
+            disclaimer < platform,
+            "the platform line closes the strip, under the disclaimer: {out}"
         );
     }
 
-    /// The running release sits right beside the repository link, on the same
-    /// line, rather than under it as a line of its own.
+    /// "Powered by", the repository, its stars, and the running release are
+    /// one line — one `<p>`, in that order.
+    ///
+    /// The single line is the assertion. The three facts name one thing
+    /// between them — this software, at this address, at this build — so they
+    /// belong in one glance; split across a sentence, a link, and a number on
+    /// lines of their own they cost three lines of the strip to say it.
     #[test]
-    fn sets_the_release_beside_the_repository_on_one_line() {
+    fn collapses_the_platform_attribution_onto_one_line() {
         let out = contactable_html();
-        assert!(
-            out.contains("#26.8.20"),
-            "the version renders next to the repository: {out}"
-        );
-        assert!(
-            !out.contains("Neon Law Navigator #"),
-            "the release no longer carries its own sentence: {out}"
-        );
+        let line = out
+            .split(r#"<p class="site-footer__powered">"#)
+            .nth(1)
+            .and_then(|rest| rest.split("</p>").next())
+            .expect("the platform line renders");
         assert_eq!(
-            out.matches(r#"class="site-footer__source""#).count(),
+            out.matches(r#"class="site-footer__powered""#).count(),
             1,
-            "one line carries both the repository and the release: {out}"
+            "one line carries the whole attribution: {out}"
+        );
+        assert!(
+            !out.contains("site-footer__source"),
+            "the repository no longer sets on a line of its own: {out}"
         );
         assert!(
             !out.contains(r#"<p class="site-footer__release""#),
-            "the release is no longer its own paragraph: {out}"
+            "nor does the release: {out}"
         );
-        let repo = out
+
+        let powered = line.find("Powered by").expect("the attribution opens it");
+        let repo = line
             .find("neon-law-source-code/navigator")
-            .expect("the repo");
-        let version = out.find("#26.8.20").expect("the version");
+            .expect("the repository");
+        let version = line.find("#26.8.20").expect("the version");
         assert!(
-            repo < version,
-            "the version follows the repository it describes: {out}"
+            powered < repo && repo < version,
+            "it reads software, repository, release: {line}"
+        );
+        assert!(
+            !line.contains("Neon Law Navigator"),
+            "the repository names the software, so the prose name is not \
+             repeated beside it: {line}"
+        );
+        assert!(
+            !out.contains("site-footer__release-sep"),
+            "and no punctuation is invented between the parts: {out}"
+        );
+
+        // The star count rides the same line, between the repository and the
+        // release. It is driven by the fixture that publishes one — the
+        // ordering fixture above leaves it unfetched, which is the ordinary
+        // case rather than an edge one.
+        let counted = legal_html();
+        let counted_line = counted
+            .split(r#"<p class="site-footer__powered">"#)
+            .nth(1)
+            .and_then(|rest| rest.split("</p>").next())
+            .expect("the platform line renders");
+        let repo = counted_line
+            .find("neon-law-source-code/navigator")
+            .expect("the repository");
+        let stars = counted_line.find("1,234").expect("the star count");
+        assert!(
+            repo < stars,
+            "the count follows the repository it counts: {counted_line}"
         );
     }
 
@@ -844,8 +880,12 @@ mod tests {
 
         let out = ssr(app);
         assert!(
-            !out.contains("site-footer__source"),
-            "no repository, no line: {out}"
+            !out.contains("github-stars"),
+            "no repository, no repository link: {out}"
+        );
+        assert!(
+            out.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the line falls back to naming the software in prose: {out}"
         );
         assert!(!out.contains(r#"href="""#), "no empty anchor: {out}");
 
@@ -1380,13 +1420,13 @@ mod tests {
         let platform = out
             .find("site-footer__legal-platform")
             .expect("the platform region renders");
-        let source = out.find("site-footer__source").expect("the source line");
+        let powered = out.find("site-footer__powered").expect("the platform line");
         let repo = out
             .find("neon-law-source-code/navigator")
             .expect("the repository renders");
         let release = out.find("#26.8.20").expect("the release renders");
         assert!(
-            platform < source && repo < release,
+            platform < powered && repo < release,
             "the release sits beside the repository it is built from: {out}"
         );
     }
@@ -1426,12 +1466,8 @@ mod tests {
             "no release, no version link: {out}"
         );
         assert!(
-            out.contains("site-footer__source"),
-            "the repository line is independent of it: {out}"
-        );
-        assert!(
-            out.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
-            "the shared platform line still renders: {out}"
+            out.contains("Powered by") && out.contains("github-stars__repo"),
+            "the repository half is independent of it: {out}"
         );
         let bare = ssr(neither);
         assert!(
@@ -1443,11 +1479,14 @@ mod tests {
             "the shared wording is present without a repository: {bare}"
         );
         assert!(
-            !bare.contains("site-footer__source"),
-            "no empty source line: {bare}"
+            !bare.contains("github-stars"),
+            "no empty repository link: {bare}"
         );
     }
 
+    /// With no repository to name, the line falls back to the wording `/app`'s
+    /// footer carries, so the two cannot drift where they still say the same
+    /// thing.
     #[test]
     fn the_platform_line_is_the_shared_powered_by_wording() {
         fn app() -> Element {

@@ -109,28 +109,20 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
         error: query.error.clone(),
     };
 
-    let Some(brand) = store::brands::find_by_key(&surreal, &key)
-        .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?
-    else {
-        dioxus_fullstack_core::FullstackContext::commit_http_status(
-            axum::http::StatusCode::NOT_FOUND,
-            None,
-        );
-        return Ok(base);
-    };
-
-    match store::brands::update(
+    let brand = match store::brands::find_by_key_for_actor(
         &surreal,
         store_role(role),
         actor_person_id,
-        brand.id,
-        &store::brands::BrandEdit::default(),
+        &key,
     )
     .await
     {
-        Ok(_) => {}
-        Err(store::brands::BrandError::NotAuthorized) => {
+        Ok(brand) => brand,
+        Err(
+            store::brands::BrandError::NotAuthorized
+            | store::brands::BrandError::NoSuchBrand(_)
+            | store::brands::BrandError::NoSuchFirm(_),
+        ) => {
             dioxus_fullstack_core::FullstackContext::commit_http_status(
                 axum::http::StatusCode::NOT_FOUND,
                 None,
@@ -138,7 +130,7 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
             return Ok(base);
         }
         Err(error) => return Err(ServerFnError::new(error.to_string())),
-    }
+    };
 
     let logo_url = brand
         .logo_object_key

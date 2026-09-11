@@ -36,7 +36,8 @@ use uuid::Uuid;
 /// tier at all, so only Owner — who [`resolve`] allows before any membership
 /// read — ever holds it. An Admin DRI administers their own Firm's settings
 /// and integrations, but appointing or transferring the designation is
-/// Owner's alone.
+/// Owner's alone. [`Self::ManageBrand`] gates a Firm's brand presentation and
+/// public logo/font assets; it admits only that Firm's Admin DRI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FirmCapability {
     /// Read the Firm's scoped people and matter directories.
@@ -55,6 +56,9 @@ pub enum FirmCapability {
     /// capability system-wide; an Admin must hold a membership row on the
     /// target Firm.
     UseIntegrations,
+    /// Create or replace a Firm's presentation and public brand assets. Only
+    /// the Firm's Admin DRI holds this capability.
+    ManageBrand,
 }
 
 impl FirmCapability {
@@ -70,7 +74,8 @@ impl FirmCapability {
             Self::ManageMembership
             | Self::ManageIntegrationSecrets
             | Self::ViewIntegrationSecretMetadata
-            | Self::UseIntegrations => membership == FirmMembership::Admin,
+            | Self::UseIntegrations
+            | Self::ManageBrand => membership == FirmMembership::Admin,
             Self::ManageAdminDri => false,
         }
     }
@@ -87,7 +92,17 @@ impl FirmCapability {
             Self::ManageIntegrationSecrets => "manage_integration_secrets",
             Self::ViewIntegrationSecretMetadata => "view_integration_secret_metadata",
             Self::UseIntegrations => "use_integrations",
+            Self::ManageBrand => "manage_brand",
         }
+    }
+
+    fn requires_admin_dri(self) -> bool {
+        matches!(
+            self,
+            Self::ManageIntegrationSecrets
+                | Self::ViewIntegrationSecretMetadata
+                | Self::ManageBrand
+        )
     }
 
     /// Resolve this capability against one Firm.
@@ -203,6 +218,7 @@ async fn resolve_inner(
                 capability,
                 FirmCapability::ManageIntegrationSecrets
                     | FirmCapability::ViewIntegrationSecretMetadata
+                    | FirmCapability::ManageBrand
             ) =>
         {
             if row.membership == FirmMembership::Admin && row.is_dri {
@@ -249,7 +265,13 @@ pub async fn allowed_firm_ids(
     Ok(firms::memberships_for_person(surreal, person_id)
         .await?
         .into_iter()
-        .filter(|row| capability.admits(row.membership))
+        .filter(|row| {
+            if capability.requires_admin_dri() {
+                row.membership == FirmMembership::Admin && row.is_dri
+            } else {
+                capability.admits(row.membership)
+            }
+        })
         .map(|row| row.firm_id)
         .collect())
 }

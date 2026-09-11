@@ -49,7 +49,8 @@ through, rather than each call site deriving its own `person_firm_role` filter:
   (`webapp::firm_show`); `ManageMembership` gates writing a `person_firm_role` row and a Firm's own settings
   (`store::firms::add_membership`, `ensure_membership`, `update`, `delete`, `update_membership`, `remove_membership`,
   `detach_brand`); `ManageAdminDri` admits no membership tier at all — only Owner ever holds it — and gates
-  `store::firms::appoint_admin_dri` (ENG-499).
+  `store::firms::appoint_admin_dri` (ENG-499). Brand presentation and public logo/font assets authorize through the
+  capability resolver before storage.
 - `resolve` answers one `(actor, target Firm, capability)` question with a typed
   [`FirmCapabilityDecision`](../store/src/firm_capability.rs) — `Allowed`, `Forbidden`, or `FirmNotFound` — so a future
   single-Firm surface can render `Forbidden` and `FirmNotFound` identically and never disclose that another Firm's row
@@ -92,11 +93,11 @@ Owner — it lists every matter in the deployment, the same administrative-listi
 reads for its own deployment-wide question — which is what gives the detail page's participation-only carve-out
 somewhere to navigate from. `/app/owner` is Owner only: it lists every practice and the house brands each one wears.
 Admin is denied that inventory. `/app/brands` is Owner only in the same way: the house-of-brands home. Owner edits a
-system-wide brand's typeface and palette at `/app/brands/{key}/edit` and `PATCH /app/api/brands/{key}`; those two paths
-admit Admin at the route so a Firm's Admin DRI can edit that Firm's own brands, and the store refuses anyone else.
-Lawyer and Clerk are denied both the editor and the PATCH. Only an Owner may create, edit, or demote an Owner identity;
-Admin cannot govern the tier above it. Person deletion remains client-only, so no privileged identity is deletable
-through that command.
+system-wide or existing Firm-scoped brand's typeface, palette, and assets at `/app/brands/{key}/edit` and `PATCH
+/app/api/brands/{key}`; those two paths admit Admin at the route so a Firm's Admin DRI can edit that Firm's own brands,
+and the store refuses anyone else. Lawyer and Clerk are denied both the editor and the PATCH. Only an Owner may create,
+edit, or demote an Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only, so no
+privileged identity is deletable through that command.
 
 ### `client`
 

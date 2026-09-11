@@ -39,7 +39,12 @@ pub const CLOSED_BRAND_KEYS: &[&str] = &["neon", "delete-your-data", "lawyer-sho
 
 /// Whether a `brand` row exists carrying this key — the live check
 /// [`attach_brand`] replaced its closed-list `ASSERT` with (ENG-496).
-async fn brand_key_exists(surreal: &SurrealDb, brand_key: &str) -> Result<bool, FirmError> {
+/// `pub(crate)` so `store::projects::create` can run the identical check
+/// (ENG-587) rather than a second, divergent closed list.
+pub(crate) async fn brand_key_exists(
+    surreal: &SurrealDb,
+    brand_key: &str,
+) -> Result<bool, FirmError> {
     #[derive(SurrealValue)]
     struct BrandKeyRow {
         brand_key: String,
@@ -273,6 +278,52 @@ pub enum FirmError {
     /// nothing for [`update_membership`] or [`remove_membership`] to change.
     #[error("person {0} is not a member of firm {1}")]
     NotAMember(Uuid, Uuid),
+}
+
+impl FirmError {
+    /// The message to show a human on the Firm create/edit forms. Kept here
+    /// so every adapter — this form today, any future JSON API or MCP tool —
+    /// renders the same wording per refusal, the same convention
+    /// `EntityCommandError::user_message` and `PeopleCommandError::user_message`
+    /// already follow.
+    #[must_use]
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::NoSuchEntity(_) => {
+                "Pick an existing entity to open the firm against.".to_string()
+            }
+            Self::NoSuchPerson(_) => "That person could not be found.".to_string(),
+            Self::IneligibleAdminDriTier(_) => {
+                "The Admin DRI must be a person whose role is admin.".to_string()
+            }
+            Self::DuplicateEntity => "That entity already has a firm.".to_string(),
+            Self::NotAuthorized => "You may not make this change.".to_string(),
+            Self::NoSuchFirm(_) => "That firm could not be found.".to_string(),
+            Self::ClientCannotJoinFirm(_) => "A client cannot hold a firm membership.".to_string(),
+            Self::DuplicateMembership => {
+                "That person is already a member of this firm.".to_string()
+            }
+            Self::UnknownBrand(_) => "That brand key is not registered.".to_string(),
+            Self::DuplicateBrand => "That brand is already attached to a firm.".to_string(),
+            Self::WrongAdminDriMembership(_, _) => {
+                "That person's membership on this firm is not admin.".to_string()
+            }
+            Self::AdminDriCrossFirm(_, _) => {
+                "That person is not a member of this firm.".to_string()
+            }
+            Self::WouldLeaveFirmWithoutAdminDri(_) => {
+                "This firm must always have an Admin DRI. Transfer the designation first."
+                    .to_string()
+            }
+            Self::FirmOwnsProjects(_) => {
+                "This firm still owns one or more projects and cannot be deleted.".to_string()
+            }
+            Self::NotAMember(_, _) => "That person is not a member of this firm.".to_string(),
+            Self::Db(_) | Self::Person(_) | Self::Entity(_) | Self::WriteReturnedNothing => {
+                "Could not save firm.".to_string()
+            }
+        }
+    }
 }
 
 fn classify_write(error: surrealdb::Error) -> FirmError {
@@ -1219,6 +1270,25 @@ mod tests {
         .unwrap()
     }
 
+    /// `user_message` names the refused rule rather than restating the debug
+    /// form — the two refusals ENG-585's create form must show by name.
+    #[test]
+    fn user_message_names_the_rule_for_the_create_form_s_two_refusals() {
+        let person_id = Uuid::now_v7();
+        assert_eq!(
+            FirmError::IneligibleAdminDriTier(person_id).user_message(),
+            "The Admin DRI must be a person whose role is admin."
+        );
+        assert_eq!(
+            FirmError::NoSuchEntity(person_id).user_message(),
+            "Pick an existing entity to open the firm against."
+        );
+        assert_eq!(
+            FirmError::NotAuthorized.user_message(),
+            "You may not make this change."
+        );
+    }
+
     #[tokio::test]
     async fn create_round_trips_a_firm() {
         let db = mem_surreal().await;
@@ -1910,7 +1980,7 @@ mod tests {
         let entity_id = Uuid::now_v7();
         db.query(
             "CREATE $id SET code = 'pre-firm-matter', name = 'Pre-Firm Matter', \
-             status = 'open', entity_id = $entity_id, \
+             status = 'open', entity_id = $entity_id, brand = 'neon', \
              inserted_at = '2026-09-04T00:00:00Z', updated_at = '2026-09-04T00:00:00Z'",
         )
         .bind(("id", record_id("project", id)))
@@ -1999,18 +2069,9 @@ mod tests {
     async fn attaches_closed_brand_keys_and_refuses_an_unknown_or_taken_key() {
         let db = mem_surreal().await;
         let firm = practice(&db, "Brand Holder").await;
-        crate::brands::create(
-            &db,
-            Role::Owner,
-            None,
-            &crate::brands::NewBrand {
-                name: "Neon Law".to_string(),
-                key: "neon".to_string(),
-                ..crate::brands::NewBrand::default()
-            },
-        )
-        .await
-        .unwrap();
+        // `mem_surreal` already seeds every `CLOSED_BRAND_KEYS` entry as a
+        // system-wide brand row, so "neon" exists before this test creates
+        // anything.
         attach_brand(&db, firm.id, "neon").await.unwrap();
         assert_eq!(
             brand_keys_for_firm(&db, firm.id).await.unwrap(),
@@ -2037,24 +2098,9 @@ mod tests {
     #[tokio::test]
     async fn two_firms_each_list_only_their_own_brands() {
         let db = mem_surreal().await;
-        for (name, key) in [
-            ("Neon Law", "neon"),
-            ("DeleteYourData.com", "delete-your-data"),
-            ("Lawyer Shook", "lawyer-shook"),
-        ] {
-            crate::brands::create(
-                &db,
-                Role::Owner,
-                None,
-                &crate::brands::NewBrand {
-                    name: name.to_string(),
-                    key: key.to_string(),
-                    ..crate::brands::NewBrand::default()
-                },
-            )
-            .await
-            .unwrap();
-        }
+        // `mem_surreal` already seeds every `CLOSED_BRAND_KEYS` entry as a
+        // system-wide brand row, so "neon", "delete-your-data", and
+        // "lawyer-shook" all exist before this test attaches any of them.
         let firm_a = practice(&db, "Practice A").await;
         let firm_b = practice(&db, "Practice B").await;
         attach_brand(&db, firm_a.id, "neon").await.unwrap();
@@ -2078,6 +2124,39 @@ mod tests {
         assert_eq!(
             brand_keys_for_firm(&db, firm_b.id).await.unwrap(),
             vec!["lawyer-shook".to_string()]
+        );
+    }
+
+    /// ENG-587: a Firm can wear a brand created at runtime through
+    /// `store::brands::create`, not just one of the three compiled house
+    /// brands — `attach_brand` validates against live `brand` rows, not a
+    /// closed list, against the fully applied schema.
+    #[tokio::test]
+    async fn attach_brand_accepts_a_runtime_created_brand_key() {
+        let db = mem_surreal().await;
+        crate::brands::create(
+            &db,
+            Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: "Runtime Brand".to_string(),
+                key: "runtime-brand".to_string(),
+                ..crate::brands::NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
+        let firm = practice(&db, "Runtime Brand Wearer").await;
+
+        attach_brand(&db, firm.id, "runtime-brand").await.unwrap();
+
+        assert_eq!(
+            brand_keys_for_firm(&db, firm.id).await.unwrap(),
+            vec!["runtime-brand".to_string()]
+        );
+        assert_eq!(
+            firm_id_for_brand_key(&db, "runtime-brand").await.unwrap(),
+            Some(firm.id)
         );
     }
 
@@ -2161,18 +2240,8 @@ mod tests {
         let db = mem_surreal().await;
         let admin = admin_dri_person(&db).await;
         let firm = practice_with_admin(&db, "Deletable Practice", admin).await;
-        crate::brands::create(
-            &db,
-            Role::Owner,
-            None,
-            &crate::brands::NewBrand {
-                name: "Neon Law".to_string(),
-                key: "neon".to_string(),
-                ..crate::brands::NewBrand::default()
-            },
-        )
-        .await
-        .unwrap();
+        // `mem_surreal` already seeds every `CLOSED_BRAND_KEYS` entry as a
+        // system-wide brand row, so "neon" exists before this test attaches it.
         attach_brand(&db, firm.id, "neon").await.unwrap();
 
         let entity_id = seed_entity(&db).await;

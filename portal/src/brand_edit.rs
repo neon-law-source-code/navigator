@@ -15,7 +15,9 @@ use crate::session::SessionData;
 #[derive(Debug, Deserialize)]
 pub struct BrandPresentationForm {
     pub typeface: String,
-    pub palette: String,
+    pub primary_color: String,
+    #[serde(default)]
+    pub font_family: String,
 }
 
 pub async fn post_brand_edit(
@@ -33,15 +35,18 @@ pub async fn post_brand_edit(
         session.person_id,
         &key,
         &form.typeface,
-        &form.palette,
+        &form.primary_color,
+        &form.font_family,
     )
     .await
     {
         Ok(_) => Redirect::to(&format!("/app/brands/{key}/edit")).into_response(),
         Err(crate::api::BrandPresentationError::NotFound) => StatusCode::NOT_FOUND.into_response(),
         Err(crate::api::BrandPresentationError::Forbidden) => StatusCode::FORBIDDEN.into_response(),
-        Err(crate::api::BrandPresentationError::UnknownChoice(_)) => {
-            Redirect::to(&format!("/app/brands/{key}/edit?error=unknown-choice")).into_response()
+        Err(crate::api::BrandPresentationError::UnknownChoice(message)) => {
+            let mut query = String::new();
+            crate::admin::push_query(&mut query, "error", &message);
+            Redirect::to(&format!("/app/brands/{key}/edit?{query}")).into_response()
         }
         Err(crate::api::BrandPresentationError::Internal(error)) => {
             tracing::error!(error = %error, "brand edit form failed");

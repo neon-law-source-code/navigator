@@ -27,8 +27,9 @@ use std::sync::{LazyLock, OnceLock};
 use crate::brand_bundle::BrandManifest;
 
 pub use crate::brand_presentation::{
-    palette_by_id, resolve_presentation, tokens_stylesheet, typeface_by_id, Palette, PaletteScheme,
-    Typeface, PALETTE, TYPEFACES,
+    derive_scheme, font_face_for, font_stack_for, palette_by_id, resolve_presentation,
+    tokens_stylesheet, tokens_stylesheet_from_hex, typeface_by_id, DerivedScheme, Palette,
+    PaletteScheme, Typeface, PALETTE, TYPEFACES,
 };
 
 /// Bundle of strings + nav links that identify the running site.

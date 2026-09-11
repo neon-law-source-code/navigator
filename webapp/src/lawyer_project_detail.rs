@@ -313,9 +313,9 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     let entity_id = entity.as_ref().map(|entity| entity.id.to_string());
     let entity_name = entity.map(|entity| entity.name);
 
-    // The matter's Xero invoice, if any (at most one — the mirror is unique
-    // on `project_id`, so it is already grouped per matter). Absent until an
-    // invoice raised in Xero is mirrored here.
+    // The matter's most recently raised Xero invoice — a matter may carry
+    // several over time, and `for_projects` orders newest first. Absent
+    // until an invoice raised in Xero is mirrored here.
     let xero_invoice_url = store::xero_invoices::for_projects(&surreal, &[id])
         .await
         .map_err(server_error)?

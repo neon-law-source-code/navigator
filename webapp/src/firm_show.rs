@@ -69,6 +69,18 @@ pub struct FirmFields {
     /// Firm — `None` when the invariant holds.
     pub admin_dri_problem: Option<String>,
     pub members: Vec<MemberRow>,
+    /// Whether this caller may reach `/app/admin/firms/{id}/edit` — the same
+    /// `FirmCapability::ManageMembership` check `store::firms::update` itself
+    /// authorizes against (ENG-585). `false` hides the Edit link rather than
+    /// rendering it toward a refusal.
+    #[serde(default)]
+    pub can_edit: bool,
+    /// The trailing-30-day invoiced/paid graphs (ENG-591), grouped by brand
+    /// and by lawyer DRI. Nested here rather than a second top-level
+    /// `Option` on [`FirmShowView`]: it is only ever computed once
+    /// `ViewDirectory` has already gated `fields` to `Some`.
+    #[serde(default)]
+    pub invoices: crate::firm_invoice_graphs::FirmInvoiceGraphsView,
 }
 
 #[cfg(feature = "server")]
@@ -102,6 +114,7 @@ fn admin_dri_problem_text(problem: &store::firms::AdminDriProblem) -> String {
 /// `person_firm_role` on. A Firm outside that reach renders the same
 /// `fields: None` a nonexistent id would, so neither discloses the other.
 #[server]
+#[cfg_attr(feature = "server", allow(clippy::too_many_lines))]
 pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
     let role = crate::admin_listing::require_admin().await?;
     let axum::extract::Path(id) =
@@ -196,6 +209,30 @@ pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
         .as_ref()
         .map(admin_dri_problem_text);
 
+    // The Edit link is offered only to a caller who could actually reach the
+    // edit page — the same `ManageMembership` capability `store::firms::update`
+    // itself authorizes against, resolved separately from `ViewDirectory`
+    // above (Owner holds both; a Firm's non-Admin membership holds only the
+    // first).
+    let can_edit = matches!(
+        store::firm_capability::resolve(
+            &surreal,
+            store_role(role),
+            actor_person_id,
+            id,
+            store::firm_capability::FirmCapability::ManageMembership,
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?,
+        store::firm_capability::FirmCapabilityDecision::Allowed
+    );
+
+    let invoices =
+        store::xero_invoices::firm_thirty_day_rollup(&surreal, firm.id, chrono::Utc::now())
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?
+            .into();
+
     Ok(FirmShowView {
         fields: Some(FirmFields {
             name: firm.name,
@@ -205,6 +242,8 @@ pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
             admin_dri,
             admin_dri_problem,
             members,
+            can_edit,
+            invoices,
         }),
         ..base
     })
@@ -231,6 +270,7 @@ pub fn FirmShow() -> Element {
 }
 
 /// The loaded page. Split from the component so tests render a fixed view.
+#[allow(clippy::too_many_lines)]
 pub fn firm_show_body(view: &FirmShowView) -> Element {
     let role = view.role;
     let firm_name = view.firm_name.clone();
@@ -280,6 +320,15 @@ pub fn firm_show_body(view: &FirmShowView) -> Element {
                 p { class: "page-subtitle",
                     "Entity: {fields.entity_name}. Status: {fields.status}."
                 }
+                if fields.can_edit {
+                    p {
+                        a {
+                            class: "nav-btn nav-btn--secondary",
+                            href: "{FIRM_SHOW_PATH}/{view.id}/edit",
+                            "Edit",
+                        }
+                    }
+                }
             }
             section { id: "firm-brands",
                 h2 { "Brands" }
@@ -328,6 +377,7 @@ pub fn firm_show_body(view: &FirmShowView) -> Element {
                     }
                 }
             }
+            crate::firm_invoice_graphs::FirmInvoiceGraphs { view: fields.invoices.clone() }
             p { a { href: "{back_href}", "← Back" } }
         }
     }
@@ -336,6 +386,9 @@ pub fn firm_show_body(view: &FirmShowView) -> Element {
 #[cfg(test)]
 mod tests {
     use super::{firm_show_body, FirmFields, FirmShowView, MemberRow};
+    use crate::firm_invoice_graphs::{
+        CurrencyInvoiceGraphsView, FirmInvoiceGraphsView, InvoiceBarView,
+    };
     use crate::people::ViewerRole;
 
     fn render(fields: Option<FirmFields>) -> String {
@@ -374,10 +427,35 @@ mod tests {
                     is_dri: false,
                 },
             ],
+            can_edit: true,
+            ..Default::default()
         }));
         assert!(html.contains("Nick Shook (nick@neonlaw.com)"), "{html}");
         assert!(html.contains("Pat Lawyer"), "{html}");
         assert!(html.contains(r#"id="firm-show""#), "{html}");
+        assert!(
+            html.contains(r#"href="/app/admin/firms/firm-1/edit""#),
+            "{html}"
+        );
+    }
+
+    /// A caller without `ManageMembership` sees the Firm's facts but no Edit
+    /// link — the same "offer what the capability admits" rule the create
+    /// form's Owner-only door mirrors from the other side.
+    #[test]
+    fn hides_the_edit_link_when_the_caller_cannot_edit() {
+        let html = render(Some(FirmFields {
+            name: "Read Only Practice".to_string(),
+            status: "active".to_string(),
+            entity_name: "Read Only Entity".to_string(),
+            brand_keys: Vec::new(),
+            admin_dri: None,
+            admin_dri_problem: None,
+            members: Vec::new(),
+            can_edit: false,
+            ..Default::default()
+        }));
+        assert!(!html.contains("/edit\""), "{html}");
     }
 
     #[test]
@@ -390,9 +468,61 @@ mod tests {
             admin_dri: None,
             admin_dri_problem: Some("No Admin DRI is designated.".to_string()),
             members: Vec::new(),
+            can_edit: false,
+            ..Default::default()
         }));
         assert!(html.contains("No Admin DRI is designated."), "{html}");
         assert!(html.contains("No house brands attached."), "{html}");
+    }
+
+    /// ENG-591: the invoice graphs render below the members table, driven by
+    /// whatever `FirmFields::invoices` the loader resolved.
+    #[test]
+    fn renders_the_invoice_graphs_below_the_members_table() {
+        let html = render(Some(FirmFields {
+            name: "Graphed Practice".to_string(),
+            status: "active".to_string(),
+            entity_name: "Graphed Entity".to_string(),
+            brand_keys: Vec::new(),
+            admin_dri: None,
+            admin_dri_problem: None,
+            members: Vec::new(),
+            can_edit: false,
+            invoices: FirmInvoiceGraphsView {
+                currencies: vec![CurrencyInvoiceGraphsView {
+                    currency: "USD".to_string(),
+                    by_brand: vec![InvoiceBarView {
+                        label: "Neon Law".to_string(),
+                        invoiced_cents: 10_000,
+                        paid_cents: 5_000,
+                    }],
+                    by_lawyer_dri: vec![],
+                }],
+            },
+        }));
+        assert!(html.contains(r#"id="firm-invoice-graphs""#), "{html}");
+        assert!(html.contains("Neon Law invoiced: $100"), "{html}");
+    }
+
+    /// A Firm with no invoices in the window renders the graphs section's
+    /// own empty state rather than an omitted section.
+    #[test]
+    fn renders_the_invoice_graphs_empty_state_with_no_invoices() {
+        let html = render(Some(FirmFields {
+            name: "Quiet Practice".to_string(),
+            status: "active".to_string(),
+            entity_name: "Quiet Entity".to_string(),
+            brand_keys: Vec::new(),
+            admin_dri: None,
+            admin_dri_problem: None,
+            members: Vec::new(),
+            can_edit: false,
+            ..Default::default()
+        }));
+        assert!(
+            html.contains("No invoices in the trailing 30 days."),
+            "{html}"
+        );
     }
 
     #[test]

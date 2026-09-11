@@ -117,6 +117,9 @@ fn dioxus_app_pages() -> Vec<String> {
         pages::APP_OWNER_PATH,
         pages::APP_PROFILE_PATH,
         pages::FIRM_SHOW_PATH,
+        pages::APP_OWNER_FIRM_NEW_PATH,
+        pages::FIRM_EDIT_PATH,
+        pages::APP_BRAND_NEW_PATH,
     ]
     .iter()
     .map(|template| fill(template))
@@ -142,6 +145,13 @@ fn admin_registration_sample() -> Vec<String> {
         "/app/team/fonts/gorp-serif.zip",
         "/app/notations/x/documents/x",
         "/app/forms/x",
+        // ENG-585: Owner opens a Firm (/app/owner/firms*).
+        "/app/owner/firms",
+        "/app/owner/firms/new/entity",
+        "/app/owner/firms/new/admin",
+        // ENG-586: brand logo/font uploads (/app/brands/{key}/...).
+        "/app/brands/x/logo",
+        "/app/brands/x/font",
         // register_firm_matter_routes (/app/lawyer).
         "/app/lawyer/notations/x/transcript",
         "/app/lawyer/notations/x/sign",

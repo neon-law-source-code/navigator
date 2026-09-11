@@ -175,9 +175,14 @@ erDiagram
         option_string accent_color
         string brand_key
         option_record_firm firm_id FK
+        option_string font_family
+        option_string font_licence
+        option_string font_object_key
         string inserted_at
         bool is_law_firm
         option_string legal_entity
+        option_string logo_content_type
+        option_string logo_object_key
         string name
         option_string primary_color
         option_string typeface
@@ -610,7 +615,7 @@ erDiagram
     }
     project {
         record id PK
-        option_string brand
+        string brand
         option_string closed_at
         string code
         option_string description
@@ -778,7 +783,9 @@ erDiagram
         int amount_cents
         int amount_paid_cents
         string currency
+        option_datetime due_at
         datetime inserted_at
+        datetime issued_at
         record_project project_id FK
         string reference
         string status

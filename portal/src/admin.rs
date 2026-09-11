@@ -139,6 +139,9 @@ pub struct AdminState {
     pub sessions: crate::SessionStore,
     /// Whether session cookies should carry `Secure`.
     pub secure_cookies: bool,
+    /// Malware scanner every brand logo/font upload is checked against
+    /// (ENG-586) — same `Arc` as `AppState.attachment_scanner`.
+    pub attachment_scanner: Arc<dyn crate::attachment_scanner::AttachmentScanner>,
 }
 
 impl FromRef<AdminState> for store::surreal::SurrealDb {
@@ -231,6 +234,13 @@ pub fn routes(
         )
         .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
         .route("/app/admin/people/{id}/delete", post(admin_person_delete));
+    // Owner opens a Firm (ENG-585): the create form renders through Dioxus at
+    // `/app/owner/firms/new`; these native POSTs create the row and its two
+    // inline related records. axum merges the Dioxus GET with the first.
+    r = r
+        .route("/app/owner/firms", post(firms_create))
+        .route("/app/owner/firms/new/entity", post(firms_new_entity_inline))
+        .route("/app/owner/firms/new/admin", post(firms_new_admin_inline));
     r = register_firm_matter_routes(r, "/app/lawyer");
     r = register_firm_admin_routes(r, "/app/admin");
     // Firm brand fonts — the licensed GORP Serif desktop family, served as one
@@ -461,7 +471,8 @@ fn register_firm_matter_routes(r: Router<AdminState>, prefix: &str) -> Router<Ad
 /// These are the native POST/CSV handlers behind the Tranche A Dioxus pages:
 /// entities, playbooks, schedules, and the people directory export.
 fn register_firm_admin_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminState> {
-    r.route(&format!("{prefix}/people.csv"), get(people_csv))
+    r.route(&format!("{prefix}/firms/{{id}}/edit"), post(firms_update))
+        .route(&format!("{prefix}/people.csv"), get(people_csv))
         .route(&format!("{prefix}/entities"), post(entities_create))
         .route(&format!("{prefix}/entities.csv"), get(entities_csv))
         .route(&format!("{prefix}/entities/{{id}}"), post(entities_update))
@@ -1577,6 +1588,357 @@ async fn entities_avatar_download(State(s): State<AdminState>, Path(id): Path<Uu
         return StatusCode::NOT_FOUND.into_response();
     };
     stream_avatar(&s.storage, entity.avatar_url).await
+}
+
+// ---- Firms (ENG-585) ----
+
+/// The create-firm form's path — the page every refusal on this cluster
+/// redirects back to (post/redirect/get), carrying its message and the
+/// submitted values in the query so nothing is retyped.
+const FIRM_NEW_PATH: &str = "/app/owner/firms/new";
+
+/// Redirect back to the create-firm form with `query` (already encoded).
+fn back_to_firm_new_form(query: &str) -> Response {
+    if query.is_empty() {
+        Redirect::to(FIRM_NEW_PATH).into_response()
+    } else {
+        Redirect::to(&format!("{FIRM_NEW_PATH}?{query}")).into_response()
+    }
+}
+
+#[derive(Deserialize)]
+struct FirmCreateInput {
+    #[serde(default)]
+    name: String,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    entity_id: Option<Uuid>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    admin_dri_person_id: Option<Uuid>,
+}
+
+/// `POST /app/owner/firms` — Owner opens a Firm and appoints its first Admin
+/// DRI in one submission (`store::firms::create`, ENG-499). Every
+/// `FirmError` refusal redirects back to the create form with `?error=`
+/// naming the rule and the submitted fields echoed, so nothing is retyped.
+async fn firms_create(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<FirmCreateInput>,
+) -> Response {
+    if !session
+        .as_ref()
+        .is_some_and(|Extension(s)| s.role.is_owner())
+    {
+        return not_found_response();
+    }
+    let name = input.name.trim();
+    let refuse = |message: &str| {
+        let mut query = String::new();
+        push_query(&mut query, "error", message);
+        push_query(&mut query, "name", name);
+        push_query(
+            &mut query,
+            "entity_id",
+            &input.entity_id.map(|id| id.to_string()).unwrap_or_default(),
+        );
+        push_query(
+            &mut query,
+            "admin_dri_person_id",
+            &input
+                .admin_dri_person_id
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+        );
+        back_to_firm_new_form(&query)
+    };
+
+    if name.is_empty() {
+        return refuse("Name is required.");
+    }
+    let Some(entity_id) = input.entity_id else {
+        return refuse(
+            "Pick an entity to open the firm against (create the entity first if needed).",
+        );
+    };
+    let Some(admin_dri_person_id) = input.admin_dri_person_id else {
+        return refuse("Pick an Admin DRI (create the admin first if needed).");
+    };
+
+    match store::firms::create(
+        &state.surreal,
+        &store::firms::NewFirm {
+            name: name.to_string(),
+            status: "active".to_string(),
+            entity_id,
+            admin_dri_person_id,
+        },
+    )
+    .await
+    {
+        Ok(created) => Redirect::to(&format!("/app/admin/firms/{}", created.id)).into_response(),
+        Err(e) => refuse(&e.user_message()),
+    }
+}
+
+#[derive(Deserialize)]
+struct FirmEntityInlineInput {
+    #[serde(default)]
+    entity_name: String,
+    #[serde(default)]
+    entity_type_id: String,
+    #[serde(default)]
+    jurisdiction_id: String,
+}
+
+/// `POST /app/owner/firms/new/entity` — the inline "New entity" form on the
+/// create-firm page. Same shape as [`projects_new_entity_inline`]: creates
+/// the entity, then redirects back with `?entity=<id>` so the picker
+/// re-renders with it selected, or `?entity_error=` with the typed values
+/// echoed.
+async fn firms_new_entity_inline(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<FirmEntityInlineInput>,
+) -> Response {
+    if !session
+        .as_ref()
+        .is_some_and(|Extension(s)| s.role.is_owner())
+    {
+        return not_found_response();
+    }
+    let name = input.entity_name.trim();
+    let entity_type_id = Uuid::parse_str(input.entity_type_id.trim()).ok();
+    let jurisdiction_id = Uuid::parse_str(input.jurisdiction_id.trim()).ok();
+
+    let refuse = |message: &str| {
+        let mut query = String::new();
+        push_query(&mut query, "entity_error", message);
+        push_query(&mut query, "entity_name", name);
+        push_query(&mut query, "entity_type_id", input.entity_type_id.trim());
+        push_query(&mut query, "jurisdiction_id", input.jurisdiction_id.trim());
+        back_to_firm_new_form(&query)
+    };
+
+    if name.is_empty() {
+        return refuse("Name is required.");
+    }
+    let (Some(type_id), Some(jur_id)) = (entity_type_id, jurisdiction_id) else {
+        return refuse("Pick an entity type and a jurisdiction.");
+    };
+
+    let command = store::entity_commands::CreateEntityCommand {
+        name: name.to_string(),
+        entity_type_id: type_id,
+        jurisdiction_id: jur_id,
+    };
+    match store::entity_commands::create_entity(&state.surreal, &state.bootstrap_company, &command)
+        .await
+    {
+        Ok(created) => {
+            let mut query = String::new();
+            push_query(&mut query, "entity", &created.id.to_string());
+            back_to_firm_new_form(&query)
+        }
+        Err(e) => refuse(&e.user_message()),
+    }
+}
+
+#[derive(Deserialize)]
+struct FirmAdminInlineInput {
+    #[serde(default)]
+    admin_name: String,
+    #[serde(default)]
+    admin_email: String,
+}
+
+/// `POST /app/owner/firms/new/admin` — the inline "New admin" form on the
+/// create-firm page. Mints a person with `role = admin` (never a firm
+/// attorney) so the create form's Admin DRI picker has a fresh eligible
+/// choice, then redirects back naming it or echoing a refusal.
+async fn firms_new_admin_inline(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<FirmAdminInlineInput>,
+) -> Response {
+    if !session
+        .as_ref()
+        .is_some_and(|Extension(s)| s.role.is_owner())
+    {
+        return not_found_response();
+    }
+    let command = crate::people_commands::CreatePersonCommand {
+        name: input.admin_name.clone(),
+        email: input.admin_email.clone(),
+        role: store::persons::Role::Admin.as_str().to_string(),
+        given_name: None,
+        family_name: None,
+        middle_name: None,
+        notion_user_id: None,
+        firm_id: None,
+    };
+    match crate::people_commands::create_person(&state.surreal, &command).await {
+        Ok(created) => {
+            let mut query = String::new();
+            push_query(&mut query, "admin", &created.id.to_string());
+            back_to_firm_new_form(&query)
+        }
+        Err(e) => {
+            let mut query = String::new();
+            push_query(&mut query, "admin_error", &e.user_message());
+            push_query(&mut query, "admin_name", input.admin_name.trim());
+            push_query(&mut query, "admin_email", input.admin_email.trim());
+            back_to_firm_new_form(&query)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct FirmUpdateInput {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    status: String,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    entity_id: Option<Uuid>,
+}
+
+/// `POST /app/admin/firms/{id}/edit` — a descriptive edit on
+/// `store::firms::update`, which itself authorizes Owner or that Firm's own
+/// Admin membership (`FirmCapability::ManageMembership`). A caller outside
+/// that reach gets the same not-found response the GET form's capability
+/// gate renders, so this door discloses nothing the page does not. Every
+/// other refusal redirects back to the edit form with `?error=` naming the
+/// rule.
+async fn firms_update(
+    State(state): State<AdminState>,
+    Path(id): Path<Uuid>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<FirmUpdateInput>,
+) -> Response {
+    let Some(Extension(session_data)) = session else {
+        return not_found_response();
+    };
+    let edit = store::firms::FirmEdit {
+        name: Some(input.name.clone()),
+        status: Some(input.status.clone()),
+        entity_id: input.entity_id,
+    };
+    match store::firms::update(
+        &state.surreal,
+        session_data.role,
+        session_data.person_id,
+        id,
+        &edit,
+    )
+    .await
+    {
+        Ok(_) => Redirect::to(&format!("/app/admin/firms/{id}")).into_response(),
+        Err(store::firms::FirmError::NotAuthorized | store::firms::FirmError::NoSuchFirm(_)) => {
+            not_found_response()
+        }
+        Err(e) => {
+            let mut query = String::new();
+            push_query(&mut query, "error", &e.user_message());
+            Redirect::to(&format!("/app/admin/firms/{id}/edit?{query}")).into_response()
+        }
+    }
+}
+
+// ---- Brands (ENG-586) ----
+
+const BRAND_NEW_PATH: &str = "/app/brands/new";
+
+fn back_to_brand_new_form(query: &str) -> Response {
+    if query.is_empty() {
+        Redirect::to(BRAND_NEW_PATH).into_response()
+    } else {
+        Redirect::to(&format!("{BRAND_NEW_PATH}?{query}")).into_response()
+    }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct BrandCreateInput {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    typeface: String,
+    #[serde(default)]
+    primary_color: String,
+}
+
+/// `POST /app/brands/new` — the same path the create form renders at, so a
+/// refusal reloads it with `?error=` and every field echoed. `firm_id` is
+/// never read from the form: Owner always creates system-wide, and an
+/// Admin's Firm is re-resolved server-side from their own DRI membership,
+/// exactly as `store::brands::create`'s own `authorize` would insist on —
+/// trusting a client-submitted Firm id here would let an Admin DRI of one
+/// Firm name a brand scoped to another.
+pub(crate) async fn brands_create(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<BrandCreateInput>,
+) -> Response {
+    let Some(Extension(session_data)) = session else {
+        return not_found_response();
+    };
+    if !session_data.role.is_admin_tier() {
+        return not_found_response();
+    }
+
+    let refuse = |message: &str| {
+        let mut query = String::new();
+        push_query(&mut query, "error", message);
+        push_query(&mut query, "name", &input.name);
+        push_query(&mut query, "key", &input.key);
+        push_query(&mut query, "typeface", &input.typeface);
+        push_query(&mut query, "primary_color", &input.primary_color);
+        back_to_brand_new_form(&query)
+    };
+
+    let firm_id = if session_data.role.is_owner() {
+        None
+    } else {
+        let Some(person_id) = session_data.person_id else {
+            return refuse("Your session isn't linked to a firm person.");
+        };
+        let memberships =
+            match store::firms::memberships_for_person(&state.surreal, person_id).await {
+                Ok(memberships) => memberships,
+                Err(error) => {
+                    tracing::error!(error = %error, "brands_create: membership lookup failed");
+                    return refuse("Could not resolve your Firm membership.");
+                }
+            };
+        let Some(firm_id) = memberships
+            .iter()
+            .find(|m| m.is_dri && m.membership == store::firms::FirmMembership::Admin)
+            .map(|m| m.firm_id)
+        else {
+            return refuse("You are not the Admin DRI of any Firm.");
+        };
+        Some(firm_id)
+    };
+
+    match store::brands::create(
+        &state.surreal,
+        session_data.role,
+        session_data.person_id,
+        &store::brands::NewBrand {
+            name: input.name.clone(),
+            key: input.key.clone(),
+            firm_id,
+            typeface: (!input.typeface.is_empty()).then(|| input.typeface.clone()),
+            primary_color: (!input.primary_color.is_empty()).then(|| input.primary_color.clone()),
+            ..store::brands::NewBrand::default()
+        },
+    )
+    .await
+    {
+        Ok(created) => Redirect::to(&format!("/app/brands/{}/edit", created.key)).into_response(),
+        Err(error) => refuse(&error.user_message()),
+    }
 }
 
 // ---- Projects ----

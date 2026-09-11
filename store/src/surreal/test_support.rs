@@ -44,7 +44,36 @@ pub async fn mem() -> SurrealDb {
     crate::schema::apply(&db)
         .await
         .expect("apply the Surreal schema to a fresh embedded engine");
+    seed_compiled_brands(&db).await;
     db
+}
+
+/// Register the three compiled house-brand keys as system-wide `brand` rows
+/// — the same state `store::seed::seed_brands` reaches in a real deployment
+/// before any traffic ever arrives (ENG-587: `store::projects::create` and
+/// `open_matter` validate `brand` against live rows, not a compiled closed
+/// list, so a test engine that never reaches this state could not open a
+/// matter under any of the three compiled keys, unlike a real deployment).
+/// A test that needs to observe an empty `brand` table uses [`unmigrated`]
+/// directly instead of [`mem`].
+async fn seed_compiled_brands(db: &SurrealDb) {
+    for key in crate::firms::CLOSED_BRAND_KEYS {
+        match crate::brands::create(
+            db,
+            crate::persons::Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: (*key).to_string(),
+                key: (*key).to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        {
+            Ok(_) => {}
+            Err(error) => panic!("seed the compiled brand {key} for a test engine: {error}"),
+        }
+    }
 }
 
 /// [`mem`] without the schema — for tests that exercise the schema

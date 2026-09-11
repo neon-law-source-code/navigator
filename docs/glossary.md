@@ -127,6 +127,23 @@ marketing page. The three compiled keys (`neon`, `delete-your-data`, `lawyer-sho
 first boot so the one authorization table names every brand a Firm may attach, but their real presentation — hosts,
 colours, fonts, logos, copy — stays exactly where this entry describes it, unchanged.
 
+Owner (for a system-wide row) or a Firm's Admin DRI (for that Firm's own row) create, edit, and delete `brand` rows at
+`/app/brands`, `/app/brands/new`, and `/app/brands/{key}/edit` (ENG-586). `primary_color` is a free `#rrggbb` hex, gated
+behind a WCAG AA 4.5:1 contrast check against its own derived on-primary colour (white or black, whichever contrasts
+more) — never a closed palette id. A row may also carry an uploaded logo (PNG or SVG, sanitized against script content)
+and an uploaded `.woff2` font (attested under a closed open-licence list), both served from the public assets bucket;
+`typeface = "uploaded"` is what tells the tokens stylesheet to read the row's own font rather than a compiled catalog
+entry. Deleting a row is refused while any `firm_brand` or `project.brand` value still names its key. None of this
+touches the three compiled keys' own served hosts, marketing pages, or fallback presentation — editing `neon`'s row
+changes what `/public/css/brand-neon-tokens.css` renders, not which hosts resolve to it.
+
+An uploaded logo also renders on `/app` (ENG-590), not only on the public site:
+`webapp::app_chrome::resolve_app_brand_mark` prefers the resolved brand's `brand.logo_object_key` over the compiled
+`SiteBrand.logo_href` in the navbar mark, resolved by the same portal-wide request layer that resolves
+[`FirmFooterModel`](#firm-brand). The `/app` document title is deliberately unaffected — every `/app/*` page's tab title
+still leads with "Navigator", because `/app` is the firm's own internal tool rather than a client-facing surface a
+white-label deploy needs to rebrand in the reader's eyes.
+
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local
@@ -688,7 +705,20 @@ name/status/entity (`store::firms::update`), changes or removes a person's membe
 [`appoint_admin_dri`](#personfirm-role) does, and each membership-removal door refuses a change that would leave an
 active Firm without one. Deleting a Firm that still owns Projects is refused. The Firm detail view at
 `/app/admin/firms/{id}` (`webapp::firm_show`) is where these are read together: a Firm's own fields, its brands, its
-Admin-DRI standing, and every person on it.
+Admin-DRI standing, and every person on it, with an Edit link for whichever caller holds `ManageMembership` on it.
+
+Owner opens a second (or subsequent) Firm at `/app/owner/firms/new` (ENG-585), naming its Entity and its first Admin DRI
+in one submission — `store::firms::create`'s own atomic guarantee. That Firm's Admin DRI (or Owner) then edits its name,
+status, and Entity at `/app/admin/firms/{id}/edit`.
+
+The Firm show page also renders a trailing-30-day billing rollup (ENG-591), from
+`store::xero_invoices::firm_thirty_day_rollup`, which sums every mirrored Xero invoice issued on one of the Firm's
+Projects in the last 30 days, in cents, grouped by brand and by lawyer DRI (a Project with none groups under
+`"Unassigned"`), and never sums across currencies — a Firm billing in two currencies gets two independent totals rather
+than one misleading sum. `webapp::firm_invoice_graphs` draws the result as two horizontal grouped bar charts (invoiced
+cents beside paid cents) in inline server-rendered SVG, following the no-charting-library precedent
+`webapp::lawyer_dashboard`'s status pie already set. Every label the chart draws is a brand's or a person's display name
+(or `"Unassigned"`) — never a Project code, matter name, or Xero invoice id, which stay out of this surface entirely.
 
 - Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
@@ -703,6 +733,12 @@ Distinct from [Brand](#brand), which is the storefront a request resolved to.
 carrying that key, not the closed `CLOSED_BRAND_KEYS` array directly. A Firm may therefore wear any brand a `brand` row
 names, not only the three compiled ones. `store::firms::CLOSED_BRAND_KEYS` names `neon`, `delete-your-data`, and
 `lawyer-shook`; `store::seed` migrates them into `brand` rows on first boot so validation has a catalog from the start.
+
+Every footer names the Firm actually wearing the request's resolved brand, not a compiled constant (ENG-589):
+`webapp::firm_footer::resolve_firm_footer_model` reads the Firm's Entity for the legal name and `firm_brand` for the
+brands row, current first, falling back to the compiled `Branding` only when no Firm wears the key. The `/app` footer
+(`webapp::firm_footer::FirmFooter`) and the public chrome's footer draw from this one resolved model rather than
+duplicating the lookup or rendering a second Firm's brands.
 
 - Schema: [`firm_brand` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)

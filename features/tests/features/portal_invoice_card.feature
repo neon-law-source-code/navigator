@@ -39,3 +39,12 @@ Feature: /app/projects/:code — the client's invoice card reads the Xero mirror
     When "leo@example.com" opens the detail page for "Leo Matter"
     Then the response status is 200
     And the page shows no invoice card
+
+  Scenario: A matter carries more than one invoice over time
+    Given a seeded person "virgo@example.com" with role "client"
+    And a project "Virgo Matter" with "virgo@example.com" as a participant
+    And an AUTHORISED invoice of 100000 cents is mirrored for "Virgo Matter"
+    And a second AUTHORISED invoice of 200000 cents is mirrored for "Virgo Matter"
+    When "virgo@example.com" opens the detail page for "Virgo Matter"
+    Then the response status is 200
+    And the invoice card lists 2 invoices

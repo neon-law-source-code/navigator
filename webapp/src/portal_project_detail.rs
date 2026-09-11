@@ -29,16 +29,20 @@ use crate::portal_project_list::PersonId;
 #[derive(Clone, Default)]
 pub struct PendingClientIntake(pub Option<String>);
 
-/// The matter's invoice, read from the local Xero mirror. The Xero invoice id is
-/// deliberately not carried — only the client-facing amount and status.
+/// One of the matter's invoices, read from the local Xero mirror. The Xero
+/// invoice id is deliberately not carried — only client-facing fields.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct InvoiceView {
+    /// The invoice-level reference (`Matter <project_id>`).
+    pub reference: String,
     /// Formatted total, e.g. `$3,333.00`.
     pub amount: String,
     /// Provider status mirror (`AUTHORISED`, `PAID`, …).
     pub status: String,
     /// `true` once reconcile has seen the invoice paid in full.
     pub paid: bool,
+    /// The date Xero raised the invoice, `YYYY-MM-DD`.
+    pub issued_on: String,
 }
 
 /// One of the matter's notations (e.g. the retainer), in plain words, with the
@@ -89,7 +93,9 @@ pub struct ProjectDetailView {
     pub code: String,
     pub name: String,
     pub status: String,
-    pub invoice: Option<InvoiceView>,
+    /// Every invoice mirrored for this matter, newest first — a matter may
+    /// carry more than one over time (ENG-588). Empty until Xero raises one.
+    pub invoices: Vec<InvoiceView>,
     pub notations: Vec<NotationRow>,
     pub documents: Vec<String>,
     pub review_docs: Vec<ReviewDocRow>,
@@ -294,17 +300,20 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         .map(|d| d.filename.unwrap_or_default())
         .collect();
 
-    // Invoice from the local mirror; only amount + status reach the client.
-    let invoice = store::xero_invoices::for_projects(&surreal, &[id])
+    // Every invoice from the local mirror, newest first; only client-facing
+    // fields reach the client (never the Xero invoice id).
+    let invoices = store::xero_invoices::for_projects(&surreal, &[id])
         .await
         .map_err(server_error)?
         .into_iter()
-        .next()
         .map(|r| InvoiceView {
+            reference: r.reference,
             amount: format_usd(r.amount_cents),
             paid: r.amount_cents > 0 && r.amount_paid_cents >= r.amount_cents,
             status: r.status,
-        });
+            issued_on: r.issued_at.format("%Y-%m-%d").to_string(),
+        })
+        .collect();
 
     let resources = crate::project_resources::ProjectResourcesView {
         resources: crate::project_resources::visible_resources(
@@ -327,7 +336,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         code: project.code,
         name: project.name,
         status: project.status,
-        invoice,
+        invoices,
         notations: notation_rows,
         documents,
         review_docs: review_rows,
@@ -553,18 +562,21 @@ pub fn ClientProjectDetail() -> Element {
                 }
             }
 
-            if let Some(inv) = view.invoice.as_ref() {
+            if !view.invoices.is_empty() {
                 section { class: "portal-detail__section",
                     h2 { "Invoice" }
-                    div { class: "portal-card portal-card--split",
-                        div {
-                            div { class: "portal-card__title", "{inv.amount}" }
-                            div { class: "portal-card__meta", "Status: {inv.status}" }
-                        }
-                        if inv.paid {
-                            span { class: "status-chip status-chip--paid", "Paid" }
-                        } else {
-                            span { class: "status-chip status-chip--due", "Due" }
+                    for inv in view.invoices.iter() {
+                        div { class: "portal-card portal-card--split",
+                            div {
+                                div { class: "portal-card__title", "{inv.amount}" }
+                                div { class: "portal-card__meta", "Status: {inv.status}" }
+                                div { class: "portal-card__meta", "Issued: {inv.issued_on}" }
+                            }
+                            if inv.paid {
+                                span { class: "status-chip status-chip--paid", "Paid" }
+                            } else {
+                                span { class: "status-chip status-chip--due", "Due" }
+                            }
                         }
                     }
                 }

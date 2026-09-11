@@ -48,7 +48,7 @@ use std::path::PathBuf;
 
 use axum::{
     body::Body,
-    extract::Request,
+    extract::{DefaultBodyLimit, Request},
     http::{header, HeaderValue, StatusCode},
     middleware::{from_fn, from_fn_with_state, Next},
     response::{IntoResponse, Response},
@@ -156,8 +156,16 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     // carries the template's `lang="en"`.
     let lang = "en";
     // Captured before `next.run` consumes `req`: the footer below is gated on
-    // the request path, not on anything the render produced.
+    // the request path, not on anything the render produced. The resolved
+    // footer model rides the request extension the portal-wide
+    // `inject_firm_footer_model` layer inserts (outside every route), so it
+    // is here whether or not this specific route also applies its own
+    // per-request layers.
     let path = req.uri().path().to_string();
+    let footer_model = req
+        .extensions()
+        .get::<webapp::firm_footer::FirmFooterModel>()
+        .cloned();
     let response = next.run(req).await;
 
     let is_html = response
@@ -217,13 +225,26 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
         None => html,
     };
 
-    // The minimal `/app` footer — copyright plus the shared platform line.
-    // Gated on the request path rather than on the rendered shell: unlike the
+    // The `/app` footer — copyright naming the resolved Firm's legal entity,
+    // its brands row, and the shared platform line (ENG-589). Gated on the
+    // request path rather than on the rendered shell: unlike the
     // public/authenticated split above, the eight real `/app` pages render
     // their navbar directly rather than through a shared `NavigatorShell`, so
-    // there is no shell marker to key off. See `webapp::components::AppFooter`.
+    // there is no shell marker to key off. See `webapp::firm_footer`.
     let html = if renders_app_footer(&path) {
-        close_with_script(&html, &APP_FOOTER)
+        let model = footer_model.unwrap_or_else(|| {
+            webapp::firm_footer::compiled_firm_footer_model(
+                views::brand::brand_key(),
+                {
+                    use chrono::Datelike;
+                    chrono::Utc::now().year()
+                },
+                views::brand::deployed_release()
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        });
+        close_with_script(&html, &webapp::firm_footer::render_firm_footer(model))
     } else {
         html
     };
@@ -323,15 +344,8 @@ fn close_with_script(html: &str, script: &str) -> String {
 static SAMPLE_MATTERS_BANNER: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(webapp::components::render_sample_matters_banner);
 
-/// The rendered `/app` footer, built once.
-///
-/// `views::brand::FIRM_BRAND` is a process-wide constant, so — like
-/// [`SAMPLE_MATTERS_BANNER`] — there is nothing to re-render per request.
-static APP_FOOTER: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(webapp::components::render_app_footer);
-
 /// Whether the rendered document is an authenticated `/app` page, which is
-/// what [`APP_FOOTER`] renders onto.
+/// what the resolved [`webapp::firm_footer::FirmFooterModel`] renders onto.
 ///
 /// Decided from the request path rather than the rendered shell: unlike
 /// [`is_public_page`], the eight real `/app` pages render `AppNavbar` and
@@ -505,14 +519,27 @@ async fn inject_viewer_role(mut req: Request, next: Next) -> Response {
 /// [`webapp::app_chrome::AppBrandMark`] request extension, so an `/app` page's
 /// navbar renders the mounted brand's logo and its copy names the mounted firm.
 ///
-/// Resolved here, on the request task, where the brand `tokio::task_local`
-/// (`scope_branding`) is live: a Dioxus server function runs on a task that does
-/// not inherit it, so `app_logo_from_context` resolving the brand itself would
-/// publish the DEFAULT mark under a mounted white-label bundle — the same reason
-/// [`inject_public_utility`] resolves the public chrome here rather than there.
+/// Prefers an `AppBrandMark` the portal-wide `inject_firm_footer_model` layer
+/// already resolved with store access (ENG-590: an uploaded brand logo takes
+/// precedence over the compiled one there) — that layer wraps every route, so
+/// its extension is already on the request by the time any per-route layer
+/// runs. Falls back to the store-free [`webapp::app_chrome::firm_brand_mark`]
+/// for the middleware-free test paths, resolved here, on the request task,
+/// where the brand `tokio::task_local` (`scope_branding`) is live: a Dioxus
+/// server function runs on a task that does not inherit it, so
+/// `app_logo_from_context` resolving the brand itself would publish the
+/// DEFAULT mark under a mounted white-label bundle — the same reason
+/// [`inject_public_utility`] resolves the public chrome here rather than
+/// there.
 async fn inject_app_brand_mark(mut req: Request, next: Next) -> Response {
-    req.extensions_mut()
-        .insert(webapp::app_chrome::firm_brand_mark());
+    if req
+        .extensions()
+        .get::<webapp::app_chrome::AppBrandMark>()
+        .is_none()
+    {
+        req.extensions_mut()
+            .insert(webapp::app_chrome::firm_brand_mark());
+    }
     next.run(req).await
 }
 
@@ -763,11 +790,20 @@ async fn inject_public_utility(mut req: Request, next: Next) -> Response {
     // white-label bundle (the header logo, wordmark, and footer). Inject the
     // resolved chrome for the server-fn to read back.
     let mut chrome = webapp::public_chrome::firm_public_chrome(utility.clone());
-    if let Some(webapp::public_chrome::ResolvedFooterBrands(brands)) =
-        req.extensions()
-            .get::<webapp::public_chrome::ResolvedFooterBrands>()
+    if let Some(model) = req
+        .extensions()
+        .get::<webapp::firm_footer::FirmFooterModel>()
     {
-        chrome.brands.clone_from(brands);
+        chrome.legal_entity.clone_from(&model.legal_entity);
+        chrome.brands = model
+            .brands
+            .iter()
+            .map(|brand| webapp::public_chrome::ChromeBrand {
+                label: brand.label.clone(),
+                href: brand.href.clone(),
+                current: brand.current,
+            })
+            .collect();
     }
     req.extensions_mut().insert(chrome);
     req.extensions_mut()
@@ -3339,7 +3375,12 @@ pub fn app_brands_router(
     sessions: crate::session::SessionStore,
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
+    surreal: store::surreal::SurrealDb,
 ) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
     Router::<FullstackState>::new()
         .route(
             APP_BRANDS_PATH,
@@ -3348,10 +3389,7 @@ pub fn app_brands_router(
                 .layer(from_fn(inject_viewer_role))
                 .layer(from_fn(inject_app_brand_mark)),
         )
-        .with_state(FullstackState::new(
-            ServeConfig::new(),
-            webapp::brands_home::BrandsHome,
-        ))
+        .with_state(FullstackState::new(cfg, webapp::brands_home::BrandsHome))
         .route_layer(from_fn_with_state(
             (sessions, policy),
             crate::policy::require_policy,
@@ -3389,6 +3427,37 @@ pub fn app_brands_edit_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// `/app/brands/new` — creates a brand row (ENG-586). Owner or Admin at the
+/// route (not `owner_only_path`: that carve-out matches only the exact
+/// two-segment `/app/brands`, not this three-segment path); `store::brands`'
+/// own `authorize` is what refuses an Admin with no Firm DRI standing.
+pub const APP_BRAND_NEW_PATH: &str = "/app/brands/new";
+
+/// Native POST twin of `APP_BRAND_NEW_PATH`'s create form. Registered on the
+/// same path as the GET below so axum merges the two methods.
+pub fn app_brand_new_post_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    admin_state: crate::admin::AdminState,
+) -> Router {
+    Router::new()
+        .route(
+            APP_BRAND_NEW_PATH,
+            axum::routing::post(crate::admin::brands_create),
+        )
+        .with_state(admin_state)
+        .layer(from_fn_with_state(
+            (sessions.clone(), crate::csrf::CsrfMode::Form),
+            crate::csrf::require_csrf,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
 /// Native POST twin of `PATCH /app/api/brands/{key}` so the edit form stays
 /// a classic navigation.
 pub fn app_brands_edit_post_router(
@@ -3403,6 +3472,46 @@ pub fn app_brands_edit_post_router(
             axum::routing::post(crate::brand_edit::post_brand_edit),
         )
         .with_state(surreal)
+        .layer(from_fn_with_state(
+            (sessions.clone(), crate::csrf::CsrfMode::Form),
+            crate::csrf::require_csrf,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
+/// A brand's uploaded logo, ENG-586. Native multipart only — no Dioxus GET
+/// mounts here, since the edit page's own upload form is a fragment of
+/// `APP_BRANDS_EDIT_PATH`'s render, not a page of its own.
+pub const APP_BRAND_LOGO_PATH: &str = "/app/brands/{key}/logo";
+/// A brand's uploaded font, ENG-586. See [`APP_BRAND_LOGO_PATH`].
+pub const APP_BRAND_FONT_PATH: &str = "/app/brands/{key}/font";
+
+/// Native multipart POSTs for a brand's logo and font uploads (ENG-586).
+/// `require_multipart_csrf` runs inside each handler — `CsrfMode::Form`
+/// passes a multipart body through unchecked, matching every other upload
+/// door (the avatar uploads in `portal::admin`).
+pub fn app_brand_assets_post_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    admin_state: crate::admin::AdminState,
+) -> Router {
+    Router::new()
+        .route(
+            APP_BRAND_LOGO_PATH,
+            axum::routing::post(crate::brand_assets::upload_logo)
+                .layer(DefaultBodyLimit::max(crate::brand_assets::MAX_LOGO_BYTES)),
+        )
+        .route(
+            APP_BRAND_FONT_PATH,
+            axum::routing::post(crate::brand_assets::upload_font)
+                .layer(DefaultBodyLimit::max(crate::brand_assets::MAX_FONT_BYTES)),
+        )
+        .with_state(admin_state)
         .layer(from_fn_with_state(
             (sessions.clone(), crate::csrf::CsrfMode::Form),
             crate::csrf::require_csrf,
@@ -3519,6 +3628,21 @@ pub fn firm_show_router(
         ))
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
+
+/// Owner opens a new Firm here (ENG-585). Under `/app/owner`, so embedded
+/// Rego's `owner_only_path` rule carves it out of the Owner/Admin bypass with
+/// no rule of its own — the same reason [`APP_OWNER_PATH`] needs none.
+/// `webapp::admin_listing::require_owner` re-checks the tier inside the
+/// `#[server]` loader as defense in depth.
+pub const APP_OWNER_FIRM_NEW_PATH: &str = "/app/owner/firms/new";
+
+/// The Firm edit form (ENG-585). Lives under `/app/admin`, exactly like
+/// [`FIRM_SHOW_PATH`] it extends: Owner and Admin both pass the Rego route
+/// bypass, and the fine-grained
+/// `store::firm_capability::FirmCapability::ManageMembership` check inside
+/// `webapp::firm_edit::get_firm_edit_form` decides which Firms an Admin may
+/// actually edit.
+pub const FIRM_EDIT_PATH: &str = "/app/admin/firms/{id}/edit";
 
 /// The `/documents` and `/documents/{slug}` pre-layer: canonicalize the slug,
 /// 404 an unknown one, or inject the matched doc for the render. This
@@ -4057,10 +4181,18 @@ mod tests {
         assert!(!renders_app_footer("/app"));
     }
 
-    /// The rendered footer is the one that actually reaches a response.
+    /// The rendered footer is the one that actually reaches a response — the
+    /// compiled fallback `dioxus_document_head` renders when no
+    /// `FirmFooterModel` extension is on the request (every direct unit test,
+    /// matching how `views::brand::brand_key()` itself falls back).
     #[test]
     fn the_rendered_footer_names_the_firm_of_record() {
-        let footer = &*APP_FOOTER;
+        let model = webapp::firm_footer::compiled_firm_footer_model(
+            views::brand::BrandKey::default(),
+            2026,
+            String::new(),
+        );
+        let footer = webapp::firm_footer::render_firm_footer(model);
         assert!(footer.contains("Shook Law PLLC"), "{footer}");
         assert!(footer.contains('©'), "{footer}");
     }

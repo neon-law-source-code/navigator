@@ -233,9 +233,22 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   noun-isolation that keeps a provisioning door off the client-reachable
     //   `projects` prefix.
     // 443 + 8 = 451.
+    //
+    // + 11 for ENG-586's create-brand and logo/font upload doors
+    //   (`/app/brands/new`, `/app/brands/{key}/logo`, `/app/brands/{key}/font`):
+    //   Owner and Admin admitted on each; Lawyer denied on each; Clerk and an
+    //   anonymous caller each denied once more, on the create-brand door. None
+    //   of these needed a new policy rule — every one rides the Owner/Admin
+    //   bypass, exactly as `/app/admin/projects` does — so these assertions
+    //   are what holds that deny-by-omission in place. ENG-585's firm create
+    //   (`/app/owner/firms/new`, `owner_only_path`) and edit
+    //   (`/app/admin/firms/{id}/edit`, the ordinary bypass) needed no test of
+    //   their own here: both ride rules this file already asserts by shape,
+    //   not by resource name.
+    // 451 + 11 = 462.
     assert_eq!(
         test_names.len(),
-        451,
+        462,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

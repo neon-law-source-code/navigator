@@ -2150,6 +2150,53 @@ test_clerk_denied_app_api_brands_patch if {
 	not authz.allow with input as {"path": ["app", "api", "brands", "neon"], "method": "PATCH", "session": clerk_session}
 }
 
+# ENG-586: create-brand and logo/font upload doors. Named explicitly even
+# though the general Owner/Admin bypass already covers every one of these
+# (none is `owner_only_path`) — see the policy's own comment.
+test_owner_posts_app_brands_new if {
+	authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": owner_session}
+}
+
+test_admin_posts_app_brands_new if {
+	authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": admin_session}
+}
+
+test_lawyer_denied_app_brands_new_post if {
+	not authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": lawyer_session}
+}
+
+test_clerk_denied_app_brands_new_post if {
+	not authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": clerk_session}
+}
+
+test_owner_posts_app_brands_logo if {
+	authz.allow with input as {"path": ["app", "brands", "neon", "logo"], "method": "POST", "session": owner_session}
+}
+
+test_admin_posts_app_brands_logo if {
+	authz.allow with input as {"path": ["app", "brands", "neon", "logo"], "method": "POST", "session": admin_session}
+}
+
+test_lawyer_denied_app_brands_logo_post if {
+	not authz.allow with input as {"path": ["app", "brands", "neon", "logo"], "method": "POST", "session": lawyer_session}
+}
+
+test_owner_posts_app_brands_font if {
+	authz.allow with input as {"path": ["app", "brands", "neon", "font"], "method": "POST", "session": owner_session}
+}
+
+test_admin_posts_app_brands_font if {
+	authz.allow with input as {"path": ["app", "brands", "neon", "font"], "method": "POST", "session": admin_session}
+}
+
+test_lawyer_denied_app_brands_font_post if {
+	not authz.allow with input as {"path": ["app", "brands", "neon", "font"], "method": "POST", "session": lawyer_session}
+}
+
+test_anonymous_denied_app_brands_new_post if {
+	not authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": null}
+}
+
 # ---------- /app/owner ----------
 # Deployment-wide firm inventory. Owner only: the Owner/Admin route bypass
 # does not apply here, so an Admin is denied the same way a Lawyer is.

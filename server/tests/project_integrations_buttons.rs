@@ -205,9 +205,10 @@ async fn lawyer_sees_the_external_slack_button_when_the_matter_has_one() {
     assert!(html.contains("Shared Slack channel"));
 }
 
-/// The Xero button links straight to the matter's raised invoice, mirrored
-/// locally in `xero_invoice` and keyed uniquely on `project_id` — the
-/// invoice is already grouped per matter, so the button needs no fan-out.
+/// The Xero button links straight to the matter's most recently raised
+/// invoice, mirrored locally in `xero_invoice` — `for_projects` orders
+/// newest first, so a matter carrying several invoices still resolves to
+/// one button target.
 #[tokio::test]
 async fn lawyer_sees_the_xero_button_pointing_at_the_raised_invoice() {
     const XERO_ID: &str = "11111111-2222-3333-4444-555555555555";
@@ -221,6 +222,8 @@ async fn lawyer_sees_the_xero_button_pointing_at_the_raised_invoice() {
             status: "AUTHORISED".into(),
             amount_cents: 50_000,
             currency: "USD".into(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
         },
     )
     .await
@@ -274,6 +277,8 @@ async fn a_client_sees_the_shared_resources_and_none_of_the_firms() {
             status: "AUTHORISED".into(),
             amount_cents: 50_000,
             currency: "USD".into(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
         },
     )
     .await

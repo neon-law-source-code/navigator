@@ -1746,6 +1746,41 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
     );
 }
 
+/// ENG-589: the `/app` footer and the public footer both name the seeded
+/// practice's Entity and list its three brands, current first — resolved
+/// live from `store::firms`/`store::brands`, not the compiled
+/// `FIRM_BRAND` constant every deployment used to render regardless of which
+/// Firm actually owns the request's brand.
+#[tokio::test]
+async fn the_app_and_public_footers_name_the_seeded_firm_and_its_brands() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let team = get_with_role(app.clone(), "/app/team", store::persons::Role::Lawyer).await;
+    assert_eq!(team.status(), StatusCode::OK);
+    let team_html = body_string(team).await;
+    assert!(
+        team_html.contains(r#"class="app-footer__copyright""#),
+        "{team_html}"
+    );
+    assert!(team_html.contains("Shook Law PLLC"), "{team_html}");
+    assert!(
+        team_html.contains(r#"class="app-footer__brands""#),
+        "the seeded practice wears three brands, so the row renders: {team_html}"
+    );
+
+    let home = app
+        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(home.status(), StatusCode::OK);
+    let home_html = body_string(home).await;
+    assert!(home_html.contains("Shook Law PLLC"), "{home_html}");
+}
+
 /// ENG-493: `/app/brands` narrowed to Owner only. A hidden link is not an
 /// authorization boundary, so this proves the route itself refuses a Lawyer
 /// — the same shape `owner_lists_the_seeded_practice_and_its_brands` proves
@@ -19083,5 +19118,163 @@ async fn a_code_naming_no_matter_is_refused_on_every_matter_route() {
     assert!(
         !body.contains(ghost),
         "the per-document page must not echo a code it could not resolve: {body}"
+    );
+}
+
+/// ENG-590: the `/app` navbar mark already resolves the request's brand
+/// correctly by host (`FIRM_BRAND` reads the live `task_local`, not a
+/// compiled default) — this pins that as intentional, proven behavior rather
+/// than an accident, and adds the one piece that was genuinely missing: a
+/// brand's uploaded logo (`store::brands::Brand::logo_object_key`, ENG-586)
+/// takes precedence over the compiled `logo_href` on `/app` too, not only on
+/// the public site.
+#[tokio::test]
+async fn the_app_navbar_prefers_an_uploaded_logo_over_the_compiled_one() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    store::brands::set_logo(
+        &surreal,
+        store::persons::Role::Owner,
+        None,
+        store::brands::find_by_key(&surreal, "neon")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "brands/neon/logo.svg",
+        "image/svg+xml",
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = get_with_role(app, "/app/team", store::persons::Role::Lawyer).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains(r#"src="/assets/brands/neon/logo.svg""#),
+        "the uploaded logo takes precedence over the compiled one: {body}"
+    );
+}
+
+/// A Firm with one Project carrying one $500 invoice, plus the Admin who
+/// holds its Admin-DRI membership — the fixture
+/// [`the_firm_show_page_renders_its_invoice_graphs_for_owner_and_the_firms_admin`]
+/// drives through the real route.
+async fn seed_firm_with_one_invoice(
+    surreal: &store::surreal::SurrealDb,
+) -> (store::firms::Firm, store::persons::Person) {
+    let (entity_type_id, jurisdiction_id) = seeded_entity_fks(surreal).await;
+    let new_entity = |name: &str| store::entities::NewEntity {
+        name: name.to_string(),
+        entity_type_id,
+        jurisdiction_id,
+        phone: None,
+        url: None,
+        firm_anchor_key: None,
+    };
+    let firm_entity = store::entities::create(surreal, &new_entity("Rollup Practice LLC"))
+        .await
+        .unwrap();
+    let member = store::persons::create(
+        surreal,
+        &store::persons::NewPerson::with_role(
+            "Firm Member Admin",
+            "firm-member-admin@example.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let firm = store::firms::create(
+        surreal,
+        &store::firms::NewFirm {
+            name: "Rollup Practice".to_string(),
+            status: "active".to_string(),
+            entity_id: firm_entity.id,
+            admin_dri_person_id: member.id,
+        },
+    )
+    .await
+    .unwrap();
+    let matter_entity = store::entities::create(surreal, &new_entity("Rollup Matter Co"))
+        .await
+        .unwrap();
+    let project = store::projects::create(
+        surreal,
+        &store::projects::NewProject {
+            code: "rollup-invoice-matter".to_string(),
+            name: "Rollup Invoice Matter".to_string(),
+            status: "open".to_string(),
+            entity_id: matter_entity.id,
+            firm_id: Some(firm.id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::xero_invoices::upsert(
+        surreal,
+        &store::xero_invoices::UpsertXeroInvoice {
+            project_id: project.id,
+            xero_invoice_id: "xero-rollup".to_string(),
+            reference: "Rollup reference".to_string(),
+            status: "AUTHORISED".to_string(),
+            amount_cents: 50_000,
+            currency: "USD".to_string(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    (firm, member)
+}
+
+/// ENG-591: the Firm show page's trailing-30-day invoice graphs render live
+/// through the real route for the Owner and for the Firm's own Admin DRI —
+/// and an Admin outside the Firm gets the page's existing not-found render,
+/// with the rollup's dollar figures never appearing in that body.
+#[tokio::test]
+async fn the_firm_show_page_renders_its_invoice_graphs_for_owner_and_the_firms_admin() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let (firm, member) = seed_firm_with_one_invoice(&surreal).await;
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let path = format!("/app/admin/firms/{}", firm.id);
+
+    let owner = get_with_role(app.clone(), &path, store::persons::Role::Owner).await;
+    assert_eq!(owner.status(), StatusCode::OK);
+    let owner_html = body_string(owner).await;
+    assert!(owner_html.contains("neon invoiced: $500"), "{owner_html}");
+
+    let (member_cookie, _) = session_cookie_and_csrf_for_person(&member);
+    let member_resp = get_with_cookie(app.clone(), &path, &member_cookie).await;
+    assert_eq!(member_resp.status(), StatusCode::OK);
+    let member_html = body_string(member_resp).await;
+    assert!(member_html.contains("neon invoiced: $500"), "{member_html}");
+
+    let outsider = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Outside Admin",
+            "outside-admin@example.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let (outsider_cookie, _) = session_cookie_and_csrf_for_person(&outsider);
+    let outsider_resp = get_with_cookie(app, &path, &outsider_cookie).await;
+    assert_eq!(outsider_resp.status(), StatusCode::NOT_FOUND);
+    let outsider_html = body_string(outsider_resp).await;
+    assert!(
+        !outsider_html.contains("$500"),
+        "the rollup must never be computed for a non-member: {outsider_html}"
     );
 }

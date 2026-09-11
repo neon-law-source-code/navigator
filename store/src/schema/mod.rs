@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 35;
+pub const SCHEMA_VERSION: u32 = 38;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -338,7 +338,7 @@ mod tests {
         let entity_id = uuid::Uuid::parse_str("0198a36a-55cc-7fd0-8af7-4f30e72b761c").unwrap();
         db.query(
             "CREATE project:matter SET code = 'matter', name = 'Matter', status = 'open', \
-             entity_id = $entity_id, \
+             entity_id = $entity_id, brand = 'neon', \
              inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
         )
         .bind(("entity_id", crate::surreal::record_id("entity", entity_id)))
@@ -379,7 +379,7 @@ mod tests {
         let entity_id = uuid::Uuid::parse_str("0198a36a-55cc-7fd0-8af7-4f30e72b761c").unwrap();
         db.query(
             "CREATE project:role_matter SET code = 'role-matter', name = 'Role Matter', \
-             status = 'open', entity_id = $entity_id, \
+             status = 'open', entity_id = $entity_id, brand = 'neon', \
              inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
         )
         .bind(("entity_id", crate::surreal::record_id("entity", entity_id)))
@@ -435,7 +435,7 @@ mod tests {
         db.query(
             "CREATE project:unsupported_matter SET code = 'unsupported-matter', \
              name = 'Unsupported Matter', status = 'open', entity_id = $entity_id, \
-             inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
+             brand = 'neon', inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
         )
         .bind(("entity_id", crate::surreal::record_id("entity", entity_id)))
         .await

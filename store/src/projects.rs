@@ -97,13 +97,10 @@ struct ProjectRow {
     code: String,
     name: String,
     status: String,
-    /// `Option` even though the schema types it `string DEFAULT 'neon'`, and
-    /// the public [`Project`] carries a plain `String`. `DEFAULT` is a
-    /// write-time default: it does not reach rows written before the field
-    /// was defined, which hold no value at all. [`ProjectRow::into_project`]
-    /// collapses the absent case to `"neon"`, what the default would have
-    /// written.
-    brand: Option<String>,
+    /// Required (ENG-587): the schema's own boot-time backfill guarantees
+    /// every row has a value by the time this reads it — see
+    /// `store/src/schema/navigator.surql`'s `project.brand` comment.
+    brand: String,
     entity_id: surrealdb::types::RecordId,
     firm_id: Option<surrealdb::types::RecordId>,
     description: Option<String>,
@@ -128,7 +125,7 @@ impl ProjectRow {
             code: self.code,
             name: self.name,
             status: self.status,
-            brand: self.brand.unwrap_or_else(|| "neon".to_string()),
+            brand: self.brand,
             entity_id: record_uuid(&self.entity_id)?,
             firm_id: match self.firm_id.as_ref() {
                 None => None,
@@ -190,6 +187,11 @@ pub enum ProjectStoreError {
     NoSuchProject(Uuid),
     #[error("no firm {0}")]
     NoSuchFirm(Uuid),
+    /// `NewProject.brand` does not match any live `brand` row (ENG-587) —
+    /// the same check `store::firms::attach_brand` runs, not a compiled
+    /// closed list.
+    #[error("unknown brand key {0}")]
+    UnknownBrand(String),
     /// [`matter_lifecycle_sets`]'s batched onboarding/offboarding-artifact
     /// read failed. Kept distinct from [`ProjectStoreError::Db`] because that
     /// read spans four tables, not one.
@@ -624,6 +626,9 @@ pub struct MatterDirectoryEntry {
     pub code: String,
     pub name: String,
     pub status: String,
+    /// The brand key the matter's portal wears (ENG-587: always present,
+    /// never a compiled closed list).
+    pub brand: String,
     /// The names on the matter's `is_lawyer_dri` rows, alphabetical, or empty
     /// when no lawyer holds the marker. An unassigned matter is what this lens
     /// exists to surface, so an empty set is an ordinary value here rather than
@@ -670,6 +675,7 @@ pub async fn matter_directory(
             code: project.code,
             name: project.name,
             status: project.status,
+            brand: project.brand,
         })
         .collect())
 }
@@ -733,7 +739,7 @@ pub async fn matter_directory_for(
 /// becoming a name the caller cannot produce. The set has no inherent order,
 /// so each project's names come back sorted rather than left in row-scan
 /// order.
-async fn dri_names_by_project(
+pub(crate) async fn dri_names_by_project(
     surreal: &SurrealDb,
     flag_column: &str,
 ) -> Result<std::collections::HashMap<Uuid, Vec<String>>, ProjectStoreError> {
@@ -918,6 +924,9 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
         if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
             return Err(ProjectStoreError::NoSuchFirm(firm_id));
         }
+    }
+    if !crate::firms::brand_key_exists(surreal, &input.brand).await? {
+        return Err(ProjectStoreError::UnknownBrand(input.brand.clone()));
     }
     let id = Uuid::now_v7();
     let now = chrono::Utc::now().to_rfc3339();
@@ -2288,6 +2297,16 @@ pub async fn open_matter(
              it must start and end with a letter or digit.",
         ));
     }
+    // The server stamps `brand` from the resolved request host, never a
+    // client-submitted form field, but the command itself carries a plain
+    // `String` — validate it against live `brand` rows (ENG-587) rather than
+    // trusting every caller (CLI, JSON API) to have derived it correctly.
+    if !crate::firms::brand_key_exists(surreal, &input.brand)
+        .await
+        .map_err(|error| OpenMatterError::Db(error.to_string()))?
+    {
+        return Err(OpenMatterError::NotFound("brand"));
+    }
 
     // Validate every reference before opening. The project and both
     // participations commit in the explicit SurrealDB transaction below;
@@ -2733,7 +2752,7 @@ mod surreal_read_tests {
         let entity_id = uuid::Uuid::now_v7();
         db.query(
             "CREATE $id SET code = 'matter', name = 'Matter', status = 'open', \
-             entity_id = $entity_id, inserted_at = '2026-08-04T00:00:00Z', \
+             entity_id = $entity_id, brand = 'neon', inserted_at = '2026-08-04T00:00:00Z', \
              updated_at = '2026-08-04T00:00:00Z'",
         )
         .bind(("id", crate::surreal::record_id("project", id)))
@@ -2752,12 +2771,17 @@ mod surreal_read_tests {
     /// `brand` round-trips through `create` for every key the registry
     /// serves today, and a row written with no explicit `brand` (`create`
     /// always writes one via `NewProject::default()`, but a caller may pass
-    /// through that default) reads back as `"neon"` — see
-    /// [`reads_a_project_row_written_before_brand_was_defined`] for the
-    /// separate case of a row that predates the field entirely.
+    /// through that default) reads back as `"neon"`. `create` now validates
+    /// the key against live `brand` rows (ENG-587), so each is seeded first —
+    /// see [`create_refuses_an_unknown_brand_key`] for what happens without
+    /// one, and `store/tests/schema_apply_backfills_project_brand.rs` for a
+    /// row that predates the field entirely.
     #[tokio::test]
     async fn create_round_trips_brand_for_every_registered_key() {
         let db = mem_surreal().await;
+        // `mem_surreal` already seeds every `CLOSED_BRAND_KEYS` entry —
+        // including "neon" and "delete-your-data" — as a system-wide brand
+        // row, so both exist before this test creates any Project.
         for (label, brand) in [
             ("neon", "neon"),
             ("delete-your-data", "delete-your-data"),
@@ -2790,61 +2814,90 @@ mod surreal_read_tests {
         }
     }
 
-    /// The faithful reproduction of a historical row, mirroring
-    /// `persons::reads_a_person_row_written_before_email_confirmed_was_defined`:
-    /// drop the definition, write the row, put the definition back. `DEFAULT`
-    /// is a write-time default and does not reach this row's absent value, so
-    /// a bare `String` on `ProjectRow` would fail here with `Expected string,
-    /// got none` — on the same seeding-boot path `email_confirmed` crashed
-    /// staging in #331 — which is why `ProjectRow.brand` is `Option<String>`
-    /// and [`ProjectRow::into_project`] collapses the absent case to `"neon"`.
+    /// ENG-587: a key no `brand` row carries is refused before any write —
+    /// the same check `store::firms::attach_brand` runs, not a compiled
+    /// closed list.
     #[tokio::test]
-    async fn reads_a_project_row_written_before_brand_was_defined() {
-        let db = unmigrated().await;
-        apply(&db).await.unwrap();
-        db.query("REMOVE FIELD brand ON project").await.unwrap();
-        let id = uuid::Uuid::now_v7();
-        let entity_id = uuid::Uuid::now_v7();
-        db.query(
-            "CREATE $id SET code = 'pre-brand-matter', name = 'Pre-Brand Matter', \
-             status = 'open', entity_id = $entity_id, \
-             inserted_at = '2026-08-25T00:00:00Z', updated_at = '2026-08-25T00:00:00Z'",
-        )
-        .bind(("id", crate::surreal::record_id("project", id)))
-        .bind(("entity_id", record_id(ENTITY_TABLE, entity_id)))
-        .await
-        .unwrap()
-        .check()
-        .unwrap();
-        db.query(
-            "DEFINE FIELD OVERWRITE brand ON project TYPE string \
-             ASSERT $value IN ['neon', 'delete-your-data'] DEFAULT 'neon'",
+    async fn create_refuses_an_unknown_brand_key() {
+        let db = mem_surreal().await;
+        let entity_id = crate::test_support::seed_entity(&db).await;
+        let err = create(
+            &db,
+            &NewProject {
+                code: "unknown-brand-project".to_string(),
+                name: "Unknown Brand Project".to_string(),
+                status: "open".to_string(),
+                brand: "never-registered".to_string(),
+                entity_id,
+                ..Default::default()
+            },
         )
         .await
-        .unwrap();
-
-        let project = find_by_id(&db, id).await.unwrap().unwrap();
-        assert_eq!(
-            project.brand, "neon",
-            "an absent value reads as the default the schema would have written"
-        );
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            ProjectStoreError::UnknownBrand(key) if key == "never-registered"
+        ));
     }
 
-    /// The write-side counterpart to
-    /// [`reads_a_project_row_written_before_brand_was_defined`]: a project
-    /// row that predates `brand` reads fine (the tolerant `Option<String>`
-    /// collapse), but any later partial `UPDATE` against that same row makes
-    /// SurrealDB re-validate the whole record against the schema, including
-    /// the untouched `brand` field, whose stored value is genuinely absent
-    /// rather than defaulted. `designate_dri_in_surreal` is exactly such an
-    /// update — it only sets `updated_at` on the Project row — and this is
-    /// the shape of the coercion error a live DRI assignment hit against a
-    /// pre-brand Project.
+    /// ENG-587: a runtime-created brand key (the kind `webapp::brands_new`
+    /// mints) is just as usable at matter-open as a compiled one — the
+    /// validation is store-side against live rows, not a closed enum.
+    #[tokio::test]
+    async fn create_accepts_a_runtime_created_brand_key() {
+        let db = mem_surreal().await;
+        crate::brands::create(
+            &db,
+            Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: "Custom Brand".to_string(),
+                key: "custom-brand".to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let entity_id = crate::test_support::seed_entity(&db).await;
+        let created = create(
+            &db,
+            &NewProject {
+                code: "custom-brand-project".to_string(),
+                name: "Custom Brand Project".to_string(),
+                status: "open".to_string(),
+                brand: "custom-brand".to_string(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(created.brand, "custom-brand");
+    }
+
+    /// The write-side proof that a historical row (no `brand` value at all)
+    /// stays writable: `store/tests/schema_apply_backfills_project_brand.rs`
+    /// covers the read/backfill half from outside the crate; this covers a
+    /// specific partial-update call site inside it.
+    /// `designate_dri_in_surreal` only sets `updated_at` on the Project row,
+    /// which is exactly the shape of coercion error a required, undefaulted
+    /// `brand` field would produce against a row still genuinely missing a
+    /// value — ENG-587's backfill (re-run by `apply` below, the same
+    /// idempotent step every boot takes) is what prevents that.
+    ///
+    /// `brand` predates ENG-587 as `option<string>`, so a historical row
+    /// reproduces that permissive definition rather than removing the field
+    /// outright: the backfill `UPDATE` this test proves runs *before* the
+    /// tightened `DEFINE FIELD`, against a `SCHEMAFULL` table, so it needs
+    /// `brand` to already be defined (however loosely) or the statement
+    /// itself is refused as referencing a field that does not exist.
     #[tokio::test]
     async fn designating_a_dri_on_a_project_written_before_brand_was_defined() {
         let db = unmigrated().await;
         apply(&db).await.unwrap();
-        db.query("REMOVE FIELD brand ON project").await.unwrap();
+        db.query("DEFINE FIELD OVERWRITE brand ON project TYPE option<string>")
+            .await
+            .unwrap();
         let project_id = uuid::Uuid::now_v7();
         let entity_id = uuid::Uuid::now_v7();
         db.query(
@@ -2858,9 +2911,9 @@ mod surreal_read_tests {
         .unwrap()
         .check()
         .unwrap();
-        // Re-apply the shipped schema, exactly as a boot would: the
-        // Project's `brand` was never written, and re-applying converges the
-        // field definition without touching the row.
+        // Re-apply the shipped schema, exactly as a boot would: this is what
+        // runs the backfill `UPDATE` a second time, now that this row exists
+        // to backfill, before the tightened field definition takes effect.
         apply(&db).await.unwrap();
 
         let lawyer = crate::persons::create(
@@ -3013,7 +3066,7 @@ mod surreal_read_tests {
         let entity_id = uuid::Uuid::now_v7();
         db.query(
             "CREATE $id SET code = 'alpha-matter', name = 'Alpha', status = 'open', \
-             entity_id = $entity_id, inserted_at = '2026-08-25T00:00:00Z', \
+             entity_id = $entity_id, brand = 'neon', inserted_at = '2026-08-25T00:00:00Z', \
              updated_at = '2026-08-25T00:00:00Z'",
         )
         .bind(("id", crate::surreal::record_id("project", id)))
@@ -3040,8 +3093,7 @@ mod surreal_read_tests {
 
     #[tokio::test]
     async fn create_rejects_a_duplicate_project_code() {
-        let db = unmigrated().await;
-        apply(&db).await.unwrap();
+        let db = mem_surreal().await;
         let input = NewProject {
             code: "matter".into(),
             name: "Matter".into(),
@@ -3080,7 +3132,7 @@ mod surreal_read_tests {
         }
         db.query(
             "CREATE $id SET code = 'matter', name = 'Matter', status = 'open', \
-             entity_id = $entity_id, inserted_at = '2026-08-04T00:00:00Z', \
+             entity_id = $entity_id, brand = 'neon', inserted_at = '2026-08-04T00:00:00Z', \
              updated_at = '2026-08-04T00:00:00Z'",
         )
         .bind(("id", crate::surreal::record_id("project", project_id)))
@@ -3144,7 +3196,7 @@ mod surreal_read_tests {
         }
         db.query(
             "CREATE $id SET code = 'matter', name = 'Matter', status = 'open', \
-             entity_id = $entity_id, inserted_at = '2026-08-04T00:00:00Z', \
+             entity_id = $entity_id, brand = 'neon', inserted_at = '2026-08-04T00:00:00Z', \
              updated_at = '2026-08-04T00:00:00Z'",
         )
         .bind(("id", crate::surreal::record_id("project", project_id)))
@@ -3212,7 +3264,7 @@ mod surreal_read_tests {
         }
         db.query(
             "CREATE $id SET code = 'matter', name = 'Matter', status = 'open', \
-             entity_id = $entity_id, inserted_at = '2026-08-04T00:00:00Z', \
+             entity_id = $entity_id, brand = 'neon', inserted_at = '2026-08-04T00:00:00Z', \
              updated_at = '2026-08-04T00:00:00Z'",
         )
         .bind(("id", crate::surreal::record_id("project", project)))
@@ -3309,6 +3361,46 @@ mod surreal_read_tests {
             );
             assert_eq!(directory[0].name, "Assigned matter");
         }
+    }
+
+    /// ENG-587: the directory carries each matter's `brand` key, not just
+    /// code/name/status/DRI — the admin-tier oversight lens now names which
+    /// portal a matter's clients see, not only who is accountable for it.
+    #[tokio::test]
+    async fn the_directory_names_each_matter_s_brand() {
+        let surreal = mem_surreal().await;
+        crate::brands::create(
+            &surreal,
+            Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: "Directory Brand".to_string(),
+                key: "directory-brand".to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create(
+            &surreal,
+            &NewProject {
+                code: "branded-matter".into(),
+                name: "Branded Matter".into(),
+                status: "open".into(),
+                brand: "directory-brand".into(),
+                entity_id: uuid::Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let directory = matter_directory(&surreal, Role::Owner).await.unwrap();
+        let entry = directory
+            .iter()
+            .find(|entry| entry.code == "branded-matter")
+            .unwrap();
+        assert_eq!(entry.brand, "directory-brand");
     }
 
     /// The lens is admin-tier only. A `lawyer` caller gets nothing from

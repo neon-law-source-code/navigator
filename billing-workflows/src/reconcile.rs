@@ -92,7 +92,7 @@ pub async fn reconcile_once(
         }
         store::xero_invoices::record_reconcile(
             surreal,
-            row.project_id,
+            &row.xero_invoice_id,
             &latest.status,
             latest.amount_paid_cents,
         )
@@ -108,12 +108,13 @@ pub async fn reconcile_once(
 mod tests {
     use super::reconcile_once;
     use billing::{InvoiceStatus, StubBillingProvider};
+
     async fn seed_mirror(
         surreal: &store::surreal::SurrealDb,
+        project_id: uuid::Uuid,
         name: &str,
         xero_id: &str,
-    ) -> uuid::Uuid {
-        let project_id = uuid::Uuid::now_v7();
+    ) {
         store::xero_invoices::upsert(
             surreal,
             &store::xero_invoices::UpsertXeroInvoice {
@@ -123,17 +124,19 @@ mod tests {
                 status: "AUTHORISED".into(),
                 amount_cents: 333_300,
                 currency: "USD".into(),
+                issued_at: chrono::Utc::now(),
+                due_at: None,
             },
         )
         .await
         .unwrap();
-        project_id
     }
 
     #[tokio::test]
     async fn reconcile_marks_paid_invoices_and_counts_changes() {
         let surreal = store::surreal::test_support::mem().await;
-        let project_id = seed_mirror(&surreal, "sample-matter", "inv-1").await;
+        let project_id = uuid::Uuid::now_v7();
+        seed_mirror(&surreal, project_id, "sample-matter", "inv-1").await;
 
         let stub = StubBillingProvider::new();
         stub.set_invoice_status(
@@ -158,7 +161,7 @@ mod tests {
     #[tokio::test]
     async fn reconcile_is_a_noop_when_nothing_changed() {
         let surreal = store::surreal::test_support::mem().await;
-        seed_mirror(&surreal, "still-open", "inv-2").await;
+        seed_mirror(&surreal, uuid::Uuid::now_v7(), "still-open", "inv-2").await;
         // Stub default for an unknown id is AUTHORISED / 0 — same as seeded.
         let stub = StubBillingProvider::new();
         let report = reconcile_once(&stub, &surreal).await.unwrap();
@@ -167,5 +170,47 @@ mod tests {
             report.updated, 0,
             "no status/paid change → no update counted"
         );
+    }
+
+    /// ENG-588: a matter can carry more than one invoice, and reconcile must
+    /// re-check and fold a result onto each independently — settling one
+    /// must not touch the other.
+    #[tokio::test]
+    async fn reconcile_updates_both_invoices_on_a_two_invoice_matter() {
+        let surreal = store::surreal::test_support::mem().await;
+        let project_id = uuid::Uuid::now_v7();
+        seed_mirror(&surreal, project_id, "two-invoice-matter", "inv-a").await;
+        seed_mirror(&surreal, project_id, "two-invoice-matter", "inv-b").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_invoice_status(
+            "inv-a",
+            InvoiceStatus {
+                status: "PAID".into(),
+                amount_paid_cents: 333_300,
+            },
+        );
+        stub.set_invoice_status(
+            "inv-b",
+            InvoiceStatus {
+                status: "VOIDED".into(),
+                amount_paid_cents: 0,
+            },
+        );
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.checked, 2, "both invoices on the matter are checked");
+        assert_eq!(report.updated, 2, "both invoices changed");
+
+        let rows = store::xero_invoices::for_projects(&surreal, &[project_id])
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        let a = rows.iter().find(|r| r.xero_invoice_id == "inv-a").unwrap();
+        let b = rows.iter().find(|r| r.xero_invoice_id == "inv-b").unwrap();
+        assert_eq!(a.status, "PAID");
+        assert_eq!(a.amount_paid_cents, 333_300);
+        assert_eq!(b.status, "VOIDED");
+        assert_eq!(b.amount_paid_cents, 0);
     }
 }

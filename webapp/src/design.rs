@@ -30,8 +30,8 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb,
-    Card, CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
+    wire_runs, Accordion, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb, Card,
+    CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
     CodeBlock, Column, ConfirmDelete, DataTable, DayRateBadge, ExternalLink, Field, FooterAttorney,
     FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign,
     HeroLevel, Icon, IconName, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
@@ -46,6 +46,7 @@ use crate::components::{
 // are the one component whose colours are a third party's rather than the
 // deployment's, so they are kept visibly apart from the themed set.
 use crate::components::resource_mark::{ResourceMark, ResourceMarkGlyph};
+use crate::firm_footer::FirmFooter;
 
 /// The demo table's advertised sort keys — the JSON:API contract's allow-list.
 /// The `/design` route pre-handler (`portal::dioxus_app::design_router`) `400`s a
@@ -455,7 +456,7 @@ pub fn DesignGallery() -> Element {
             PeopleListShowcase {}
             AppNavbarShowcase {}
             AppProfileMenuShowcase {}
-            AppFooterShowcase {}
+            FirmFooterShowcase {}
             NavigatorChromeShowcase {}
             NavigationShowcase {}
             SnippetsSection {}
@@ -566,28 +567,49 @@ fn AppProfileMenuShowcase() -> Element {
     }
 }
 
-/// The minimal footer every `/app` page carries, injected once into every
-/// response by `portal::dioxus_app::dioxus_document_head` rather than
-/// rendered by each of the eight real `/app` pages — see the component's own
-/// module docs for why. It carries the copyright line and the shared
-/// platform line, with no navigation.
+/// The footer every `/app` page carries, injected once into every response by
+/// `portal::dioxus_app::dioxus_document_head` rather than rendered by each of
+/// the eight real `/app` pages — see the component's own module docs for why.
+/// It carries the copyright line naming the resolved Firm's legal entity, the
+/// brands that Firm wears (a synthetic two-brand model here, matching
+/// ENG-589's gallery requirement), and the shared platform line, with no
+/// navigation.
 #[component]
-fn AppFooterShowcase() -> Element {
+fn FirmFooterShowcase() -> Element {
     rsx! {
         section {
             h2 { "Application footer" }
             p {
                 "The one footer every authenticated /app page carries: a centered copyright "
-                "line naming the entity of record, then the platform line, and no navigation."
+                "line naming the resolved Firm's legal entity, that Firm's brands, then the "
+                "platform line, and no navigation."
             }
-            AppFooter { legal_entity: "Shook Law PLLC".to_string(), copyright_year: 2026 }
+            FirmFooter {
+                model: crate::firm_footer::FirmFooterModel {
+                    legal_entity: "Shook Law PLLC".to_string(),
+                    brands: vec![
+                        crate::firm_footer::FirmFooterBrand {
+                            label: "Neon Law".to_string(),
+                            href: String::new(),
+                            current: true,
+                        },
+                        crate::firm_footer::FirmFooterBrand {
+                            label: "DeleteYourData.com".to_string(),
+                            href: "https://www.deleteyourdata.com".to_string(),
+                            current: false,
+                        },
+                    ],
+                    copyright_year: 2026,
+                    navigator_version: String::new(),
+                },
+            }
         }
     }
 }
 
 /// The unified Navigator shell — prepared, but not yet adopted by any real
 /// `/app` page. The eight real pages render `AppNavbar` (see
-/// `AppNavbarShowcase` above) and get `AppFooter` injected once per response
+/// `AppNavbarShowcase` above) and get `FirmFooter` injected once per response
 /// instead; this shell exists so a page migrating onto it has something to
 /// render against. The gallery supplies a synthetic host-aware footer and a
 /// selected lawyer destination; an adopting route would resolve the same
@@ -602,7 +624,7 @@ fn NavigatorChromeShowcase() -> Element {
                 "real /app pages render today. Those render "
                 code { "AppNavbar" }
                 " directly and get "
-                code { "AppFooter" }
+                code { "FirmFooter" }
                 " injected once per response (shown above). A page that adopts this shell would "
                 "supply the same destinations, active state, and host-specific legal/release "
                 "footer content."
@@ -1768,7 +1790,7 @@ mod tests {
         let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let gallery = std::fs::read_to_string(crate_root.join("src/design.rs")).expect("design.rs");
         for component in [
-            "AppFooter",
+            "FirmFooter",
             "AppNavbar",
             "Avatar",
             "BackBreadcrumb",
@@ -1812,12 +1834,12 @@ mod tests {
 
     #[test]
     fn app_footer_showcase_renders_the_platform_line() {
-        use super::AppFooterShowcase;
+        use super::FirmFooterShowcase;
         use crate::components::POWERED_BY_NEON_LAW_NAVIGATOR;
         use dioxus::prelude::*;
 
         fn app() -> Element {
-            rsx! { AppFooterShowcase {} }
+            rsx! { FirmFooterShowcase {} }
         }
         let mut dom = VirtualDom::new(app);
         dom.rebuild_in_place();

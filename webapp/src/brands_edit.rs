@@ -1,8 +1,12 @@
-//! `/app/brands/{key}/edit` — closed typeface and palette selects.
+//! `/app/brands/{key}/edit` — a brand's presentation: name, typeface, a free
+//! hex primary colour behind a WCAG AA contrast gate, an uploaded logo, and
+//! an uploaded font.
 //!
-//! Owner edits a system-wide brand; a Firm's Admin DRI edits that Firm's
-//! brands. The native form posts to this same path; `PATCH /app/api/brands/{key}`
-//! is the JSON twin and refuses any typeface or palette outside the catalogs.
+//! Owner edits a system-wide brand; a Firm's Admin DRI edits that Firm's own
+//! brands. The presentation form (name/typeface/colour/font-family) posts to
+//! this same path natively; `PATCH /app/api/brands/{key}` is its JSON twin.
+//! The logo and font uploads are two further native multipart forms on this
+//! page, posting to their own paths — uploads are never JSON.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -24,18 +28,24 @@ pub struct BrandsEditView {
     pub key: String,
     pub fields: Option<BrandPresentationFields>,
     pub typefaces: Vec<FormChoice>,
-    pub palettes: Vec<FormChoice>,
+    pub font_licences: Vec<FormChoice>,
     pub csrf_token: String,
     #[serde(default)]
     pub error: Option<String>,
 }
 
-/// Prefill for the two selects.
+/// Prefill for the presentation form and the read-only upload status.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct BrandPresentationFields {
     pub name: String,
     pub typeface: String,
-    pub palette: String,
+    pub primary_color: String,
+    pub font_family: String,
+    /// The uploaded logo's serving URL, when one exists.
+    pub logo_url: Option<String>,
+    /// The uploaded font's serving URL and its attested licence, when one
+    /// exists.
+    pub font: Option<(String, String)>,
 }
 
 #[derive(Deserialize, Default)]
@@ -73,12 +83,16 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
             value: face.id.to_string(),
             label: face.label.to_string(),
         })
+        .chain(std::iter::once(FormChoice {
+            value: "uploaded".to_string(),
+            label: "Uploaded font".to_string(),
+        }))
         .collect();
-    let palettes = views::brand::PALETTE
+    let font_licences = store::brands::FONT_LICENCES
         .iter()
-        .map(|palette| FormChoice {
-            value: palette.id.to_string(),
-            label: palette.label.to_string(),
+        .map(|licence| FormChoice {
+            value: (*licence).to_string(),
+            label: (*licence).to_string(),
         })
         .collect();
 
@@ -90,9 +104,9 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
         key: key.clone(),
         fields: None,
         typefaces,
-        palettes,
+        font_licences,
         csrf_token,
-        error: query.error.as_deref().map(flash_message),
+        error: query.error.clone(),
     };
 
     let Some(brand) = store::brands::find_by_key(&surreal, &key)
@@ -126,35 +140,27 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
         Err(error) => return Err(ServerFnError::new(error.to_string())),
     }
 
-    let compiled = views::brand::BrandKey::parse(&key);
-    let (face, palette) = views::brand::resolve_presentation(
-        brand.typeface.as_deref(),
-        brand.primary_color.as_deref(),
-        compiled,
-    )
-    .map_or_else(
-        || ("gorp-serif".to_string(), "neon-teal".to_string()),
-        |(face, palette)| (face.id.to_string(), palette.id.to_string()),
-    );
+    let logo_url = brand
+        .logo_object_key
+        .as_deref()
+        .map(|object_key| format!("/assets/{object_key}"));
+    let font = brand
+        .font_object_key
+        .as_deref()
+        .zip(brand.font_licence.as_deref())
+        .map(|(object_key, licence)| (format!("/assets/{object_key}"), licence.to_string()));
 
     Ok(BrandsEditView {
         fields: Some(BrandPresentationFields {
             name: brand.name,
-            typeface: face,
-            palette,
+            typeface: brand.typeface.unwrap_or_default(),
+            primary_color: brand.primary_color.unwrap_or_default(),
+            font_family: brand.font_family.unwrap_or_default(),
+            logo_url,
+            font,
         }),
         ..base
     })
-}
-
-#[cfg(feature = "server")]
-fn flash_message(code: &str) -> String {
-    match code {
-        "unknown-choice" => {
-            "Typeface and palette must be chosen from the closed lists.".to_string()
-        }
-        other => other.to_string(),
-    }
 }
 
 #[cfg(feature = "server")]
@@ -188,6 +194,118 @@ pub fn BrandsEdit() -> Element {
     brands_edit_body(&view)
 }
 
+fn presentation_form(view: &BrandsEditView, fields: &BrandPresentationFields) -> Element {
+    let type_opts: Vec<Choice> = view
+        .typefaces
+        .iter()
+        .map(|choice| Choice::new(choice.value.clone(), choice.label.clone()))
+        .collect();
+    let form_fields = vec![
+        Field::text("Name", "name", fields.name.clone()).required(),
+        Field::select(
+            "Typeface",
+            "typeface",
+            type_opts,
+            Some(fields.typeface.clone()),
+        )
+        .required(),
+        Field::text(
+            "Primary colour",
+            "primary_color",
+            fields.primary_color.clone(),
+        )
+        .required()
+        .placeholder("#007c91")
+        .help(
+            "A #rrggbb hex. Its best on-primary contrast (white or black) must clear WCAG AA \
+                 4.5:1, or the save is refused with the ratio.",
+        ),
+        Field::text("Font family", "font_family", fields.font_family.clone()).help(
+            "The CSS font-family name for an uploaded font. Only used when Typeface is \
+             \"Uploaded font\".",
+        ),
+    ];
+    rsx! {
+        if let Some(error) = &view.error {
+            p { class: "nav-form-error", role: "alert", "{error}" }
+        }
+        FormCard {
+            title: format!("Edit {}", fields.name),
+            action: format!("/app/brands/{}/edit", view.key),
+            submit_label: "Save presentation".to_string(),
+            heading: Heading::H1,
+            csrf_token: Some(view.csrf_token.clone()),
+            fields: form_fields,
+        }
+    }
+}
+
+fn logo_form(view: &BrandsEditView, fields: &BrandPresentationFields) -> Element {
+    rsx! {
+        section { id: "brand-logo",
+            h2 { "Logo" }
+            if let Some(url) = &fields.logo_url {
+                p { img { class: "brand-logo-preview", src: "{url}", alt: "Current logo" } }
+            } else {
+                p { class: "muted", "No logo uploaded — the compiled default renders instead." }
+            }
+            FormCard {
+                title: "Upload logo".to_string(),
+                action: format!("/app/brands/{}/logo", view.key),
+                submit_label: "Upload".to_string(),
+                heading: Heading::H2,
+                multipart: true,
+                csrf_token: Some(view.csrf_token.clone()),
+                fields: vec![
+                    Field::file("Logo file", "file").required().help(
+                        "PNG or SVG, at most 512 KB. An SVG containing a script, an event \
+                         handler, a foreignObject, or an external reference is refused.",
+                    ),
+                ],
+            }
+        }
+    }
+}
+
+fn font_form(view: &BrandsEditView, fields: &BrandPresentationFields) -> Element {
+    let licence_opts: Vec<Choice> = view
+        .font_licences
+        .iter()
+        .map(|choice| Choice::new(choice.value.clone(), choice.label.clone()))
+        .collect();
+    rsx! {
+        section { id: "brand-font",
+            h2 { "Font" }
+            if let Some((url, licence)) = &fields.font {
+                p {
+                    "Uploaded font: "
+                    a { href: "{url}", "download" }
+                    " (" {licence.clone()} ")"
+                }
+            } else {
+                p { class: "muted", "No font uploaded." }
+            }
+            FormCard {
+                title: "Upload font".to_string(),
+                action: format!("/app/brands/{}/font", view.key),
+                submit_label: "Upload".to_string(),
+                heading: Heading::H2,
+                multipart: true,
+                csrf_token: Some(view.csrf_token.clone()),
+                fields: vec![
+                    Field::text("Font family", "family", String::new())
+                        .required()
+                        .help("The CSS font-family name this upload will render under."),
+                    Field::select("Licence", "licence", licence_opts, None).required(),
+                    Field::file("Font file", "file")
+                        .required()
+                        .help(".woff2 only, at most 2 MB."),
+                ],
+            }
+        }
+    }
+}
+
 /// Split from the component so tests render a fixed view.
 pub fn brands_edit_body(view: &BrandsEditView) -> Element {
     let role = view.role;
@@ -202,48 +320,12 @@ pub fn brands_edit_body(view: &BrandsEditView) -> Element {
         }
         main { id: "brands-edit", class: "nav-theme",
             match &view.fields {
-                Some(fields) => {
-                    let type_opts: Vec<Choice> = view
-                        .typefaces
-                        .iter()
-                        .map(|choice| Choice::new(choice.value.clone(), choice.label.clone()))
-                        .collect();
-                    let palette_opts: Vec<Choice> = view
-                        .palettes
-                        .iter()
-                        .map(|choice| Choice::new(choice.value.clone(), choice.label.clone()))
-                        .collect();
-                    let form_fields = vec![
-                        Field::select(
-                            "Typeface",
-                            "typeface",
-                            type_opts,
-                            Some(fields.typeface.clone()),
-                        )
-                        .required(),
-                        Field::select(
-                            "Palette",
-                            "palette",
-                            palette_opts,
-                            Some(fields.palette.clone()),
-                        )
-                        .required(),
-                    ];
-                    rsx! {
-                        if let Some(error) = &view.error {
-                            p { class: "nav-form-error", role: "alert", "{error}" }
-                        }
-                        FormCard {
-                            title: format!("Edit {}", fields.name),
-                            action: format!("/app/brands/{}/edit", view.key),
-                            submit_label: "Save presentation".to_string(),
-                            heading: Heading::H1,
-                            csrf_token: Some(view.csrf_token.clone()),
-                            fields: form_fields,
-                        }
-                        p { a { href: "/app/brands", "← Brands" } }
-                    }
-                }
+                Some(fields) => rsx! {
+                    {presentation_form(view, fields)}
+                    {logo_form(view, fields)}
+                    {font_form(view, fields)}
+                    p { a { href: "/app/brands", "← Brands" } }
+                },
                 None => rsx! {
                     h1 { "Brand not found" }
                     p { "No brand exists with key " code { "{view.key}" } "." }
@@ -273,32 +355,77 @@ mod tests {
                     label: "GORP Serif".to_string(),
                 },
                 FormChoice {
-                    value: "tinos".to_string(),
-                    label: "Tinos".to_string(),
+                    value: "uploaded".to_string(),
+                    label: "Uploaded font".to_string(),
                 },
             ],
-            palettes: vec![FormChoice {
-                value: "neon-teal".to_string(),
-                label: "Neon teal".to_string(),
+            font_licences: vec![FormChoice {
+                value: "OFL-1.1".to_string(),
+                label: "OFL-1.1".to_string(),
             }],
             csrf_token: "TOK".to_string(),
             error: None,
         }
     }
 
+    fn fields() -> BrandPresentationFields {
+        BrandPresentationFields {
+            name: "Neon Law".to_string(),
+            typeface: "gorp-serif".to_string(),
+            primary_color: "#007c91".to_string(),
+            font_family: String::new(),
+            logo_url: None,
+            font: None,
+        }
+    }
+
     #[test]
-    fn the_edit_form_is_two_selects_and_posts_to_the_key() {
-        let html =
-            dioxus_ssr::render_element(brands_edit_body(&view(Some(BrandPresentationFields {
-                name: "Neon Law".to_string(),
-                typeface: "gorp-serif".to_string(),
-                palette: "neon-teal".to_string(),
-            }))));
+    fn the_presentation_form_is_a_hex_input_and_posts_to_the_key() {
+        let html = dioxus_ssr::render_element(brands_edit_body(&view(Some(fields()))));
         assert_forms_accessible(&html, "brand presentation");
         assert!(html.contains(r#"action="/app/brands/neon/edit""#), "{html}");
         assert!(html.contains(r#"name="typeface""#), "{html}");
-        assert!(html.contains(r#"name="palette""#), "{html}");
-        assert!(!html.contains("textarea"), "{html}");
-        assert!(!html.contains(r#"type="text""#), "{html}");
+        assert!(html.contains(r#"name="primary_color""#), "{html}");
+        assert!(html.contains(r##"value="#007c91""##), "{html}");
+        assert!(!html.contains(r#"name="palette""#), "{html}");
+    }
+
+    #[test]
+    fn the_logo_and_font_uploads_are_native_multipart_forms() {
+        let html = dioxus_ssr::render_element(brands_edit_body(&view(Some(fields()))));
+        assert!(html.contains(r#"action="/app/brands/neon/logo""#), "{html}");
+        assert!(html.contains(r#"action="/app/brands/neon/font""#), "{html}");
+        assert!(html.contains(r#"enctype="multipart/form-data""#), "{html}");
+        assert!(html.contains(r#"name="licence""#), "{html}");
+    }
+
+    #[test]
+    fn an_uploaded_logo_and_font_render_their_status() {
+        let mut fields = fields();
+        fields.logo_url = Some("/app/brands/neon/logo".to_string());
+        fields.font = Some((
+            "/assets/fonts/brands/neon/abc.woff2".to_string(),
+            "OFL-1.1".to_string(),
+        ));
+        let html = dioxus_ssr::render_element(brands_edit_body(&view(Some(fields))));
+        assert!(html.contains("Current logo"), "{html}");
+        assert!(html.contains("Uploaded font:"), "{html}");
+        assert!(html.contains("OFL-1.1"), "{html}");
+    }
+
+    #[test]
+    fn a_refusal_names_the_rule() {
+        let mut view = view(Some(fields()));
+        view.error = Some(
+            "#f5f5a0's best on-primary contrast is 1.2:1; it must be at least 4.5:1.".to_string(),
+        );
+        let html = dioxus_ssr::render_element(brands_edit_body(&view));
+        assert!(html.contains("must be at least 4.5:1"), "{html}");
+    }
+
+    #[test]
+    fn a_missing_brand_renders_not_found() {
+        let html = dioxus_ssr::render_element(brands_edit_body(&view(None)));
+        assert!(html.contains("Brand not found"), "{html}");
     }
 }

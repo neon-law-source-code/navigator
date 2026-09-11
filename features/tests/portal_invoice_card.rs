@@ -147,15 +147,42 @@ async fn mirror_invoice(world: &mut CardWorld, amount_cents: i64, project_name: 
         &features::shared_surreal().await,
         &UpsertXeroInvoice {
             project_id,
-            xero_invoice_id: "INV-TEST-001".into(),
+            // Scoped to the matter: the mirror row's own record id is now
+            // this Xero invoice id (ENG-588), and every scenario in this
+            // suite runs concurrently against one shared engine — a literal
+            // id reused across scenarios would collide and cross-contaminate
+            // unrelated matters instead of staying test-isolated.
+            xero_invoice_id: format!("INV-TEST-{project_id}-1"),
             reference: "Matter close fee".into(),
             status: "AUTHORISED".into(),
             amount_cents,
             currency: "USD".into(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
         },
     )
     .await
     .expect("upsert mirror invoice");
+}
+
+#[given(regex = r#"^a second AUTHORISED invoice of (\d+) cents is mirrored for "([^"]+)"$"#)]
+async fn mirror_second_invoice(world: &mut CardWorld, amount_cents: i64, project_name: String) {
+    let project_id = world.project_id(&project_name);
+    xero_invoices::upsert(
+        &features::shared_surreal().await,
+        &UpsertXeroInvoice {
+            project_id,
+            xero_invoice_id: format!("INV-TEST-{project_id}-2"),
+            reference: "Matter second fee".into(),
+            status: "AUTHORISED".into(),
+            amount_cents,
+            currency: "USD".into(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
+        },
+    )
+    .await
+    .expect("upsert second mirror invoice");
 }
 
 #[given(regex = r#"^the invoice for "([^"]+)" is reconciled as paid in full$"#)]
@@ -171,7 +198,7 @@ async fn reconcile_paid(world: &mut CardWorld, project_name: String) {
         .expect("a mirror row was created earlier");
     xero_invoices::record_reconcile(
         &features::shared_surreal().await,
-        project_id,
+        &row.xero_invoice_id,
         "PAID",
         row.amount_cents,
     )
@@ -258,6 +285,21 @@ async fn card_shows_badge(world: &mut CardWorld, label: String) {
     assert!(
         world.last_body.contains(class) && world.last_body.contains(&label),
         "expected the {label:?} badge ({class}); body was: {}",
+        truncated(&world.last_body)
+    );
+}
+
+#[then(regex = r"^the invoice card lists (\d+) invoices$")]
+async fn invoice_card_lists_n_invoices(world: &mut CardWorld, count: usize) {
+    // Each invoice renders its own `portal-card--split`, one per mirrored
+    // Xero invoice, newest first — this counts the rendered line items
+    // rather than merely checking presence, so dropping the second invoice
+    // silently would fail this the way "contains" checks alone would not.
+    let actual = world.last_body.matches("portal-card--split").count();
+    assert_eq!(
+        actual,
+        count,
+        "expected {count} invoice cards; body was: {}",
         truncated(&world.last_body)
     );
 }

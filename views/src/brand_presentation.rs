@@ -240,6 +240,41 @@ pub fn resolve_presentation(
     Some((face, palette))
 }
 
+/// Resolve the CSS `font-family` stack for a brand row's `typeface`
+/// (ENG-586): `"uploaded"` reads `uploaded_family` (the row's own
+/// `font_family`); any other value is a catalog id, falling back to a
+/// compiled key's own default when the row names none. `None` only when
+/// neither a catalog id nor an uploaded family can be resolved — a row that
+/// predates every typeface value.
+#[must_use]
+pub fn font_stack_for(
+    typeface_id: Option<&str>,
+    uploaded_family: Option<&str>,
+    fallback: Option<crate::brand::BrandKey>,
+) -> Option<String> {
+    if typeface_id == Some("uploaded") {
+        return uploaded_family.map(|family| format!("'{family}', sans-serif"));
+    }
+    typeface_id
+        .and_then(typeface_by_id)
+        .map(|face| face.stack.to_string())
+        .or_else(|| fallback.map(|key| key.default_typeface().stack.to_string()))
+}
+
+/// Resolve the `@font-face` CSS for whichever typeface a brand row names —
+/// a compiled catalog face, or an uploaded one. `uploaded` is
+/// `(family, object_url)`, present only when the row's `typeface` is
+/// `"uploaded"` and it has a font object to point at. `None` for a system
+/// stack with no face of its own, or an uploaded typeface with no object yet.
+#[must_use]
+pub fn font_face_for(typeface_id: Option<&str>, uploaded: Option<(&str, &str)>) -> Option<String> {
+    if typeface_id == Some("uploaded") {
+        let (family, url) = uploaded?;
+        return Some(crate::assets::font_face_css(family, url, url));
+    }
+    typeface_id.and_then(typeface_by_id).and_then(webfont_css)
+}
+
 /// Render the tokens stylesheet a request for `brand-{key}-tokens.css` serves.
 #[must_use]
 pub fn tokens_stylesheet(face: &Typeface, palette: &Palette) -> String {
@@ -311,6 +346,120 @@ fn push_token(css: &mut String, name: &str, value: &str) {
     css.push_str(": ");
     css.push_str(value);
     css.push_str(";\n");
+}
+
+/// A derived colour scheme for a free-hex brand primary (ENG-586): owned
+/// strings, since the hex is resolved from a `brand` row at request time
+/// rather than compiled like [`PaletteScheme`]. Applies to both the light
+/// `:root` block and the dark-mode block a runtime brand's tokens sheet
+/// emits — there is no separate compiled dark variant for a free hex, unlike
+/// the three catalog [`PALETTE`] entries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivedScheme {
+    pub primary: String,
+    pub primary_hover: String,
+    pub primary_active: String,
+    pub on_primary: String,
+    pub surface_subtle: String,
+}
+
+fn to_hex(rgb: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+}
+
+/// Multiply each channel toward black by `factor` (0.0 keeps the colour,
+/// 1.0 reaches black) — a simple sRGB-space darken, good enough for a
+/// derived hover/active shade.
+///
+/// The cast is exact: `channel` is a `u8` and `factor` is called only with
+/// values in `0.0..=1.0`, so `channel * (1.0 - factor)` stays within
+/// `0.0..=255.0` before rounding — the explicit `clamp` is defensive, not
+/// load-bearing, and is what lets the truncating cast stay honest.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn darken(rgb: [u8; 3], factor: f64) -> [u8; 3] {
+    rgb.map(|channel| {
+        (f64::from(channel) * (1.0 - factor))
+            .round()
+            .clamp(0.0, 255.0) as u8
+    })
+}
+
+/// Mix `rgb` toward white by `factor` (0.0 keeps the colour, 1.0 reaches
+/// white) — the light background tint behind a primary-coloured accent. See
+/// [`darken`] for why the cast is safe.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn lighten(rgb: [u8; 3], factor: f64) -> [u8; 3] {
+    rgb.map(|channel| {
+        (f64::from(channel) + (255.0 - f64::from(channel)) * factor)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    })
+}
+
+/// Derive a full [`DerivedScheme`] from a validated primary hex. Returns
+/// `None` when `hex` is malformed or its best on-primary contrast (white or
+/// black) falls short of WCAG AA 4.5:1 — the same gate
+/// `store::brands::create`/`update` already enforce before this is ever
+/// called, so this is a defensive re-check, not the primary boundary.
+#[must_use]
+pub fn derive_scheme(hex: &str) -> Option<DerivedScheme> {
+    let rgb = parse_hex(hex)?;
+    let white = [0xff, 0xff, 0xff];
+    let black = [0x00, 0x00, 0x00];
+    let on_primary = if contrast_ratio(rgb, white) >= contrast_ratio(rgb, black) {
+        white
+    } else {
+        black
+    };
+    if contrast_ratio(rgb, on_primary) < 4.5 {
+        return None;
+    }
+    Some(DerivedScheme {
+        primary: to_hex(rgb),
+        primary_hover: to_hex(darken(rgb, 0.15)),
+        primary_active: to_hex(darken(rgb, 0.30)),
+        on_primary: to_hex(on_primary),
+        surface_subtle: to_hex(lighten(rgb, 0.90)),
+    })
+}
+
+/// Render the tokens stylesheet for a brand wearing a free hex primary
+/// (ENG-586) instead of a catalog [`Palette`] — the runtime-brand twin of
+/// [`tokens_stylesheet`]. `font_face` is the `@font-face` block for an
+/// uploaded font (`typeface = "uploaded"`), or `None` to emit no `@font-face`
+/// (a catalog typeface with its own compiled face, or a system stack with
+/// none).
+#[must_use]
+pub fn tokens_stylesheet_from_hex(
+    font_stack: &str,
+    font_face: Option<&str>,
+    scheme: &DerivedScheme,
+) -> String {
+    let mut css = String::new();
+    if let Some(face) = font_face {
+        css.push_str(face);
+        css.push('\n');
+    }
+    let emit = |css: &mut String| {
+        css.push_str("  --nav-font-family: ");
+        css.push_str(font_stack);
+        css.push_str(";\n");
+        css.push_str("  --font-body: var(--nav-font-family);\n");
+        push_token(css, "--nav-color-primary", &scheme.primary);
+        push_token(css, "--nav-color-primary-hover", &scheme.primary_hover);
+        push_token(css, "--nav-color-primary-active", &scheme.primary_active);
+        push_token(css, "--nav-color-on-primary", &scheme.on_primary);
+        push_token(css, "--nav-color-on-brand", &scheme.on_primary);
+        push_token(css, "--nav-color-link", &scheme.primary);
+        push_token(css, "--nav-color-link-hover", &scheme.primary_hover);
+        push_token(css, "--nav-color-surface-subtle", &scheme.surface_subtle);
+    };
+    css.push_str(":root {\n");
+    emit(&mut css);
+    css.push_str("}\n\n@media (prefers-color-scheme: dark) {\n  :root {\n");
+    emit(&mut css);
+    css.push_str("  }\n}\n");
+    css
 }
 
 /// Parse `#rrggbb` into sRGB bytes.
@@ -413,6 +562,22 @@ mod tests {
         }
     }
 
+    /// ENG-586: `store::seed` now migrates each compiled brand's row with its
+    /// real primary hex (not a palette id) in `primary_color`. This proves
+    /// the three house brands still resolve their compiled `Palette`
+    /// unchanged regardless — the fallback this function already carried for
+    /// "legacy hex" covers it, so the seed change is not a rendering change.
+    #[test]
+    fn a_compiled_brand_s_own_hex_still_resolves_the_catalog_palette() {
+        let with_hex =
+            resolve_presentation(Some("gorp-serif"), Some("#007c91"), Some(BrandKey::Neon));
+        let with_none = resolve_presentation(None, None, Some(BrandKey::Neon));
+        assert_eq!(with_hex, with_none);
+        let (face, palette) = with_hex.unwrap();
+        assert_eq!(face.id, "gorp-serif");
+        assert_eq!(palette.id, "neon-teal");
+    }
+
     #[test]
     fn compiled_keys_seed_the_three_house_presentations() {
         assert_eq!(BrandKey::Neon.default_typeface().id, "gorp-serif");
@@ -460,5 +625,59 @@ mod tests {
         let white = [0xff, 0xff, 0xff];
         assert!((contrast_ratio([0, 0, 0], white) - 21.0).abs() < 0.01);
         assert!((contrast_ratio(white, white) - 1.0).abs() < 0.01);
+    }
+
+    /// ENG-586: every compiled palette's own primary hex — the values
+    /// `store::seed::compiled_brand_presentation` migrates into the three
+    /// house `brand` rows — clears `derive_scheme`'s own gate, proving the
+    /// seed's values are not silently incompatible with the runtime path a
+    /// custom brand takes.
+    #[test]
+    fn derive_scheme_accepts_every_compiled_primary() {
+        for hex in ["#007c91", "#b91c1c", "#5c5100"] {
+            let scheme = derive_scheme(hex).unwrap_or_else(|| panic!("{hex} must clear the gate"));
+            assert_eq!(scheme.primary, hex);
+        }
+    }
+
+    #[test]
+    fn derive_scheme_refuses_only_a_malformed_hex() {
+        assert!(derive_scheme("not-a-hex").is_none());
+        // `max(contrast(hex, white), contrast(hex, black))` has a
+        // mathematical floor of ~4.58 for every possible RGB value (see
+        // `store::brands::validate_primary_hex`'s doc comment for the
+        // derivation), so a pale colour that reads as low-contrast against
+        // white still clears the gate against black.
+        assert!(derive_scheme("#f5f5a0").is_some());
+    }
+
+    #[test]
+    fn derive_scheme_picks_the_higher_contrast_on_primary() {
+        // A dark primary contrasts more with white.
+        let dark = derive_scheme("#007c91").unwrap();
+        assert_eq!(dark.on_primary, "#ffffff");
+        // A light, saturated primary that still clears the gate against
+        // black should pick black as its on-primary.
+        let light = derive_scheme("#fff176").unwrap();
+        assert_eq!(light.on_primary, "#000000");
+    }
+
+    #[test]
+    fn tokens_stylesheet_from_hex_names_the_derived_tokens_and_an_optional_font_face() {
+        let scheme = derive_scheme("#007c91").unwrap();
+        let css = tokens_stylesheet_from_hex(
+            "'Custom Sans', sans-serif",
+            Some(
+                "@font-face{font-family:'Custom Sans';src:url('/assets/brands/custom/font.woff2')}",
+            ),
+            &scheme,
+        );
+        assert!(css.contains("--nav-color-primary: #007c91"), "{css}");
+        assert!(css.contains("--nav-color-on-primary: #ffffff"), "{css}");
+        assert!(css.contains("font-family:'Custom Sans'"), "{css}");
+        assert!(css.contains("@media (prefers-color-scheme: dark)"), "{css}");
+
+        let without_face = tokens_stylesheet_from_hex("sans-serif", None, &scheme);
+        assert!(!without_face.contains("@font-face"), "{without_face}");
     }
 }

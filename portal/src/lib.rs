@@ -81,6 +81,7 @@ pub mod attachment_scanner;
 pub mod audit_fields;
 pub mod auth;
 pub mod blog;
+pub mod brand_assets;
 pub mod brand_edit;
 pub mod brand_fonts;
 pub mod brand_tokens;
@@ -855,6 +856,7 @@ pub fn bootstrap(
         bootstrap_company: admin::bootstrap_company_from_env(),
         sessions: state.sessions.clone(),
         secure_cookies: secure_cookies(&state),
+        attachment_scanner: state.attachment_scanner.clone(),
     };
     // #956 Phase 4: the client self-serve intake page renders through Dioxus at
     // /app/projects/{project_code}/intake/{notation_id}. Its pre-layer resolves the
@@ -916,6 +918,7 @@ pub fn bootstrap(
         state.sessions.clone(),
         state.policy.clone(),
         state.auth.clone(),
+        state.surreal.clone(),
     );
     let dioxus_app_brands_edit = dioxus_app::app_brands_edit_router(
         state.sessions.clone(),
@@ -928,6 +931,30 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
         state.surreal.clone(),
+    );
+    // ENG-586: a brand's logo and font uploads are native multipart POSTs,
+    // never JSON — this is the only door that writes them.
+    let dioxus_app_brand_assets = dioxus_app::app_brand_assets_post_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        admin_state.clone(),
+    );
+    // ENG-586: the create-brand form renders through Dioxus at
+    // `/app/brands/new`; the native `POST` on the same path creates the row.
+    let dioxus_brand_new = dioxus_app::csrf_page_router(
+        dioxus_app::APP_BRAND_NEW_PATH,
+        webapp::brands_new::BrandNew,
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
+    let dioxus_brand_new_post = dioxus_app::app_brand_new_post_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        admin_state.clone(),
     );
     let dioxus_app_owner = dioxus_app::app_owner_router(
         state.sessions.clone(),
@@ -946,6 +973,27 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
         state.surreal.clone(),
+    );
+    // ENG-585: Owner opens a Firm from a native form on the shared `FormCard`
+    // + CSRF page router, the same shape the entity create form uses. It
+    // posts to the unchanged `POST /app/owner/firms` handler.
+    let dioxus_firm_new = dioxus_app::csrf_page_router(
+        dioxus_app::APP_OWNER_FIRM_NEW_PATH,
+        webapp::firm_new::OwnerFirmNew,
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
+    // ENG-585: the Firm edit form, prefilled from the record by its `{id}`.
+    // It posts to the unchanged `POST /app/admin/firms/{id}/edit`.
+    let dioxus_firm_edit = dioxus_app::csrf_page_router(
+        dioxus_app::FIRM_EDIT_PATH,
+        webapp::firm_edit::FirmEdit,
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
     );
     // #956 Phase 4: the template gallery renders through Dioxus at /templates
     // and /templates/{*path}. The detail pre-layer keeps owning the alias and
@@ -1638,7 +1686,7 @@ pub fn bootstrap(
     // composition is merged behind this same boundary.
     let boundary_sessions = state.sessions.clone();
     let boundary_auth = state.auth.clone();
-    let footer_store = state.surreal.clone();
+    let firm_context_store = state.surreal.clone();
     let mut router = mount_brand_assets(router, brand_bundle.as_ref())
         .nest_service("/public", static_files)
         // Axum forbids `{key}` inside a mixed path segment (`brand-{key}-tokens.css`).
@@ -1757,6 +1805,9 @@ pub fn bootstrap(
         dioxus_app_owner,
         dioxus_app_profile,
         dioxus_firm_show,
+        dioxus_firm_new,
+        dioxus_firm_edit,
+        dioxus_brand_new,
         dioxus_template_gallery,
         dioxus_template_entry,
     ] {
@@ -1768,6 +1819,16 @@ pub fn bootstrap(
     }
     router = router.merge(session_boundary(
         dioxus_app_brands_edit_post,
+        &boundary_sessions,
+        &boundary_auth,
+    ));
+    router = router.merge(session_boundary(
+        dioxus_app_brand_assets,
+        &boundary_sessions,
+        &boundary_auth,
+    ));
+    router = router.merge(session_boundary(
+        dioxus_brand_new_post,
         &boundary_sessions,
         &boundary_auth,
     ));
@@ -1869,8 +1930,8 @@ pub fn bootstrap(
         ))
         .layer(tower_cookies::CookieManagerLayer::new())
         .layer(axum::middleware::from_fn_with_state(
-            footer_store,
-            inject_firm_footer_brands,
+            firm_context_store,
+            inject_resolved_firm_context,
         ))
         .layer(axum::middleware::from_fn_with_state(
             branding,
@@ -2275,10 +2336,16 @@ fn mount_brand_assets(
     router
 }
 
-/// Fill the public footer's brands row from `firm_brand` for the firm that
-/// wears this request's brand. Runs inside `host_layer` so the resolved
-/// [`views::brand::BrandKey`] is already on the request.
-async fn inject_firm_footer_brands(
+/// Resolve store-backed request extensions for the Firm that wears this
+/// request's brand: the [`webapp::firm_footer::FirmFooterModel`] every
+/// footer (`/app`'s and the public chrome's) draws from, and the
+/// [`webapp::app_chrome::AppBrandMark`] the `/app` navbar draws from (ENG-590:
+/// preferring an uploaded brand logo over the compiled one). Runs inside
+/// `host_layer` so the resolved [`views::brand::BrandKey`] is already on the
+/// request, and wraps the whole merged router once rather than per route, so
+/// every per-route layer that reads either extension — `inject_app_brand_mark`
+/// included — finds it already resolved.
+async fn inject_resolved_firm_context(
     State(surreal): State<store::surreal::SurrealDb>,
     mut request: Request<axum::body::Body>,
     next: Next,
@@ -2288,10 +2355,21 @@ async fn inject_firm_footer_brands(
         .get::<views::brand::BrandKey>()
         .copied()
         .unwrap_or_default();
-    let brands = webapp::public_chrome::footer_brands_from_store(&surreal, current).await;
-    request
-        .extensions_mut()
-        .insert(webapp::public_chrome::ResolvedFooterBrands(brands));
+    let model = webapp::firm_footer::resolve_firm_footer_model(
+        &surreal,
+        current,
+        {
+            use chrono::Datelike;
+            chrono::Utc::now().year()
+        },
+        views::brand::deployed_release()
+            .unwrap_or_default()
+            .to_string(),
+    )
+    .await;
+    let mark = webapp::app_chrome::resolve_app_brand_mark(&surreal, current).await;
+    request.extensions_mut().insert(model);
+    request.extensions_mut().insert(mark);
     next.run(request).await
 }
 

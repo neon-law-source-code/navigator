@@ -1,5 +1,5 @@
-//! The `/app/brands` house-of-brands home — every registered brand's typeface,
-//! in one place.
+//! The `/app/brands` house-of-brands home — every registered `brand` row
+//! (ENG-586), system-wide and Firm-scoped alike.
 //!
 //! Owner only (ENG-493), narrowed from every firm tier: a lawyer who works
 //! under a brand still sees it on every page they render, just not this
@@ -16,68 +16,25 @@ use serde::{Deserialize, Serialize};
 use crate::people::ViewerRole;
 
 /// The `<meta description>` for the brands home.
-const DESCRIPTION: &str = "Every Neon Law Navigator house brand's typeface, in one place.";
+const DESCRIPTION: &str = "Every brand registered on this Navigator deployment.";
 
-/// One brand's font family, as rendered on this page. Pure data, with no brand
-/// resolution or storage access.
-#[derive(Clone, PartialEq, Eq)]
-struct BrandFontCard {
-    /// The `id` on the card, so a test can pin a brand to its card.
-    id: &'static str,
-    /// The brand's own site name, e.g. "Neon Law".
-    brand_label: &'static str,
-    /// The web font family this brand's `/app` pages and public site declare.
-    family_name: &'static str,
-    /// How the family is licensed, rendered under the family name.
-    license_note: &'static str,
-    /// The suggested filename when the card's link downloads a desktop
-    /// family rather than navigating to a public reference. `None` when the
-    /// family has no separate desktop package to gate.
-    download: Option<&'static str>,
-    href: &'static str,
-    edit_href: &'static str,
+/// One `brand` row, as rendered on this page.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct BrandCard {
+    pub key: String,
+    pub name: String,
+    /// "System-wide" for a `firm_id: None` row, else the owning Firm's name.
+    pub owner_label: String,
+    /// The stored `#rrggbb` hex, when set — rendered as a swatch.
+    pub primary_color: Option<String>,
+    /// The typeface catalog id, or the uploaded font's family name.
+    pub font_label: String,
+    pub has_logo: bool,
+    pub edit_href: String,
 }
 
-/// The registered brands' font cards, in registry order.
-///
-/// The GORP Serif, Tinos, and system-sans facts here mirror `views::brand::TYPEFACES`
-/// and the compiled seed for each registry key. This client-rendered data stays
-/// independent of the server-only `views` crate so the WASM build does not pull
-/// server brand resolution into the browser bundle.
-fn brand_font_cards() -> [BrandFontCard; 3] {
-    [
-        BrandFontCard {
-            id: "brand-card-neon",
-            brand_label: "Neon Law",
-            family_name: "GORP Serif",
-            license_note: "Licensed from TrashType. The desktop family is a firm-only download; the public site serves only the web (WOFF2) faces.",
-            download: Some("gorp-serif.zip"),
-            href: "/app/team/fonts/gorp-serif.zip",
-            edit_href: "/app/brands/neon/edit",
-        },
-        BrandFontCard {
-            id: "brand-card-delete-your-data",
-            brand_label: "DeleteYourData.com",
-            family_name: "System sans",
-            license_note: "The operating-system sans stack. No licensed webfont.",
-            download: None,
-            href: "/app/brands/delete-your-data/edit",
-            edit_href: "/app/brands/delete-your-data/edit",
-        },
-        BrandFontCard {
-            id: "brand-card-lawyer-shook",
-            brand_label: "Lawyer Shook",
-            family_name: "Tinos",
-            license_note: "SIL Open Font License 1.1 — the web faces are served from Navigator's public asset origin.",
-            download: None,
-            href: "/app/brands/lawyer-shook/edit",
-            edit_href: "/app/brands/lawyer-shook/edit",
-        },
-    ]
-}
-
-/// Everything the brands home renders: the viewer's tier and the mounted
-/// brand's mark for the app chrome.
+/// Everything the brands home renders: every registered brand, the viewer's
+/// tier, and the mounted brand's mark for the app chrome.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct BrandsHomeView {
     pub role: ViewerRole,
@@ -89,9 +46,27 @@ pub struct BrandsHomeView {
     pub tokens_href: String,
     #[serde(default)]
     pub firm_name: String,
+    #[serde(default)]
+    pub cards: Vec<BrandCard>,
 }
 
-/// Resolve the Owner viewer and the request-scoped brand for the home.
+#[cfg(feature = "server")]
+fn font_label(brand: &store::brands::Brand) -> String {
+    if brand.typeface.as_deref() == Some("uploaded") {
+        brand
+            .font_family
+            .clone()
+            .unwrap_or_else(|| "Uploaded font (no family set)".to_string())
+    } else {
+        brand
+            .typeface
+            .clone()
+            .unwrap_or_else(|| "Compiled default".to_string())
+    }
+}
+
+/// Resolve the Owner viewer and every registered brand, system-wide and
+/// Firm-scoped alike.
 ///
 /// ENG-493: Owner only, narrowed from every firm person. A hidden link is not
 /// an authorization boundary, so this handler-level gate — like
@@ -99,11 +74,44 @@ pub struct BrandsHomeView {
 /// tiers the Rego rule now excludes from the Owner/Admin route bypass.
 #[server]
 pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
+    let role = crate::admin_listing::require_owner().await?;
+    let surreal = consume_context::<store::surreal::SurrealDb>();
+
+    let mut brands = store::brands::system_wide(&surreal)
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+    brands.extend(
+        store::brands::all_firm_scoped(&surreal)
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?,
+    );
+
+    let mut cards = Vec::with_capacity(brands.len());
+    for brand in brands {
+        let owner_label = match brand.firm_id {
+            None => "System-wide".to_string(),
+            Some(firm_id) => store::firms::find_by_id(&surreal, firm_id)
+                .await
+                .map_err(|error| ServerFnError::new(error.to_string()))?
+                .map_or_else(|| "Unknown firm".to_string(), |firm| firm.name),
+        };
+        cards.push(BrandCard {
+            key: brand.key.clone(),
+            name: brand.name.clone(),
+            owner_label,
+            primary_color: brand.primary_color.clone(),
+            font_label: font_label(&brand),
+            has_logo: brand.logo_object_key.is_some(),
+            edit_href: format!("/app/brands/{}/edit", brand.key),
+        });
+    }
+
     Ok(BrandsHomeView {
-        role: crate::admin_listing::require_owner().await?,
+        role,
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
+        cards,
     })
 }
 
@@ -135,27 +143,29 @@ pub fn brands_home_body(view: &BrandsHomeView) -> Element {
     let role = view.role;
     let firm_name = view.firm_name.clone();
 
-    let cards = brand_font_cards().into_iter().map(|c| {
+    let cards = view.cards.iter().map(|c| {
+        let swatch_style = c
+            .primary_color
+            .as_deref()
+            .map(|hex| format!("background-color: {hex};"));
         rsx! {
             article {
-                key: "{c.id}",
-                id: "{c.id}",
+                key: "{c.key}",
+                id: "brand-card-{c.key}",
                 class: "brands-home__card",
-                h2 { class: "brands-home__card-title", "{c.brand_label}" }
-                p { class: "brands-home__card-family", "{c.family_name}" }
-                p { class: "brands-home__card-license", "{c.license_note}" }
-                if let Some(download) = c.download {
-                    a {
-                        class: "brands-home__card-link",
-                        href: "{c.href}",
-                        download: "{download}",
-                        "Download the desktop family"
-                    }
+                h2 { class: "brands-home__card-title", "{c.name}" }
+                p { class: "brands-home__card-owner", "{c.owner_label}" }
+                if let Some(style) = swatch_style {
+                    span { class: "brands-home__swatch", style: "{style}" }
+                }
+                p { class: "brands-home__card-family", "{c.font_label}" }
+                p { class: "brands-home__card-logo",
+                    if c.has_logo { "Logo uploaded" } else { "No logo uploaded" }
                 }
                 a {
                     class: "brands-home__card-link",
                     href: "{c.edit_href}",
-                    "Edit presentation"
+                    "Edit"
                 }
             }
         }
@@ -174,11 +184,16 @@ pub fn brands_home_body(view: &BrandsHomeView) -> Element {
             header { class: "page-header",
                 h1 { "Brands" }
                 p { class: "page-subtitle",
-                    "Every house brand's typeface, in one place."
+                    "Every brand registered on this deployment, system-wide and Firm-scoped."
                 }
+                p { a { class: "nav-btn nav-btn--primary", href: "/app/brands/new", "New brand" } }
             }
             div { class: "brands-home__cards", "aria-label": "Registered brands",
-                {cards}
+                if view.cards.is_empty() {
+                    p { class: "page-subtitle", "No brands are registered on this deployment." }
+                } else {
+                    {cards}
+                }
             }
         }
     }
@@ -186,106 +201,65 @@ pub fn brands_home_body(view: &BrandsHomeView) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{brand_font_cards, brands_home_body, BrandsHomeView};
+    use super::{brands_home_body, BrandCard, BrandsHomeView};
     use crate::people::ViewerRole;
 
-    fn view_for(role: ViewerRole) -> BrandsHomeView {
+    fn view(cards: Vec<BrandCard>) -> BrandsHomeView {
         BrandsHomeView {
             tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
-            role,
+            role: ViewerRole::Owner,
             logo: None,
+            cards,
         }
     }
 
-    fn render(role: ViewerRole) -> String {
-        dioxus_ssr::render_element(brands_home_body(&view_for(role)))
+    fn render(cards: Vec<BrandCard>) -> String {
+        dioxus_ssr::render_element(brands_home_body(&view(cards)))
     }
 
-    /// One card per registered `BrandKey`, in registry order. The registry is
-    /// server-only, so this tripwire runs only where that dependency is present.
-    #[cfg(feature = "server")]
     #[test]
-    fn one_card_per_registered_brand_key() {
-        assert_eq!(
-            brand_font_cards().len(),
-            views::brand::BrandKey::ALL.len(),
-            "every registered brand key needs a font card"
-        );
+    fn lists_a_brand_row_with_its_owner_font_and_logo_status() {
+        let html = render(vec![BrandCard {
+            key: "neon".to_string(),
+            name: "Neon Law".to_string(),
+            owner_label: "System-wide".to_string(),
+            primary_color: Some("#007c91".to_string()),
+            font_label: "gorp-serif".to_string(),
+            has_logo: false,
+            edit_href: "/app/brands/neon/edit".to_string(),
+        }]);
+        assert!(html.contains(r#"id="brand-card-neon""#), "{html}");
+        assert!(html.contains("System-wide"), "{html}");
+        assert!(html.contains("gorp-serif"), "{html}");
+        assert!(html.contains("No logo uploaded"), "{html}");
+        assert!(html.contains("background-color: #007c91"), "{html}");
+        assert!(html.contains(r#"href="/app/brands/neon/edit""#), "{html}");
     }
 
-    /// Every firm tier sees every registered brand's card — a house brand's font is not
-    /// gated further than the page itself.
     #[test]
-    fn every_firm_tier_sees_every_brand_card() {
-        for role in [
-            ViewerRole::Clerk,
-            ViewerRole::Lawyer,
-            ViewerRole::Admin,
-            ViewerRole::Owner,
-        ] {
-            let html = render(role);
-            assert!(
-                html.contains(r#"id="brand-card-neon""#),
-                "rank {} must see the Neon card: {html}",
-                role.authority_rank()
-            );
-            assert!(
-                html.contains(r#"id="brand-card-delete-your-data""#),
-                "rank {} must see the DeleteYourData card: {html}",
-                role.authority_rank()
-            );
-            assert!(
-                html.contains(r#"id="brand-card-lawyer-shook""#),
-                "rank {} must see the Lawyer Shook card: {html}",
-                role.authority_rank()
-            );
-        }
+    fn a_firm_scoped_brand_names_its_owning_firm() {
+        let html = render(vec![BrandCard {
+            key: "acme-brand".to_string(),
+            name: "Acme Brand".to_string(),
+            owner_label: "Acme Practice".to_string(),
+            primary_color: None,
+            font_label: "Custom Sans".to_string(),
+            has_logo: true,
+            edit_href: "/app/brands/acme-brand/edit".to_string(),
+        }]);
+        assert!(html.contains("Acme Practice"), "{html}");
+        assert!(html.contains("Logo uploaded"), "{html}");
     }
 
-    /// Neon's card links the same firm-gated ZIP route the Team home's Brand
-    /// fonts card offers, and downloads under that route's own filename.
     #[test]
-    fn the_neon_card_downloads_the_existing_gorp_zip_route() {
-        let html = render(ViewerRole::Lawyer);
+    fn empty_inventory_still_renders_the_heading_and_new_brand_link() {
+        let html = render(Vec::new());
+        assert!(html.contains("Brands"), "{html}");
         assert!(
-            html.contains(r#"href="/app/team/fonts/gorp-serif.zip""#),
-            "the Neon card links the existing GORP ZIP route: {html}"
+            html.contains("No brands are registered on this deployment."),
+            "{html}"
         );
-        assert!(
-            html.contains(r#"download="gorp-serif.zip""#),
-            "the Neon card downloads under the route's own filename: {html}"
-        );
-    }
-
-    /// `DeleteYourData`'s card links the presentation editor rather than a
-    /// public font specimen — the seed wears the system sans stack.
-    #[test]
-    fn the_delete_your_data_card_has_no_download_attribute() {
-        let html = render(ViewerRole::Owner);
-        assert!(
-            html.contains(r#"href="/app/brands/delete-your-data/edit""#),
-            "the DeleteYourData card links the presentation editor: {html}"
-        );
-        assert!(
-            html.contains("System sans"),
-            "the DeleteYourData card names the system sans stack: {html}"
-        );
-        assert_eq!(
-            html.matches("download=").count(),
-            1,
-            "only the Neon card is a download: {html}"
-        );
-    }
-
-    /// The rendered page carries the heading and registered brand cards.
-    #[test]
-    fn the_home_composes_heading_and_cards() {
-        let html = render(ViewerRole::Owner);
-        assert!(html.contains("Brands"), "the heading: {html}");
-        assert!(
-            html.contains("Every house brand&#39;s typeface, in one place."),
-            "the subtitle: {html}"
-        );
+        assert!(html.contains(r#"href="/app/brands/new""#), "{html}");
     }
 }

@@ -1314,6 +1314,49 @@ async fn seed_sample_portfolio_into(
     seed_answers(surreal, r).await?;
     seed_person_project_roles(surreal, r).await?;
     seed_project_firm_ownership(surreal).await?;
+    seed_sample_invoices(surreal).await?;
+    Ok(())
+}
+
+/// One trailing-30-day Xero invoice per sample matter (ENG-591), invented
+/// exactly like every other row this table carries, so the local Firm show
+/// page's invoice graphs have something to draw. One is fully paid, one is
+/// partly paid, and one is unpaid, across the fixture's two house brands.
+async fn seed_sample_invoices(surreal: &SurrealDb) -> anyhow::Result<()> {
+    let now = chrono::Utc::now();
+    for (matter, amount_cents, paid_cents, days_ago) in [
+        (&SAMPLE_MATTERS[0], 480_000_i64, 480_000_i64, 3_i64),
+        (&SAMPLE_MATTERS[1], 250_000_i64, 0_i64, 10_i64),
+        (&SAMPLE_MATTERS[2], 120_000_i64, 60_000_i64, 20_i64),
+    ] {
+        let Some(project) = crate::projects::find_by_name(surreal, matter.name).await? else {
+            continue;
+        };
+        let xero_invoice_id = format!("sample-invoice-{}", matter.code);
+        crate::xero_invoices::upsert(
+            surreal,
+            &crate::xero_invoices::UpsertXeroInvoice {
+                project_id: project.id,
+                xero_invoice_id: xero_invoice_id.clone(),
+                reference: format!("Sample invoice for {}", matter.code),
+                status: "AUTHORISED".to_string(),
+                amount_cents,
+                currency: "USD".to_string(),
+                issued_at: now - chrono::Duration::days(days_ago),
+                due_at: None,
+            },
+        )
+        .await?;
+        if paid_cents > 0 {
+            let status = if paid_cents >= amount_cents {
+                "PAID"
+            } else {
+                "AUTHORISED"
+            };
+            crate::xero_invoices::record_reconcile(surreal, &xero_invoice_id, status, paid_cents)
+                .await?;
+        }
+    }
     Ok(())
 }
 
@@ -2573,18 +2616,24 @@ async fn seed_entities(
 
 /// Migrate the three compiled house-brand keys into system-wide `brand` rows
 /// (ENG-496), with the identity values their compiled `Branding` entries
-/// carry. `store` cannot depend on `views`, so these values are copied rather
-/// than read from it; migrated rows' `primary_color`/`accent_color`/`typeface`
-/// stay unset — the compiled brands' real presentation stays on the existing
-/// static stylesheet path, not on these columns. Idempotent: a name or key
-/// already taken is this same migration having already run.
+/// carry. `store` cannot depend on `views`, so these values — including each
+/// palette's light-mode primary hex (ENG-586: `primary_color` holds a
+/// validated hex, not a palette id) — are copied rather than read from it.
+/// The compiled brands' real presentation still renders from the existing
+/// static stylesheet path (`views::brand_presentation`'s own compiled
+/// `PALETTE`/`TYPEFACES`), not from these columns; this migration keeps the
+/// row's stored hex in step with that compiled palette so nothing renders
+/// differently on upgrade (`views::brand_presentation`'s own test asserts
+/// every compiled palette clears the same WCAG AA gate this write enforces).
+/// Idempotent: a name or key already taken is this same migration having
+/// already run.
 async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
     for (name, key) in [
         ("Neon Law", "neon"),
         ("DeleteYourData.com", "delete-your-data"),
         ("Lawyer Shook", "lawyer-shook"),
     ] {
-        let (typeface, palette) = compiled_brand_presentation(key);
+        let (typeface, hex) = compiled_brand_presentation(key);
         match crate::brands::create(
             surreal,
             crate::persons::Role::Owner,
@@ -2595,8 +2644,7 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
                 is_law_firm: true,
                 legal_entity: Some(FIRM_ENTITY_NAME.to_string()),
                 typeface: Some(typeface.to_string()),
-                primary_color: Some(palette.to_string()),
-                accent_color: Some(palette.to_string()),
+                primary_color: Some(hex.to_string()),
                 ..crate::brands::NewBrand::default()
             },
         )
@@ -2614,8 +2662,7 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
                         existing.id,
                         &crate::brands::BrandEdit {
                             typeface: Some(Some(typeface.to_string())),
-                            primary_color: Some(Some(palette.to_string())),
-                            accent_color: Some(Some(palette.to_string())),
+                            primary_color: Some(Some(hex.to_string())),
                             ..crate::brands::BrandEdit::default()
                         },
                     )
@@ -2628,11 +2675,14 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The typeface id and light-mode primary hex each compiled house brand
+/// seeds — a copy of `views::brand_presentation::PALETTE`'s light scheme,
+/// since `store` cannot depend on `views`.
 fn compiled_brand_presentation(key: &str) -> (&'static str, &'static str) {
     match key {
-        "delete-your-data" => ("system-sans", "delete-your-data"),
-        "lawyer-shook" => ("tinos", "lawyer-shook"),
-        _ => ("gorp-serif", "neon-teal"),
+        "delete-your-data" => ("system-sans", "#b91c1c"),
+        "lawyer-shook" => ("tinos", "#5c5100"),
+        _ => ("gorp-serif", "#007c91"),
     }
 }
 
@@ -4921,13 +4971,13 @@ records:
             .unwrap()
             .expect("neon brand");
         assert_eq!(neon.typeface.as_deref(), Some("gorp-serif"));
-        assert_eq!(neon.primary_color.as_deref(), Some("neon-teal"));
+        assert_eq!(neon.primary_color.as_deref(), Some("#007c91"));
         let dyd = crate::brands::find_by_key(&surreal, "delete-your-data")
             .await
             .unwrap()
             .expect("delete-your-data brand");
         assert_eq!(dyd.typeface.as_deref(), Some("system-sans"));
-        assert_eq!(dyd.primary_color.as_deref(), Some("delete-your-data"));
+        assert_eq!(dyd.primary_color.as_deref(), Some("#b91c1c"));
     }
 
     #[tokio::test]

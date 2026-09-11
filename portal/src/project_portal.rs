@@ -704,6 +704,22 @@ mod tests {
         );
     }
 
+    /// ENG-590: the banner names whichever brand is scoped to the request,
+    /// not always the deployment default — `views::brand::FIRM_BRAND` reads
+    /// the live `task_local`, the same mechanism the `/app` navbar mark
+    /// already relies on.
+    #[tokio::test]
+    async fn the_banner_names_the_scoped_brand_not_the_default() {
+        use views::brand::{scope, DELETE_YOUR_DATA_BRANDING};
+
+        scope(&DELETE_YOUR_DATA_BRANDING, async {
+            let html = portal_banner_html("libra-formation");
+            assert!(html.contains("DeleteYourData.com"), "{html}");
+            assert!(!html.contains(">Neon Law<"), "{html}");
+        })
+        .await;
+    }
+
     /// The banner lands as the body's first child, whatever attributes the
     /// opening tag carries, and a document with no body — or invalid UTF-8 —
     /// is returned untouched rather than corrupted.

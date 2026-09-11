@@ -57,20 +57,18 @@ DEFINE FIELD OVERWRITE code ON project TYPE string
     ASSERT $value != 'new';
 DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;
--- Which house brand's storefront this matter was opened through — a closed
--- key from `views::brand::BrandKey`, written by the server from the
--- resolved request `Host:`, never accepted from a client-submitted form (see
--- `docs/glossary.md#project`). `option<string>` rather than a required,
--- defaulted `string`: a `DEFAULT` is write-time only and never reached the
--- Projects opened before this field existed, so a required `string` makes
--- the engine re-validate and reject *any* later partial `UPDATE` against one
--- of those rows — including something as unrelated as a DRI designation —
--- with a coercion error, not just the read that first surfaced the gap in
--- #331. `ProjectRow.brand` stays `option<string>` and `ProjectRow::into_project`
--- collapses an absent value to `'neon'`, so a historical row is tolerated at
--- both the read and the write layer with no live data backfill required.
-DEFINE FIELD OVERWRITE brand ON project TYPE option<string>
-    ASSERT $value = NONE OR $value IN ['neon', 'delete-your-data', 'lawyer-shook'];
+-- Which house brand's storefront this matter was opened through, written by
+-- the server from the resolved request `Host:`, never accepted from a
+-- client-submitted form (see `docs/glossary.md#project`). Required (ENG-587):
+-- the backfill directly below runs before this tightened definition takes
+-- effect, so no row is ever unfilled when it does — apply order is the
+-- guarantee, since this file runs top to bottom on every boot. Validated
+-- against live `brand` rows in `store::projects::create`
+-- (`store::firms::brand_key_exists`, the same check `attach_brand` uses)
+-- rather than restated here as a second closed list: a runtime-created brand
+-- key must be as usable here as one of the three compiled ones.
+UPDATE project SET brand = 'neon' WHERE brand = NONE;
+DEFINE FIELD OVERWRITE brand ON project TYPE string;
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 -- Owning practice. Optional until the one-shot backfill points existing
 -- rows at a `firm` record: `DEFAULT` is write-time only and does not
@@ -113,13 +111,15 @@ DEFINE FIELD OVERWRITE inserted_at ON project TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON project TYPE string;
 DEFINE INDEX OVERWRITE project_code ON project FIELDS code UNIQUE;
 
--- `xero_invoice`: local mirror of the one Xero invoice per Project. Xero
--- remains the receivables ledger and the place an invoice is raised; this
--- pointer supplies the portal card and lawyer link without a live provider
--- request. The unique project index is the idempotency and concurrency
--- boundary for the nightly reconcile's journaled write: several rows may
--- carry `NONE` under a Surreal unique index, but a real duplicate Project
--- must still be refused.
+-- `xero_invoice`: local mirror of a Project's Xero invoices — many per
+-- Project over time (ENG-588), not one. Xero remains the receivables
+-- ledger and the place an invoice is raised; this mirror supplies the
+-- portal card and lawyer link without a live provider request. The row's
+-- own record id is the Xero invoice id itself, so a re-run of `upsert` for
+-- the same Xero invoice lands on the one row it already wrote, and two
+-- different Xero invoices for the same matter are two rows rather than a
+-- collision — see `store::xero_invoices`' module docs for why the record
+-- id, not a unique index, is the concurrency boundary.
 DEFINE TABLE IF NOT EXISTS xero_invoice SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE project_id ON xero_invoice TYPE record<project>;
 DEFINE FIELD OVERWRITE xero_invoice_id ON xero_invoice TYPE string;
@@ -128,9 +128,42 @@ DEFINE FIELD OVERWRITE status ON xero_invoice TYPE string;
 DEFINE FIELD OVERWRITE amount_cents ON xero_invoice TYPE int;
 DEFINE FIELD OVERWRITE amount_paid_cents ON xero_invoice TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE currency ON xero_invoice TYPE string;
+DEFINE FIELD OVERWRITE issued_at ON xero_invoice TYPE datetime;
+DEFINE FIELD OVERWRITE due_at ON xero_invoice TYPE option<datetime>;
 DEFINE FIELD OVERWRITE inserted_at ON xero_invoice TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON xero_invoice TYPE datetime DEFAULT time::now();
-DEFINE INDEX OVERWRITE xero_invoice_project ON xero_invoice FIELDS project_id UNIQUE;
+
+-- The per-matter read no longer assumes one row: several invoices may now
+-- share a `project_id`, so this is a plain lookup index rather than the
+-- table's concurrency boundary (dropped from ENG-588's pre-existing
+-- `UNIQUE`). Redefined before the backfill below runs, so a legacy row's
+-- momentarily-duplicated `project_id` — the old row and its re-keyed
+-- replacement briefly coexist mid-migration — never trips a constraint
+-- that no longer applies.
+DEFINE INDEX OVERWRITE xero_invoice_project ON xero_invoice FIELDS project_id;
+
+-- Backfill (ENG-588): a row from before this change still lives under a
+-- record id equal to its own `project_id`. Re-create it under its Xero
+-- invoice id, carrying `inserted_at` forward as the best available
+-- `issued_at` until the next nightly reconcile corrects it, and drop the
+-- legacy row. Idempotent: a row already keyed on its Xero invoice id has
+-- `meta::id(id) = xero_invoice_id` already, so a second apply finds
+-- nothing left to migrate.
+LET $legacy_xero_invoices = (SELECT * FROM xero_invoice WHERE meta::id(id) != xero_invoice_id);
+FOR $legacy IN $legacy_xero_invoices {
+    CREATE type::record('xero_invoice', $legacy.xero_invoice_id) SET
+        project_id = $legacy.project_id,
+        xero_invoice_id = $legacy.xero_invoice_id,
+        reference = $legacy.reference,
+        status = $legacy.status,
+        amount_cents = $legacy.amount_cents,
+        amount_paid_cents = $legacy.amount_paid_cents,
+        currency = $legacy.currency,
+        issued_at = $legacy.inserted_at,
+        inserted_at = $legacy.inserted_at,
+        updated_at = $legacy.updated_at;
+    DELETE $legacy.id;
+};
 
 DEFINE TABLE IF NOT EXISTS person_project_role SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON person_project_role TYPE record<person>;
@@ -548,8 +581,11 @@ DEFINE INDEX OVERWRITE firm_integration_secret_version
 
 DEFINE TABLE IF NOT EXISTS firm_brand SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE firm_id ON firm_brand TYPE record<firm>;
-DEFINE FIELD OVERWRITE brand_key ON firm_brand TYPE string
-    ASSERT $value IN ['neon', 'delete-your-data', 'lawyer-shook'];
+-- No closed `ASSERT` (ENG-587): `store::firms::attach_brand` already
+-- validates against live `brand` rows (`brand_key_exists`), not this fixed
+-- list, so a schema-level closed list would disagree with the store the
+-- moment a runtime-created brand key is attached.
+DEFINE FIELD OVERWRITE brand_key ON firm_brand TYPE string;
 DEFINE FIELD OVERWRITE inserted_at ON firm_brand TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON firm_brand TYPE string;
 DEFINE INDEX OVERWRITE firm_brand_pair ON firm_brand FIELDS firm_id, brand_key UNIQUE;
@@ -573,11 +609,36 @@ DEFINE TABLE IF NOT EXISTS brand SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON brand TYPE string;
 DEFINE FIELD OVERWRITE brand_key ON brand TYPE string;
 DEFINE FIELD OVERWRITE firm_id ON brand TYPE option<record<firm>>;
+-- A validated `#rrggbb` hex (ENG-586), not a closed palette id. `store::brands`
+-- validates the format and gates it behind a WCAG AA 4.5:1 contrast check
+-- against its own derived on-primary colour before writing; the schema places
+-- no `ASSERT` on it because free text was already permitted here.
 DEFINE FIELD OVERWRITE primary_color ON brand TYPE option<string>;
 DEFINE FIELD OVERWRITE accent_color ON brand TYPE option<string>;
+-- One more value than the closed `views::brand_presentation::TYPEFACES` ids:
+-- `'uploaded'` means "read `font_family` and the font object below" instead of
+-- a catalog id. `store` does not depend on `views`, so this stays a plain
+-- string; `views::brand_presentation::resolve_presentation` is where the
+-- special value is interpreted.
 DEFINE FIELD OVERWRITE typeface ON brand TYPE option<string>;
 DEFINE FIELD OVERWRITE is_law_firm ON brand TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE legal_entity ON brand TYPE option<string>;
+-- The uploaded logo (ENG-586): the public assets bucket object key and the
+-- content type that was validated at upload time (`image/png` or
+-- `image/svg+xml`). A brand with neither falls back to its compiled
+-- `logo_href`, so the three house brands render unchanged.
+DEFINE FIELD OVERWRITE logo_object_key ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE logo_content_type ON brand TYPE option<string>;
+-- The uploaded font (ENG-586): `font_family` is the CSS `font-family` name the
+-- tokens stylesheet's `@font-face` declares and the `typeface = 'uploaded'`
+-- branch above renders; `font_object_key` is its `.woff2` in the public
+-- assets bucket. `font_licence` is required whenever a font is uploaded, from
+-- a closed list of open licences — never a proof of licensing, only a record
+-- of the operator's own attestation.
+DEFINE FIELD OVERWRITE font_family ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE font_object_key ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE font_licence ON brand TYPE option<string>
+    ASSERT $value = NONE OR $value IN ['OFL-1.1', 'Apache-2.0', 'UFL-1.0'];
 DEFINE FIELD OVERWRITE inserted_at ON brand TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON brand TYPE string;
 DEFINE INDEX OVERWRITE brand_name ON brand FIELDS name UNIQUE;

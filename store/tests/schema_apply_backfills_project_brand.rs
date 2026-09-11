@@ -1,12 +1,13 @@
 //! ENG-587: `project.brand` became a required `string` (from `option<string>`
-//! with a closed `ASSERT`), backfilled by an idempotent `UPDATE` the schema
-//! file itself runs before the tightened `DEFINE FIELD`. This proves a row
+//! with a closed `ASSERT`), backfilled by a guarded idempotent `UPDATE` after
+//! the schema definitions restore the tightened `DEFINE FIELD`. This proves a row
 //! written with no `brand` value survives re-applying the schema — the same
 //! "apply is run on every boot" guarantee every deployment relies on — and
 //! that the row is still writable afterwards.
 
 use store::projects::{self, UpdateProjectCommand};
 use store::schema;
+use store::surreal::test_support::unmigrated;
 use store::test_support::{mem_surreal, seed_entity};
 
 #[tokio::test]
@@ -83,4 +84,122 @@ async fn a_project_with_no_brand_value_is_backfilled_and_stays_writable() {
     .expect("an unrelated partial update must succeed against the backfilled row");
     assert_eq!(renamed.name, "Backfill Test Renamed");
     assert_eq!(renamed.brand, "neon");
+    let project = schema::introspect(&db)
+        .await
+        .expect("read the schema after a successful backfill")
+        .remove("project")
+        .expect("the project table remains defined");
+    let brand_field = project
+        .fields
+        .get("brand")
+        .expect("the brand field remains defined after a successful backfill");
+    assert!(
+        brand_field.contains("TYPE string") && !brand_field.contains("none | string"),
+        "a successful migration must restore the required brand field: {brand_field}"
+    );
+}
+
+/// A default only becomes safe once its corresponding brand row is live.
+/// An upgrade with historical Projects but no neon row needs an explicit
+/// operator repair, not a silent reference to a brand that does not exist.
+#[tokio::test]
+async fn a_missing_default_brand_is_reported_without_backfilling_historical_projects() {
+    let db = unmigrated().await;
+    schema::apply(&db)
+        .await
+        .expect("a fresh database with no projects still applies");
+    db.query("DEFINE FIELD OVERWRITE brand ON project TYPE option<string>")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("reproduce the historical optional brand field");
+    let entity_id = uuid::Uuid::now_v7();
+    db.query(
+        "CREATE $id SET code = 'missing-default-brand', name = 'Missing default brand',
+         status = 'open', entity_id = $entity_id,
+         inserted_at = '2026-01-15T00:00:00Z', updated_at = '2026-01-15T00:00:00Z'",
+    )
+    .bind((
+        "id",
+        store::surreal::record_id("project", uuid::Uuid::now_v7()),
+    ))
+    .bind(("entity_id", store::surreal::record_id("entity", entity_id)))
+    .await
+    .and_then(surrealdb::IndexedResults::check)
+    .expect("create a pre-brand project");
+
+    let error = schema::apply(&db)
+        .await
+        .expect_err("a missing live default brand must stop the backfill");
+    assert!(
+        error
+            .to_string()
+            .contains("project brand backfill missing default brand: neon"),
+        "the migration error must name the missing default: {error}"
+    );
+    let brand: Option<String> = db
+        .query("SELECT VALUE brand FROM ONLY project WHERE code = 'missing-default-brand'")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("read the untouched historical project")
+        .take(0)
+        .expect("deserialize the absent brand");
+    assert_eq!(
+        brand, None,
+        "a failed migration must not write a dangling default"
+    );
+    let project = schema::introspect(&db)
+        .await
+        .expect("read the schema left for an explicit operator repair")
+        .remove("project")
+        .expect("the project table remains defined");
+    let brand_field = project
+        .fields
+        .get("brand")
+        .expect("the brand field remains defined after a failed migration");
+    assert!(
+        brand_field.contains("none | string"),
+        "a failed migration must leave brand optional until its default exists: {brand_field}"
+    );
+}
+
+/// A non-null legacy value can still point nowhere. It must be reported as
+/// data to repair, never overwritten with the deployment default.
+#[tokio::test]
+async fn a_dangling_legacy_brand_is_reported_without_reassigning_the_project() {
+    let db = unmigrated().await;
+    schema::apply(&db)
+        .await
+        .expect("a fresh database with no projects still applies");
+    let entity_id = uuid::Uuid::now_v7();
+    db.query(
+        "CREATE $id SET code = 'dangling-brand', name = 'Dangling brand',
+         status = 'open', brand = 'retired-brand', entity_id = $entity_id,
+         inserted_at = '2026-01-15T00:00:00Z', updated_at = '2026-01-15T00:00:00Z'",
+    )
+    .bind((
+        "id",
+        store::surreal::record_id("project", uuid::Uuid::now_v7()),
+    ))
+    .bind(("entity_id", store::surreal::record_id("entity", entity_id)))
+    .await
+    .and_then(surrealdb::IndexedResults::check)
+    .expect("create a project carrying a retired brand key");
+
+    let error = schema::apply(&db)
+        .await
+        .expect_err("a dangling legacy key must stop the migration");
+    assert!(
+        error
+            .to_string()
+            .contains("project brand backfill dangling brand: retired-brand"),
+        "the migration error must name the dangling key: {error}"
+    );
+    let brand: Option<String> = db
+        .query("SELECT VALUE brand FROM ONLY project WHERE code = 'dangling-brand'")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("read the untouched legacy project")
+        .take(0)
+        .expect("deserialize the legacy brand");
+    assert_eq!(brand.as_deref(), Some("retired-brand"));
 }

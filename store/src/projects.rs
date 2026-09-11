@@ -1022,6 +1022,9 @@ pub async fn upsert_with_id(
             return Err(ProjectStoreError::NoSuchFirm(firm_id));
         }
     }
+    if !crate::firms::brand_key_exists(surreal, &input.brand).await? {
+        return Err(ProjectStoreError::UnknownBrand(input.brand.clone()));
+    }
     let now = chrono::Utc::now().to_rfc3339();
     let firm_set = if input.firm_id.is_some() {
         "firm_id = $firm_id,"
@@ -2736,8 +2739,8 @@ mod surreal_read_tests {
     use super::{
         can_access_as_client_in_surreal, can_access_as_lawyer_in_surreal, classify_project_write,
         create, designate_dri_in_surreal, dri_digest, find_by_id, matter_directory,
-        matter_directory_for, open_pitch_counts, record_id, DriSide, NewProject, ProjectStoreError,
-        ENTITY_TABLE,
+        matter_directory_for, open_pitch_counts, record_id, upsert_with_id, DriSide, NewProject,
+        ProjectStoreError, ENTITY_TABLE,
     };
     use crate::persons::Role;
     use crate::schema::apply;
@@ -2840,6 +2843,69 @@ mod surreal_read_tests {
         ));
     }
 
+    /// Seed and fixture callers use upsert_with_id, so it must enforce the
+    /// same live-brand boundary as matter-open's create.
+    #[tokio::test]
+    async fn upsert_with_id_refuses_an_unknown_brand_key() {
+        let db = mem_surreal().await;
+        let entity_id = crate::test_support::seed_entity(&db).await;
+        let id = uuid::Uuid::now_v7();
+        let err = upsert_with_id(
+            &db,
+            id,
+            &NewProject {
+                code: "unknown-upsert-brand".to_string(),
+                name: "Unknown upsert brand".to_string(),
+                status: "open".to_string(),
+                brand: "never-registered".to_string(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            ProjectStoreError::UnknownBrand(key) if key == "never-registered"
+        ));
+        assert_eq!(find_by_id(&db, id).await.unwrap(), None);
+    }
+
+    /// Runtime-created keys remain valid on the fixture upsert path; the
+    /// check is a live table lookup, not a closed compiled list.
+    #[tokio::test]
+    async fn upsert_with_id_accepts_a_runtime_created_brand_key() {
+        let db = mem_surreal().await;
+        crate::brands::create(
+            &db,
+            Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: "Upsert Custom Brand".to_string(),
+                key: "upsert-custom-brand".to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let entity_id = crate::test_support::seed_entity(&db).await;
+        let project = upsert_with_id(
+            &db,
+            uuid::Uuid::now_v7(),
+            &NewProject {
+                code: "upsert-custom-brand".to_string(),
+                name: "Upsert custom brand".to_string(),
+                status: "open".to_string(),
+                brand: "upsert-custom-brand".to_string(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("a runtime-created brand is a valid upsert target");
+        assert_eq!(project.brand, "upsert-custom-brand");
+    }
+
     /// ENG-587: a runtime-created brand key (the kind `webapp::brands_new`
     /// mints) is just as usable at matter-open as a compiled one — the
     /// validation is store-side against live rows, not a closed enum.
@@ -2895,6 +2961,21 @@ mod surreal_read_tests {
     async fn designating_a_dri_on_a_project_written_before_brand_was_defined() {
         let db = unmigrated().await;
         apply(&db).await.unwrap();
+        // The established default must be a live brand before a historical
+        // absent value may be backfilled; otherwise the upgrade names the
+        // missing default instead of inventing a dangling reference.
+        crate::brands::create(
+            &db,
+            Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: "Neon".to_string(),
+                key: "neon".to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         db.query("DEFINE FIELD OVERWRITE brand ON project TYPE option<string>")
             .await
             .unwrap();

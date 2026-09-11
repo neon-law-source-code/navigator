@@ -59,16 +59,15 @@ DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;
 -- Which house brand's storefront this matter was opened through, written by
 -- the server from the resolved request `Host:`, never accepted from a
--- client-submitted form (see `docs/glossary.md#project`). Required (ENG-587):
--- the backfill directly below runs before this tightened definition takes
--- effect, so no row is ever unfilled when it does — apply order is the
--- guarantee, since this file runs top to bottom on every boot. Validated
+-- client-submitted form (see `docs/glossary.md#project`). Required after the
+-- guarded backfill near the `brand` table: this first definition remains
+-- optional until `store::schema::apply` validates historical rows and supplies
+-- the established default before it tightens this field. Validated
 -- against live `brand` rows in `store::projects::create`
 -- (`store::firms::brand_key_exists`, the same check `attach_brand` uses)
 -- rather than restated here as a second closed list: a runtime-created brand
 -- key must be as usable here as one of the three compiled ones.
-UPDATE project SET brand = 'neon' WHERE brand = NONE;
-DEFINE FIELD OVERWRITE brand ON project TYPE string;
+DEFINE FIELD OVERWRITE brand ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 -- Owning practice. Optional until the one-shot backfill points existing
 -- rows at a `firm` record: `DEFAULT` is write-time only and does not

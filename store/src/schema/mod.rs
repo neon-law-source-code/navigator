@@ -23,7 +23,7 @@
 
 use std::collections::BTreeMap;
 
-use surrealdb::types::{ErrorDetails, NotFoundError};
+use surrealdb::types::{ErrorDetails, NotFoundError, RecordId};
 use surrealdb::Error as SurrealQueryError;
 use thiserror::Error;
 
@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 39;
+pub const SCHEMA_VERSION: u32 = 41;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -44,6 +44,9 @@ const VERSION_RECORD: &str = "schema_version:current";
 /// deployed binary carries its own schema and cannot be pointed at a
 /// stale copy on a volume.
 const DEFINITIONS: &str = include_str!("navigator.surql");
+const PROJECT_BRAND_BACKFILL: &str = "\
+    UPDATE project SET brand = 'neon' WHERE brand IS NONE;\
+    DEFINE FIELD OVERWRITE brand ON project TYPE string;";
 
 /// Every table declared in the shipped Surreal schema, in stable order.
 ///
@@ -107,6 +110,10 @@ pub enum SchemaError {
     /// detects it before changing either row.
     #[error("xero invoice re-key collision: {0}")]
     XeroInvoiceRekeyCollision(String),
+    #[error("project brand backfill missing default brand: {0}")]
+    ProjectBrandBackfillMissingDefault(String),
+    #[error("project brand backfill dangling brand: {0}")]
+    ProjectBrandBackfillDangling(String),
     #[error("record the applied schema version")]
     RecordVersion(#[source] SurrealQueryError),
     #[error("read the applied schema version")]
@@ -122,13 +129,56 @@ const XERO_INVOICE_REKEY_COLLISION_PREFIX: &str =
 
 fn classify_apply(error: SurrealQueryError) -> SchemaError {
     let message = error.to_string();
-    match message.strip_prefix(XERO_INVOICE_REKEY_COLLISION_PREFIX) {
-        Some(invoice_id) => SchemaError::XeroInvoiceRekeyCollision(invoice_id.to_string()),
-        None => SchemaError::Apply(error),
+    if let Some(invoice_id) = message.strip_prefix(XERO_INVOICE_REKEY_COLLISION_PREFIX) {
+        SchemaError::XeroInvoiceRekeyCollision(invoice_id.to_string())
+    } else {
+        SchemaError::Apply(error)
     }
 }
 
-/// Apply the schema and record [`SCHEMA_VERSION`].
+async fn live_brand_key(db: &SurrealDb, brand_key: &str) -> Result<bool, SchemaError> {
+    let mut response = db
+        .query("SELECT VALUE id FROM brand WHERE brand_key = $brand_key LIMIT 1")
+        .bind(("brand_key", brand_key.to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    let rows: Vec<RecordId> = response.take(0).map_err(SchemaError::Apply)?;
+    Ok(!rows.is_empty())
+}
+
+async fn backfill_project_brand(db: &SurrealDb) -> Result<(), SchemaError> {
+    let mut response = db
+        .query("SELECT VALUE id FROM project WHERE brand IS NONE")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    let missing: Vec<RecordId> = response.take(0).map_err(SchemaError::Apply)?;
+
+    let mut response = db
+        .query("SELECT VALUE brand FROM project WHERE brand IS NOT NONE")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    let existing: Vec<String> = response.take(0).map_err(SchemaError::Apply)?;
+    for brand_key in existing {
+        if !live_brand_key(db, &brand_key).await? {
+            return Err(SchemaError::ProjectBrandBackfillDangling(brand_key));
+        }
+    }
+    if !missing.is_empty() && !live_brand_key(db, "neon").await? {
+        return Err(SchemaError::ProjectBrandBackfillMissingDefault(
+            "neon".to_string(),
+        ));
+    }
+    db.query(PROJECT_BRAND_BACKFILL)
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    Ok(())
+}
+
+/// Apply the schema, guard historical Project brands, and record [`SCHEMA_VERSION`].
 ///
 /// Idempotent: running it against an already-prepared database
 /// converges every definition and leaves the rows untouched. Callers
@@ -138,6 +188,8 @@ pub async fn apply(db: &SurrealDb) -> Result<(), SchemaError> {
         .await
         .and_then(surrealdb::IndexedResults::check)
         .map_err(classify_apply)?;
+
+    backfill_project_brand(db).await?;
 
     db.query(format!(
         "UPSERT {VERSION_RECORD} SET version = $version, applied_at = time::now()"

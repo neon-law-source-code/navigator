@@ -79,9 +79,8 @@ const EXPORT_CONTRACT: &[&str] = &[
     "proposer_person_id",
     "proposer_role",
     "principal_kind",
-    // Which conversation, and where in it.
+    // Which server-generated task to join, and where in it.
     "task_id",
-    "context_id",
     "step",
     // The gate's own outcome.
     "authorized",
@@ -199,6 +198,23 @@ fn every_agent_authorization_field_survives_the_export_boundary() {
         "the collector's fail-closed allow-list deletes these agent-authorization fields \
          before export, so the exported record does not carry them: {deleted:?}\nAdd each to \
          `allowed_keys` in {COLLECTOR}."
+    );
+}
+
+#[test]
+fn caller_context_is_not_exported_but_server_task_id_is_required() {
+    let root = workspace_root();
+    let collector = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    let allowed = allowed_keys(&collector);
+    let contract: BTreeSet<String> = EXPORT_CONTRACT.iter().map(|f| (*f).to_string()).collect();
+
+    assert!(
+        contract.contains("task_id") && allowed.contains("task_id"),
+        "server-generated task_id must remain in the static and collector export contracts"
+    );
+    assert!(
+        !contract.contains("context_id") && !allowed.contains("context_id"),
+        "caller-selected context_id must be excluded from both export contracts"
     );
 }
 

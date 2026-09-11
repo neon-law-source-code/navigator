@@ -162,7 +162,6 @@ data:
           - proposer_role
           - principal_kind
           - task_id
-          - context_id
           - authorized
           - confirmed
           - confirmation_required

@@ -1908,7 +1908,7 @@ async fn post_synthetic_png_to_path(c: &Client, path: &str) {
              const u8 = Uint8Array.from(bytes); \
              const fd = new FormData(); \
              fd.append('_csrf', csrf); \
-             fd.append('avatar', new Blob([u8], {type: 'image/png'}), 'me.png'); \
+             fd.append('file', new Blob([u8], {type: 'image/png'}), 'me.png'); \
              fetch(path, {method: 'POST', body: fd, credentials: 'same-origin', redirect: 'follow'}) \
                 .then(r => callback(r.status)) \
                 .catch(() => callback(0));",

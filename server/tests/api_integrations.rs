@@ -157,15 +157,15 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
     let surreal = mem_surreal().await;
     let entity_a = store::test_support::seed_entity(&surreal).await;
     let entity_b = store::test_support::seed_entity(&surreal).await;
-    let admin_a_id = person(&surreal, "Admin A", Role::Admin).await;
-    let admin_b_id = person(&surreal, "Admin B", Role::Admin).await;
+    let requester_id = person(&surreal, "Admin A", Role::Admin).await;
+    let member_id = person(&surreal, "Admin B", Role::Admin).await;
     let _firm_a = store::firms::create(
         &surreal,
         &store::firms::NewFirm {
             name: "Firm A".into(),
             status: "active".into(),
             entity_id: entity_a,
-            admin_dri_person_id: admin_a_id,
+            admin_dri_person_id: requester_id,
         },
     )
     .await
@@ -176,7 +176,7 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
             name: "Firm B".into(),
             status: "active".into(),
             entity_id: entity_b,
-            admin_dri_person_id: admin_b_id,
+            admin_dri_person_id: member_id,
         },
     )
     .await
@@ -198,7 +198,7 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
     )
     .await
     .unwrap();
-    for person_id in [admin_a_id, admin_b_id] {
+    for person_id in [requester_id, member_id] {
         store::projects::add_participation(&surreal, project.id, person_id, "admin")
             .await
             .unwrap();
@@ -221,7 +221,7 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
             &surreal,
             store::firm_secrets::SecretPutRequest {
                 actor_role: Role::Admin,
-                actor_person_id: Some(admin_b_id),
+                actor_person_id: Some(member_id),
                 firm_id: firm_b.id,
                 provider,
                 kind,
@@ -243,8 +243,8 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
         app: server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR)),
         providers,
         code,
-        admin_a: bearer(admin_a_id, Role::Admin),
-        admin_b: bearer(admin_b_id, Role::Admin),
+        admin_a: bearer(requester_id, Role::Admin),
+        admin_b: bearer(member_id, Role::Admin),
     }
 }
 

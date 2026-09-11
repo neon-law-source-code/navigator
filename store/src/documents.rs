@@ -43,6 +43,27 @@ use uuid::Uuid;
 use crate::assets::{sha256_hex as asset_sha256_hex, SELECT, TABLE};
 use crate::surreal::{record_id, SurrealDb};
 
+/// Maximum size of one document accepted by the document upload lane.
+///
+/// Twenty-five MiB matches the size mail systems accept for real instruments
+/// while keeping the buffered REST upload bounded until the lane can stream.
+/// Keep this limit here so every document-ingest caller shares one contract.
+pub const MAX_DOCUMENT_UPLOAD_BYTES: usize = 25 * 1024 * 1024;
+
+/// Maximum REST request size needed to carry the document limit as base64 JSON.
+///
+/// The request body is larger than the document bytes because the REST door
+/// carries the content as base64 plus a small JSON envelope.
+pub const MAX_DOCUMENT_UPLOAD_REQUEST_BYTES: usize = MAX_DOCUMENT_UPLOAD_BYTES * 4 / 3 + 4096;
+
+/// Explain a document-size rejection with the configured maximum and actual size.
+#[must_use]
+pub fn document_upload_size_message(actual: usize) -> String {
+    format!(
+        "Document upload exceeds the maximum of {MAX_DOCUMENT_UPLOAD_BYTES} bytes; received {actual} bytes."
+    )
+}
+
 /// Inbound-channel literals written to `assets.source`. Centralized here
 /// so handlers and tests agree on the same strings; mismatches turn into
 /// silent dedup-planner bugs.

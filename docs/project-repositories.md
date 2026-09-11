@@ -135,11 +135,14 @@ not admit to read is reported rather than silently skipped, and the command refu
 written bytes stay exactly where `sync` already keeps them out of Git: the repository gate refuses a raw document byte
 whether it was staged before a `sync` or just materialised by a `pull`.
 
-`pull` is all-or-nothing for document bytes. It downloads every nonmatching revision into a task-owned temporary staging
-area and publishes nothing until every pointer is still present, readable by the caller, downloaded successfully, and
-verified against its recorded `sha256`. If a pointer vanishes, authorization fails, a download fails, or a digest
-mismatches, the command reports failure, leaves every pre-existing target byte unchanged, and creates no missing target.
-Creating or retaining `documents/.gitignore` is outside that document-byte guarantee. Fix the pointer, access, or
+`pull` is all-or-nothing for document bytes. It downloads every nonmatching revision into a task-owned transaction area
+outside the checkout, then records backups before publishing any target. Every pointer must still be present and
+readable by the caller, downloaded successfully, and verified against its recorded `sha256`. A pointer, authorization,
+download, or digest failure reports that document targets are unchanged and creates no missing target. A publication
+failure rolls back every target from the transaction's backups before reporting the same before-state. If the process
+stops after publication starts, the next `pull` reads the transaction record and restores the complete before-state
+unless publication was marked complete, then retries; the transaction area never creates an unknown top-level repository
+path. Creating or retaining `documents/.gitignore` is outside that document-byte guarantee. Fix any pointer, access, or
 storage failure and run `pull` again; a completed pull hydrates every missing or stale target, and a later pull reports
 `0 pulled` because matching digests are skipped.
 

@@ -8,7 +8,8 @@
 use std::sync::Arc;
 
 use axum::extract::{
-    FromRef, FromRequest, FromRequestParts, Multipart, Path, Query, Request, State,
+    DefaultBodyLimit, FromRef, FromRequest, FromRequestParts, Multipart, Path, Query, Request,
+    State,
 };
 use axum::http::request::Parts;
 use axum::http::StatusCode;
@@ -349,7 +350,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         (
             "POST",
             "/app/api/projects/{id}/documents",
-            post(upload_document_door),
+            // This route carries base64 JSON, so its request cap is derived
+            // from the decoded document limit rather than applied globally.
+            post(upload_document_door).layer(DefaultBodyLimit::max(
+                store::documents::MAX_DOCUMENT_UPLOAD_REQUEST_BYTES,
+            )),
         ),
         (
             "PATCH",
@@ -2923,6 +2928,12 @@ async fn upload_document_door(
             }
         }
     };
+    if bytes.len() > store::documents::MAX_DOCUMENT_UPLOAD_BYTES {
+        return Ok(bad_request(
+            "document_too_large",
+            &store::documents::document_upload_size_message(bytes.len()),
+        ));
+    }
     let visibility = if input.visibility.as_deref() == Some(store::documents::visibility::CLIENT) {
         store::documents::visibility::CLIENT
     } else {

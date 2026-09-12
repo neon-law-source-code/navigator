@@ -312,30 +312,7 @@ where
         value: non_empty_env(NAVIGATOR_CHATWOOT_BASE_URL, &get)
             .unwrap_or_else(|| DEFAULT_CHATWOOT_BASE_URL.to_string()),
     });
-    // Optional, same shape as Chatwoot above: Sign in with Microsoft is a
-    // second provider next to Google, off by default. An empty
-    // `OAUTH_MICROSOFT_CLIENT_ID` is exactly what
-    // `portal::oauth::Provider::microsoft_from_env` reads as "no second
-    // provider" — `Ok(None)`, no button, every existing deployment stays
-    // byte-identical — so an omitted key and an explicitly blank one land on
-    // the same answer. Out of TABLE for the same reason as Chatwoot: a
-    // required entry here would block every roll that has not yet registered
-    // an Entra app registration.
-    substitutions.push(Substitution {
-        token: "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
-        env: "OAUTH_MICROSOFT_CLIENT_ID",
-        value: non_empty_env("OAUTH_MICROSOFT_CLIENT_ID", &get).unwrap_or_default(),
-    });
-    // Optional for the same reason. Blank is safe even though
-    // `microsoft_from_env` treats a set client id with no tenant allowlist as
-    // a boot-failing misconfiguration (`OAuthSetupError::MissingTenantAllowlist`):
-    // that only matters once `OAUTH_MICROSOFT_CLIENT_ID` above is also
-    // non-empty, and a deployment that sets one is expected to set both.
-    substitutions.push(Substitution {
-        token: "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
-        env: "OAUTH_MICROSOFT_ALLOWED_TENANTS",
-        value: non_empty_env("OAUTH_MICROSOFT_ALLOWED_TENANTS", &get).unwrap_or_default(),
-    });
+    substitutions.extend(optional_provider_substitutions(&get));
     // Not in TABLE and not read from `get` at all: the additional brand
     // hosts this deployment's environment serves come from the compiled
     // `views::brand::BrandKey` registry, keyed off the `NAVIGATOR_PUBLIC_HOST`
@@ -359,6 +336,38 @@ where
         value: brand_ingress_rule_lines(&brand_hosts),
     });
     Ok(substitutions)
+}
+
+/// Render the optional provider switches. An omitted or blank client id keeps
+/// the provider off, while its secret-rail values are enforced separately by
+/// the deployment requirements once the switch is present.
+fn optional_provider_substitutions<F>(get: &F) -> Vec<Substitution>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    vec![
+        // Microsoft is a second provider next to Google. Its tenant allowlist
+        // is optional here because the provider's boot check owns that
+        // dependency once the client id is non-empty.
+        Substitution {
+            token: "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
+            env: "OAUTH_MICROSOFT_CLIENT_ID",
+            value: non_empty_env("OAUTH_MICROSOFT_CLIENT_ID", get).unwrap_or_default(),
+        },
+        Substitution {
+            token: "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
+            env: "OAUTH_MICROSOFT_ALLOWED_TENANTS",
+            value: non_empty_env("OAUTH_MICROSOFT_ALLOWED_TENANTS", get).unwrap_or_default(),
+        },
+        // Apple stays off until a deployment owner enrolls the app; its three
+        // signing values remain in the deployment Secret and are required
+        // only when this public Services ID turns the provider on.
+        Substitution {
+            token: "YOUR_OAUTH_APPLE_CLIENT_ID",
+            env: "OAUTH_APPLE_CLIENT_ID",
+            value: non_empty_env("OAUTH_APPLE_CLIENT_ID", get).unwrap_or_default(),
+        },
+    ]
 }
 
 /// Every host this deployment's environment serves for a brand other than
@@ -5278,6 +5287,9 @@ spec:
         "NAVIGATOR_SURREAL_NAMESPACE",
         "NAVIGATOR_SURREAL_PASSWORD",
         "NAVIGATOR_SURREAL_USER",
+        "OAUTH_APPLE_KEY_ID",
+        "OAUTH_APPLE_PRIVATE_KEY",
+        "OAUTH_APPLE_TEAM_ID",
         "OAUTH_CLIENT_SECRET",
         "OAUTH_MICROSOFT_CLIENT_SECRET",
         "RESTATE_AUTH_TOKEN",

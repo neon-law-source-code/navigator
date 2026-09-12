@@ -7,7 +7,8 @@
 # the binary (empty-string OTLP URL).
 #
 # Secrets (NAVIGATOR_SURREAL_PASSWORD, SESSION_SECRET, OAUTH_CLIENT_SECRET,
-# OAUTH_MICROSOFT_CLIENT_SECRET, RESTATE_BROKER_URL, RESTATE_AUTH_TOKEN,
+# OAUTH_MICROSOFT_CLIENT_SECRET, OAUTH_APPLE_TEAM_ID, OAUTH_APPLE_KEY_ID,
+# OAUTH_APPLE_PRIVATE_KEY, RESTATE_BROKER_URL, RESTATE_AUTH_TOKEN,
 # SENDGRID_API_KEY, DOCUSIGN_ACCESS_TOKEN, DOCUSIGN_HMAC_KEY — the last
 # required by the `enforce_deployment_invariants` boot check —
 # XERO_TENANT_ID + XERO_CLIENT_ID + XERO_CLIENT_SECRET for the Xero billing
@@ -167,6 +168,13 @@ spec:
               value: YOUR_OAUTH_MICROSOFT_CLIENT_ID
             - name: OAUTH_MICROSOFT_ALLOWED_TENANTS
               value: YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS
+            # Sign in with Apple, a third provider next to Google and Entra.
+            # The Services ID is public and rides inline; the Team ID, Key ID,
+            # and downloaded .p8 private key arrive through envFrom above.
+            # No Apple value is present in KIND, and an unset client id keeps
+            # the provider off until the deployment owner enrolls the app.
+            - name: OAUTH_APPLE_CLIENT_ID
+              value: YOUR_OAUTH_APPLE_CLIENT_ID
             # Base URL surfaced in the OpenAPI `servers` block at
             # /app/api/openapi.json. Must include scheme and stop at the host —
             # the document tacks `/app/api/*` paths onto this value.

@@ -1169,7 +1169,10 @@ fn claimed_worktree_slots(
 ) -> Result<BTreeSet<u16>> {
     let listing = git_worktree_listing(root)?;
     let mut claimed: BTreeSet<u16> = worktree_paths(&listing)
-        .filter(|path| path != root)
+        // Git may spell the current worktree with a different separator or
+        // prefix on Windows; compare canonical paths so its own descriptor
+        // does not reserve its slot a second time.
+        .filter(|path| path.canonicalize().map_or(true, |path| path != root))
         .filter_map(|path| read_descriptor(&path).and_then(|desc| desc.dev_slot()))
         .collect();
     claimed.extend(cluster_claimed_slots(root, &list_clusters()?));
@@ -2948,7 +2951,10 @@ mod tests {
             &["remote", "add", "origin", remote.to_str().unwrap()],
         );
         run_git(&repo, &["push", "-u", "origin", "main"]);
-        (temp, repo.canonicalize().unwrap())
+        // `tempdir` already gives an absolute path. Keeping its ordinary
+        // spelling lets Git create linked worktrees on Windows, where
+        // `canonicalize` adds a `\\?\\` prefix that Git rejects as a target.
+        (temp, repo)
     }
 
     fn worktree_paths_for_repo(repo: &Path) -> Vec<PathBuf> {

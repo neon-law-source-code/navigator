@@ -514,6 +514,7 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         github_oidc: portal::github_oidc::GitHubOidc::rejecting(),
         oauth: None,
         oauth_microsoft: None,
+        oauth_apple: None,
         storage: std::sync::Arc::new(
             cloud::FsStorage::new(std::env::temp_dir().join("navigator-web-test-storage"))
                 .await

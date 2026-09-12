@@ -232,6 +232,13 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         enabled = oauth_microsoft.is_some(),
         "oauth microsoft (Authorization Code + PKCE) configured"
     );
+    let oauth_apple = crate::OAuthConfig::apple_from_env()
+        .await
+        .context("loading Sign in with Apple OAuth config")?;
+    tracing::info!(
+        enabled = oauth_apple.is_some(),
+        "oauth apple (Authorization Code + PKCE) configured"
+    );
 
     let policy =
         crate::policy::PolicyClient::embedded().context("compiling embedded Rego policy")?;
@@ -366,6 +373,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         auth,
         google_oauth,
         oauth_microsoft,
+        oauth_apple,
         rate_limit: crate::rate_limit::RateLimit::from_env(),
         canonical_host,
         portal_only,

@@ -72,6 +72,7 @@ GOOGLE_OAUTH_REQUIRED_HD = "example.com"
 # and so must have the object skipped instead.
 OAUTH_MICROSOFT_CLIENT_ID = "00000000-0000-0000-0000-000000000001"
 OAUTH_MICROSOFT_ALLOWED_TENANTS = "00000000-0000-0000-0000-000000000002"
+OAUTH_APPLE_CLIENT_ID = "com.example.navigator"
 
 # --- Forge -----------------------------------------------------------------
 # The automation home runs the engineering webhook receiver, so the five-tuple

@@ -1228,6 +1228,67 @@ fn validate_fix_packs_a_loosely_wrapped_paragraph() {
     );
 }
 
+/// Reference definitions and HTML blocks are structural Markdown, so S102
+/// must not repack through them. Ordinary prose alongside those boundaries
+/// remains eligible for the same command-level fix.
+#[test]
+fn validate_fix_preserves_reference_definitions_and_html_blocks() {
+    let dir = TempDir::new().unwrap();
+    let original = "Use the [guide][], [titled][], and [preceded][] references below.\n\n\
+        A prose line before the definition.\n\
+        [preceded]: <https://example.com/preceded>\n\n\
+        [guide]: <https://example.com/reference>\n\
+        A prose line after the definition.\n\n\
+        [titled]: <https://example.com/titled>\n\
+        \"Guide title\"\n\
+        A prose line after the title.\n\n\
+        <div>\n\
+        HTML block line one.\n\
+        HTML block line two.\n\
+        </div>\n\n\
+        An ordinary paragraph that remains\n\
+        eligible for reflow.\n";
+    write(dir.path(), "Boundaries.md", original);
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 1 file(s)"));
+
+    let expected = "Use the [guide][], [titled][], and [preceded][] references below.\n\n\
+        A prose line before the definition.\n\
+        [preceded]: <https://example.com/preceded>\n\n\
+        [guide]: <https://example.com/reference>\n\
+        A prose line after the definition.\n\n\
+        [titled]: <https://example.com/titled>\n\
+        \"Guide title\"\n\
+        A prose line after the title.\n\n\
+        <div>\n\
+        HTML block line one.\n\
+        HTML block line two.\n\
+        </div>\n\n\
+        An ordinary paragraph that remains eligible for reflow.\n";
+    let after = fs::read_to_string(dir.path().join("Boundaries.md")).unwrap();
+    assert_eq!(
+        after, expected,
+        "structural Markdown was repacked: {after:?}"
+    );
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 0 file(s)"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Boundaries.md")).unwrap(),
+        expected,
+        "a repeated fix changed the fixture"
+    );
+}
+
 /// One fix uncovers another: `M009` trimming the trailing whitespace off
 /// a short line hands that line to `S102`, which could not have flagged
 /// it while it still looked like a hard break. A single `--fix` run has

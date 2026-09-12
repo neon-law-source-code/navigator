@@ -24,6 +24,7 @@
 //! - ATX headings (`#`, `##`, …)
 //! - table rows (`|`)
 //! - block-quote lines (`>`)
+//! - link-reference definitions and HTML blocks
 //! - horizontal rules (`---`, `***`, `___`) and setext heading
 //!   underlines (a line of only `=` or only `-`)
 //! - lines ending in a markdown hard break (two trailing spaces or
@@ -128,10 +129,11 @@ impl Rule for S102LinePacking {
 impl S102LinePacking {
     fn scan_pairs(&self, file: &SourceFile, lines: &[(usize, &str)], out: &mut Vec<Violation>) {
         let max = self.max;
-        for pair in lines.windows(2) {
+        let non_prose = non_prose_lines(lines);
+        for (index, pair) in lines.windows(2).enumerate() {
             let (a_no, a) = pair[0];
             let (b_no, b) = pair[1];
-            if !joinable((a_no, a), (b_no, b)) {
+            if !joinable((a_no, a), (b_no, b), non_prose[index], non_prose[index + 1]) {
                 continue;
             }
             let Some(first_word) = first_word_of(b) else {
@@ -161,15 +163,37 @@ impl S102LinePacking {
     /// change what the Markdown means, or when it would change nothing.
     fn reflow(&self, file: &SourceFile, lines: &[(usize, &str)], index: usize) -> Option<TextEdit> {
         let max = self.max;
-        if index + 1 >= lines.len() || !joinable(lines[index], lines[index + 1]) {
+        let non_prose = non_prose_lines(lines);
+        if index + 1 >= lines.len()
+            || !joinable(
+                lines[index],
+                lines[index + 1],
+                non_prose[index],
+                non_prose[index + 1],
+            )
+        {
             return None;
         }
         let mut start = index;
-        while start > 0 && joinable(lines[start - 1], lines[start]) {
+        while start > 0
+            && joinable(
+                lines[start - 1],
+                lines[start],
+                non_prose[start - 1],
+                non_prose[start],
+            )
+        {
             start -= 1;
         }
         let mut end = index + 1;
-        while end + 1 < lines.len() && joinable(lines[end], lines[end + 1]) {
+        while end + 1 < lines.len()
+            && joinable(
+                lines[end],
+                lines[end + 1],
+                non_prose[end],
+                non_prose[end + 1],
+            )
+        {
             end += 1;
         }
         // One edit per block: every violation in it would produce this
@@ -252,7 +276,12 @@ impl S102LinePacking {
 /// Whether line `b` may be folded up into line `a` without changing
 /// what the Markdown means. Shared by the lint and the fix so a block
 /// is reflowed on exactly the grounds it was flagged on.
-fn joinable((a_no, a): (usize, &str), (b_no, b): (usize, &str)) -> bool {
+fn joinable(
+    (a_no, a): (usize, &str),
+    (b_no, b): (usize, &str),
+    a_is_non_prose: bool,
+    b_is_non_prose: bool,
+) -> bool {
     // Only consecutive source lines — a fence or frontmatter sitting
     // between them means they're different blocks.
     if b_no != a_no + 1 {
@@ -264,7 +293,7 @@ fn joinable((a_no, a): (usize, &str), (b_no, b): (usize, &str)) -> bool {
     if has_hard_break(a) {
         return false;
     }
-    if is_non_prose(a) || is_non_prose(b) {
+    if a_is_non_prose || b_is_non_prose {
         return false;
     }
     let a_indent = leading_ws_len(a);
@@ -273,6 +302,95 @@ fn joinable((a_no, a): (usize, &str), (b_no, b): (usize, &str)) -> bool {
         return false;
     }
     !starts_with_list_marker(&b[b_indent..])
+}
+
+/// Mark lines that are structural Markdown rather than reflowable prose.
+///
+/// Reference definitions may own an optional title on the next line, and an
+/// HTML block owns every nonblank line through its terminator. Those
+/// continuations cannot be identified from one line alone, so this stateful
+/// pass supplies the same boundary to both linting and reflowing.
+fn non_prose_lines(lines: &[(usize, &str)]) -> Vec<bool> {
+    let mut out = vec![false; lines.len()];
+    let mut html_block = None;
+    for (index, (_, line)) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        if let Some(terminator) = html_block {
+            out[index] = true;
+            if html_block_ends(terminator, trimmed) {
+                html_block = None;
+            }
+            continue;
+        }
+        if is_non_prose(line) {
+            out[index] = true;
+        }
+        if index > 0 && is_reference_definition(lines[index - 1].1) && is_reference_title(line) {
+            out[index] = true;
+        }
+        if let Some(terminator) = html_block_start(trimmed) {
+            out[index] = true;
+            if !html_block_ends(terminator, trimmed) {
+                html_block = Some(terminator);
+            }
+        }
+    }
+    out
+}
+
+#[derive(Clone, Copy)]
+enum HtmlBlockTerminator {
+    Blank,
+    Marker(&'static str),
+}
+
+fn html_block_start(line: &str) -> Option<HtmlBlockTerminator> {
+    let lower = line.to_ascii_lowercase();
+    if lower.starts_with("<!--") {
+        return Some(HtmlBlockTerminator::Marker("-->"));
+    }
+    if lower.starts_with("<?") {
+        return Some(HtmlBlockTerminator::Marker("?>"));
+    }
+    if lower.starts_with("<![cdata[") {
+        return Some(HtmlBlockTerminator::Marker("]]>"));
+    }
+    if lower.starts_with("<!") {
+        return Some(HtmlBlockTerminator::Marker(">"));
+    }
+    let tag = html_tag_name(line)?;
+    if !line.trim_start().starts_with("</") {
+        for (raw_text_tag, marker) in [
+            ("pre", "</pre>"),
+            ("script", "</script>"),
+            ("style", "</style>"),
+            ("textarea", "</textarea>"),
+        ] {
+            if tag.eq_ignore_ascii_case(raw_text_tag) {
+                return Some(HtmlBlockTerminator::Marker(marker));
+            }
+        }
+    }
+    Some(HtmlBlockTerminator::Blank)
+}
+
+fn html_block_ends(terminator: HtmlBlockTerminator, line: &str) -> bool {
+    match terminator {
+        HtmlBlockTerminator::Blank => line.trim().is_empty(),
+        HtmlBlockTerminator::Marker(marker) => line.to_ascii_lowercase().contains(marker),
+    }
+}
+
+fn html_tag_name(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix('<')?;
+    let rest = rest.strip_prefix('/').unwrap_or(rest);
+    let end = rest.char_indices().find_map(|(index, character)| {
+        (!character.is_ascii_alphanumeric() && character != '-').then_some(index)
+    })?;
+    let tag = &rest[..end];
+    let suffix = &rest[end..];
+    (suffix.starts_with('>') || suffix.starts_with('/') || suffix.starts_with(char::is_whitespace))
+        .then_some(tag)
 }
 
 fn first_word_of(line: &str) -> Option<&str> {
@@ -304,7 +422,55 @@ fn is_non_prose(line: &str) -> bool {
     if s.starts_with("```") || s.starts_with("~~~") {
         return true;
     }
-    is_setext_underline(s) || is_horizontal_rule(s)
+    is_reference_definition(s)
+        || html_block_start(s).is_some()
+        || is_setext_underline(s)
+        || is_horizontal_rule(s)
+}
+
+/// A link-reference definition is a block-level Markdown construct. Treat the
+/// complete destination line as structural so reflow cannot append prose to
+/// its URL or title.
+fn is_reference_definition(line: &str) -> bool {
+    let s = line.trim_start();
+    let Some(after_open) = s.strip_prefix('[') else {
+        return false;
+    };
+    let mut escaped = false;
+    for (index, character) in after_open.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if character == ']' {
+            let after_label = &after_open[index + character.len_utf8()..];
+            return !after_open[..index].is_empty()
+                && after_label
+                    .strip_prefix(':')
+                    .is_some_and(|destination| !destination.trim().is_empty());
+        }
+    }
+    false
+}
+
+/// A reference definition may carry its optional title on the next indented
+/// source line. That title belongs to the definition rather than a paragraph.
+fn is_reference_title(line: &str) -> bool {
+    let title = line.trim();
+    let Some(opener) = title.chars().next() else {
+        return false;
+    };
+    let closer = match opener {
+        '"' => '"',
+        '\'' => '\'',
+        '(' => ')',
+        _ => return false,
+    };
+    title.ends_with(closer) && title.len() > opener.len_utf8()
 }
 
 /// A run of `=` or `-` alone on a line underlines the paragraph above

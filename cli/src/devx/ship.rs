@@ -765,7 +765,7 @@ pub struct ShipConfig {
     /// `brand.primary_domain` (Neon Law by default, or a custom bundle's).
     pub primary_domain: String,
     /// Name of the K8s Secret service deployments `envFrom`
-    /// (`NAVIGATOR_WEB_SECRET_NAME`, default `navigator-web-secrets`).
+    /// (`NAVIGATOR_WEB_SECRET_NAME`).
     pub secret_name: String,
     /// Public worker URL Restate Cloud dials (`NAVIGATOR_WORKFLOWS_URL`).
     /// `None` → fall through to the `devx restate register` default.
@@ -813,8 +813,7 @@ impl ShipConfig {
         let asset_base_url = get(ASSET_BASE_URL_KEY).unwrap_or_default();
         let google_service_account_id = non_empty_env("NAVIGATOR_GCP_SERVICE_ACCOUNT_ID", &get)
             .unwrap_or_else(|| "navigator-web".into());
-        let secret_name = non_empty_env("NAVIGATOR_WEB_SECRET_NAME", &get)
-            .unwrap_or_else(|| "navigator-web-secrets".into());
+        let secret_name = required_coordinate(name, "NAVIGATOR_WEB_SECRET_NAME", &get)?;
         let workflows_url = non_empty_env("NAVIGATOR_WORKFLOWS_URL", &get);
         let context = non_empty_env("NAVIGATOR_GKE_CONTEXT", &get)
             .unwrap_or_else(|| derived_context(&project_id, &location, &cluster));

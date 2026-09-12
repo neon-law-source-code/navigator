@@ -282,7 +282,7 @@ async fn post_logo_typed(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/app/brands/{BRAND_KEY}/logo"))
+                .uri(format!("/app/admin/brands/{BRAND_KEY}/logo"))
                 .header(header::COOKIE, &session.cookie)
                 .header(
                     header::CONTENT_TYPE,
@@ -320,7 +320,7 @@ async fn post_font_licensed(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/app/brands/{BRAND_KEY}/font"))
+                .uri(format!("/app/admin/brands/{BRAND_KEY}/font"))
                 .header(header::COOKIE, &session.cookie)
                 .header(
                     header::CONTENT_TYPE,
@@ -352,7 +352,7 @@ async fn post_presentation(fixture: &Fixture, session: &SessionCookie) -> Status
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/app/brands/{BRAND_KEY}/edit"))
+                .uri(format!("/app/admin/brands/{BRAND_KEY}/edit"))
                 .header(header::COOKIE, &session.cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(body))
@@ -370,7 +370,7 @@ async fn get_edit(fixture: &Fixture, session: &SessionCookie) -> StatusCode {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/app/brands/{BRAND_KEY}/edit"))
+                .uri(format!("/app/admin/brands/{BRAND_KEY}/edit"))
                 .header(header::COOKIE, &session.cookie)
                 .body(Body::empty())
                 .unwrap(),

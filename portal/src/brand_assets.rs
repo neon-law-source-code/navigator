@@ -1,6 +1,6 @@
 //! Native multipart uploads for a brand's logo and font (ENG-586).
 //!
-//! Two upload doors on the `/app/brands/{key}/edit` page, each: CSRF-guarded
+//! Two upload doors on the `/app/admin/brands/{key}/edit` page, each: CSRF-guarded
 //! multipart (the same `require_multipart_csrf` shape the avatar uploads
 //! use), then resolved against the target brand's Firm capability, then
 //! validated by size and content type, scanned by the shared
@@ -41,7 +41,7 @@ const ALLOWED_FONT_CONTENT_TYPES: [&str; 2] = ["font/woff2", "application/octet-
 fn back_to_edit(key: &str, message: &str) -> Response {
     let mut query = String::new();
     crate::admin::push_query(&mut query, "error", message);
-    Redirect::to(&format!("/app/brands/{key}/edit?{query}")).into_response()
+    Redirect::to(&format!("/app/admin/brands/{key}/edit?{query}")).into_response()
 }
 
 /// Whether `bytes` — already known to be `image/svg+xml` — is free of the
@@ -112,7 +112,7 @@ fn contains_event_handler_attribute(lower: &str) -> bool {
     false
 }
 
-/// `POST /app/brands/{key}/logo`.
+/// `POST /app/admin/brands/{key}/logo`.
 pub async fn upload_logo(
     State(state): State<AdminState>,
     Path(key): Path<String>,
@@ -187,7 +187,7 @@ pub async fn upload_logo(
     )
     .await
     {
-        Ok(_) => Redirect::to(&format!("/app/brands/{key}/edit")).into_response(),
+        Ok(_) => Redirect::to(&format!("/app/admin/brands/{key}/edit")).into_response(),
         Err(store::brands::BrandError::NotAuthorized) => {
             axum::http::StatusCode::NOT_FOUND.into_response()
         }
@@ -195,7 +195,7 @@ pub async fn upload_logo(
     }
 }
 
-/// `POST /app/brands/{key}/font`. Field order matters: the multipart form
+/// `POST /app/admin/brands/{key}/font`. Field order matters: the multipart form
 /// posts CSRF, then `family`, then `licence`, then `file`, matching the
 /// order `webapp::brands_edit`'s font form renders them.
 pub async fn upload_font(
@@ -286,7 +286,7 @@ pub async fn upload_font(
     )
     .await
     {
-        Ok(_) => Redirect::to(&format!("/app/brands/{key}/edit")).into_response(),
+        Ok(_) => Redirect::to(&format!("/app/admin/brands/{key}/edit")).into_response(),
         Err(store::brands::BrandError::NotAuthorized) => {
             axum::http::StatusCode::NOT_FOUND.into_response()
         }

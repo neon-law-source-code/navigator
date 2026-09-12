@@ -172,10 +172,9 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   tiers and anonymous denied, plus one noun-isolation case.
     // 385 + 7 = 392.
     //
-    // + 6 for `/app/brands`: Owner admitted; Admin, Lawyer, Clerk, client,
-    //   and anonymous denied (ENG-493 narrowed this from every firm tier —
-    //   see the `/app/owner` shape immediately below, which this now matches
-    //   instead of `/app/team`).
+    // + 6 for `/app/admin/brands`: Owner and Admin admitted; Lawyer, Clerk,
+    //   client, and anonymous denied (the house-of-brands home rides the
+    //   Owner/Admin bypass like `/app/admin/people`).
     // 392 + 6 = 398.
     //
     // + 6 for `/app/owner`: Owner admitted; Admin, Lawyer, Clerk, client, and
@@ -199,7 +198,7 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // 414 + 5 = 419.
     //
     // + 8 for brand presentation edit: Owner and Admin reach
-    //   `/app/brands/{key}/edit` and `PATCH /app/api/brands/{key}`; Lawyer
+    //   `/app/admin/brands/{key}/edit` and `PATCH /app/api/brands/{key}`; Lawyer
     //   and Clerk are denied on both.
     // 419 + 8 = 427.
     //
@@ -235,12 +234,12 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // 443 + 8 = 451.
     //
     // + 11 for ENG-586's create-brand and logo/font upload doors
-    //   (`/app/brands/new`, `/app/brands/{key}/logo`, `/app/brands/{key}/font`):
-    //   Owner and Admin admitted on each; Lawyer denied on each; Clerk and an
-    //   anonymous caller each denied once more, on the create-brand door. None
-    //   of these needed a new policy rule — every one rides the Owner/Admin
-    //   bypass, exactly as `/app/admin/projects` does — so these assertions
-    //   are what holds that deny-by-omission in place. ENG-585's firm create
+    //   (`/app/admin/brands/new`, `/app/admin/brands/{key}/logo`,
+    //   `/app/admin/brands/{key}/font`): Owner and Admin admitted on each;
+    //   Lawyer denied on each; Clerk and an anonymous caller each denied once
+    //   more, on the create-brand door. Every one rides the Owner/Admin
+    //   bypass, exactly as `/app/admin/projects` does — these assertions hold
+    //   that deny-by-omission in place. ENG-585's firm create
     //   (`/app/owner/firms/new`, `owner_only_path`) and edit
     //   (`/app/admin/firms/{id}/edit`, the ordinary bypass) needed no test of
     //   their own here: both ride rules this file already asserts by shape,

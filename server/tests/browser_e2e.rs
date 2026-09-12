@@ -2106,7 +2106,7 @@ async fn owner_nav_collapses_firm_and_brands_into_one_link() {
 
     assert!(
         open_menu
-            .find(Locator::Css("a[href='/app/brands']"))
+            .find(Locator::Css("a[href='/app/admin/brands']"))
             .await
             .is_err(),
         "the old separate Brands link must no longer render in the row"

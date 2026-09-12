@@ -190,6 +190,7 @@ RUN NO_DOWNLOADS=1 dx build --package webapp --platform web --release --debug-sy
 FROM mcr.microsoft.com/dotnet/sdk:8.0.418-bookworm-slim@sha256:bfb6ed602caa605141700aea7dc7d42574b74b704368e67d683c71a002123808 AS word-adapter-builder
 
 WORKDIR /src
+COPY global.json global.json
 COPY word/adapter word/adapter
 WORKDIR /src/word/adapter
 ARG TARGETARCH

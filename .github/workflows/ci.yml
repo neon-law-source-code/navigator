@@ -193,7 +193,7 @@ jobs:
               echo "-> out of scope: no Windows CLI/LSP sources in this PR"
               echo "windows=false" >> "${GITHUB_OUTPUT}"
           fi
-          if echo "${changed}" | grep -qE '^(word/|\.github/workflows/ci\.yml$)'; then
+          if echo "${changed}" | grep -qE '^(word/|images/Containerfile\.neon$|global\.json$|\.github/workflows/ci\.yml$)'; then
               echo "-> in scope: running the managed Word adapter tests"
               echo "word_adapter=true" >> "${GITHUB_OUTPUT}"
           else
@@ -235,7 +235,9 @@ jobs:
       - name: set up the pinned .NET SDK
         uses: actions/setup-dotnet@v5
         with:
-          global-json-file: word/adapter/global.json
+          global-json-file: global.json
+      - name: verify the locked restore in the release SDK image
+        run: docker build --target word-adapter-builder --file images/Containerfile.neon .
       - name: restore the managed Word adapter tests
         run: dotnet restore word/adapter/WordAdapter.Tests.csproj --locked-mode
       - name: test the managed Word adapter

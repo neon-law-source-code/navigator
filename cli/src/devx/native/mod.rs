@@ -188,6 +188,7 @@ pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig, database: &str) -> Re
         database.to_string(),
         tenant.buckets,
         tenant.env,
+        records,
     );
     registry::save(&registry_path, &state)?;
     let claim = state
@@ -246,7 +247,12 @@ pub(super) fn sweep_plan(
 ) -> Result<(PathBuf, registry::NativeRegistry, Vec<registry::SweepEntry>)> {
     let path = registry::path();
     let state = loaded(&path)?;
-    let plan = registry::plan_sweep(&state, live_worktrees, &|path| path.is_dir());
+    let plan = registry::plan_sweep(
+        &state,
+        live_worktrees,
+        &|path| path.is_dir(),
+        &supervisor::still_ours,
+    );
     Ok((path, state, plan))
 }
 
@@ -374,6 +380,7 @@ mod tests {
             database.clone(),
             buckets.clone(),
             BTreeMap::new(),
+            Vec::new(),
         );
 
         let error = registry::ensure_tenant_available(&state, second, &database, &buckets)

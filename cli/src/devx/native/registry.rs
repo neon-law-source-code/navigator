@@ -23,6 +23,14 @@ pub(crate) struct NativeClaim {
     pub(super) database: String,
     pub(super) buckets: BTreeMap<String, String>,
     pub(super) garage_env: BTreeMap<String, String>,
+    /// The shared processes this claim attached to, recorded with the same
+    /// PID, command, and process-start identity the supervisor signals on.
+    ///
+    /// A process record is host-wide; a tenant claim is not. Without this
+    /// per-claim copy the only thing a claim knows about itself is where its
+    /// checkout sits, and a checkout outlives the processes that served it.
+    #[serde(default)]
+    pub(super) processes: Vec<Started>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,6 +172,7 @@ pub(super) fn claim(
     database: String,
     buckets: BTreeMap<String, String>,
     garage_env: BTreeMap<String, String>,
+    processes: Vec<Started>,
 ) {
     registry.claims.insert(
         key(root),
@@ -173,6 +182,7 @@ pub(super) fn claim(
             database,
             buckets,
             garage_env,
+            processes,
         },
     );
 }
@@ -196,25 +206,43 @@ pub(super) fn release(
     Some((claim, final_claim, services))
 }
 
-/// Classify claims against currently live checkout paths. Apply receives the
-/// same entries after reloading the registry under the host lock.
+/// Classify claims against live checkout paths and recorded process identity.
+/// Apply receives the same entries after reloading the registry under the host
+/// lock.
+///
+/// Two pieces of evidence, and a claim stays live only while both hold. A
+/// checkout survives a reboot, so the path alone cannot tell a working tier
+/// from a claim whose processes died with the host; the identities the claim
+/// recorded answer that, and answer it the way the supervisor does — the live
+/// command and process-start value, so a recycled PID reads as stale.
+///
+/// Evidence only ever narrows the live set. A claim that recorded no processes
+/// is judged by its checkout alone, because an absent record is not proof of a
+/// dead process, and `still_ours` never consults a port: a shared process that
+/// is running but refusing connections is still somebody's running process.
 pub(super) fn plan_sweep(
     registry: &NativeRegistry,
     live_worktrees: &[PathBuf],
     exists: &dyn Fn(&Path) -> bool,
+    still_ours: &dyn Fn(&Started) -> bool,
 ) -> Vec<SweepEntry> {
     let live: BTreeSet<String> = live_worktrees.iter().map(|path| key(path)).collect();
     registry
         .claims
         .iter()
-        .map(|(claim_key, claim)| SweepEntry {
-            key: claim_key.clone(),
-            claim: claim.clone(),
-            owner: if live.contains(claim_key) || exists(&claim.root) {
-                Owner::Live(claim.root.clone())
-            } else {
-                Owner::Orphaned
-            },
+        .map(|(claim_key, claim)| {
+            let checkout_present = live.contains(claim_key) || exists(&claim.root);
+            let processes_present =
+                claim.processes.is_empty() || claim.processes.iter().any(still_ours);
+            SweepEntry {
+                key: claim_key.clone(),
+                claim: claim.clone(),
+                owner: if checkout_present && processes_present {
+                    Owner::Live(claim.root.clone())
+                } else {
+                    Owner::Orphaned
+                },
+            }
         })
         .collect()
 }
@@ -265,21 +293,49 @@ pub(super) fn report(plan: &[SweepEntry], shared_service_count: usize, apply: bo
 mod tests {
     use super::{
         claim, ensure_tenant_available, key, load, plan_sweep, release, report, NativeRegistry,
-        Owner,
+        Owner, SweepEntry,
     };
-    use crate::devx::native::supervisor::Started;
+    use crate::devx::native::supervisor::{matches_identity, Started};
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
 
     fn started(label: &str, pid: u32) -> Started {
+        started_at(label, pid, "Mon Jan  1 00:00:00 2024")
+    }
+
+    fn started_at(label: &str, pid: u32, start_time: &str) -> Started {
         Started {
             label: label.into(),
             pid,
             port: 18_000,
             program: label.into(),
             command: format!("/bin/{label} server"),
-            start_time: "Mon Jan  1 00:00:00 2024".into(),
+            start_time: start_time.into(),
         }
+    }
+
+    /// The supervisor's identity check against a known set of live processes:
+    /// a record is ours only while its PID still carries the same command and
+    /// the same process-start value. Nothing here reads a port.
+    fn running(processes: &[Started]) -> impl Fn(&Started) -> bool + '_ {
+        move |record| {
+            processes.iter().any(|process| {
+                process.pid == record.pid
+                    && matches_identity(
+                        &process.command,
+                        &record.command,
+                        &process.start_time,
+                        &record.start_time,
+                        &record.program,
+                    )
+            })
+        }
+    }
+
+    fn entry<'a>(plan: &'a [SweepEntry], root: &Path) -> &'a SweepEntry {
+        plan.iter()
+            .find(|entry| entry.key == key(root))
+            .expect("every claim is classified")
     }
 
     #[test]
@@ -297,6 +353,7 @@ mod tests {
             "navigator_a".into(),
             BTreeMap::from([("documents".into(), "a-documents".into())]),
             BTreeMap::new(),
+            Vec::new(),
         );
         claim(
             &mut registry,
@@ -305,6 +362,7 @@ mod tests {
             "navigator_b".into(),
             BTreeMap::from([("documents".into(), "b-documents".into())]),
             BTreeMap::new(),
+            Vec::new(),
         );
         assert_eq!(registry.services["surreal"].pid, 7);
         assert_ne!(
@@ -336,6 +394,7 @@ mod tests {
             database.into(),
             buckets.clone(),
             BTreeMap::new(),
+            Vec::new(),
         );
 
         assert!(ensure_tenant_available(&registry, first, database, &buckets).is_ok());
@@ -379,6 +438,7 @@ mod tests {
                 "navigator-feature-632-ordinary-documents".into(),
             )]),
             BTreeMap::new(),
+            Vec::new(),
         );
         let (_, final_claim, _) = release(&mut registry, first).expect("release first root");
         assert!(!final_claim);
@@ -403,6 +463,7 @@ mod tests {
                 root.display().to_string(),
                 BTreeMap::new(),
                 BTreeMap::new(),
+                Vec::new(),
             );
         }
         let (_, final_claim, stopped) = release(&mut registry, Path::new("/tmp/a")).unwrap();
@@ -425,11 +486,15 @@ mod tests {
                 root.display().to_string(),
                 BTreeMap::new(),
                 BTreeMap::new(),
+                Vec::new(),
             );
         }
-        let plan = plan_sweep(&registry, &[PathBuf::from("/tmp/live")], &|path| {
-            path == Path::new("/tmp/live")
-        });
+        let plan = plan_sweep(
+            &registry,
+            &[PathBuf::from("/tmp/live")],
+            &|path| path == Path::new("/tmp/live"),
+            &running(&[]),
+        );
         assert_eq!(plan.len(), 2);
         assert!(matches!(
             plan.iter()
@@ -461,7 +526,7 @@ mod tests {
         registry
             .services
             .insert("surreal".into(), started("surreal", 7));
-        let plan = plan_sweep(&registry, &[], &|_| false);
+        let plan = plan_sweep(&registry, &[], &|_| false, &running(&[]));
         assert!(plan.is_empty());
         assert!(report(&plan, registry.services.len(), false).contains("orphaned shared service"));
     }
@@ -479,10 +544,162 @@ mod tests {
             "navigator_live".into(),
             BTreeMap::new(),
             BTreeMap::new(),
+            Vec::new(),
         );
-        let plan = plan_sweep(&registry, &[PathBuf::from("/tmp/live")], &|_| false);
+        let plan = plan_sweep(
+            &registry,
+            &[PathBuf::from("/tmp/live")],
+            &|_| false,
+            &running(&[]),
+        );
         let output = report(&plan, registry.services.len(), false);
         assert!(output.contains("nothing to reclaim"));
         assert!(!output.contains("orphaned shared service"));
+    }
+
+    /// A reboot leaves every checkout on disk and no process running. Path
+    /// existence therefore cannot separate a worktree still using the tier
+    /// from one whose CLI died with the host — only the recorded identity
+    /// can, and a PID that comes back on a fresh process comes back with a
+    /// different process-start value.
+    #[test]
+    fn a_stale_process_record_orphans_a_claim_whose_checkout_survived() {
+        let mut registry = NativeRegistry::default();
+        let current = started_at("surreal", 7, "Tue Jan  2 09:00:00 2024");
+        let before_reboot = started_at("surreal", 7, "Mon Jan  1 00:00:00 2024");
+        registry.services.insert("surreal".into(), current.clone());
+        let live = Path::new("/tmp/live");
+        let stale = Path::new("/tmp/stale");
+        claim(
+            &mut registry,
+            live,
+            1,
+            "navigator_live".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            vec![current.clone()],
+        );
+        claim(
+            &mut registry,
+            stale,
+            2,
+            "navigator_stale".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            vec![before_reboot],
+        );
+
+        let plan = plan_sweep(&registry, &[], &|_| true, &running(&[current]));
+        assert!(matches!(entry(&plan, live).owner, Owner::Live(_)));
+        assert!(entry(&plan, stale).is_orphaned());
+
+        // Apply's rule, at the point the plan decides it: reclaiming the
+        // orphan leaves a live claim behind, so the shared process that
+        // claim is using is never a candidate to stop.
+        let (_, final_claim, stopped) = release(&mut registry, stale).expect("release the orphan");
+        assert!(!final_claim);
+        assert!(stopped.is_empty());
+        assert!(registry.claims.contains_key(&key(live)));
+        assert_eq!(registry.services["surreal"].pid, 7);
+        assert!(report(&plan, registry.services.len(), true).contains(
+            "reclaiming 1 orphaned native tenant(s) and 0 orphaned shared service record(s)"
+        ));
+    }
+
+    /// An interrupted `up` writes a claim before it can record what it
+    /// attached to. Absent evidence is not evidence of a dead process, so
+    /// such a claim falls back to its checkout rather than being reclaimed
+    /// on a host where nothing is running at all.
+    #[test]
+    fn a_claim_with_no_process_evidence_is_judged_by_its_checkout_alone() {
+        let mut registry = NativeRegistry::default();
+        let root = Path::new("/tmp/unrecorded");
+        claim(
+            &mut registry,
+            root,
+            1,
+            "navigator_unrecorded".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            Vec::new(),
+        );
+
+        let present = plan_sweep(&registry, &[], &|_| true, &running(&[]));
+        assert!(matches!(entry(&present, root).owner, Owner::Live(_)));
+
+        let gone = plan_sweep(&registry, &[], &|_| false, &running(&[]));
+        assert!(entry(&gone, root).is_orphaned());
+    }
+
+    /// The port is the supervisor's readiness gate, never the planner's
+    /// evidence. A shared dependency that is running but refusing
+    /// connections is still a process a live claim depends on, so a closed
+    /// port alone must not authorize reclaiming its tenant.
+    #[test]
+    fn a_closed_port_alone_does_not_orphan_a_claim() {
+        let mut registry = NativeRegistry::default();
+        let record = started("surreal", 7);
+        let root = Path::new("/tmp/quiet");
+        claim(
+            &mut registry,
+            root,
+            1,
+            "navigator_quiet".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            vec![record.clone()],
+        );
+
+        let plan = plan_sweep(&registry, &[], &|_| true, &running(&[record]));
+        assert!(matches!(entry(&plan, root).owner, Owner::Live(_)));
+    }
+
+    /// The same PID carrying a different program is a stranger that
+    /// inherited the number, not the service this claim recorded.
+    #[test]
+    fn a_recycled_pid_running_a_stranger_does_not_keep_a_claim_live() {
+        let mut registry = NativeRegistry::default();
+        let recorded = started("surreal", 7);
+        let stranger = Started {
+            program: "vim".into(),
+            command: "/usr/bin/vim notes.txt".into(),
+            ..recorded.clone()
+        };
+        let root = Path::new("/tmp/recycled");
+        claim(
+            &mut registry,
+            root,
+            1,
+            "navigator_recycled".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            vec![recorded],
+        );
+
+        let plan = plan_sweep(&registry, &[], &|_| true, &running(&[stranger]));
+        assert!(entry(&plan, root).is_orphaned());
+    }
+
+    /// One surviving identity is enough. A claim whose Rauthy process died
+    /// is still using the `SurrealDB` process that did not, and reclaiming
+    /// its tenant would pull the database out from under a running `web`.
+    #[test]
+    fn one_surviving_process_identity_keeps_a_claim_live() {
+        let mut registry = NativeRegistry::default();
+        let surreal = started("surreal", 7);
+        let rauthy = started("rauthy", 8);
+        let root = Path::new("/tmp/partial");
+        claim(
+            &mut registry,
+            root,
+            1,
+            "navigator_partial".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            vec![surreal.clone(), rauthy],
+        );
+
+        let plan = plan_sweep(&registry, &[], &|_| true, &running(&[surreal]));
+        assert!(matches!(entry(&plan, root).owner, Owner::Live(_)));
     }
 }

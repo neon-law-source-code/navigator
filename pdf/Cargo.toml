@@ -20,6 +20,7 @@ thiserror.workspace = true
 typst-layout = "=0.15.1"
 typst-pdf = "=0.15.1"
 typst-as-lib = { version = "=0.16.0", features = ["typst-kit-fonts", "typst-kit-embed-fonts"] }
+word.workspace = true
 
 [dev-dependencies]
 lopdf.workspace = true

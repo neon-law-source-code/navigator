@@ -8113,6 +8113,7 @@ dependencies = [
  "typst-as-lib",
  "typst-layout",
  "typst-pdf",
+ "word",
 ]
 
 [[package]]
@@ -13399,6 +13400,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "word",
 ]
 
 [[package]]
@@ -14144,6 +14146,7 @@ version = "26.9.12"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "pulldown-cmark",
  "serde",
  "serde_json",
  "sha2 0.11.0",

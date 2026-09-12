@@ -60,12 +60,12 @@
 /// The Typst `numbering()` pattern carrying all seven marker groups, most
 /// significant first. Passed once to `#set heading(numbering: ..)` so
 /// Typst's reference machinery has the whole path to compute from.
-pub const HARVARD_OUTLINE_PATTERN: &str = "I.A.1.a.(1)(a)(i)";
+pub const HARVARD_OUTLINE_PATTERN: &str = word::HARVARD_OUTLINE_PATTERN;
 
 /// The deepest outline level this module numbers. A ninth `=` (heading
 /// level 8) is refused loudly at compile time rather than silently
 /// numbered — see the module-level docs.
-pub const MAX_DEPTH: u8 = 7;
+pub const MAX_DEPTH: u8 = word::MAX_DEPTH;
 
 /// The Typst preamble fragment that installs Harvard outline numbering:
 /// the shared pattern (for Typst's own reference machinery) plus the
@@ -74,9 +74,14 @@ pub const MAX_DEPTH: u8 = 7;
 /// not invoke this directly.
 #[must_use]
 pub fn preamble() -> String {
+    let groups = word::MARKER_GROUPS
+        .iter()
+        .map(|group| format!("\"{group}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         concat!(
-            "#let outline-groups = (\"I.\", \"A.\", \"1.\", \"a.\", \"(1)\", \"(a)\", \"(i)\")\n",
+            "#let outline-groups = ({groups})\n",
             "#set heading(numbering: \"{pattern}\")\n",
             "#show heading: it => {{\n",
             "  let n = counter(heading).at(it.location())\n",
@@ -85,6 +90,7 @@ pub fn preamble() -> String {
             "  [#numbering(pat, own) #h(0.3em) #it.body]\n",
             "}}\n",
         ),
+        groups = groups,
         pattern = HARVARD_OUTLINE_PATTERN,
     )
 }

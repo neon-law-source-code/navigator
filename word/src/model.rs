@@ -31,6 +31,20 @@ impl Document {
         &self.model
     }
 
+    /// Return the shared canonical outline projection of this immutable
+    /// import, including diagnostics for structures needing attorney review.
+    #[must_use]
+    pub fn canonical_outline(&self) -> crate::outline::CanonicalDocument {
+        self.model.canonical_outline()
+    }
+
+    /// Emit the editable Notation Markdown projection of the imported main
+    /// story. Persistence remains the caller's governed responsibility.
+    #[must_use]
+    pub fn notation_markdown(&self) -> String {
+        self.canonical_outline().to_markdown()
+    }
+
     /// The Word accepted view: insertions and move-to content are readable,
     /// deleted and move-from content is not. Revision nodes stay in `model`.
     #[must_use]
@@ -70,6 +84,17 @@ pub struct DocumentModel {
     pub diagnostics: Vec<Diagnostic>,
     #[serde(default)]
     pub revision_nodes: Vec<RevisionNode>,
+}
+
+impl DocumentModel {
+    /// Resolve the imported Word model into the shared seven-level outline
+    /// representation. Diagnostics are returned alongside content so an
+    /// attorney-facing caller can refuse ambiguous mappings without losing
+    /// the ordered source blocks.
+    #[must_use]
+    pub fn canonical_outline(&self) -> crate::outline::CanonicalDocument {
+        crate::outline::from_stories(&self.stories, &self.numbering, &self.diagnostics)
+    }
 }
 
 impl DocumentModel {
@@ -118,7 +143,7 @@ fn append_blocks(out: &mut String, blocks: &[Block]) {
                     out.push('\n');
                 }
             }
-            Block::SectionBreak { break_kind } => {
+            Block::SectionBreak { break_kind, .. } => {
                 if matches!(break_kind, BreakKind::Page | BreakKind::Column) {
                     out.push('\n');
                 }
@@ -202,11 +227,17 @@ pub enum StoryKind {
 pub enum Block {
     Paragraph(Paragraph),
     Table(Table),
-    SectionBreak { break_kind: BreakKind },
+    SectionBreak {
+        break_kind: BreakKind,
+        #[serde(default)]
+        anchor: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Paragraph {
+    #[serde(default)]
+    pub anchor: String,
     pub style_id: Option<String>,
     pub numbering: Option<NumberingIdentity>,
     pub nodes: Vec<Inline>,
@@ -215,6 +246,8 @@ pub struct Paragraph {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Table {
+    #[serde(default)]
+    pub anchor: String,
     pub style_id: Option<String>,
     pub rows: Vec<TableRow>,
     pub revisions: Vec<RevisionNode>,
@@ -310,6 +343,8 @@ pub struct NumberingDefinition {
     pub numbering_id: String,
     pub abstract_numbering_id: Option<String>,
     pub levels: Vec<String>,
+    #[serde(default)]
+    pub level_definitions: Vec<crate::outline::NumberingLevel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -365,6 +400,57 @@ impl Diagnostic {
             anchor: format!("{anchor}:{kind}"),
         }
     }
+
+    #[must_use]
+    pub fn unsupported_numbering(anchor: &str) -> Self {
+        Self::outline(DiagnosticCode::UnsupportedNumbering, anchor)
+    }
+
+    #[must_use]
+    pub fn ambiguous_outline(anchor: &str) -> Self {
+        Self::outline(DiagnosticCode::AmbiguousOutline, anchor)
+    }
+
+    #[must_use]
+    pub fn depth_overflow(anchor: &str, depth: u8) -> Self {
+        Self {
+            code: DiagnosticCode::DepthOverflow,
+            severity: DiagnosticSeverity::Error,
+            anchor: format!("{anchor}:depth-{depth}"),
+        }
+    }
+
+    #[must_use]
+    pub fn skipped_outline_level(anchor: &str, depth: u8) -> Self {
+        Self {
+            code: DiagnosticCode::SkippedOutlineLevel,
+            severity: DiagnosticSeverity::Error,
+            anchor: format!("{anchor}:depth-{depth}"),
+        }
+    }
+
+    #[must_use]
+    pub fn manual_outline_label(anchor: &str) -> Self {
+        Self::outline(DiagnosticCode::ManualOutlineLabel, anchor)
+    }
+
+    #[must_use]
+    pub fn list_restart(anchor: &str) -> Self {
+        Self::outline(DiagnosticCode::ListRestart, anchor)
+    }
+
+    #[must_use]
+    pub fn missing_source_anchor(anchor: &str) -> Self {
+        Self::outline(DiagnosticCode::MissingSourceAnchor, anchor)
+    }
+
+    fn outline(code: DiagnosticCode, anchor: &str) -> Self {
+        Self {
+            code,
+            severity: DiagnosticSeverity::Warning,
+            anchor: anchor.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -377,6 +463,13 @@ pub enum DiagnosticCode {
     EscapingPackage,
     MacroEnabledPackage,
     EncryptedPackage,
+    UnsupportedNumbering,
+    AmbiguousOutline,
+    DepthOverflow,
+    SkippedOutlineLevel,
+    ManualOutlineLabel,
+    ListRestart,
+    MissingSourceAnchor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

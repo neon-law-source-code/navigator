@@ -119,7 +119,7 @@ internal static class WordPackageParser
                     Diagnostic.Rejected("unsupported_revision", revision));
             }
 
-            var reader = new StoryReader();
+            var reader = new StoryReader(StyleNumbering.Build(main.StyleDefinitionsPart?.Styles));
             var stories = new List<object>
             {
                 reader.Story("main_document", main.Uri.ToString(), main.Document.Body)
@@ -201,13 +201,55 @@ internal static class WordPackageParser
                 based_on = style.BasedOn?.Val?.Value,
                 next_style = style.NextParagraphStyle?.Val?.Value
             }).Cast<object>().ToList() ?? new List<object>();
-        var numbering = main.NumberingDefinitionsPart?.Numbering?.Elements<NumberingInstance>()
-            .Select(number => new
+        var numberingRoot = main.NumberingDefinitionsPart?.Numbering;
+        var abstractNumbers = numberingRoot?.Elements<AbstractNum>()
+            .ToDictionary(number => number.AbstractNumberId?.Value ?? -1)
+            ?? new Dictionary<int, AbstractNum>();
+        var numbering = numberingRoot?.Elements<NumberingInstance>()
+            .Select(number =>
             {
-                numbering_id = number.NumberID?.Value.ToString() ?? string.Empty,
-                abstract_numbering_id = number.AbstractNumId?.Val?.Value.ToString(),
-                levels = new List<string>()
-            }).Cast<object>().ToList() ?? new List<object>();
+                var abstractId = number.AbstractNumId?.Val?.Value;
+                var abstractNumber = abstractId is not null
+                    && abstractNumbers.TryGetValue(abstractId.Value, out var found)
+                    ? found
+                    : null;
+                var overrides = number.Elements<LevelOverride>()
+                    .ToDictionary(value => value.LevelIndex?.Value ?? 0);
+                var levelDefinitions = abstractNumber?.Elements<Level>()
+                    .Select(level =>
+                    {
+                        var levelIndex = level.LevelIndex?.Value ?? 0;
+                        overrides.TryGetValue(levelIndex, out var levelOverride);
+                        var overrideLevel = levelOverride?.GetFirstChild<Level>();
+                        var overrideStart = UInt(
+                            levelOverride?.GetFirstChild<StartOverrideNumberingValue>());
+                        return new
+                        {
+                            level = levelIndex,
+                            number_format = Value(overrideLevel, "numFmt")
+                                ?? Value(level, "numFmt")
+                                ?? string.Empty,
+                            level_text = Value(overrideLevel, "lvlText")
+                                ?? Value(level, "lvlText")
+                                ?? string.Empty,
+                            start = uint.TryParse(Value(level, "start"), out var start)
+                                ? start
+                                : 1U,
+                            restart_level = Byte(Value(level, "lvlRestart")),
+                            style_id = Value(level, "pStyle"),
+                            override_start = overrideStart
+                        };
+                    }).Cast<object>().ToList() ?? new List<object>();
+                return (object)new
+                {
+                    numbering_id = number.NumberID?.Value.ToString() ?? string.Empty,
+                    abstract_numbering_id = abstractId?.ToString(),
+                    levels = abstractNumber?.Elements<Level>()
+                        .Select(level => Value(level, "lvlText") ?? string.Empty)
+                        .ToList() ?? new List<string>(),
+                    level_definitions = levelDefinitions
+                };
+            }).ToList() ?? new List<object>();
 
         var model = new
         {
@@ -222,6 +264,20 @@ internal static class WordPackageParser
         };
         return new AdapterResponse(Protocol.Version, true, model, null);
     }
+
+    private static string? Value(OpenXmlElement? element, string localName) => element?
+        .ChildElements
+        .FirstOrDefault(child => child.LocalName == localName)?
+        .GetAttributes()
+        .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value;
+
+    private static byte? Byte(string? value) => byte.TryParse(value, out var parsed) ? parsed : null;
+
+    private static uint? UInt(OpenXmlElement? element) =>
+        uint.TryParse(element?.GetAttributes()
+            .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value, out var parsed)
+            ? parsed
+            : null;
 }
 
 internal static class PackageSafety
@@ -534,18 +590,93 @@ internal static class RevisionSupport
     }
 }
 
+/// Style-linked list numbering. A numbered paragraph frequently carries no
+/// `w:numPr` of its own: the reference lives on its paragraph style, or on a
+/// style that style is based on. Resolving the `w:basedOn` chain once, up
+/// front, is what keeps those paragraphs from importing as ordinary text.
+internal static class StyleNumbering
+{
+    internal sealed record Reference(string? NumberingId, string? Level);
+
+    internal static IReadOnlyDictionary<string, Reference> Build(Styles? styles)
+    {
+        var resolved = new Dictionary<string, Reference>(StringComparer.Ordinal);
+        if (styles is null)
+        {
+            return resolved;
+        }
+        var byId = new Dictionary<string, Style>(StringComparer.Ordinal);
+        foreach (var style in styles.Elements<Style>())
+        {
+            var id = style.StyleId?.Value;
+            if (id is not null)
+            {
+                byId[id] = style;
+            }
+        }
+        foreach (var id in byId.Keys)
+        {
+            var reference = Resolve(id, byId, new HashSet<string>(StringComparer.Ordinal));
+            if (reference is not null)
+            {
+                resolved[id] = reference;
+            }
+        }
+        return resolved;
+    }
+
+    private static Reference? Resolve(
+        string id,
+        IReadOnlyDictionary<string, Style> byId,
+        ISet<string> seen)
+    {
+        // A malformed package can point `w:basedOn` back at an ancestor; the
+        // visited set makes that a missing reference rather than a hang.
+        if (!seen.Add(id) || !byId.TryGetValue(id, out var style))
+        {
+            return null;
+        }
+        var numbering = style.StyleParagraphProperties?.NumberingProperties;
+        var numberingId = numbering?.NumberingId?.Val?.Value.ToString();
+        var level = numbering?.NumberingLevelReference?.Val?.Value.ToString();
+        var basedOn = style.BasedOn?.Val?.Value;
+        var inherited = basedOn is null ? null : Resolve(basedOn, byId, seen);
+        numberingId ??= inherited?.NumberingId;
+        level ??= inherited?.Level;
+        return numberingId is null && level is null ? null : new Reference(numberingId, level);
+    }
+}
+
 internal sealed class StoryReader
 {
+    private readonly IReadOnlyDictionary<string, StyleNumbering.Reference> _styleNumbering;
+    private readonly Dictionary<string, int> _ordinals = new();
+
+    public StoryReader(IReadOnlyDictionary<string, StyleNumbering.Reference> styleNumbering) =>
+        _styleNumbering = styleNumbering;
+
     public List<object> Revisions { get; } = new();
 
     public object Story(string kind, string partUri, OpenXmlElement root) =>
-        new { kind, part_uri = partUri, blocks = Blocks(root) };
+        new { kind, part_uri = partUri, blocks = Blocks(root, partUri) };
+
+    /// A block ordinal that keeps counting across nested containers, so a
+    /// paragraph without a `w14:paraId` inside a table cell never collides
+    /// with one in a sibling cell or at the top level of the same part.
+    private int NextOrdinal(string partUri)
+    {
+        _ordinals.TryGetValue(partUri, out var next);
+        _ordinals[partUri] = next + 1;
+        return next;
+    }
 
     public IEnumerable<object> TextBoxes(string kind, string partUri, OpenXmlElement root) =>
         root.Descendants().Where(element => element.LocalName == "txbxContent")
             .Select(element => Story(kind, partUri, element));
 
-    public List<object> Blocks(OpenXmlElement root)
+    public List<object> Blocks(OpenXmlElement root) => Blocks(root, root.LocalName);
+
+    private List<object> Blocks(OpenXmlElement root, string partUri)
     {
         var blocks = new List<object>();
         foreach (var child in root.ChildElements)
@@ -553,56 +684,94 @@ internal sealed class StoryReader
             switch (child.LocalName)
             {
                 case "p":
-                    blocks.Add(Paragraph((Paragraph)child));
+                    blocks.Add(Paragraph((Paragraph)child, partUri, NextOrdinal(partUri)));
                     break;
                 case "tbl":
-                    blocks.Add(Table((Table)child));
+                    blocks.Add(Table((Table)child, partUri, NextOrdinal(partUri)));
                     break;
                 case "sectPr":
-                    blocks.Add(new { kind = "section_break", break_kind = "page" });
+                    blocks.Add(new
+                    {
+                        kind = "section_break",
+                        break_kind = "page",
+                        anchor = $"{partUri}:section-break:{NextOrdinal(partUri)}"
+                    });
                     break;
                 case "txbxContent":
-                    blocks.AddRange(Blocks(child));
+                    blocks.AddRange(Blocks(child, partUri));
                     break;
                 case "footnote":
                 case "endnote":
                 case "comment":
-                    blocks.AddRange(Blocks(child));
+                    blocks.AddRange(Blocks(child, partUri));
                     break;
             }
         }
         return blocks;
     }
 
-    private object Paragraph(Paragraph paragraph)
+    private object Paragraph(Paragraph paragraph, string partUri, int ordinal)
     {
         var properties = paragraph.ParagraphProperties;
-        var numbering = properties?.NumberingProperties;
+        var styleId = properties?.ParagraphStyleId?.Val?.Value;
+        var numbering = NumberingFor(properties, styleId);
         var revisions = RevisionProperties(properties);
+        var paragraphId = paragraph.GetAttributes()
+            .Where(attribute => attribute.LocalName == "paraId")
+            .Select(attribute => attribute.Value)
+            .FirstOrDefault();
         return new
         {
             kind = "paragraph",
-            style_id = properties?.ParagraphStyleId?.Val?.Value,
+            anchor = paragraphId is null
+                ? $"{partUri}:paragraph:{ordinal}"
+                : $"{partUri}:paragraph:{paragraphId}",
+            style_id = styleId,
             numbering = numbering is null ? null : new
             {
-                numbering_id = numbering.NumberingId?.Val?.Value.ToString() ?? string.Empty,
-                level = numbering.NumberingLevelReference?.Val?.Value.ToString()
+                numbering_id = numbering.NumberingId ?? string.Empty,
+                level = numbering.Level
             },
             nodes = Inlines(paragraph),
             revisions
         };
     }
 
-    private object Table(Table table)
+    /// Word paragraphs carry numbering either directly on the paragraph or
+    /// through the paragraph style, and OOXML lets the two supply different
+    /// halves of the same reference. Direct properties win field by field;
+    /// whatever the paragraph omits falls back to the resolved style chain,
+    /// so a style-linked numbered paragraph is an outline unit rather than
+    /// ordinary prose.
+    private StyleNumbering.Reference? NumberingFor(ParagraphProperties? properties, string? styleId)
+    {
+        var direct = properties?.NumberingProperties;
+        var inherited = styleId is not null && _styleNumbering.TryGetValue(styleId, out var found)
+            ? found
+            : null;
+        if (direct is null)
+        {
+            return inherited;
+        }
+        var numberingId = direct.NumberingId?.Val?.Value.ToString() ?? inherited?.NumberingId;
+        var level = direct.NumberingLevelReference?.Val?.Value.ToString() ?? inherited?.Level;
+        return numberingId is null && level is null
+            ? null
+            : new StyleNumbering.Reference(numberingId, level);
+    }
+
+    private object Table(Table table, string partUri, int ordinal)
     {
         var revisions = RevisionProperties(table.TableProperties);
         var rows = table.Elements<TableRow>().Select(row => new
         {
-            cells = row.Elements<TableCell>().Select(cell => new { blocks = Blocks(cell) }).ToList()
+            cells = row.Elements<TableCell>()
+                .Select(cell => new { blocks = Blocks(cell, partUri) }).ToList()
         }).ToList();
         return new
         {
             kind = "table",
+            anchor = $"{partUri}:table:{ordinal}",
             style_id = table.TableProperties?.TableStyle?.Val?.Value,
             rows,
             revisions
@@ -793,4 +962,18 @@ internal sealed class StoryReader
         }
         return revisions;
     }
+
+    private static string? Value(OpenXmlElement? element, string localName) => element?
+        .ChildElements
+        .FirstOrDefault(child => child.LocalName == localName)?
+        .GetAttributes()
+        .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value;
+
+    private static byte? Byte(string? value) => byte.TryParse(value, out var parsed) ? parsed : null;
+
+    private static uint? UInt(OpenXmlElement? element) =>
+        uint.TryParse(element?.GetAttributes()
+            .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value, out var parsed)
+            ? parsed
+            : null;
 }

@@ -10,6 +10,67 @@ namespace Navigator.WordAdapter;
 public sealed class WordAdapterTests
 {
     [Fact]
+    public void a_style_linked_paragraph_carries_the_numbering_reference_from_its_style_chain()
+    {
+        var main = MainStory(WordPackageParser.Parse(SyntheticDocx.Create()));
+        var linked = main.GetProperty("blocks").EnumerateArray().Single(block =>
+            block.GetProperty("kind").GetString() == "paragraph"
+                && block.GetProperty("style_id").GetString() == "SyntheticNumbered");
+
+        // The paragraph carries no `w:numPr`; the reference arrives through
+        // `w:basedOn`, so dropping it would import an outline unit as prose.
+        var numbering = linked.GetProperty("numbering");
+        Assert.Equal("7", numbering.GetProperty("numbering_id").GetString());
+        Assert.Equal("1", numbering.GetProperty("level").GetString());
+    }
+
+    [Fact]
+    public void fallback_anchors_stay_distinct_across_table_cells_in_one_part()
+    {
+        var main = MainStory(WordPackageParser.Parse(SyntheticDocx.Create()));
+        var anchors = new List<string>();
+        Collect(main.GetProperty("blocks"), anchors);
+
+        // Table cells restart their own child index, so a per-container
+        // ordinal would give two distinct blocks the same source anchor.
+        Assert.Contains(anchors, anchor => anchor.Contains(":paragraph:", StringComparison.Ordinal));
+        Assert.Equal(anchors.Count, anchors.Distinct(StringComparer.Ordinal).Count());
+
+        static void Collect(JsonElement blocks, List<string> anchors)
+        {
+            foreach (var block in blocks.EnumerateArray())
+            {
+                if (block.TryGetProperty("anchor", out var anchor)
+                    && anchor.GetString() is { } value)
+                {
+                    anchors.Add(value);
+                }
+                if (block.TryGetProperty("rows", out var rows))
+                {
+                    foreach (var row in rows.EnumerateArray())
+                    {
+                        foreach (var cell in row.GetProperty("cells").EnumerateArray())
+                        {
+                            Collect(cell.GetProperty("blocks"), anchors);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static JsonElement MainStory(AdapterResponse response)
+    {
+        var json = JsonSerializer.Serialize(response);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean(), json);
+        return root.GetProperty("document").GetProperty("stories").EnumerateArray()
+            .Single(story => story.GetProperty("kind").GetString() == "main_document")
+            .Clone();
+    }
+
+    [Fact]
     public void synthetic_package_preserves_stories_structure_styles_numbering_and_revisions()
     {
         var response = WordPackageParser.Parse(SyntheticDocx.Create());
@@ -48,6 +109,23 @@ public sealed class WordAdapterTests
             style.GetProperty("id").GetString() == "SyntheticBody");
         Assert.Contains(model.GetProperty("numbering").EnumerateArray(), numbering =>
             numbering.GetProperty("numbering_id").GetString() == "7");
+        var numbering = model.GetProperty("numbering").EnumerateArray().Single();
+        Assert.Equal(7, numbering.GetProperty("level_definitions").GetArrayLength());
+        Assert.Equal("upperRoman",
+            numbering.GetProperty("level_definitions")[0].GetProperty("number_format").GetString());
+        Assert.Equal("%1.",
+            numbering.GetProperty("level_definitions")[0].GetProperty("level_text").GetString());
+        Assert.Equal(4,
+            numbering.GetProperty("level_definitions")[0].GetProperty("override_start").GetUInt32());
+        // A list-instance override must not erase the abstract level's own
+        // start: the canonical model preserves both numbering identities.
+        Assert.Equal(1u,
+            numbering.GetProperty("level_definitions")[0].GetProperty("start").GetUInt32());
+        var main = model.GetProperty("stories").EnumerateArray()
+            .Single(story => story.GetProperty("kind").GetString() == "main_document");
+        Assert.Contains(main.GetProperty("blocks").EnumerateArray(), block =>
+            block.GetProperty("kind").GetString() == "paragraph"
+                && block.GetProperty("anchor").GetString()?.Contains(":paragraph:") == true);
         Assert.Contains(model.GetProperty("revision_nodes").EnumerateArray(), revision =>
             revision.GetProperty("kind").GetString() == "insertion");
         Assert.Contains(model.GetProperty("revision_nodes").EnumerateArray(), revision =>
@@ -136,6 +214,46 @@ public sealed class WordAdapterTests
                         new BookmarkEnd { Id = "1" },
                         new Run(new Break { Type = BreakValues.Page }),
                         new CommentReference { Id = "4" }),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 6 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("deep clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 1 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("letter clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 2 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("decimal clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 3 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("lower-letter clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 4 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("parenthesized decimal clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 5 },
+                                new NumberingId { Val = 7 })),
+                        new Run(new Text("parenthesized letter clause"))),
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new ParagraphStyleId { Val = "SyntheticNumbered" }),
+                        new Run(new Text("style-linked clause"))),
                     new Table(
                         new TableRow(
                             new TableCell(new Paragraph(new Run(new Text("cell one")))),
@@ -146,18 +264,55 @@ public sealed class WordAdapterTests
                 main.Document = new Document(body);
 
                 var styles = main.AddNewPart<StyleDefinitionsPart>();
-                styles.Styles = new Styles(new Style
-                {
-                    Type = StyleValues.Paragraph,
-                    StyleId = "SyntheticBody",
-                    BasedOn = new BasedOn { Val = "Normal" },
-                    NextParagraphStyle = new NextParagraphStyle { Val = "Normal" }
-                });
+                styles.Styles = new Styles(
+                    new Style
+                    {
+                        Type = StyleValues.Paragraph,
+                        StyleId = "SyntheticBody",
+                        BasedOn = new BasedOn { Val = "Normal" },
+                        NextParagraphStyle = new NextParagraphStyle { Val = "Normal" }
+                    },
+                    new Style(
+                        new StyleParagraphProperties(
+                            new NumberingProperties(
+                                new NumberingLevelReference { Val = 1 },
+                                new NumberingId { Val = 7 })))
+                    {
+                        Type = StyleValues.Paragraph,
+                        StyleId = "SyntheticNumberedBase"
+                    },
+                    new Style
+                    {
+                        Type = StyleValues.Paragraph,
+                        StyleId = "SyntheticNumbered",
+                        BasedOn = new BasedOn { Val = "SyntheticNumberedBase" }
+                    });
 
                 var numbering = main.AddNewPart<NumberingDefinitionsPart>();
+                var levels = new[]
+                {
+                    (NumberFormatValues.UpperRoman, "%1."),
+                    (NumberFormatValues.UpperLetter, "%2."),
+                    (NumberFormatValues.Decimal, "%3."),
+                    (NumberFormatValues.LowerLetter, "%4."),
+                    (NumberFormatValues.Decimal, "(%5)"),
+                    (NumberFormatValues.LowerLetter, "(%6)"),
+                    (NumberFormatValues.LowerRoman, "(%7)")
+                }.Select((entry, index) => new Level
+                {
+                    LevelIndex = index,
+                    NumberingFormat = new NumberingFormat { Val = entry.Item1 },
+                    LevelText = new LevelText { Val = entry.Item2 },
+                    StartNumberingValue = new StartNumberingValue { Val = 1 }
+                }).ToArray();
+                var instance = new NumberingInstance(new AbstractNumId { Val = 3 })
+                {
+                    NumberID = 7
+                };
+                instance.Append(new LevelOverride(
+                    new StartOverrideNumberingValue { Val = 4 }) { LevelIndex = 0 });
                 numbering.Numbering = new Numbering(
-                    new AbstractNum(new Level { LevelIndex = 0 }) { AbstractNumberId = 3 },
-                    new NumberingInstance(new AbstractNumId { Val = 3 }) { NumberID = 7 });
+                    new AbstractNum(levels) { AbstractNumberId = 3 }, instance);
 
                 var header = main.AddNewPart<HeaderPart>();
                 header.Header = new Header(new Paragraph(new Run(new Text("header"))));

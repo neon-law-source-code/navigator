@@ -619,6 +619,7 @@ mod tests {
                 kind: StoryKind::MainDocument,
                 part_uri: "/word/document.xml".into(),
                 blocks: vec![Block::Paragraph(Paragraph {
+                    anchor: "document:paragraph:1".into(),
                     style_id: None,
                     numbering: None,
                     nodes: vec![

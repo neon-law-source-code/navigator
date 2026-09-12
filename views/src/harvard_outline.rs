@@ -12,14 +12,9 @@
 
 use crate::markdown;
 
-/// How depth-1 headings are numbered in this document.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DepthOneScheme {
-    /// `I.`, `II.`, `III.` — contracts and engagement letters.
-    Roman,
-    /// `1.`, `2.`, `3.` — motion practice.
-    Arabic,
-}
+/// How depth-1 headings are numbered in this document. This is the shared
+/// Word/PDF vocabulary, re-exported here for the narration API.
+pub use word::OutlineScheme as DepthOneScheme;
 
 /// What kind of block a unit is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +28,9 @@ pub enum UnitKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unit {
     pub index: usize,
+    /// Stable within this Markdown source; imported Word anchors are carried
+    /// through the canonical adapter before this narration projection.
+    pub anchor: String,
     /// Outline depth, 0 for preamble before the first heading, then 1..=7.
     pub depth: u8,
     /// Displayed marker (`I`, `A`, `1`) or empty for unlabeled prose.
@@ -56,6 +54,14 @@ pub struct OutlineDocument {
     pub frontmatter: Option<String>,
 }
 
+impl OutlineDocument {
+    /// Convert this parsed Markdown projection to the shared canonical model.
+    #[must_use]
+    pub fn canonical_model(&self) -> word::CanonicalDocument {
+        canonical_model(self)
+    }
+}
+
 /// Parse Markdown (optional YAML frontmatter) into narration units.
 #[must_use]
 pub fn parse(src: &str) -> OutlineDocument {
@@ -68,7 +74,7 @@ pub fn parse(src: &str) -> OutlineDocument {
 
     for block in blocks(body) {
         match block {
-            Block::Heading { text, .. } => {
+            Block::Heading { text, anchor } => {
                 let labeled = parse_depth_one_heading(&text);
                 let (depth, marker, path, heading_text) = match labeled {
                     Some((DepthOneScheme::Roman, marker, rest)) => {
@@ -116,14 +122,17 @@ pub fn parse(src: &str) -> OutlineDocument {
                     UnitKind::Heading,
                     &heading_text,
                 );
+                set_last_anchor(&mut units, anchor);
             }
-            Block::Quote(paragraphs) => {
+            Block::Quote { paragraphs, anchor } => {
+                let mut anchor = anchor;
                 for para in paragraphs {
                     if let Some((letter, rest)) = parse_bold_letter_lead(&para) {
                         let path = join_path(&section_path, &letter);
                         current_depth = 2;
                         current_path.clone_from(&path);
                         push_unit(&mut units, 2, letter, path, UnitKind::Subsection, &rest);
+                        set_last_anchor(&mut units, anchor.take());
                     } else if let Some((marker, rest, depth)) =
                         parse_deeper_lead(&para, scheme.unwrap_or(DepthOneScheme::Roman))
                     {
@@ -131,15 +140,18 @@ pub fn parse(src: &str) -> OutlineDocument {
                         current_depth = depth;
                         current_path.clone_from(&path);
                         push_unit(&mut units, depth, marker, path, UnitKind::Subsection, &rest);
+                        set_last_anchor(&mut units, anchor.take());
                     } else {
                         let depth = current_depth.max(1);
                         push_paragraph(&mut units, depth, current_path.clone(), &para);
+                        set_last_anchor(&mut units, anchor.take());
                     }
                 }
             }
-            Block::Prose(text) => {
+            Block::Prose { text, anchor } => {
                 // 0 in the preamble, else the enclosing heading's depth.
                 push_paragraph(&mut units, current_depth, current_path.clone(), &text);
+                set_last_anchor(&mut units, anchor);
             }
         }
     }
@@ -149,6 +161,68 @@ pub fn parse(src: &str) -> OutlineDocument {
         scheme,
         units,
         frontmatter: frontmatter.map(str::to_string),
+    }
+}
+
+/// Project narration units into the canonical model shared with Word import.
+/// The narration parser remains intentionally presentation-focused; this
+/// projection gives callers a typed, ordered representation without creating
+/// a second numbering vocabulary.
+#[must_use]
+pub fn canonical_model(doc: &OutlineDocument) -> word::CanonicalDocument {
+    let blocks = doc
+        .units
+        .iter()
+        .map(|unit| {
+            let is_outline = !unit.marker.is_empty();
+            let outline = is_outline.then(|| word::OutlineUnit {
+                anchor: unit.anchor.clone(),
+                depth: unit.depth,
+                marker: unit.marker.clone(),
+                path: unit.path.clone(),
+                text: unit.markdown.clone(),
+                // Narration Markdown has no OOXML list behind it. The
+                // depth is real and the numbering identity is genuinely
+                // absent, so these fields stay empty rather than carrying
+                // an invented `w:numFmt` a caller might act on.
+                list: word::ListIdentity {
+                    numbering_id: String::new(),
+                    abstract_numbering_id: None,
+                    level: unit.depth.saturating_sub(1),
+                    number_format: String::new(),
+                    level_text: String::new(),
+                    start: 1,
+                    restart_level: None,
+                    override_start: None,
+                    style_id: None,
+                },
+                manual_label: None,
+            });
+            word::CanonicalBlock {
+                anchor: unit.anchor.clone(),
+                kind: if is_outline {
+                    word::CanonicalBlockKind::Outline
+                } else {
+                    word::CanonicalBlockKind::Paragraph
+                },
+                text: unit.markdown.clone(),
+                outline,
+                manual_label: None,
+                inlines: vec![word::CanonicalInline::Text {
+                    text: unit.markdown.clone(),
+                }],
+                children: Vec::new(),
+            }
+        })
+        .collect();
+    word::CanonicalDocument {
+        scheme: doc.scheme,
+        stories: vec![word::CanonicalStory {
+            kind: word::StoryKind::MainDocument,
+            part_uri: "markdown".into(),
+            blocks,
+        }],
+        diagnostics: Vec::new(),
     }
 }
 
@@ -236,6 +310,7 @@ fn push_unit(
     }
     units.push(Unit {
         index: units.len(),
+        anchor: format!("markdown:unit:{}", units.len()),
         depth,
         marker,
         path,
@@ -311,20 +386,46 @@ fn unquote(value: &str) -> String {
 }
 
 enum Block {
-    Heading { text: String },
-    Quote(Vec<String>),
-    Prose(String),
+    Heading {
+        text: String,
+        anchor: Option<String>,
+    },
+    Quote {
+        paragraphs: Vec<String>,
+        anchor: Option<String>,
+    },
+    Prose {
+        text: String,
+        anchor: Option<String>,
+    },
 }
 
 fn blocks(body: &str) -> Vec<Block> {
     let mut out = Vec::new();
     let mut lines = body.lines().peekable();
+    let mut pending_anchor = None;
     while let Some(line) = lines.next() {
         if line.trim().is_empty() {
             continue;
         }
+        // `word::notation` carries a canonical import's structural identity
+        // in `navigator-*` comments. Narration needs only the source anchor
+        // out of them; the rest is invisible to this presentation parser.
+        if let Some(directive) = navigator_directive(line) {
+            if let Some(anchor) = comment_attribute(directive, "anchor") {
+                pending_anchor = Some(anchor);
+            }
+            continue;
+        }
+        if line.trim().eq_ignore_ascii_case("<!-- pagebreak -->") {
+            pending_anchor = None;
+            continue;
+        }
         if let Some(heading) = heading_text(line) {
-            out.push(Block::Heading { text: heading });
+            out.push(Block::Heading {
+                text: heading,
+                anchor: pending_anchor.take(),
+            });
             continue;
         }
         if line.starts_with('>') {
@@ -349,7 +450,10 @@ fn blocks(body: &str) -> Vec<Block> {
                 .map(|para| para.join("\n"))
                 .filter(|p| !p.trim().is_empty())
                 .collect();
-            out.push(Block::Quote(paragraphs));
+            out.push(Block::Quote {
+                paragraphs,
+                anchor: pending_anchor.take(),
+            });
             continue;
         }
         let mut prose = vec![line.to_string()];
@@ -357,9 +461,34 @@ fn blocks(body: &str) -> Vec<Block> {
         {
             prose.push(lines.next().expect("peeked line").to_string());
         }
-        out.push(Block::Prose(prose.join("\n")));
+        out.push(Block::Prose {
+            text: prose.join("\n"),
+            anchor: pending_anchor.take(),
+        });
     }
     out
+}
+
+/// The body of a `<!-- navigator-… -->` comment occupying a whole line.
+fn navigator_directive(line: &str) -> Option<&str> {
+    line.trim()
+        .strip_prefix("<!-- navigator-")?
+        .strip_suffix("-->")
+        .map(str::trim_end)
+}
+
+fn comment_attribute(directive: &str, key: &str) -> Option<String> {
+    let needle = format!("{key}=\"");
+    let start = directive.find(&needle)? + needle.len();
+    let rest = &directive[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn set_last_anchor(units: &mut [Unit], anchor: Option<String>) {
+    if let (Some(unit), Some(anchor)) = (units.last_mut(), anchor) {
+        unit.anchor = anchor;
+    }
 }
 
 fn heading_text(line: &str) -> Option<String> {
@@ -411,13 +540,21 @@ fn parse_capital_letter(text: &str) -> Option<(String, String)> {
 fn parse_bold_letter_lead(para: &str) -> Option<(String, String)> {
     let trimmed = para.trim();
     let rest = trimmed.strip_prefix("**")?;
-    let (marker, _) = split_marker(rest)?;
+    let closing = rest.find("**")?;
+    let bold = &rest[..closing];
+    let (marker, label) = split_marker(bold)?;
     let mut chars = marker.chars();
     let c = chars.next()?;
     if chars.next().is_some() || !c.is_ascii_uppercase() {
         return None;
     }
-    Some((marker, trimmed.to_string()))
+    let body = rest[closing + 2..].trim();
+    let text = if body.is_empty() {
+        label
+    } else {
+        format!("{label} {body}")
+    };
+    Some((marker, text))
 }
 
 fn parse_deeper_lead(para: &str, scheme: DepthOneScheme) -> Option<(String, String, u8)> {
@@ -492,7 +629,7 @@ pub const SAMPLE_MOTION: &str = include_str!(concat!(
 
 #[cfg(test)]
 mod tests {
-    use super::{frontmatter_field, parse, stage_html, DepthOneScheme, UnitKind};
+    use super::{canonical_model, frontmatter_field, parse, stage_html, DepthOneScheme, UnitKind};
 
     const ONBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -587,6 +724,7 @@ mod tests {
             .expect("A");
         assert_eq!(sub.path, "2.A");
         assert_eq!(sub.depth, 2);
+        assert_eq!(doc.canonical_model().scheme, Some(DepthOneScheme::Arabic));
     }
 
     #[test]
@@ -612,6 +750,82 @@ mod tests {
         assert!(html.contains("data-harvard-path=\"II.A\""));
         assert!(html.contains("harvard-unit--depth-1"));
         assert!(html.contains("harvard-unit--depth-2"));
+    }
+
+    #[test]
+    fn narration_carries_the_source_anchors_of_a_canonical_word_import() {
+        // The canonical projection is `word::notation`; narration is the
+        // presentation stage downstream of it. What narration owes the
+        // import is the source anchor, so an edit made here still names the
+        // same clause in the imported document.
+        let document = word::CanonicalDocument {
+            scheme: Some(DepthOneScheme::Roman),
+            stories: vec![word::CanonicalStory {
+                kind: word::StoryKind::MainDocument,
+                part_uri: "/word/document.xml".into(),
+                blocks: vec![outline_block(
+                    "/word/document.xml:paragraph:7A",
+                    1,
+                    "I",
+                    "Term",
+                )],
+            }],
+            diagnostics: Vec::new(),
+        };
+
+        let narrated = parse(&document.to_markdown());
+
+        assert_eq!(narrated.scheme, Some(DepthOneScheme::Roman));
+        assert_eq!(
+            narrated
+                .units
+                .iter()
+                .map(|unit| unit.anchor.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/word/document.xml:paragraph:7A"]
+        );
+        assert_eq!(narrated.units[0].path, "I");
+    }
+
+    #[test]
+    fn narration_units_that_never_saw_word_still_carry_a_stable_anchor() {
+        let doc = parse("# I. First\n\n# II. Second\n");
+        assert_eq!(doc.units[0].anchor, "markdown:unit:0");
+        assert_eq!(doc.units[1].anchor, "markdown:unit:1");
+        assert_eq!(
+            canonical_model(&doc).stories[0].blocks[1].anchor,
+            "markdown:unit:1"
+        );
+    }
+
+    fn outline_block(anchor: &str, depth: u8, marker: &str, text: &str) -> word::CanonicalBlock {
+        word::CanonicalBlock {
+            anchor: anchor.into(),
+            kind: word::CanonicalBlockKind::Outline,
+            text: text.into(),
+            outline: Some(word::OutlineUnit {
+                anchor: anchor.into(),
+                depth,
+                marker: marker.into(),
+                path: marker.into(),
+                text: text.into(),
+                list: word::ListIdentity {
+                    numbering_id: "1".into(),
+                    abstract_numbering_id: None,
+                    level: depth - 1,
+                    number_format: "upperRoman".into(),
+                    level_text: format!("%{depth}."),
+                    start: 1,
+                    restart_level: None,
+                    override_start: None,
+                    style_id: None,
+                },
+                manual_label: None,
+            }),
+            manual_label: None,
+            inlines: vec![word::CanonicalInline::Text { text: text.into() }],
+            children: Vec::new(),
+        }
     }
 
     #[test]

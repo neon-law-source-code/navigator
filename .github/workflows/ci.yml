@@ -159,6 +159,7 @@ jobs:
     outputs:
       rust: ${{ steps.scope.outputs.rust }}
       windows: ${{ steps.scope.outputs.windows }}
+      word_adapter: ${{ steps.scope.outputs.word_adapter }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -171,6 +172,7 @@ jobs:
               echo "could not read the PR diff — running the Rust suite anyway"
               echo "rust=true" >> "${GITHUB_OUTPUT}"
               echo "windows=true" >> "${GITHUB_OUTPUT}"
+              echo "word_adapter=true" >> "${GITHUB_OUTPUT}"
               exit 0
           fi
           echo "changed files:"
@@ -190,6 +192,13 @@ jobs:
           else
               echo "-> out of scope: no Windows CLI/LSP sources in this PR"
               echo "windows=false" >> "${GITHUB_OUTPUT}"
+          fi
+          if echo "${changed}" | grep -qE '^(word/|\.github/workflows/ci\.yml$)'; then
+              echo "-> in scope: running the managed Word adapter tests"
+              echo "word_adapter=true" >> "${GITHUB_OUTPUT}"
+          else
+              echo "-> out of scope: no managed Word adapter sources in this PR"
+              echo "word_adapter=false" >> "${GITHUB_OUTPUT}"
           fi
 
   # This is an advisory platform check until a Windows run has been observed
@@ -214,6 +223,23 @@ jobs:
           shared-key: windows-cli-lsp
       - name: cargo check (cli + lsp)
         run: cargo check --locked -p cli -p lsp
+
+  word-adapter:
+    name: test managed Word adapter
+    needs: [changes]
+    if: needs.changes.outputs.word_adapter == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: set up the pinned .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: word/adapter/global.json
+      - name: restore the managed Word adapter tests
+        run: dotnet restore word/adapter/WordAdapter.Tests.csproj --locked-mode
+      - name: test the managed Word adapter
+        run: dotnet test word/adapter/WordAdapter.Tests.csproj --no-restore --configuration Release
 
   # Always run. A locale or Markdown edit still has to pass `navigator
   # validate`; that is the cheap gate that lets the rust job stay skipped.
@@ -844,7 +870,7 @@ jobs:
   # about whether the code is good.
   ci:
     name: ci
-    needs: [changes, validate, rust]
+    needs: [changes, validate, rust, word-adapter]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -854,11 +880,13 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           VALIDATE_RESULT: ${{ needs.validate.result }}
           RUST_RESULT: ${{ needs.rust.result }}
+          WORD_ADAPTER_RESULT: ${{ needs.word-adapter.result }}
         run: |
           set -euo pipefail
           echo "classify the pull request: ${CHANGES_RESULT}"
           echo "validate content: ${VALIDATE_RESULT}"
           echo "cargo test (workspace): ${RUST_RESULT}"
+          echo "test managed Word adapter: ${WORD_ADAPTER_RESULT}"
           if [ "${CHANGES_RESULT}" != "success" ]; then
               echo "::error::the merge gate is red — classify the pull request reported ${CHANGES_RESULT}"
               exit 1
@@ -869,6 +897,10 @@ jobs:
           fi
           if [ "${RUST_RESULT}" != "success" ] && [ "${RUST_RESULT}" != "skipped" ]; then
               echo "::error::the merge gate is red — cargo test (workspace) reported ${RUST_RESULT}"
+              exit 1
+          fi
+          if [ "${WORD_ADAPTER_RESULT}" != "success" ] && [ "${WORD_ADAPTER_RESULT}" != "skipped" ]; then
+              echo "::error::the merge gate is red — test managed Word adapter reported ${WORD_ADAPTER_RESULT}"
               exit 1
           fi
 

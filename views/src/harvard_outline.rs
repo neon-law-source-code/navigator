@@ -133,9 +133,7 @@ pub fn parse(src: &str) -> OutlineDocument {
                         current_path.clone_from(&path);
                         push_unit(&mut units, 2, letter, path, UnitKind::Subsection, &rest);
                         set_last_anchor(&mut units, anchor.take());
-                    } else if let Some((marker, rest, depth)) =
-                        parse_deeper_lead(&para, scheme.unwrap_or(DepthOneScheme::Roman))
-                    {
+                    } else if let Some((marker, rest, depth)) = parse_deeper_lead(&para) {
                         let path = join_path(&current_path, &marker);
                         current_depth = depth;
                         current_path.clone_from(&path);
@@ -557,20 +555,27 @@ fn parse_bold_letter_lead(para: &str) -> Option<(String, String)> {
     Some((marker, text))
 }
 
-fn parse_deeper_lead(para: &str, scheme: DepthOneScheme) -> Option<(String, String, u8)> {
+/// The marker leading a quoted subsection, and the depth its group sits at.
+///
+/// The root scheme is not an input. Only depth one changes glyph between a
+/// contract and a motion — `I.` against `1.` — and depth one is a heading,
+/// never a quote, so every marker reaching this function belongs to one of
+/// the six groups that read the same under both roots. `1.` here is the
+/// depth-three decimal and `(1)` the depth-five one whichever root the
+/// document declared.
+fn parse_deeper_lead(para: &str) -> Option<(String, String, u8)> {
     let trimmed = para.trim().trim_start_matches('*').trim_start();
     if let Some(rest) = trimmed.strip_prefix('(') {
         let close = rest.find(')')?;
         let inner = &rest[..close];
         let after = rest[close + 1..].trim().to_string();
         if inner.chars().all(|c| c.is_ascii_digit()) {
-            let depth = if scheme == DepthOneScheme::Arabic {
-                3
-            } else {
-                5
-            };
-            return Some((format!("({inner})"), after, depth));
+            return Some((format!("({inner})"), after, 5));
         }
+        // `(i)` is the ninth lower letter and the first lower roman at once.
+        // Reading it as the letter keeps a run of `(a)`…`(i)` at one depth;
+        // the depth an import knows is the one in its block comment, which
+        // this presentation stage does not interpret.
         if inner.chars().all(|c| c.is_ascii_lowercase()) {
             return Some((format!("({inner})"), after, 6));
         }
@@ -583,7 +588,7 @@ fn parse_deeper_lead(para: &str, scheme: DepthOneScheme) -> Option<(String, Stri
     if marker.chars().all(|c| c.is_ascii_lowercase()) && marker.len() == 1 {
         return Some((marker, rest, 4));
     }
-    if marker.chars().all(|c| c.is_ascii_digit()) && scheme == DepthOneScheme::Roman {
+    if marker.chars().all(|c| c.is_ascii_digit()) {
         return Some((marker, rest, 3));
     }
     None
@@ -825,6 +830,143 @@ mod tests {
             manual_label: None,
             inlines: vec![word::CanonicalInline::Text { text: text.into() }],
             children: Vec::new(),
+        }
+    }
+
+    /// A canonical import carrying every Harvard depth, under each root,
+    /// projected through `word::notation` exactly as the import writes it.
+    fn seven_depth_import(scheme: DepthOneScheme) -> word::CanonicalDocument {
+        let root = if scheme == DepthOneScheme::Roman {
+            "I"
+        } else {
+            "1"
+        };
+        let mut path = root.to_string();
+        let mut blocks = vec![outline_path_block(
+            "/word/document.xml:paragraph:1",
+            1,
+            root,
+            root,
+            "Root clause",
+        )];
+        for (index, marker) in ["A", "1", "a", "(1)", "(a)", "(i)"].iter().enumerate() {
+            let depth = u8::try_from(index).unwrap_or_default() + 2;
+            path = format!("{path}.{marker}");
+            blocks.push(outline_path_block(
+                &format!("/word/document.xml:paragraph:{depth}"),
+                depth,
+                marker,
+                &path,
+                &format!("Clause at depth {depth}"),
+            ));
+        }
+        word::CanonicalDocument {
+            scheme: Some(scheme),
+            stories: vec![word::CanonicalStory {
+                kind: word::StoryKind::MainDocument,
+                part_uri: "/word/document.xml".into(),
+                blocks,
+            }],
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn outline_path_block(
+        anchor: &str,
+        depth: u8,
+        marker: &str,
+        path: &str,
+        text: &str,
+    ) -> word::CanonicalBlock {
+        let mut block = outline_block(anchor, depth, marker, text);
+        if let Some(unit) = block.outline.as_mut() {
+            unit.path = path.into();
+            unit.list.level_text = format!("%{depth}.");
+        }
+        block
+    }
+
+    /// The compatibility ENG-577 asks the narration side to prove: every
+    /// Harvard depth, under both roots, read back by the presentation stage
+    /// from what the canonical emitter actually writes. The one-depth anchor
+    /// test above stays as the smoke case; this is the breadth behind it.
+    #[test]
+    fn narration_reads_every_depth_of_both_roots_from_a_canonical_import() {
+        for (scheme, root) in [(DepthOneScheme::Roman, "I"), (DepthOneScheme::Arabic, "1")] {
+            let imported = seven_depth_import(scheme);
+            let narrated = parse(&imported.to_markdown());
+
+            assert_eq!(narrated.scheme, Some(scheme));
+            assert_eq!(narrated.units.len(), 7, "{scheme:?}");
+
+            // Every unit still names the clause it came from.
+            assert_eq!(
+                narrated
+                    .units
+                    .iter()
+                    .map(|unit| unit.anchor.as_str())
+                    .collect::<Vec<_>>(),
+                (1..=7)
+                    .map(|index| format!("/word/document.xml:paragraph:{index}"))
+                    .collect::<Vec<_>>(),
+                "{scheme:?} anchors",
+            );
+
+            // Depths two through seven are one vocabulary under both roots;
+            // only the root glyph changes.
+            assert_eq!(
+                narrated
+                    .units
+                    .iter()
+                    .map(|unit| unit.marker.as_str())
+                    .collect::<Vec<_>>(),
+                vec![root, "A", "1", "a", "(1)", "(a)", "(i)"],
+                "{scheme:?} markers",
+            );
+
+            let mut expected = vec![root.to_string()];
+            for marker in ["A", "1", "a", "(1)", "(a)", "(i)"] {
+                let parent = expected.last().cloned().unwrap_or_default();
+                expected.push(format!("{parent}.{marker}"));
+            }
+            assert_eq!(
+                narrated
+                    .units
+                    .iter()
+                    .map(|unit| unit.path.clone())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{scheme:?} paths",
+            );
+
+            // The canonical paths are the same strings, so the narration
+            // stage and the import agree on where every clause sits.
+            assert_eq!(
+                imported.stories[0]
+                    .blocks
+                    .iter()
+                    .filter_map(|block| block.outline.as_ref())
+                    .map(|unit| unit.path.clone())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{scheme:?} canonical paths",
+            );
+
+            // `(i)` is the one depth a displayed marker cannot settle: it is
+            // the ninth lower letter at depth six and the first lower roman
+            // at depth seven. The presentation stage reads markers only, so
+            // it calls the seventh depth six; the depth an editor acts on is
+            // the block comment's, which `word::notation` carries and this
+            // stage deliberately does not interpret.
+            assert_eq!(
+                narrated
+                    .units
+                    .iter()
+                    .map(|unit| unit.depth)
+                    .collect::<Vec<_>>(),
+                vec![1, 2, 3, 4, 5, 6, 6],
+                "{scheme:?} depths",
+            );
         }
     }
 

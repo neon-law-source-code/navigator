@@ -2,14 +2,23 @@
 //!
 //! Two upload doors on the `/app/brands/{key}/edit` page, each: CSRF-guarded
 //! multipart (the same `require_multipart_csrf` shape the avatar uploads
-//! use), validated by size and content type, scanned by the shared
+//! use), then resolved against the target brand's Firm capability, then
+//! validated by size and content type, scanned by the shared
 //! [`crate::attachment_scanner::AttachmentScanner`], written to the public
 //! assets bucket, and recorded on the `brand` row through
-//! `store::brands::set_logo`/`set_font`. The target brand's Firm capability is
-//! resolved before the public bucket write, while the store methods retain
-//! their own authorization guard as defence in depth. Every refusal redirects
-//! back to the edit page with `?error=` naming the rule; nothing is written to
-//! any bucket on refusal.
+//! `store::brands::set_logo`/`set_font`. The store methods retain their own
+//! authorization guard as defence in depth.
+//!
+//! The capability lookup is the first thing either door does after CSRF, so a
+//! caller outside the brand's Firm is refused before the uploaded bytes are
+//! read, scanned, or stored, and cannot drive a malware scan against another
+//! Firm's brand key. The consequence is deliberate: an out-of-scope caller who
+//! also sends an invalid file sees the `404` not-found refusal rather than the
+//! validation refusal naming the rule they broke. That is the same answer a
+//! brand key that does not exist gives, so it discloses nothing.
+//!
+//! Every validation refusal redirects back to the edit page with `?error=`
+//! naming the rule; nothing is written to any bucket on refusal.
 
 use axum::extract::{Multipart, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -120,6 +129,10 @@ pub async fn upload_logo(
     {
         return axum::http::StatusCode::FORBIDDEN.into_response();
     }
+    let brand = match authorized_brand_for_key(&state, &session, &key).await {
+        Ok(brand) => brand,
+        Err(response) => return response,
+    };
     let field = match multipart.next_field().await {
         Ok(Some(field)) if field.name() == Some("file") => field,
         _ => return back_to_edit(&key, "Choose a logo file."),
@@ -150,11 +163,6 @@ pub async fn upload_logo(
         }
         Err(_) => return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
-
-    let brand = match authorized_brand_for_key(&state, &session, &key).await {
-        Ok(brand) => brand,
-        Err(response) => return response,
-    };
     let ext = if content_type == "image/svg+xml" {
         "svg"
     } else {
@@ -206,6 +214,10 @@ pub async fn upload_font(
     {
         return axum::http::StatusCode::FORBIDDEN.into_response();
     }
+    let brand = match authorized_brand_for_key(&state, &session, &key).await {
+        Ok(brand) => brand,
+        Err(response) => return response,
+    };
 
     let Some(family) = read_text_field(&mut multipart, "family").await else {
         return back_to_edit(&key, "Name the font family.");
@@ -253,11 +265,6 @@ pub async fn upload_font(
         }
         Err(_) => return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
-
-    let brand = match authorized_brand_for_key(&state, &session, &key).await {
-        Ok(brand) => brand,
-        Err(response) => return response,
-    };
     let sha = store::assets::sha256_hex(&bytes);
     let object_key = format!("fonts/brands/{key}/{sha}.woff2");
     if let Err(error) = state

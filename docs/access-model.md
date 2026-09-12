@@ -49,8 +49,9 @@ through, rather than each call site deriving its own `person_firm_role` filter:
   (`webapp::firm_show`); `ManageMembership` gates writing a `person_firm_role` row and a Firm's own settings
   (`store::firms::add_membership`, `ensure_membership`, `update`, `delete`, `update_membership`, `remove_membership`,
   `detach_brand`); `ManageAdminDri` admits no membership tier at all — only Owner ever holds it — and gates
-  `store::firms::appoint_admin_dri` (ENG-499). Brand presentation and public logo/font assets authorize through the
-  capability resolver before storage.
+  `store::firms::appoint_admin_dri` (ENG-499); `ManageBrand` admits only that Firm's Admin DRI and gates a brand's
+  presentation and its public logo and font assets through `store::brands::find_by_key_for_actor`, which every brand
+  door resolves before the bucket write rather than after it (ENG-626).
 - `resolve` answers one `(actor, target Firm, capability)` question with a typed
   [`FirmCapabilityDecision`](../store/src/firm_capability.rs) — `Allowed`, `Forbidden`, or `FirmNotFound` — so a future
   single-Firm surface can render `Forbidden` and `FirmNotFound` identically and never disclose that another Firm's row
@@ -161,7 +162,8 @@ navigate to. The people directory and the matter directory at `/app/admin` are s
 navigate to rather than an invisible widening of a shared route, which is what makes a lens bug distinguishable from an
 intended bypass — the two are otherwise indistinguishable from a response body. Admin cannot create, edit, or demote an
 Owner. `/app/owner` is not an Admin surface. `/app/brands` is not an Admin surface either. `/app/brands/{key}/edit` is:
-an Admin DRI may change that Firm's typeface and palette from the closed catalogs; a system-wide brand stays Owner's.
+an Admin DRI may change that Firm's typeface and palette from the closed catalogs, and replace its logo and uploaded
+font; a system-wide brand stays Owner's.
 
 ### *anonymous*
 

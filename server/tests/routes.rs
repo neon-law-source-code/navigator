@@ -1821,6 +1821,114 @@ async fn app_admin_brands_is_admin_tier() {
 }
 
 #[tokio::test]
+async fn app_admin_brands_hides_another_firms_brand_from_its_admin() {
+    async fn practice(
+        db: &store::surreal::SurrealDb,
+        name: &str,
+        key: &str,
+    ) -> store::persons::Person {
+        let entity_id = store::test_support::seed_entity(db).await;
+        let admin = store::persons::create(
+            db,
+            &store::persons::NewPerson::with_role(
+                format!("{name} Admin"),
+                format!("{key}@example.com"),
+                store::persons::Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        let firm = store::firms::create(
+            db,
+            &store::firms::NewFirm {
+                name: name.to_string(),
+                status: "active".to_string(),
+                entity_id,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .unwrap();
+        store::brands::create(
+            db,
+            store::persons::Role::Admin,
+            Some(admin.id),
+            &store::brands::NewBrand {
+                name: format!("{name} Brand"),
+                key: key.to_string(),
+                firm_id: Some(firm.id),
+                ..store::brands::NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
+        admin
+    }
+    let (state, surreal) = state_with_engines().await;
+    let admin_a = practice(&surreal, "Practice A", "practice-a-brand").await;
+    let _admin_b = practice(&surreal, "Practice B", "practice-b-brand").await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (cookie, _) = session_cookie_and_csrf_for_person(&admin_a);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/admin/brands")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(
+        html.contains(r#"id="brand-card-practice-a-brand""#),
+        "own Firm brand must render: {html}"
+    );
+    assert!(
+        !html.contains(r#"id="brand-card-practice-b-brand""#),
+        "another Firm's brand must not render: {html}"
+    );
+    assert!(
+        !html.contains("/app/admin/brands/practice-b-brand/edit"),
+        "another Firm's edit link must not render: {html}"
+    );
+}
+
+#[tokio::test]
+async fn retired_app_brands_paths_are_not_mounted() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    for path in [
+        "/app/brands",
+        "/app/brands/new",
+        "/app/brands/neon/edit",
+        "/app/brands/neon/logo",
+        "/app/brands/neon/font",
+    ] {
+        let anonymous = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            anonymous.status(),
+            StatusCode::NOT_FOUND,
+            "anonymous {path} must not be a live route"
+        );
+        let owner = get_with_role(app.clone(), path, store::persons::Role::Owner).await;
+        assert_eq!(
+            owner.status(),
+            StatusCode::NOT_FOUND,
+            "owner {path} must not be a live route"
+        );
+    }
+}
+
+#[tokio::test]
 async fn the_design_gallery_reads_anonymously() {
     // `/design` is a public reference surface: it mounts outside the session
     // boundary, so an anonymous reader gets the gallery itself rather than the

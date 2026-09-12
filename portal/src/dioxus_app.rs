@@ -3386,6 +3386,7 @@ pub fn app_brands_router(
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_app_brand_mark)),
         )
         .with_state(FullstackState::new(cfg, webapp::brands_home::BrandsHome))

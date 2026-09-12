@@ -1,5 +1,6 @@
-//! The `/app/admin/brands` house-of-brands home — every registered `brand` row
-//! (ENG-586), system-wide and Firm-scoped alike.
+//! The `/app/admin/brands` house-of-brands home — system-wide `brand` rows
+//! plus, for Owner, every Firm-scoped row; an Admin sees only the Firms they
+//! hold `ManageBrand` on.
 //!
 //! Owner and Admin. A lawyer who works under a brand still sees it on every
 //! page they render, just not this registry view. Lawyer and Clerk are
@@ -65,8 +66,9 @@ fn font_label(brand: &store::brands::Brand) -> String {
     }
 }
 
-/// Resolve the Admin-tier viewer and every registered brand, system-wide and
-/// Firm-scoped alike.
+/// Resolve the Admin-tier viewer and the brands they may see: system-wide
+/// rows, plus every Firm-scoped row for Owner, or only the Firms this Admin
+/// holds `ManageBrand` on.
 ///
 /// A hidden link is not an authorization boundary, so this handler-level gate
 /// refuses Lawyer and Clerk, matching the `/app/admin` route bypass. The store
@@ -75,15 +77,18 @@ fn font_label(brand: &store::brands::Brand) -> String {
 pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
     let role = crate::admin_listing::require_admin().await?;
     let surreal = consume_context::<store::surreal::SurrealDb>();
+    let actor_person_id = crate::admin_listing::injected_person_id().await;
+    let store_role = match role {
+        ViewerRole::Owner => store::persons::Role::Owner,
+        ViewerRole::Admin => store::persons::Role::Admin,
+        ViewerRole::Lawyer => store::persons::Role::Lawyer,
+        ViewerRole::Clerk => store::persons::Role::Clerk,
+        ViewerRole::Client => store::persons::Role::Client,
+    };
 
-    let mut brands = store::brands::system_wide(&surreal)
+    let brands = store::brands::visible_for_actor(&surreal, store_role, actor_person_id)
         .await
         .map_err(|error| ServerFnError::new(error.to_string()))?;
-    brands.extend(
-        store::brands::all_firm_scoped(&surreal)
-            .await
-            .map_err(|error| ServerFnError::new(error.to_string()))?,
-    );
 
     let mut cards = Vec::with_capacity(brands.len());
     for brand in brands {

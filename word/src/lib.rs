@@ -85,6 +85,16 @@ pub enum WordError {
     CorruptPackage,
     #[error("Word package path escapes its container")]
     EscapingPackage,
+    #[error("Word package ZIP entry count {actual} exceeds maximum {maximum}")]
+    ZipEntryCountExceeded { actual: usize, maximum: usize },
+    #[error(
+        "Word package ZIP entry uncompressed size {actual} bytes exceeds maximum {maximum} bytes"
+    )]
+    ZipEntryUncompressedSizeExceeded { actual: u64, maximum: u64 },
+    #[error(
+        "Word package total ZIP uncompressed size {actual} bytes exceeds maximum {maximum} bytes"
+    )]
+    ZipTotalUncompressedSizeExceeded { actual: u64, maximum: u64 },
     #[error("managed Word adapter: {0}")]
     Adapter(#[from] AdapterError),
     #[error("Word adapter protocol version {received} is not supported (expected {expected})")]

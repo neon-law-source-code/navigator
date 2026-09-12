@@ -180,6 +180,64 @@ public sealed class WordAdapterTests
     }
 
     [Fact]
+    public void package_safety_rejects_entry_that_exceeds_uncompressed_limit()
+    {
+        var bytes = SyntheticDocx.WithZeroEntries(
+            1, PackageSafety.MaxZipEntryUncompressedBytes + 1);
+        var response = WordPackageParser.Parse(bytes);
+        var json = JsonSerializer.Serialize(response);
+        using var document = JsonDocument.Parse(json);
+
+        var diagnostic = document.RootElement.GetProperty("diagnostic");
+        Assert.Equal("zip_entry_uncompressed_size_exceeded", diagnostic.GetProperty("code").GetString());
+        Assert.Equal(
+            $"package:entry_uncompressed_bytes={PackageSafety.MaxZipEntryUncompressedBytes + 1};max={PackageSafety.MaxZipEntryUncompressedBytes}",
+            diagnostic.GetProperty("anchor").GetString());
+        Assert.True(bytes.Length < 1024 * 1024);
+    }
+
+    [Fact]
+    public void package_safety_rejects_total_uncompressed_limit()
+    {
+        var bytes = SyntheticDocx.WithZeroEntries(
+            5, PackageSafety.MaxZipEntryUncompressedBytes);
+        var response = WordPackageParser.Parse(bytes);
+        var json = JsonSerializer.Serialize(response);
+        using var document = JsonDocument.Parse(json);
+
+        var diagnostic = document.RootElement.GetProperty("diagnostic");
+        Assert.Equal("zip_total_uncompressed_size_exceeded", diagnostic.GetProperty("code").GetString());
+        Assert.StartsWith(
+            "package:total_uncompressed_bytes=",
+            diagnostic.GetProperty("anchor").GetString());
+        Assert.True(bytes.Length < 1024 * 1024);
+    }
+
+    [Fact]
+    public void package_safety_rejects_too_many_entries()
+    {
+        var bytes = SyntheticDocx.WithZeroEntries(PackageSafety.MaxZipEntryCount - 2, 0);
+        var response = WordPackageParser.Parse(bytes);
+        var json = JsonSerializer.Serialize(response);
+        using var document = JsonDocument.Parse(json);
+
+        var diagnostic = document.RootElement.GetProperty("diagnostic");
+        Assert.Equal("zip_entry_count_exceeded", diagnostic.GetProperty("code").GetString());
+        Assert.Equal(
+            $"package:entries={PackageSafety.MaxZipEntryCount + 1};max={PackageSafety.MaxZipEntryCount}",
+            diagnostic.GetProperty("anchor").GetString());
+    }
+
+    [Fact]
+    public void package_safety_limits_match_the_rust_preflight_contract()
+    {
+        Assert.Equal(100L * 1024 * 1024, PackageSafety.MaxPackageBytes);
+        Assert.Equal(4096, PackageSafety.MaxZipEntryCount);
+        Assert.Equal(64L * 1024 * 1024, PackageSafety.MaxZipEntryUncompressedBytes);
+        Assert.Equal(256L * 1024 * 1024, PackageSafety.MaxZipTotalUncompressedBytes);
+    }
+
+    [Fact]
     public void package_safety_rejects_unsupported_revision_nodes()
     {
         var response = WordPackageParser.Parse(SyntheticDocx.WithUnsupportedRevision());
@@ -360,6 +418,25 @@ public sealed class WordAdapterTests
             "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body /></w:document>",
             (name, "fixture"));
 
+        public static byte[] WithZeroEntries(int count, long uncompressedSize)
+        {
+            using var stream = new MemoryStream();
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
+            {
+                Add(archive, "[Content_Types].xml",
+                    "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\" /></Types>");
+                Add(archive, "_rels/.rels",
+                    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\" /></Relationships>");
+                Add(archive, "word/document.xml",
+                    "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body /></w:document>");
+                for (var index = 0; index < count; index++)
+                {
+                    AddZeroes(archive, $"parts/{index}.xml", uncompressedSize);
+                }
+            }
+            return stream.ToArray();
+        }
+
         public static byte[] WithMacroContentType() => WithDocumentAndMainContentType(
             "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body /></w:document>",
             "application/vnd.ms-word.document.macroEnabled.main+xml");
@@ -427,6 +504,19 @@ public sealed class WordAdapterTests
             using (var writer = new StreamWriter(entry.Open()))
             {
                 writer.Write(content);
+            }
+        }
+
+        private static void AddZeroes(ZipArchive archive, string name, long length)
+        {
+            var entry = archive.CreateEntry(name, CompressionLevel.Optimal);
+            using var target = entry.Open();
+            var zeroes = new byte[8192];
+            while (length > 0)
+            {
+                var count = (int)Math.Min(length, zeroes.Length);
+                target.Write(zeroes, 0, count);
+                length -= count;
             }
         }
     }

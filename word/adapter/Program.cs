@@ -282,7 +282,15 @@ internal static class WordPackageParser
 
 internal static class PackageSafety
 {
-    private const int MaxPackageBytes = 100 * 1024 * 1024;
+    // Mirrored by the constants in word/src/preflight.rs; keep the two copies
+    // together. A real DOCX has tens to low hundreds of parts, so 4,096 leaves
+    // generous headroom while bounding central-directory work. The 64 MiB
+    // per-entry and 256 MiB total uncompressed limits prevent one oversized
+    // part and cap expansion at 2.56x the existing 100 MiB compressed ceiling.
+    internal const long MaxPackageBytes = 100L * 1024 * 1024;
+    internal const int MaxZipEntryCount = 4_096;
+    internal const long MaxZipEntryUncompressedBytes = 64L * 1024 * 1024;
+    internal const long MaxZipTotalUncompressedBytes = 256L * 1024 * 1024;
 
     public static Diagnostic? Validate(byte[] bytes)
     {
@@ -299,6 +307,29 @@ internal static class PackageSafety
         try
         {
             using var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
+            if (archive.Entries.Count > MaxZipEntryCount)
+            {
+                return Diagnostic.Rejected(
+                    "zip_entry_count_exceeded",
+                    $"package:entries={archive.Entries.Count};max={MaxZipEntryCount}");
+            }
+            long totalUncompressedBytes = 0;
+            foreach (var entry in archive.Entries)
+            {
+                if (entry.Length > MaxZipEntryUncompressedBytes)
+                {
+                    return Diagnostic.Rejected(
+                        "zip_entry_uncompressed_size_exceeded",
+                        $"package:entry_uncompressed_bytes={entry.Length};max={MaxZipEntryUncompressedBytes}");
+                }
+                totalUncompressedBytes += entry.Length;
+                if (totalUncompressedBytes > MaxZipTotalUncompressedBytes)
+                {
+                    return Diagnostic.Rejected(
+                        "zip_total_uncompressed_size_exceeded",
+                        $"package:total_uncompressed_bytes={totalUncompressedBytes};max={MaxZipTotalUncompressedBytes}");
+                }
+            }
             var names = archive.Entries.Select(entry => entry.FullName.Replace('\\', '/')).ToList();
             var contentTypes = archive.GetEntry("[Content_Types].xml");
             if (contentTypes is null)

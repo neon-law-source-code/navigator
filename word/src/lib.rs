@@ -161,14 +161,38 @@ mod tests {
         assert!(!error.to_string().contains("body"));
     }
 
-    /// The managed adapter names the ZIP-bound refusals as bare strings, and
-    /// `DiagnosticCode` deserialises them by their `snake_case` spelling. A
-    /// rename on either side turns a clean refusal into an opaque protocol
-    /// failure at the boundary, so the wire spelling is pinned on the Rust
-    /// side, where a gate runs it.
+    #[tokio::test]
+    async fn parser_surfaces_protocol_version_diagnostic() {
+        let diagnostic = super::Diagnostic {
+            code: DiagnosticCode::ProtocolVersion,
+            severity: DiagnosticSeverity::Error,
+            anchor: "request".into(),
+        };
+        let adapter = FixtureAdapter {
+            reply: protocol::AdapterReply::rejected(diagnostic.clone()),
+        };
+
+        let error = parse_with_adapter(&adapter, "synthetic.docx", &valid_zip())
+            .await
+            .expect_err("protocol diagnostic is surfaced");
+
+        assert!(matches!(&error, WordError::Rejected(found) if found == &diagnostic));
+    }
+
+    /// Every diagnostic string emitted by `word/adapter/Program.cs` is pinned
+    /// here against the Rust wire enum. A rename on either side turns a clean
+    /// refusal into an opaque protocol failure at the boundary.
     #[test]
-    fn adapter_zip_bound_refusals_deserialise_into_their_codes() {
+    fn every_adapter_diagnostic_deserialises_into_the_rust_wire_contract() {
         for (code, expected) in [
+            ("protocol_version", DiagnosticCode::ProtocolVersion),
+            ("corrupt_package", DiagnosticCode::CorruptPackage),
+            ("missing_main_document", DiagnosticCode::MissingMainDocument),
+            (
+                "external_relationship",
+                DiagnosticCode::ExternalRelationship,
+            ),
+            ("unsupported_revision", DiagnosticCode::UnsupportedRevision),
             (
                 "zip_entry_count_exceeded",
                 DiagnosticCode::ZipEntryCountExceeded,
@@ -185,6 +209,9 @@ mod tests {
                 "zip_entry_inflated_size_exceeded",
                 DiagnosticCode::ZipEntryInflatedSizeExceeded,
             ),
+            ("macro_enabled_package", DiagnosticCode::MacroEnabledPackage),
+            ("encrypted_package", DiagnosticCode::EncryptedPackage),
+            ("escaping_package", DiagnosticCode::EscapingPackage),
         ] {
             let version = super::PROTOCOL_VERSION;
             let json = format!(

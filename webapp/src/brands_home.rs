@@ -12,6 +12,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::app_chrome::APP_BRAND_NEW_HREF;
 use crate::people::ViewerRole;
 
 /// The `<meta description>` for the brands home.

@@ -13,6 +13,8 @@ name: project-gate
 # The pin *is* the version: this workflow downloads that CLI tag and runs
 # `navigator validate`. It does not resolve `latest`. There is no schedule.
 # `ops github setup` bumps the caller's pin; it never edits this file.
+# Pull requests run the offline checks. A push to `main` additionally runs
+# live verification, because the CI token policy only permits minting there.
 
 on:
   workflow_call:
@@ -360,13 +362,15 @@ jobs:
       - name: live status
         env:
           HOST: ${{ inputs.host }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ -z "${HOST}" ]; then
-              echo "no host — skip live status"
-              exit 0
+          if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
+              navigator site projects gate --ci --host "${HOST}"
+          else
+              navigator site projects gate
           fi
-          navigator site projects gate --ci --host "${HOST}"
 
   # Reconciles `seeds/` against the live deployment. `navigator validate`
   # already covers the offline shape of every `seeds/*.yaml` document (in

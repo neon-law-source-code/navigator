@@ -70,6 +70,39 @@ fn the_reusable_gate_asks_the_deployment_and_arms_auto_merge() {
     assert!(source.contains("needs: [lint, verify, notation, documents, manifest]"));
 }
 
+#[test]
+fn the_project_gate_keeps_manifest_validation_offline_on_prs() {
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&project_gate_source()).expect("project gate parses as YAML");
+    let manifest_steps = workflow["jobs"]["manifest"]["steps"]
+        .as_sequence()
+        .expect("manifest steps");
+    let live_status = manifest_steps
+        .iter()
+        .find(|step| {
+            step["run"]
+                .as_str()
+                .is_some_and(|run| run.contains("navigator site projects gate --ci"))
+        })
+        .expect("manifest live status step");
+    let run = live_status["run"].as_str().expect("live status script");
+
+    assert!(
+        live_status["env"]["EVENT_NAME"].as_str() == Some("${{ github.event_name }}")
+            && live_status["env"]["REF"].as_str() == Some("${{ github.ref }}"),
+        "manifest live status must know which event and ref it is running for"
+    );
+    assert!(
+        run.contains(r#"[ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]"#),
+        "manifest live status must be limited to pushes to main"
+    );
+    assert!(
+        run.contains("navigator site projects gate\n")
+            || run.contains("navigator site projects gate\r\n"),
+        "manifest must retain an offline gate for pull requests"
+    );
+}
+
 /// The `seeds` job reconciles `seeds/` on a push to `main`, is offline on a
 /// pull request (`navigator validate` already covers the shape), never
 /// overwrites, no-ops cleanly with no `seeds/` directory, and stays outside
@@ -170,6 +203,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
     let workflow = fs::read_to_string(dir.path().join(".github/workflows/ci.yml")).unwrap();
     assert!(workflow.contains("project-gate.yml@"));
+    assert!(workflow.contains("on:\n  pull_request:\n  push:\n    branches: [main]"));
     assert!(!workflow.contains("project_repository: true"));
     let workflow_yaml: serde_yaml::Value =
         serde_yaml::from_str(&workflow).expect("scaffolded ci.yml parses as YAML");

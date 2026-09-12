@@ -215,17 +215,28 @@ public sealed class WordAdapterTests
     }
 
     [Fact]
-    public void package_safety_rejects_an_entry_that_inflates_past_its_understated_size()
+    public void an_entry_that_understates_its_central_directory_size_reads_back_truncated()
     {
-        var response = WordPackageParser.Parse(SyntheticDocx.WithUnderstatedEntry());
-        var json = JsonSerializer.Serialize(response);
-        using var document = JsonDocument.Parse(json);
+        using var archive = new ZipArchive(
+            new MemoryStream(SyntheticDocx.WithUnderstatedEntry()), ZipArchiveMode.Read);
+        var entry = archive.GetEntry("parts/understated.xml");
+        Assert.NotNull(entry);
 
-        var diagnostic = document.RootElement.GetProperty("diagnostic");
-        Assert.Equal("zip_entry_inflated_size_exceeded", diagnostic.GetProperty("code").GetString());
-        Assert.Equal(
-            "package:entry_inflated_bytes=8;max=1",
-            diagnostic.GetProperty("anchor").GetString());
+        using var inflated = new MemoryStream();
+        using (var stream = entry.Open())
+        {
+            stream.CopyTo(inflated);
+        }
+
+        // The entry's deflate stream holds eight bytes and its central
+        // directory claims one. `ZipArchiveEntry` hands that declared size to
+        // the inflater, so the read stops there: the declared sizes
+        // `PackageSafety` already bounds are the managed ceiling, and a
+        // counting stream beside them would be unreachable. The archive that
+        // tells this lie is refused by `validate_zip` in word/src/preflight.rs
+        // before the adapter runs.
+        Assert.Equal(1L, entry.Length);
+        Assert.Equal(1L, inflated.Length);
     }
 
     [Fact]

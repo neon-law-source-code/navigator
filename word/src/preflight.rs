@@ -49,7 +49,7 @@ pub(crate) fn validate_zip(bytes: &[u8]) -> Result<(), WordError> {
     let mut has_main_document = false;
     let mut total_uncompressed_bytes: u64 = 0;
     for index in 0..archive.len() {
-        let mut entry = archive
+        let entry = archive
             .by_index(index)
             .map_err(|_| WordError::CorruptPackage)?;
         let uncompressed_bytes = entry.size();
@@ -65,24 +65,6 @@ pub(crate) fn validate_zip(bytes: &[u8]) -> Result<(), WordError> {
                 actual: total_uncompressed_bytes,
                 maximum: MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES,
             });
-        }
-        let inflated_limit = uncompressed_bytes.min(MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES);
-        let mut inflated_bytes = 0_u64;
-        let mut buffer = [0_u8; 8192];
-        loop {
-            let read = entry
-                .read(&mut buffer)
-                .map_err(|_| WordError::CorruptPackage)?;
-            inflated_bytes = inflated_bytes.saturating_add(read as u64);
-            if inflated_bytes > inflated_limit {
-                return Err(WordError::ZipEntryInflatedSizeExceeded {
-                    actual: inflated_bytes,
-                    maximum: inflated_limit,
-                });
-            }
-            if read == 0 {
-                break;
-            }
         }
         let name = entry.name().replace('\\', "/");
         if name == "[Content_Types].xml" {
@@ -119,6 +101,35 @@ pub(crate) fn validate_zip(bytes: &[u8]) -> Result<(), WordError> {
     }
     if !has_content_types || !has_main_document {
         return Err(WordError::CorruptPackage);
+    }
+
+    // Only a package that already looks like a DOCX is worth decompressing.
+    // Every bound above is a *declared* size, and the `zip` reader will happily
+    // inflate an entry past the length its central directory claims, so the
+    // measured byte count is what keeps an understated archive from handing
+    // Open XML more than preflight accounted for.
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|_| WordError::CorruptPackage)?;
+        let maximum = entry.size().min(MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES);
+        let mut inflated_bytes = 0_u64;
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let read = entry
+                .read(&mut buffer)
+                .map_err(|_| WordError::CorruptPackage)?;
+            if read == 0 {
+                break;
+            }
+            inflated_bytes = inflated_bytes.saturating_add(read as u64);
+            if inflated_bytes > maximum {
+                return Err(WordError::ZipEntryInflatedSizeExceeded {
+                    actual: inflated_bytes,
+                    maximum,
+                });
+            }
+        }
     }
     Ok(())
 }
@@ -230,6 +241,23 @@ mod tests {
             validate_zip(&bytes),
             Err(WordError::ZipEntryInflatedSizeExceeded { actual, maximum })
                 if actual > maximum && maximum == 1
+        ));
+    }
+
+    #[test]
+    fn an_escaping_entry_is_refused_before_any_entry_is_inflated() {
+        // This entry both lies about its size and escapes the package. The
+        // cheap refusal is the one that must land: preflight settles the
+        // central directory before it decompresses a single byte.
+        let bytes = understate_central_directory_size(
+            synthetic_package(&[("../outside.xml", 8)]),
+            "../outside.xml",
+            1,
+        );
+
+        assert!(matches!(
+            validate_zip(&bytes),
+            Err(WordError::EscapingPackage)
         ));
     }
 

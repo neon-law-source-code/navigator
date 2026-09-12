@@ -292,6 +292,14 @@ internal static class PackageSafety
     internal const long MaxZipEntryUncompressedBytes = 64L * 1024 * 1024;
     internal const long MaxZipTotalUncompressedBytes = 256L * 1024 * 1024;
 
+    // These declared sizes are the whole managed bound, and no counting stream
+    // belongs beside them. `ZipArchiveEntry.GetDataDecompressor` hands the
+    // central directory's uncompressed size to the inflater, so a read through
+    // `Open()` stops at the declared length and cannot run past what is checked
+    // here. An archive that understates its central directory is refused before
+    // this adapter is ever invoked, by `validate_zip` in word/src/preflight.rs,
+    // whose `zip`-crate reader does inflate past the declared size.
+
     public static Diagnostic? Validate(byte[] bytes)
     {
         if (bytes.Length == 0 || bytes.Length > MaxPackageBytes)
@@ -329,9 +337,6 @@ internal static class PackageSafety
                         "zip_total_uncompressed_size_exceeded",
                         $"package:total_uncompressed_bytes={totalUncompressedBytes};max={MaxZipTotalUncompressedBytes}");
                 }
-
-                using var stream = OpenInflated(entry);
-                stream.CopyTo(Stream.Null);
             }
             var names = archive.Entries.Select(entry => entry.FullName.Replace('\\', '/')).ToList();
             var contentTypes = archive.GetEntry("[Content_Types].xml");
@@ -339,7 +344,7 @@ internal static class PackageSafety
             {
                 return Diagnostic.Corrupt("package");
             }
-            using (var contentTypeStream = OpenInflated(contentTypes))
+            using (var contentTypeStream = contentTypes.Open())
             {
                 var contentTypeDocument = XDocument.Load(contentTypeStream);
                 if (contentTypeDocument.Descendants().Any(element =>
@@ -374,7 +379,7 @@ internal static class PackageSafety
             foreach (var entry in archive.Entries.Where(entry =>
                 entry.FullName.EndsWith(".rels", StringComparison.OrdinalIgnoreCase)))
             {
-                using var stream = OpenInflated(entry);
+                using var stream = entry.Open();
                 var relationships = XDocument.Load(stream);
                 foreach (var relationship in relationships.Descendants().Where(element =>
                     element.Name.LocalName == "Relationship"))
@@ -399,12 +404,6 @@ internal static class PackageSafety
                 return Diagnostic.Corrupt("package");
             }
             return null;
-        }
-        catch (InflatedSizeExceededException exception)
-        {
-            return Diagnostic.Rejected(
-                "zip_entry_inflated_size_exceeded",
-                $"package:entry_inflated_bytes={exception.Actual};max={exception.Maximum}");
         }
         catch (InvalidDataException)
         {
@@ -453,92 +452,6 @@ internal static class PackageSafety
             segments.Add(segment);
         }
         return false;
-    }
-
-    private static Stream OpenInflated(ZipArchiveEntry entry) =>
-        new BoundedInflatedStream(
-            entry.Open(),
-            Math.Min(entry.Length, MaxZipEntryUncompressedBytes));
-
-    private sealed class InflatedSizeExceededException(long actual, long maximum)
-        : Exception
-    {
-        public long Actual { get; } = actual;
-        public long Maximum { get; } = maximum;
-    }
-
-    private sealed class BoundedInflatedStream(Stream inner, long maximum) : Stream
-    {
-        private long _actual;
-
-        public override bool CanRead => inner.CanRead;
-        public override bool CanSeek => false;
-        public override bool CanWrite => false;
-        public override long Length => _actual;
-        public override long Position
-        {
-            get => _actual;
-            set => throw new NotSupportedException();
-        }
-
-        public override void Flush() => inner.Flush();
-
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            var read = inner.Read(buffer, offset, count);
-            Check(read);
-            return read;
-        }
-
-        public override int Read(Span<byte> buffer)
-        {
-            var read = inner.Read(buffer);
-            Check(read);
-            return read;
-        }
-
-        public override ValueTask<int> ReadAsync(
-            Memory<byte> buffer,
-            CancellationToken cancellationToken = default)
-        {
-            return ReadAsyncCore(buffer, cancellationToken);
-        }
-
-        private async ValueTask<int> ReadAsyncCore(
-            Memory<byte> buffer,
-            CancellationToken cancellationToken)
-        {
-            var read = await inner.ReadAsync(buffer, cancellationToken);
-            Check(read);
-            return read;
-        }
-
-        public override int ReadByte()
-        {
-            var value = inner.ReadByte();
-            if (value >= 0)
-            {
-                Check(1);
-            }
-            return value;
-        }
-
-        public override long Seek(long offset, SeekOrigin origin) =>
-            throw new NotSupportedException();
-
-        public override void SetLength(long value) => throw new NotSupportedException();
-
-        public override void Write(byte[] buffer, int offset, int count) =>
-            throw new NotSupportedException();
-
-        private void Check(int read)
-        {
-            _actual = checked(_actual + read);
-            if (_actual > maximum)
-            {
-                throw new InflatedSizeExceededException(_actual, maximum);
-            }
-        }
     }
 }
 

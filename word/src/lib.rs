@@ -205,10 +205,6 @@ mod tests {
                 "zip_total_uncompressed_size_exceeded",
                 DiagnosticCode::ZipTotalUncompressedSizeExceeded,
             ),
-            (
-                "zip_entry_inflated_size_exceeded",
-                DiagnosticCode::ZipEntryInflatedSizeExceeded,
-            ),
             ("macro_enabled_package", DiagnosticCode::MacroEnabledPackage),
             ("encrypted_package", DiagnosticCode::EncryptedPackage),
             ("escaping_package", DiagnosticCode::EscapingPackage),

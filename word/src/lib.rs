@@ -85,6 +85,16 @@ pub enum WordError {
     CorruptPackage,
     #[error("Word package path escapes its container")]
     EscapingPackage,
+    #[error("Word package ZIP entry count {actual} exceeds maximum {maximum}")]
+    ZipEntryCountExceeded { actual: usize, maximum: usize },
+    #[error(
+        "Word package ZIP entry uncompressed size {actual} bytes exceeds maximum {maximum} bytes"
+    )]
+    ZipEntryUncompressedSizeExceeded { actual: u64, maximum: u64 },
+    #[error(
+        "Word package total ZIP uncompressed size {actual} bytes exceeds maximum {maximum} bytes"
+    )]
+    ZipTotalUncompressedSizeExceeded { actual: u64, maximum: u64 },
     #[error("managed Word adapter: {0}")]
     Adapter(#[from] AdapterError),
     #[error("Word adapter protocol version {received} is not supported (expected {expected})")]
@@ -98,8 +108,9 @@ pub enum WordError {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_with_adapter, protocol, Block, Document, DocumentModel, Inline, PackageInventory,
-        Paragraph, RevisionKind, RevisionNode, Story, StoryKind, WordAdapter, WordError,
+        parse_with_adapter, protocol, Block, DiagnosticCode, DiagnosticSeverity, Document,
+        DocumentModel, Inline, PackageInventory, Paragraph, RevisionKind, RevisionNode, Story,
+        StoryKind, WordAdapter, WordError,
     };
 
     struct FixtureAdapter {
@@ -146,6 +157,44 @@ mod tests {
         assert!(matches!(&error, WordError::Rejected(found) if found == &diagnostic));
         assert!(!error.to_string().contains("synthetic"));
         assert!(!error.to_string().contains("body"));
+    }
+
+    /// The managed adapter names the ZIP-bound refusals as bare strings, and
+    /// `DiagnosticCode` deserialises them by their `snake_case` spelling. A
+    /// rename on either side turns a clean refusal into an opaque protocol
+    /// failure at the boundary, so the wire spelling is pinned on the Rust
+    /// side, where a gate runs it.
+    #[test]
+    fn adapter_zip_bound_refusals_deserialise_into_their_codes() {
+        for (code, expected) in [
+            (
+                "zip_entry_count_exceeded",
+                DiagnosticCode::ZipEntryCountExceeded,
+            ),
+            (
+                "zip_entry_uncompressed_size_exceeded",
+                DiagnosticCode::ZipEntryUncompressedSizeExceeded,
+            ),
+            (
+                "zip_total_uncompressed_size_exceeded",
+                DiagnosticCode::ZipTotalUncompressedSizeExceeded,
+            ),
+        ] {
+            let version = super::PROTOCOL_VERSION;
+            let json = format!(
+                "{{\"protocol_version\":{version},\"ok\":false,\"document\":null,\
+                 \"diagnostic\":{{\"code\":\"{code}\",\"severity\":\"error\",\
+                 \"anchor\":\"package\"}}}}"
+            );
+
+            let reply: protocol::AdapterReply =
+                serde_json::from_str(&json).expect("adapter refusal deserialises");
+            let diagnostic = reply.diagnostic.expect("refusal carries a diagnostic");
+
+            assert_eq!(diagnostic.code, expected);
+            assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
+            assert_eq!(diagnostic.anchor, "package");
+        }
     }
 
     #[test]

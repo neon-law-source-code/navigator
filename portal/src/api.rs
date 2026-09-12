@@ -729,11 +729,13 @@ struct UpdateBrandPresentation {
     font_family: String,
 }
 
-/// Shared by `PATCH /app/api/brands/{key}` and the native edit form.
+/// Shared by `PATCH /app/api/brands/{key}` and the native edit form. There is
+/// no separate forbidden answer: an out-of-scope brand and a missing brand are
+/// both `NotFound`, so neither door discloses that another Firm holds the key
+/// (ENG-626).
 #[derive(Debug)]
 pub enum BrandPresentationError {
     NotFound,
-    Forbidden,
     UnknownChoice(String),
     Internal(String),
 }
@@ -815,7 +817,6 @@ async fn update_brand_presentation(
     {
         Ok(updated) => Json(updated).into_response(),
         Err(BrandPresentationError::NotFound) => ApiError::NotFound.into_response(),
-        Err(BrandPresentationError::Forbidden) => ApiError::Forbidden.into_response(),
         Err(BrandPresentationError::UnknownChoice(message)) => {
             ApiError::MalformedBody(message).into_response()
         }

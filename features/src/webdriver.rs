@@ -455,7 +455,7 @@ pub async fn login_as_client(c: &Client) {
 
 /// Drive the bundled `owner@neonlaw.com` Rauthy account to the firm team
 /// home, its post-login landing — the one fixture that also reaches
-/// `/app/owner` and `/app/brands`.
+/// `/app/owner` and `/app/admin/brands`.
 pub async fn login_as_owner(c: &Client) {
     login_as_bundled_fixture(c, "owner@neonlaw.com", "/app/team").await;
 }

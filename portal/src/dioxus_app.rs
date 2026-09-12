@@ -3356,21 +3356,20 @@ pub fn app_team_router(
 }
 
 /// The house-of-brands home — every registered brand's typeface.
-pub const APP_BRANDS_PATH: &str = "/app/brands";
+pub const APP_BRANDS_PATH: &str = "/app/admin/brands";
 
 /// Presentation edit for one brand. Owner for a system-wide row; a Firm's
-/// Admin DRI for a Firm-scoped row. The home at [`APP_BRANDS_PATH`] stays
-/// Owner-only (`owner_only_path` is exactly two segments).
-pub const APP_BRANDS_EDIT_PATH: &str = "/app/brands/{key}/edit";
+/// Admin DRI for a Firm-scoped row. The home at [`APP_BRANDS_PATH`] admits
+/// Owner and Admin through the `/app/admin` route bypass.
+pub const APP_BRANDS_EDIT_PATH: &str = "/app/admin/brands/{key}/edit";
 
-/// `/app/brands` — the house-of-brands home.
+/// `/app/admin/brands` — the house-of-brands home.
 ///
-/// Owner only (ENG-493), narrowed from every firm tier. Gated exactly like
-/// [`app_owner_router`]: `require_auth` then `require_policy` here, and
-/// `require_owner` in the handler's own loader
-/// (`webapp::brands_home::brands_home_view`). The Rego rule carves this path
-/// out of the Owner/Admin route bypass the same way `/app/owner` is carved
-/// out — Admin is denied here, not admitted through the bypass.
+/// Owner and Admin. Gated like the other `/app/admin` desks: `require_auth`
+/// then `require_policy` here, and `require_admin` in the handler's own
+/// loader (`webapp::brands_home::brands_home_view`). Lawyer and Clerk stay
+/// denied. The store still refuses a non-DRI Admin on a Firm-scoped write
+/// and anyone but Owner on a system-wide row.
 pub fn app_brands_router(
     sessions: crate::session::SessionStore,
     policy: crate::policy::PolicyClient,
@@ -3397,7 +3396,7 @@ pub fn app_brands_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
-/// `/app/brands/{key}/edit` — Owner or Admin at the route;
+/// `/app/admin/brands/{key}/edit` — Owner or Admin at the route;
 /// `store::brands::find_by_key_for_actor` resolves `ManageBrand` against the
 /// brand's own Firm and refuses a non-DRI Admin, and a Lawyer never reaches
 /// the handler.
@@ -3429,11 +3428,16 @@ pub fn app_brands_edit_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
-/// `/app/brands/new` — creates a brand row (ENG-586). Owner or Admin at the
-/// route (not `owner_only_path`: that carve-out matches only the exact
-/// two-segment `/app/brands`, not this three-segment path); `store::brands`'
-/// own `authorize` is what refuses an Admin with no Firm DRI standing.
-pub const APP_BRAND_NEW_PATH: &str = "/app/brands/new";
+/// `/app/admin/brands/new` — creates a brand row (ENG-586). Owner or Admin at
+/// the route; `store::brands`' own `authorize` is what refuses an Admin with
+/// no Firm DRI standing.
+pub const APP_BRAND_NEW_PATH: &str = "/app/admin/brands/new";
+
+/// Native GET/POST location for one brand's presentation editor.
+#[must_use]
+pub fn brand_edit_href(key: &str) -> String {
+    format!("{APP_BRANDS_PATH}/{key}/edit")
+}
 
 /// Native POST twin of `APP_BRAND_NEW_PATH`'s create form. Registered on the
 /// same path as the GET below so axum merges the two methods.
@@ -3488,9 +3492,9 @@ pub fn app_brands_edit_post_router(
 /// A brand's uploaded logo, ENG-586. Native multipart only — no Dioxus GET
 /// mounts here, since the edit page's own upload form is a fragment of
 /// `APP_BRANDS_EDIT_PATH`'s render, not a page of its own.
-pub const APP_BRAND_LOGO_PATH: &str = "/app/brands/{key}/logo";
+pub const APP_BRAND_LOGO_PATH: &str = "/app/admin/brands/{key}/logo";
 /// A brand's uploaded font, ENG-586. See [`APP_BRAND_LOGO_PATH`].
-pub const APP_BRAND_FONT_PATH: &str = "/app/brands/{key}/font";
+pub const APP_BRAND_FONT_PATH: &str = "/app/admin/brands/{key}/font";
 
 /// Native multipart POSTs for a brand's logo and font uploads (ENG-586).
 /// `require_multipart_csrf` runs inside each handler — `CsrfMode::Form`

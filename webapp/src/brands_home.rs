@@ -1,15 +1,14 @@
-//! The `/app/brands` house-of-brands home — every registered `brand` row
+//! The `/app/admin/brands` house-of-brands home — every registered `brand` row
 //! (ENG-586), system-wide and Firm-scoped alike.
 //!
-//! Owner only (ENG-493), narrowed from every firm tier: a lawyer who works
-//! under a brand still sees it on every page they render, just not this
-//! registry view. Admin, Lawyer, and Clerk are answered 403 at the route, so
-//! this page never renders for any of them.
+//! Owner and Admin. A lawyer who works under a brand still sees it on every
+//! page they render, just not this registry view. Lawyer and Clerk are
+//! answered 403 at the route, so this page never renders for them.
 //!
-//! Gated exactly like [`crate::owner_home`]: `require_auth` then
-//! `require_policy` at the router, `require_owner` in the loader — so an
-//! anonymous request is a redirect to sign-in, and an authenticated non-Owner
-//! is a `403` rather than a rendered page.
+//! Gated like the other `/app/admin` desks: `require_auth` then
+//! `require_policy` at the router, `require_admin` in the loader — so an
+//! anonymous request is a redirect to sign-in, and an authenticated
+//! non-admin-tier caller is a `403` rather than a rendered page.
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -65,16 +64,15 @@ fn font_label(brand: &store::brands::Brand) -> String {
     }
 }
 
-/// Resolve the Owner viewer and every registered brand, system-wide and
+/// Resolve the Admin-tier viewer and every registered brand, system-wide and
 /// Firm-scoped alike.
 ///
-/// ENG-493: Owner only, narrowed from every firm person. A hidden link is not
-/// an authorization boundary, so this handler-level gate — like
-/// `webapp::owner_home`'s — refuses Lawyer, Clerk, and Admin alike, the same
-/// tiers the Rego rule now excludes from the Owner/Admin route bypass.
+/// A hidden link is not an authorization boundary, so this handler-level gate
+/// refuses Lawyer and Clerk, matching the `/app/admin` route bypass. The store
+/// still refuses a non-DRI Admin on a Firm-scoped write.
 #[server]
 pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
-    let role = crate::admin_listing::require_owner().await?;
+    let role = crate::admin_listing::require_admin().await?;
     let surreal = consume_context::<store::surreal::SurrealDb>();
 
     let mut brands = store::brands::system_wide(&surreal)
@@ -102,7 +100,7 @@ pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
             primary_color: brand.primary_color.clone(),
             font_label: font_label(&brand),
             has_logo: brand.logo_object_key.is_some(),
-            edit_href: format!("/app/brands/{}/edit", brand.key),
+            edit_href: format!("{}/{}/edit", crate::app_chrome::APP_BRANDS_HREF, brand.key),
         });
     }
 
@@ -115,7 +113,7 @@ pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
     })
 }
 
-/// The route entry for `/app/brands`.
+/// The route entry for `/app/admin/brands`.
 #[component]
 pub fn BrandsHome() -> Element {
     let resource = use_server_future(brands_home_view)?;
@@ -186,7 +184,7 @@ pub fn brands_home_body(view: &BrandsHomeView) -> Element {
                 p { class: "page-subtitle",
                     "Every brand registered on this deployment, system-wide and Firm-scoped."
                 }
-                p { a { class: "nav-btn nav-btn--primary", href: "/app/brands/new", "New brand" } }
+                p { a { class: "nav-btn nav-btn--primary", href: APP_BRAND_NEW_HREF, "New brand" } }
             }
             div { class: "brands-home__cards", "aria-label": "Registered brands",
                 if view.cards.is_empty() {
@@ -227,14 +225,17 @@ mod tests {
             primary_color: Some("#007c91".to_string()),
             font_label: "gorp-serif".to_string(),
             has_logo: false,
-            edit_href: "/app/brands/neon/edit".to_string(),
+            edit_href: "/app/admin/brands/neon/edit".to_string(),
         }]);
         assert!(html.contains(r#"id="brand-card-neon""#), "{html}");
         assert!(html.contains("System-wide"), "{html}");
         assert!(html.contains("gorp-serif"), "{html}");
         assert!(html.contains("No logo uploaded"), "{html}");
         assert!(html.contains("background-color: #007c91"), "{html}");
-        assert!(html.contains(r#"href="/app/brands/neon/edit""#), "{html}");
+        assert!(
+            html.contains(r#"href="/app/admin/brands/neon/edit""#),
+            "{html}"
+        );
     }
 
     #[test]
@@ -246,7 +247,7 @@ mod tests {
             primary_color: None,
             font_label: "Custom Sans".to_string(),
             has_logo: true,
-            edit_href: "/app/brands/acme-brand/edit".to_string(),
+            edit_href: "/app/admin/brands/acme-brand/edit".to_string(),
         }]);
         assert!(html.contains("Acme Practice"), "{html}");
         assert!(html.contains("Logo uploaded"), "{html}");
@@ -260,6 +261,6 @@ mod tests {
             html.contains("No brands are registered on this deployment."),
             "{html}"
         );
-        assert!(html.contains(r#"href="/app/brands/new""#), "{html}");
+        assert!(html.contains(r#"href="/app/admin/brands/new""#), "{html}");
     }
 }

@@ -521,7 +521,7 @@ pub async fn system_wide(surreal: &SurrealDb) -> Result<Vec<Brand>, BrandError> 
 }
 
 /// Every Firm-scoped brand across the whole deployment, name then id — the
-/// Owner-only inventory `/app/brands` lists alongside [`system_wide`]. Never
+/// Owner/Admin inventory `/app/admin/brands` lists alongside [`system_wide`]. Never
 /// used for a Firm-scoped viewer's own listing, which stays [`for_firm`].
 pub async fn all_firm_scoped(surreal: &SurrealDb) -> Result<Vec<Brand>, BrandError> {
     let mut response = surreal

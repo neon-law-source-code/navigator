@@ -25,16 +25,18 @@ pub const APP_PROJECTS_HREF: &str = "/app/projects";
 /// tier both here and in the route's Rego rule.
 pub const APP_TEAM_HREF: &str = "/app/team";
 
-/// The house-of-brands home: every registered brand's typeface. Owner only
-/// (ENG-493) — a lawyer who works under a brand still sees it on every page
-/// they render, just not this registry view.
+/// The house-of-brands home: every registered brand's typeface. Owner and
+/// Admin. A lawyer who works under a brand still sees it on every page they
+/// render, just not this registry view.
 ///
-/// No longer a navbar destination in its own right: the row collapsed
-/// "Firms" and "Brands" into the single "Firm" link at [`APP_OWNER_HREF`],
-/// since a Firm's own detail page already lists the brands it wears. The
-/// route itself is unchanged and still reachable directly; an Owner just
-/// reaches it by URL rather than from the row.
-pub const APP_BRANDS_HREF: &str = "/app/brands";
+/// Not a navbar destination in its own right: the row collapsed "Firms" and
+/// "Brands" into the single "Firm" link at [`APP_OWNER_HREF`], since a Firm's
+/// own detail page already lists the brands it wears. An Owner or Admin
+/// reaches this registry from the Admin hub, or by URL.
+pub const APP_BRANDS_HREF: &str = "/app/admin/brands";
+pub const APP_BRAND_NEW_HREF: &str = "/app/admin/brands/new";
+
+/// Create a brand row. Owner or Admin DRI.
 
 /// The Owner listing of practices and the brands they wear. Owner only.
 /// Labeled "Firm" on the navbar row: the row used to carry this destination
@@ -325,7 +327,7 @@ mod tests {
 
     /// Neither Clerk, Lawyer, nor Admin reaches Firm — only Owner does. The
     /// same removal ENG-493 made for "Firms"/"Brands" carries over to the
-    /// collapsed single link. `/app/brands` itself no longer appears in any
+    /// collapsed single link. `/app/admin/brands` itself no longer appears in any
     /// row: the nav destination retired with the collapse, though the route
     /// stays reachable directly.
     #[test]
@@ -391,7 +393,7 @@ mod tests {
         }
         let owner = render(ViewerRole::Owner);
         assert!(owner.contains(r#"href="/app/owner""#), "{owner}");
-        assert!(!owner.contains(r#"href="/app/brands""#), "{owner}");
+        assert!(!owner.contains(r#"href="/app/admin/brands""#), "{owner}");
 
         let client = render(ViewerRole::Client);
         assert!(!client.contains(r#"href="/app/team""#), "{client}");

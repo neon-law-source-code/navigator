@@ -1658,7 +1658,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/outline",
         "/app/admin",
         "/app/team",
-        "/app/brands",
+        "/app/admin/brands",
         "/app/owner",
         "/app/documents",
         "/app/documents/glossary",
@@ -1782,29 +1782,36 @@ async fn the_app_and_public_footers_name_the_seeded_firm_and_its_brands() {
     assert!(home_html.contains("Shook Law PLLC"), "{home_html}");
 }
 
-/// ENG-493: `/app/brands` narrowed to Owner only. A hidden link is not an
+/// `/app/admin/brands` admits Owner and Admin. A hidden link is not an
 /// authorization boundary, so this proves the route itself refuses a Lawyer
-/// — the same shape `owner_lists_the_seeded_practice_and_its_brands` proves
-/// for `/app/owner`, immediately above.
+/// and a Clerk — the same shape the people directory proves for `/app/admin/people`.
 #[tokio::test]
-async fn app_brands_is_owner_only() {
+async fn app_admin_brands_is_admin_tier() {
     let (state, surreal) = state_with_engines().await;
     store::seed::seed_canonical(&surreal, &state.storage)
         .await
         .unwrap();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let owner = get_with_role(app.clone(), "/app/brands", store::persons::Role::Owner).await;
-    assert_eq!(owner.status(), StatusCode::OK);
-    let html = body_string(owner).await;
-    assert!(html.contains("Brands"), "{html}");
+    for (label, role) in [
+        ("owner", store::persons::Role::Owner),
+        ("admin", store::persons::Role::Admin),
+    ] {
+        let resp = get_with_role(app.clone(), "/app/admin/brands", role).await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "{label} must reach the brand registry"
+        );
+        let html = body_string(resp).await;
+        assert!(html.contains("Brands"), "{label}: {html}");
+    }
 
     for (label, role) in [
-        ("admin", store::persons::Role::Admin),
         ("lawyer", store::persons::Role::Lawyer),
         ("clerk", store::persons::Role::Clerk),
     ] {
-        let resp = get_with_role(app.clone(), "/app/brands", role).await;
+        let resp = get_with_role(app.clone(), "/app/admin/brands", role).await;
         assert_eq!(
             resp.status(),
             StatusCode::FORBIDDEN,

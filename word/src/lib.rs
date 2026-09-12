@@ -109,6 +109,8 @@ pub enum WordError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{
         parse_with_adapter, protocol, Block, DiagnosticCode, DiagnosticSeverity, Document,
         DocumentModel, Inline, PackageInventory, Paragraph, RevisionKind, RevisionNode, Story,
@@ -179,12 +181,59 @@ mod tests {
         assert!(matches!(&error, WordError::Rejected(found) if found == &diagnostic));
     }
 
+    /// Read every diagnostic code string out of the adapter source. Both
+    /// `Diagnostic` factories and every `Diagnostic.Rejected` call site pass
+    /// the code as a string literal, so a refusal added to `Program.cs` reaches
+    /// the pin below without anyone having to remember it.
+    fn adapter_diagnostic_codes() -> BTreeSet<String> {
+        const SOURCE: &str = include_str!("../adapter/Program.cs");
+
+        fn literals_after(source: &str, marker: &str) -> Vec<String> {
+            let mut found = Vec::new();
+            let mut rest = source;
+            while let Some(offset) = rest.find(marker) {
+                rest = &rest[offset + marker.len()..];
+                if let Some((literal, _)) = rest
+                    .trim_start()
+                    .strip_prefix('"')
+                    .and_then(|tail| tail.split_once('"'))
+                {
+                    found.push(literal.to_owned());
+                }
+            }
+            found
+        }
+
+        // The two factories that mint a code of their own. The third `new(`
+        // in the record forwards a caller's code and yields no literal.
+        let record = SOURCE
+            .split_once("internal sealed record Diagnostic(")
+            .expect("the adapter declares a Diagnostic record")
+            .1;
+        let record = record
+            .split_once("\n}\n")
+            .expect("the Diagnostic record is closed")
+            .0;
+        let mut codes: BTreeSet<String> = literals_after(record, "new(").into_iter().collect();
+
+        // Every other refusal names its code at the call site.
+        let rejections = literals_after(SOURCE, "Diagnostic.Rejected(");
+        assert_eq!(
+            rejections.len(),
+            SOURCE.matches("Diagnostic.Rejected(").count(),
+            "a Diagnostic.Rejected call in Program.cs no longer passes its code as a string \
+             literal, so this test can no longer enumerate the wire contract"
+        );
+        codes.extend(rejections);
+        codes
+    }
+
     /// Every diagnostic string emitted by `word/adapter/Program.cs` is pinned
     /// here against the Rust wire enum. A rename on either side turns a clean
     /// refusal into an opaque protocol failure at the boundary.
     #[test]
     fn every_adapter_diagnostic_deserialises_into_the_rust_wire_contract() {
-        for (code, expected) in [
+        let pinned = [
             ("protocol_version", DiagnosticCode::ProtocolVersion),
             ("corrupt_package", DiagnosticCode::CorruptPackage),
             ("missing_main_document", DiagnosticCode::MissingMainDocument),
@@ -208,7 +257,20 @@ mod tests {
             ("macro_enabled_package", DiagnosticCode::MacroEnabledPackage),
             ("encrypted_package", DiagnosticCode::EncryptedPackage),
             ("escaping_package", DiagnosticCode::EscapingPackage),
-        ] {
+        ];
+
+        // The adapter is the wire's source of truth, so the table is checked
+        // against the codes actually written there rather than against a
+        // reviewer's memory of them.
+        assert_eq!(
+            adapter_diagnostic_codes(),
+            pinned
+                .iter()
+                .map(|(code, _)| (*code).to_owned())
+                .collect::<BTreeSet<String>>()
+        );
+
+        for (code, expected) in pinned {
             let version = super::PROTOCOL_VERSION;
             let json = format!(
                 "{{\"protocol_version\":{version},\"ok\":false,\"document\":null,\

@@ -386,15 +386,14 @@ internal static class PackageSafety
                 {
                     var mode = relationship.Attribute("TargetMode")?.Value;
                     var target = relationship.Attribute("Target")?.Value;
-                    if (string.Equals(mode, "External", StringComparison.OrdinalIgnoreCase)
-                        || target?.Contains("://", StringComparison.Ordinal) == true
+                    if (string.Equals(mode, "External", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Diagnostic.Rejected("external_relationship", "relationship");
+                    }
+                    if (target?.Contains("://", StringComparison.Ordinal) == true
                         || target is not null && EscapesPackage(entry.FullName, target))
                     {
-                        return Diagnostic.Rejected(
-                            mode?.Equals("External", StringComparison.OrdinalIgnoreCase) == true
-                                ? "external_relationship"
-                                : "escaping_package",
-                            "relationship");
+                        return Diagnostic.Rejected("escaping_package", "relationship");
                     }
                 }
             }

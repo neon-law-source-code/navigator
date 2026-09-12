@@ -245,6 +245,78 @@ async fn apple_login_redirect_carries_client_id_and_pkce() {
     assert!(location.contains("code_challenge_method=S256"));
 }
 
+/// The shape Apple actually uses. Because the authorization request asks for
+/// the `email` scope, Apple requires `response_mode=form_post` and answers by
+/// POSTing a form to the redirect URI instead of redirecting to it — so the
+/// callback has to accept a POST, and the pre-auth cookie has to survive a
+/// cross-site request. A GET-only callback returns 405 here and a `SameSite=Lax`
+/// cookie is never sent at all, which is why the sibling test above cannot
+/// stand in for this one.
+#[tokio::test]
+async fn apple_completes_a_sign_in_through_the_form_post_callback() {
+    let mock = MockServer::start().await;
+    let fixture = AppleFixture::generated();
+    let (app, sessions_store, surreal) = app(&mock, &fixture, None).await;
+    seed_person(&surreal).await;
+
+    let (state, nonce, location, cookie) = begin_apple_login(&app).await;
+    assert!(
+        location.contains("response_mode=form_post"),
+        "Apple refuses a scoped authorization request without form_post: {location}"
+    );
+
+    Mock::given(method("POST"))
+        .and(path("/apple/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id_token": sign_apple_id_token(&fixture, &nonce),
+            "token_type": "Bearer",
+        })))
+        .mount(&mock)
+        .await;
+
+    // Exactly what Apple sends: the code and state as a form body, plus the
+    // first-login `user` field, which this flow ignores in favour of the
+    // verified id_token.
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("code", "test-code")
+        .append_pair("state", &state)
+        .append_pair("user", r#"{"name":{"firstName":"Test"}}"#)
+        .finish();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/callback")
+                .header("cookie", &cookie)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::SEE_OTHER,
+        "the form_post callback must complete the sign-in"
+    );
+    let session_cookie = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .find(|value| value.contains("navigator_session="))
+        .expect("session cookie set");
+    let raw = session_cookie
+        .split(';')
+        .next()
+        .unwrap()
+        .trim_start_matches("navigator_session=");
+    let session = sessions_store.decode(raw).expect("session decodes");
+    assert_eq!(session.provider.as_deref(), Some("apple"));
+}
+
 #[tokio::test]
 async fn apple_token_exchange_verifies_the_client_secret_and_records_provider() {
     let mock = MockServer::start().await;

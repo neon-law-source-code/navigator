@@ -360,6 +360,29 @@ Navigator adds Sign in with Apple alongside the primary provider and Microsoft E
 database-role admission rules stay the same. Apple is a real-deployment-only provider: Rauthy remains the KIND fixture,
 and no Apple credential belongs in a repository or local fixture.
 
+### Apple answers with a form POST, not a redirect
+
+Apple documents exactly two scope values beside `openid` — `name` and `email` — so the `profile` the other two providers
+ask for is not a value it accepts. Navigator only ever reads the address out of the id_token, so the Apple authorization
+request asks for `openid email` and nothing more.
+
+Asking for that address changes the shape of the reply. Apple will not put user data in a redirect URL, so a request
+carrying the `name` or `email` scope **must** also carry `response_mode=form_post`, and Apple refuses the request
+outright when it is missing. The authorization code then arrives as a cross-site `POST` of an
+`application/x-www-form-urlencoded` body to the shared `/auth/callback`, rather than as the query-string redirect the
+other providers send. Three things follow, and all three are provider-scoped so no existing provider's flow changes:
+
+- `ProviderId::response_mode` adds the parameter for Apple and returns `None` for the primary and Microsoft slots, whose
+  authorization URLs stay byte-identical.
+- `/auth/callback` answers `POST` as well as `GET`. Both methods read the same `code` and `state` fields and run the
+  same three phases; only the extractor differs. Apple's first-login `user` field is ignored — the address comes from
+  the verified id_token, never from an unsigned form field.
+- The pre-auth cookie is written `SameSite=None` for a form-post provider, because a browser withholds a `SameSite=Lax`
+  cookie on a cross-site POST and the callback would otherwise reject its own valid `state`. `None` is only honoured
+  alongside `Secure`, which holds for Apple: it is a real-deployment-only provider and those are always HTTPS. The
+  signed cookie is still the only thing that decides which provider a code belongs to, so an unsolicited POST fails the
+  state check exactly as an unsolicited GET always has.
+
 ### The client-secret difference
 
 Apple does not issue a static OAuth client secret for this flow. Navigator mints the `client_secret` form field as a JWT

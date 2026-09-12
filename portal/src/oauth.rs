@@ -140,6 +140,41 @@ impl ProviderId {
         }
     }
 
+    /// The `scope` this provider's authorization request asks for.
+    ///
+    /// Apple documents exactly two scope values beside `openid` — `name` and
+    /// `email` — so the `profile` the other providers ask for is not a value
+    /// it accepts. Navigator only ever reads the address out of the id_token
+    /// ([`Self::identity_address`]), so Apple is asked for the address and
+    /// nothing more, and the existing providers keep the scope they had.
+    fn authorize_scope(self) -> &'static str {
+        match self {
+            Self::Primary | Self::Microsoft => "openid email profile",
+            Self::Apple => "openid email",
+        }
+    }
+
+    /// `response_mode`, for a provider the default `query` mode does not
+    /// cover.
+    ///
+    /// Apple returns the authorization code by POSTing a form to the redirect
+    /// URI whenever the request asks for `name` or `email`, and refuses the
+    /// authorization request outright when `response_mode=form_post` is
+    /// absent. For Apple this parameter is therefore what makes the request
+    /// legal at all, not a preference. The other providers get nothing, which
+    /// keeps their authorization URLs byte-identical.
+    ///
+    /// A provider named here must also be reachable on the `POST`
+    /// `/auth/callback` route and must carry a `SameSite=None` pre-auth cookie
+    /// (see [`pre_auth_cookie`]): a cross-site form POST is neither a `GET`
+    /// nor a request a `Lax` cookie rides along with.
+    fn response_mode(self) -> Option<&'static str> {
+        match self {
+            Self::Primary | Self::Microsoft => None,
+            Self::Apple => Some("form_post"),
+        }
+    }
+
     /// The sign-in button label.
     ///
     /// Microsoft's branding rules require the exact words "Sign in with
@@ -783,13 +818,16 @@ pub fn authorize_url(cfg: &OAuthConfig, pre: &PreAuth) -> String {
     let mut url = url_with_query(cfg.authorization_endpoint());
     let client = urlencode(&cfg.inner.client_id);
     let redirect = urlencode(&cfg.inner.redirect_uri);
-    let scope = urlencode("openid email profile");
+    let scope = urlencode(cfg.provider().authorize_scope());
     let state = urlencode(&pre.state);
     let nonce = urlencode(&pre.nonce);
     let _ = write!(
         url,
         "response_type=code&client_id={client}&redirect_uri={redirect}&scope={scope}&state={state}&nonce={nonce}&code_challenge={challenge}&code_challenge_method=S256",
     );
+    if let Some(mode) = cfg.provider().response_mode() {
+        let _ = write!(url, "&response_mode={mode}");
+    }
     url
 }
 
@@ -1043,7 +1081,10 @@ pub fn routes(state: AuthState) -> Router {
         // Email/password submit (Identity Platform). 404s when password
         // sign-in is not configured.
         .route("/auth/password", post(password_login))
-        .route("/auth/callback", get(callback))
+        // `POST` as well as `GET`: a provider using `response_mode=form_post`
+        // (Apple) delivers the code as a cross-site form submission rather
+        // than a redirect. Both methods land on the same three phases.
+        .route("/auth/callback", get(callback).post(callback_form))
         .route("/auth/logout", get(logout).post(logout));
 
     // Self-service password reset + email confirmation only exist where
@@ -1210,7 +1251,11 @@ fn start_provider(
     let cookie_value = s
         .sessions
         .encode_signed_bytes(&serde_json::to_vec(&pre).expect("pre-auth is always serializable"));
-    cookies.add(pre_auth_cookie(cookie_value, s.secure_cookies));
+    cookies.add(pre_auth_cookie(
+        cookie_value,
+        s.secure_cookies,
+        provider.response_mode().is_some(),
+    ));
     Redirect::to(&authorize_url(cfg, &pre)).into_response()
 }
 
@@ -1945,6 +1990,29 @@ async fn callback(
     cookies: Cookies,
     Query(q): Query<CallbackQuery>,
 ) -> Response {
+    complete_callback(s, cookies, q).await
+}
+
+/// The `response_mode=form_post` arrival of the same callback.
+///
+/// Apple POSTs `code` and `state` as an `application/x-www-form-urlencoded`
+/// body instead of putting them in the redirect's query string, so the fields
+/// are identical and only the extractor differs. `Form` is last because it
+/// consumes the request body.
+///
+/// The POST is cross-site — it comes from Apple's origin, not ours — which is
+/// why [`pre_auth_cookie`] relaxes `SameSite` for such a provider. The signed
+/// pre-auth cookie remains the only thing that decides which provider this
+/// code belongs to, so an unsolicited POST still fails the state check.
+async fn callback_form(
+    State(s): State<AuthState>,
+    cookies: Cookies,
+    Form(q): Form<CallbackQuery>,
+) -> Response {
+    complete_callback(s, cookies, q).await
+}
+
+async fn complete_callback(s: AuthState, cookies: Cookies, q: CallbackQuery) -> Response {
     if q.error.is_some() {
         return (StatusCode::BAD_REQUEST, "oauth error from idp").into_response();
     }
@@ -2593,11 +2661,25 @@ fn decode_unverified_payload(jwt: &str) -> Option<IdTokenClaims> {
     serde_json::from_slice(&bytes).ok()
 }
 
-fn pre_auth_cookie(value: String, secure: bool) -> Cookie<'static> {
+/// Build the signed pre-auth cookie.
+///
+/// `cross_site` is set for a provider that answers the authorization request
+/// with a form POST from its own origin ([`ProviderId::response_mode`]).
+/// Browsers withhold a `SameSite=Lax` cookie on a cross-site POST, so such a
+/// provider would arrive at the callback with no pre-auth cookie at all and
+/// fail the state check on every sign-in. `SameSite=None` is only honoured on
+/// a `Secure` cookie, so an insecure deployment keeps `Lax` rather than
+/// emitting a cookie the browser drops outright — the affected providers are
+/// deployment-only and always HTTPS.
+fn pre_auth_cookie(value: String, secure: bool, cross_site: bool) -> Cookie<'static> {
     let mut c = Cookie::new(PRE_AUTH_COOKIE_NAME, value);
     c.set_http_only(true);
     c.set_secure(secure);
-    c.set_same_site(SameSite::Lax);
+    c.set_same_site(if cross_site && secure {
+        SameSite::None
+    } else {
+        SameSite::Lax
+    });
     c.set_path("/");
     c.set_max_age(tower_cookies::cookie::time::Duration::seconds(
         PRE_AUTH_TTL_SECS,
@@ -2652,6 +2734,7 @@ mod tests {
         JwksDocument, NoticeText, OAuthConfig, PreAuth, ProviderId, ResolveError,
         APPLE_CLIENT_SECRET_TTL_SECS,
     };
+    use super::{pre_auth_cookie, SameSite};
     use crate::auth::JwksKey;
     use crate::session::{now_unix_secs, random_token_32, DEFAULT_SESSION_TTL_SECS};
     use crate::test_support::{oidc_verifier, sign_id_token, sign_id_token_with_kid};
@@ -2716,6 +2799,19 @@ mod tests {
     use base64::Engine;
     use store::persons::Role;
     use store::test_support::mem_surreal;
+
+    /// A throwaway P-256 key in PKCS#8 PEM, generated per call. Apple's real
+    /// `.p8` is a deployment secret and never reaches a test or a fixture.
+    fn test_apple_private_key_pem() -> String {
+        use p256::ecdsa::SigningKey;
+        use p256::elliptic_curve::Generate;
+        use p256::pkcs8::{EncodePrivateKey, LineEnding};
+
+        SigningKey::generate()
+            .to_pkcs8_pem(LineEnding::LF)
+            .expect("test key serialises")
+            .to_string()
+    }
 
     fn cfg() -> OAuthConfig {
         OAuthConfig::new(
@@ -3459,6 +3555,91 @@ mod tests {
         assert!(url.contains("code_challenge_method=S256"));
     }
 
+    /// Apple refuses an authorization request that asks for `name` or `email`
+    /// without `response_mode=form_post`, and `profile` is not one of the
+    /// scope values it accepts. Sending the shared query-mode request to Apple
+    /// therefore fails every Apple sign-in at the authorization step, before
+    /// any of the mocked token-exchange coverage is reached.
+    #[test]
+    fn apple_authorize_url_asks_for_form_post_and_only_scopes_apple_accepts() {
+        let apple = OAuthConfig::new_apple(
+            "com.example.navigator",
+            "team-test",
+            "key-test",
+            test_apple_private_key_pem().as_bytes(),
+            "https://app.example.com/auth/callback",
+            "https://appleid.apple.com/auth/authorize",
+            "https://appleid.apple.com/auth/token",
+        )
+        .expect("test Apple config builds");
+        let pre = PreAuth {
+            provider: ProviderId::Apple,
+            state: "STATE123".into(),
+            verifier: "the-verifier".into(),
+            nonce: "NONCE789".into(),
+            return_to: "/app/projects".into(),
+            exp: now_unix_secs() + 300,
+        };
+
+        let url = authorize_url(&apple, &pre);
+        assert!(
+            url.contains("response_mode=form_post"),
+            "Apple rejects a scoped request without form_post: {url}"
+        );
+        assert!(
+            url.contains(&urlencode("openid email")),
+            "Apple must be asked for the address it will return: {url}"
+        );
+        assert!(
+            !url.contains("profile"),
+            "`profile` is not an Apple scope value: {url}"
+        );
+    }
+
+    /// The existing providers keep the query-mode request they have always
+    /// sent: `response_mode` is Apple's requirement, not a global one, and a
+    /// stray parameter here would change a live Google and Entra URL.
+    #[test]
+    fn query_mode_providers_send_no_response_mode_and_keep_their_scope() {
+        for provider in [ProviderId::Primary, ProviderId::Microsoft] {
+            let cfg = cfg().with_provider(provider);
+            let pre = PreAuth {
+                provider,
+                state: "S".into(),
+                verifier: "v".into(),
+                nonce: "n".into(),
+                return_to: "/".into(),
+                exp: now_unix_secs() + 300,
+            };
+            let url = authorize_url(&cfg, &pre);
+            assert!(!url.contains("response_mode"), "{provider:?}: {url}");
+            assert!(
+                url.contains(&urlencode("openid email profile")),
+                "{provider:?}: {url}"
+            );
+        }
+    }
+
+    /// A `Lax` cookie is withheld on the cross-site POST Apple sends, so the
+    /// callback would find no pre-auth cookie and reject its own valid state.
+    /// `None` is only honoured alongside `Secure`, so the insecure lane must
+    /// stay `Lax` rather than emit a cookie the browser discards.
+    #[test]
+    fn a_form_post_provider_gets_a_cross_site_pre_auth_cookie_only_when_secure() {
+        let cross_site_secure = pre_auth_cookie("v".into(), true, true);
+        assert_eq!(cross_site_secure.same_site(), Some(SameSite::None));
+        assert!(cross_site_secure.secure().unwrap_or(false));
+
+        // Query-mode providers keep `Lax`, which is the CSRF-tightest value
+        // that still rides along on a top-level redirect back from the IdP.
+        let query_mode = pre_auth_cookie("v".into(), true, false);
+        assert_eq!(query_mode.same_site(), Some(SameSite::Lax));
+
+        // No `Secure`, so `None` would be dropped by the browser entirely.
+        let insecure = pre_auth_cookie("v".into(), false, true);
+        assert_eq!(insecure.same_site(), Some(SameSite::Lax));
+    }
+
     #[test]
     fn authorize_url_appends_with_amp_when_endpoint_has_existing_query() {
         let cfg = OAuthConfig::new(
@@ -3558,7 +3739,10 @@ mod tests {
         use super::{login_csrf_cookie, pre_auth_cookie, session_cookie};
         for builder in [
             session_cookie as fn(String, bool) -> _,
-            pre_auth_cookie,
+            // The cross-site variant is exercised by
+            // `a_form_post_provider_gets_a_cross_site_pre_auth_cookie_only_when_secure`;
+            // Secure is unconditional, so either value proves this property.
+            |value, secure| pre_auth_cookie(value, secure, false),
             login_csrf_cookie,
         ] {
             assert_eq!(builder("v".into(), true).secure(), Some(true));

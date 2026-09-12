@@ -542,7 +542,10 @@ public sealed class WordAdapterTests
             using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
             {
                 Add(archive, "[Content_Types].xml",
-                    $"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Override PartName=\"/word/document.xml\" ContentType=\"{mainContentType}\" /></Types>");
+                    "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                    + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\" />"
+                    + "<Default Extension=\"xml\" ContentType=\"application/xml\" />"
+                    + $"<Override PartName=\"/word/document.xml\" ContentType=\"{mainContentType}\" /></Types>");
                 Add(archive, "_rels/.rels",
                     "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\" /></Relationships>");
                 Add(archive, "word/document.xml", document);

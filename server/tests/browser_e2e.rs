@@ -1898,11 +1898,7 @@ async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
         .for_element(Locator::Css("#profile-avatar img"))
         .await
         .expect("the profile page renders the avatar preview");
-    let preview_src = avatar
-        .attr("src")
-        .await
-        .unwrap()
-        .unwrap_or_default();
+    let preview_src = avatar.attr("src").await.unwrap().unwrap_or_default();
     assert!(
         preview_src.starts_with("/app/me/avatar?v="),
         "the preview must read the caller's own cache-busted avatar route, got {preview_src:?}"

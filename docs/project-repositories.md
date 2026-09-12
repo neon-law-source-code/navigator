@@ -312,9 +312,14 @@ OIDC door for live document verification at `POST /auth/ci/document-token`; with
 rather than minting a session. Staging sample repositories stay public by design. `ops github setup --dry-run` reports a
 visibility finding and never flips visibility.
 
+The `manifest` job runs `navigator site projects gate` offline on every event. When `vars.NAVIGATOR_HOST` is set, it
+adds the live status check with `--ci --host` only on a push to `main`, where the CI token policy permits the OIDC
+exchange. The `documents` job follows the same two-event contract: pointer validation runs on pull requests, and live
+document verification runs only on a push to `main`.
+
 `navigator site projects repository scaffold` generates the shape every Project repository converged on by hand before
-this generator caught up: three feeder jobs — `lint`, `verify` (typecheck, test, build), and `notation` (the snippet
-above) — fanned into one required check. Each feeder job runs unconditionally and no-ops over a half this repository
+this generator caught up: five feeder jobs — `lint`, `verify` (typecheck, test, build), `notation`, `documents`, and
+`manifest` — fan into one required check. Each feeder job runs unconditionally and no-ops over a half this repository
 does not carry. Application steps discover direct `apps/*/package.json` manifests at run time and also include a root
 `portal/package.json` during the transition; the same gate therefore works before the first application exists and
 cannot silently skip a later one.
@@ -322,18 +327,19 @@ cannot silently skip a later one.
 A fourth job, `documents`, validates every `documents/` pointer — offline on every event, and additionally against the
 live asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange
 `seed-import` uses, at `POST /auth/ci/document-token`). It runs unconditionally alongside the other three and no-ops
-over a repository carrying no `documents/`, but it is deliberately **not** one of the required check's dependencies: its
-live half needs a reachable deployment, and the always-required check must never depend on that. A failing `documents`
-job is visible on the pull request without blocking the merge the other three jobs gate.
+over a repository carrying no `documents/`, and is one of the required check's dependencies. Its offline half keeps pull
+requests independent of a live deployment; its live half runs only on a push to `main`.
 
-A fifth job, `seeds`, reconciles `seeds/` the same way. `navigator validate` already covers the offline shape of every
-`seeds/*.yaml` document (the `notation` job, above), on every event including a pull request from a fork, so `seeds`
-mints nothing there — a token is mintable only from `refs/heads/main`, which is exactly why a PR check stays
+A fifth job, `manifest`, runs `navigator site projects gate` offline on every event. With `vars.NAVIGATOR_HOST` set, it
+adds the live status check with `--ci --host` only on a push to `main`, where the CI token policy permits the OIDC
+exchange. A sixth job, `seeds`, reconciles `seeds/` the same way. `navigator validate` already covers the offline shape
+of every `seeds/*.yaml` document (the `notation` job, above), on every event including a pull request from a fork, so
+`seeds` mints nothing there — a token is mintable only from `refs/heads/main`, which is exactly why a PR check stays
 offline-only. On a push to `main` with `vars.NAVIGATOR_HOST` set, it exchanges the runner's own OIDC identity token at
 `POST /auth/ci/seed-token` and runs `navigator site import --ci --host <host> --dir seeds`, **never** `--overwrite`: the
 natural key makes a re-run a no-op, and a CI job that can replace a client's recorded field unattended is not one the
-firm wants. A repository with no `seeds/` exits `0` with a message. Like `documents`, `seeds` is deliberately **not**
-one of the required check's dependencies.
+firm wants. A repository with no `seeds/` exits `0` with a message. `seeds` is outside the required check's dependencies
+because its live half needs a reachable deployment.
 
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
 and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository

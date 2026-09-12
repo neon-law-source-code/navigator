@@ -51,6 +51,17 @@ const LANES: &[(&str, &str)] = &[
 /// what keeps a layout dump comparable between the lanes.
 const ZONE: &str = "kind";
 
+/// The Garage bucket names one native database tenant owns.
+///
+/// Kept separate from provisioning so the host registry can reject a bucket
+/// collision before any Garage administration command can alter shared state.
+pub(super) fn bucket_names(tenant: &str) -> BTreeMap<String, String> {
+    LANES
+        .iter()
+        .map(|(suffix, env_name)| ((*env_name).to_string(), bucket_name(tenant, suffix)))
+        .collect()
+}
+
 fn state_dir(root: &Path) -> PathBuf {
     super::supervisor::service_dir(root, super::GARAGE_LABEL)
 }
@@ -194,21 +205,20 @@ pub(super) fn provision(root: &Path, tenant: &str) -> Result<Tenant> {
     }
 
     let mut minted = Vec::with_capacity(LANES.len());
-    let mut buckets = BTreeMap::new();
-    for (suffix, env_name) in LANES {
-        let name = bucket_name(tenant, suffix);
-        minted.push(ensure_key(&garage, &config, &name)?);
+    let buckets = bucket_names(tenant);
+    for (_, env_name) in LANES {
+        let name = &buckets[*env_name];
+        minted.push(ensure_key(&garage, &config, name)?);
         // `bucket create` fails once the bucket exists, which is the
         // ordinary second-`up` case rather than an error.
-        let _ = run(&garage, &config, &["bucket", "create", &name]);
+        let _ = run(&garage, &config, &["bucket", "create", name]);
         run(
             &garage,
             &config,
             &[
-                "bucket", "allow", "--read", "--write", "--owner", &name, "--key", &name,
+                "bucket", "allow", "--read", "--write", "--owner", name, "--key", name,
             ],
         )?;
-        buckets.insert((*env_name).to_string(), name);
     }
     let mut minted = minted.into_iter();
     let documents = minted.next().context("the documents lane key is missing")?;
@@ -334,7 +344,7 @@ fn run(garage: &Path, config: &Path, arguments: &[&str]) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{bucket_name, config_toml, layout_applied, node_id, LANES};
+    use super::{bucket_name, bucket_names, config_toml, layout_applied, node_id, LANES};
     use std::path::Path;
 
     /// Every address has to be loopback. The shared process uses fixed
@@ -374,6 +384,17 @@ mod tests {
         assert_ne!(
             bucket_name("navigator_alpha_1234", "documents"),
             bucket_name("navigator_beta_5678", "documents")
+        );
+    }
+
+    #[test]
+    fn every_tenant_bucket_is_known_before_provisioning() {
+        let buckets = bucket_names("navigator_alpha_1234");
+
+        assert_eq!(buckets.len(), LANES.len());
+        assert_eq!(
+            buckets["NAVIGATOR_STORAGE_BUCKET"],
+            "navigator-alpha-1234-documents"
         );
     }
 

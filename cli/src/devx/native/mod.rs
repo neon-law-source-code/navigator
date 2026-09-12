@@ -152,6 +152,8 @@ pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig, database: &str) -> Re
     let registry_path = registry::path();
     let shared_root = registry::state_dir(&registry_path);
     let mut state = loaded(&registry_path)?;
+    let buckets = garage::bucket_names(database);
+    registry::ensure_tenant_available(&state, root, database, &buckets)?;
     let services = [
         surreal::service(&shared_root, cfg.surreal_port)?,
         garage::service(
@@ -336,10 +338,10 @@ pub(super) fn deferred_lines() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        database_name, deferred_lines, DEFERRED, GARAGE_ADMIN_PORT_BASE, GARAGE_RPC_PORT_BASE,
-        RAUTHY_API_PORT_BASE, RAUTHY_RAFT_PORT_BASE, SUPERVISED,
+        database_name, deferred_lines, garage, registry, DEFERRED, GARAGE_ADMIN_PORT_BASE,
+        GARAGE_RPC_PORT_BASE, RAUTHY_API_PORT_BASE, RAUTHY_RAFT_PORT_BASE, SUPERVISED,
     };
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::path::Path;
 
     #[test]
@@ -354,6 +356,30 @@ mod tests {
             database_name(Path::new("/tmp/worktree-b"), "feature-129")
         );
         assert!(first.starts_with("navigator_feature_129_"));
+    }
+
+    #[test]
+    fn colliding_legacy_database_names_are_refused_before_garage_provisioning() {
+        let first = Path::new("/tmp/worktree/68rwa3iq4y");
+        let second = Path::new("/tmp/worktree/rlv3bhtqw9");
+        let database = database_name(first, "feature-632");
+        assert_eq!(database, database_name(second, "feature-632"));
+
+        let buckets = garage::bucket_names(&database);
+        let mut state = registry::NativeRegistry::default();
+        registry::claim(
+            &mut state,
+            first,
+            1,
+            database.clone(),
+            buckets.clone(),
+            BTreeMap::new(),
+        );
+
+        let error = registry::ensure_tenant_available(&state, second, &database, &buckets)
+            .expect_err("another root must not reach Garage provisioning with this tenant");
+        assert!(error.to_string().contains("database"), "{error:#}");
+        assert_eq!(state.claims.len(), 1, "the rejected root has no claim");
     }
 
     /// The slot table's last range starts at `21_200` and spans 100. An

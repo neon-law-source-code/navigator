@@ -8,7 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use axum::extract::{DefaultBodyLimit, Extension, FromRef, Multipart, Path, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::middleware;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -921,11 +921,19 @@ async fn stream_avatar(
         None => StatusCode::NOT_FOUND.into_response(),
         Some(StoredAvatar::DirectlyFetchableUrl(url)) => Redirect::to(&url).into_response(),
         Some(StoredAvatar::DocumentsBucketKey(key)) => match storage.get(&key).await {
-            Ok(object) => (
-                [(axum::http::header::CONTENT_TYPE, object.content_type)],
-                object.bytes,
-            )
-                .into_response(),
+            Ok(object) => {
+                let mut response = object.bytes.into_response();
+                if let Ok(content_type) = HeaderValue::from_str(&object.content_type) {
+                    response
+                        .headers_mut()
+                        .insert(header::CONTENT_TYPE, content_type);
+                }
+                response.headers_mut().insert(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("private, no-store"),
+                );
+                response
+            }
             Err(cloud::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
             Err(e) => {
                 tracing::error!(error = %e, key = %key, "avatar download: storage read failed");
@@ -1074,10 +1082,15 @@ fn initials_avatar_response(name: &str) -> Response {
 /// [`current_viewer_avatar`], never a person id supplied in the request —
 /// so, unlike [`admin_person_avatar_upload`], this cannot become a write to
 /// someone else's row.
+///
+/// A classic form navigation receives `303` back to `/app/profile`. The
+/// in-place script on that page sends `X-Requested-With: XMLHttpRequest`
+/// and receives `204` so the browser can stay on the profile page.
 async fn profile_avatar_upload(
     State(s): State<AdminState>,
     cookies: tower_cookies::Cookies,
     session: Option<Extension<SessionData>>,
+    headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
     let Some(Extension(session_data)) = session else {
@@ -1112,12 +1125,26 @@ async fn profile_avatar_upload(
     )
     .await
     {
-        Ok(Some(_)) => Redirect::to(webapp::profile::PROFILE_PATH).into_response(),
+        Ok(Some(_)) => profile_avatar_upload_accepted(&headers),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::error!(error = %e, person_id = %id, "profile avatar upload: person edit failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+/// `204` when the profile page's in-place script posted the upload, so the
+/// browser stays on `/app/profile`; `303` for a native form navigation.
+fn profile_avatar_upload_accepted(headers: &HeaderMap) -> Response {
+    let inplace = headers
+        .get("x-requested-with")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("XMLHttpRequest"));
+    if inplace {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        Redirect::to(webapp::profile::PROFILE_PATH).into_response()
     }
 }
 

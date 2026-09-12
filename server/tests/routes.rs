@@ -16180,6 +16180,14 @@ async fn profile_page_avatar_form_posts_to_the_sibling_upload_route() {
         "the avatar form must post to /app/avatar: {html}"
     );
     assert!(
+        html.contains("/public/js/avatar-upload.js"),
+        "the profile page loads the in-place avatar upload script: {html}"
+    );
+    assert!(
+        html.contains(r#"id="profile-avatar-file""#),
+        "the file input carries the id the in-place script binds to: {html}"
+    );
+    assert!(
         !html.contains("/app/profile/avatar"),
         "a nested action under /app/profile is not the upload route: {html}"
     );
@@ -16270,6 +16278,64 @@ async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to
         .await
         .unwrap();
     assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
+}
+
+/// The profile page's in-place script posts the same multipart body with
+/// `X-Requested-With: XMLHttpRequest` so the handler answers `204` instead of
+/// redirecting away from `/app/profile`.
+#[tokio::test]
+async fn client_profile_avatar_upload_stays_on_the_profile_page_for_xhr() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra Scales",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&viewer);
+    let boundary = "----navigator-test-profile-avatar-xhr-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/avatar")
+                .header(header::COOKIE, &cookie)
+                .header("x-requested-with", "XMLHttpRequest")
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT, "{:?}", resp.status());
+    assert!(
+        resp.headers().get(header::LOCATION).is_none(),
+        "an in-place upload must not navigate away from /app/profile"
+    );
+
+    let row = store::persons::find_by_id(&surreal, viewer.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    let key = row
+        .profile_image_url
+        .expect("the upload must set profile_image_url");
+    let stored = state.storage.get(&key).await.unwrap();
+    assert_eq!(stored.bytes, ONE_PIXEL_PNG);
 }
 
 /// The same upload posted at `/app/profile/avatar`, the nested action a

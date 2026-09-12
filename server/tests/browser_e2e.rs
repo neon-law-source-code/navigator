@@ -1890,6 +1890,7 @@ async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
 
     scroll_and_js_click(c, "#profile-avatar form button[type='submit']").await;
     wait_for_path(c, "/app/profile", Duration::from_secs(20)).await;
+    wait_for_text(c, "Avatar updated.", Duration::from_secs(20)).await;
 
     let avatar = c
         .wait()
@@ -1897,10 +1898,10 @@ async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
         .for_element(Locator::Css("#profile-avatar img"))
         .await
         .expect("the profile page renders the avatar preview");
-    assert_eq!(
-        avatar.attr("src").await.unwrap().as_deref(),
-        Some("/app/me/avatar"),
-        "the preview must read the caller's own avatar route"
+    let preview_src = avatar.attr("src").await.unwrap().unwrap_or_default();
+    assert!(
+        preview_src.starts_with("/app/me/avatar?v="),
+        "the preview must read the caller's own cache-busted avatar route, got {preview_src:?}"
     );
 
     let after = fetch_content_type(c, &format!("{}/app/me/avatar", base_url())).await;

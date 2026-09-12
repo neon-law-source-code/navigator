@@ -68,6 +68,8 @@ did.
 - [`design-mockups.md`](design-mockups.md) — translating an approved design into the portal surface.
 - [`design.md`](design.md) — the design system.
 - [`assets.md`](assets.md) — public asset references and the approved workflow.
+- [`signed-url-delivery-audit.md`](signed-url-delivery-audit.md) — the signed-URL document delivery audit: TTLs,
+  authorization, `site pull`, portal CSP, and publisher identity.
 - [`bulk-contact-import.md`](bulk-contact-import.md) — turning a raw contact list into seeded Persons.
 - [`retainer_intake.md`](retainer_intake.md) — the retainer intake walkthrough.
 

@@ -400,3 +400,34 @@ async fn the_target_admin_and_owner_can_update_brand_assets() {
     assert_eq!(updated.font_family.as_deref(), Some("Replacement Sans"));
     assert_eq!(updated.font_licence.as_deref(), Some("OFL-1.1"));
 }
+
+/// The negative case above proves an out-of-scope Admin is refused on the edit
+/// GET and the presentation POST. Both doors now answer from
+/// `store::brands::find_by_key_for_actor`, so a resolver that refused
+/// *everyone* would satisfy that assertion just as well. Pin the other side of
+/// the boundary: the target Firm's Admin DRI and Owner still read the editor
+/// and still write presentation through the same lookup.
+#[tokio::test]
+async fn the_target_admin_and_owner_can_read_and_edit_brand_presentation() {
+    let (fixture, brand) = build().await;
+
+    assert_eq!(get_edit(&fixture, &fixture.admin_b).await, StatusCode::OK);
+    assert_eq!(get_edit(&fixture, &fixture.owner).await, StatusCode::OK);
+
+    assert_eq!(
+        post_presentation(&fixture, &fixture.admin_b).await,
+        StatusCode::SEE_OTHER
+    );
+    let edited = store::brands::find_by_id(&fixture.surreal, brand.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(edited.typeface.as_deref(), Some("gorp-serif"));
+    assert_eq!(edited.primary_color.as_deref(), Some("#007c91"));
+    assert_eq!(edited.font_family.as_deref(), Some("Replacement Sans"));
+
+    assert_eq!(
+        post_presentation(&fixture, &fixture.owner).await,
+        StatusCode::SEE_OTHER
+    );
+}

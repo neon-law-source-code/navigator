@@ -2,24 +2,13 @@
 //! paragraph after a table is consumed by GFM as part of the table,
 //! so we only flag the preceding case.) Mirrors MD058.
 
+use crate::tables::{body_line_numbers, is_delimiter_row, is_table_row};
 use crate::{line_byte_range, Rule, SourceFile, Violation};
 
 pub struct M058BlanksAroundTables;
 
 impl M058BlanksAroundTables {
     pub const CODE: &'static str = "M058";
-}
-
-fn is_table_row(line: &str) -> bool {
-    line.trim().contains('|')
-}
-
-fn is_separator(line: &str) -> bool {
-    let t = line.trim();
-    if !t.contains('|') {
-        return false;
-    }
-    t.chars().all(|c| matches!(c, '|' | '-' | ':' | ' ')) && t.contains('-')
 }
 
 fn is_blank(line: &str) -> bool {
@@ -33,11 +22,19 @@ impl Rule for M058BlanksAroundTables {
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {
         let lines: Vec<&str> = file.contents.lines().collect();
+        // A table only opens where the renderer would build one, so front
+        // matter and fenced code are out: a table drawn inside a fence is
+        // sample text, and its spacing is the author's business.
+        let body = body_line_numbers(&file.contents);
         let mut violations = Vec::new();
         let mut i = 0;
         while i < lines.len() {
             let next = lines.get(i + 1).copied().unwrap_or("");
-            if is_table_row(lines[i]) && is_separator(next) {
+            if body.contains(&(i + 1))
+                && body.contains(&(i + 2))
+                && is_table_row(lines[i])
+                && is_delimiter_row(next)
+            {
                 // Found a table header at i. Check line above.
                 if i > 0 && !is_blank(lines[i - 1]) {
                     violations.push(Violation {
@@ -87,6 +84,36 @@ mod tests {
     #[test]
     fn passes_when_table_starts_document() {
         let s = "| a | b |\n|---|---|\n| 1 | 2 |\n";
+        assert!(M058BlanksAroundTables.lint(&f(s)).is_empty());
+    }
+
+    /// A table drawn inside a fenced code block is sample text. The renderer
+    /// never builds it, so its spacing is the author's business.
+    #[test]
+    fn ignores_a_table_inside_a_fence() {
+        let s = concat!(
+            "Body.\n",
+            "\n",
+            "```markdown\n",
+            "| a | b |\n",
+            "|---|---|\n",
+            "| 1 | 2 |\n",
+            "```\n",
+        );
+        assert!(M058BlanksAroundTables.lint(&f(s)).is_empty());
+    }
+
+    /// Front matter is YAML. A pipe-bearing value there opens no table.
+    #[test]
+    fn ignores_pipe_bearing_frontmatter() {
+        let s = concat!(
+            "---\n",
+            "title: a | b\n",
+            "summary: --- | ---\n",
+            "---\n",
+            "\n",
+            "Body prose.\n",
+        );
         assert!(M058BlanksAroundTables.lint(&f(s)).is_empty());
     }
 }

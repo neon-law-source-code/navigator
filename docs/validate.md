@@ -133,6 +133,15 @@ for that violation without a human decision; every other code needs a person to 
 | `S103` | Error | The declared `kind:` must be a recognized document kind. | No |
 | `S104` | Error | A file's declared `kind:` must agree with its notation/event structure. | No |
 
+`S102` reflows prose only, so it holds back the block-level constructs whose lines carry meaning: headings, tables,
+block quotes, fences, horizontal rules, setext underlines, link-reference definitions, and HTML blocks. It recognises
+the last two the way CommonMark does. A definition needs at most three spaces of indentation, a label free of unescaped
+brackets, a colon, a destination that is bare-and-unspaced or wrapped in `<…>`, and then either nothing or a complete
+title; a title on the next line belongs to a definition that did not already carry one. An HTML block needs one of
+CommonMark's seven start conditions, which means a block-level tag name or a complete tag standing alone on its line.
+Anything looser is prose, so `[text]: this is prose` and a paragraph opening `<span>inline</span>` reflow like the
+sentences they are.
+
 ### N-family — notation template shape
 
 | Code | Severity | Rule | Autofix |
@@ -231,12 +240,22 @@ for that violation without a human decision; every other code needs a person to 
 | `M053` | Error | Reference definitions must be referenced by something. | No |
 | `M054` | Error | Link and image style must be consistent. | No |
 | `M055` | Error | Table pipe style must be consistent. | No |
-| `M056` | Error | Table column counts must match the header row. | No |
+| `M056` | Error | A table's delimiter row and every body row must carry the header row's cell count. | No |
 | `M057` | Error | A relative link target must resolve to a real file on disk. | No |
 | `M058` | Error | Tables must be surrounded by blank lines. | No |
 | `M059` | Error | Link text must be descriptive, not `here` or `click`. | No |
 | `M060` | Error | Table column styles must be consistent. | No |
 | `M061` | **Warning** | A published doc must not keep a relative link the renderer cannot map. | No |
+
+`M055`, `M056`, `M058`, and `M060` read a table row the same way, through one shared reader. Cells are separated by
+unescaped `|`, the outer pipes are optional and open no column, and `\|` is a literal pipe inside its cell — so a row
+documenting a shell pipeline is not torn in two. Front matter and fenced code blocks are not Markdown body, so a table
+drawn in either is sample text and no table rule measures it.
+
+`M056` measures the delimiter row (`| --- | --- |`) as well as the body rows, because that row is what decides whether
+the block is a table at all: GitHub-flavoured Markdown builds one only when the delimiter row's cell count equals the
+header row's, and demotes the whole block to paragraph text otherwise. The demotion is silent — the pipes render
+literally and the columns disappear.
 
 ### Y-family — YAML documents
 

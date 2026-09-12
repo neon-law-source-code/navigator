@@ -2,41 +2,13 @@
 //! `aligned` (pipes line up), `tight` (single-space cell padding), or
 //! `compact` (no padding). Mirrors MD060's `any` mode.
 
+use crate::tables::{body_line_numbers, cells, is_delimiter_row, is_table_row, pipe_positions};
 use crate::{line_byte_range, Rule, SourceFile, Violation};
 
 pub struct M060TableColumnStyle;
 
 impl M060TableColumnStyle {
     pub const CODE: &'static str = "M060";
-}
-
-fn is_table_row(line: &str) -> bool {
-    line.trim().contains('|')
-}
-
-fn is_separator(line: &str) -> bool {
-    let t = line.trim();
-    if !t.contains('|') {
-        return false;
-    }
-    t.chars().all(|c| matches!(c, '|' | '-' | ':' | ' ')) && t.contains('-')
-}
-
-fn pipe_positions(line: &str) -> Vec<usize> {
-    // Use character indices, not byte indices: a row with an em-dash
-    // (3 bytes in UTF-8) is still visually aligned with neighbors that
-    // have only ASCII content. Comparing byte offsets here would flag
-    // every mixed-ASCII/Unicode table as misaligned.
-    line.chars()
-        .enumerate()
-        .filter_map(|(i, c)| (c == '|').then_some(i))
-        .collect()
-}
-
-fn cells(line: &str) -> Vec<&str> {
-    let t = line.trim_end();
-    let inner = t.trim_start_matches('|').trim_end_matches('|');
-    inner.split('|').collect()
 }
 
 fn aligned(rows: &[&str]) -> bool {
@@ -73,14 +45,21 @@ impl Rule for M060TableColumnStyle {
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {
         let lines: Vec<&str> = file.contents.lines().collect();
+        // A table inside a fence is sample text; its column style is the
+        // author's business, not this rule's.
+        let body = body_line_numbers(&file.contents);
         let mut violations = Vec::new();
         let mut i = 0;
         while i < lines.len() {
             let next = lines.get(i + 1).copied().unwrap_or("");
-            if is_table_row(lines[i]) && is_separator(next) {
+            if body.contains(&(i + 1))
+                && body.contains(&(i + 2))
+                && is_table_row(lines[i])
+                && is_delimiter_row(next)
+            {
                 let mut rows: Vec<&str> = vec![lines[i], lines[i + 1]];
                 let mut j = i + 2;
-                while j < lines.len() && is_table_row(lines[j]) {
+                while j < lines.len() && body.contains(&(j + 1)) && is_table_row(lines[j]) {
                     rows.push(lines[j]);
                     j += 1;
                 }
@@ -143,6 +122,38 @@ mod tests {
 | ok   | plain ascii      |
 | also | with — em-dash   |
 ";
+        assert!(M060TableColumnStyle.lint(&f(s)).is_empty());
+    }
+
+    /// `\|` is a literal pipe inside a cell, not a column boundary. Splitting
+    /// on it tears one cell into two ragged halves and the table matches no
+    /// style at all, so every table documenting a shell pipeline was a finding.
+    #[test]
+    fn an_escaped_pipe_stays_inside_its_cell() {
+        let s = concat!(
+            "| command | effect |\n",
+            "| --- | --- |\n",
+            "| `a \\| b` | pipes a into b |\n",
+        );
+        assert!(
+            M060TableColumnStyle.lint(&f(s)).is_empty(),
+            "an escaped pipe was read as a column boundary"
+        );
+    }
+
+    /// A table inside a fence is sample text; its column style is the
+    /// author's business.
+    #[test]
+    fn ignores_a_table_inside_a_fence() {
+        let s = concat!(
+            "Prose.\n",
+            "\n",
+            "```markdown\n",
+            "| a |b|\n",
+            "|---|---|\n",
+            "|1 | 2|\n",
+            "```\n",
+        );
         assert!(M060TableColumnStyle.lint(&f(s)).is_empty());
     }
 }

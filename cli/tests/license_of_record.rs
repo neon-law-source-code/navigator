@@ -195,12 +195,16 @@ fn window(body: &str, at: usize, len: usize) -> &str {
 ///
 /// `worktrees` covers `.worktrees`, `.claude/worktrees`, and `.codex/worktrees`
 /// alike. Each holds a *complete other checkout*, so walking in reads another
-/// branch's files as if they were this one's. CI clones fresh and never has
-/// them, which is exactly why such a failure would only ever reproduce on the
-/// machine of whoever is working in a worktree.
+/// branch's files as if they were this one's. `.devx` is the local
+/// dev-environment scratch directory, which carries the built sample-portal
+/// bundles. CI clones fresh and never has either, which is exactly why such a
+/// failure would only ever reproduce on the machine of whoever is running a
+/// local tier or working in a worktree.
 fn is_skipped_dir(name: &str) -> bool {
-    matches!(name, "target" | ".git" | "node_modules" | "vendor")
-        || name.trim_start_matches('.') == "worktrees"
+    matches!(
+        name,
+        "target" | ".git" | "node_modules" | "vendor" | ".devx"
+    ) || name.trim_start_matches('.') == "worktrees"
 }
 
 /// Every `Cargo.toml` in the workspace, including manifests the workspace
@@ -1975,4 +1979,37 @@ fn the_firm_entity_of_record_is_one_string_across_brand_seed_and_entity_row() {
          row up by this exact name on every boot, so the row the delete guard protects \
          would never exist. Records: {names:?}"
     );
+}
+
+/// The tree walk reads the working directory, not the git index, so every
+/// directory of generated local state has to be named here or its contents are
+/// reported as though they were this repository's own.
+///
+/// `.devx/` is the local dev-environment scratch directory. `dev worktree-env
+/// up` publishes the built sample-portal bundles under `.devx/sample-projects/`
+/// and teardown leaves them behind, so any developer who ran a local tier and
+/// then ran the workspace suite in the same checkout saw
+/// `no_file_contains_the_retired_org_display_name` report minified JS and CSS
+/// as offending files. It is gitignored and CI never materialises it, which is
+/// the worst shape for a guard: it cries wolf exactly where somebody is
+/// verifying a change and never where it would catch one. The sibling guards in
+/// this directory — `portal_namespace_retired.rs` and the one holding the
+/// retired role vocabulary — already skip it; this walk did not. Neither may be
+/// named here: that vocabulary guard reads every other file in the tree, and a
+/// line spelling its own file name is the leftover it exists to reject.
+#[test]
+fn the_walk_skips_generated_local_state() {
+    for generated in [".devx", "target", ".git", "node_modules", "vendor"] {
+        assert!(
+            is_skipped_dir(generated),
+            "`{generated}` is generated local state, so walking into it reports \
+             files this repository does not own"
+        );
+    }
+    for owned in ["cli", "rules", "docs", "templates", "store"] {
+        assert!(
+            !is_skipped_dir(owned),
+            "`{owned}` is this workspace's own surface and must still be walked"
+        );
+    }
 }

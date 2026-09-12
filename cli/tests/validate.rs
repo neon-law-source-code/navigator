@@ -1654,3 +1654,203 @@ fn validate_tells_a_yml_manifest_to_rename() {
         .stdout(str::contains("Y008"))
         .stdout(str::contains("the manifest is navigator.yaml, rename it"));
 }
+
+/// A GFM table is a table only while its delimiter row carries as many
+/// cells as its header. The shape below — a header that gained a fourth
+/// column while the delimiter row kept three — passed the gate and
+/// rendered as paragraph text, so `M056` now measures that row too.
+#[test]
+fn validate_flags_a_delimiter_row_that_does_not_match_its_header() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "Contracts.md",
+        "# Contracts\n\n\
+         | | Unset | Plain collector | Complete contract |\n\
+         | --- | --- | --- |\n\
+         | stdout | human-readable | structured JSON | structured JSON |\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Contracts.md:4"))
+        .stdout(str::contains("M056"))
+        .stdout(str::contains("3 cell(s)"))
+        .stdout(str::contains("4"));
+}
+
+/// The repaired shape passes, and the body-row check `M056` already
+/// carried still measures a row that disagrees with a delimiter row the
+/// header does agree with.
+#[test]
+fn validate_accepts_a_matching_delimiter_row_and_still_measures_body_rows() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "Good.md",
+        "# Good\n\n\
+         | | Unset | Plain collector | Complete contract |\n\
+         | --- | --- | --- | --- |\n\
+         | stdout | human-readable | structured JSON | structured JSON |\n",
+    );
+    write(
+        dir.path(),
+        "Short.md",
+        "# Short\n\n\
+         | first | second |\n\
+         | --- | --- |\n\
+         | only one |\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Short.md:5"))
+        .stdout(str::contains("Table row has 1 cell(s); expected 2"))
+        .stdout(str::contains("found 1 error(s)"));
+}
+
+/// A broken table drawn inside a fenced code block is sample text that
+/// documents the failure, not a table the renderer will build, so no table
+/// rule measures it — not `M056`, and not `M058`, which would otherwise
+/// report the row after the fence opener as a table with no blank line
+/// above it. An escaped `\|` stays inside its cell, so `M060` reads the
+/// padded table below as tight rather than as ragged halves. Every table
+/// rule is diagnostic-only, so `--fix` leaves the file byte-identical and a
+/// second run reports exactly the same thing.
+#[test]
+fn validate_ignores_fenced_tables_and_escaped_pipes() {
+    let dir = TempDir::new().unwrap();
+    let original = "# Samples\n\n\
+        ```markdown\n\
+        | a | b | c |\n\
+        | --- | --- |\n\
+        | 1 |\n\
+        ```\n\n\
+        | command | effect |\n\
+        | --- | --- |\n\
+        | `a \\| b` | pipes a into b |\n";
+    write(dir.path(), "Samples.md", original);
+    for _ in 0..2 {
+        navigator()
+            .args(["validate", "--fix"])
+            .arg(dir.path())
+            .assert()
+            .success()
+            .stdout(str::contains("Fixed 0 file(s)"));
+        assert_eq!(
+            fs::read_to_string(dir.path().join("Samples.md")).unwrap(),
+            original,
+            "a fix run rewrote a file that carries no violation"
+        );
+    }
+}
+
+/// `S102`'s structural recognisers follow `CommonMark`, so ordinary prose
+/// that merely *looks* structural still reflows: a bracketed word followed
+/// by prose is not a link-reference definition, and a paragraph opening
+/// with an inline tag is not an HTML block. The genuine constructs
+/// alongside them are still preserved, and a second `--fix` run changes
+/// nothing.
+#[test]
+fn validate_fix_reflows_prose_that_only_looks_structural() {
+    let dir = TempDir::new().unwrap();
+    let original = "Use the [text][] and [guide][] references below.\n\n\
+        [text]: this is prose\n\
+        and the sentence continues here.\n\n\
+        <span>inline</span> opens this\n\
+        paragraph, which still reflows.\n\n\
+        [guide]: <https://example.com/guide>\n\
+        A prose line under the definition.\n\n\
+        <div>\n\
+        HTML block line one.\n\
+        HTML block line two.\n\
+        </div>\n";
+    write(dir.path(), "Shapes.md", original);
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 1 file(s)"));
+
+    let expected = "Use the [text][] and [guide][] references below.\n\n\
+        [text]: this is prose and the sentence continues here.\n\n\
+        <span>inline</span> opens this paragraph, which still reflows.\n\n\
+        [guide]: <https://example.com/guide>\n\
+        A prose line under the definition.\n\n\
+        <div>\n\
+        HTML block line one.\n\
+        HTML block line two.\n\
+        </div>\n";
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Shapes.md")).unwrap(),
+        expected,
+        "prose was held back, or a real construct was repacked"
+    );
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 0 file(s)"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Shapes.md")).unwrap(),
+        expected,
+        "a repeated fix changed the fixture"
+    );
+}
+
+/// A reference definition owns a title on the next line only when it does
+/// not already carry one. A definition that does carry its own title
+/// leaves the quoted line below it as prose.
+#[test]
+fn validate_fix_gives_a_next_line_title_only_to_a_title_less_definition() {
+    let dir = TempDir::new().unwrap();
+    let original = "Use the [pending][] and [carried][] references below.\n\n\
+        [pending]: <https://example.com/pending>\n\
+        \"Pending title\"\n\
+        A prose line under the title.\n\n\
+        [carried]: <https://example.com/carried> \"Carried title\"\n\
+        \"A quoted opening\"\n\
+        and the rest of the sentence.\n";
+    write(dir.path(), "Titles.md", original);
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 1 file(s)"));
+
+    let expected = "Use the [pending][] and [carried][] references below.\n\n\
+        [pending]: <https://example.com/pending>\n\
+        \"Pending title\"\n\
+        A prose line under the title.\n\n\
+        [carried]: <https://example.com/carried> \"Carried title\"\n\
+        \"A quoted opening\" and the rest of the sentence.\n";
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Titles.md")).unwrap(),
+        expected,
+        "the wrong line was treated as a definition title"
+    );
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 0 file(s)"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Titles.md")).unwrap(),
+        expected,
+        "a repeated fix changed the fixture"
+    );
+}

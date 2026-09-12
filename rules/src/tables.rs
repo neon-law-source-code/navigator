@@ -12,6 +12,9 @@
 //! rather than open a cell, so they are optional and contribute no column.
 //! A backslash escapes the character after it, which is how a row
 //! documenting a shell pipeline keeps `a \| b` in one cell.
+//!
+//! A delimiter row must carry an unescaped pipe unless the header's outer
+//! pipes make a one-cell, pipe-less delimiter unambiguous.
 
 use std::collections::BTreeSet;
 
@@ -90,10 +93,15 @@ pub fn is_table_row(line: &str) -> bool {
     !pipe_positions(line).is_empty()
 }
 
-/// Whether a line is a delimiter row: pipe-separated cells, each one
-/// hyphens with an optional alignment colon at either end.
+/// Whether `line` is a GFM delimiter row for `header`: cells are hyphens with
+/// an optional alignment colon at either end. A delimiter must carry an
+/// unescaped pipe unless the header's outer pipes make the one-cell form
+/// unambiguous.
 #[must_use]
-pub fn is_delimiter_row(line: &str) -> bool {
+pub fn is_delimiter_row(line: &str, header: &str) -> bool {
+    if pipe_positions(line).is_empty() && !has_outer_pipes(header) {
+        return false;
+    }
     let cells = cells(line);
     if cells.is_empty() {
         return false;
@@ -102,6 +110,15 @@ pub fn is_delimiter_row(line: &str) -> bool {
         let dashes = cell.trim().trim_start_matches(':').trim_end_matches(':');
         !dashes.is_empty() && dashes.chars().all(|character| character == '-')
     })
+}
+
+fn has_outer_pipes(line: &str) -> bool {
+    let line = line.trim();
+    let positions = pipe_positions(line);
+    positions.first() == Some(&0)
+        && positions
+            .last()
+            .is_some_and(|position| *position + 1 == line.chars().count())
 }
 
 /// The 1-based line numbers that are Markdown body: outside YAML front
@@ -158,13 +175,21 @@ mod tests {
 
     #[test]
     fn a_delimiter_row_is_hyphens_with_optional_colons() {
-        assert!(is_delimiter_row("| --- | --- |"));
-        assert!(is_delimiter_row("|---|---|"));
-        assert!(is_delimiter_row("| :-- | :-: | --: |"));
-        assert!(is_delimiter_row("--- | ---"));
-        assert!(!is_delimiter_row("| a | b |"));
-        assert!(!is_delimiter_row("| :: | -- |"));
-        assert!(!is_delimiter_row("| | |"));
+        let header = "| a | b | c |";
+        assert!(is_delimiter_row("| --- | --- | --- |", header));
+        assert!(is_delimiter_row("|---|---|---|", header));
+        assert!(is_delimiter_row("| :-- | :-: | --: |", header));
+        assert!(is_delimiter_row("--- | --- | ---", header));
+        assert!(!is_delimiter_row("| a | b | c |", header));
+        assert!(!is_delimiter_row("| :: | -- | --- |", header));
+        assert!(!is_delimiter_row("| | | |", header));
+    }
+
+    #[test]
+    fn a_delimiter_row_without_a_pipe_is_not_a_table_delimiter() {
+        assert!(!is_delimiter_row("---", "some | prose"));
+        assert!(is_delimiter_row("---", "| a |"));
+        assert!(is_delimiter_row("| - |", "| a |"));
     }
 
     #[test]

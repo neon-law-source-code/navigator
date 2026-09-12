@@ -55,7 +55,7 @@ impl Rule for M060TableColumnStyle {
             if body.contains(&(i + 1))
                 && body.contains(&(i + 2))
                 && is_table_row(lines[i])
-                && is_delimiter_row(next)
+                && is_delimiter_row(next, lines[i])
             {
                 let mut rows: Vec<&str> = vec![lines[i], lines[i + 1]];
                 let mut j = i + 2;

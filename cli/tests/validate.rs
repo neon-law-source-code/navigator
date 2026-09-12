@@ -1655,6 +1655,18 @@ fn validate_tells_a_yml_manifest_to_rename() {
         .stdout(str::contains("the manifest is navigator.yaml, rename it"));
 }
 
+#[test]
+fn validate_does_not_report_prose_followed_by_a_pipe_less_rule_as_a_table() {
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "Prose.md", "some | prose\n---\n");
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+}
+
 /// A GFM table is a table only while its delimiter row carries as many
 /// cells as its header. The shape below — a header that gained a fourth
 /// column while the delimiter row kept three — passed the gate and

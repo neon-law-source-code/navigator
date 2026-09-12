@@ -33,7 +33,7 @@ impl Rule for M058BlanksAroundTables {
             if body.contains(&(i + 1))
                 && body.contains(&(i + 2))
                 && is_table_row(lines[i])
-                && is_delimiter_row(next)
+                && is_delimiter_row(next, lines[i])
             {
                 // Found a table header at i. Check line above.
                 if i > 0 && !is_blank(lines[i - 1]) {

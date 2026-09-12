@@ -36,7 +36,7 @@ impl Rule for M055TablePipeStyle {
                 if body.contains(&(idx + 1))
                     && body.contains(&(idx + 2))
                     && is_table_row(line)
-                    && is_delimiter_row(next)
+                    && is_delimiter_row(next, line)
                 {
                     let p = pipes(line);
                     if expected.is_none() {

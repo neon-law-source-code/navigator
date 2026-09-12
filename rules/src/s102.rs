@@ -325,7 +325,10 @@ fn non_prose_lines(lines: &[(usize, &str)]) -> Vec<bool> {
         if is_non_prose(line) {
             out[index] = true;
         }
-        if index > 0 && is_reference_definition(lines[index - 1].1) && is_reference_title(line) {
+        if index > 0
+            && reference_definition(lines[index - 1].1) == Some(Definition::TitlePending)
+            && is_reference_title(line.trim())
+        {
             out[index] = true;
         }
         if let Some(terminator) = html_block_start(trimmed) {
@@ -338,40 +341,162 @@ fn non_prose_lines(lines: &[(usize, &str)]) -> Vec<bool> {
     out
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HtmlBlockTerminator {
     Blank,
     Marker(&'static str),
 }
 
+/// The tag names `CommonMark`'s sixth HTML-block start condition accepts.
+/// `pre`, `script`, `style`, and `textarea` are deliberately absent: they
+/// open a raw-text block under the first condition, which runs to its own
+/// closing tag rather than to a blank line.
+const BLOCK_TAG_NAMES: &[&str] = &[
+    "address",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "blockquote",
+    "body",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "iframe",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "menu",
+    "menuitem",
+    "nav",
+    "noframes",
+    "ol",
+    "optgroup",
+    "option",
+    "p",
+    "param",
+    "search",
+    "section",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+];
+
+const RAW_TEXT_TAGS: &[(&str, &str)] = &[
+    ("pre", "</pre>"),
+    ("script", "</script>"),
+    ("style", "</style>"),
+    ("textarea", "</textarea>"),
+];
+
+/// Whether `line` opens an HTML block, and what ends it.
+///
+/// Follows `CommonMark`'s seven start conditions. Conditions 2 to 5 are the
+/// marker starts, each with its own closing marker. Condition 1 is a
+/// raw-text tag, which runs to its closing tag. Condition 6 is the
+/// block-level tag list, and condition 7 is any other complete open or
+/// closing tag standing alone on its line; both of those run to the next
+/// blank line.
+///
+/// Conditions 6 and 7 are what keep prose out. Without the tag list and the
+/// alone-on-its-line requirement, a paragraph opening `<span>inline</span>`
+/// would be held as an HTML block through to the next blank line and never
+/// reflowed.
 fn html_block_start(line: &str) -> Option<HtmlBlockTerminator> {
-    let lower = line.to_ascii_lowercase();
-    if lower.starts_with("<!--") {
+    let line = line.trim_start();
+    if line.starts_with("<!--") {
         return Some(HtmlBlockTerminator::Marker("-->"));
     }
-    if lower.starts_with("<?") {
+    if line.starts_with("<?") {
         return Some(HtmlBlockTerminator::Marker("?>"));
     }
-    if lower.starts_with("<![cdata[") {
+    if line.starts_with("<![CDATA[") {
         return Some(HtmlBlockTerminator::Marker("]]>"));
     }
-    if lower.starts_with("<!") {
+    if line
+        .strip_prefix("<!")
+        .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_alphabetic()))
+    {
         return Some(HtmlBlockTerminator::Marker(">"));
     }
-    let tag = html_tag_name(line)?;
-    if !line.trim_start().starts_with("</") {
-        for (raw_text_tag, marker) in [
-            ("pre", "</pre>"),
-            ("script", "</script>"),
-            ("style", "</style>"),
-            ("textarea", "</textarea>"),
-        ] {
-            if tag.eq_ignore_ascii_case(raw_text_tag) {
+    let rest = line.strip_prefix('<')?;
+    let closing = rest.starts_with('/');
+    let name = tag_name(rest.strip_prefix('/').unwrap_or(rest))?;
+    let after_name = &rest[usize::from(closing) + name.len()..];
+    // Condition 1: an opening raw-text tag, followed by whitespace, `>`,
+    // or the end of the line.
+    if !closing && condition_one_or_six_follows(after_name) {
+        for (raw_text_tag, marker) in RAW_TEXT_TAGS {
+            if name.eq_ignore_ascii_case(raw_text_tag) {
                 return Some(HtmlBlockTerminator::Marker(marker));
             }
         }
     }
-    Some(HtmlBlockTerminator::Blank)
+    // Condition 6: a block-level tag name, open or closing, followed by
+    // whitespace, `>`, `/>`, or the end of the line.
+    if condition_one_or_six_follows(after_name)
+        && BLOCK_TAG_NAMES
+            .iter()
+            .any(|block_tag| name.eq_ignore_ascii_case(block_tag))
+    {
+        return Some(HtmlBlockTerminator::Blank);
+    }
+    // Condition 7: any other complete tag, alone on its line. A raw-text
+    // tag name is excluded here — condition 1 already owns it.
+    if RAW_TEXT_TAGS
+        .iter()
+        .any(|(raw_text_tag, _)| name.eq_ignore_ascii_case(raw_text_tag))
+    {
+        return None;
+    }
+    let (_, after_tag) = complete_tag(line)?;
+    after_tag
+        .trim()
+        .is_empty()
+        .then_some(HtmlBlockTerminator::Blank)
+}
+
+/// What may follow the tag name under start conditions 1 and 6: whitespace,
+/// the tag's own close, or the end of the line.
+fn condition_one_or_six_follows(after_name: &str) -> bool {
+    after_name.is_empty()
+        || after_name.starts_with(char::is_whitespace)
+        || after_name.starts_with('>')
+        || after_name.starts_with("/>")
 }
 
 fn html_block_ends(terminator: HtmlBlockTerminator, line: &str) -> bool {
@@ -381,16 +506,44 @@ fn html_block_ends(terminator: HtmlBlockTerminator, line: &str) -> bool {
     }
 }
 
-fn html_tag_name(line: &str) -> Option<&str> {
+/// The tag name at the head of `rest`, which begins just after `<` or `</`.
+fn tag_name(rest: &str) -> Option<&str> {
+    if !rest.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let end = rest
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+        .unwrap_or(rest.len());
+    Some(&rest[..end])
+}
+
+/// Parse one complete HTML tag at the head of `line`, returning its name
+/// and whatever follows the tag's `>`.
+///
+/// Quoted attribute values may hold `>`, so the scan tracks quoting rather
+/// than taking the first `>` it meets. An unquoted `<` cannot appear inside
+/// a tag, so meeting one means the line never closes a tag at all.
+fn complete_tag(line: &str) -> Option<(&str, &str)> {
     let rest = line.strip_prefix('<')?;
+    let closing = rest.starts_with('/');
     let rest = rest.strip_prefix('/').unwrap_or(rest);
-    let end = rest.char_indices().find_map(|(index, character)| {
-        (!character.is_ascii_alphanumeric() && character != '-').then_some(index)
-    })?;
-    let tag = &rest[..end];
-    let suffix = &rest[end..];
-    (suffix.starts_with('>') || suffix.starts_with('/') || suffix.starts_with(char::is_whitespace))
-        .then_some(tag)
+    let name = tag_name(rest)?;
+    let after_name = &rest[name.len()..];
+    if closing {
+        let remainder = after_name.trim_start().strip_prefix('>')?;
+        return Some((name, remainder));
+    }
+    let mut quote: Option<char> = None;
+    for (index, character) in after_name.char_indices() {
+        match (quote, character) {
+            (Some(open), _) if character == open => quote = None,
+            (None, '"' | '\'') => quote = Some(character),
+            (None, '<') => return None,
+            (None, '>') => return Some((name, &after_name[index + 1..])),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn first_word_of(line: &str) -> Option<&str> {
@@ -428,37 +581,100 @@ fn is_non_prose(line: &str) -> bool {
         || is_horizontal_rule(s)
 }
 
-/// A link-reference definition is a block-level Markdown construct. Treat the
-/// complete destination line as structural so reflow cannot append prose to
-/// its URL or title.
-fn is_reference_definition(line: &str) -> bool {
-    let s = line.trim_start();
-    let Some(after_open) = s.strip_prefix('[') else {
-        return false;
-    };
+/// What a line's link-reference definition still owes, if it is one at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Definition {
+    /// The definition carries no title, so it may claim one from the next line.
+    TitlePending,
+    /// The definition already carries its own title and claims nothing further.
+    TitleConsumed,
+}
+
+/// Parse a link-reference definition, which is a block-level Markdown
+/// construct rather than reflowable prose.
+///
+/// Follows `CommonMark`: up to three spaces of indentation, a label holding no
+/// unescaped `[` or `]` and at least one non-whitespace character, a colon,
+/// optional whitespace, a destination (bare and unspaced, or wrapped in
+/// `<…>`), and an optional title. Anything past the destination that is not
+/// a complete title makes the line prose — which is what `[text]: this is
+/// prose` is, and what a looser reader wrongly held out of reflow.
+fn reference_definition(line: &str) -> Option<Definition> {
+    let line = line.trim_end();
+    let after_indent = line.trim_start();
+    // A fourth space of indentation opens indented code, not a definition.
+    // A tab advances to the next four-column stop, so it is past the limit
+    // on its own.
+    if line.len() - after_indent.len() > 3 || line.starts_with('\t') {
+        return None;
+    }
+    let after_open = after_indent.strip_prefix('[')?;
     let mut escaped = false;
+    let mut label_end = None;
     for (index, character) in after_open.char_indices() {
         if escaped {
             escaped = false;
             continue;
         }
-        if character == '\\' {
-            escaped = true;
-            continue;
-        }
-        if character == ']' {
-            let after_label = &after_open[index + character.len_utf8()..];
-            return !after_open[..index].is_empty()
-                && after_label
-                    .strip_prefix(':')
-                    .is_some_and(|destination| !destination.trim().is_empty());
+        match character {
+            '\\' => escaped = true,
+            '[' => return None,
+            ']' => {
+                label_end = Some(index);
+                break;
+            }
+            _ => {}
         }
     }
-    false
+    let label_end = label_end?;
+    if after_open[..label_end].trim().is_empty() {
+        return None;
+    }
+    let after_label = after_open[label_end + 1..].strip_prefix(':')?;
+    let after_destination = link_destination(after_label.trim_start())?;
+    let title = after_destination.trim_start();
+    if title.is_empty() {
+        return Some(Definition::TitlePending);
+    }
+    is_reference_title(title).then_some(Definition::TitleConsumed)
 }
 
-/// A reference definition may carry its optional title on the next indented
-/// source line. That title belongs to the definition rather than a paragraph.
+fn is_reference_definition(line: &str) -> bool {
+    reference_definition(line).is_some()
+}
+
+/// Consume a link destination at the head of `rest`, returning what follows
+/// it. A destination is either `<…>`, which may hold spaces, or a bare run
+/// with none.
+fn link_destination(rest: &str) -> Option<&str> {
+    if let Some(bracketed) = rest.strip_prefix('<') {
+        let mut escaped = false;
+        for (index, character) in bracketed.char_indices() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match character {
+                '\\' => escaped = true,
+                '<' => return None,
+                '>' => return Some(&bracketed[index + 1..]),
+                _ => {}
+            }
+        }
+        return None;
+    }
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    let destination = &rest[..end];
+    if destination.is_empty() || destination.chars().any(|c| c.is_ascii_control()) {
+        return None;
+    }
+    Some(&rest[end..])
+}
+
+/// A reference definition's optional title: a span delimited by `"…"`,
+/// `'…'`, or `(…)` with nothing after it. The title may sit on the
+/// definition's own line or on the line below it, so this reads one span
+/// rather than one line's worth of text.
 fn is_reference_title(line: &str) -> bool {
     let title = line.trim();
     let Some(opener) = title.chars().next() else {
@@ -470,7 +686,20 @@ fn is_reference_title(line: &str) -> bool {
         '(' => ')',
         _ => return false,
     };
-    title.ends_with(closer) && title.len() > opener.len_utf8()
+    let body = &title[opener.len_utf8()..];
+    let mut escaped = false;
+    for (index, character) in body.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' => escaped = true,
+            c if c == closer => return body[index + c.len_utf8()..].trim().is_empty(),
+            _ => {}
+        }
+    }
+    false
 }
 
 /// A run of `=` or `-` alone on a line underlines the paragraph above
@@ -869,5 +1098,204 @@ mod tests {
         let body = format!("{first}\nα more.\n");
         let v = S102LinePacking::default().lint(&file(&body));
         assert_eq!(v.len(), 1);
+    }
+
+    // --- Link-reference definitions -------------------------------------
+    //
+    // Only a definition that CommonMark would actually parse is structural.
+    // Anything looser holds ordinary prose out of reflow for no reason.
+
+    #[test]
+    fn a_bare_or_bracketed_destination_makes_a_definition() {
+        assert!(super::is_reference_definition(
+            "[guide]: https://example.com"
+        ));
+        assert!(super::is_reference_definition(
+            "[guide]: <https://example.com>"
+        ));
+    }
+
+    #[test]
+    fn a_definition_may_carry_its_title_on_the_same_line() {
+        assert!(super::is_reference_definition(
+            "[guide]: https://example.com \"Guide title\""
+        ));
+        assert!(super::is_reference_definition(
+            "[guide]: https://example.com 'Guide title'"
+        ));
+        assert!(super::is_reference_definition(
+            "[guide]: https://example.com (Guide title)"
+        ));
+    }
+
+    /// The reported false positive: a destination followed by more words is
+    /// prose that happens to open with a bracketed word, not a definition.
+    #[test]
+    fn prose_after_the_destination_is_not_a_definition() {
+        assert!(!super::is_reference_definition("[text]: this is prose"));
+        assert!(!super::is_reference_definition(
+            "[text]: https://example.com and then some prose"
+        ));
+    }
+
+    #[test]
+    fn a_label_with_an_unescaped_bracket_is_not_a_definition() {
+        assert!(!super::is_reference_definition("[a [b]: /url"));
+        assert!(super::is_reference_definition("[a \\[b]: /url"));
+    }
+
+    #[test]
+    fn a_definition_needs_a_label_a_colon_and_a_destination() {
+        assert!(!super::is_reference_definition("[]: /url"));
+        assert!(!super::is_reference_definition("[guide] /url"));
+        assert!(!super::is_reference_definition("[guide]:"));
+        assert!(!super::is_reference_definition("guide: /url"));
+    }
+
+    /// `CommonMark` allows up to three spaces of indentation. A fourth makes
+    /// the line indented code, which is not a definition either way.
+    #[test]
+    fn three_spaces_indent_a_definition_and_four_do_not() {
+        assert!(super::is_reference_definition("   [guide]: /url"));
+        assert!(!super::is_reference_definition("    [guide]: /url"));
+    }
+
+    #[test]
+    fn definition_shaped_prose_reflows() {
+        assert_eq!(
+            fixed("[text]: this is prose\nand the sentence continues.\n"),
+            "[text]: this is prose and the sentence continues.\n"
+        );
+    }
+
+    #[test]
+    fn a_real_definition_is_never_reflowed_into() {
+        let body = "[guide]: <https://example.com/guide>\nProse under the definition.\n";
+        assert_eq!(fixed(body), body);
+    }
+
+    /// A title on the next line belongs to the definition above it. A
+    /// definition that already carried its own title does not claim the
+    /// next line as well.
+    #[test]
+    fn only_a_title_less_definition_claims_the_next_line() {
+        let held = "[guide]: <https://example.com>\n\"Guide title\"\nProse after the title.\n";
+        assert_eq!(fixed(held), held);
+        // The definition below carries its own title, so the fully
+        // title-shaped line under it is prose and reflows with what
+        // follows rather than being held as a continuation.
+        assert_eq!(
+            fixed(concat!(
+                "[guide]: <https://example.com> \"Guide title\"\n",
+                "\"A quoted opening\"\n",
+                "and the rest of the sentence.\n",
+            )),
+            concat!(
+                "[guide]: <https://example.com> \"Guide title\"\n",
+                "\"A quoted opening\" and the rest of the sentence.\n",
+            )
+        );
+    }
+
+    #[test]
+    fn a_title_is_a_delimited_span_and_nothing_else() {
+        assert!(super::is_reference_title("\"Guide title\""));
+        assert!(super::is_reference_title("(Guide title)"));
+        assert!(!super::is_reference_title("\"Guide title\" and more"));
+        assert!(!super::is_reference_title("Guide title"));
+    }
+
+    // --- HTML blocks ----------------------------------------------------
+
+    #[test]
+    fn the_marker_start_conditions_name_their_own_terminators() {
+        assert!(matches!(
+            super::html_block_start("<!-- a comment"),
+            Some(super::HtmlBlockTerminator::Marker("-->"))
+        ));
+        assert!(matches!(
+            super::html_block_start("<?php echo 1;"),
+            Some(super::HtmlBlockTerminator::Marker("?>"))
+        ));
+        assert!(matches!(
+            super::html_block_start("<![CDATA[ raw"),
+            Some(super::HtmlBlockTerminator::Marker("]]>"))
+        ));
+        assert!(matches!(
+            super::html_block_start("<!DOCTYPE html"),
+            Some(super::HtmlBlockTerminator::Marker(">"))
+        ));
+    }
+
+    #[test]
+    fn a_raw_text_tag_runs_to_its_closing_tag() {
+        for (open, marker) in [
+            ("<pre>", "</pre>"),
+            ("<script type=\"text/javascript\">", "</script>"),
+            ("<style>", "</style>"),
+            ("<textarea>", "</textarea>"),
+        ] {
+            let started = super::html_block_start(open);
+            assert!(
+                matches!(started, Some(super::HtmlBlockTerminator::Marker(found)) if found == marker),
+                "{open} did not open a raw-text block ending at {marker}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_block_level_tag_runs_to_the_next_blank_line() {
+        for line in ["<div>", "<div class=\"note\">", "</div>", "<table>", "<ul>"] {
+            assert!(
+                matches!(
+                    super::html_block_start(line),
+                    Some(super::HtmlBlockTerminator::Blank)
+                ),
+                "{line} did not open a block-level HTML block"
+            );
+        }
+    }
+
+    /// The reported false positive: a paragraph that opens with an inline
+    /// tag is prose. Only a complete tag standing alone on its line opens a
+    /// block under `CommonMark`'s seventh start condition.
+    #[test]
+    fn an_inline_tag_does_not_open_an_html_block() {
+        assert!(super::html_block_start("<span>inline</span> more prose").is_none());
+        assert!(super::html_block_start("<em>emphasis</em> then words").is_none());
+        assert!(super::html_block_start("<custom-widget> and trailing prose").is_none());
+    }
+
+    #[test]
+    fn a_complete_tag_alone_on_its_line_opens_a_block() {
+        assert!(matches!(
+            super::html_block_start("<custom-widget>"),
+            Some(super::HtmlBlockTerminator::Blank)
+        ));
+        assert!(matches!(
+            super::html_block_start("<custom-widget data-x=\"1\" />"),
+            Some(super::HtmlBlockTerminator::Blank)
+        ));
+    }
+
+    #[test]
+    fn text_that_merely_contains_a_tag_opens_nothing() {
+        assert!(super::html_block_start("Prose with <div> in the middle").is_none());
+        assert!(super::html_block_start("<3 is a heart, not a tag").is_none());
+        assert!(super::html_block_start("a < b and c > d").is_none());
+    }
+
+    #[test]
+    fn inline_tag_prose_reflows() {
+        assert_eq!(
+            fixed("<span>inline</span> opens this\nparagraph, which still reflows.\n"),
+            "<span>inline</span> opens this paragraph, which still reflows.\n"
+        );
+    }
+
+    #[test]
+    fn a_real_html_block_is_never_reflowed() {
+        let body = "<div>\nHTML block line one.\nHTML block line two.\n</div>\n";
+        assert_eq!(fixed(body), body);
     }
 }

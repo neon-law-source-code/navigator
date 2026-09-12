@@ -1744,3 +1744,107 @@ fn validate_ignores_a_broken_table_inside_a_fence() {
         );
     }
 }
+
+/// `S102`'s structural recognisers follow `CommonMark`, so ordinary prose
+/// that merely *looks* structural still reflows: a bracketed word followed
+/// by prose is not a link-reference definition, and a paragraph opening
+/// with an inline tag is not an HTML block. The genuine constructs
+/// alongside them are still preserved, and a second `--fix` run changes
+/// nothing.
+#[test]
+fn validate_fix_reflows_prose_that_only_looks_structural() {
+    let dir = TempDir::new().unwrap();
+    let original = "Use the [text][] and [guide][] references below.\n\n\
+        [text]: this is prose\n\
+        and the sentence continues here.\n\n\
+        <span>inline</span> opens this\n\
+        paragraph, which still reflows.\n\n\
+        [guide]: <https://example.com/guide>\n\
+        A prose line under the definition.\n\n\
+        <div>\n\
+        HTML block line one.\n\
+        HTML block line two.\n\
+        </div>\n";
+    write(dir.path(), "Shapes.md", original);
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 1 file(s)"));
+
+    let expected = "Use the [text][] and [guide][] references below.\n\n\
+        [text]: this is prose and the sentence continues here.\n\n\
+        <span>inline</span> opens this paragraph, which still reflows.\n\n\
+        [guide]: <https://example.com/guide>\n\
+        A prose line under the definition.\n\n\
+        <div>\n\
+        HTML block line one.\n\
+        HTML block line two.\n\
+        </div>\n";
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Shapes.md")).unwrap(),
+        expected,
+        "prose was held back, or a real construct was repacked"
+    );
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 0 file(s)"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Shapes.md")).unwrap(),
+        expected,
+        "a repeated fix changed the fixture"
+    );
+}
+
+/// A reference definition owns a title on the next line only when it does
+/// not already carry one. A definition that does carry its own title
+/// leaves the quoted line below it as prose.
+#[test]
+fn validate_fix_gives_a_next_line_title_only_to_a_title_less_definition() {
+    let dir = TempDir::new().unwrap();
+    let original = "Use the [pending][] and [carried][] references below.\n\n\
+        [pending]: <https://example.com/pending>\n\
+        \"Pending title\"\n\
+        A prose line under the title.\n\n\
+        [carried]: <https://example.com/carried> \"Carried title\"\n\
+        \"A quoted opening\"\n\
+        and the rest of the sentence.\n";
+    write(dir.path(), "Titles.md", original);
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 1 file(s)"));
+
+    let expected = "Use the [pending][] and [carried][] references below.\n\n\
+        [pending]: <https://example.com/pending>\n\
+        \"Pending title\"\n\
+        A prose line under the title.\n\n\
+        [carried]: <https://example.com/carried> \"Carried title\"\n\
+        \"A quoted opening\" and the rest of the sentence.\n";
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Titles.md")).unwrap(),
+        expected,
+        "the wrong line was treated as a definition title"
+    );
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 0 file(s)"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Titles.md")).unwrap(),
+        expected,
+        "a repeated fix changed the fixture"
+    );
+}

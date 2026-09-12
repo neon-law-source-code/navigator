@@ -133,6 +133,15 @@ for that violation without a human decision; every other code needs a person to 
 | `S103` | Error | The declared `kind:` must be a recognized document kind. | No |
 | `S104` | Error | A file's declared `kind:` must agree with its notation/event structure. | No |
 
+`S102` reflows prose only, so it holds back the block-level constructs whose lines carry meaning: headings, tables,
+block quotes, fences, horizontal rules, setext underlines, link-reference definitions, and HTML blocks. It recognises
+the last two the way CommonMark does. A definition needs at most three spaces of indentation, a label free of unescaped
+brackets, a colon, a destination that is bare-and-unspaced or wrapped in `<…>`, and then either nothing or a complete
+title; a title on the next line belongs to a definition that did not already carry one. An HTML block needs one of
+CommonMark's seven start conditions, which means a block-level tag name or a complete tag standing alone on its line.
+Anything looser is prose, so `[text]: this is prose` and a paragraph opening `<span>inline</span>` reflow like the
+sentences they are.
+
 ### N-family — notation template shape
 
 | Code | Severity | Rule | Autofix |

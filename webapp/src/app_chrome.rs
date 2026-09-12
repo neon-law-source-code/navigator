@@ -34,9 +34,9 @@ pub const APP_TEAM_HREF: &str = "/app/team";
 /// own detail page already lists the brands it wears. An Owner or Admin
 /// reaches this registry from the Admin hub, or by URL.
 pub const APP_BRANDS_HREF: &str = "/app/admin/brands";
-pub const APP_BRAND_NEW_HREF: &str = "/app/admin/brands/new";
 
 /// Create a brand row. Owner or Admin DRI.
+pub const APP_BRAND_NEW_HREF: &str = "/app/admin/brands/new";
 
 /// The Owner listing of practices and the brands they wear. Owner only.
 /// Labeled "Firm" on the navbar row: the row used to carry this destination

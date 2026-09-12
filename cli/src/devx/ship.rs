@@ -336,6 +336,15 @@ where
         env: "OAUTH_MICROSOFT_ALLOWED_TENANTS",
         value: non_empty_env("OAUTH_MICROSOFT_ALLOWED_TENANTS", &get).unwrap_or_default(),
     });
+    // Optional for the same reason as the Microsoft client id above. Blank
+    // keeps Sign in with Apple off until a deployment owner enrolls the app;
+    // the sibling signing values remain in the deployment Secret and are
+    // required only when this public Services ID turns the provider on.
+    substitutions.push(Substitution {
+        token: "YOUR_OAUTH_APPLE_CLIENT_ID",
+        env: "OAUTH_APPLE_CLIENT_ID",
+        value: non_empty_env("OAUTH_APPLE_CLIENT_ID", &get).unwrap_or_default(),
+    });
     // Not in TABLE and not read from `get` at all: the additional brand
     // hosts this deployment's environment serves come from the compiled
     // `views::brand::BrandKey` registry, keyed off the `NAVIGATOR_PUBLIC_HOST`
@@ -5278,10 +5287,10 @@ spec:
         "NAVIGATOR_SURREAL_NAMESPACE",
         "NAVIGATOR_SURREAL_PASSWORD",
         "NAVIGATOR_SURREAL_USER",
-        "OAUTH_CLIENT_SECRET",
         "OAUTH_APPLE_KEY_ID",
         "OAUTH_APPLE_PRIVATE_KEY",
         "OAUTH_APPLE_TEAM_ID",
+        "OAUTH_CLIENT_SECRET",
         "OAUTH_MICROSOFT_CLIENT_SECRET",
         "RESTATE_AUTH_TOKEN",
         "RESTATE_BROKER_URL",

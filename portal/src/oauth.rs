@@ -250,6 +250,9 @@ struct OAuthConfigInner {
     redirect_uri: String,
     authorization_endpoint: String,
     token_endpoint: String,
+    /// Hand-built configs point at local HTTP mocks; every environment-built
+    /// config requires HTTPS before a client secret is sent.
+    require_https_token_endpoint: bool,
     end_session_endpoint: Option<String>,
     /// Provider-algorithm id_token verifier, built from the IdP's published
     /// JWKS and pinned to the discovered `issuer` + our `client_id` audience.
@@ -373,6 +376,7 @@ impl OAuthConfig {
                 redirect_uri: redirect_uri.into(),
                 authorization_endpoint: authorization_endpoint.into(),
                 token_endpoint: token_endpoint.into(),
+                require_https_token_endpoint: false,
                 end_session_endpoint: None,
                 id_token_verifier: None,
             }),
@@ -405,6 +409,7 @@ impl OAuthConfig {
                 redirect_uri: redirect_uri.into(),
                 authorization_endpoint: authorization_endpoint.into(),
                 token_endpoint: token_endpoint.into(),
+                require_https_token_endpoint: false,
                 end_session_endpoint: None,
                 id_token_verifier: None,
             }),
@@ -512,6 +517,7 @@ impl OAuthConfig {
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
+                require_https_token_endpoint: true,
                 end_session_endpoint: doc.end_session_endpoint,
                 id_token_verifier: Some(verifier),
             }),
@@ -617,6 +623,7 @@ impl OAuthConfig {
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
+                require_https_token_endpoint: true,
                 end_session_endpoint: doc.end_session_endpoint,
                 id_token_verifier: Some(verifier),
             }),
@@ -667,6 +674,7 @@ impl OAuthConfig {
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
+                require_https_token_endpoint: true,
                 end_session_endpoint: doc.end_session_endpoint,
                 id_token_verifier: Some(verifier),
             }),
@@ -2017,12 +2025,22 @@ async fn exchange_code(
     code: &str,
     pre: &PreAuth,
 ) -> Result<TokenResponse, CallbackError> {
+    let token_endpoint = url::Url::parse(cfg.token_endpoint()).map_err(|_| {
+        tracing::warn!("oauth: refusing token exchange with an invalid endpoint");
+        (StatusCode::BAD_GATEWAY, "invalid token endpoint")
+    })?;
+    if cfg.inner.require_https_token_endpoint
+        && (token_endpoint.scheme() != "https" || token_endpoint.host_str().is_none())
+    {
+        tracing::warn!("oauth: refusing token exchange over a non-HTTPS endpoint");
+        return Err((StatusCode::BAD_GATEWAY, "token endpoint must use HTTPS"));
+    }
     let client_secret = cfg.client_secret().map_err(|error| {
         tracing::warn!(error = %error, "oauth: client secret mint failed");
         (StatusCode::BAD_GATEWAY, "token client secret unavailable")
     })?;
     match reqwest::Client::new()
-        .post(cfg.token_endpoint())
+        .post(token_endpoint)
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", code),

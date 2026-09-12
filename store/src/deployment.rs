@@ -174,6 +174,12 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
     // (`ship::INLINE_ENV_WEB_KEYS`), not the Secret rail, so it is not a
     // requirement in its own right here — only the trigger for its secret.
     required!(integration "OAUTH_MICROSOFT_CLIENT_SECRET" if "OAUTH_MICROSOFT_CLIENT_ID"),
+    // Sign in with Apple follows the same optional-provider shape. The
+    // Services ID is inline; once it is declared, boot needs all three
+    // signing values from the Secret rail.
+    required!(integration "OAUTH_APPLE_TEAM_ID" if "OAUTH_APPLE_CLIENT_ID"),
+    required!(integration "OAUTH_APPLE_KEY_ID" if "OAUTH_APPLE_CLIENT_ID"),
+    required!(integration "OAUTH_APPLE_PRIVATE_KEY" if "OAUTH_APPLE_CLIENT_ID"),
     // The SurrealDB coordinates. `web` fails closed on a missing endpoint —
     // `portal::hosting` calls `store::surreal::connect_from_env` with no
     // fallback, and the person directory lives in that engine, so a
@@ -347,5 +353,38 @@ mod tests {
             "OAUTH_MICROSOFT_CLIENT_SECRET must be required once a deployment declares \
              OAUTH_MICROSOFT_CLIENT_ID"
         );
+    }
+
+    #[test]
+    fn a_deployment_that_declares_no_apple_oauth_is_asked_for_none() {
+        let demanded = demanded(&[("NAVIGATOR_GCP_PROJECT_ID", "neon-law-stg")]);
+        for key in [
+            "OAUTH_APPLE_TEAM_ID",
+            "OAUTH_APPLE_KEY_ID",
+            "OAUTH_APPLE_PRIVATE_KEY",
+        ] {
+            assert!(
+                !demanded.contains(&key.to_owned()),
+                "{key} must not be required of a deployment that declares no OAUTH_APPLE_CLIENT_ID"
+            );
+        }
+    }
+
+    #[test]
+    fn declaring_apple_oauth_demands_every_signing_value() {
+        let demanded = demanded(&[
+            ("NAVIGATOR_GCP_PROJECT_ID", "neon-law-stg"),
+            ("OAUTH_APPLE_CLIENT_ID", "com.example.navigator"),
+        ]);
+        for key in [
+            "OAUTH_APPLE_TEAM_ID",
+            "OAUTH_APPLE_KEY_ID",
+            "OAUTH_APPLE_PRIVATE_KEY",
+        ] {
+            assert!(
+                demanded.contains(&key.to_owned()),
+                "{key} must be required once OAUTH_APPLE_CLIENT_ID is declared"
+            );
+        }
     }
 }

@@ -304,8 +304,8 @@ where
     retry::writing(attempt).await.map_err(classify_write)
 }
 
-/// Whether `actor` may create, edit, or delete a brand at `target_firm_id`
-/// (`None` for system-wide).
+/// Whether `actor` may create a brand at `target_firm_id` (`None` for
+/// system-wide).
 ///
 /// Side-effect-free. Owner passes only the system-wide case; a Firm's own
 /// Admin DRI passes only that Firm's case. Every other combination —
@@ -328,6 +328,47 @@ async fn authorize(
         Some(firm_id) => {
             if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
                 return Err(BrandError::NoSuchFirm(firm_id));
+            }
+            let Some(person_id) = actor_person_id else {
+                return Err(BrandError::NotAuthorized);
+            };
+            match crate::firms::membership_for_person(surreal, person_id, firm_id).await? {
+                Some(row)
+                    if row.is_dri && row.membership == crate::firms::FirmMembership::Admin =>
+                {
+                    Ok(())
+                }
+                _ => Err(BrandError::NotAuthorized),
+            }
+        }
+    }
+}
+
+/// Authorize an edit to an existing brand. Owner governs existing brands on
+/// every Firm through the Firm-capability resolver; a Firm's own Admin DRI
+/// governs its Firm-scoped brand. Creation remains stricter: only Owner may
+/// create a system-wide brand, and only the Firm's Admin DRI may create a
+/// Firm-scoped one.
+async fn authorize_existing(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    target_firm_id: Option<Uuid>,
+) -> Result<(), BrandError> {
+    match target_firm_id {
+        None => {
+            if actor_role == Role::Owner {
+                Ok(())
+            } else {
+                Err(BrandError::NotAuthorized)
+            }
+        }
+        Some(firm_id) => {
+            if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
+                return Err(BrandError::NoSuchFirm(firm_id));
+            }
+            if actor_role == Role::Owner {
+                return Ok(());
             }
             let Some(person_id) = actor_person_id else {
                 return Err(BrandError::NotAuthorized);
@@ -426,6 +467,46 @@ pub async fn find_by_key(surreal: &SurrealDb, key: &str) -> Result<Option<Brand>
     Ok(rows.into_iter().find_map(BrandRow::into_brand))
 }
 
+/// Find a brand and resolve the caller's Firm capability before a caller uses
+/// the row for a Firm-scoped read or command. System-wide brands remain
+/// Owner-only; Firm-scoped brands go through [`crate::firm_capability::resolve`]
+/// with [`crate::firm_capability::FirmCapability::ManageBrand`]. Missing and
+/// forbidden targets stay typed so each response boundary can render the same
+/// not-found answer without disclosing another Firm's row.
+pub async fn find_by_key_for_actor(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    key: &str,
+) -> Result<Brand, BrandError> {
+    let brand = find_by_key(surreal, key)
+        .await?
+        .ok_or_else(|| BrandError::NoSuchBrand(Uuid::nil()))?;
+    let Some(firm_id) = brand.firm_id else {
+        return if actor_role == Role::Owner {
+            Ok(brand)
+        } else {
+            Err(BrandError::NotAuthorized)
+        };
+    };
+
+    match crate::firm_capability::resolve(
+        surreal,
+        actor_role,
+        actor_person_id,
+        firm_id,
+        crate::firm_capability::FirmCapability::ManageBrand,
+    )
+    .await?
+    {
+        crate::firm_capability::FirmCapabilityDecision::Allowed => Ok(brand),
+        crate::firm_capability::FirmCapabilityDecision::Forbidden => Err(BrandError::NotAuthorized),
+        crate::firm_capability::FirmCapabilityDecision::FirmNotFound => {
+            Err(BrandError::NoSuchFirm(firm_id))
+        }
+    }
+}
+
 /// Every system-wide brand (`firm_id IS NONE`), name then id — the set
 /// every Firm sees regardless of its own scoped brands.
 pub async fn system_wide(surreal: &SurrealDb) -> Result<Vec<Brand>, BrandError> {
@@ -467,9 +548,8 @@ pub async fn for_firm(surreal: &SurrealDb, firm_id: Uuid) -> Result<Vec<Brand>, 
     Ok(rows.into_iter().filter_map(BrandRow::into_brand).collect())
 }
 
-/// Edit a brand's presentation fields. Authorized exactly as [`create`]
-/// would be for this brand's existing scope: Owner for a system-wide
-/// brand, that Firm's own Admin DRI for a Firm-scoped one.
+/// Edit a brand's presentation fields. Owner governs existing brands on every
+/// Firm; a Firm's own Admin DRI governs its Firm-scoped one.
 pub async fn update(
     surreal: &SurrealDb,
     actor_role: Role,
@@ -480,7 +560,7 @@ pub async fn update(
     let existing = find_by_id(surreal, brand_id)
         .await?
         .ok_or(BrandError::NoSuchBrand(brand_id))?;
-    authorize(surreal, actor_role, actor_person_id, existing.firm_id).await?;
+    authorize_existing(surreal, actor_role, actor_person_id, existing.firm_id).await?;
     if let Some(Some(hex)) = input.primary_color.as_ref() {
         validate_primary_hex(hex)?;
     }
@@ -542,7 +622,7 @@ pub async fn set_logo(
     let existing = find_by_id(surreal, brand_id)
         .await?
         .ok_or(BrandError::NoSuchBrand(brand_id))?;
-    authorize(surreal, actor_role, actor_person_id, existing.firm_id).await?;
+    authorize_existing(surreal, actor_role, actor_person_id, existing.firm_id).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let mut response = writing(|| {
@@ -583,7 +663,7 @@ pub async fn set_font(
     let existing = find_by_id(surreal, brand_id)
         .await?
         .ok_or(BrandError::NoSuchBrand(brand_id))?;
-    authorize(surreal, actor_role, actor_person_id, existing.firm_id).await?;
+    authorize_existing(surreal, actor_role, actor_person_id, existing.firm_id).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let mut response = writing(|| {
@@ -647,7 +727,7 @@ pub async fn delete(
     let existing = find_by_id(surreal, brand_id)
         .await?
         .ok_or(BrandError::NoSuchBrand(brand_id))?;
-    authorize(surreal, actor_role, actor_person_id, existing.firm_id).await?;
+    authorize_existing(surreal, actor_role, actor_person_id, existing.firm_id).await?;
     if is_referenced(surreal, &existing.key).await? {
         return Err(BrandError::StillReferenced);
     }
@@ -932,7 +1012,7 @@ mod tests {
         .await
         .unwrap();
 
-        let err = update(
+        let owner_edited = update(
             &db,
             Role::Owner,
             None,
@@ -943,8 +1023,8 @@ mod tests {
             },
         )
         .await
-        .unwrap_err();
-        assert!(matches!(err, BrandError::NotAuthorized));
+        .unwrap();
+        assert_eq!(owner_edited.name, "Hijacked");
 
         let edited = update(
             &db,
@@ -958,15 +1038,11 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(edited.name, "Editable Brand");
+        assert_eq!(edited.name, "Hijacked");
         assert_eq!(edited.primary_color.as_deref(), Some("#123456"));
         assert_eq!(edited.firm_id, Some(firm.id));
 
-        let err = delete(&db, Role::Owner, None, brand.id).await.unwrap_err();
-        assert!(matches!(err, BrandError::NotAuthorized));
-        delete(&db, Role::Admin, Some(admin), brand.id)
-            .await
-            .unwrap();
+        delete(&db, Role::Owner, None, brand.id).await.unwrap();
         assert!(find_by_id(&db, brand.id).await.unwrap().is_none());
     }
 

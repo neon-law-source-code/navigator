@@ -729,11 +729,13 @@ struct UpdateBrandPresentation {
     font_family: String,
 }
 
-/// Shared by `PATCH /app/api/brands/{key}` and the native edit form.
+/// Shared by `PATCH /app/api/brands/{key}` and the native edit form. There is
+/// no separate forbidden answer: an out-of-scope brand and a missing brand are
+/// both `NotFound`, so neither door discloses that another Firm holds the key
+/// (ENG-626).
 #[derive(Debug)]
 pub enum BrandPresentationError {
     NotFound,
-    Forbidden,
     UnknownChoice(String),
     Internal(String),
 }
@@ -747,6 +749,17 @@ pub async fn apply_brand_presentation(
     primary_color: &str,
     font_family: &str,
 ) -> Result<store::brands::Brand, BrandPresentationError> {
+    let brand =
+        match store::brands::find_by_key_for_actor(surreal, actor_role, actor_person_id, key).await
+        {
+            Ok(brand) => brand,
+            Err(
+                store::brands::BrandError::NotAuthorized
+                | store::brands::BrandError::NoSuchBrand(_)
+                | store::brands::BrandError::NoSuchFirm(_),
+            ) => return Err(BrandPresentationError::NotFound),
+            Err(error) => return Err(BrandPresentationError::Internal(error.to_string())),
+        };
     if typeface != "uploaded" && views::brand::typeface_by_id(typeface).is_none() {
         return Err(BrandPresentationError::UnknownChoice(format!(
             "typeface must be one of: {}, uploaded",
@@ -757,10 +770,6 @@ pub async fn apply_brand_presentation(
                 .join(", ")
         )));
     }
-    let brand = store::brands::find_by_key(surreal, key)
-        .await
-        .map_err(|error| BrandPresentationError::Internal(error.to_string()))?
-        .ok_or(BrandPresentationError::NotFound)?;
     match store::brands::update(
         surreal,
         actor_role,
@@ -776,8 +785,11 @@ pub async fn apply_brand_presentation(
     .await
     {
         Ok(updated) => Ok(updated),
-        Err(store::brands::BrandError::NotAuthorized) => Err(BrandPresentationError::Forbidden),
-        Err(store::brands::BrandError::NoSuchBrand(_)) => Err(BrandPresentationError::NotFound),
+        Err(
+            store::brands::BrandError::NotAuthorized
+            | store::brands::BrandError::NoSuchBrand(_)
+            | store::brands::BrandError::NoSuchFirm(_),
+        ) => Err(BrandPresentationError::NotFound),
         Err(
             error @ (store::brands::BrandError::InvalidHex(_)
             | store::brands::BrandError::InsufficientContrast { .. }),
@@ -805,7 +817,6 @@ async fn update_brand_presentation(
     {
         Ok(updated) => Json(updated).into_response(),
         Err(BrandPresentationError::NotFound) => ApiError::NotFound.into_response(),
-        Err(BrandPresentationError::Forbidden) => ApiError::Forbidden.into_response(),
         Err(BrandPresentationError::UnknownChoice(message)) => {
             ApiError::MalformedBody(message).into_response()
         }

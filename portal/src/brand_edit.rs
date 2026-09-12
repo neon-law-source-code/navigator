@@ -42,7 +42,6 @@ pub async fn post_brand_edit(
     {
         Ok(_) => Redirect::to(&format!("/app/brands/{key}/edit")).into_response(),
         Err(crate::api::BrandPresentationError::NotFound) => StatusCode::NOT_FOUND.into_response(),
-        Err(crate::api::BrandPresentationError::Forbidden) => StatusCode::FORBIDDEN.into_response(),
         Err(crate::api::BrandPresentationError::UnknownChoice(message)) => {
             let mut query = String::new();
             crate::admin::push_query(&mut query, "error", &message);

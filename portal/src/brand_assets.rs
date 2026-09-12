@@ -5,10 +5,11 @@
 //! use), validated by size and content type, scanned by the shared
 //! [`crate::attachment_scanner::AttachmentScanner`], written to the public
 //! assets bucket, and recorded on the `brand` row through
-//! `store::brands::set_logo`/`set_font` — which is also where the
-//! Owner-or-Admin-DRI authorization actually lives, the same as every other
-//! brand write. Every refusal redirects back to the edit page with
-//! `?error=` naming the rule; nothing is written to any bucket on refusal.
+//! `store::brands::set_logo`/`set_font`. The target brand's Firm capability is
+//! resolved before the public bucket write, while the store methods retain
+//! their own authorization guard as defence in depth. Every refusal redirects
+//! back to the edit page with `?error=` naming the rule; nothing is written to
+//! any bucket on refusal.
 
 use axum::extract::{Multipart, Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -150,8 +151,9 @@ pub async fn upload_logo(
         Err(_) => return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
 
-    let Some(brand) = brand_for_key(&state, &key).await else {
-        return axum::http::StatusCode::NOT_FOUND.into_response();
+    let brand = match authorized_brand_for_key(&state, &session, &key).await {
+        Ok(brand) => brand,
+        Err(response) => return response,
     };
     let ext = if content_type == "image/svg+xml" {
         "svg"
@@ -252,8 +254,9 @@ pub async fn upload_font(
         Err(_) => return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
 
-    let Some(brand) = brand_for_key(&state, &key).await else {
-        return axum::http::StatusCode::NOT_FOUND.into_response();
+    let brand = match authorized_brand_for_key(&state, &session, &key).await {
+        Ok(brand) => brand,
+        Err(response) => return response,
     };
     let sha = store::assets::sha256_hex(&bytes);
     let object_key = format!("fonts/brands/{key}/{sha}.woff2");
@@ -292,11 +295,25 @@ async fn read_text_field(multipart: &mut Multipart, expected_name: &str) -> Opti
     field.text().await.ok()
 }
 
-async fn brand_for_key(state: &AdminState, key: &str) -> Option<store::brands::Brand> {
-    store::brands::find_by_key(&state.surreal, key)
+async fn authorized_brand_for_key(
+    state: &AdminState,
+    session: &SessionData,
+    key: &str,
+) -> Result<store::brands::Brand, Response> {
+    match store::brands::find_by_key_for_actor(&state.surreal, session.role, session.person_id, key)
         .await
-        .ok()
-        .flatten()
+    {
+        Ok(brand) => Ok(brand),
+        Err(
+            store::brands::BrandError::NotAuthorized
+            | store::brands::BrandError::NoSuchBrand(_)
+            | store::brands::BrandError::NoSuchFirm(_),
+        ) => Err(axum::http::StatusCode::NOT_FOUND.into_response()),
+        Err(error) => {
+            tracing::error!(error = %error, brand_key = %key, "brand authorization lookup failed");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
 }
 
 #[cfg(test)]

@@ -3397,8 +3397,10 @@ pub fn app_brands_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
-/// `/app/brands/{key}/edit` — Owner or Admin at the route; `store::brands::update`
-/// refuses a non-DRI Admin and a Lawyer never reaches the handler.
+/// `/app/brands/{key}/edit` — Owner or Admin at the route;
+/// `store::brands::find_by_key_for_actor` resolves `ManageBrand` against the
+/// brand's own Firm and refuses a non-DRI Admin, and a Lawyer never reaches
+/// the handler.
 pub fn app_brands_edit_router(
     sessions: crate::session::SessionStore,
     policy: crate::policy::PolicyClient,

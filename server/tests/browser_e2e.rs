@@ -1890,6 +1890,7 @@ async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
 
     scroll_and_js_click(c, "#profile-avatar form button[type='submit']").await;
     wait_for_path(c, "/app/profile", Duration::from_secs(20)).await;
+    wait_for_text(c, "Avatar updated.", Duration::from_secs(20)).await;
 
     let avatar = c
         .wait()

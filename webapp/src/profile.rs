@@ -1,7 +1,10 @@
 //! The self-service `/app/profile` page — every authenticated tier, Client
 //! included, updates their own avatar here through the native `POST
-//! /app/avatar` multipart form. The upload is a sibling of `/app/profile`,
-//! not a nested child: a nested `/app/profile/avatar` action resolves in the
+//! /app/avatar` multipart form. `avatar-upload.js` replays that submit as
+//! `fetch` so the page stays put and the `/app/me/avatar` preview updates
+//! in place; without JavaScript the form still posts and the handler
+//! redirects back here. The upload is a sibling of `/app/profile`, not a
+//! nested child: a nested `/app/profile/avatar` action resolves in the
 //! browser as `/app/avatar` (the last path segment is replaced). No tier
 //! gate at all: unlike the admin-only `/app/admin/people/{id}/avatar`, the
 //! target is always the caller's own row, resolved server-side from the
@@ -146,6 +149,10 @@ fn avatar_upload_card(csrf_token: &str) -> Element {
                 width: "96",
                 height: "96",
             }
+            // In-place upload: `avatar-upload.js` finds this form via
+            // `#profile-avatar` and `#profile-avatar-file`, posts the same
+            // multipart body as a `fetch`, and cache-busts `/app/me/avatar`.
+            document::Script { src: "/public/js/avatar-upload.js", defer: true }
             FormCard {
                 title: "Upload avatar".to_string(),
                 action: PROFILE_AVATAR_PATH.to_string(),
@@ -155,6 +162,7 @@ fn avatar_upload_card(csrf_token: &str) -> Element {
                 csrf_token: Some(csrf_token.to_string()),
                 fields: vec![
                     Field::file("Avatar", "file")
+                        .id("profile-avatar-file")
                         .required()
                         .help("PNG, JPEG, or WebP, up to 5 MB. Replaces any existing avatar."),
                 ],
@@ -270,6 +278,10 @@ mod tests {
         assert!(
             out.contains(r#"src="/app/me/avatar""#),
             "the preview reads the caller's own avatar route: {out}"
+        );
+        assert!(
+            out.contains(r#"id="profile-avatar-file""#),
+            "the file input carries a stable id the in-place script can find: {out}"
         );
         let csrf_pos = out.find(r#"name="_csrf""#);
         let file_pos = out.find(r#"type="file""#);

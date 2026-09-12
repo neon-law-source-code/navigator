@@ -745,6 +745,10 @@ impl Field {
         let list_id = format!("{control_id}-suggestions");
         let list_attr = suggestions.as_ref().map(|_| list_id.clone());
         let options = suggestions.clone().unwrap_or_default();
+        // A file input is not a controlled value: setting `value=""` on every
+        // Dioxus render clears the selected file before submit (native or
+        // in-place fetch) can read it. Omit the attribute for `type="file"`.
+        let input_value = (input_type.as_str() != "file").then(|| value.clone());
         rsx! {
             div { class: "{field_class}",
                 label { class: "nav-label", r#for: "{control_id}",
@@ -761,7 +765,7 @@ impl Field {
                             r#type: "{input_type}",
                             id: "{control_id}",
                             name: "{name}",
-                            value: "{value}",
+                            value: input_value.clone(),
                             placeholder: placeholder.clone(),
                             step: step.clone(),
                             required,
@@ -778,7 +782,7 @@ impl Field {
                         r#type: "{input_type}",
                         id: "{control_id}",
                         name: "{name}",
-                        value: "{value}",
+                        value: input_value.clone(),
                         placeholder: placeholder.clone(),
                         step: step.clone(),
                         required,
@@ -1112,6 +1116,31 @@ mod tests {
         assert!(html.contains("Send"), "{html}");
         // No Bootstrap classes.
         assert!(!html.contains("form-control"), "{html}");
+    }
+
+    #[test]
+    fn a_file_input_does_not_carry_a_value_attribute() {
+        fn app() -> Element {
+            rsx! {
+                FormCard {
+                    title: "Upload".to_string(),
+                    action: "/app/avatar".to_string(),
+                    submit_label: "Upload".to_string(),
+                    multipart: true,
+                    fields: vec![Field::file("Avatar", "file").required()],
+                }
+            }
+        }
+        let html = ssr(app);
+        let file_tag = html
+            .split("<input")
+            .find(|chunk| chunk.contains(r#"type="file""#))
+            .expect("a file input");
+        let tag = file_tag.split('>').next().expect("the opening tag");
+        assert!(
+            !tag.contains("value="),
+            "a file input with value=\"\" is a controlled field that clears the selected file: {tag}"
+        );
     }
 
     #[test]

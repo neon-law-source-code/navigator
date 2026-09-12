@@ -120,6 +120,43 @@ pub(crate) fn service_count(registry: &NativeRegistry) -> usize {
     registry.services.len()
 }
 
+/// Refuse to let two worktree roots share a database or Garage bucket.
+///
+/// The caller holds the host lifecycle lock, so the check stays valid through
+/// tenant provisioning and claim persistence. The recorded root may re-enter:
+/// repeated `up` must recover its own tenant rather than treating it as a
+/// collision.
+pub(super) fn ensure_tenant_available(
+    registry: &NativeRegistry,
+    root: &Path,
+    database: &str,
+    buckets: &BTreeMap<String, String>,
+) -> Result<()> {
+    for claim in registry.claims.values() {
+        if claim.root == root {
+            continue;
+        }
+        if claim.database == database {
+            anyhow::bail!(
+                "native database `{database}` is already claimed by {}; refusing to share it with {}",
+                claim.root.display(),
+                root.display()
+            );
+        }
+        if let Some(bucket) = buckets
+            .values()
+            .find(|bucket| claim.buckets.values().any(|claimed| claimed == *bucket))
+        {
+            anyhow::bail!(
+                "native Garage bucket `{bucket}` is already claimed by {}; refusing to share it with {}",
+                claim.root.display(),
+                root.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn claim(
     registry: &mut NativeRegistry,
     root: &Path,
@@ -226,7 +263,10 @@ pub(super) fn report(plan: &[SweepEntry], shared_service_count: usize, apply: bo
 
 #[cfg(test)]
 mod tests {
-    use super::{claim, key, load, plan_sweep, release, report, NativeRegistry, Owner};
+    use super::{
+        claim, ensure_tenant_available, key, load, plan_sweep, release, report, NativeRegistry,
+        Owner,
+    };
     use crate::devx::native::supervisor::Started;
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
@@ -275,6 +315,78 @@ mod tests {
             registry.claims[&key(a)].buckets["documents"],
             registry.claims[&key(b)].buckets["documents"]
         );
+    }
+
+    #[test]
+    fn tenant_admission_refuses_another_root_but_preserves_repeat_up_and_other_claims() {
+        let mut registry = NativeRegistry::default();
+        let first = Path::new("/tmp/worktree/68rwa3iq4y");
+        let colliding = Path::new("/tmp/worktree/rlv3bhtqw9");
+        let ordinary = Path::new("/tmp/worktree/ordinary");
+        let database = "navigator_feature_632_51517b6";
+        let buckets = BTreeMap::from([(
+            "NAVIGATOR_STORAGE_BUCKET".into(),
+            "navigator-feature-632-51517b6-documents".into(),
+        )]);
+
+        claim(
+            &mut registry,
+            first,
+            1,
+            database.into(),
+            buckets.clone(),
+            BTreeMap::new(),
+        );
+
+        assert!(ensure_tenant_available(&registry, first, database, &buckets).is_ok());
+        let error = ensure_tenant_available(&registry, colliding, database, &buckets)
+            .expect_err("a second root cannot reuse the first root's tenant");
+        assert!(error.to_string().contains("database"), "{error:#}");
+        assert!(error.to_string().contains(&first.display().to_string()));
+        assert!(error.to_string().contains(&colliding.display().to_string()));
+        assert!(ensure_tenant_available(
+            &registry,
+            ordinary,
+            "navigator_feature_632_ordinary",
+            &BTreeMap::from([(
+                "NAVIGATOR_STORAGE_BUCKET".into(),
+                "navigator-feature-632-ordinary-documents".into(),
+            )]),
+        )
+        .is_ok());
+        assert_eq!(registry.claims.len(), 1, "refusal must not create a claim");
+
+        let shared_bucket = BTreeMap::from([(
+            "NAVIGATOR_STORAGE_BUCKET".into(),
+            "navigator-feature-632-51517b6-documents".into(),
+        )]);
+        let bucket_error = ensure_tenant_available(
+            &registry,
+            ordinary,
+            "navigator_feature_632_ordinary",
+            &shared_bucket,
+        )
+        .expect_err("a different database cannot reuse a Garage bucket");
+        assert!(bucket_error.to_string().contains("Garage bucket"));
+
+        claim(
+            &mut registry,
+            ordinary,
+            2,
+            "navigator_feature_632_ordinary".into(),
+            BTreeMap::from([(
+                "NAVIGATOR_STORAGE_BUCKET".into(),
+                "navigator-feature-632-ordinary-documents".into(),
+            )]),
+            BTreeMap::new(),
+        );
+        let (_, final_claim, _) = release(&mut registry, first).expect("release first root");
+        assert!(!final_claim);
+        assert!(registry.claims.contains_key(&key(ordinary)));
+
+        let (_, final_claim, _) = release(&mut registry, ordinary).expect("release ordinary root");
+        assert!(final_claim);
+        assert!(registry.claims.is_empty());
     }
 
     #[test]

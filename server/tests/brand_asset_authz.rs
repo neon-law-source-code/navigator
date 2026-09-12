@@ -1,9 +1,15 @@
-//! Firm-scoped brand asset writes authorize before touching public storage.
+//! Firm-scoped brand asset writes authorize before the uploaded bytes are
+//! read, scanned, or stored.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
+use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
+use cloud::{StorageError, StoredObject};
+use portal::attachment_scanner::FakeAttachmentScanner;
 use portal::session::{SessionData, SessionStore, SESSION_COOKIE_NAME};
 use store::firms::{FirmMembership, NewFirm};
 use store::persons::{NewPerson, Role};
@@ -24,10 +30,55 @@ struct Fixture {
     app: axum::Router,
     surreal: store::surreal::SurrealDb,
     storage: Arc<dyn cloud::StorageService>,
+    counting: Arc<CountingStorage>,
+    scanner: Arc<FakeAttachmentScanner>,
     _storage_root: TempDir,
     admin_a: SessionCookie,
     admin_b: SessionCookie,
     owner: SessionCookie,
+}
+
+/// The bucket the router writes through, counting every `put` so a refused
+/// caller can be held to zero writes rather than only to unchanged bytes:
+/// an overwrite with identical content would satisfy a bytes assertion.
+/// Seeding in [`build`] goes through the inner handle directly, so the count
+/// only ever reflects what a request drove.
+struct CountingStorage {
+    inner: Arc<dyn cloud::StorageService>,
+    puts: AtomicUsize,
+}
+
+impl CountingStorage {
+    fn new(inner: Arc<dyn cloud::StorageService>) -> Self {
+        Self {
+            inner,
+            puts: AtomicUsize::new(0),
+        }
+    }
+
+    fn puts(&self) -> usize {
+        self.puts.load(Ordering::Relaxed)
+    }
+}
+
+#[async_trait]
+impl cloud::StorageService for CountingStorage {
+    async fn put(&self, key: &str, bytes: &[u8], content_type: &str) -> Result<(), StorageError> {
+        self.puts.fetch_add(1, Ordering::Relaxed);
+        self.inner.put(key, bytes, content_type).await
+    }
+
+    async fn get(&self, key: &str) -> Result<StoredObject, StorageError> {
+        self.inner.get(key).await
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), StorageError> {
+        self.inner.delete(key).await
+    }
+
+    async fn signed_url(&self, key: &str, expires_in: Duration) -> Result<String, StorageError> {
+        self.inner.signed_url(key, expires_in).await
+    }
 }
 
 struct SessionCookie {
@@ -104,8 +155,11 @@ async fn build() -> (Fixture, SeededBrand) {
     .unwrap();
 
     let mut state = portal::test_support::app_state(surreal.clone()).await;
-    state.storage = storage.clone();
-    state.assets_storage = storage.clone();
+    let counting = Arc::new(CountingStorage::new(storage.clone()));
+    state.storage = counting.clone();
+    state.assets_storage = counting.clone();
+    let scanner = Arc::new(FakeAttachmentScanner::clean());
+    state.attachment_scanner = scanner.clone();
     let sessions = SessionStore::new(SESSION_KEY);
     state.sessions = sessions.clone();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
@@ -118,6 +172,8 @@ async fn build() -> (Fixture, SeededBrand) {
             app,
             surreal,
             storage,
+            counting,
+            scanner,
             _storage_root: storage_root,
             admin_a,
             admin_b,
@@ -210,6 +266,15 @@ fn multipart_body(
 }
 
 async fn post_logo(fixture: &Fixture, session: &SessionCookie, bytes: &[u8]) -> StatusCode {
+    post_logo_typed(fixture, session, "image/png", bytes).await
+}
+
+async fn post_logo_typed(
+    fixture: &Fixture,
+    session: &SessionCookie,
+    content_type: &str,
+    bytes: &[u8],
+) -> StatusCode {
     let boundary = "----navigator-brand-logo-boundary";
     fixture
         .app
@@ -228,7 +293,7 @@ async fn post_logo(fixture: &Fixture, session: &SessionCookie, bytes: &[u8]) -> 
                     &session.csrf,
                     &[],
                     "logo.png",
-                    "image/png",
+                    content_type,
                     bytes,
                 )))
                 .unwrap(),
@@ -239,6 +304,15 @@ async fn post_logo(fixture: &Fixture, session: &SessionCookie, bytes: &[u8]) -> 
 }
 
 async fn post_font(fixture: &Fixture, session: &SessionCookie, bytes: &[u8]) -> StatusCode {
+    post_font_licensed(fixture, session, "OFL-1.1", bytes).await
+}
+
+async fn post_font_licensed(
+    fixture: &Fixture,
+    session: &SessionCookie,
+    licence: &str,
+    bytes: &[u8],
+) -> StatusCode {
     let boundary = "----navigator-brand-font-boundary";
     fixture
         .app
@@ -255,7 +329,7 @@ async fn post_font(fixture: &Fixture, session: &SessionCookie, bytes: &[u8]) -> 
                 .body(Body::from(multipart_body(
                     boundary,
                     &session.csrf,
-                    &[("family", "Replacement Sans"), ("licence", "OFL-1.1")],
+                    &[("family", "Replacement Sans"), ("licence", licence)],
                     "replacement.woff2",
                     "font/woff2",
                     bytes,
@@ -343,6 +417,53 @@ async fn an_out_of_scope_admin_cannot_replace_brand_assets_or_presentation() {
     );
     assert_eq!(unchanged.font_family.as_deref(), Some("Original Sans"));
     assert_eq!(unchanged.font_licence.as_deref(), Some("OFL-1.1"));
+    assert_eq!(fixture.scanner.calls(), 0);
+    assert_eq!(fixture.counting.puts(), 0);
+}
+
+/// Authorization is the first thing either upload door does after CSRF, so an
+/// out-of-scope caller is refused on the brand key before the file is read —
+/// and an invalid file therefore answers not-found rather than naming the
+/// validation rule it broke. The same malformed uploads still reach validation
+/// for the Firm's own Admin, which is what makes the not-found a boundary
+/// rather than a blanket refusal.
+#[tokio::test]
+async fn an_out_of_scope_admin_sees_not_found_for_a_malformed_upload() {
+    let (fixture, _brand) = build().await;
+
+    assert_eq!(
+        post_logo_typed(&fixture, &fixture.admin_a, "text/plain", REPLACEMENT_LOGO).await,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        post_font_licensed(
+            &fixture,
+            &fixture.admin_a,
+            "not-a-licence",
+            REPLACEMENT_FONT
+        )
+        .await,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(fixture.scanner.calls(), 0);
+    assert_eq!(fixture.counting.puts(), 0);
+
+    assert_eq!(
+        post_logo_typed(&fixture, &fixture.admin_b, "text/plain", REPLACEMENT_LOGO).await,
+        StatusCode::SEE_OTHER
+    );
+    assert_eq!(
+        post_font_licensed(
+            &fixture,
+            &fixture.admin_b,
+            "not-a-licence",
+            REPLACEMENT_FONT
+        )
+        .await,
+        StatusCode::SEE_OTHER
+    );
+    assert_eq!(fixture.scanner.calls(), 0);
+    assert_eq!(fixture.counting.puts(), 0);
 }
 
 #[tokio::test]
@@ -399,6 +520,8 @@ async fn the_target_admin_and_owner_can_update_brand_assets() {
     );
     assert_eq!(updated.font_family.as_deref(), Some("Replacement Sans"));
     assert_eq!(updated.font_licence.as_deref(), Some("OFL-1.1"));
+    assert_eq!(fixture.scanner.calls(), 4);
+    assert_eq!(fixture.counting.puts(), 4);
 }
 
 /// The negative case above proves an out-of-scope Admin is refused on the edit

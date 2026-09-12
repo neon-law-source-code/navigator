@@ -42,8 +42,8 @@ struct SeededBrand {
 
 async fn build() -> (Fixture, SeededBrand) {
     let surreal = mem_surreal().await;
-    let (_firm_a, practice_a_admin_id) = firm(&surreal, "Practice A").await;
-    let (firm_b, practice_b_admin_id) = firm(&surreal, "Practice B").await;
+    let (_firm_a, unassigned_firm_admin_id) = firm(&surreal, "Practice A").await;
+    let (firm_b, target_firm_admin_id) = firm(&surreal, "Practice B").await;
     let owner = store::persons::create(
         &surreal,
         &NewPerson::with_role("Owner", "owner@example.com", Role::Owner),
@@ -53,7 +53,7 @@ async fn build() -> (Fixture, SeededBrand) {
     let brand = store::brands::create(
         &surreal,
         Role::Admin,
-        Some(practice_b_admin_id),
+        Some(target_firm_admin_id),
         &store::brands::NewBrand {
             name: "Practice B Brand".to_string(),
             key: BRAND_KEY.to_string(),
@@ -84,7 +84,7 @@ async fn build() -> (Fixture, SeededBrand) {
     store::brands::set_logo(
         &surreal,
         Role::Admin,
-        Some(practice_b_admin_id),
+        Some(target_firm_admin_id),
         brand.id,
         LOGO_KEY,
         "image/png",
@@ -94,7 +94,7 @@ async fn build() -> (Fixture, SeededBrand) {
     store::brands::set_font(
         &surreal,
         Role::Admin,
-        Some(practice_b_admin_id),
+        Some(target_firm_admin_id),
         brand.id,
         "Original Sans",
         &replacement_font_key,
@@ -110,8 +110,8 @@ async fn build() -> (Fixture, SeededBrand) {
     state.sessions = sessions.clone();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let (admin_a, _) = session(practice_a_admin_id, Role::Admin);
-    let (admin_b, _) = session(practice_b_admin_id, Role::Admin);
+    let (admin_a, _) = session(unassigned_firm_admin_id, Role::Admin);
+    let (admin_b, _) = session(target_firm_admin_id, Role::Admin);
     let (owner, _) = session(owner.id, Role::Owner);
     (
         Fixture {

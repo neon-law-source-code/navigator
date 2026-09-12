@@ -198,7 +198,12 @@ pub(super) fn process_identity(pid: u32) -> Option<(String, String)> {
 }
 
 /// Whether the recorded process is still alive and still ours.
-fn still_ours(record: &Started) -> bool {
+///
+/// This is the evidence the sweep planner classifies a tenant claim on, so
+/// it is deliberately narrower than [`is_live`]: identity only, never the
+/// port. A dependency that is running but not accepting connections is
+/// still a process somebody's worktree is claiming.
+pub(super) fn still_ours(record: &Started) -> bool {
     process_identity(record.pid).is_some_and(|(command, start_time)| {
         matches_identity(
             &command,
@@ -441,8 +446,8 @@ fn detach(_command: &mut Command) {}
 #[cfg(test)]
 mod tests {
     use super::{
-        describes, ledger_path, matches_command, matches_identity, owns_pid, program_name,
-        service_dir, tail, Service, Started,
+        describes, is_live, ledger_path, matches_command, matches_identity, owns_pid,
+        process_identity, program_name, service_dir, still_ours, tail, Service, Started,
     };
     use std::path::{Path, PathBuf};
 
@@ -573,6 +578,62 @@ mod tests {
         assert_eq!(
             service_dir(root, "garage"),
             PathBuf::from("/checkout/.devx/native/garage")
+        );
+    }
+
+    /// The two questions the tier asks about a recorded process are not the
+    /// same question, and the sweep planner asks the narrower one. `is_live`
+    /// gates readiness and therefore needs the port; `still_ours` is
+    /// evidence of a running process and must stay true across a port that
+    /// is closed — restarting, wedged, or bound late — because reclaiming a
+    /// tenant out from under a running dependency is not recoverable. What
+    /// does end the evidence is the process exiting.
+    #[test]
+    fn identity_evidence_survives_a_closed_port_and_ends_with_the_process() {
+        let port = {
+            let bound = std::net::TcpListener::bind("127.0.0.1:0")
+                .expect("the loopback interface hands out an ephemeral port");
+            let port = bound
+                .local_addr()
+                .expect("a bound listener has an address")
+                .port();
+            drop(bound);
+            port
+        };
+
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn a process to identify");
+        let pid = child.id();
+        let (command, start_time) =
+            process_identity(pid).expect("a just-spawned process is visible to ps");
+        let record = Started {
+            label: "sleep".into(),
+            pid,
+            port,
+            program: "sleep".into(),
+            command,
+            start_time,
+        };
+
+        assert!(
+            still_ours(&record),
+            "the process this record names is running"
+        );
+        assert!(
+            !is_live(&record),
+            "nothing is listening on 127.0.0.1:{port}, so readiness is false"
+        );
+
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(
+            !still_ours(&record),
+            "a record that outlived its process is not evidence of one"
         );
     }
 }

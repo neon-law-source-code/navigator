@@ -62,14 +62,20 @@ Garage, require no cluster recreation.
 `navigator dev worktree-env up --runtime native` uses the same host lock and descriptor-based slot reservation as KIND
 lane. Restate, workflows-service, and host `web` keep their worktree slot; SurrealDB, Rauthy, and Garage are one shared
 host process set. The native registry records each process's PID, complete command, and process-start identity together
-with each worktree's private SurrealDB database and Garage bucket/key set. A second worktree adopts a verified listener,
-and a recycled PID is treated as stale unless all identity fields still match.
+with each worktree's private SurrealDB database and Garage bucket/key set. A process record is host-wide, so each claim
+also keeps its own copy of the identities it attached to. A second worktree adopts a verified listener, and a recycled
+PID is treated as stale unless all identity fields still match.
 
 `down` removes only the calling worktree's database, buckets, and claim. Shared processes remain until the final live
-claim leaves. `worktree-env sweep` is a dry run by default: it reports native claims whose checkout is gone alongside
-KIND orphans; `--apply` removes only those orphaned tenants and task-owned state, and never a shared process claimed by
-a live worktree. The registry lives at `~/.navigator/native-runtime.json` by default and may be relocated with
-`NAVIGATOR_NATIVE_REGISTRY`; its sibling `native-runtime/` directory holds shared process state.
+claim leaves. `worktree-env sweep` is a dry run by default and classifies each native claim on both kinds of evidence: a
+claim is live while its checkout is present **and** one of the processes it recorded still answers to the recorded
+identity. A checkout survives a reboot, so the path alone cannot tell a working tier from a claim whose processes died
+with the host. Evidence only ever narrows the live set — a claim that recorded no processes is judged by its checkout
+alone, because an absent record is not proof of a dead process, and the identity check never reads a port, because a
+dependency that is running but refusing connections is still a process a live worktree is using. `--apply` removes only
+the orphaned tenants and task-owned state, and never a shared process another live claim is using. The registry lives at
+`~/.navigator/native-runtime.json` by default and may be relocated with `NAVIGATOR_NATIVE_REGISTRY`; its sibling
+`native-runtime/` directory holds shared process state.
 
 ## Testing
 

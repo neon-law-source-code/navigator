@@ -6492,6 +6492,15 @@ spec:
     }
 
     #[test]
+    fn a_deployment_that_declines_dash0_renders_no_dash0_reference() {
+        let referenced = rendered_object_names(ORDINARY_ROW, HUB_ENV);
+        assert!(
+            !referenced.contains("DASH0_TOKEN"),
+            "a declined integration must leave no Dash0 Secret reference behind: {referenced:?}"
+        );
+    }
+
+    #[test]
     fn the_automation_home_keeps_every_reference() {
         // The other half: the automation home declares DocuSign and owns the
         // receiver, so nothing is omitted for it and its render is unchanged.

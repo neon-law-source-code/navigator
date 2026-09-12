@@ -25,6 +25,7 @@ one row cannot exercise both sides of either fork:
 | --- | --- | --- |
 | `NAVIGATOR_GCP_PROJECT_ID` | `example-deployment` | `neon-law-stg`, what `GITHUB_AUTOMATION_HOME_PROJECT` names |
 | Webhook five-tuple | not applicable | required, and supplied |
+| Dash0 | declined: no `DASH0_ENDPOINT` | declared: endpoint and dataset coordinates plus encrypted token |
 | DocuSign | declined: no `DOCUSIGN_BASE_URL` | declared, so every DocuSign key is demanded |
 
 The automation-home row carries a real project id because the requirement is scoped by that exact string in

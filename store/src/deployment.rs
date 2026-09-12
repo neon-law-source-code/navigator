@@ -74,6 +74,13 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
     required!(integration "SENDGRID_INBOUND_SECRET"),
     required!(integration "SENDGRID_EVENTS_SECRET"),
     required!(integration "SENDGRID_EVENTS_PUBLIC_KEY"),
+    // Dash0 is declared by the endpoint coordinate and is otherwise absent.
+    // The endpoint and dataset are plaintext coordinates; the token is
+    // projected from the deployment's encrypted Secret. A declared exporter
+    // must carry all three values so the renderer cannot silently turn a
+    // half-configured row into a Google-only pipeline.
+    required!(integration "DASH0_DATASET" if "DASH0_ENDPOINT"),
+    required!(integration "DASH0_TOKEN" if "DASH0_ENDPOINT"),
     // DocuSign is declared by `DOCUSIGN_BASE_URL` and is otherwise absent.
     //
     // A deployment that executes no documents supplies none of these and runs
@@ -384,6 +391,31 @@ mod tests {
             assert!(
                 demanded.contains(&key.to_owned()),
                 "{key} must be required once OAUTH_APPLE_CLIENT_ID is declared"
+            );
+        }
+    }
+
+    #[test]
+    fn a_deployment_that_declares_no_dash0_is_asked_for_none() {
+        let demanded = demanded(&[("NAVIGATOR_GCP_PROJECT_ID", "example-project")]);
+        for key in ["DASH0_DATASET", "DASH0_TOKEN"] {
+            assert!(
+                !demanded.contains(&key.to_owned()),
+                "{key} must not be required of a deployment that declares no DASH0_ENDPOINT"
+            );
+        }
+    }
+
+    #[test]
+    fn declaring_dash0_demands_the_dataset_and_token() {
+        let demanded = demanded(&[
+            ("NAVIGATOR_GCP_PROJECT_ID", "example-project"),
+            ("DASH0_ENDPOINT", "https://dash0.example"),
+        ]);
+        for key in ["DASH0_DATASET", "DASH0_TOKEN"] {
+            assert!(
+                demanded.contains(&key.to_owned()),
+                "{key} must be required once DASH0_ENDPOINT is declared"
             );
         }
     }

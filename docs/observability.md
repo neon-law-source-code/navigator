@@ -72,13 +72,16 @@ retention and access policy is a separate deployment control, not the privacy bo
 
 The `examples/deploy` process path uses the plain collector contract: binaries send OTLP/gRPC to the in-cluster
 collector Service without OpenObserve credentials. The collector runs the existing `memory_limiter`, resource detection,
-fail-closed `redaction`, and `batch` processors before the exporters. Traces also retain tail sampling. Dash0 is
-render-time opt-in: add nonblank `DASH0_ENDPOINT` and `DASH0_DATASET` values to the selected deployment row's `[env]`
-coordinates, and add `DASH0_TOKEN` to that deployment's encrypted Secret Manager input; when all three are present, the
-renderer substitutes the endpoint and dataset and includes `otlp/dash0` alongside `googlecloud` in all three pipelines.
-When any value is absent, it removes Dash0 from every pipeline and leaves `googlecloud` running alone, so no
-`YOUR_DASH0_*` placeholder reaches the cluster. The token remains a `secretKeyRef` and never enters application
-arguments or committed plaintext.
+fail-closed `redaction`, and `batch` processors before the exporters. Traces also retain tail sampling. Dash0 is an
+optional, staging-only integration declared by a nonblank `DASH0_ENDPOINT` in the selected deployment row's `[env]`
+coordinates. A row without that endpoint need not carry `DASH0_DATASET` or `DASH0_TOKEN`; the deployment plan reports
+the token as `integration not declared by this deployment` and `ops ship` removes it from that row's
+`SecretProviderClass`. When the endpoint is present, `DASH0_DATASET` must also be a nonblank coordinate and
+`DASH0_TOKEN` must be present in the encrypted Secret Manager input. The deployment, Secret Manager, and ship gates
+refuse a missing value by name, so a half-configured row cannot be silently rendered as a Google-only pipeline. With all
+three values present, the renderer substitutes the endpoint and dataset and includes `otlp/dash0` alongside
+`googlecloud` in all three pipelines. The token remains a `secretKeyRef` and never enters application arguments or
+committed plaintext.
 
 The collector exporter uses OTLP/gRPC with `Authorization: Bearer …` and a `Dash0-Dataset` header. The transport and
 header names are inferred from the repository's OTLP/gRPC seam and the implementation brief; confirm the account's exact

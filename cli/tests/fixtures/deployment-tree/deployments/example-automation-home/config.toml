@@ -63,6 +63,11 @@ NAVIGATOR_WORKFLOWS_URL = "https://workflows.home.example.com/"
 RESTATE_IDENTITY_KEY = "publickeyv1_test-identity-key"
 SLACK_GENERAL_CHANNEL_ID = "C012GENERAL"
 
+# Declaring Dash0 is optional. When the endpoint is present, the dataset and
+# encrypted token are required together by store::deployment.
+DASH0_ENDPOINT = "https://ingest.dash0.example"
+DASH0_DATASET = "example-dataset"
+
 # --- Sign-in ---------------------------------------------------------------
 GOOGLE_OAUTH_REQUIRED_HD = "example.com"
 

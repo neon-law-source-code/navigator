@@ -1,4 +1,4 @@
-//! `/app/brands/{key}/edit` — a brand's presentation: name, typeface, a free
+//! `/app/admin/brands/{key}/edit` — a brand's presentation: name, typeface, a free
 //! hex primary colour behind a WCAG AA contrast gate, an uploaded logo, and
 //! an uploaded font.
 //!
@@ -166,7 +166,7 @@ fn store_role(role: ViewerRole) -> store::persons::Role {
     }
 }
 
-/// Route entry for `/app/brands/{key}/edit`.
+/// Route entry for `/app/admin/brands/{key}/edit`.
 #[component]
 pub fn BrandsEdit() -> Element {
     let resource = use_server_future(get_brands_edit)?;
@@ -223,7 +223,7 @@ fn presentation_form(view: &BrandsEditView, fields: &BrandPresentationFields) ->
         }
         FormCard {
             title: format!("Edit {}", fields.name),
-            action: format!("/app/brands/{}/edit", view.key),
+            action: format!("/app/admin/brands/{}/edit", view.key),
             submit_label: "Save presentation".to_string(),
             heading: Heading::H1,
             csrf_token: Some(view.csrf_token.clone()),
@@ -243,7 +243,7 @@ fn logo_form(view: &BrandsEditView, fields: &BrandPresentationFields) -> Element
             }
             FormCard {
                 title: "Upload logo".to_string(),
-                action: format!("/app/brands/{}/logo", view.key),
+                action: format!("/app/admin/brands/{}/logo", view.key),
                 submit_label: "Upload".to_string(),
                 heading: Heading::H2,
                 multipart: true,
@@ -279,7 +279,7 @@ fn font_form(view: &BrandsEditView, fields: &BrandPresentationFields) -> Element
             }
             FormCard {
                 title: "Upload font".to_string(),
-                action: format!("/app/brands/{}/font", view.key),
+                action: format!("/app/admin/brands/{}/font", view.key),
                 submit_label: "Upload".to_string(),
                 heading: Heading::H2,
                 multipart: true,
@@ -316,12 +316,12 @@ pub fn brands_edit_body(view: &BrandsEditView) -> Element {
                     {presentation_form(view, fields)}
                     {logo_form(view, fields)}
                     {font_form(view, fields)}
-                    p { a { href: "/app/brands", "← Brands" } }
+                    p { a { href: "/app/admin/brands", "← Brands" } }
                 },
                 None => rsx! {
                     h1 { "Brand not found" }
                     p { "No brand exists with key " code { "{view.key}" } "." }
-                    p { a { href: "/app/brands", "← Brands" } }
+                    p { a { href: "/app/admin/brands", "← Brands" } }
                 },
             }
         }
@@ -375,7 +375,10 @@ mod tests {
     fn the_presentation_form_is_a_hex_input_and_posts_to_the_key() {
         let html = dioxus_ssr::render_element(brands_edit_body(&view(Some(fields()))));
         assert_forms_accessible(&html, "brand presentation");
-        assert!(html.contains(r#"action="/app/brands/neon/edit""#), "{html}");
+        assert!(
+            html.contains(r#"action="/app/admin/brands/neon/edit""#),
+            "{html}"
+        );
         assert!(html.contains(r#"name="typeface""#), "{html}");
         assert!(html.contains(r#"name="primary_color""#), "{html}");
         assert!(html.contains(r##"value="#007c91""##), "{html}");
@@ -385,8 +388,14 @@ mod tests {
     #[test]
     fn the_logo_and_font_uploads_are_native_multipart_forms() {
         let html = dioxus_ssr::render_element(brands_edit_body(&view(Some(fields()))));
-        assert!(html.contains(r#"action="/app/brands/neon/logo""#), "{html}");
-        assert!(html.contains(r#"action="/app/brands/neon/font""#), "{html}");
+        assert!(
+            html.contains(r#"action="/app/admin/brands/neon/logo""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"action="/app/admin/brands/neon/font""#),
+            "{html}"
+        );
         assert!(html.contains(r#"enctype="multipart/form-data""#), "{html}");
         assert!(html.contains(r#"name="licence""#), "{html}");
     }
@@ -394,7 +403,7 @@ mod tests {
     #[test]
     fn an_uploaded_logo_and_font_render_their_status() {
         let mut fields = fields();
-        fields.logo_url = Some("/app/brands/neon/logo".to_string());
+        fields.logo_url = Some("/app/admin/brands/neon/logo".to_string());
         fields.font = Some((
             "/assets/fonts/brands/neon/abc.woff2".to_string(),
             "OFL-1.1".to_string(),

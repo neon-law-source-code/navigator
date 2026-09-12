@@ -31,21 +31,12 @@ is_admin(session) if {
 
 # Owner/Admin bypass: an authenticated Owner or Admin reaches every route the
 # other rules below don't otherwise allow, except `/app/owner` (the
-# deployment-wide firm inventory) and `/app/brands` (the house-of-brands
-# home, ENG-493) — both Owner only. Per docs/access-model.md this bypass is
-# silent — no per-read audit row.
+# deployment-wide firm inventory) — Owner only. Brand CRUD lives under
+# `/app/admin/brands` and rides this bypass like `/app/admin/people`. Per
+# docs/access-model.md this bypass is silent — no per-read audit row.
 owner_only_path if {
     input.path[0] == "app"
     input.path[1] == "owner"
-}
-
-# The house-of-brands home is Owner only. `/app/brands/{key}/edit` is three
-# segments, so Admin (and Owner) reach it through the route bypass; Lawyer and
-# Clerk stay denied.
-owner_only_path if {
-    input.path[0] == "app"
-    input.path[1] == "brands"
-    count(input.path) == 2
 }
 
 allow if {
@@ -168,31 +159,32 @@ allow if {
 }
 
 # The native create-brand form and the logo/font upload doors it links to
-# (ENG-586) are not `owner_only_path` — that carve-out matches only the
-# literal two-segment `/app/brands` — so they would already pass through the
-# general Owner/Admin bypass above. Naming them here anyway keeps every
-# brand-write path in one place rather than splitting "explicit" writes from
-# ones that merely survive the bypass.
+# (ENG-586) already pass through the general Owner/Admin bypass under
+# `/app/admin`. Naming them here keeps every brand-write path in one place
+# rather than splitting "explicit" writes from ones that merely survive the
+# bypass.
 allow if {
-    input.path == ["app", "brands", "new"]
+    input.path == ["app", "admin", "brands", "new"]
     input.method == "POST"
     is_admin(input.session)
 }
 
 allow if {
     input.path[0] == "app"
-    input.path[1] == "brands"
-    input.path[3] == "logo"
-    count(input.path) == 4
+    input.path[1] == "admin"
+    input.path[2] == "brands"
+    input.path[4] == "logo"
+    count(input.path) == 5
     input.method == "POST"
     is_admin(input.session)
 }
 
 allow if {
     input.path[0] == "app"
-    input.path[1] == "brands"
-    input.path[3] == "font"
-    count(input.path) == 4
+    input.path[1] == "admin"
+    input.path[2] == "brands"
+    input.path[4] == "font"
+    count(input.path) == 5
     input.method == "POST"
     is_admin(input.session)
 }
@@ -306,16 +298,10 @@ allow if {
     is_authenticated(input.session)
 }
 
-# /app/brands is the house-of-brands home: every registered brand's typeface.
-# Owner only (ENG-493) — narrowed from every firm tier, a deliberate removal
-# of the brand style reference Lawyer and Clerk could reach before. Owner
-# reaches it through `owner_only_path` below, not the route bypass at the top
-# of this policy: Admin must not inherit it the way it inherits everything
-# else, so it needs the same exclusion `/app/owner` already has. The edit
-# page at `/app/brands/{key}/edit` is not this path: `owner_only_path` is
-# exactly two segments, so Owner and Admin reach the editor through the
-# bypass and Lawyer/Clerk stay denied. The handler then refuses anyone who
-# is not Owner (system-wide brands) or that Firm's Admin DRI.
+# /app/admin/brands is the house-of-brands home: every registered brand's
+# typeface. Owner and Admin reach it through the route bypass at the top of
+# this policy; Lawyer and Clerk stay denied. The handler then refuses anyone
+# who is not Owner (system-wide brands) or that Firm's Admin DRI.
 
 # /app/admin is Owner/Admin only at the hub, the matter directory
 # (`/app/admin/projects`), Person CRUD (`/app/admin/people`), and visitor

@@ -1,4 +1,4 @@
-//! `/app/brands/new` — create a brand row (ENG-586).
+//! `/app/admin/brands/new` — create a brand row (ENG-586).
 //!
 //! Owner creates a system-wide brand (`firm_id: None`) and never sees a Firm
 //! picker — `store::brands::create` refuses a Firm-scoped attempt from
@@ -146,7 +146,7 @@ fn new_body(view: &BrandNewView) -> Element {
                 "You are not the Admin DRI of any Firm, so you may not create a brand. Ask your \
                  Firm's Owner to appoint you first."
             }
-            p { a { href: "/app/brands", "← Brands" } }
+            p { a { href: "/app/admin/brands", "← Brands" } }
         };
     }
 
@@ -182,14 +182,14 @@ fn new_body(view: &BrandNewView) -> Element {
         header { class: "page-header",
             h1 { "Create brand" }
             p { class: "page-subtitle", "{scope_note}" }
-            p { a { href: "/app/brands", "← Back to brands" } }
+            p { a { href: "/app/admin/brands", "← Back to brands" } }
         }
         if let Some(error) = q.error.as_ref() {
             p { class: "nav-form-error", role: "alert", "{error}" }
         }
         FormCard {
             title: "Create brand".to_string(),
-            action: "/app/brands/new".to_string(),
+            action: "/app/admin/brands/new".to_string(),
             submit_label: "Create".to_string(),
             heading: Heading::H2,
             csrf_token: Some(view.csrf_token.clone()),
@@ -198,7 +198,7 @@ fn new_body(view: &BrandNewView) -> Element {
     }
 }
 
-/// `/app/brands/new`.
+/// `/app/admin/brands/new`.
 #[component]
 pub fn BrandNew() -> Element {
     let resource = use_server_future(get_brand_new_form)?;
@@ -262,7 +262,7 @@ mod tests {
     fn an_owner_sees_no_firm_picker_and_the_form_posts_to_the_collection() {
         let html = render(&view(BrandNewQuery::default()));
         assert!(html.contains("system-wide"), "{html}");
-        assert!(html.contains(r#"action="/app/brands/new""#), "{html}");
+        assert!(html.contains(r#"action="/app/admin/brands/new""#), "{html}");
         assert!(html.contains(r#"name="name""#), "{html}");
         assert!(html.contains(r#"name="key""#), "{html}");
         assert!(html.contains(r#"name="primary_color""#), "{html}");

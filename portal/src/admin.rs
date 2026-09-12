@@ -1873,7 +1873,7 @@ async fn firms_update(
 
 // ---- Brands (ENG-586) ----
 
-const BRAND_NEW_PATH: &str = "/app/brands/new";
+const BRAND_NEW_PATH: &str = "/app/admin/brands/new";
 
 fn back_to_brand_new_form(query: &str) -> Response {
     if query.is_empty() {
@@ -1895,7 +1895,7 @@ pub(crate) struct BrandCreateInput {
     primary_color: String,
 }
 
-/// `POST /app/brands/new` — the same path the create form renders at, so a
+/// `POST /app/admin/brands/new` — the same path the create form renders at, so a
 /// refusal reloads it with `?error=` and every field echoed. `firm_id` is
 /// never read from the form: Owner always creates system-wide, and an
 /// Admin's Firm is re-resolved server-side from their own DRI membership,
@@ -1963,7 +1963,9 @@ pub(crate) async fn brands_create(
     )
     .await
     {
-        Ok(created) => Redirect::to(&format!("/app/brands/{}/edit", created.key)).into_response(),
+        Ok(created) => {
+            Redirect::to(&format!("/app/admin/brands/{}/edit", created.key)).into_response()
+        }
         Err(error) => refuse(&error.user_message()),
     }
 }

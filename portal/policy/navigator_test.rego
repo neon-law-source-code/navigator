@@ -2089,49 +2089,48 @@ test_anonymous_denied_app_people_avatar if {
 	not authz.allow with input as {"path": ["app", "people", "p1", "avatar"], "method": "GET", "session": null}
 }
 
-# ---------- /app/brands ----------
-# The house-of-brands home. Owner only (ENG-493), narrowed from every firm
-# tier: the Owner/Admin route bypass does not apply here, so an Admin is
-# denied the same way a Lawyer is — the same shape as `/app/owner` below.
+# ---------- /app/admin/brands ----------
+# The house-of-brands home. Owner and Admin ride the `/app/admin` route
+# bypass; Lawyer and Clerk stay denied — the same shape as `/app/admin/people`.
 
 test_owner_reaches_app_brands if {
-	authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": owner_session}
+	authz.allow with input as {"path": ["app", "admin", "brands"], "method": "GET", "session": owner_session}
 }
 
-test_admin_denied_app_brands if {
-	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": admin_session}
+test_admin_reaches_app_brands if {
+	authz.allow with input as {"path": ["app", "admin", "brands"], "method": "GET", "session": admin_session}
 }
 
 test_lawyer_denied_app_brands if {
-	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands"], "method": "GET", "session": lawyer_session}
 }
 
 test_clerk_denied_app_brands if {
-	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": clerk_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands"], "method": "GET", "session": clerk_session}
 }
 
 test_client_denied_app_brands if {
-	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands"], "method": "GET", "session": client_session}
 }
 
 test_anonymous_denied_app_brands if {
-	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": null}
+	not authz.allow with input as {"path": ["app", "admin", "brands"], "method": "GET", "session": null}
 }
 
 test_owner_reaches_app_brands_edit if {
-	authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": owner_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "neon", "edit"], "method": "GET", "session": owner_session}
 }
 
 test_admin_reaches_app_brands_edit if {
-	authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": admin_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "neon", "edit"], "method": "GET", "session": admin_session}
 }
 
 test_lawyer_denied_app_brands_edit if {
-	not authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands", "neon", "edit"], "method": "GET", "session": lawyer_session}
 }
 
 test_clerk_denied_app_brands_edit if {
-	not authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": clerk_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands", "neon", "edit"], "method": "GET", "session": clerk_session}
 }
 
 test_owner_patches_app_api_brands if {
@@ -2154,47 +2153,47 @@ test_clerk_denied_app_api_brands_patch if {
 # though the general Owner/Admin bypass already covers every one of these
 # (none is `owner_only_path`) — see the policy's own comment.
 test_owner_posts_app_brands_new if {
-	authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": owner_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "new"], "method": "POST", "session": owner_session}
 }
 
 test_admin_posts_app_brands_new if {
-	authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": admin_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "new"], "method": "POST", "session": admin_session}
 }
 
 test_lawyer_denied_app_brands_new_post if {
-	not authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands", "new"], "method": "POST", "session": lawyer_session}
 }
 
 test_clerk_denied_app_brands_new_post if {
-	not authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": clerk_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands", "new"], "method": "POST", "session": clerk_session}
 }
 
 test_owner_posts_app_brands_logo if {
-	authz.allow with input as {"path": ["app", "brands", "neon", "logo"], "method": "POST", "session": owner_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "neon", "logo"], "method": "POST", "session": owner_session}
 }
 
 test_admin_posts_app_brands_logo if {
-	authz.allow with input as {"path": ["app", "brands", "neon", "logo"], "method": "POST", "session": admin_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "neon", "logo"], "method": "POST", "session": admin_session}
 }
 
 test_lawyer_denied_app_brands_logo_post if {
-	not authz.allow with input as {"path": ["app", "brands", "neon", "logo"], "method": "POST", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands", "neon", "logo"], "method": "POST", "session": lawyer_session}
 }
 
 test_owner_posts_app_brands_font if {
-	authz.allow with input as {"path": ["app", "brands", "neon", "font"], "method": "POST", "session": owner_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "neon", "font"], "method": "POST", "session": owner_session}
 }
 
 test_admin_posts_app_brands_font if {
-	authz.allow with input as {"path": ["app", "brands", "neon", "font"], "method": "POST", "session": admin_session}
+	authz.allow with input as {"path": ["app", "admin", "brands", "neon", "font"], "method": "POST", "session": admin_session}
 }
 
 test_lawyer_denied_app_brands_font_post if {
-	not authz.allow with input as {"path": ["app", "brands", "neon", "font"], "method": "POST", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "brands", "neon", "font"], "method": "POST", "session": lawyer_session}
 }
 
 test_anonymous_denied_app_brands_new_post if {
-	not authz.allow with input as {"path": ["app", "brands", "new"], "method": "POST", "session": null}
+	not authz.allow with input as {"path": ["app", "admin", "brands", "new"], "method": "POST", "session": null}
 }
 
 # ---------- /app/owner ----------

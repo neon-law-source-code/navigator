@@ -93,8 +93,10 @@ who is assigned), never that matter's documents, notations, or other content. `/
 Owner — it lists every matter in the deployment, the same administrative-listing shape a reconciliation report already
 reads for its own deployment-wide question — which is what gives the detail page's participation-only carve-out
 somewhere to navigate from. `/app/owner` is Owner only: it lists every practice and the house brands each one wears.
-Admin is denied that inventory. `/app/brands` is Owner only in the same way: the house-of-brands home. Owner edits a
-system-wide or existing Firm-scoped brand's typeface, palette, and assets at `/app/brands/{key}/edit` and `PATCH
+Admin is denied that inventory. `/app/admin/brands` is the house-of-brands home: Owner and Admin reach it through the
+same `/app/admin` route bypass as the people directory; Lawyer and Clerk stay denied. The listing is system-wide rows
+plus every Firm-scoped row for Owner, or only the Firms an Admin holds ManageBrand on. Owner edits a system-wide or
+existing Firm-scoped brand's typeface, palette, and assets at `/app/admin/brands/{key}/edit` and `PATCH
 /app/api/brands/{key}`; those two paths admit Admin at the route so a Firm's Admin DRI can edit that Firm's own brands,
 and the store refuses anyone else. Lawyer and Clerk are denied both the editor and the PATCH. Only an Owner may create,
 edit, or demote an Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only, so no
@@ -161,9 +163,10 @@ navigate to. The people directory and the matter directory at `/app/admin` are s
 `person_firm_role` row on; an Admin with no membership sees those two listings empty. Privileged reach is a surface you
 navigate to rather than an invisible widening of a shared route, which is what makes a lens bug distinguishable from an
 intended bypass — the two are otherwise indistinguishable from a response body. Admin cannot create, edit, or demote an
-Owner. `/app/owner` is not an Admin surface. `/app/brands` is not an Admin surface either. `/app/brands/{key}/edit` is:
-an Admin DRI may change that Firm's typeface and palette from the closed catalogs, and replace its logo and uploaded
-font; a system-wide brand stays Owner's.
+Owner. `/app/owner` is not an Admin surface. `/app/admin/brands` is: Owner and Admin reach the registry. An Admin sees
+system-wide brands and their own Firm-scoped rows, never another Firm's, and an Admin DRI may change that Firm's
+typeface and palette from the closed catalogs, and replace its logo and uploaded font; a system-wide brand stays
+Owner's.
 
 ### *anonymous*
 

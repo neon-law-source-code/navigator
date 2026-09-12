@@ -46,6 +46,13 @@ const ADMIN_LINKS: &[AdminLink] = &[
         href: crate::matter_directory::MATTER_DIRECTORY_PATH,
         cta: "Browse projects",
     },
+    AdminLink {
+        title: "Brands",
+        blurb: "Every registered brand's typeface, palette, logo, and uploaded font — \
+                system-wide rows and each Firm's own.",
+        href: crate::app_chrome::APP_BRANDS_HREF,
+        cta: "Manage brands",
+    },
 ];
 
 /// Everything the hub renders: the viewer's tier and the deploy's brand mark,
@@ -164,8 +171,13 @@ mod tests {
             )),
             "project directory tile: {out}"
         );
+        assert!(
+            out.contains(&format!(r#"href="{}""#, crate::app_chrome::APP_BRANDS_HREF)),
+            "brands tile: {out}"
+        );
         assert!(out.contains("Manage people"), "people call to action");
         assert!(out.contains("View analytics"), "analytics call to action");
+        assert!(out.contains("Manage brands"), "brands call to action");
     }
 
     #[test]

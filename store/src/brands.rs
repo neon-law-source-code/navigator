@@ -521,7 +521,7 @@ pub async fn system_wide(surreal: &SurrealDb) -> Result<Vec<Brand>, BrandError> 
 }
 
 /// Every Firm-scoped brand across the whole deployment, name then id — the
-/// Owner-only inventory `/app/brands` lists alongside [`system_wide`]. Never
+/// Owner inventory [`visible_for_actor`] lists alongside [`system_wide`]. Never
 /// used for a Firm-scoped viewer's own listing, which stays [`for_firm`].
 pub async fn all_firm_scoped(surreal: &SurrealDb) -> Result<Vec<Brand>, BrandError> {
     let mut response = surreal
@@ -532,6 +532,44 @@ pub async fn all_firm_scoped(surreal: &SurrealDb) -> Result<Vec<Brand>, BrandErr
         .and_then(surrealdb::IndexedResults::check)?;
     let rows: Vec<BrandRow> = response.take(0)?;
     Ok(rows.into_iter().filter_map(BrandRow::into_brand).collect())
+}
+
+/// Brands the actor may see on `/app/admin/brands`.
+///
+/// System-wide rows are visible to every Firm. Owner also sees every
+/// Firm-scoped row. An Admin sees only the Firm-scoped rows they hold
+/// [`crate::firm_capability::FirmCapability::ManageBrand`] on — that Firm's
+/// Admin DRI — so one practice's administrator cannot read another's
+/// presentation inventory.
+pub async fn visible_for_actor(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+) -> Result<Vec<Brand>, BrandError> {
+    let mut brands = match actor_role {
+        Role::Owner => {
+            let mut brands = system_wide(surreal).await?;
+            brands.extend(all_firm_scoped(surreal).await?);
+            brands
+        }
+        Role::Admin => {
+            let mut brands = system_wide(surreal).await?;
+            let firm_ids = crate::firm_capability::allowed_firm_ids(
+                surreal,
+                actor_role,
+                actor_person_id,
+                crate::firm_capability::FirmCapability::ManageBrand,
+            )
+            .await?;
+            for firm_id in firm_ids {
+                brands.extend(for_firm(surreal, firm_id).await?);
+            }
+            brands
+        }
+        Role::Lawyer | Role::Clerk | Role::Client => Vec::new(),
+    };
+    brands.sort_by(|left, right| left.name.cmp(&right.name).then(left.id.cmp(&right.id)));
+    Ok(brands)
 }
 
 /// Every brand scoped to this Firm — never another Firm's, and never the
@@ -1269,8 +1307,27 @@ mod tests {
         .unwrap();
 
         let all = all_firm_scoped(&db).await.unwrap();
-        assert_eq!(all, vec![a, b]);
+        assert_eq!(all, vec![a.clone(), b.clone()]);
         assert!(!all.contains(&system_wide_brand));
+
+        let owner_view = visible_for_actor(&db, Role::Owner, None).await.unwrap();
+        assert!(owner_view.contains(&a));
+        assert!(owner_view.contains(&b));
+        assert!(owner_view.contains(&system_wide_brand));
+
+        let first_practice = visible_for_actor(&db, Role::Admin, Some(admin_a))
+            .await
+            .unwrap();
+        assert!(first_practice.contains(&a));
+        assert!(first_practice.contains(&system_wide_brand));
+        assert!(!first_practice.contains(&b));
+
+        let second_practice = visible_for_actor(&db, Role::Admin, Some(admin_b))
+            .await
+            .unwrap();
+        assert!(second_practice.contains(&b));
+        assert!(second_practice.contains(&system_wide_brand));
+        assert!(!second_practice.contains(&a));
     }
 
     /// ENG-586: deleting a brand a Firm wears, or that a Project names, is

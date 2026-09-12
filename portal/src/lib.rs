@@ -944,7 +944,7 @@ pub fn bootstrap(
         admin_state.clone(),
     );
     // ENG-586: the create-brand form renders through Dioxus at
-    // `/app/brands/new`; the native `POST` on the same path creates the row.
+    // `/app/admin/brands/new`; the native `POST` on the same path creates the row.
     let dioxus_brand_new = dioxus_app::csrf_page_router(
         dioxus_app::APP_BRAND_NEW_PATH,
         webapp::brands_new::BrandNew,

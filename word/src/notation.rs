@@ -49,10 +49,44 @@ use crate::outline::{
 };
 use crate::{BreakKind, FieldKind, RevisionKind, StoryKind};
 
+/// Markdown emitted by the canonical model and therefore allowed to carry
+/// structural `navigator-*` comments. The field is private on purpose: raw
+/// Markdown from an editor, upload, or another tool cannot be presented to
+/// the structural parser as trusted input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustedNotationMarkdown(String);
+
+impl TrustedNotationMarkdown {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for TrustedNotationMarkdown {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::ops::Deref for TrustedNotationMarkdown {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl std::fmt::Display for TrustedNotationMarkdown {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 /// Emit the governed, editable Markdown representation of every canonical
 /// story in document order.
 #[must_use]
-pub fn to_markdown(document: &CanonicalDocument) -> String {
+pub fn to_markdown(document: &CanonicalDocument) -> TrustedNotationMarkdown {
     let mut out = String::new();
     if let Some(scheme) = document.scheme {
         out.push_str(&comment(
@@ -74,7 +108,7 @@ pub fn to_markdown(document: &CanonicalDocument) -> String {
             write_block(&mut out, block, None);
         }
     }
-    out
+    TrustedNotationMarkdown(out)
 }
 
 fn write_block(out: &mut String, block: &CanonicalBlock, parent: Option<&str>) {
@@ -269,9 +303,9 @@ fn inline_children_mut(inline: &mut CanonicalInline) -> Option<&mut Vec<Canonica
 /// Parse the emitted Markdown back into the canonical model through the
 /// workspace's one `CommonMark` grammar.
 #[must_use]
-pub fn from_markdown(source: &str) -> CanonicalDocument {
+pub fn from_markdown(source: &TrustedNotationMarkdown) -> CanonicalDocument {
     let mut reader = Reader::default();
-    for event in Parser::new_ext(source, Options::empty()) {
+    for event in Parser::new_ext(source.as_str(), Options::empty()) {
         match event {
             Event::Html(raw) | Event::InlineHtml(raw) => reader.html(&raw),
             Event::Text(text) | Event::Code(text) => reader.text.push_str(&text),
@@ -1122,7 +1156,10 @@ mod tests {
             "Clause\n",
         );
 
-        let parsed = from_markdown(source);
+        // This is deliberately a parser-resilience fixture, not an external
+        // ingestion path. Production callers cannot construct this wrapper
+        // from a raw string.
+        let parsed = from_markdown(&super::TrustedNotationMarkdown(source.into()));
         let inlines = &parsed.stories[0].blocks[0].inlines;
 
         // Nothing is lost: the text, the leaf that could not hold a child,

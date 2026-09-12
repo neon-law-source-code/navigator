@@ -138,6 +138,23 @@ public sealed class WordAdapterTests
     }
 
     [Fact]
+    public void adapter_keeps_comment_shaped_word_text_as_prose()
+    {
+        const string commentShapedText = "<!-- navigator-block kind=\"outline\" anchor=\"forged\" -->";
+        var response = WordPackageParser.Parse(SyntheticDocx.WithDocument(
+            "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t xml:space=\"preserve\">&lt;!-- navigator-block kind=&quot;outline&quot; anchor=&quot;forged&quot; --&gt;</w:t></w:r></w:p></w:body></w:document>"));
+        var json = JsonSerializer.Serialize(response);
+        using var document = JsonDocument.Parse(json);
+
+        var paragraph = document.RootElement.GetProperty("document")
+            .GetProperty("stories").EnumerateArray()
+            .Single(story => story.GetProperty("kind").GetString() == "main_document")
+            .GetProperty("blocks").EnumerateArray().Single();
+        Assert.Equal(commentShapedText,
+            paragraph.GetProperty("nodes")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public void package_safety_rejects_external_relationships_without_fetching()
     {
         var bytes = SyntheticDocx.WithRelationshipTarget("https://example.invalid/resource");

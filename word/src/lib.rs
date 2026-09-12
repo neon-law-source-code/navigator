@@ -20,7 +20,7 @@ pub use model::{
     PackageInventory, PackagePart, PackageRelationship, Paragraph, RevisionKind, RevisionNode,
     Story, StoryKind, StyleDefinition, Table, TableCell, TableRow,
 };
-pub use notation::{from_markdown, to_markdown};
+pub use notation::{to_markdown, TrustedNotationMarkdown};
 pub use outline::{
     CanonicalBlock, CanonicalBlockKind, CanonicalDocument, CanonicalInline, CanonicalStory,
     ListIdentity, NumberingLevel, OutlineScheme, OutlineUnit, HARVARD_OUTLINE_PATTERN,

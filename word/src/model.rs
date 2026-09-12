@@ -41,7 +41,7 @@ impl Document {
     /// Emit the editable Notation Markdown projection of the imported main
     /// story. Persistence remains the caller's governed responsibility.
     #[must_use]
-    pub fn notation_markdown(&self) -> String {
+    pub fn notation_markdown(&self) -> crate::notation::TrustedNotationMarkdown {
         self.canonical_outline().to_markdown()
     }
 

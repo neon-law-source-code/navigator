@@ -14,19 +14,27 @@ was the nightly email, which was the thing that broke. This page exists so that 
 
 Every binary calls [`telemetry::init`](../telemetry/src/lib.rs) once in `main` and holds the returned guard until exit.
 There is no per-binary subscriber wiring anymore — web, the `workflows-service` worker, and all six `*-trigger` jobs
-share the one crate. Two modes, chosen by whether `OTEL_EXPORTER_OTLP_ENDPOINT` is set:
+share the one crate. The endpoint and OpenObserve variables select one of three process contracts:
 
-| | Unset (stdout-only) | Complete OpenObserve contract |
-| --- | --- | --- |
-| stdout | human-readable `fmt` | **structured JSON** and OTLP |
-| traces | — | OTLP/gRPC → OpenObserve |
-| metrics | — | OTLP/gRPC → OpenObserve |
-| cost | zero — no network | one batch span + periodic metric push |
+| | Unset (stdout-only) | Plain collector contract | Complete OpenObserve contract |
+| --- | --- | --- | --- |
+| stdout | human-readable `fmt` | **structured JSON** and OTLP | **structured JSON** and OTLP |
+| traces | — | OTLP/gRPC → collector | OTLP/gRPC → OpenObserve |
+| metrics | — | OTLP/gRPC → collector | OTLP/gRPC → OpenObserve |
+| logs | — | OTLP/gRPC → collector and stdout JSON | OTLP/gRPC → OpenObserve and stdout JSON |
+| credentials | — | none in the process | Basic auth, organization, and stream |
 
 `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` name the exporter and service. The four `NAVIGATOR_OPENOBSERVE_*`
-values supply Basic authentication, organization, and stream routing. An endpoint without all four is rejected and the
-process remains stdout-only. The guard's drop flushes batched spans/metrics — important for the short-lived trigger
-jobs, which would otherwise exit before the periodic exporter fires.
+values supply Basic authentication, organization, and stream routing for the direct OpenObserve contract. When none of
+those four values is set, an endpoint is a plain collector contract with no authentication metadata. When one to three
+are set, the process rejects the partial OpenObserve contract and remains stdout-only. The guard's drop flushes batched
+spans/metrics — important for the short-lived trigger jobs, which would otherwise exit before the periodic exporter
+fires.
+
+Nothing about the plain collector contract replaces the OpenTelemetry environment variables.
+`OTEL_EXPORTER_OTLP_HEADERS` and its per-signal variants still apply in every exporting mode — the OpenObserve metadata
+is merged with them rather than substituted for them — so pointing the collector contract at a backend that needs its
+own header is a deployment change, not a Rust change.
 
 ## What is instrumented
 
@@ -59,6 +67,24 @@ the stdout formatter or the direct OTLP log bridge sees it when a value is an em
 identifier, document/body-like string, or an explicitly content-bearing field. Approved opaque identifiers and bounded
 enum/status fields remain unchanged. This control applies to audit and non-audit events alike; OpenObserve's stream
 retention and access policy is a separate deployment control, not the privacy boundary.
+
+## Where it lands: collector fan-out
+
+The `examples/deploy` process path uses the plain collector contract: binaries send OTLP/gRPC to the in-cluster
+collector Service without OpenObserve credentials. The collector runs the existing `memory_limiter`, resource detection,
+fail-closed `redaction`, and `batch` processors before the exporters. Traces also retain tail sampling. Dash0 is
+render-time opt-in: add nonblank `DASH0_ENDPOINT` and `DASH0_DATASET` values to the selected deployment row's `[env]`
+coordinates, and add `DASH0_TOKEN` to that deployment's encrypted Secret Manager input; when all three are present, the
+renderer substitutes the endpoint and dataset and includes `otlp/dash0` alongside `googlecloud` in all three pipelines.
+When any value is absent, it removes Dash0 from every pipeline and leaves `googlecloud` running alone, so no
+`YOUR_DASH0_*` placeholder reaches the cluster. The token remains a `secretKeyRef` and never enters application
+arguments or committed plaintext.
+
+The collector exporter uses OTLP/gRPC with `Authorization: Bearer …` and a `Dash0-Dataset` header. The transport and
+header names are inferred from the repository's OTLP/gRPC seam and the implementation brief; confirm the account's exact
+endpoint and header contract before rollout. The account is time-boxed, so the operator must choose the environment and
+complete the configuration before relying on a live export. The existing staging direct OpenObserve contract remains
+available and unchanged.
 
 The Iceberg archive ([iceberg-archive guide](iceberg-archive.md)) remains distinct. Its nightly `Archives` workflow
 snapshots SurrealDB tables to Parquet on GCS for BigQuery external-table analysis; it is not an operational telemetry

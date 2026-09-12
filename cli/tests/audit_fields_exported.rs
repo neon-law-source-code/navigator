@@ -240,3 +240,42 @@ fn the_export_contract_matches_what_the_records_emit() {
          and from `allowed_keys`, so the allow-list does not accumulate keys nothing sends."
     );
 }
+
+#[test]
+fn dash0_is_an_additive_exporter_after_redaction_for_every_signal() {
+    let root = workspace_root();
+    let collector = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    // Dash0 routes on the `Dash0-Dataset` header exactly as spelled here. An
+    // unrecognized routing header is ignored rather than rejected, so a typo
+    // (or an `X-` prefix RFC 6648 retired) exports successfully into the
+    // wrong dataset — a failure no exporter metric reports.
+    assert!(collector.contains(
+        "otlp/dash0:\n        endpoint: ${env:DASH0_ENDPOINT}\n        headers:\n          Authorization: \"Bearer ${env:DASH0_TOKEN}\"\n          Dash0-Dataset: \"${env:DASH0_DATASET}\""
+    ));
+
+    for signal in ["traces", "metrics", "logs"] {
+        let marker = format!("        {signal}:\n");
+        let start = collector
+            .find(&marker)
+            .unwrap_or_else(|| panic!("collector is missing the {signal} pipeline"));
+        let pipeline = &collector[start..];
+        let end = ["traces", "metrics", "logs"]
+            .into_iter()
+            .filter(|candidate| *candidate != signal)
+            .filter_map(|candidate| pipeline.find(&format!("\n        {candidate}:\n")))
+            .min()
+            .unwrap_or(pipeline.len());
+        let pipeline = &pipeline[..end];
+        let redaction = pipeline
+            .find("redaction")
+            .expect("each signal pipeline runs redaction");
+        let batch = pipeline
+            .find("batch")
+            .expect("each signal pipeline batches after redaction");
+        assert!(redaction < batch, "{signal} redaction must precede batch");
+        assert!(
+            pipeline.contains("exporters: [googlecloud, otlp/dash0]"),
+            "{signal} keeps googlecloud and fans out to Dash0"
+        );
+    }
+}

@@ -16,7 +16,8 @@
 //!    `roles/monitoring.metricWriter` + `roles/logging.logWriter`, and is
 //!    bound to the in-cluster `otel-collector` KSA via Workload Identity.
 //! 2. **Collector** — render the bundled manifests with the project id
-//!    substituted and `kubectl apply` them: the Collector Deployment +
+//!    substituted and the optional Dash0 coordinates, then `kubectl apply`
+//!    them: the Collector Deployment +
 //!    Service, the `otel-collector-config`, the shared
 //!    `navigator-otel-env` `ConfigMap`, and the GMP self-monitoring
 //!    (`PodMonitoring` + alert `Rules`).
@@ -34,8 +35,9 @@
 //! ## Testing
 //!
 //! The orchestration shells out to `gcloud`/`kubectl`, so it isn't
-//! unit-tested. The pure pieces — the project-id substitution and the
-//! `envFrom` patch builder — are covered by the `tests` module below.
+//! unit-tested. The pure pieces — manifest rendering, the deployment's
+//! render-time Dash0 opt-in, and the `envFrom` patch builder — are covered by
+//! the `tests` module below.
 
 use std::fs;
 use std::process::Command;
@@ -102,6 +104,24 @@ const COLLECTOR_MONITORING_YAML: &str =
 /// The placeholder every deploy-side manifest carries for the GCP project.
 const PROJECT_PLACEHOLDER: &str = "YOUR_PROJECT_ID";
 const NAMESPACE_PLACEHOLDER: &str = "YOUR_NAMESPACE";
+const DASH0_ENDPOINT_KEY: &str = "DASH0_ENDPOINT";
+const DASH0_DATASET_KEY: &str = "DASH0_DATASET";
+const DASH0_TOKEN_KEY: &str = "DASH0_TOKEN";
+const DASH0_ENDPOINT_PLACEHOLDER: &str = "YOUR_DASH0_ENDPOINT";
+const DASH0_DATASET_PLACEHOLDER: &str = "YOUR_DASH0_DATASET";
+const DASH0_EXPORTER_BLOCK: &str = r#"      # Render-time opt-in: the renderer removes this exporter when
+      # the selected deployment has not supplied all three DASH0_* values.
+      otlp/dash0:
+        endpoint: ${env:DASH0_ENDPOINT}
+        headers:
+          Authorization: "Bearer ${env:DASH0_TOKEN}"
+          Dash0-Dataset: "${env:DASH0_DATASET}"
+"#;
+const DASH0_COORDINATE_ENV_BLOCK: &str = r"            - name: DASH0_ENDPOINT
+              value: YOUR_DASH0_ENDPOINT
+            - name: DASH0_DATASET
+              value: YOUR_DASH0_DATASET
+";
 
 /// The narrow GKE control-plane response required to connect a Rust
 /// Kubernetes client without depending on an operator's kubeconfig or a
@@ -146,6 +166,7 @@ pub fn run_observability(opts: &ObservabilityOpts) -> Result<()> {
     let root = super::deployments::root(opts.deployments_dir.as_deref())?;
     let deployment = super::deployments::Deployment::load(&root, &opts.deployment)?;
     let cfg = ShipConfig::from_deployment(&deployment)?;
+    let dash0 = dash0_coordinates(&deployment);
     require_tools(&["kubectl", "gcloud"])?;
     if !opts.dry_run {
         require_auth(&["gcloud"])?;
@@ -155,7 +176,7 @@ pub fn run_observability(opts: &ObservabilityOpts) -> Result<()> {
         cfg.project_id, cfg.context
     );
     ensure_gsa_iam(&cfg, opts.dry_run)?;
-    apply_manifests(&cfg, opts.dry_run)?;
+    apply_manifests(&cfg, dash0, opts.dry_run)?;
     wire_binaries(&cfg, opts.dry_run)?;
     eprintln!(
         "==> observability ready. Roll the binaries so they pick up the endpoint \
@@ -255,12 +276,12 @@ fn exec_with_control_plane_retry(
 /// namespace). The collector config is in a `ConfigMap`, so a server-side
 /// apply can't catch a bad collector pipeline — the operator confirms the
 /// rollout settles afterward (this command waits on it).
-fn apply_manifests(cfg: &ShipConfig, dry_run: bool) -> Result<()> {
+fn apply_manifests(cfg: &ShipConfig, dash0: Option<(&str, &str)>, dry_run: bool) -> Result<()> {
     for (name, template) in [
         ("otel-collector.yaml", OTEL_COLLECTOR_YAML),
         ("collector-monitoring.yaml", COLLECTOR_MONITORING_YAML),
     ] {
-        let rendered = render_manifest(template, &cfg.project_id, &cfg.namespace);
+        let rendered = render_manifest(template, &cfg.project_id, &cfg.namespace, dash0);
         let path = std::env::temp_dir().join(format!("navigator-otel-{name}"));
         if dry_run {
             eprintln!(
@@ -535,12 +556,49 @@ fn gsa_exists(cfg: &ShipConfig, gsa: &str) -> Result<bool> {
 }
 
 /// Render a deploy-side manifest by substituting the project and namespace
-/// placeholders. Pure so the substitution is unit-testable.
+/// placeholders and, when fully configured, enabling the Dash0 exporter.
+/// Pure so the substitution is unit-testable.
 #[must_use]
-pub fn render_manifest(template: &str, project_id: &str, namespace: &str) -> String {
-    template
+pub fn render_manifest(
+    template: &str,
+    project_id: &str,
+    namespace: &str,
+    dash0: Option<(&str, &str)>,
+) -> String {
+    let rendered = template
         .replace(PROJECT_PLACEHOLDER, project_id)
-        .replace(NAMESPACE_PLACEHOLDER, namespace)
+        .replace(NAMESPACE_PLACEHOLDER, namespace);
+    match dash0 {
+        Some((endpoint, dataset)) => rendered
+            .replace(DASH0_ENDPOINT_PLACEHOLDER, endpoint)
+            .replace(DASH0_DATASET_PLACEHOLDER, dataset),
+        None => rendered
+            .replace(DASH0_EXPORTER_BLOCK, "")
+            .replace(DASH0_COORDINATE_ENV_BLOCK, "")
+            .replace(", otlp/dash0", ""),
+    }
+}
+
+/// Read the optional Dash0 coordinates from the selected deployment row.
+///
+/// The token itself never enters this process: the encrypted key-name set only
+/// proves that the existing Secret projection has a `DASH0_TOKEN` entry. All
+/// three values must be configured before the renderer enables the exporter.
+fn dash0_coordinates(deployment: &super::deployments::Deployment) -> Option<(&str, &str)> {
+    let endpoint = deployment
+        .coordinates
+        .get(DASH0_ENDPOINT_KEY)
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())?;
+    let dataset = deployment
+        .coordinates
+        .get(DASH0_DATASET_KEY)
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())?;
+    deployment
+        .encrypted_keys
+        .contains(DASH0_TOKEN_KEY)
+        .then_some((endpoint, dataset))
 }
 
 /// Build the strategic-merge patch that rewrites a single container's
@@ -585,7 +643,12 @@ mod tests {
 
     #[test]
     fn render_substitutes_every_project_placeholder() {
-        let rendered = render_manifest(OTEL_COLLECTOR_YAML, "my-org-prod", "example-a");
+        let rendered = render_manifest(
+            OTEL_COLLECTOR_YAML,
+            "my-org-prod",
+            "example-a",
+            Some(("https://ingest.dash0.example", "staging")),
+        );
         // The bundled collector manifest carries the placeholder exactly
         // twice (WI GSA annotation + googlecloud exporter project); both
         // must be substituted and none left behind.
@@ -597,12 +660,84 @@ mod tests {
         assert!(rendered.contains(
             "OTEL_EXPORTER_OTLP_ENDPOINT: \"http://otel-collector.example-a.svc.cluster.local:4317\""
         ));
-        assert!(rendered.contains("name: DASH0_ENDPOINT"));
-        assert!(rendered.contains("value: YOUR_DASH0_ENDPOINT"));
-        assert!(rendered.contains("name: DASH0_DATASET"));
-        assert!(rendered.contains("value: YOUR_DASH0_DATASET"));
+        assert!(!rendered.contains(DASH0_ENDPOINT_PLACEHOLDER));
+        assert!(!rendered.contains(DASH0_DATASET_PLACEHOLDER));
+        assert!(rendered.contains("value: https://ingest.dash0.example"));
+        assert!(rendered.contains("value: staging"));
+        assert!(rendered.contains("endpoint: ${env:DASH0_ENDPOINT}"));
+        assert!(rendered.contains("Dash0-Dataset: \"${env:DASH0_DATASET}\""));
+        for signal in ["traces", "metrics", "logs"] {
+            let marker = format!("        {signal}:\n");
+            let start = rendered
+                .find(&marker)
+                .unwrap_or_else(|| panic!("collector is missing the {signal} pipeline"));
+            let pipeline = &rendered[start..];
+            assert!(
+                pipeline.contains("exporters: [googlecloud, otlp/dash0]"),
+                "{signal} includes the configured Dash0 exporter"
+            );
+        }
+        assert!(rendered.contains("secretKeyRef:"));
         assert!(rendered.contains("name: DASH0_TOKEN"));
         assert!(rendered.contains("key: DASH0_TOKEN"));
+    }
+
+    #[test]
+    fn render_omits_dash0_from_every_pipeline_when_coordinates_are_absent() {
+        let rendered = render_manifest(OTEL_COLLECTOR_YAML, "my-org-prod", "example-a", None);
+
+        assert!(!rendered.contains("otlp/dash0"));
+        assert!(!rendered.contains(DASH0_ENDPOINT_PLACEHOLDER));
+        assert!(!rendered.contains(DASH0_DATASET_PLACEHOLDER));
+        for signal in ["traces", "metrics", "logs"] {
+            let marker = format!("        {signal}:\n");
+            let start = rendered
+                .find(&marker)
+                .unwrap_or_else(|| panic!("collector is missing the {signal} pipeline"));
+            let pipeline = &rendered[start..];
+            assert!(
+                pipeline.contains("exporters: [googlecloud]"),
+                "{signal} keeps the Google Cloud exporter when Dash0 is absent"
+            );
+        }
+        assert!(rendered.contains("project: my-org-prod"));
+    }
+
+    #[test]
+    fn deployment_coordinates_enable_dash0_only_with_the_secret_key() {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        let deployment = |endpoint: Option<&str>, dataset: Option<&str>, token: bool| {
+            super::super::deployments::Deployment {
+                name: "sample".into(),
+                kms_key: "projects/sample/locations/global/keyRings/sample/cryptoKeys/sample"
+                    .into(),
+                provisioned: true,
+                coordinates: [
+                    endpoint.map(|value| (DASH0_ENDPOINT_KEY.to_string(), value.to_string())),
+                    dataset.map(|value| (DASH0_DATASET_KEY.to_string(), value.to_string())),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<BTreeMap<_, _>>(),
+                encrypted_keys: if token {
+                    BTreeSet::from([DASH0_TOKEN_KEY.to_string()])
+                } else {
+                    BTreeSet::new()
+                },
+            }
+        };
+
+        assert_eq!(
+            dash0_coordinates(&deployment(
+                Some("https://ingest.dash0.example"),
+                Some("staging"),
+                true,
+            )),
+            Some(("https://ingest.dash0.example", "staging"))
+        );
+        assert!(dash0_coordinates(&deployment(Some("endpoint"), Some("dataset"), false)).is_none());
+        assert!(dash0_coordinates(&deployment(Some(" "), Some("dataset"), true)).is_none());
     }
 
     /// Every `secretKeyRef` the bundled manifests carry is `optional: true`.
@@ -642,7 +777,7 @@ mod tests {
 
     #[test]
     fn render_substitutes_namespace_in_self_monitoring_manifest() {
-        let rendered = render_manifest(COLLECTOR_MONITORING_YAML, "my-org-prod", "example-b");
+        let rendered = render_manifest(COLLECTOR_MONITORING_YAML, "my-org-prod", "example-b", None);
         assert!(!rendered.contains(NAMESPACE_PLACEHOLDER));
         assert!(rendered.contains("namespace: example-b"));
     }

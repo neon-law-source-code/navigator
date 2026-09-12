@@ -2,10 +2,10 @@
 #
 # Binaries set OTEL_EXPORTER_OTLP_ENDPOINT to this Service and emit OTLP traces,
 # metrics, AND logs (see telemetry/src/lib.rs — logs now export over OTLP too,
-# while still dual-emitting to stdout). The Collector fans out to Google Cloud
-# (Cloud Trace + Cloud Monitoring + Cloud Logging) and, when the operator
-# supplies the three DASH0_* values, to Dash0. Swapping backends is a config
-# change here, never a Rust change.
+# while still dual-emitting to stdout). The Collector always exports to Google
+# Cloud (Cloud Trace + Cloud Monitoring + Cloud Logging). The renderer adds the
+# Dash0 exporter only when the selected deployment supplies all three DASH0_*
+# values. Swapping backends is a config change here, never a Rust change.
 #
 # Logs DUAL-PATH: each binary keeps writing structured JSON to stdout (Cloud
 # Logging already collects that), AND ships logs over OTLP through this
@@ -241,13 +241,8 @@ data:
         project: YOUR_PROJECT_ID
         log:
           default_log_name: navigator-otel
-      # OTLP/gRPC over the two headers Dash0 documents for its collector
-      # integration: a bearer token authenticates, and `Dash0-Dataset` routes.
-      # The header name carries no `X-` prefix (RFC 6648, and Dash0's own
-      # integration docs) — a misspelled routing header is not rejected, it is
-      # ignored, and every signal silently lands in the `default` dataset. The
-      # endpoint, dataset, and token are collector-only coordinates; no binary
-      # ever holds them.
+      # Render-time opt-in: the renderer removes this exporter when
+      # the selected deployment has not supplied all three DASH0_* values.
       otlp/dash0:
         endpoint: ${env:DASH0_ENDPOINT}
         headers:
@@ -303,9 +298,8 @@ spec:
           image: otel/opentelemetry-collector-contrib:0.116.1
           args: ["--config=/etc/otel/config.yaml"]
           env:
-            # Operator-supplied non-secret Dash0 coordinates. Keep the
-            # placeholders until the selected account, region, and dataset
-            # are decided; the collector resolves them from its environment.
+            # Render-time opt-in coordinates. The renderer removes these two
+            # entries, the exporter, and the pipeline fan-out when absent.
             - name: DASH0_ENDPOINT
               value: YOUR_DASH0_ENDPOINT
             - name: DASH0_DATASET

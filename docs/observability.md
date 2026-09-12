@@ -72,18 +72,15 @@ retention and access policy is a separate deployment control, not the privacy bo
 
 The `examples/deploy` process path uses the plain collector contract: binaries send OTLP/gRPC to the in-cluster
 collector Service without OpenObserve credentials. The collector runs the existing `memory_limiter`, resource detection,
-fail-closed `redaction`, and `batch` processors before both exporters. Traces also retain tail sampling. Each of the
-traces, metrics, and logs pipelines exports additively to `googlecloud` and `otlp/dash0`; the collector's allow-list is
-unchanged and remains before both destinations.
+fail-closed `redaction`, and `batch` processors before the exporters. Traces also retain tail sampling. Dash0 is
+render-time opt-in: add nonblank `DASH0_ENDPOINT` and `DASH0_DATASET` values to the selected deployment row's `[env]`
+coordinates, and add `DASH0_TOKEN` to that deployment's encrypted Secret Manager input; when all three are present, the
+renderer substitutes the endpoint and dataset and includes `otlp/dash0` alongside `googlecloud` in all three pipelines.
+When any value is absent, it removes Dash0 from every pipeline and leaves `googlecloud` running alone, so no
+`YOUR_DASH0_*` placeholder reaches the cluster. The token remains a `secretKeyRef` and never enters application
+arguments or committed plaintext.
 
-Dash0 is configured only at the collector. `DASH0_ENDPOINT` and `DASH0_DATASET` are operator-supplied non-secret values
-in the collector Deployment's plain environment, represented by `YOUR_DASH0_ENDPOINT` and `YOUR_DASH0_DATASET`
-placeholders until the account, region, and dataset are chosen. `DASH0_TOKEN` is an operator-supplied Secret Manager
-value listed by the `SecretProviderClass`; `ops secrets apply` writes it through the existing server-side-applied
-`navigator-web-secrets` Kubernetes Secret, and the collector reads it with `secretKeyRef`. The token value is never
-committed, printed, or placed in application arguments.
-
-The collector exporter uses OTLP/gRPC with `Authorization: Bearer …` and an `X-Dash0-Dataset` header. The transport and
+The collector exporter uses OTLP/gRPC with `Authorization: Bearer …` and a `Dash0-Dataset` header. The transport and
 header names are inferred from the repository's OTLP/gRPC seam and the implementation brief; confirm the account's exact
 endpoint and header contract before rollout. The account is time-boxed, so the operator must choose the environment and
 complete the configuration before relying on a live export. The existing staging direct OpenObserve contract remains

@@ -22,11 +22,18 @@
 //!
 //! Story kind and part, block order and nesting, source anchors, outline
 //! depth, displayed marker, cumulative path, the full list identity, manual
-//! labels, and the ordered typed inline structure (bookmarks, hyperlinks,
-//! fields, revisions, tabs, breaks, comment references). Inline nodes are
-//! carried as an ordered, typed sequence attached to their block rather
-//! than interleaved into the prose, because the prose is what an editor
-//! rewrites and the sequence is what has to stay identifiable.
+//! labels, and the ordered, nested typed inline structure (bookmarks,
+//! hyperlinks, fields, revisions, tabs, breaks, comment references). Inline
+//! nodes are carried as a typed sequence attached to their block rather than
+//! interleaved into the prose, because the prose is what an editor rewrites
+//! and the sequence is what has to stay identifiable. Containment rides in a
+//! `depth` attribute, so a hyperlink whose label carries a bookmark or a
+//! field keeps it.
+//!
+//! Text is the one inline the sequence does not carry, at any depth. A run
+//! inside a hyperlink is rewritten whenever the sentence around it is, so a
+//! second copy of it beside the prose would be stale after the first edit;
+//! the prose is the text and the sequence is the structure around it.
 
 use pulldown_cmark::{Event, Options, Parser, TagEnd};
 
@@ -83,7 +90,7 @@ fn write_block(out: &mut String, block: &CanonicalBlock, parent: Option<&str>) {
     out.push_str(&comment("navigator-block", &attributes));
     out.push('\n');
     for inline in &block.inlines {
-        write_inline(out, inline);
+        write_inline(out, inline, 0);
     }
     let visible = visible_text(block);
     if !visible.is_empty() {
@@ -164,8 +171,20 @@ fn marker_lead(marker: &str) -> String {
     }
 }
 
-fn write_inline(out: &mut String, inline: &CanonicalInline) {
-    let attributes: Vec<(&'static str, Option<String>)> = match inline {
+/// How deep a hand-edited document is allowed to nest one inline inside
+/// another. Real Open XML nests a handful — a revision around a hyperlink
+/// around a field — and the attribute below is editable text, so the cap is
+/// what keeps a typed-in `depth` from turning the rebuild into unbounded
+/// recursion. A node past it is re-parented, never dropped.
+const MAX_INLINE_NESTING: usize = 16;
+
+/// Write one inline and, beneath it, the inlines it contains. `depth` is the
+/// nesting the reader rebuilds the tree from: a hyperlink carrying a
+/// bookmark emits the hyperlink at its own depth and the bookmark one
+/// deeper, so the containment survives a projection that is otherwise a flat
+/// run of comments.
+fn write_inline(out: &mut String, inline: &CanonicalInline, depth: usize) {
+    let mut attributes: Vec<(&'static str, Option<String>)> = match inline {
         CanonicalInline::Text { .. } => return,
         CanonicalInline::Tab => vec![("kind", Some("tab".into()))],
         CanonicalInline::Break { break_kind } => vec![
@@ -215,8 +234,36 @@ fn write_inline(out: &mut String, inline: &CanonicalInline) {
             ("id", Some(id.clone())),
         ],
     };
+    // Depth zero is the common case and every block would otherwise carry
+    // the same noise on every line, so the top level says nothing.
+    if depth > 0 {
+        attributes.push(("depth", Some(depth.to_string())));
+    }
     out.push_str(&comment("navigator-inline", &attributes));
     out.push('\n');
+    for child in inline_children(inline) {
+        write_inline(out, child, depth + 1);
+    }
+}
+
+/// The inlines one inline contains. Three of the variants nest; the rest are
+/// leaves.
+fn inline_children(inline: &CanonicalInline) -> &[CanonicalInline] {
+    match inline {
+        CanonicalInline::Hyperlink { children, .. }
+        | CanonicalInline::Field { children, .. }
+        | CanonicalInline::Revision { children, .. } => children,
+        _ => &[],
+    }
+}
+
+fn inline_children_mut(inline: &mut CanonicalInline) -> Option<&mut Vec<CanonicalInline>> {
+    match inline {
+        CanonicalInline::Hyperlink { children, .. }
+        | CanonicalInline::Field { children, .. }
+        | CanonicalInline::Revision { children, .. } => Some(children),
+        _ => None,
+    }
 }
 
 /// Parse the emitted Markdown back into the canonical model through the
@@ -243,7 +290,9 @@ struct Reader {
     stories: Vec<CanonicalStory>,
     pending_story: Option<(StoryKind, String)>,
     pending_block: Option<Vec<(String, String)>>,
-    pending_inlines: Vec<CanonicalInline>,
+    /// Each pending inline with the nesting depth its comment declared, in
+    /// document order. The tree is rebuilt from these when the block flushes.
+    pending_inlines: Vec<(usize, CanonicalInline)>,
     text: String,
     blocks: Vec<(Option<String>, CanonicalBlock)>,
 }
@@ -274,7 +323,11 @@ impl Reader {
                 }
                 "navigator-inline" => {
                     if let Some(inline) = parse_inline(&attributes) {
-                        self.pending_inlines.push(inline);
+                        let depth = attribute(&attributes, "depth")
+                            .and_then(|depth| depth.parse::<usize>().ok())
+                            .unwrap_or(0)
+                            .min(MAX_INLINE_NESTING);
+                        self.pending_inlines.push((depth, inline));
                     }
                 }
                 _ => {}
@@ -303,7 +356,7 @@ impl Reader {
             unit.text.clone_from(&text);
             unit
         });
-        let mut inlines = std::mem::take(&mut self.pending_inlines);
+        let mut inlines = nest_inlines(std::mem::take(&mut self.pending_inlines));
         if !text.is_empty() {
             inlines.insert(0, CanonicalInline::Text { text: text.clone() });
         }
@@ -357,6 +410,33 @@ fn nest(flat: Vec<(Option<String>, CanonicalBlock)>) -> Vec<CanonicalBlock> {
         }
     }
     roots
+}
+
+/// Rebuild the inline tree from the flat, depth-tagged emission, the way
+/// [`nest`] rebuilds the block tree from its `parent` attributes. A node
+/// deeper than the inline above it can hold — because that inline is a leaf,
+/// or because the depth was typed by hand — becomes its sibling rather than
+/// being discarded.
+fn nest_inlines(flat: Vec<(usize, CanonicalInline)>) -> Vec<CanonicalInline> {
+    let mut items = flat.into_iter().peekable();
+    take_inlines(&mut items, 0)
+}
+
+type PendingInlines = std::iter::Peekable<std::vec::IntoIter<(usize, CanonicalInline)>>;
+
+fn take_inlines(items: &mut PendingInlines, depth: usize) -> Vec<CanonicalInline> {
+    let mut out = Vec::new();
+    while let Some((_, mut inline)) = items.next_if(|(item_depth, _)| *item_depth >= depth) {
+        let nested = take_inlines(items, depth + 1);
+        if let Some(children) = inline_children_mut(&mut inline) {
+            *children = nested;
+            out.push(inline);
+        } else {
+            out.push(inline);
+            out.extend(nested);
+        }
+    }
+    out
 }
 
 fn find<'a>(blocks: &'a mut [CanonicalBlock], anchor: &str) -> Option<&'a mut CanonicalBlock> {
@@ -906,22 +986,154 @@ mod tests {
             CanonicalInline::Hyperlink {
                 relationship_id: Some("rId4".into()),
                 anchor: Some("top".into()),
-                children: Vec::new(),
+                // The label of a link is routinely bookmarked, and the
+                // bookmark is the anchoring that has to survive with it.
+                children: vec![CanonicalInline::BookmarkStart {
+                    id: "2".into(),
+                    name: Some("link-label".into()),
+                }],
             },
             CanonicalInline::Field {
                 field_kind: FieldKind::Simple,
                 instruction: Some("PAGE".into()),
-                children: Vec::new(),
+                children: vec![CanonicalInline::CommentReference { id: "3".into() }],
             },
             CanonicalInline::CommentReference { id: "4".into() },
             CanonicalInline::Tab,
             CanonicalInline::BookmarkEnd { id: "1".into() },
+        ];
+        let expected = block.inlines.clone();
+        let before = document(OutlineScheme::Roman, vec![block]);
+
+        let after = from_markdown(&to_markdown(&before));
+
+        assert_eq!(fingerprint(&after), fingerprint(&before));
+        // The whole tree, not the shells and their order: the projection
+        // that lost nested children kept both of those intact.
+        assert_eq!(
+            after.stories[0].blocks[0]
+                .inlines
+                .iter()
+                .filter(|inline| !matches!(inline, CanonicalInline::Text { .. }))
+                .cloned()
+                .collect::<Vec<_>>(),
+            expected
+                .into_iter()
+                .filter(|inline| !matches!(inline, CanonicalInline::Text { .. }))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// A hyperlink whose label carries a bookmark, and a field nested
+    /// inside it, are what the adapter actually hands the canonical model.
+    /// A projection that keeps the shells and drops what they contain
+    /// preserves inline order while losing the anchoring ENG-577 asks for.
+    #[test]
+    fn nested_inline_children_survive_the_round_trip() {
+        let mut block = plain("clause-1", CanonicalBlockKind::Paragraph, "See Exhibit A");
+        let nested = vec![
+            CanonicalInline::BookmarkStart {
+                id: "9".into(),
+                name: Some("exhibit-a".into()),
+            },
+            CanonicalInline::Field {
+                field_kind: FieldKind::Complex,
+                instruction: Some("REF exhibit-a".into()),
+                children: vec![CanonicalInline::CommentReference { id: "12".into() }],
+            },
+            CanonicalInline::BookmarkEnd { id: "9".into() },
+        ];
+        let hyperlink = CanonicalInline::Hyperlink {
+            relationship_id: Some("rId7".into()),
+            anchor: Some("exhibit-a".into()),
+            children: nested,
+        };
+        block.inlines = vec![
+            CanonicalInline::Text {
+                text: "See Exhibit A".into(),
+            },
+            hyperlink.clone(),
+            CanonicalInline::Tab,
         ];
         let before = document(OutlineScheme::Roman, vec![block]);
 
         let after = from_markdown(&to_markdown(&before));
 
         assert_eq!(fingerprint(&after), fingerprint(&before));
+        assert_eq!(
+            after.stories[0].blocks[0].inlines,
+            vec![
+                CanonicalInline::Text {
+                    text: "See Exhibit A".into()
+                },
+                hyperlink,
+                CanonicalInline::Tab,
+            ]
+        );
+    }
+
+    /// Text is the prose's, at every depth. A run inside a hyperlink is
+    /// rewritten when an attorney edits the sentence, so carrying a second
+    /// copy of it in the comment stream would go stale the first time the
+    /// document was edited; the structure around it is what has to stay
+    /// identifiable.
+    #[test]
+    fn nested_text_stays_in_the_prose_rather_than_the_comment_stream() {
+        let mut block = plain("clause-1", CanonicalBlockKind::Paragraph, "See Exhibit A");
+        block.inlines = vec![CanonicalInline::Hyperlink {
+            relationship_id: Some("rId7".into()),
+            anchor: None,
+            children: vec![
+                CanonicalInline::Text {
+                    text: "Exhibit A".into(),
+                },
+                CanonicalInline::Tab,
+            ],
+        }];
+        let before = document(OutlineScheme::Roman, vec![block]);
+
+        let markdown = to_markdown(&before);
+        let after = from_markdown(&markdown);
+
+        assert!(!markdown.contains("Exhibit A\""), "{markdown}");
+        assert_eq!(after.stories[0].blocks[0].text, "See Exhibit A");
+        assert_eq!(
+            after.stories[0].blocks[0].inlines[1],
+            CanonicalInline::Hyperlink {
+                relationship_id: Some("rId7".into()),
+                anchor: None,
+                children: vec![CanonicalInline::Tab],
+            }
+        );
+    }
+
+    /// The depth attribute is hand-editable text, so it cannot be trusted to
+    /// describe a tree that exists. A child deeper than its parent can hold,
+    /// or deeper than the cap, is kept beside it rather than dropped — an
+    /// anchored, mis-nested inline is recoverable and a discarded one is not.
+    #[test]
+    fn an_impossible_inline_depth_keeps_the_node_instead_of_dropping_it() {
+        let source = concat!(
+            "<!-- navigator-story kind=\"main_document\" part=\"/word/document.xml\" -->\n",
+            "<!-- navigator-block kind=\"paragraph\" anchor=\"a1\" -->\n",
+            "<!-- navigator-inline kind=\"tab\" -->\n",
+            "<!-- navigator-inline kind=\"bookmark_start\" id=\"1\" depth=\"4\" -->\n",
+            "<!-- navigator-inline kind=\"comment_reference\" id=\"2\" depth=\"9999\" -->\n",
+            "Clause\n",
+        );
+
+        let parsed = from_markdown(source);
+        let inlines = &parsed.stories[0].blocks[0].inlines;
+
+        // Nothing is lost: the text, the leaf that could not hold a child,
+        // and both nodes that claimed to be under it.
+        assert_eq!(inlines.len(), 4);
+        assert!(inlines.contains(&CanonicalInline::Tab));
+        assert!(inlines.contains(&CanonicalInline::BookmarkStart {
+            id: "1".into(),
+            name: None
+        }));
+        assert!(inlines.contains(&CanonicalInline::CommentReference { id: "2".into() }));
     }
 
     #[test]

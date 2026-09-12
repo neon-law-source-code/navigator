@@ -423,17 +423,23 @@ fn canonical_paragraph(
         "decimal" | "decimal_zero" | "decimalZero" => Some(OutlineScheme::Arabic),
         _ => None,
     };
+    // A root this document cannot settle is an ambiguity for an attorney to
+    // resolve, not a marker for Navigator to choose. Like an unsupported
+    // level and a skipped one, it stops here and keeps the paragraph as
+    // anchored text: a diagnostic beside an invented `I.` would still have
+    // put a number on the page that the source document never displayed.
     if depth == 1 {
-        if let Some(detected) = detected_scheme {
-            if let Some(existing) = *scheme {
-                if existing != detected {
-                    diagnostics.push(crate::Diagnostic::ambiguous_outline(&anchor));
-                }
-            } else {
-                *scheme = Some(detected);
+        match (detected_scheme, *scheme) {
+            (Some(detected), Some(existing)) if existing != detected => {
+                diagnostics.push(crate::Diagnostic::ambiguous_outline(&anchor));
+                return paragraph_block(anchor, text, inlines, paragraph.style_id.as_deref());
             }
-        } else {
-            diagnostics.push(crate::Diagnostic::ambiguous_outline(&anchor));
+            (Some(detected), None) => *scheme = Some(detected),
+            (Some(_), Some(_)) => {}
+            (None, _) => {
+                diagnostics.push(crate::Diagnostic::ambiguous_outline(&anchor));
+                return paragraph_block(anchor, text, inlines, paragraph.style_id.as_deref());
+            }
         }
     }
     let display_scheme = if depth == 1 {
@@ -1101,6 +1107,67 @@ mod tests {
     }
 
     #[test]
+    fn a_conflicting_root_scheme_stops_instead_of_choosing_one() {
+        // Two depth-one definitions, one upper roman and one decimal. The
+        // document says the root is both `I.` and `1.`, and neither reading
+        // is Navigator's to pick: the conflicting list is diagnosed and left
+        // as anchored text, exactly as an unsupported or skipped level is.
+        let mut document = model(
+            vec![
+                paragraph("roman-root", Some(0), "one"),
+                paragraph("arabic-root", Some(0), "also one"),
+                paragraph("under-arabic", Some(1), "under the conflicting root"),
+            ],
+            harvard_levels("upperRoman"),
+        );
+        for index in [1, 2] {
+            if let Block::Paragraph(paragraph) = &mut document.stories[0].blocks[index] {
+                paragraph.numbering.as_mut().unwrap().numbering_id = "motion".into();
+            }
+        }
+        document.numbering.push(NumberingDefinition {
+            numbering_id: "motion".into(),
+            abstract_numbering_id: Some("8".into()),
+            levels: Vec::new(),
+            level_definitions: harvard_levels("decimal"),
+        });
+
+        let canonical = document.canonical_outline();
+        let blocks = &canonical.stories[0].blocks;
+
+        // The root that arrived first is unambiguous when it is read.
+        assert_eq!(canonical.scheme, Some(OutlineScheme::Roman));
+        assert_eq!(
+            blocks[0].outline.as_ref().map(|unit| unit.marker.clone()),
+            Some("I".into())
+        );
+        // The conflicting root is diagnosed and carries no unit, no marker,
+        // and no path.
+        assert_eq!(blocks[1].outline, None);
+        assert_eq!(blocks[1].kind, CanonicalBlockKind::Paragraph);
+        assert_eq!(blocks[1].text, "also one");
+        assert_eq!(
+            canonical
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic.code,
+                    crate::DiagnosticCode::AmbiguousOutline
+                ))
+                .count(),
+            1
+        );
+        // A depth below a root that never resolved has no path either: the
+        // skipped-level guard catches it rather than inventing an ancestor.
+        assert_eq!(blocks[2].outline, None);
+        assert!(canonical.diagnostics.iter().any(|diagnostic| matches!(
+            diagnostic.code,
+            crate::DiagnosticCode::SkippedOutlineLevel
+        )));
+        assert_eq!(units(&canonical).len(), 1);
+    }
+
+    #[test]
     fn distinct_numbering_instances_do_not_share_counters() {
         let mut document = model(
             vec![
@@ -1116,7 +1183,7 @@ mod tests {
             numbering_id: "new-list".into(),
             abstract_numbering_id: Some("8".into()),
             levels: Vec::new(),
-            level_definitions: vec![level(0, "decimal", "%1.")],
+            level_definitions: vec![level(0, "upperRoman", "%1.")],
         });
         let canonical = document.canonical_outline();
         let units: Vec<_> = canonical.stories[0]
@@ -1124,8 +1191,18 @@ mod tests {
             .iter()
             .filter_map(|block| block.outline.as_ref())
             .collect();
+        // Both lists declare the same root, so the scheme is not in doubt
+        // and the markers are the whole evidence: a second `I` means the
+        // new instance counted from its own start, and a shared counter
+        // would have displayed `II`.
         assert_eq!(units[0].marker, "I");
-        assert_eq!(units[1].marker, "1");
+        assert_eq!(units[1].marker, "I");
+        assert_eq!(units[0].list.numbering_id, "contract");
         assert_eq!(units[1].list.numbering_id, "new-list");
+        assert!(
+            canonical.diagnostics.is_empty(),
+            "{:?}",
+            canonical.diagnostics
+        );
     }
 }

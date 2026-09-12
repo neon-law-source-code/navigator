@@ -51,6 +51,10 @@ pub enum FirmCapability {
     ManageIntegrationSecrets,
     /// Inspect integration-secret metadata without receiving plaintext.
     ViewIntegrationSecretMetadata,
+    /// Use the Firm's provider integrations for a Project. Owner may use this
+    /// capability system-wide; an Admin must hold a membership row on the
+    /// target Firm.
+    UseIntegrations,
 }
 
 impl FirmCapability {
@@ -63,11 +67,11 @@ impl FirmCapability {
     fn admits(self, membership: FirmMembership) -> bool {
         match self {
             Self::ViewDirectory => true,
-            Self::ManageMembership => membership == FirmMembership::Admin,
+            Self::ManageMembership
+            | Self::ManageIntegrationSecrets
+            | Self::ViewIntegrationSecretMetadata
+            | Self::UseIntegrations => membership == FirmMembership::Admin,
             Self::ManageAdminDri => false,
-            Self::ManageIntegrationSecrets | Self::ViewIntegrationSecretMetadata => {
-                membership == FirmMembership::Admin
-            }
         }
     }
 
@@ -82,6 +86,7 @@ impl FirmCapability {
             Self::ManageAdminDri => "manage_admin_dri",
             Self::ManageIntegrationSecrets => "manage_integration_secrets",
             Self::ViewIntegrationSecretMetadata => "view_integration_secret_metadata",
+            Self::UseIntegrations => "use_integrations",
         }
     }
 

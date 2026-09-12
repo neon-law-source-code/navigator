@@ -498,7 +498,7 @@ pub fn document_with_base(base: &str) -> Value {
           "post": {
             "summary": "Create or adopt each Project's Firm-private Notion page (admin)",
             "description":
-              "Find-then-create against the Firm's own Notion credential, resolved from the Project's `firm_id` — never a deployment-wide token. A failed lookup does not fall through to a create, so a provider outage cannot produce a duplicate page. The page address is recorded on the Project row before the outcome is reported. Outcomes: `created`, `adopted`, `runtime_not_configured`, `credential_missing`, `credential_unusable`, `no_owning_firm`, `provider_unavailable`, `address_not_recorded`. The response carries outcomes only — the page id and URL are Firm-private coordinates and do not cross this door. Authorization: admin-tier, matching `POST /app/api/project-surfaces/{id}`, and `all` sweeps only the Projects visible to the caller.",
+              "Find-then-create against the Firm's own Notion credential, resolved from the Project's `firm_id` — never a deployment-wide token. A failed lookup does not fall through to a create, so a provider outage cannot produce a duplicate page. The page address is recorded on the Project row before the outcome is reported. Outcomes: `created`, `adopted`, `runtime_not_configured`, `credential_missing`, `credential_unusable`, `provider_unavailable`, `address_not_recorded`. The response carries outcomes only — the page id and URL are Firm-private coordinates and do not cross this door. Authorization: admin-tier, matching `POST /app/api/project-surfaces/{id}`, plus `use_integrations` on the Project's owning Firm — being shown a Project is not permission to spend its Firm's credentials. `all` sweeps only the visible Projects that also clear that check.",
             "requestBody": { "required": true, "content": { "application/json": {
               "schema": { "$ref": "#/components/schemas/ProjectSelector" }
             } } },
@@ -513,7 +513,7 @@ pub fn document_with_base(base: &str) -> Value {
               "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } },
-              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+              "404": { "description": "No Project with that code is visible to the caller, or the caller may not use its Firm's integrations — the two answer identically on purpose", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } }
             }
@@ -523,7 +523,7 @@ pub fn document_with_base(base: &str) -> Value {
           "post": {
             "summary": "Reconcile each Project against the selected Notion database (admin)",
             "description":
-              "Compares the Project's recorded page address against every page in the environment-selected `NAVIGATOR_NOTION_DATABASE_ID` carrying its code, and reports the repair decision. A missing, moved, duplicated, conflicting, or unshared page is an operator-visible outcome rather than a silent second page: outcomes are `unchanged`, `repaired`, `missing`, `duplicate`, `conflict`, `unavailable`, `not_recorded`, plus the resolution outcomes `ensure` reports. Only a `Repair` writes, and it preserves manual Notion fields. Authorization: admin-tier.",
+              "Compares the Project's recorded page address against every page in the environment-selected `NAVIGATOR_NOTION_DATABASE_ID` carrying its code, and reports the repair decision. A missing, moved, duplicated, conflicting, or unshared page is an operator-visible outcome rather than a silent second page: outcomes are `unchanged`, `repaired`, `missing`, `duplicate`, `conflict`, `unavailable`, `not_recorded`, plus the resolution outcomes `ensure` reports. Only a `Repair` writes, and it preserves manual Notion fields. Authorization: admin-tier, plus `use_integrations` on the Project's owning Firm.",
             "requestBody": { "required": true, "content": { "application/json": {
               "schema": { "$ref": "#/components/schemas/ProjectSelector" }
             } } },
@@ -538,7 +538,7 @@ pub fn document_with_base(base: &str) -> Value {
               "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } },
-              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+              "404": { "description": "No Project with that code is visible to the caller, or the caller may not use its Firm's integrations — the two answer identically on purpose", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } }
             }
@@ -548,7 +548,7 @@ pub fn document_with_base(base: &str) -> Value {
           "post": {
             "summary": "Create or adopt one Project's Firm-private Slack channel (admin)",
             "description":
-              "Find-then-create a private channel named for the Project code, using the Firm's own bot token resolved from the Project's `firm_id`. The invite list is empty by construction: the adapter accepts only provider-issued member ids, Navigator stores none, and it will not turn a participation row or an email address into an invite — so the Firm's own Slack membership governs who joins. The channel id is recorded on the Project row. Outcomes: `created`, `adopted`, and the resolution outcomes. Authorization: admin-tier.",
+              "Find-then-create a private channel named for the Project code, using the Firm's own bot token resolved from the Project's `firm_id`. The invite list is empty by construction: the adapter accepts only provider-issued member ids, Navigator stores none, and it will not turn a participation row or an email address into an invite — so the Firm's own Slack membership governs who joins. The channel id is recorded on the Project row. Outcomes: `created`, `adopted`, and the resolution outcomes. Authorization: admin-tier, plus `use_integrations` on the Project's owning Firm.",
             "requestBody": { "required": true, "content": { "application/json": {
               "schema": { "$ref": "#/components/schemas/SlackIntegrationRequest" }
             } } },
@@ -563,7 +563,7 @@ pub fn document_with_base(base: &str) -> Value {
               "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } },
-              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+              "404": { "description": "No Project with that code is visible to the caller, or the caller may not use its Firm's integrations — the two answer identically on purpose", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } }
             }
@@ -573,7 +573,7 @@ pub fn document_with_base(base: &str) -> Value {
           "post": {
             "summary": "Post one mechanism-only notice to a Project's Firm-private channel (admin)",
             "description":
-              "`event` must be one of `project_opened`, `project_closed`, `project_reconciled`, or `integration_unavailable`; anything else is a 400 before any provider call. The vocabulary is closed precisely so this door cannot carry arbitrary text — a client name, a document title, a provider URL — into a channel; the posted message is derived from the event kind alone. Notify never provisions: a Project with no channel reports `no_channel` so an operator runs `ensure` deliberately. Outcomes: `notified`, `no_channel`, and the resolution outcomes. Authorization: admin-tier.",
+              "`event` must be one of `project_opened`, `project_closed`, `project_reconciled`, or `integration_unavailable`; anything else is a 400 before any provider call. The vocabulary is closed precisely so this door cannot carry arbitrary text — a client name, a document title, a provider URL — into a channel; the posted message is derived from the event kind alone. Notify never provisions: a Project with no channel reports `no_channel` so an operator runs `ensure` deliberately. Outcomes: `notified`, `no_channel`, and the resolution outcomes. Authorization: admin-tier, plus `use_integrations` on the Project's owning Firm.",
             "requestBody": { "required": true, "content": { "application/json": {
               "schema": { "$ref": "#/components/schemas/SlackIntegrationRequest" }
             } } },
@@ -588,7 +588,7 @@ pub fn document_with_base(base: &str) -> Value {
               "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } },
-              "404": { "description": "No Project with that code is visible to the caller", "content": { "application/json": {
+              "404": { "description": "No Project with that code is visible to the caller, or the caller may not use its Firm's integrations — the two answer identically on purpose", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } }
             }

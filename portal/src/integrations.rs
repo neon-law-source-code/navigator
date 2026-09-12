@@ -12,7 +12,10 @@
 //! configured, that the Project has no owning Firm, or that the provider
 //! refused — never the token, the ciphertext, or the provider's own body.
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -240,12 +243,24 @@ pub async fn from_env() -> Arc<dyn IntegrationProviders> {
 pub struct FakeIntegrations {
     pub notion: cloud::FakeNotion,
     pub slack: cloud::FakeSlack,
+    notion_calls: Arc<AtomicUsize>,
+    slack_calls: Arc<AtomicUsize>,
 }
 
 impl FakeIntegrations {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[must_use]
+    pub fn notion_calls(&self) -> usize {
+        self.notion_calls.load(Ordering::Relaxed)
+    }
+
+    #[must_use]
+    pub fn slack_calls(&self) -> usize {
+        self.slack_calls.load(Ordering::Relaxed)
     }
 }
 
@@ -256,6 +271,7 @@ impl IntegrationProviders for FakeIntegrations {
         _surreal: &SurrealDb,
         _project_id: Uuid,
     ) -> Result<Arc<dyn cloud::NotionService>, IntegrationError> {
+        self.notion_calls.fetch_add(1, Ordering::Relaxed);
         Ok(Arc::new(self.notion.clone()))
     }
 
@@ -264,6 +280,7 @@ impl IntegrationProviders for FakeIntegrations {
         _surreal: &SurrealDb,
         _project_id: Uuid,
     ) -> Result<Arc<dyn cloud::SlackService>, IntegrationError> {
+        self.slack_calls.fetch_add(1, Ordering::Relaxed);
         Ok(Arc::new(self.slack.clone()))
     }
 }

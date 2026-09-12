@@ -96,6 +96,7 @@ pub struct FakeNotion {
     /// drive the duplicate outcome the reconciler reports.
     duplicates: Arc<Mutex<BTreeMap<String, Vec<NotionPage>>>>,
     create_calls: Arc<Mutex<usize>>,
+    update_calls: Arc<Mutex<usize>>,
     unavailable: Arc<Mutex<bool>>,
 }
 
@@ -127,6 +128,11 @@ impl FakeNotion {
     #[must_use]
     pub fn create_calls(&self) -> usize {
         *self.create_calls.lock().expect("Notion fake lock poisoned")
+    }
+
+    #[must_use]
+    pub fn update_calls(&self) -> usize {
+        *self.update_calls.lock().expect("Notion fake lock poisoned")
     }
 
     #[must_use]
@@ -205,6 +211,7 @@ impl NotionService for FakeNotion {
         project_code: &str,
     ) -> Result<NotionPage, NotionError> {
         self.check_available()?;
+        *self.update_calls.lock().expect("Notion fake lock poisoned") += 1;
         let page = NotionPage {
             id: page_id.to_string(),
             url: format!("https://notion.example/{project_code}"),

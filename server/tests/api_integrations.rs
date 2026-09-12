@@ -45,6 +45,30 @@ struct Fixture {
     client: String,
 }
 
+struct TwoFirmFixture {
+    app: axum::Router,
+    providers: FakeIntegrations,
+    code: String,
+    admin_a: String,
+    admin_b: String,
+}
+
+trait AppFixture {
+    fn app(&self) -> &axum::Router;
+}
+
+impl AppFixture for Fixture {
+    fn app(&self) -> &axum::Router {
+        &self.app
+    }
+}
+
+impl AppFixture for TwoFirmFixture {
+    fn app(&self) -> &axum::Router {
+        &self.app
+    }
+}
+
 fn bearer(person_id: Uuid, role: Role) -> String {
     let mut session = SessionData::fresh("api-integrations-sub", role);
     session.person_id = Some(person_id);
@@ -70,6 +94,21 @@ async fn person(surreal: &store::surreal::SurrealDb, name: &str, role: Role) -> 
 async fn build_fixture(configured: bool) -> Fixture {
     let surreal = mem_surreal().await;
     let entity_id = store::test_support::seed_entity(&surreal).await;
+    let admin_id = person(&surreal, "Admin", Role::Admin).await;
+    let unassigned_id = person(&surreal, "Unassigned", Role::Admin).await;
+    let lawyer_id = person(&surreal, "Lawyer", Role::Lawyer).await;
+    let client_id = person(&surreal, "Client", Role::Client).await;
+    let firm = store::firms::create(
+        &surreal,
+        &store::firms::NewFirm {
+            name: "Integration Test Firm".into(),
+            status: "active".into(),
+            entity_id,
+            admin_dri_person_id: admin_id,
+        },
+    )
+    .await
+    .unwrap();
     let code = format!("matter-{}", &Uuid::now_v7().simple().to_string()[..12]);
     let project = store::projects::create(
         &surreal,
@@ -78,16 +117,12 @@ async fn build_fixture(configured: bool) -> Fixture {
             name: "Matter".into(),
             status: "open".into(),
             entity_id,
+            firm_id: Some(firm.id),
             ..Default::default()
         },
     )
     .await
     .unwrap();
-
-    let admin_id = person(&surreal, "Admin", Role::Admin).await;
-    let unassigned_id = person(&surreal, "Unassigned", Role::Admin).await;
-    let lawyer_id = person(&surreal, "Lawyer", Role::Lawyer).await;
-    let client_id = person(&surreal, "Client", Role::Client).await;
     for (person_id, role) in [
         (admin_id, "admin"),
         (lawyer_id, "lawyer"),
@@ -118,8 +153,103 @@ async fn build_fixture(configured: bool) -> Fixture {
     }
 }
 
-async fn post(
-    fx: &Fixture,
+async fn build_two_firm_fixture() -> TwoFirmFixture {
+    let surreal = mem_surreal().await;
+    let entity_a = store::test_support::seed_entity(&surreal).await;
+    let entity_b = store::test_support::seed_entity(&surreal).await;
+    let requester_id = person(&surreal, "Admin A", Role::Admin).await;
+    let member_id = person(&surreal, "Admin B", Role::Admin).await;
+    let _firm_a = store::firms::create(
+        &surreal,
+        &store::firms::NewFirm {
+            name: "Firm A".into(),
+            status: "active".into(),
+            entity_id: entity_a,
+            admin_dri_person_id: requester_id,
+        },
+    )
+    .await
+    .unwrap();
+    let firm_b = store::firms::create(
+        &surreal,
+        &store::firms::NewFirm {
+            name: "Firm B".into(),
+            status: "active".into(),
+            entity_id: entity_b,
+            admin_dri_person_id: member_id,
+        },
+    )
+    .await
+    .unwrap();
+    let code = format!(
+        "firm-b-matter-{}",
+        &Uuid::now_v7().simple().to_string()[..12]
+    );
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: code.clone(),
+            name: "Firm B Matter".into(),
+            status: "open".into(),
+            entity_id: entity_b,
+            firm_id: Some(firm_b.id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    for person_id in [requester_id, member_id] {
+        store::projects::add_participation(&surreal, project.id, person_id, "admin")
+            .await
+            .unwrap();
+    }
+
+    let kms = cloud::FakeKms::new("api-integrations-test-kms");
+    for (provider, kind, value) in [
+        (
+            store::firm_secrets::IntegrationProvider::Notion,
+            store::firm_secrets::IntegrationSecretKind::NotionToken,
+            "firm-b-notion-token",
+        ),
+        (
+            store::firm_secrets::IntegrationProvider::Slack,
+            store::firm_secrets::IntegrationSecretKind::SlackBotToken,
+            "firm-b-slack-token",
+        ),
+    ] {
+        store::firm_secrets::put(
+            &surreal,
+            store::firm_secrets::SecretPutRequest {
+                actor_role: Role::Admin,
+                actor_person_id: Some(member_id),
+                firm_id: firm_b.id,
+                provider,
+                kind,
+                value,
+            },
+            &kms,
+        )
+        .await
+        .unwrap();
+    }
+
+    let providers = FakeIntegrations::new();
+    let mut state = AppState {
+        sessions: SessionStore::new(KEY),
+        ..portal::test_support::app_state(surreal).await
+    };
+    state.integration_providers = Arc::new(providers.clone());
+    TwoFirmFixture {
+        app: server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR)),
+        providers,
+        code,
+        admin_a: bearer(requester_id, Role::Admin),
+        admin_b: bearer(member_id, Role::Admin),
+    }
+}
+
+async fn post<F: AppFixture + Sync>(
+    fx: &F,
     path: &str,
     auth: Option<&str>,
     body: serde_json::Value,
@@ -131,7 +261,7 @@ async fn post(
     if let Some(auth) = auth {
         req = req.header("authorization", auth);
     }
-    fx.app
+    fx.app()
         .clone()
         .oneshot(req.body(Body::from(body.to_string())).unwrap())
         .await
@@ -284,6 +414,106 @@ async fn notion_reconcile_leaves_a_matching_page_alone() {
         outcomes(&report),
         vec![(fx.code.clone(), "unchanged".to_string())]
     );
+    assert_eq!(
+        fx.providers.notion.update_calls(),
+        0,
+        "an unchanged page is never sent to the provider for update"
+    );
+}
+
+fn body_for_door(door: &str, project_code: &str) -> serde_json::Value {
+    if door.ends_with("notify") {
+        serde_json::json!({ "project_code": project_code, "event": "project_opened" })
+    } else {
+        serde_json::json!({ "project_code": project_code })
+    }
+}
+
+/// Firm authorization is checked after Project selection but before the
+/// integration resolver or provider service is reached. A visible Project in
+/// another Firm is therefore indistinguishable from a missing Project, and the
+/// same check covers all four doors.
+#[tokio::test]
+async fn integration_doors_authorize_the_target_firm_before_provider_lookup() {
+    for door in ALL_DOORS {
+        let fx = build_two_firm_fixture().await;
+        let denied = post(&fx, door, Some(&fx.admin_a), body_for_door(door, &fx.code)).await;
+        let denied_status = denied.status();
+        let denied_body = json(denied).await;
+        let missing = post(
+            &fx,
+            door,
+            Some(&fx.admin_a),
+            body_for_door(door, "missing-matter"),
+        )
+        .await;
+        assert_eq!(denied_status, StatusCode::NOT_FOUND, "{door}");
+        assert_eq!(denied_status, missing.status(), "{door}");
+        assert_eq!(
+            denied_body,
+            json(missing).await,
+            "cross-Firm refusal must match a missing Project: {door}"
+        );
+        if door.contains("notion") {
+            assert_eq!(fx.providers.notion_calls(), 0, "{door}");
+        } else {
+            assert_eq!(fx.providers.slack_calls(), 0, "{door}");
+        }
+
+        let admitted = post(&fx, door, Some(&fx.admin_b), body_for_door(door, &fx.code)).await;
+        assert_eq!(admitted.status(), StatusCode::OK, "{door}");
+        if door.contains("notion") {
+            assert_eq!(fx.providers.notion_calls(), 1, "{door}");
+        } else {
+            assert_eq!(fx.providers.slack_calls(), 1, "{door}");
+        }
+    }
+}
+
+/// The `all` sweep filters by the same capability the single-code door does.
+/// This is the path worth pinning: `admin_a` holds a participation row on the
+/// Firm B matter, so the visibility lens alone would hand them a sweep that
+/// spends Firm B's credentials on Firm B's Project. Only the two selector
+/// doors take `all`; the Slack doors require a code.
+#[tokio::test]
+async fn the_all_sweep_drops_a_visible_project_in_another_firm() {
+    for door in [ALL_DOORS[0], ALL_DOORS[1]] {
+        let fx = build_two_firm_fixture().await;
+        let swept = post(
+            &fx,
+            door,
+            Some(&fx.admin_a),
+            serde_json::json!({ "all": true }),
+        )
+        .await;
+        assert_eq!(swept.status(), StatusCode::OK, "{door}");
+        assert!(
+            outcomes(&json(swept).await).is_empty(),
+            "the sweep reported a Project the caller may not act on: {door}"
+        );
+        assert_eq!(
+            fx.providers.notion_calls(),
+            0,
+            "a dropped Project must not reach the resolver: {door}"
+        );
+
+        let admitted = post(
+            &fx,
+            door,
+            Some(&fx.admin_b),
+            serde_json::json!({ "all": true }),
+        )
+        .await;
+        assert_eq!(admitted.status(), StatusCode::OK, "{door}");
+        assert_eq!(
+            outcomes(&json(admitted).await)
+                .into_iter()
+                .map(|(code, _)| code)
+                .collect::<Vec<_>>(),
+            vec![fx.code.clone()],
+            "the Firm's own Admin still sweeps its matter: {door}"
+        );
+    }
 }
 
 /// Slack ensure records the channel id and invites nobody: the adapter takes

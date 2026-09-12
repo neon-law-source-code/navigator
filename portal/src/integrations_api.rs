@@ -22,6 +22,13 @@
 //! every Project the login can see, so the gate matches rather than being
 //! loosened for convenience.
 //!
+//! The tier is not the whole gate. Admin tier says the caller provisions
+//! external resources at all; `FirmCapability::UseIntegrations` says whose
+//! credentials they may spend. Every door resolves that capability against the
+//! target Project's owning Firm before a provider is looked up, so an Admin of
+//! one Firm cannot reach another Firm's integrations through a Project the
+//! visibility lens happens to show them.
+//!
 //! The gate is [`AdminSession`], an extractor, and not a check in the handler
 //! body. Extractors run before the body is deserialized, so a caller outside
 //! the tier gets a 403 whatever they sent; a tier check placed after `Json`
@@ -107,9 +114,12 @@ fn selector_error() -> ApiError {
 
 /// Resolve the selector to the matters this login may act on.
 ///
-/// `--all` means "every Project visible to this login", which is
-/// `store::access::visible_projects` — the same scoping the list door uses,
-/// so an admin sweep can never reach a matter the read surface would hide.
+/// Two layers, and both are needed. `store::access::visible_projects` is the
+/// same scoping the list door uses, so an admin sweep can never reach a matter
+/// the read surface would hide. [`authorize_project`] then asks whether this
+/// caller may spend the owning Firm's integrations at all — visibility is not
+/// that permission, so `--all` sweeps the Projects that clear both, and a
+/// Project only the lens admits is dropped rather than provisioned.
 async fn targets(
     state: &ApiState,
     authed: &AdminSession,
@@ -120,24 +130,64 @@ async fn targets(
             .await
             .map_err(ApiError::Db)?;
     match (&selector.project_code, selector.all) {
-        (Some(code), false) => visible
-            .into_iter()
-            .find(|project| project.code == *code)
-            .map(|project| vec![project])
-            .ok_or(ApiError::NotFound),
-        (None, true) => Ok(visible),
+        (Some(code), false) => Ok(vec![one_target(state, authed, visible, code).await?]),
+        (None, true) => {
+            let mut authorized = Vec::new();
+            for project in visible {
+                match authorize_project(state, authed, project).await {
+                    Ok(project) => authorized.push(project),
+                    Err(ApiError::NotFound) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(authorized)
+        }
         _ => Err(selector_error()),
     }
 }
 
-fn one_target(
+async fn one_target(
+    state: &ApiState,
+    authed: &AdminSession,
     visible: Vec<store::projects::Project>,
     code: &str,
 ) -> Result<store::projects::Project, ApiError> {
-    visible
+    let project = visible
         .into_iter()
         .find(|project| project.code == code)
-        .ok_or(ApiError::NotFound)
+        .ok_or(ApiError::NotFound)?;
+    authorize_project(state, authed, project).await
+}
+
+/// Whether this caller may use the owning Firm's integrations for `project`.
+///
+/// Runs before any provider lookup, so a refusal costs no credential
+/// resolution and no provider call. A Project whose Firm denies the caller and
+/// a Project with no owning Firm both collapse to `NotFound`, the same answer a
+/// code nobody can see gets: which of the three it was is a Firm-boundary fact
+/// the caller is not owed.
+async fn authorize_project(
+    state: &ApiState,
+    authed: &AdminSession,
+    project: store::projects::Project,
+) -> Result<store::projects::Project, ApiError> {
+    let Some(firm_id) = project.firm_id else {
+        return Err(ApiError::NotFound);
+    };
+    let decision = store::firm_capability::resolve(
+        &state.surreal,
+        authed.0.role,
+        authed.0.person_id,
+        firm_id,
+        store::firm_capability::FirmCapability::UseIntegrations,
+    )
+    .await
+    .map_err(|error| ApiError::Db(error.to_string()))?;
+    if decision.is_allowed() {
+        Ok(project)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 async fn visible_for(
@@ -296,7 +346,7 @@ pub(crate) async fn slack_ensure_door(
     Json(request): Json<SlackRequest>,
 ) -> Result<Response, ApiError> {
     let visible = visible_for(&state, &authed).await?;
-    let project = one_target(visible, &request.project_code)?;
+    let project = one_target(&state, &authed, visible, &request.project_code).await?;
     let slack = match state
         .integration_providers
         .slack(&state.surreal, project.id)
@@ -352,7 +402,7 @@ pub(crate) async fn slack_notify_door(
             ))
         })?;
     let visible = visible_for(&state, &authed).await?;
-    let project = one_target(visible, &request.project_code)?;
+    let project = one_target(&state, &authed, visible, &request.project_code).await?;
     let slack = match state
         .integration_providers
         .slack(&state.surreal, project.id)

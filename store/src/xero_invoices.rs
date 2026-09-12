@@ -25,6 +25,15 @@
 //! point: a second `CREATE` for the same Xero invoice collides on that key
 //! and reports a typed [`surrealdb::types::AlreadyExistsError::Record`],
 //! which the optimistic layer does serialize.
+//!
+//! ## Historical re-key collisions
+//!
+//! The ENG-588 schema backfill moves old Project-keyed rows to that primary
+//! key. It first rejects any repeated invoice id among those legacy rows and
+//! already-keyed targets, naming the Xero id and changing no records. A target
+//! can be the remnant of an interrupted earlier apply; choosing either row
+//! would lose the other row's reconciled state. An operator repairs that data
+//! conflict, then re-applies the schema safely.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;

@@ -59,16 +59,15 @@ DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;
 -- Which house brand's storefront this matter was opened through, written by
 -- the server from the resolved request `Host:`, never accepted from a
--- client-submitted form (see `docs/glossary.md#project`). Required (ENG-587):
--- the backfill directly below runs before this tightened definition takes
--- effect, so no row is ever unfilled when it does — apply order is the
--- guarantee, since this file runs top to bottom on every boot. Validated
+-- client-submitted form (see `docs/glossary.md#project`). Required after the
+-- guarded backfill near the `brand` table: this first definition remains
+-- optional until `store::schema::apply` validates historical rows and supplies
+-- the established default before it tightens this field. Validated
 -- against live `brand` rows in `store::projects::create`
 -- (`store::firms::brand_key_exists`, the same check `attach_brand` uses)
 -- rather than restated here as a second closed list: a runtime-created brand
 -- key must be as usable here as one of the three compiled ones.
-UPDATE project SET brand = 'neon' WHERE brand = NONE;
-DEFINE FIELD OVERWRITE brand ON project TYPE string;
+DEFINE FIELD OVERWRITE brand ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 -- Owning practice. Optional until the one-shot backfill points existing
 -- rows at a `firm` record: `DEFAULT` is write-time only and does not
@@ -146,10 +145,23 @@ DEFINE INDEX OVERWRITE xero_invoice_project ON xero_invoice FIELDS project_id;
 -- record id equal to its own `project_id`. Re-create it under its Xero
 -- invoice id, carrying `inserted_at` forward as the best available
 -- `issued_at` until the next nightly reconcile corrects it, and drop the
--- legacy row. Idempotent: a row already keyed on its Xero invoice id has
--- `meta::id(id) = xero_invoice_id` already, so a second apply finds
--- nothing left to migrate.
+-- legacy row. A collision is a deliberate, named failure (ENG-627), not an
+-- implicit merge: the preflight runs before the loop, so a target left by an
+-- interrupted run or two legacy rows with the same Xero id leave every row
+-- intact for an operator to repair. Idempotent after that repair: a row
+-- already keyed on its Xero invoice id has `meta::id(id) = xero_invoice_id`,
+-- so a second apply finds nothing left to migrate.
 LET $legacy_xero_invoices = (SELECT * FROM xero_invoice WHERE meta::id(id) != xero_invoice_id);
+FOR $legacy IN $legacy_xero_invoices {
+    LET $xero_invoice_rekey_collision = (
+        SELECT id FROM xero_invoice
+        WHERE xero_invoice_id = $legacy.xero_invoice_id AND id != $legacy.id
+        LIMIT 1
+    );
+    IF array::len($xero_invoice_rekey_collision) > 0 {
+        THROW string::concat('xero invoice re-key collision: ', $legacy.xero_invoice_id);
+    };
+};
 FOR $legacy IN $legacy_xero_invoices {
     CREATE type::record('xero_invoice', $legacy.xero_invoice_id) SET
         project_id = $legacy.project_id,

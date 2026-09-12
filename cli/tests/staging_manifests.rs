@@ -89,6 +89,15 @@ fn env_entry<'a>(resource: &'a Value, name: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("{name} must be configured"))
 }
 
+fn container<'a>(resource: &'a Value, name: &str) -> &'a Value {
+    resource["spec"]["template"]["spec"]["containers"]
+        .as_sequence()
+        .expect("workload containers")
+        .iter()
+        .find(|container| container["name"].as_str() == Some(name))
+        .unwrap_or_else(|| panic!("{name} container must be rendered"))
+}
+
 fn config_map_key<'a>(resource: &'a Value, env_name: &str) -> &'a str {
     let matches = resource["spec"]["template"]["spec"]["containers"]
         .as_sequence()
@@ -378,6 +387,73 @@ fn production_overlay_excludes_the_local_rauthy_fixture() {
             "production must exclude the local Rauthy fixture value `{local_only}`"
         );
     }
+}
+
+#[test]
+fn workflows_service_resources_rollout_and_probes_are_rendered() {
+    let Some(resources) = render(GKE) else {
+        return;
+    };
+    let deployment = resource(&resources, "Deployment", "workflows-service");
+
+    for (name, cpu, memory) in [("worker", "500m", "2Gi"), ("envoy", "250m", "1Gi")] {
+        let container = container(deployment, name);
+        assert_eq!(
+            container["resources"]["requests"]["cpu"].as_str(),
+            Some(cpu),
+            "{name} CPU request"
+        );
+        assert_eq!(
+            container["resources"]["requests"]["memory"].as_str(),
+            Some(memory),
+            "{name} memory request"
+        );
+    }
+
+    assert_eq!(
+        deployment["spec"]["strategy"]["type"].as_str(),
+        Some("RollingUpdate")
+    );
+    assert_eq!(
+        deployment["spec"]["strategy"]["rollingUpdate"]["maxSurge"].as_u64(),
+        Some(0)
+    );
+    assert_eq!(
+        deployment["spec"]["strategy"]["rollingUpdate"]["maxUnavailable"].as_u64(),
+        Some(1)
+    );
+
+    let worker = container(deployment, "worker");
+    assert_eq!(
+        worker["readinessProbe"]["httpGet"]["path"].as_str(),
+        Some("/healthz")
+    );
+    assert_eq!(
+        worker["readinessProbe"]["httpGet"]["port"].as_u64(),
+        Some(9083)
+    );
+    assert_eq!(
+        worker["livenessProbe"]["httpGet"]["path"].as_str(),
+        Some("/healthz")
+    );
+    assert_eq!(
+        worker["livenessProbe"]["httpGet"]["port"].as_u64(),
+        Some(9083)
+    );
+
+    let envoy = container(deployment, "envoy");
+    assert_eq!(
+        envoy["readinessProbe"]["httpGet"]["path"].as_str(),
+        Some("/restate/health")
+    );
+    assert_eq!(
+        envoy["readinessProbe"]["httpGet"]["port"].as_u64(),
+        Some(9081)
+    );
+    assert_eq!(
+        envoy["livenessProbe"]["tcpSocket"]["port"].as_u64(),
+        Some(9081)
+    );
 }
 
 /// Once a real `RESTATE_IDENTITY_KEY` is configured, the worker's Restate SDK

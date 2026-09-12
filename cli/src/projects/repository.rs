@@ -72,6 +72,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -436,6 +437,16 @@ pub fn sync_skills(root: &Path) -> ExitCode {
 /// carrying neither is reported distinctly rather than failed. A Project may
 /// legitimately have opened before either half exists.
 pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
+    validate_inner(root, repository, false)
+}
+
+/// Validate a Project repository for the gate, including only files Git would
+/// consider tracked or stageable when checking commit-state rules.
+pub(crate) fn validate_gate(root: &Path, repository: Option<&str>) -> ExitCode {
+    validate_inner(root, repository, true)
+}
+
+fn validate_inner(root: &Path, repository: Option<&str>, gate_files: bool) -> ExitCode {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
@@ -468,7 +479,11 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
         ));
     }
 
-    validate_layout(root, &mut errors);
+    if gate_files {
+        validate_layout_for_gate(root, &mut errors);
+    } else {
+        validate_layout(root, &mut errors);
+    }
     validate_skills(root, &mut errors);
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
     let applications = application_workspaces(root, &mut errors);
@@ -536,7 +551,103 @@ fn repository_name(root: &Path, explicit: Option<&str>) -> String {
         .to_string()
 }
 
+/// Return the files Git considers tracked or stageable, applying every ignore
+/// file in the checkout. Git's index is deliberately included even when an
+/// ignore rule now matches a tracked path, so a tracked file cannot hide from
+/// the source-only layout checks.
+fn git_tracked_and_stageable_files(root: &Path) -> io::Result<Vec<PathBuf>> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ])
+        .output()
+        .map_err(|error| {
+            io::Error::new(error.kind(), format!("could not run git ls-files: {error}"))
+        })?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if detail.to_ascii_lowercase().contains("not a git repository") {
+            "not a Git repository".to_string()
+        } else if detail.is_empty() {
+            "git ls-files exited unsuccessfully".to_string()
+        } else {
+            detail
+        };
+        return Err(io::Error::other(detail));
+    }
+
+    let mut files = Vec::new();
+    for path in output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        let relative = std::str::from_utf8(path).map_err(|error| {
+            io::Error::other(format!("git ls-files returned a non-UTF-8 path: {error}"))
+        })?;
+        let path = root.join(relative);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_file() => files.push(path),
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(files)
+}
+
 fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
+    validate_layout_with_files(root, errors, false);
+}
+
+fn validate_layout_for_gate(root: &Path, errors: &mut Vec<Finding>) {
+    validate_layout_with_files(root, errors, true);
+}
+
+fn layout_entries(
+    root: &Path,
+    errors: &mut Vec<Finding>,
+    gate_files: bool,
+) -> Option<Vec<(PathBuf, bool)>> {
+    if gate_files {
+        return match git_tracked_and_stageable_files(root) {
+            Ok(files) => Some(files.into_iter().map(|path| (path, true)).collect()),
+            Err(error) => {
+                errors.push(Finding::at(
+                    root,
+                    format!("could not enumerate git-tracked and stageable files: {error}"),
+                ));
+                None
+            }
+        };
+    }
+
+    let mut entries = Vec::new();
+    for entry in walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            entry.file_name() != ".git"
+                && entry.file_name() != "node_modules"
+                && entry.file_name() != "dist"
+        })
+    {
+        let Ok(entry) = entry else {
+            errors.push(Finding::at(root, "could not walk repository"));
+            return None;
+        };
+        entries.push((entry.path().to_path_buf(), entry.file_type().is_file()));
+    }
+    Some(entries)
+}
+
+fn validate_layout_with_files(root: &Path, errors: &mut Vec<Finding>, gate_files: bool) {
     if !root.join("README.md").is_file() {
         errors.push(Finding::at(
             root.join("README.md"),
@@ -556,23 +667,12 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
         },
     }
 
-    for entry in walkdir::WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|entry| {
-            // A portal's own build output and dependencies are forbidden by
-            // name below; descending into them would report thousands of
-            // findings for one mistake.
-            entry.file_name() != ".git"
-                && entry.file_name() != "node_modules"
-                && entry.file_name() != "dist"
-        })
-    {
-        let Ok(entry) = entry else {
-            errors.push(Finding::at(root, "could not walk repository"));
-            return;
-        };
-        let Ok(relative) = entry.path().strip_prefix(root) else {
+    let Some(entries) = layout_entries(root, errors, gate_files) else {
+        return;
+    };
+
+    for (path, is_file) in entries {
+        let Ok(relative) = path.strip_prefix(root) else {
             continue;
         };
         if relative.as_os_str().is_empty() {
@@ -587,20 +687,19 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
         };
         if components.len() == 1 && !ALLOWED_ROOTS.contains(&first.as_str()) {
             errors.push(Finding::at(
-                entry.path(),
+                &path,
                 "path is outside the source-only Project repository layout",
             ));
         }
-        if first == DOCUMENT_DIRECTORY && entry.file_type().is_file() {
-            let is_pointer = entry
-                .path()
+        if first == DOCUMENT_DIRECTORY && is_file {
+            let is_pointer = path
                 .extension()
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| extension == "yml");
             let is_guard = components.len() == 2 && components[1] == ".gitignore";
             if !is_pointer && !is_guard {
                 errors.push(Finding::at(
-                    entry.path(),
+                    &path,
                     "legal documents and raw document bytes must not be committed; keep only `*.yml` pointers under `documents/`",
                 ));
             }
@@ -610,32 +709,33 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
             .find(|component| FORBIDDEN_COMPONENTS.contains(&component.as_str()))
         {
             errors.push(Finding::at(
-                entry.path(),
+                &path,
                 format!("forbidden `{component}` path; repositories hold source, never client material or build output"),
             ));
         }
-        if entry.file_type().is_file() {
-            let name = entry.file_name().to_string_lossy();
-            let extension = entry
-                .path()
+        if is_file {
+            let name = path
+                .file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+            let extension = path
                 .extension()
                 .and_then(|extension| extension.to_str())
                 .unwrap_or_default();
             if name == ".env" || name.starts_with(".env.") || name.starts_with("answers.") {
                 errors.push(Finding::at(
-                    entry.path(),
+                    &path,
                     "client answers and environment secrets must not be committed",
                 ));
             }
             if FORBIDDEN_CREDENTIAL_EXTENSIONS.contains(&extension) {
                 errors.push(Finding::at(
-                    entry.path(),
+                    &path,
                     "credential material must not be committed",
                 ));
             }
             if FORBIDDEN_DOCUMENT_EXTENSIONS.contains(&extension) {
                 errors.push(Finding::at(
-                    entry.path(),
+                    &path,
                     "legal documents and rendered output must not be committed",
                 ));
             }
@@ -1423,6 +1523,12 @@ mod tests {
         std::fs::write(root.join("README.md"), "# fixture\n").unwrap();
         std::fs::write(root.join(WORKFLOW), workflow(FIXTURE_PIN)).unwrap();
         std::fs::write(root.join(CD_WORKFLOW), cd_workflow(FIXTURE_PIN)).unwrap();
+        let status = std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(root)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git init failed in {}", root.display());
     }
 
     fn layout_findings(root: &Path) -> Vec<String> {

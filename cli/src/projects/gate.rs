@@ -19,7 +19,7 @@ use crate::remote;
 
 /// Run layout validation, then the OIDC live-status door when `--ci` is set.
 pub async fn run(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode {
-    let status = repository::validate(dir, None);
+    let status = repository::validate_gate(dir, None);
     if status != ExitCode::SUCCESS {
         return status;
     }

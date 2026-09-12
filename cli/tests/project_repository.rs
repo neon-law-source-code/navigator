@@ -17,7 +17,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command as ProcessCommand;
 
 use assert_cmd::Command;
-use predicates::str;
+use predicates::{prelude::PredicateBooleanExt, str};
 use tempfile::TempDir;
 
 fn navigator() -> Command {
@@ -37,7 +37,7 @@ fn navigator() -> Command {
 const FIXTURE_PIN: &str = "26.8.23";
 
 fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
-    navigator()
+    let result = navigator()
         .args([
             "site",
             "projects",
@@ -53,7 +53,27 @@ fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
             "--host",
             "staging.neonlaw.com",
         ])
-        .assert()
+        .assert();
+    init_git_repository(dir);
+    result
+}
+
+fn init_git_repository(dir: &Path) {
+    let status = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(dir)
+        .status()
+        .unwrap();
+    assert!(status.success(), "git init failed in {}", dir.display());
+}
+
+fn run_git(dir: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?} failed in {}", dir.display());
 }
 
 fn project_gate_source() -> String {
@@ -642,6 +662,103 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
         .stderr(str::contains(
             "legal documents and raw document bytes must not be committed",
         ));
+}
+
+#[test]
+fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
+    fs::write(
+        dir.path().join("documents/.gitignore"),
+        "*\n!*/\n!*.yml\n!.gitignore\n",
+    )
+    .unwrap();
+    let raw = dir.path().join("documents/memos/agreement.md");
+    fs::write(&raw, "synthetic pulled bytes\n").unwrap();
+
+    navigator()
+        .args(["site", "projects", "gate"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("0 error(s)"))
+        .stderr(predicates::str::is_empty())
+        .stderr(predicates::str::contains(raw.display().to_string()).not());
+}
+
+#[test]
+fn gate_reports_a_tracked_raw_document_byte() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
+    fs::write(
+        dir.path().join("documents/.gitignore"),
+        "*\n!*/\n!*.yml\n!.gitignore\n",
+    )
+    .unwrap();
+    let raw = dir.path().join("documents/memos/agreement.md");
+    fs::write(&raw, "synthetic tracked bytes\n").unwrap();
+    run_git(dir.path(), &["add", "-f", "documents/memos/agreement.md"]);
+
+    navigator()
+        .args(["site", "projects", "gate"])
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(str::contains(raw.display().to_string()))
+        .stderr(str::contains(
+            "legal documents and raw document bytes must not be committed",
+        ))
+        .stdout(str::contains("1 error(s)"));
+}
+
+#[test]
+fn gate_honours_a_nested_ignore_file() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::write(dir.path().join(".github/.gitignore"), "*.env\n").unwrap();
+    let ignored = dir.path().join(".github/hidden.env");
+    fs::write(&ignored, "synthetic secret\n").unwrap();
+
+    navigator()
+        .args(["site", "projects", "gate"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("0 error(s)"))
+        .stderr(predicates::str::is_empty())
+        .stderr(predicates::str::contains(ignored.display().to_string()).not());
+}
+
+#[test]
+fn gate_fails_clearly_when_the_directory_is_not_a_git_repository() {
+    let dir = TempDir::new().unwrap();
+    navigator()
+        .args(["site", "projects", "repository", "scaffold"])
+        .arg("example-project")
+        .args(["--dir"])
+        .arg(dir.path())
+        .args([
+            "--action-version",
+            FIXTURE_PIN,
+            "--host",
+            "staging.neonlaw.com",
+        ])
+        .assert()
+        .success();
+
+    navigator()
+        .args(["site", "projects", "gate"])
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(str::contains(
+            "could not enumerate git-tracked and stageable files",
+        ))
+        .stderr(str::contains("not a Git repository"));
 }
 
 /// The retired `notations repository` command is gone rather than aliased.

@@ -22,8 +22,7 @@ pub enum OutlineScheme {
 /// first. This is the one vocabulary: the Typst pattern below is these
 /// groups concatenated, and `pdf` builds its own numbering table from this
 /// array rather than restating the literals.
-pub const MARKER_GROUPS: [&str; MAX_DEPTH as usize] =
-    ["I.", "A.", "1.", "a.", "(1)", "(a)", "(i)"];
+pub const MARKER_GROUPS: [&str; MAX_DEPTH as usize] = ["I.", "A.", "1.", "a.", "(1)", "(a)", "(i)"];
 
 /// The seven marker groups as one Typst `numbering()` pattern.
 pub const HARVARD_OUTLINE_PATTERN: &str = "I.A.1.a.(1)(a)(i)";
@@ -33,7 +32,13 @@ pub const HARVARD_OUTLINE_PATTERN: &str = "I.A.1.a.(1)(a)(i)";
 /// contracts and letters, decimal for motion practice — so it carries two
 /// accepted formats and every deeper level carries exactly one.
 const LEVEL_FORMATS: [&[&str]; MAX_DEPTH as usize] = [
-    &["upperRoman", "upper_roman", "decimal", "decimalZero", "decimal_zero"],
+    &[
+        "upperRoman",
+        "upper_roman",
+        "decimal",
+        "decimalZero",
+        "decimal_zero",
+    ],
     &["upperLetter", "upper_letter"],
     &["decimal", "decimalZero", "decimal_zero"],
     &["lowerLetter", "lower_letter"],
@@ -195,7 +200,7 @@ impl CanonicalDocument {
     }
 
     /// Read a governed Markdown projection back into the canonical model
-    /// through the workspace's one CommonMark grammar.
+    /// through the workspace's one `CommonMark` grammar.
     #[must_use]
     pub fn from_markdown(source: &str) -> Self {
         crate::notation::from_markdown(source)
@@ -261,72 +266,74 @@ fn canonical_blocks(
             let ordinal = *ordinals;
             *ordinals += 1;
             match block {
-            Block::Paragraph(paragraph) => canonical_paragraph(
-                paragraph,
-                part_uri,
-                ordinal,
-                definitions,
-                counters,
-                scheme,
-                diagnostics,
-            ),
-            Block::Table(table) => {
-                let anchor = if table.anchor.is_empty() {
-                    crate::anchor::block_anchor(part_uri, "table", ordinal)
-                } else {
-                    table.anchor.clone()
-                };
-                if table.anchor.is_empty() {
-                    diagnostics.push(crate::Diagnostic::missing_source_anchor(&anchor));
+                Block::Paragraph(paragraph) => canonical_paragraph(
+                    paragraph,
+                    part_uri,
+                    ordinal,
+                    definitions,
+                    counters,
+                    scheme,
+                    diagnostics,
+                ),
+                Block::Table(table) => {
+                    let anchor = if table.anchor.is_empty() {
+                        crate::anchor::block_anchor(part_uri, "table", ordinal)
+                    } else {
+                        table.anchor.clone()
+                    };
+                    if table.anchor.is_empty() {
+                        diagnostics.push(crate::Diagnostic::missing_source_anchor(&anchor));
+                    }
+                    let children = table
+                        .rows
+                        .iter()
+                        .flat_map(|row| row.cells.iter())
+                        .flat_map(|cell| {
+                            canonical_blocks(
+                                &cell.blocks,
+                                part_uri,
+                                definitions,
+                                counters,
+                                ordinals,
+                                scheme,
+                                diagnostics,
+                            )
+                        })
+                        .collect();
+                    CanonicalBlock {
+                        anchor,
+                        kind: CanonicalBlockKind::Table,
+                        text: table_text(table),
+                        outline: None,
+                        manual_label: None,
+                        inlines: Vec::new(),
+                        children,
+                    }
                 }
-                let children = table
-                    .rows
-                    .iter()
-                    .flat_map(|row| row.cells.iter())
-                    .flat_map(|cell| {
-                        canonical_blocks(
-                            &cell.blocks,
-                            part_uri,
-                            definitions,
-                            counters,
-                            ordinals,
-                            scheme,
-                            diagnostics,
-                        )
-                    })
-                    .collect();
-                CanonicalBlock {
-                    anchor,
-                    kind: CanonicalBlockKind::Table,
-                    text: table_text(table),
-                    outline: None,
-                    manual_label: None,
-                    inlines: Vec::new(),
-                    children,
+                Block::SectionBreak { break_kind, anchor } => {
+                    let resolved_anchor = if anchor.is_empty() {
+                        crate::anchor::block_anchor(part_uri, "section-break", ordinal)
+                    } else {
+                        anchor.clone()
+                    };
+                    if anchor.is_empty() {
+                        diagnostics
+                            .push(crate::Diagnostic::missing_source_anchor(&resolved_anchor));
+                    }
+                    CanonicalBlock {
+                        anchor: resolved_anchor,
+                        kind: CanonicalBlockKind::SectionBreak,
+                        text: String::new(),
+                        outline: None,
+                        manual_label: None,
+                        inlines: vec![CanonicalInline::Break {
+                            break_kind: break_kind.clone(),
+                        }],
+                        children: Vec::new(),
+                    }
                 }
             }
-            Block::SectionBreak { break_kind, anchor } => {
-                let resolved_anchor = if anchor.is_empty() {
-                    crate::anchor::block_anchor(part_uri, "section-break", ordinal)
-                } else {
-                    anchor.clone()
-                };
-                if anchor.is_empty() {
-                    diagnostics.push(crate::Diagnostic::missing_source_anchor(&resolved_anchor));
-                }
-                CanonicalBlock {
-                    anchor: resolved_anchor,
-                    kind: CanonicalBlockKind::SectionBreak,
-                    text: String::new(),
-                    outline: None,
-                    manual_label: None,
-                    inlines: vec![CanonicalInline::Break {
-                        break_kind: break_kind.clone(),
-                    }],
-                    children: Vec::new(),
-                }
-            }
-        }})
+        })
         .collect()
 }
 
@@ -939,7 +946,11 @@ mod tests {
         let imported = seven_deep("upperRoman");
         let reparsed = crate::outline::CanonicalDocument::from_markdown(&imported.to_markdown());
 
-        assert!(imported.diagnostics.is_empty(), "{:?}", imported.diagnostics);
+        assert!(
+            imported.diagnostics.is_empty(),
+            "{:?}",
+            imported.diagnostics
+        );
         assert_eq!(reparsed.scheme, Some(OutlineScheme::Roman));
         assert_eq!(units(&reparsed), units(&imported));
         assert_eq!(
@@ -1000,7 +1011,10 @@ mod tests {
         // would give two distinct blocks one anchor.
         assert_eq!(anchors.len(), 4);
         assert_eq!(
-            anchors.iter().collect::<std::collections::HashSet<_>>().len(),
+            anchors
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
             4
         );
         assert_eq!(flat_anchors(&reparsed), anchors);
@@ -1017,10 +1031,7 @@ mod tests {
                 paragraph("wrong-format", Some(1), "two"),
                 paragraph("undeclared", Some(2), "three"),
             ],
-            vec![
-                level(0, "upperRoman", "%1)"),
-                level(1, "decimal", "%2."),
-            ],
+            vec![level(0, "upperRoman", "%1)"), level(1, "decimal", "%2.")],
         );
 
         let canonical = document.canonical_outline();

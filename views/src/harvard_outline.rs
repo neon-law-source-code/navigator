@@ -181,12 +181,16 @@ pub fn canonical_model(doc: &OutlineDocument) -> word::CanonicalDocument {
                 marker: unit.marker.clone(),
                 path: unit.path.clone(),
                 text: unit.markdown.clone(),
+                // Narration Markdown has no OOXML list behind it. The
+                // depth is real and the numbering identity is genuinely
+                // absent, so these fields stay empty rather than carrying
+                // an invented `w:numFmt` a caller might act on.
                 list: word::ListIdentity {
-                    numbering_id: "markdown".into(),
+                    numbering_id: String::new(),
                     abstract_numbering_id: None,
                     level: unit.depth.saturating_sub(1),
-                    number_format: "canonical".into(),
-                    level_text: unit.marker.clone(),
+                    number_format: String::new(),
+                    level_text: String::new(),
                     start: 1,
                     restart_level: None,
                     override_start: None,
@@ -759,7 +763,12 @@ mod tests {
             stories: vec![word::CanonicalStory {
                 kind: word::StoryKind::MainDocument,
                 part_uri: "/word/document.xml".into(),
-                blocks: vec![outline_block("/word/document.xml:paragraph:7A", 1, "I", "Term")],
+                blocks: vec![outline_block(
+                    "/word/document.xml:paragraph:7A",
+                    1,
+                    "I",
+                    "Term",
+                )],
             }],
             diagnostics: Vec::new(),
         };

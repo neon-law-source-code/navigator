@@ -1,5 +1,5 @@
 //! The editable Notation Markdown projection of a canonical Word import,
-//! and the CommonMark parse that reads it back.
+//! and the `CommonMark` parse that reads it back.
 //!
 //! # Why the structure rides in comments
 //!
@@ -12,7 +12,7 @@
 //!
 //! So the projection keeps the two concerns apart. The visible Markdown is
 //! ordinary prose an attorney edits; every structural fact travels beside
-//! it in an HTML comment, which CommonMark hands back verbatim as an
+//! it in an HTML comment, which `CommonMark` hands back verbatim as an
 //! [`Event::Html`]. Reading the document back is therefore a lookup rather
 //! than a guess, and [`from_markdown`] is the same `pulldown-cmark` grammar
 //! the rest of the workspace parses Markdown with — there is no second
@@ -30,7 +30,7 @@
 
 use pulldown_cmark::{Event, Options, Parser, TagEnd};
 
-/// The CommonMark specification Notation Markdown is written against.
+/// The `CommonMark` specification Notation Markdown is written against.
 /// `pulldown-cmark` is pinned at 0.13 in the workspace manifest and states
 /// conformance with this revision; the constant exists so a dependency bump
 /// that moves the grammar has to move a documented number with it.
@@ -126,13 +126,32 @@ fn visible_text(block: &CanonicalBlock) -> String {
     match (&block.outline, block.kind) {
         (Some(unit), _) if unit.depth == 1 => format!("# {}{text}", marker_lead(&unit.marker)),
         (Some(unit), _) if unit.depth == 2 => {
-            format!("> **{}{text}**", marker_lead(&unit.marker))
+            quoted(&format!("**{}{text}**", marker_lead(&unit.marker)))
         }
-        (Some(unit), _) => format!("> {}{text}", marker_lead(&unit.marker)),
+        (Some(unit), _) => quoted(&format!("{}{text}", marker_lead(&unit.marker))),
         (None, CanonicalBlockKind::SectionBreak | CanonicalBlockKind::Table) => String::new(),
         (None, _) if text.is_empty() => String::new(),
         (None, _) => text,
     }
+}
+
+/// A clause that carries a line break spans several source lines, and every
+/// one of them needs the block quote's own marker — a lazy continuation
+/// would read the same today and stop reading the same the moment the next
+/// line begins with something structural.
+fn quoted(body: &str) -> String {
+    body.split('\n')
+        .map(|line| {
+            // The two trailing spaces are the hard break itself; trimming
+            // them would rejoin the lines they separate.
+            if line.is_empty() {
+                ">".to_string()
+            } else {
+                format!("> {line}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `1` is written `1.` and `(1)` is written `(1)`; a parenthesized group
@@ -201,7 +220,7 @@ fn write_inline(out: &mut String, inline: &CanonicalInline) {
 }
 
 /// Parse the emitted Markdown back into the canonical model through the
-/// workspace's one CommonMark grammar.
+/// workspace's one `CommonMark` grammar.
 #[must_use]
 pub fn from_markdown(source: &str) -> CanonicalDocument {
     let mut reader = Reader::default();
@@ -209,7 +228,8 @@ pub fn from_markdown(source: &str) -> CanonicalDocument {
         match event {
             Event::Html(raw) | Event::InlineHtml(raw) => reader.html(&raw),
             Event::Text(text) | Event::Code(text) => reader.text.push_str(&text),
-            Event::SoftBreak | Event::HardBreak => reader.text.push(' '),
+            Event::SoftBreak => reader.text.push(' '),
+            Event::HardBreak => reader.text.push('\n'),
             Event::End(TagEnd::Paragraph | TagEnd::Heading(_)) => reader.flush(),
             _ => {}
         }
@@ -233,13 +253,16 @@ impl Reader {
         for (name, attributes) in comments(raw) {
             match name.as_str() {
                 "navigator-document" => {
-                    self.scheme = attribute(&attributes, "scheme").and_then(parse_scheme);
+                    self.scheme = attribute(&attributes, "scheme")
+                        .as_deref()
+                        .and_then(parse_scheme);
                 }
                 "navigator-story" => {
                     self.flush();
                     self.close_story();
                     self.pending_story = Some((
                         attribute(&attributes, "kind")
+                            .as_deref()
                             .and_then(parse_story_kind)
                             .unwrap_or(StoryKind::MainDocument),
                         attribute(&attributes, "part").unwrap_or_default(),
@@ -348,11 +371,7 @@ fn find<'a>(blocks: &'a mut [CanonicalBlock], anchor: &str) -> Option<&'a mut Ca
     None
 }
 
-fn parse_outline(
-    attributes: &[(String, String)],
-    anchor: &str,
-    text: &str,
-) -> Option<OutlineUnit> {
+fn parse_outline(attributes: &[(String, String)], anchor: &str, text: &str) -> Option<OutlineUnit> {
     let depth = attribute(attributes, "depth")?.parse().ok()?;
     Some(OutlineUnit {
         anchor: anchor.to_string(),
@@ -432,10 +451,12 @@ fn strip_marker<'a>(text: &'a str, marker: &str) -> &'a str {
 // -- comment encoding ------------------------------------------------------
 
 fn comment(name: &str, attributes: &[(&str, Option<String>)]) -> String {
+    use std::fmt::Write as _;
+
     let mut out = format!("<!-- {name}");
     for (key, value) in attributes {
         if let Some(value) = value {
-            out.push_str(&format!(" {key}=\"{}\"", escape_attribute(value)));
+            let _ = write!(out, " {key}=\"{}\"", escape_attribute(value));
         }
     }
     out.push_str(" -->");
@@ -443,7 +464,7 @@ fn comment(name: &str, attributes: &[(&str, Option<String>)]) -> String {
 }
 
 /// Every comment in one raw HTML run, in order. Consecutive comment lines
-/// are a single CommonMark HTML block, so a run routinely carries several.
+/// are a single `CommonMark` HTML block, so a run routinely carries several.
 fn comments(raw: &str) -> Vec<(String, Vec<(String, String)>)> {
     let mut out = Vec::new();
     let mut rest = raw;
@@ -510,7 +531,7 @@ fn unescape_attribute(raw: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// Backslash-escape the CommonMark punctuation that would otherwise turn
+/// Backslash-escape the `CommonMark` punctuation that would otherwise turn
 /// legal prose into structure — including the `<` that would open a comment
 /// this parser then read as Navigator metadata.
 fn escape_prose(raw: &str) -> String {
@@ -522,6 +543,8 @@ fn escape_prose(raw: &str) -> String {
         }
         out.push(character);
     }
+    // Two trailing spaces are CommonMark's hard line break, and the only
+    // way a literal newline survives a paragraph round trip.
     out.replace('\n', "  \n")
 }
 
@@ -534,8 +557,8 @@ fn scheme_name(scheme: OutlineScheme) -> &'static str {
     }
 }
 
-fn parse_scheme(raw: String) -> Option<OutlineScheme> {
-    match raw.as_str() {
+fn parse_scheme(raw: &str) -> Option<OutlineScheme> {
+    match raw {
         "roman" => Some(OutlineScheme::Roman),
         "arabic" => Some(OutlineScheme::Arabic),
         _ => None,
@@ -575,8 +598,8 @@ fn story_kind_name(kind: &StoryKind) -> &'static str {
     }
 }
 
-fn parse_story_kind(raw: String) -> Option<StoryKind> {
-    match raw.as_str() {
+fn parse_story_kind(raw: &str) -> Option<StoryKind> {
+    match raw {
         "main_document" => Some(StoryKind::MainDocument),
         "header" => Some(StoryKind::Header),
         "footer" => Some(StoryKind::Footer),
@@ -649,9 +672,11 @@ mod tests {
     /// inline structure. Comparing this rather than the whole struct is
     /// deliberate — diagnostics belong to the import, not to the Markdown.
     fn fingerprint(document: &CanonicalDocument) -> String {
+        use std::fmt::Write as _;
+
         let mut out = format!("scheme={:?}\n", document.scheme);
         for story in &document.stories {
-            out.push_str(&format!("story {:?} {}\n", story.kind, story.part_uri));
+            let _ = writeln!(out, "story {:?} {}", story.kind, story.part_uri);
             for block in &story.blocks {
                 block_fingerprint(&mut out, block, 0);
             }
@@ -660,29 +685,33 @@ mod tests {
     }
 
     fn block_fingerprint(out: &mut String, block: &CanonicalBlock, depth: usize) {
-        out.push_str(&format!(
-            "{:indent$}block {:?} anchor={} text={:?} manual={:?}\n",
+        use std::fmt::Write as _;
+
+        let _ = writeln!(
+            out,
+            "{:indent$}block {:?} anchor={} text={:?} manual={:?}",
             "",
             block.kind,
             block.anchor,
             block.text,
             block.manual_label,
             indent = depth * 2,
-        ));
+        );
         if let Some(unit) = &block.outline {
-            out.push_str(&format!(
-                "{:indent$}  outline depth={} marker={} path={} list={:?}\n",
+            let _ = writeln!(
+                out,
+                "{:indent$}  outline depth={} marker={} path={} list={:?}",
                 "",
                 unit.depth,
                 unit.marker,
                 unit.path,
                 unit.list,
                 indent = depth * 2,
-            ));
+            );
         }
         for inline in &block.inlines {
             if !matches!(inline, CanonicalInline::Text { .. }) {
-                out.push_str(&format!("{:indent$}  inline {inline:?}\n", "", indent = depth * 2));
+                let _ = writeln!(out, "{:indent$}  inline {inline:?}", "", indent = depth * 2);
             }
         }
         for child in &block.children {
@@ -716,7 +745,7 @@ mod tests {
                 path: path.into(),
                 text: text.into(),
                 list: list(depth - 1, "decimal"),
-            manual_label: None,
+                manual_label: None,
             }),
             manual_label: None,
             inlines: vec![CanonicalInline::Text { text: text.into() }],
@@ -800,7 +829,10 @@ mod tests {
         assert_eq!(after.scheme, Some(OutlineScheme::Arabic));
         // The depth-five group `(1)` is a parenthesized decimal under both
         // roots; under an arabic root it must not read back as depth three.
-        let fifth = after.stories[0].blocks[4].outline.as_ref().expect("depth five");
+        let fifth = after.stories[0].blocks[4]
+            .outline
+            .as_ref()
+            .expect("depth five");
         assert_eq!((fifth.depth, fifth.marker.as_str()), (5, "(1)"));
     }
 
@@ -831,12 +863,20 @@ mod tests {
         before.stories.push(CanonicalStory {
             kind: StoryKind::Header,
             part_uri: "/word/header1.xml".into(),
-            blocks: vec![plain("header-1", CanonicalBlockKind::Paragraph, "Letterhead")],
+            blocks: vec![plain(
+                "header-1",
+                CanonicalBlockKind::Paragraph,
+                "Letterhead",
+            )],
         });
         before.stories.push(CanonicalStory {
             kind: StoryKind::Footnotes,
             part_uri: "/word/footnotes.xml".into(),
-            blocks: vec![plain("footnote-1", CanonicalBlockKind::Paragraph, "See above")],
+            blocks: vec![plain(
+                "footnote-1",
+                CanonicalBlockKind::Paragraph,
+                "See above",
+            )],
         });
 
         let after = from_markdown(&to_markdown(&before));
@@ -885,11 +925,34 @@ mod tests {
     }
 
     #[test]
+    fn a_line_break_inside_a_clause_survives_the_round_trip() {
+        // `word::outline` flattens a `w:br` into the paragraph text, so an
+        // imported clause genuinely carries newlines. A block quote needs
+        // its marker on every line those newlines produce.
+        let before = document(
+            OutlineScheme::Roman,
+            vec![
+                outline("anchor-3", 3, "1", "I.A.1", "First line\nsecond line"),
+                plain(
+                    "anchor-4",
+                    CanonicalBlockKind::Paragraph,
+                    "Address line one\nAddress line two",
+                ),
+            ],
+        );
+
+        let after = from_markdown(&to_markdown(&before));
+
+        assert_eq!(fingerprint(&after), fingerprint(&before));
+    }
+
+    #[test]
     fn prose_that_looks_like_structure_is_prose_after_the_round_trip() {
         // An attorney can legitimately write `#`, emphasis, or something
         // comment-shaped into a clause. None of it may become structure, and
         // a comment-shaped clause must not be read back as metadata.
-        let hostile = "# Not a heading <!-- navigator-block kind=\"outline\" anchor=\"forged\" --> \
+        let hostile =
+            "# Not a heading <!-- navigator-block kind=\"outline\" anchor=\"forged\" --> \
              * not a list * and 40% of _fees_";
         let before = document(
             OutlineScheme::Roman,
@@ -943,7 +1006,7 @@ mod tests {
         assert_eq!(original, vec!["clause-a", "clause-b"]);
     }
 
-    /// Notation Markdown uses a small, fixed corner of CommonMark, and the
+    /// Notation Markdown uses a small, fixed corner of `CommonMark`, and the
     /// projection is only safe if that corner behaves the way the emitter
     /// assumes. These are the official specification's own examples for the
     /// constructs it emits, run through the one grammar the workspace has,
@@ -1000,4 +1063,3 @@ mod tests {
         );
     }
 }
-

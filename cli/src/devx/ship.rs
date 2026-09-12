@@ -4722,6 +4722,40 @@ spec:
     }
 
     #[test]
+    fn embedded_workflows_manifest_retains_container_resources_and_rollout_contract() {
+        let subs = resolve_substitutions_for_deployment(
+            "neon-production",
+            "26.7.15",
+            env_getter(FULL_ENV),
+        )
+        .expect("full env resolves");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
+        let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
+            .expect("rendered GKE manifests build");
+        let deployment = manifest_doc(&manifests, "Deployment", WORKFLOWS_DEPLOYMENT);
+        let containers = deployment["spec"]["template"]["spec"]["containers"]
+            .as_sequence()
+            .expect("workflows-service containers");
+
+        for (name, cpu, memory) in [("worker", "500m", "2Gi"), ("envoy", "250m", "1Gi")] {
+            let container = containers
+                .iter()
+                .find(|container| container["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("{name} container must be rendered"));
+            assert_eq!(
+                container["resources"]["requests"]["cpu"].as_str(),
+                Some(cpu),
+                "{name} CPU request survives embedded render"
+            );
+            assert_eq!(
+                container["resources"]["requests"]["memory"].as_str(),
+                Some(memory),
+                "{name} memory request survives embedded render"
+            );
+        }
+    }
+
+    #[test]
     fn images_render_from_the_registry_while_everything_else_renders_the_environment() {
         // The two projects are different and both must land: every image line
         // points at the hub CI publishes to, while the buckets and the GSA

@@ -1654,3 +1654,93 @@ fn validate_tells_a_yml_manifest_to_rename() {
         .stdout(str::contains("Y008"))
         .stdout(str::contains("the manifest is navigator.yaml, rename it"));
 }
+
+/// A GFM table is a table only while its delimiter row carries as many
+/// cells as its header. The shape below — a header that gained a fourth
+/// column while the delimiter row kept three — passed the gate and
+/// rendered as paragraph text, so `M056` now measures that row too.
+#[test]
+fn validate_flags_a_delimiter_row_that_does_not_match_its_header() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "Contracts.md",
+        "# Contracts\n\n\
+         | | Unset | Plain collector | Complete contract |\n\
+         | --- | --- | --- |\n\
+         | stdout | human-readable | structured JSON | structured JSON |\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Contracts.md:4"))
+        .stdout(str::contains("M056"))
+        .stdout(str::contains("3 cell(s)"))
+        .stdout(str::contains("4"));
+}
+
+/// The repaired shape passes, and the body-row check `M056` already
+/// carried still measures a row that disagrees with a delimiter row the
+/// header does agree with.
+#[test]
+fn validate_accepts_a_matching_delimiter_row_and_still_measures_body_rows() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "Good.md",
+        "# Good\n\n\
+         | | Unset | Plain collector | Complete contract |\n\
+         | --- | --- | --- | --- |\n\
+         | stdout | human-readable | structured JSON | structured JSON |\n",
+    );
+    write(
+        dir.path(),
+        "Short.md",
+        "# Short\n\n\
+         | first | second |\n\
+         | --- | --- |\n\
+         | only one |\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Short.md:5"))
+        .stdout(str::contains("Table row has 1 cell(s); expected 2"))
+        .stdout(str::contains("found 1 error(s)"));
+}
+
+/// A broken table drawn inside a fenced code block is sample text that
+/// documents the failure, not a table the renderer will build, so it is
+/// not a finding. `M056` is diagnostic-only, so `--fix` leaves the file
+/// byte-identical and a second run reports exactly the same thing.
+#[test]
+fn validate_ignores_a_broken_table_inside_a_fence() {
+    let dir = TempDir::new().unwrap();
+    let original = "# Samples\n\n\
+        ```markdown\n\
+        \n\
+        | a | b | c |\n\
+        | --- | --- |\n\
+        | 1 |\n\
+        ```\n";
+    write(dir.path(), "Samples.md", original);
+    for _ in 0..2 {
+        navigator()
+            .args(["validate", "--fix"])
+            .arg(dir.path())
+            .assert()
+            .success()
+            .stdout(str::contains("Fixed 0 file(s)"));
+        assert_eq!(
+            fs::read_to_string(dir.path().join("Samples.md")).unwrap(),
+            original,
+            "a fix run rewrote a file that carries no violation"
+        );
+    }
+}

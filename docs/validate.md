@@ -231,12 +231,19 @@ for that violation without a human decision; every other code needs a person to 
 | `M053` | Error | Reference definitions must be referenced by something. | No |
 | `M054` | Error | Link and image style must be consistent. | No |
 | `M055` | Error | Table pipe style must be consistent. | No |
-| `M056` | Error | Table column counts must match the header row. | No |
+| `M056` | Error | A table's delimiter row and every body row must carry the header row's cell count. | No |
 | `M057` | Error | A relative link target must resolve to a real file on disk. | No |
 | `M058` | Error | Tables must be surrounded by blank lines. | No |
 | `M059` | Error | Link text must be descriptive, not `here` or `click`. | No |
 | `M060` | Error | Table column styles must be consistent. | No |
 | `M061` | **Warning** | A published doc must not keep a relative link the renderer cannot map. | No |
+
+`M056` measures the delimiter row (`| --- | --- |`) as well as the body rows, because that row is what decides whether
+the block is a table at all: GitHub-flavoured Markdown builds one only when the delimiter row's cell count equals the
+header row's, and demotes the whole block to paragraph text otherwise. The demotion is silent — the pipes render
+literally and the columns disappear. Cells are counted the way GFM counts them: separated by unescaped `|`, with the
+outer pipes optional and `\|` a literal pipe inside its cell. Front matter and fenced code blocks are not Markdown body,
+so a table drawn in either is sample text and is not measured.
 
 ### Y-family — YAML documents
 

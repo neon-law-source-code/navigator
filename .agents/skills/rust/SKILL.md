@@ -28,6 +28,8 @@ The doc owns the conventions; this skill is the short list of guards that are ea
 - **Comments and tests describe the present.** No "we used to…"/"no longer…"/"legacy" narration, no deprecated-but-kept
   flags or aliases — delete the old path; git history holds the past. Keep only the *why* behind a live invariant and
   guard tests that assert today's behavior.
+- **Opportunistic file pass.** [`random-refactor`](../random-refactor/SKILL.md) picks one tracked `.rs` file and
+  compares it to this skill, The Rust Book, a `/tmp` standard-library clone, and similar patterns in the repository.
 
 Everything else — conventions, async, Axum, the store, service lifecycle, testing — is in
 [`docs/rust-programming.md`](../../../docs/rust-programming.md).

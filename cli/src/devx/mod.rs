@@ -2969,15 +2969,22 @@ mod tests {
         cfg.restate_ingress_port = 19080;
         cfg.openobserve_port = 15_080;
         cfg.openobserve_otlp_port = 15_081;
-        let env = render_env(&cfg, Path::new("/ws"));
+        let root = Path::new("/ws");
+        let env = render_env(&cfg, root);
         assert!(env.contains("PORT=4001"));
-        assert!(env.contains("KUBECONFIG='/ws/.devx/kubeconfig'"));
+        assert!(env.contains(&format!(
+            "KUBECONFIG='{}'",
+            root.join(".devx").join("kubeconfig").display()
+        )));
         assert!(env.contains("NAVIGATOR_KIND_CLUSTER=navigator-task"));
         assert!(env.contains("NAVIGATOR_KIND_RESTATE_INGRESS_PORT=19080"));
         assert!(env.contains("NAVIGATOR_KIND_WEB_PORT=4001"));
         assert!(env.contains(&format!("{}=4011", delete_your_data_port_env_var())));
         assert!(env.contains(&format!("{}=4021", lawyer_shook_port_env_var())));
-        assert!(env.contains("NAVIGATOR_GIT_REPO_ROOT='/ws/.devx/repos/navigator'"));
+        assert!(env.contains(&format!(
+            "NAVIGATOR_GIT_REPO_ROOT='{}'",
+            root.join(".devx").join("repos").join("navigator").display()
+        )));
         assert!(env.contains("OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:15081"));
         assert!(env.contains("NAVIGATOR_OPENOBSERVE_URL=http://localhost:15080"));
         assert!(env.contains("NAVIGATOR_OPENOBSERVE_USERNAME=root@example.com"));
@@ -3029,13 +3036,19 @@ mod tests {
         // commands on the ambient kubeconfig. The generated lines must survive
         // both a POSIX `source` and the `dotenvy` parse every binary runs.
         let cfg = default_cfg();
-        let env = render_env(&cfg, Path::new("/ws with space"));
+        let root = Path::new("/ws with space");
+        let expected_kubeconfig = root.join(".devx").join("kubeconfig");
+        let expected_repo_root = root.join(".devx").join("repos").join("navigator");
+        let env = render_env(&cfg, root);
         assert!(
-            env.contains("KUBECONFIG='/ws with space/.devx/kubeconfig'"),
+            env.contains(&format!("KUBECONFIG='{}'", expected_kubeconfig.display())),
             "{env}"
         );
         assert!(
-            env.contains("NAVIGATOR_GIT_REPO_ROOT='/ws with space/.devx/repos/navigator'"),
+            env.contains(&format!(
+                "NAVIGATOR_GIT_REPO_ROOT='{}'",
+                expected_repo_root.display()
+            )),
             "{env}"
         );
 
@@ -3048,11 +3061,19 @@ mod tests {
                 .collect();
         assert_eq!(
             parsed.get("KUBECONFIG").map(String::as_str),
-            Some("/ws with space/.devx/kubeconfig")
+            Some(
+                expected_kubeconfig
+                    .to_str()
+                    .expect("test path is valid UTF-8")
+            )
         );
         assert_eq!(
             parsed.get("NAVIGATOR_GIT_REPO_ROOT").map(String::as_str),
-            Some("/ws with space/.devx/repos/navigator")
+            Some(
+                expected_repo_root
+                    .to_str()
+                    .expect("test path is valid UTF-8")
+            )
         );
     }
 

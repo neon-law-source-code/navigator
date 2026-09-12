@@ -428,21 +428,18 @@ mod tests {
     /// rather than a disposable worktree.
     #[test]
     fn the_stores_live_under_the_directory_they_are_given() {
-        let config = config_toml(
-            Path::new("/host/.navigator/native-runtime/garage"),
-            1,
-            2,
-            3,
-            "s",
-            "t",
-        );
+        let root = Path::new("/host/.navigator/native-runtime/garage");
+        let config = config_toml(root, 1, 2, 3, "s", "t");
 
         assert!(
-            config.contains("metadata_dir = \"/host/.navigator/native-runtime/garage/meta\""),
+            config.contains(&format!(
+                "metadata_dir = \"{}\"",
+                root.join("meta").display()
+            )),
             "{config}"
         );
         assert!(
-            config.contains("data_dir = \"/host/.navigator/native-runtime/garage/data\""),
+            config.contains(&format!("data_dir = \"{}\"", root.join("data").display())),
             "{config}"
         );
     }

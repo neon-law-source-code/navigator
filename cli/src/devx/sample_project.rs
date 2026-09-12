@@ -774,9 +774,24 @@ mod tests {
     fn a_failing_command_and_a_missing_one_are_reported_differently() {
         let dir = tempfile::tempdir().expect("tempdir");
 
-        run_in(dir.path(), "true", &[]).expect("a succeeding command is Ok");
+        #[cfg(windows)]
+        let succeeding = (
+            "cmd.exe",
+            vec!["/C".to_owned(), "exit".to_owned(), "0".to_owned()],
+        );
+        #[cfg(not(windows))]
+        let succeeding = ("true", Vec::<String>::new());
+        run_in(dir.path(), succeeding.0, &succeeding.1).expect("a succeeding command is Ok");
 
-        let failed = run_in(dir.path(), "false", &[]).expect_err("a nonzero exit must fail");
+        #[cfg(windows)]
+        let failing = (
+            "cmd.exe",
+            vec!["/C".to_owned(), "exit".to_owned(), "1".to_owned()],
+        );
+        #[cfg(not(windows))]
+        let failing = ("false", Vec::<String>::new());
+        let failed =
+            run_in(dir.path(), failing.0, &failing.1).expect_err("a nonzero exit must fail");
         assert!(
             failed.to_string().contains("failed in"),
             "a nonzero exit must name where it ran: {failed}"

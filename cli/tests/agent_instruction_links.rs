@@ -129,6 +129,42 @@ fn redline_skill_preflights_native_word_capabilities() {
     );
 }
 
+/// The random-refactor skill must pick one tracked Rust file, compare it to
+/// the workspace Rust conventions, The Rust Book, a local standard-library
+/// clone, and similar repository patterns, then answer the review questions
+/// before any edit.
+#[test]
+fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
+    let root = repo_root();
+    let skill_path = root.join(CANONICAL_SKILLS).join("random-refactor/SKILL.md");
+    let skill = fs::read_to_string(&skill_path).expect("read canonical random-refactor skill");
+
+    for required in [
+        "/random-refactor",
+        "git ls-files",
+        ".agents/skills/rust/SKILL.md",
+        "docs/rust-programming.md",
+        "rust-lang/book",
+        "library/std",
+        "/tmp/navigator-rust-library",
+        "/tmp/navigator-random-refactor/",
+        "Is this actually needed?",
+        "present tense",
+        "saved in git",
+        "Is it tested?",
+        "Is it documented?",
+        "Presentations",
+        "Workshops",
+        "RUST_IN_PEACE.md",
+        "similar patterns",
+    ] {
+        assert!(
+            skill.contains(required),
+            "random-refactor skill must contain {required:?}"
+        );
+    }
+}
+
 /// The guard itself must reject the regular-file form Git writes when it cannot
 /// materialise `CLAUDE.md` as a symlink.
 #[test]

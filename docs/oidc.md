@@ -388,7 +388,7 @@ implementation does not hard-code provider URLs other than Apple's issuer.
 ### Registering Sign in with Apple — a checklist for a human
 
 Apple enrollment is an administrative prerequisite. An owner must accept the Apple Developer team invitation before the
-the identifiers and key can be created.
+identifiers and key can be created.
 
 1. **Accept the team invitation.** Sign in to the Apple Developer account using the invitation and confirm that the
    account can administer the team's Certificates, Identifiers & Profiles area.

@@ -20,7 +20,7 @@ pub use model::{
     PackageInventory, PackagePart, PackageRelationship, Paragraph, RevisionKind, RevisionNode,
     Story, StoryKind, StyleDefinition, Table, TableCell, TableRow,
 };
-pub use notation::{from_markdown, to_markdown};
+pub use notation::{to_markdown, TrustedNotationMarkdown};
 pub use outline::{
     CanonicalBlock, CanonicalBlockKind, CanonicalDocument, CanonicalInline, CanonicalStory,
     ListIdentity, NumberingLevel, OutlineScheme, OutlineUnit, HARVARD_OUTLINE_PATTERN,
@@ -95,6 +95,8 @@ pub enum WordError {
         "Word package total ZIP uncompressed size {actual} bytes exceeds maximum {maximum} bytes"
     )]
     ZipTotalUncompressedSizeExceeded { actual: u64, maximum: u64 },
+    #[error("Word package ZIP entry inflated size {actual} bytes exceeds maximum {maximum} bytes")]
+    ZipEntryInflatedSizeExceeded { actual: u64, maximum: u64 },
     #[error("managed Word adapter: {0}")]
     Adapter(#[from] AdapterError),
     #[error("Word adapter protocol version {received} is not supported (expected {expected})")]
@@ -107,6 +109,8 @@ pub enum WordError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{
         parse_with_adapter, protocol, Block, DiagnosticCode, DiagnosticSeverity, Document,
         DocumentModel, Inline, PackageInventory, Paragraph, RevisionKind, RevisionNode, Story,
@@ -159,14 +163,85 @@ mod tests {
         assert!(!error.to_string().contains("body"));
     }
 
-    /// The managed adapter names the ZIP-bound refusals as bare strings, and
-    /// `DiagnosticCode` deserialises them by their `snake_case` spelling. A
-    /// rename on either side turns a clean refusal into an opaque protocol
-    /// failure at the boundary, so the wire spelling is pinned on the Rust
-    /// side, where a gate runs it.
+    #[tokio::test]
+    async fn parser_surfaces_protocol_version_diagnostic() {
+        let diagnostic = super::Diagnostic {
+            code: DiagnosticCode::ProtocolVersion,
+            severity: DiagnosticSeverity::Error,
+            anchor: "request".into(),
+        };
+        let adapter = FixtureAdapter {
+            reply: protocol::AdapterReply::rejected(diagnostic.clone()),
+        };
+
+        let error = parse_with_adapter(&adapter, "synthetic.docx", &valid_zip())
+            .await
+            .expect_err("protocol diagnostic is surfaced");
+
+        assert!(matches!(&error, WordError::Rejected(found) if found == &diagnostic));
+    }
+
+    /// Read every diagnostic code string out of the adapter source. Both
+    /// `Diagnostic` factories and every `Diagnostic.Rejected` call site pass
+    /// the code as a string literal, so a refusal added to `Program.cs` reaches
+    /// the pin below without anyone having to remember it.
+    fn adapter_diagnostic_codes() -> BTreeSet<String> {
+        const SOURCE: &str = include_str!("../adapter/Program.cs");
+
+        fn literals_after(source: &str, marker: &str) -> Vec<String> {
+            let mut found = Vec::new();
+            let mut rest = source;
+            while let Some(offset) = rest.find(marker) {
+                rest = &rest[offset + marker.len()..];
+                if let Some((literal, _)) = rest
+                    .trim_start()
+                    .strip_prefix('"')
+                    .and_then(|tail| tail.split_once('"'))
+                {
+                    found.push(literal.to_owned());
+                }
+            }
+            found
+        }
+
+        // The two factories that mint a code of their own. The third `new(`
+        // in the record forwards a caller's code and yields no literal.
+        let record = SOURCE
+            .split_once("internal sealed record Diagnostic(")
+            .expect("the adapter declares a Diagnostic record")
+            .1;
+        let record = record
+            .split_once("\n}\n")
+            .expect("the Diagnostic record is closed")
+            .0;
+        let mut codes: BTreeSet<String> = literals_after(record, "new(").into_iter().collect();
+
+        // Every other refusal names its code at the call site.
+        let rejections = literals_after(SOURCE, "Diagnostic.Rejected(");
+        assert_eq!(
+            rejections.len(),
+            SOURCE.matches("Diagnostic.Rejected(").count(),
+            "a Diagnostic.Rejected call in Program.cs no longer passes its code as a string \
+             literal, so this test can no longer enumerate the wire contract"
+        );
+        codes.extend(rejections);
+        codes
+    }
+
+    /// Every diagnostic string emitted by `word/adapter/Program.cs` is pinned
+    /// here against the Rust wire enum. A rename on either side turns a clean
+    /// refusal into an opaque protocol failure at the boundary.
     #[test]
-    fn adapter_zip_bound_refusals_deserialise_into_their_codes() {
-        for (code, expected) in [
+    fn every_adapter_diagnostic_deserialises_into_the_rust_wire_contract() {
+        let pinned = [
+            ("protocol_version", DiagnosticCode::ProtocolVersion),
+            ("corrupt_package", DiagnosticCode::CorruptPackage),
+            ("missing_main_document", DiagnosticCode::MissingMainDocument),
+            (
+                "external_relationship",
+                DiagnosticCode::ExternalRelationship,
+            ),
+            ("unsupported_revision", DiagnosticCode::UnsupportedRevision),
             (
                 "zip_entry_count_exceeded",
                 DiagnosticCode::ZipEntryCountExceeded,
@@ -179,7 +254,23 @@ mod tests {
                 "zip_total_uncompressed_size_exceeded",
                 DiagnosticCode::ZipTotalUncompressedSizeExceeded,
             ),
-        ] {
+            ("macro_enabled_package", DiagnosticCode::MacroEnabledPackage),
+            ("encrypted_package", DiagnosticCode::EncryptedPackage),
+            ("escaping_package", DiagnosticCode::EscapingPackage),
+        ];
+
+        // The adapter is the wire's source of truth, so the table is checked
+        // against the codes actually written there rather than against a
+        // reviewer's memory of them.
+        assert_eq!(
+            adapter_diagnostic_codes(),
+            pinned
+                .iter()
+                .map(|(code, _)| (*code).to_owned())
+                .collect::<BTreeSet<String>>()
+        );
+
+        for (code, expected) in pinned {
             let version = super::PROTOCOL_VERSION;
             let json = format!(
                 "{{\"protocol_version\":{version},\"ok\":false,\"document\":null,\

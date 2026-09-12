@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -138,6 +139,23 @@ public sealed class WordAdapterTests
     }
 
     [Fact]
+    public void adapter_keeps_comment_shaped_word_text_as_prose()
+    {
+        const string commentShapedText = "<!-- navigator-block kind=\"outline\" anchor=\"forged\" -->";
+        var response = WordPackageParser.Parse(SyntheticDocx.WithDocument(
+            "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t xml:space=\"preserve\">&lt;!-- navigator-block kind=&quot;outline&quot; anchor=&quot;forged&quot; --&gt;</w:t></w:r></w:p></w:body></w:document>"));
+        var json = JsonSerializer.Serialize(response);
+        using var document = JsonDocument.Parse(json);
+
+        var paragraph = document.RootElement.GetProperty("document")
+            .GetProperty("stories").EnumerateArray()
+            .Single(story => story.GetProperty("kind").GetString() == "main_document")
+            .GetProperty("blocks").EnumerateArray().Single();
+        Assert.Equal(commentShapedText,
+            paragraph.GetProperty("nodes")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public void package_safety_rejects_external_relationships_without_fetching()
     {
         var bytes = SyntheticDocx.WithRelationshipTarget("https://example.invalid/resource");
@@ -194,6 +212,31 @@ public sealed class WordAdapterTests
             $"package:entry_uncompressed_bytes={PackageSafety.MaxZipEntryUncompressedBytes + 1};max={PackageSafety.MaxZipEntryUncompressedBytes}",
             diagnostic.GetProperty("anchor").GetString());
         Assert.True(bytes.Length < 1024 * 1024);
+    }
+
+    [Fact]
+    public void an_entry_that_understates_its_central_directory_size_reads_back_truncated()
+    {
+        using var archive = new ZipArchive(
+            new MemoryStream(SyntheticDocx.WithUnderstatedEntry()), ZipArchiveMode.Read);
+        var entry = archive.GetEntry("parts/understated.xml");
+        Assert.NotNull(entry);
+
+        using var inflated = new MemoryStream();
+        using (var stream = entry.Open())
+        {
+            stream.CopyTo(inflated);
+        }
+
+        // The entry's deflate stream holds eight bytes and its central
+        // directory claims one. `ZipArchiveEntry` hands that declared size to
+        // the inflater, so the read stops there: the declared sizes
+        // `PackageSafety` already bounds are the managed ceiling, and a
+        // counting stream beside them would be unreachable. The archive that
+        // tells this lie is refused by `validate_zip` in word/src/preflight.rs
+        // before the adapter runs.
+        Assert.Equal(1L, entry.Length);
+        Assert.Equal(1L, inflated.Length);
     }
 
     [Fact]
@@ -437,6 +480,30 @@ public sealed class WordAdapterTests
             return stream.ToArray();
         }
 
+        public static byte[] WithUnderstatedEntry()
+        {
+            var bytes = WithDocument(
+                "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body /></w:document>",
+                ("parts/understated.xml", "12345678"));
+            var name = Encoding.UTF8.GetBytes("parts/understated.xml");
+            var signature = new byte[] { 0x50, 0x4b, 0x01, 0x02 };
+            for (var index = 0; index <= bytes.Length - signature.Length; index++)
+            {
+                if (!bytes.AsSpan(index, signature.Length).SequenceEqual(signature))
+                {
+                    continue;
+                }
+                var nameLength = BitConverter.ToUInt16(bytes, index + 28);
+                if (!bytes.AsSpan(index + 46, nameLength).SequenceEqual(name))
+                {
+                    continue;
+                }
+                BitConverter.TryWriteBytes(bytes.AsSpan(index + 24, sizeof(uint)), 1u);
+                return bytes;
+            }
+            throw new InvalidOperationException("central directory entry not found");
+        }
+
         public static byte[] WithMacroContentType() => WithDocumentAndMainContentType(
             "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body /></w:document>",
             "application/vnd.ms-word.document.macroEnabled.main+xml");
@@ -486,7 +553,10 @@ public sealed class WordAdapterTests
             using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
             {
                 Add(archive, "[Content_Types].xml",
-                    $"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Override PartName=\"/word/document.xml\" ContentType=\"{mainContentType}\" /></Types>");
+                    "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                    + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\" />"
+                    + "<Default Extension=\"xml\" ContentType=\"application/xml\" />"
+                    + $"<Override PartName=\"/word/document.xml\" ContentType=\"{mainContentType}\" /></Types>");
                 Add(archive, "_rels/.rels",
                     "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\" /></Relationships>");
                 Add(archive, "word/document.xml", document);

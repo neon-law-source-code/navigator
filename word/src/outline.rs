@@ -195,14 +195,14 @@ impl CanonicalDocument {
     /// Markdown cannot express rides beside it in `navigator-*` comments.
     /// See [`crate::notation`].
     #[must_use]
-    pub fn to_markdown(&self) -> String {
+    pub fn to_markdown(&self) -> crate::notation::TrustedNotationMarkdown {
         crate::notation::to_markdown(self)
     }
 
     /// Read a governed Markdown projection back into the canonical model
     /// through the workspace's one `CommonMark` grammar.
     #[must_use]
-    pub fn from_markdown(source: &str) -> Self {
+    pub fn from_markdown(source: &crate::notation::TrustedNotationMarkdown) -> Self {
         crate::notation::from_markdown(source)
     }
 }

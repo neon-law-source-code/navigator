@@ -102,6 +102,17 @@ states.
   capitalized and referring to a row or a matter, it's the runtime instance; referring to the file format, it's the
   lowercase "markdown notation."
 
+### Word Markdown trust boundary
+
+The Word notation projection is a trusted internal format. The public `word::notation::to_markdown` and
+`word::CanonicalDocument::to_markdown` producers return an opaque `TrustedNotationMarkdown` value; only that value can
+reach the structural parser. Raw Markdown from an editor, upload, or another tool cannot be presented to
+`from_markdown`, so directly supplied `navigator-*` comments cannot acquire structural authority. The actual parser
+callers are the round-trip tests in `word/src/outline.rs` and `word/src/notation.rs`; the public
+`Document::notation_markdown` method is a producer for a governed caller, not an external Markdown ingestion path. Word
+text first passes through the managed adapter and the canonical emitter, whose escaping keeps comment-shaped prose as
+prose.
+
 ## Questionnaire
 
 The ordered list of [Questions](#question) a Template **declares** it will ask. Lives entirely in the template's

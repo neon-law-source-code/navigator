@@ -292,6 +292,14 @@ internal static class PackageSafety
     internal const long MaxZipEntryUncompressedBytes = 64L * 1024 * 1024;
     internal const long MaxZipTotalUncompressedBytes = 256L * 1024 * 1024;
 
+    // These declared sizes are the whole managed bound, and no counting stream
+    // belongs beside them. `ZipArchiveEntry.GetDataDecompressor` hands the
+    // central directory's uncompressed size to the inflater, so a read through
+    // `Open()` stops at the declared length and cannot run past what is checked
+    // here. An archive that understates its central directory is refused before
+    // this adapter is ever invoked, by `validate_zip` in word/src/preflight.rs,
+    // whose `zip`-crate reader does inflate past the declared size.
+
     public static Diagnostic? Validate(byte[] bytes)
     {
         if (bytes.Length == 0 || bytes.Length > MaxPackageBytes)
@@ -378,15 +386,14 @@ internal static class PackageSafety
                 {
                     var mode = relationship.Attribute("TargetMode")?.Value;
                     var target = relationship.Attribute("Target")?.Value;
-                    if (string.Equals(mode, "External", StringComparison.OrdinalIgnoreCase)
-                        || target?.Contains("://", StringComparison.Ordinal) == true
+                    if (string.Equals(mode, "External", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Diagnostic.Rejected("external_relationship", "relationship");
+                    }
+                    if (target?.Contains("://", StringComparison.Ordinal) == true
                         || target is not null && EscapesPackage(entry.FullName, target))
                     {
-                        return Diagnostic.Rejected(
-                            mode?.Equals("External", StringComparison.OrdinalIgnoreCase) == true
-                                ? "external_relationship"
-                                : "escaping_package",
-                            "relationship");
+                        return Diagnostic.Rejected("escaping_package", "relationship");
                     }
                 }
             }

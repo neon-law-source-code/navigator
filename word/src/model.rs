@@ -41,7 +41,7 @@ impl Document {
     /// Emit the editable Notation Markdown projection of the imported main
     /// story. Persistence remains the caller's governed responsibility.
     #[must_use]
-    pub fn notation_markdown(&self) -> String {
+    pub fn notation_markdown(&self) -> crate::notation::TrustedNotationMarkdown {
         self.canonical_outline().to_markdown()
     }
 
@@ -456,6 +456,7 @@ impl Diagnostic {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiagnosticCode {
+    ProtocolVersion,
     UnsupportedRevision,
     MissingMainDocument,
     ExternalRelationship,

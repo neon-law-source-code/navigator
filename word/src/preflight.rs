@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 use std::path::Path;
 
 use zip::ZipArchive;
@@ -102,6 +102,35 @@ pub(crate) fn validate_zip(bytes: &[u8]) -> Result<(), WordError> {
     if !has_content_types || !has_main_document {
         return Err(WordError::CorruptPackage);
     }
+
+    // Only a package that already looks like a DOCX is worth decompressing.
+    // Every bound above is a *declared* size, and the `zip` reader will happily
+    // inflate an entry past the length its central directory claims, so the
+    // measured byte count is what keeps an understated archive from handing
+    // Open XML more than preflight accounted for.
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|_| WordError::CorruptPackage)?;
+        let maximum = entry.size().min(MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES);
+        let mut inflated_bytes = 0_u64;
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let read = entry
+                .read(&mut buffer)
+                .map_err(|_| WordError::CorruptPackage)?;
+            if read == 0 {
+                break;
+            }
+            inflated_bytes = inflated_bytes.saturating_add(read as u64);
+            if inflated_bytes > maximum {
+                return Err(WordError::ZipEntryInflatedSizeExceeded {
+                    actual: inflated_bytes,
+                    maximum,
+                });
+            }
+        }
+    }
     Ok(())
 }
 
@@ -201,6 +230,38 @@ mod tests {
     }
 
     #[test]
+    fn package_rejects_an_entry_that_inflates_past_its_understated_size() {
+        let bytes = understate_central_directory_size(
+            synthetic_package(&[("parts/understated.xml", 8)]),
+            "parts/understated.xml",
+            1,
+        );
+
+        assert!(matches!(
+            validate_zip(&bytes),
+            Err(WordError::ZipEntryInflatedSizeExceeded { actual, maximum })
+                if actual > maximum && maximum == 1
+        ));
+    }
+
+    #[test]
+    fn an_escaping_entry_is_refused_before_any_entry_is_inflated() {
+        // This entry both lies about its size and escapes the package. The
+        // cheap refusal is the one that must land: preflight settles the
+        // central directory before it decompresses a single byte.
+        let bytes = understate_central_directory_size(
+            synthetic_package(&[("../outside.xml", 8)]),
+            "../outside.xml",
+            1,
+        );
+
+        assert!(matches!(
+            validate_zip(&bytes),
+            Err(WordError::EscapingPackage)
+        ));
+    }
+
+    #[test]
     fn package_rejects_too_many_entries_before_reading_entry_streams() {
         let entries = (0..MAX_ZIP_ENTRY_COUNT)
             .map(|index| (format!("parts/{index}.xml"), 0))
@@ -251,5 +312,23 @@ mod tests {
             writer.write_all(&zeroes[..length]).unwrap();
             remaining -= length as u64;
         }
+    }
+
+    fn understate_central_directory_size(mut bytes: Vec<u8>, name: &str, size: u32) -> Vec<u8> {
+        let name = name.as_bytes();
+        let signature = [0x50, 0x4b, 0x01, 0x02];
+        let start = bytes
+            .windows(signature.len())
+            .enumerate()
+            .filter(|(_, window)| *window == signature)
+            .map(|(start, _)| start)
+            .find(|start| {
+                let name_length =
+                    u16::from_le_bytes([bytes[*start + 28], bytes[*start + 29]]) as usize;
+                &bytes[*start + 46..*start + 46 + name_length] == name
+            })
+            .expect("central directory entry");
+        bytes[start + 24..start + 28].copy_from_slice(&size.to_le_bytes());
+        bytes
     }
 }

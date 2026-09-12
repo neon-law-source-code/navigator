@@ -285,9 +285,11 @@ struct OAuthConfigInner {
     redirect_uri: String,
     authorization_endpoint: String,
     token_endpoint: String,
-    /// Hand-built configs point at local HTTP mocks; every environment-built
-    /// config requires HTTPS before a client secret is sent.
-    require_https_token_endpoint: bool,
+    /// Hand-built configs point at local HTTP mocks on arbitrary hosts; every
+    /// environment-built config requires a confidential token endpoint before a
+    /// client secret is sent. See [`token_endpoint_is_confidential`] for what
+    /// that admits — TLS, or a loopback host the request never leaves.
+    require_confidential_token_endpoint: bool,
     end_session_endpoint: Option<String>,
     /// Provider-algorithm id_token verifier, built from the IdP's published
     /// JWKS and pinned to the discovered `issuer` + our `client_id` audience.
@@ -411,7 +413,7 @@ impl OAuthConfig {
                 redirect_uri: redirect_uri.into(),
                 authorization_endpoint: authorization_endpoint.into(),
                 token_endpoint: token_endpoint.into(),
-                require_https_token_endpoint: false,
+                require_confidential_token_endpoint: false,
                 end_session_endpoint: None,
                 id_token_verifier: None,
             }),
@@ -444,7 +446,7 @@ impl OAuthConfig {
                 redirect_uri: redirect_uri.into(),
                 authorization_endpoint: authorization_endpoint.into(),
                 token_endpoint: token_endpoint.into(),
-                require_https_token_endpoint: false,
+                require_confidential_token_endpoint: false,
                 end_session_endpoint: None,
                 id_token_verifier: None,
             }),
@@ -552,7 +554,7 @@ impl OAuthConfig {
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
-                require_https_token_endpoint: true,
+                require_confidential_token_endpoint: true,
                 end_session_endpoint: doc.end_session_endpoint,
                 id_token_verifier: Some(verifier),
             }),
@@ -658,7 +660,7 @@ impl OAuthConfig {
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
-                require_https_token_endpoint: true,
+                require_confidential_token_endpoint: true,
                 end_session_endpoint: doc.end_session_endpoint,
                 id_token_verifier: Some(verifier),
             }),
@@ -709,7 +711,7 @@ impl OAuthConfig {
                 redirect_uri,
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
-                require_https_token_endpoint: true,
+                require_confidential_token_endpoint: true,
                 end_session_endpoint: doc.end_session_endpoint,
                 id_token_verifier: Some(verifier),
             }),
@@ -2086,6 +2088,34 @@ fn consume_pre_auth(
     Ok(pre)
 }
 
+/// Whether a token endpoint can carry a client secret without exposing it.
+///
+/// The exchange posts the client secret and the authorization code, so the
+/// request must not cross a network in the clear. TLS guarantees that. So does
+/// a loopback host, whose traffic never reaches a network interface at all —
+/// the same property RFC 8252 §8.3 relies on when it permits plain-HTTP
+/// loopback redirects for native apps. Anything else is refused.
+///
+/// The loopback carve-out is what lets the local development tier work: it
+/// serves its OIDC provider over plain HTTP on a loopback port, and every
+/// environment-built config reaches that provider through discovery, which sets
+/// [`OAuthConfigInner::require_confidential_token_endpoint`]. Without this, no local
+/// sign-in can complete and the callback answers 502.
+///
+/// `localhost` is matched exactly. A name that merely contains or ends with it
+/// resolves wherever its owner points it, so it is an ordinary network host.
+fn token_endpoint_is_confidential(endpoint: &url::Url) -> bool {
+    if endpoint.scheme() == "https" {
+        return endpoint.host().is_some();
+    }
+    match endpoint.host() {
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    }
+}
+
 /// Phase 2: exchange the authorization `code` at the IdP's token
 /// endpoint (PKCE `code_verifier` from the pre-auth cookie).
 async fn exchange_code(
@@ -2097,11 +2127,14 @@ async fn exchange_code(
         tracing::warn!("oauth: refusing token exchange with an invalid endpoint");
         (StatusCode::BAD_GATEWAY, "invalid token endpoint")
     })?;
-    if cfg.inner.require_https_token_endpoint
-        && (token_endpoint.scheme() != "https" || token_endpoint.host_str().is_none())
+    if cfg.inner.require_confidential_token_endpoint
+        && !token_endpoint_is_confidential(&token_endpoint)
     {
-        tracing::warn!("oauth: refusing token exchange over a non-HTTPS endpoint");
-        return Err((StatusCode::BAD_GATEWAY, "token endpoint must use HTTPS"));
+        tracing::warn!("oauth: refusing token exchange over a non-confidential endpoint");
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            "token endpoint must use HTTPS or be on the loopback",
+        ));
     }
     let client_secret = cfg.client_secret().map_err(|error| {
         tracing::warn!(error = %error, "oauth: client secret mint failed");
@@ -2734,7 +2767,7 @@ mod tests {
         JwksDocument, NoticeText, OAuthConfig, PreAuth, ProviderId, ResolveError,
         APPLE_CLIENT_SECRET_TTL_SECS,
     };
-    use super::{pre_auth_cookie, SameSite};
+    use super::{pre_auth_cookie, token_endpoint_is_confidential, SameSite};
     use crate::auth::JwksKey;
     use crate::session::{now_unix_secs, random_token_32, DEFAULT_SESSION_TTL_SECS};
     use crate::test_support::{oidc_verifier, sign_id_token, sign_id_token_with_kid};
@@ -3924,5 +3957,80 @@ mod tests {
             IdentityPasswordConfig::DEFAULT_ENDPOINT,
             "https://identitytoolkit.googleapis.com",
         );
+    }
+
+    /// A token exchange carries the client secret and the authorization code,
+    /// so the request must not cross a network in the clear. `https` is one way
+    /// to guarantee that; a loopback host is the other, because the request
+    /// never leaves the machine. Everything else is refused.
+    #[test]
+    fn a_loopback_token_endpoint_needs_no_tls() {
+        for endpoint in [
+            "http://localhost:8080/auth/v1/oidc/token",
+            "http://LOCALHOST:8080/auth/v1/oidc/token",
+            "http://127.0.0.1:20427/auth/v1/oidc/token",
+            "http://127.1.2.3/token",
+            "http://[::1]:8080/token",
+        ] {
+            let url = url::Url::parse(endpoint).expect("parses");
+            assert!(
+                token_endpoint_is_confidential(&url),
+                "{endpoint} never leaves the machine, so it carries the secret safely"
+            );
+        }
+    }
+
+    #[test]
+    fn a_plain_http_token_endpoint_off_the_loopback_is_refused() {
+        for endpoint in [
+            "http://idp.example.com/token",
+            "http://192.168.1.10/token",
+            "http://10.0.0.1/token",
+        ] {
+            let url = url::Url::parse(endpoint).expect("parses");
+            assert!(
+                !token_endpoint_is_confidential(&url),
+                "{endpoint} sends a client secret across a network in the clear"
+            );
+        }
+    }
+
+    /// The loopback exemption matches the host exactly. A name that merely
+    /// contains or ends with `localhost` resolves wherever its owner points it,
+    /// so it is an ordinary network host.
+    #[test]
+    fn a_hostname_that_merely_looks_like_the_loopback_is_refused() {
+        for endpoint in [
+            "http://localhost.example.com/token",
+            "http://notlocalhost/token",
+            "http://localhost.evil.test/token",
+        ] {
+            let url = url::Url::parse(endpoint).expect("parses");
+            assert!(
+                !token_endpoint_is_confidential(&url),
+                "{endpoint} is a network host, not the loopback"
+            );
+        }
+    }
+
+    #[test]
+    fn https_is_confidential_wherever_it_points() {
+        for endpoint in [
+            "https://idp.example.com/token",
+            "https://login.microsoftonline.com/organizations/oauth2/v2.0/token",
+        ] {
+            let url = url::Url::parse(endpoint).expect("parses");
+            assert!(token_endpoint_is_confidential(&url), "{endpoint}");
+        }
+    }
+
+    /// A URL with no host cannot be reasoned about at all, so it is refused
+    /// whatever its scheme.
+    #[test]
+    fn a_hostless_token_endpoint_is_refused() {
+        for endpoint in ["file:///tmp/token", "data:text/plain,token"] {
+            let url = url::Url::parse(endpoint).expect("parses");
+            assert!(!token_endpoint_is_confidential(&url), "{endpoint}");
+        }
     }
 }

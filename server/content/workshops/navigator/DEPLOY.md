@@ -1065,6 +1065,9 @@ alongside it.
 | Lawyer-sender DKIM check | none (always on) | Must pass for sender's own domain on every lawyer command/relay |
 | Internal ops notices | `SLACK_WEBHOOK_URL` | Optional; otherwise captured in memory |
 | Per-Project client-view notices | `SLACK_BOT_TOKEN` | Required outside the harness; creates private Project channels |
+| Dash0 endpoint | `DASH0_ENDPOINT` | Optional staging-only integration declaration |
+| Dash0 dataset | `DASH0_DATASET` | Required with `DASH0_ENDPOINT` |
+| Dash0 token | `DASH0_TOKEN` | Encrypted Secret Manager input; required with `DASH0_ENDPOINT` |
 | DocuSign endpoint | `DOCUSIGN_BASE_URL` | Declares DocuSign; demo in dev, live in production |
 | DocuSign account | `DOCUSIGN_ACCOUNT_ID` | Environment-specific account |
 | DocuSign JWT IDs | `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID` | Preferred auth path |
@@ -1080,9 +1083,11 @@ alongside it.
 
 `NAVIGATOR_CREDENTIAL_ENVIRONMENT` must exactly match `dev` or `production` outside the harness. A normal dev deployment
 therefore sends real email from a non-production SendGrid account and creates non-binding envelopes in DocuSign demo.
-Xero is different today: its variables are not part of the deployment invariant, so an incomplete production Xero set
-still boots and selects `StubBillingProvider`. Treat that as an explicit capability choice, not evidence that an invoice
-reached the ledger.
+Dash0 is staging-only and optional: omit `DASH0_ENDPOINT` to omit the dataset and token as well. Once the endpoint is
+declared, all three Dash0 values are required; the deployment, Secret Manager, and ship checks refuse a missing value
+instead of allowing the renderer to drop Dash0 silently. Xero is different today: its variables are not part of the
+deployment invariant, so an incomplete production Xero set still boots and selects `StubBillingProvider`. Treat that as
+an explicit capability choice, not evidence that an invoice reached the ledger.
 
 ### Deployed runtime: repositories, content, AI, and scheduled work
 

@@ -1633,6 +1633,35 @@ sops:
     }
 
     #[test]
+    fn a_deployment_that_declines_dash0_skips_its_token() {
+        let root = fixture_tree();
+        for deployment in provisioned_deployments(&root)
+            .into_iter()
+            .filter(|deployment| !deployment.coordinates.contains_key("DASH0_ENDPOINT"))
+        {
+            let (plan, skipped) = plan(&deployment).expect("a declined integration is not a gap");
+            assert!(!plan.contains_key("DASH0_TOKEN"));
+            assert_eq!(
+                skipped.get("DASH0_TOKEN"),
+                Some(&Exemption::Untriggered),
+                "DASH0_TOKEN belongs to an integration this deployment declares nothing of"
+            );
+        }
+    }
+
+    #[test]
+    fn declaring_dash0_without_its_token_is_still_missing_the_token() {
+        let root = fixture_tree();
+        let mut deployment = Deployment::load(&root, "example-automation-home")
+            .expect("the synthetic Dash0 deployment loads");
+        deployment.encrypted_keys.remove("DASH0_TOKEN");
+
+        let error =
+            plan(&deployment).expect_err("a declared integration without its token is a gap");
+        assert!(error.to_string().contains("DASH0_TOKEN"));
+    }
+
+    #[test]
     fn declaring_docusign_still_demands_every_key_the_provider_reads() {
         // The other half: `Untriggered` is "declined", never "optional". A
         // deployment that sets the trigger and stops there is half-configured,

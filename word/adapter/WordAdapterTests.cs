@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -211,6 +212,20 @@ public sealed class WordAdapterTests
             $"package:entry_uncompressed_bytes={PackageSafety.MaxZipEntryUncompressedBytes + 1};max={PackageSafety.MaxZipEntryUncompressedBytes}",
             diagnostic.GetProperty("anchor").GetString());
         Assert.True(bytes.Length < 1024 * 1024);
+    }
+
+    [Fact]
+    public void package_safety_rejects_an_entry_that_inflates_past_its_understated_size()
+    {
+        var response = WordPackageParser.Parse(SyntheticDocx.WithUnderstatedEntry());
+        var json = JsonSerializer.Serialize(response);
+        using var document = JsonDocument.Parse(json);
+
+        var diagnostic = document.RootElement.GetProperty("diagnostic");
+        Assert.Equal("zip_entry_inflated_size_exceeded", diagnostic.GetProperty("code").GetString());
+        Assert.Equal(
+            "package:entry_inflated_bytes=8;max=1",
+            diagnostic.GetProperty("anchor").GetString());
     }
 
     [Fact]
@@ -452,6 +467,30 @@ public sealed class WordAdapterTests
                 }
             }
             return stream.ToArray();
+        }
+
+        public static byte[] WithUnderstatedEntry()
+        {
+            var bytes = WithDocument(
+                "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body /></w:document>",
+                ("parts/understated.xml", "12345678"));
+            var name = Encoding.UTF8.GetBytes("parts/understated.xml");
+            var signature = new byte[] { 0x50, 0x4b, 0x01, 0x02 };
+            for (var index = 0; index <= bytes.Length - signature.Length; index++)
+            {
+                if (!bytes.AsSpan(index, signature.Length).SequenceEqual(signature))
+                {
+                    continue;
+                }
+                var nameLength = BitConverter.ToUInt16(bytes, index + 28);
+                if (!bytes.AsSpan(index + 46, nameLength).SequenceEqual(name))
+                {
+                    continue;
+                }
+                BitConverter.TryWriteBytes(bytes.AsSpan(index + 24, sizeof(uint)), 1u);
+                return bytes;
+            }
+            throw new InvalidOperationException("central directory entry not found");
         }
 
         public static byte[] WithMacroContentType() => WithDocumentAndMainContentType(

@@ -95,6 +95,8 @@ pub enum WordError {
         "Word package total ZIP uncompressed size {actual} bytes exceeds maximum {maximum} bytes"
     )]
     ZipTotalUncompressedSizeExceeded { actual: u64, maximum: u64 },
+    #[error("Word package ZIP entry inflated size {actual} bytes exceeds maximum {maximum} bytes")]
+    ZipEntryInflatedSizeExceeded { actual: u64, maximum: u64 },
     #[error("managed Word adapter: {0}")]
     Adapter(#[from] AdapterError),
     #[error("Word adapter protocol version {received} is not supported (expected {expected})")]
@@ -178,6 +180,10 @@ mod tests {
             (
                 "zip_total_uncompressed_size_exceeded",
                 DiagnosticCode::ZipTotalUncompressedSizeExceeded,
+            ),
+            (
+                "zip_entry_inflated_size_exceeded",
+                DiagnosticCode::ZipEntryInflatedSizeExceeded,
             ),
         ] {
             let version = super::PROTOCOL_VERSION;

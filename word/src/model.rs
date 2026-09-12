@@ -466,6 +466,7 @@ pub enum DiagnosticCode {
     ZipEntryCountExceeded,
     ZipEntryUncompressedSizeExceeded,
     ZipTotalUncompressedSizeExceeded,
+    ZipEntryInflatedSizeExceeded,
     UnsupportedNumbering,
     AmbiguousOutline,
     DepthOverflow,

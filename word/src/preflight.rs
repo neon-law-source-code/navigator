@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 use std::path::Path;
 
 use zip::ZipArchive;
@@ -49,7 +49,7 @@ pub(crate) fn validate_zip(bytes: &[u8]) -> Result<(), WordError> {
     let mut has_main_document = false;
     let mut total_uncompressed_bytes: u64 = 0;
     for index in 0..archive.len() {
-        let entry = archive
+        let mut entry = archive
             .by_index(index)
             .map_err(|_| WordError::CorruptPackage)?;
         let uncompressed_bytes = entry.size();
@@ -65,6 +65,24 @@ pub(crate) fn validate_zip(bytes: &[u8]) -> Result<(), WordError> {
                 actual: total_uncompressed_bytes,
                 maximum: MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES,
             });
+        }
+        let inflated_limit = uncompressed_bytes.min(MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES);
+        let mut inflated_bytes = 0_u64;
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let read = entry
+                .read(&mut buffer)
+                .map_err(|_| WordError::CorruptPackage)?;
+            inflated_bytes = inflated_bytes.saturating_add(read as u64);
+            if inflated_bytes > inflated_limit {
+                return Err(WordError::ZipEntryInflatedSizeExceeded {
+                    actual: inflated_bytes,
+                    maximum: inflated_limit,
+                });
+            }
+            if read == 0 {
+                break;
+            }
         }
         let name = entry.name().replace('\\', "/");
         if name == "[Content_Types].xml" {
@@ -201,6 +219,21 @@ mod tests {
     }
 
     #[test]
+    fn package_rejects_an_entry_that_inflates_past_its_understated_size() {
+        let bytes = understate_central_directory_size(
+            synthetic_package(&[("parts/understated.xml", 8)]),
+            "parts/understated.xml",
+            1,
+        );
+
+        assert!(matches!(
+            validate_zip(&bytes),
+            Err(WordError::ZipEntryInflatedSizeExceeded { actual, maximum })
+                if actual > maximum && maximum == 1
+        ));
+    }
+
+    #[test]
     fn package_rejects_too_many_entries_before_reading_entry_streams() {
         let entries = (0..MAX_ZIP_ENTRY_COUNT)
             .map(|index| (format!("parts/{index}.xml"), 0))
@@ -251,5 +284,23 @@ mod tests {
             writer.write_all(&zeroes[..length]).unwrap();
             remaining -= length as u64;
         }
+    }
+
+    fn understate_central_directory_size(mut bytes: Vec<u8>, name: &str, size: u32) -> Vec<u8> {
+        let name = name.as_bytes();
+        let signature = [0x50, 0x4b, 0x01, 0x02];
+        let start = bytes
+            .windows(signature.len())
+            .enumerate()
+            .filter(|(_, window)| *window == signature)
+            .map(|(start, _)| start)
+            .find(|start| {
+                let name_length =
+                    u16::from_le_bytes([bytes[*start + 28], bytes[*start + 29]]) as usize;
+                &bytes[*start + 46..*start + 46 + name_length] == name
+            })
+            .expect("central directory entry");
+        bytes[start + 24..start + 28].copy_from_slice(&size.to_le_bytes());
+        bytes
     }
 }

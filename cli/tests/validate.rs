@@ -1866,3 +1866,23 @@ fn validate_fix_gives_a_next_line_title_only_to_a_title_less_definition() {
         "a repeated fix changed the fixture"
     );
 }
+
+#[test]
+fn validate_fix_preserves_a_standalone_raw_text_closing_tag() {
+    let dir = TempDir::new().unwrap();
+    let original = "</script>\nShort line.\nNext line.\n";
+    write(dir.path(), "RawText.md", original);
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 0 file(s)"));
+
+    assert_eq!(
+        fs::read_to_string(dir.path().join("RawText.md")).unwrap(),
+        original,
+        "a closing raw-text tag was folded into prose"
+    );
+}

@@ -109,6 +109,7 @@ const DASH0_DATASET_KEY: &str = "DASH0_DATASET";
 const DASH0_TOKEN_KEY: &str = "DASH0_TOKEN";
 const DASH0_ENDPOINT_PLACEHOLDER: &str = "YOUR_DASH0_ENDPOINT";
 const DASH0_DATASET_PLACEHOLDER: &str = "YOUR_DASH0_DATASET";
+const WEB_SECRET_NAME_PLACEHOLDER: &str = "YOUR_WEB_SECRET_NAME";
 const DASH0_EXPORTER_BLOCK: &str = r#"      # Render-time opt-in: the renderer removes this exporter when
       # the selected deployment has not supplied all three DASH0_* values.
       otlp/dash0:
@@ -281,7 +282,13 @@ fn apply_manifests(cfg: &ShipConfig, dash0: Option<(&str, &str)>, dry_run: bool)
         ("otel-collector.yaml", OTEL_COLLECTOR_YAML),
         ("collector-monitoring.yaml", COLLECTOR_MONITORING_YAML),
     ] {
-        let rendered = render_manifest(template, &cfg.project_id, &cfg.namespace, dash0);
+        let rendered = render_manifest(
+            template,
+            &cfg.project_id,
+            &cfg.namespace,
+            &cfg.secret_name,
+            dash0,
+        )?;
         let path = std::env::temp_dir().join(format!("navigator-otel-{name}"));
         if dry_run {
             eprintln!(
@@ -555,20 +562,24 @@ fn gsa_exists(cfg: &ShipConfig, gsa: &str) -> Result<bool> {
     Ok(status.success())
 }
 
-/// Render a deploy-side manifest by substituting the project and namespace
-/// placeholders and, when fully configured, enabling the Dash0 exporter.
-/// Pure so the substitution is unit-testable.
-#[must_use]
+/// Render a deploy-side manifest by substituting the project, namespace, and
+/// web Secret placeholders and, when fully configured, enabling the Dash0
+/// exporter. Pure so the substitution is unit-testable.
 pub fn render_manifest(
     template: &str,
     project_id: &str,
     namespace: &str,
+    secret_name: &str,
     dash0: Option<(&str, &str)>,
-) -> String {
+) -> Result<String> {
+    if secret_name.trim().is_empty() {
+        bail!("NAVIGATOR_WEB_SECRET_NAME must be set before rendering observability manifests");
+    }
     let rendered = template
         .replace(PROJECT_PLACEHOLDER, project_id)
-        .replace(NAMESPACE_PLACEHOLDER, namespace);
-    match dash0 {
+        .replace(NAMESPACE_PLACEHOLDER, namespace)
+        .replace(WEB_SECRET_NAME_PLACEHOLDER, secret_name);
+    let rendered = match dash0 {
         Some((endpoint, dataset)) => rendered
             .replace(DASH0_ENDPOINT_PLACEHOLDER, endpoint)
             .replace(DASH0_DATASET_PLACEHOLDER, dataset),
@@ -576,7 +587,8 @@ pub fn render_manifest(
             .replace(DASH0_EXPORTER_BLOCK, "")
             .replace(DASH0_COORDINATE_ENV_BLOCK, "")
             .replace(", otlp/dash0", ""),
-    }
+    };
+    Ok(rendered)
 }
 
 /// Read the optional Dash0 coordinates from the selected deployment row.
@@ -647,8 +659,10 @@ mod tests {
             OTEL_COLLECTOR_YAML,
             "my-org-prod",
             "example-a",
+            "sample-web-secrets",
             Some(("https://ingest.dash0.example", "staging")),
-        );
+        )
+        .expect("collector manifest renders");
         // The bundled collector manifest carries the placeholder exactly
         // twice (WI GSA annotation + googlecloud exporter project); both
         // must be substituted and none left behind.
@@ -662,6 +676,8 @@ mod tests {
         ));
         assert!(!rendered.contains(DASH0_ENDPOINT_PLACEHOLDER));
         assert!(!rendered.contains(DASH0_DATASET_PLACEHOLDER));
+        assert!(!rendered.contains(WEB_SECRET_NAME_PLACEHOLDER));
+        assert!(!rendered.contains("navigator-web-secrets"));
         assert!(rendered.contains("value: https://ingest.dash0.example"));
         assert!(rendered.contains("value: staging"));
         assert!(rendered.contains("endpoint: ${env:DASH0_ENDPOINT}"));
@@ -680,11 +696,50 @@ mod tests {
         assert!(rendered.contains("secretKeyRef:"));
         assert!(rendered.contains("name: DASH0_TOKEN"));
         assert!(rendered.contains("key: DASH0_TOKEN"));
+
+        let deployment = serde_yaml::Deserializer::from_str(&rendered)
+            .map(|document| serde_yaml::Value::deserialize(document).expect("rendered YAML parses"))
+            .find(|document| {
+                document.get("kind").and_then(serde_yaml::Value::as_str) == Some("Deployment")
+            })
+            .expect("rendered collector Deployment is present");
+        let token_secret_name = deployment
+            .get("spec")
+            .and_then(|spec| spec.get("template"))
+            .and_then(|template| template.get("spec"))
+            .and_then(|spec| spec.get("containers"))
+            .and_then(serde_yaml::Value::as_sequence)
+            .and_then(|containers| {
+                containers.iter().find(|container| {
+                    container.get("name").and_then(serde_yaml::Value::as_str)
+                        == Some("otel-collector")
+                })
+            })
+            .and_then(|container| container.get("env"))
+            .and_then(serde_yaml::Value::as_sequence)
+            .and_then(|env| {
+                env.iter().find(|variable| {
+                    variable.get("name").and_then(serde_yaml::Value::as_str)
+                        == Some(DASH0_TOKEN_KEY)
+                })
+            })
+            .and_then(|variable| variable.get("valueFrom"))
+            .and_then(|value_from| value_from.get("secretKeyRef"))
+            .and_then(|secret| secret.get("name"))
+            .and_then(serde_yaml::Value::as_str);
+        assert_eq!(token_secret_name, Some("sample-web-secrets"));
     }
 
     #[test]
     fn render_omits_dash0_from_every_pipeline_when_coordinates_are_absent() {
-        let rendered = render_manifest(OTEL_COLLECTOR_YAML, "my-org-prod", "example-a", None);
+        let rendered = render_manifest(
+            OTEL_COLLECTOR_YAML,
+            "my-org-prod",
+            "example-a",
+            "sample-web-secrets",
+            None,
+        )
+        .expect("collector manifest renders");
 
         assert!(!rendered.contains("otlp/dash0"));
         assert!(!rendered.contains(DASH0_ENDPOINT_PLACEHOLDER));
@@ -701,6 +756,19 @@ mod tests {
             );
         }
         assert!(rendered.contains("project: my-org-prod"));
+    }
+
+    #[test]
+    fn render_rejects_a_missing_web_secret_name() {
+        let error = render_manifest(
+            OTEL_COLLECTOR_YAML,
+            "sample-project",
+            "sample-namespace",
+            " ",
+            None,
+        )
+        .expect_err("a missing web Secret name must stop rendering");
+        assert!(error.to_string().contains("NAVIGATOR_WEB_SECRET_NAME"));
     }
 
     #[test]
@@ -742,7 +810,7 @@ mod tests {
 
     /// Every `secretKeyRef` the bundled manifests carry is `optional: true`.
     ///
-    /// [`docs/cronjobs.md`] states the rule for `navigator-web-secrets`: a key
+    /// [`docs/cronjobs.md`] states the rule for the deployment Secret: a key
     /// a deployment has not adopted must never stop a pod from starting. It
     /// binds hardest here, because this Deployment is the only path to Cloud
     /// Trace, Cloud Monitoring, and Cloud Logging — a mandatory reference to
@@ -777,7 +845,14 @@ mod tests {
 
     #[test]
     fn render_substitutes_namespace_in_self_monitoring_manifest() {
-        let rendered = render_manifest(COLLECTOR_MONITORING_YAML, "my-org-prod", "example-b", None);
+        let rendered = render_manifest(
+            COLLECTOR_MONITORING_YAML,
+            "my-org-prod",
+            "example-b",
+            "sample-web-secrets",
+            None,
+        )
+        .expect("monitoring manifest renders");
         assert!(!rendered.contains(NAMESPACE_PLACEHOLDER));
         assert!(rendered.contains("namespace: example-b"));
     }

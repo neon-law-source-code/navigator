@@ -305,7 +305,7 @@ spec:
             - name: DASH0_DATASET
               value: YOUR_DASH0_DATASET
             # `optional: true` is the repository-wide rule for every
-            # `secretKeyRef` against `navigator-web-secrets` (see
+            # `secretKeyRef` against the selected deployment Secret (see
             # docs/cronjobs.md): a missing key must never block a pod from
             # starting. It matters most here — this Deployment is the only
             # path to Cloud Trace, Cloud Monitoring, and Cloud Logging, so a
@@ -314,7 +314,7 @@ spec:
             - name: DASH0_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: navigator-web-secrets
+                  name: YOUR_WEB_SECRET_NAME
                   key: DASH0_TOKEN
                   optional: true
           ports:

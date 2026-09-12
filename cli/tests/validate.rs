@@ -1716,19 +1716,25 @@ fn validate_accepts_a_matching_delimiter_row_and_still_measures_body_rows() {
 }
 
 /// A broken table drawn inside a fenced code block is sample text that
-/// documents the failure, not a table the renderer will build, so it is
-/// not a finding. `M056` is diagnostic-only, so `--fix` leaves the file
-/// byte-identical and a second run reports exactly the same thing.
+/// documents the failure, not a table the renderer will build, so no table
+/// rule measures it — not `M056`, and not `M058`, which would otherwise
+/// report the row after the fence opener as a table with no blank line
+/// above it. An escaped `\|` stays inside its cell, so `M060` reads the
+/// padded table below as tight rather than as ragged halves. Every table
+/// rule is diagnostic-only, so `--fix` leaves the file byte-identical and a
+/// second run reports exactly the same thing.
 #[test]
-fn validate_ignores_a_broken_table_inside_a_fence() {
+fn validate_ignores_fenced_tables_and_escaped_pipes() {
     let dir = TempDir::new().unwrap();
     let original = "# Samples\n\n\
         ```markdown\n\
-        \n\
         | a | b | c |\n\
         | --- | --- |\n\
         | 1 |\n\
-        ```\n";
+        ```\n\n\
+        | command | effect |\n\
+        | --- | --- |\n\
+        | `a \\| b` | pipes a into b |\n";
     write(dir.path(), "Samples.md", original);
     for _ in 0..2 {
         navigator()

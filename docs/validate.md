@@ -247,12 +247,15 @@ sentences they are.
 | `M060` | Error | Table column styles must be consistent. | No |
 | `M061` | **Warning** | A published doc must not keep a relative link the renderer cannot map. | No |
 
+`M055`, `M056`, `M058`, and `M060` read a table row the same way, through one shared reader. Cells are separated by
+unescaped `|`, the outer pipes are optional and open no column, and `\|` is a literal pipe inside its cell — so a row
+documenting a shell pipeline is not torn in two. Front matter and fenced code blocks are not Markdown body, so a table
+drawn in either is sample text and no table rule measures it.
+
 `M056` measures the delimiter row (`| --- | --- |`) as well as the body rows, because that row is what decides whether
 the block is a table at all: GitHub-flavoured Markdown builds one only when the delimiter row's cell count equals the
 header row's, and demotes the whole block to paragraph text otherwise. The demotion is silent — the pipes render
-literally and the columns disappear. Cells are counted the way GFM counts them: separated by unescaped `|`, with the
-outer pipes optional and `\|` a literal pipe inside its cell. Front matter and fenced code blocks are not Markdown body,
-so a table drawn in either is sample text and is not measured.
+literally and the columns disappear.
 
 ### Y-family — YAML documents
 

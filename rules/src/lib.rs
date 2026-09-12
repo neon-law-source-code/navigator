@@ -90,6 +90,7 @@ pub mod questionnaire_hover;
 pub mod s102;
 pub mod s103;
 pub mod s104;
+pub mod tables;
 pub mod workflow_steps;
 
 pub use c001::C001ContentTitle;

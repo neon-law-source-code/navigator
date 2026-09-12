@@ -9,97 +9,19 @@
 //! nothing errors, the page just reads wrong — which is exactly the
 //! failure a gate exists to catch.
 //!
-//! Rows are read the way GFM reads them: cells are separated by
-//! unescaped `|`, the outer pipes are optional, and `\|` is a literal
-//! pipe inside a cell rather than a separator. Fenced code blocks and
+//! Rows are read through [`crate::tables`], which is where the shared
+//! GFM reading lives: cells separated by unescaped `|`, outer pipes
+//! optional, `\|` a literal pipe inside a cell. Fenced code blocks and
 //! YAML front matter are not Markdown body, so tables drawn there are
 //! sample text and are skipped.
 
-use crate::frontmatter;
-use crate::{line_byte_range, Rule, SourceFile, Violation};
+use crate::tables::{cell_count, is_delimiter_row, is_table_row};
+use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
 
 pub struct M056TableColumnCount;
 
 impl M056TableColumnCount {
     pub const CODE: &'static str = "M056";
-}
-
-/// Split a row into its cells on unescaped `|`, discarding the optional
-/// leading and trailing delimiter pipes.
-///
-/// A backslash escapes the character after it, so `\|` stays inside the
-/// cell it was written in. Without that, a row documenting a shell
-/// pipeline counts one cell too many and a correct table is reported as
-/// broken.
-fn cells(line: &str) -> Vec<&str> {
-    let row = line.trim();
-    let mut out = Vec::new();
-    let mut start = 0;
-    let mut escaped = false;
-    for (index, character) in row.char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        match character {
-            '\\' => escaped = true,
-            '|' => {
-                out.push(&row[start..index]);
-                start = index + character.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    out.push(&row[start..]);
-    // The outer pipes delimit the row rather than open a cell, so the
-    // empty fragments they leave at either end are not columns.
-    if out.len() > 1 && out[0].is_empty() {
-        out.remove(0);
-    }
-    if out.len() > 1 && out.last().is_some_and(|cell| cell.is_empty()) {
-        out.pop();
-    }
-    if out.len() == 1 && out[0].is_empty() {
-        out.clear();
-    }
-    out
-}
-
-fn cell_count(line: &str) -> usize {
-    cells(line).len()
-}
-
-/// Whether a line carries at least one unescaped `|`, the only thing
-/// that can make it part of a table.
-fn is_table_row(line: &str) -> bool {
-    let mut escaped = false;
-    line.chars().any(|character| {
-        if escaped {
-            escaped = false;
-            return false;
-        }
-        match character {
-            '\\' => {
-                escaped = true;
-                false
-            }
-            '|' => true,
-            _ => false,
-        }
-    })
-}
-
-/// A delimiter row is a pipe-separated run of cells, each one hyphens
-/// with an optional alignment colon at either end.
-fn is_delimiter_row(line: &str) -> bool {
-    let cells = cells(line);
-    if cells.is_empty() {
-        return false;
-    }
-    cells.iter().all(|cell| {
-        let dashes = cell.trim().trim_start_matches(':').trim_end_matches(':');
-        !dashes.is_empty() && dashes.chars().all(|character| character == '-')
-    })
 }
 
 impl Rule for M056TableColumnCount {

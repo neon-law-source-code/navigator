@@ -15,6 +15,14 @@ The repository is one Cargo workspace. `Cargo.toml` is the authoritative member 
   never becomes a second Rust OOXML schema.
 - `features` uses its custom Cucumber harness and runs with `cargo test -p features`.
 
+The managed Word adapter tests require the .NET SDK pinned in `word/adapter/global.json`. With that SDK installed, run
+them locally:
+
+```text
+dotnet restore word/adapter/WordAdapter.Tests.csproj --locked-mode
+dotnet test word/adapter/WordAdapter.Tests.csproj --no-restore --configuration Release
+```
+
 ## The browser surface
 
 Dioxus renders every page:

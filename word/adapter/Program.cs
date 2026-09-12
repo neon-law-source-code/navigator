@@ -269,13 +269,13 @@ internal static class WordPackageParser
         .ChildElements
         .FirstOrDefault(child => child.LocalName == localName)?
         .GetAttributes()
-        .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value;
+        .FirstOrDefault(attribute => attribute.LocalName == "val").Value;
 
     private static byte? Byte(string? value) => byte.TryParse(value, out var parsed) ? parsed : null;
 
     private static uint? UInt(OpenXmlElement? element) =>
         uint.TryParse(element?.GetAttributes()
-            .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value, out var parsed)
+            .FirstOrDefault(attribute => attribute.LocalName == "val").Value, out var parsed)
             ? parsed
             : null;
 }
@@ -998,13 +998,13 @@ internal sealed class StoryReader
         .ChildElements
         .FirstOrDefault(child => child.LocalName == localName)?
         .GetAttributes()
-        .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value;
+        .FirstOrDefault(attribute => attribute.LocalName == "val").Value;
 
     private static byte? Byte(string? value) => byte.TryParse(value, out var parsed) ? parsed : null;
 
     private static uint? UInt(OpenXmlElement? element) =>
         uint.TryParse(element?.GetAttributes()
-            .FirstOrDefault(attribute => attribute.LocalName == "val")?.Value, out var parsed)
+            .FirstOrDefault(attribute => attribute.LocalName == "val").Value, out var parsed)
             ? parsed
             : null;
 }

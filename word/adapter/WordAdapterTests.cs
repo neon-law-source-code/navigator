@@ -115,7 +115,7 @@ public sealed class WordAdapterTests
             numbering.GetProperty("level_definitions")[0].GetProperty("number_format").GetString());
         Assert.Equal("%1.",
             numbering.GetProperty("level_definitions")[0].GetProperty("level_text").GetString());
-        Assert.Equal(4,
+        Assert.Equal(4u,
             numbering.GetProperty("level_definitions")[0].GetProperty("override_start").GetUInt32());
         // A list-instance override must not erase the abstract level's own
         // start: the canonical model preserves both numbering identities.

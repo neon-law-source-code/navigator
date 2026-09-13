@@ -23,6 +23,8 @@ pub const UNKNOWN_KEY_CODE: &str = "Y006";
 pub const ROWLESS_CODE: &str = "Y007";
 /// `Y008` — the manifest is `navigator.yaml`, not `navigator.yml`.
 pub const RENAME_CODE: &str = "Y008";
+/// `Y011` — a Project manifest must not carry YAML comment tokens.
+pub const COMMENT_CODE: &str = "Y011";
 
 /// Every top-level key `navigator.yaml` may carry.
 ///
@@ -106,15 +108,248 @@ pub fn lint(root: &Path) -> Vec<ManifestFinding> {
     findings
 }
 
+/// YAML comment tokens, not a `#` grep: quoted and block scalars keep their
+/// hashes as content. Reasons belong on the pull request and in the contract.
+fn lint_comments(path: &Path, contents: &str) -> Vec<ManifestFinding> {
+    yaml_comment_lines(contents)
+        .into_iter()
+        .map(|line| {
+            ManifestFinding::at(
+                path,
+                line,
+                COMMENT_CODE,
+                "navigator.yaml must not contain comments; record the reason \
+                 in the pull request that adds the entry and in the repository \
+                 contract",
+            )
+        })
+        .collect()
+}
+
+/// 1-based lines that a YAML scanner treats as comments.
+fn yaml_comment_lines(contents: &str) -> Vec<usize> {
+    let bytes = contents.as_bytes();
+    let mut i = 0;
+    let mut line = 1;
+    let mut lines = Vec::new();
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' => skip_single_quoted(bytes, &mut i, &mut line),
+            b'"' => skip_double_quoted(bytes, &mut i, &mut line),
+            b'|' | b'>' if is_block_scalar_header(bytes, i) => {
+                if let Some(comment_line) = comment_on_rest_of_line(bytes, i, line) {
+                    lines.push(comment_line);
+                }
+                skip_block_scalar(bytes, &mut i, &mut line);
+            }
+            b'#' if is_comment_start(bytes, i) => {
+                lines.push(line);
+                skip_to_eol(bytes, &mut i, &mut line);
+            }
+            b'\n' => {
+                line += 1;
+                i += 1;
+            }
+            b'\r' => {
+                i += 1;
+                if i < bytes.len() && bytes[i] == b'\n' {
+                    i += 1;
+                }
+                line += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    lines
+}
+
+fn is_comment_start(bytes: &[u8], i: usize) -> bool {
+    i == 0
+        || bytes[i - 1] == b' '
+        || bytes[i - 1] == b'\t'
+        || bytes[i - 1] == b'\n'
+        || bytes[i - 1] == b'\r'
+}
+
+fn comment_on_rest_of_line(bytes: &[u8], mut i: usize, line: usize) -> Option<usize> {
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' | b'\r' => return None,
+            b'#' if is_comment_start(bytes, i) => return Some(line),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+fn is_block_scalar_header(bytes: &[u8], i: usize) -> bool {
+    let Ok(rest) = std::str::from_utf8(&bytes[i..]) else {
+        return false;
+    };
+    let line = rest
+        .split('\n')
+        .next()
+        .unwrap_or(rest)
+        .trim_end_matches('\r');
+    let mut chars = line.chars();
+    match chars.next() {
+        Some('|' | '>') => {}
+        _ => return false,
+    }
+    for ch in chars.by_ref() {
+        match ch {
+            '0'..='9' | '+' | '-' | ' ' | '\t' => {}
+            '#' => return true,
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn skip_to_eol(bytes: &[u8], i: &mut usize, line: &mut usize) {
+    while *i < bytes.len() {
+        match bytes[*i] {
+            b'\n' => {
+                *line += 1;
+                *i += 1;
+                return;
+            }
+            b'\r' => {
+                *i += 1;
+                if *i < bytes.len() && bytes[*i] == b'\n' {
+                    *i += 1;
+                }
+                *line += 1;
+                return;
+            }
+            _ => *i += 1,
+        }
+    }
+}
+
+fn skip_single_quoted(bytes: &[u8], i: &mut usize, line: &mut usize) {
+    *i += 1;
+    while *i < bytes.len() {
+        match bytes[*i] {
+            b'\'' => {
+                *i += 1;
+                if *i < bytes.len() && bytes[*i] == b'\'' {
+                    *i += 1;
+                    continue;
+                }
+                return;
+            }
+            b'\n' => {
+                *line += 1;
+                *i += 1;
+            }
+            b'\r' => {
+                *i += 1;
+                if *i < bytes.len() && bytes[*i] == b'\n' {
+                    *i += 1;
+                }
+                *line += 1;
+            }
+            _ => *i += 1,
+        }
+    }
+}
+
+fn skip_double_quoted(bytes: &[u8], i: &mut usize, line: &mut usize) {
+    *i += 1;
+    while *i < bytes.len() {
+        match bytes[*i] {
+            b'\\' => {
+                *i += 1;
+                if *i < bytes.len() {
+                    if bytes[*i] == b'\n' {
+                        *line += 1;
+                    } else if bytes[*i] == b'\r' {
+                        *i += 1;
+                        if *i < bytes.len() && bytes[*i] == b'\n' {
+                            *i += 1;
+                        }
+                        *line += 1;
+                        continue;
+                    }
+                    *i += 1;
+                }
+            }
+            b'"' => {
+                *i += 1;
+                return;
+            }
+            b'\n' => {
+                *line += 1;
+                *i += 1;
+            }
+            b'\r' => {
+                *i += 1;
+                if *i < bytes.len() && bytes[*i] == b'\n' {
+                    *i += 1;
+                }
+                *line += 1;
+            }
+            _ => *i += 1,
+        }
+    }
+}
+
+fn skip_block_scalar(bytes: &[u8], i: &mut usize, line: &mut usize) {
+    skip_to_eol(bytes, i, line);
+    let mut content_indent: Option<usize> = None;
+    while *i < bytes.len() {
+        let start = *i;
+        let indent = leading_indent(bytes, *i);
+        if !line_is_blank(bytes, *i) {
+            match content_indent {
+                None => content_indent = Some(indent),
+                Some(min) if indent < min => {
+                    *i = start;
+                    return;
+                }
+                Some(_) => {}
+            }
+        }
+        skip_to_eol(bytes, i, line);
+    }
+}
+
+fn leading_indent(bytes: &[u8], mut i: usize) -> usize {
+    let mut n = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b' ' | b'\t' => {
+                n += 1;
+                i += 1;
+            }
+            _ => break,
+        }
+    }
+    n
+}
+
+fn line_is_blank(bytes: &[u8], mut i: usize) -> bool {
+    while i < bytes.len() {
+        match bytes[i] {
+            b' ' | b'\t' => i += 1,
+            b'\n' | b'\r' => return true,
+            _ => return false,
+        }
+    }
+    true
+}
+
 /// Lint already-read YAML. Used by tests and by [`lint`].
 #[must_use]
 pub fn lint_contents(path: &Path, contents: &str) -> Vec<ManifestFinding> {
+    let mut findings = lint_comments(path, contents);
     let document: serde_yaml::Value = match serde_yaml::from_str(contents) {
         Ok(document) => document,
-        Err(_) => return Vec::new(),
+        Err(_) => return findings,
     };
     let Some(mapping) = document.as_mapping() else {
-        return vec![ManifestFinding::at(
+        findings.push(ManifestFinding::at(
             path,
             1,
             UNKNOWN_KEY_CODE,
@@ -122,9 +357,10 @@ pub fn lint_contents(path: &Path, contents: &str) -> Vec<ManifestFinding> {
                 "navigator.yaml must be a mapping of {}; got a non-mapping document",
                 accepted_keys_phrase()
             ),
-        )];
+        ));
+        return findings;
     };
-    let mut findings = lint_keys(path, mapping);
+    findings.extend(lint_keys(path, mapping));
     findings.extend(lint_host(path, mapping));
     findings.extend(lint_project(path, mapping));
     findings.extend(lint_rowless(path, mapping));
@@ -430,6 +666,59 @@ mod tests {
             "host: staging.neonlaw.com\nproject: acme\nno_live_row: the matter closed\n"
         )
         .is_empty());
+    }
+
+    #[test]
+    fn a_comment_token_is_refused_and_a_hash_in_a_quoted_scalar_is_not() {
+        let commented = lint_contents(
+            Path::new("navigator.yaml"),
+            "host: staging.neonlaw.com\n# record the exemption in the pull request\nproject: acme\n",
+        );
+        let finding = commented
+            .iter()
+            .find(|f| f.code == COMMENT_CODE)
+            .expect("comment token");
+        assert_eq!(finding.line, 2);
+        assert!(
+            finding.message.contains("pull request"),
+            "{}",
+            finding.message
+        );
+        assert!(
+            finding.message.contains("repository contract"),
+            "{}",
+            finding.message
+        );
+        let trailing = lint_contents(
+            Path::new("navigator.yaml"),
+            "host: staging.neonlaw.com  # hostname of the deployment\nproject: acme\n",
+        );
+        assert!(
+            trailing
+                .iter()
+                .any(|f| f.code == COMMENT_CODE && f.line == 1),
+            "{trailing:?}"
+        );
+        let quoted = concat!(
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+            "allowed_prefixes:\n",
+            "  \"https://react.dev/errors/#\": React minified errors\n",
+        );
+        assert!(
+            !codes(quoted).contains(&COMMENT_CODE),
+            "{:?}",
+            lint_contents(Path::new("navigator.yaml"), quoted)
+        );
+        let quoted_value = "host: staging.neonlaw.com\nproject: \"acme # synthetic\"\n";
+        assert!(!codes(quoted_value).contains(&COMMENT_CODE));
+        let block = concat!(
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+            "no_live_row: |\n",
+            "  the matter closed; # this hash is scalar content\n",
+        );
+        assert!(!codes(block).contains(&COMMENT_CODE));
     }
 
     #[test]

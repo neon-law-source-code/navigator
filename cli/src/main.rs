@@ -2956,8 +2956,8 @@ fn standalone_tree_passes(dir: &std::path::Path, ci: bool) -> std::io::Result<Ve
     Ok(errors)
 }
 
-/// `Y004`–`Y008` — a Project repository's `navigator.yaml` (or the retired
-/// `.yml` spelling) holds to the closed key set and value shapes.
+/// `Y004`–`Y008` and `Y011` — a Project repository's `navigator.yaml` (or the
+/// retired `.yml` spelling) holds to the closed key set and value shapes.
 fn project_manifest_pass(dir: &std::path::Path) -> Vec<GateError> {
     let findings = crate::projects::manifest::lint(dir);
     let mut errors = Vec::with_capacity(findings.len());

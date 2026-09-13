@@ -64,6 +64,24 @@ fn credentials(root: &Path, host: &str) -> std::path::PathBuf {
     path
 }
 
+fn write_agent_contract(root: &Path) {
+    write(
+        root,
+        "AGENTS.md",
+        "# Working in acme\n\n\
+         When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team rather than documenting a CLI\n\
+         workaround here.\n",
+    );
+    let claude = root.join("CLAUDE.md");
+    if claude.exists() {
+        fs::remove_file(&claude).unwrap();
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("AGENTS.md", &claude).unwrap();
+    #[cfg(not(unix))]
+    fs::copy(root.join("AGENTS.md"), &claude).unwrap();
+}
+
 fn write_layout_for_validate(root: &Path) {
     write(
         root,
@@ -71,6 +89,7 @@ fn write_layout_for_validate(root: &Path) {
         "project: acme\nhost: staging.neonlaw.com\n",
     );
     write(root, "README.md", "# acme\n\nProject source.\n");
+    write_agent_contract(root);
     write(
         root,
         ".github/workflows/ci.yml",

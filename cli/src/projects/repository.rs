@@ -655,6 +655,7 @@ fn validate_layout_with_files(root: &Path, errors: &mut Vec<Finding>, gate_files
         ));
     }
 
+    validate_agent_contract(root, errors);
     validate_manifest(root, errors);
 
     let workflow_path = root.join(WORKFLOW);
@@ -739,6 +740,62 @@ fn validate_layout_with_files(root: &Path, errors: &mut Vec<Finding>, gate_files
                     "legal documents and rendered output must not be committed",
                 ));
             }
+        }
+    }
+}
+
+/// The phrase a Project `AGENTS.md` must carry so a CLI gap is filed on the
+/// Lawyers team instead of documented as a workaround in the matter repository.
+/// A `linear.app` URL is a roadmap slug and cannot live in this tree, so the
+/// gate reads this phrase rather than a YAML key or a URL.
+const CLI_FEEDBACK_NEEDLE: &str = "open a Linear issue on the Lawyers team";
+
+fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>) {
+    let agents_path = root.join("AGENTS.md");
+    let claude_path = root.join("CLAUDE.md");
+    let Ok(agents) = fs::read_to_string(&agents_path) else {
+        errors.push(Finding::at(
+            agents_path,
+            "missing required AGENTS.md; it is the agent contract for this repository",
+        ));
+        return;
+    };
+    if agents.trim() == "AGENTS.md" {
+        errors.push(Finding::at(
+            &agents_path,
+            "AGENTS.md is the broken-symlink stub form; it must be the agent contract, not the path to it",
+        ));
+        return;
+    }
+    if !agents.contains(CLI_FEEDBACK_NEEDLE) {
+        errors.push(Finding::at(
+            &agents_path,
+            format!(
+                "AGENTS.md must name where Navigator CLI feedback goes ({CLI_FEEDBACK_NEEDLE})"
+            ),
+        ));
+    }
+    match fs::read(&claude_path) {
+        Ok(claude) if claude == b"AGENTS.md" || claude == b"AGENTS.md\n" => {
+            errors.push(Finding::at(
+                claude_path,
+                "CLAUDE.md is the broken-symlink stub form (nine bytes reading AGENTS.md); \
+                 set core.symlinks true and check out CLAUDE.md, or copy AGENTS.md over it",
+            ));
+        }
+        Ok(claude) => {
+            if claude != agents.as_bytes() {
+                errors.push(Finding::at(
+                    claude_path,
+                    "CLAUDE.md must deliver the bytes of AGENTS.md",
+                ));
+            }
+        }
+        Err(_) => {
+            errors.push(Finding::at(
+                claude_path,
+                "missing required CLAUDE.md; it must deliver the bytes of AGENTS.md",
+            ));
         }
     }
 }
@@ -1320,7 +1377,10 @@ fn agents(project_code: &str) -> String {
          A precedent citation is still a breach; cite the governing issue by its bare identifier instead.\n\n\
          Read matter data through Navigator's `/api` read surfaces and write through its one REST command boundary.\n\n\
          Do not add a second backend.\n\n\
-         Do not put a legal file, a client upload, an answer, a generated document, or a secret in this repository.\n"
+         Do not put a legal file, a client upload, an answer, a generated document, or a secret in this repository.\n\n\
+         ## Navigator CLI feedback\n\n\
+         When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team rather than documenting a CLI\n\
+         workaround here.\n"
     )
 }
 
@@ -1494,7 +1554,7 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
+        agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
         placeholder_template, repository_name, scaffold, validate_layout, validate_workflow,
         workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST, WORKFLOW,
     };
@@ -1523,6 +1583,11 @@ mod tests {
         std::fs::write(root.join("README.md"), "# fixture\n").unwrap();
         std::fs::write(root.join(WORKFLOW), workflow(FIXTURE_PIN)).unwrap();
         std::fs::write(root.join(CD_WORKFLOW), cd_workflow(FIXTURE_PIN)).unwrap();
+        std::fs::write(root.join("AGENTS.md"), agents("acme")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("AGENTS.md", root.join("CLAUDE.md")).unwrap();
+        #[cfg(not(unix))]
+        std::fs::copy(root.join("AGENTS.md"), root.join("CLAUDE.md")).unwrap();
         let status = std::process::Command::new("git")
             .args(["init", "--quiet"])
             .current_dir(root)
@@ -1736,6 +1801,56 @@ jobs:
         .unwrap();
 
         assert_eq!(layout_findings(root.path()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_checkout_without_agents_md_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::remove_file(root.path().join("AGENTS.md")).unwrap();
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|finding| finding.contains("missing required AGENTS.md")),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_claude_md_stub_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::remove_file(root.path().join("CLAUDE.md")).unwrap();
+        std::fs::write(root.path().join("CLAUDE.md"), "AGENTS.md").unwrap();
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|finding| finding.contains("broken-symlink stub")),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn agents_md_must_name_cli_feedback() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::write(root.path().join("AGENTS.md"), "# Working in acme\n").unwrap();
+        std::fs::remove_file(root.path().join("CLAUDE.md")).unwrap();
+        std::fs::write(
+            root.path().join("CLAUDE.md"),
+            std::fs::read(root.path().join("AGENTS.md")).unwrap(),
+        )
+        .unwrap();
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|finding| finding.contains("CLI feedback")
+                    && finding.contains("Lawyers team")),
+            "{found:?}"
+        );
     }
 
     /// An unknown key, including a retired exemption key, is refused and names

@@ -20,6 +20,26 @@ fn write(dir: &Path, rel: &str, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
+fn write_agent_contract(dir: &Path, code: &str) {
+    write(
+        dir,
+        "AGENTS.md",
+        &format!(
+            "# Working in {code}\n\n\
+             When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team rather than documenting a CLI\n\
+             workaround here.\n"
+        ),
+    );
+    let claude = dir.join("CLAUDE.md");
+    if claude.exists() {
+        fs::remove_file(&claude).unwrap();
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("AGENTS.md", &claude).unwrap();
+    #[cfg(not(unix))]
+    fs::copy(dir.join("AGENTS.md"), &claude).unwrap();
+}
+
 fn write_project_shell(dir: &Path, code: &str) {
     write(
         dir,
@@ -27,6 +47,7 @@ fn write_project_shell(dir: &Path, code: &str) {
         &format!("host: staging.neonlaw.com\nproject: {code}\n"),
     );
     write(dir, "README.md", &format!("# {code}\n\nProject source.\n"));
+    write_agent_contract(dir, code);
     write(
         dir,
         ".github/workflows/ci.yml",

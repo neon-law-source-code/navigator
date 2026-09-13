@@ -120,14 +120,14 @@ pub async fn call(
         }
         // The questionnaire reaching END is what begins the workflow, so
         // this door begins it rather than telling the model to. Answering
-        // through AIDA and answering through the lawyer's form now leave
-        // the notation in the same place, which is the point of the shared
-        // drive (`workflows::post_questionnaire`).
+        // through Navigator MCP and answering through the lawyer's form now
+        // leave the notation in the same place, which is the point of the
+        // shared drive (`workflows::post_questionnaire`).
         NextStep::QuestionnaireComplete => match post_questionnaire {
             Some(drive) => {
-                // AIDA answers as the firm's agent rather than as a Person
-                // row, so the transitions carry no individual actor — the
-                // same attribution the answer above was written with.
+                // Navigator MCP answers as the firm's agent rather than as a
+                // Person row, so the transitions carry no individual actor —
+                // the same attribution the answer above was written with.
                 let state = drive
                     .begin(args.notation_id, None)
                     .await

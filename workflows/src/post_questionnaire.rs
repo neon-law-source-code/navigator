@@ -4,7 +4,7 @@
 //! That sentence is the rule, and this module is the seam that makes it true
 //! wherever the last answer was recorded. Three doors advance the same
 //! questionnaire runtime — the lawyer's form walk, the REST command
-//! boundary, and AIDA's `aida_answer_notation` over A2A — and the drive they
+//! boundary, and Navigator MCP's `answer_notation` over A2A — and the drive they
 //! hand off to lives in `portal`, because beginning a closing letter's
 //! workflow means rendering one and `workflows` has no Typst compiler, no
 //! storage bucket, and no business acquiring either.
@@ -47,7 +47,7 @@ pub struct PostQuestionnaireError(pub String);
 pub trait PostQuestionnaireDrive: Send + Sync {
     /// `acting` attributes every transition this fires to a Person, so the
     /// `notation_events` journal records who acted; `None` where the door
-    /// has no authenticated individual behind it (AIDA answers as the
+    /// has no authenticated individual behind it (Navigator MCP answers as the
     /// firm's agent), which the journal flags rather than silently
     /// attributing to the notation's client.
     async fn begin(

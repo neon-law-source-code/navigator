@@ -1531,7 +1531,7 @@ async fn drive_post_questionnaire_workflow(
 /// is deliberately one function rather than a step each door remembers to
 /// take. The questionnaire completing is what starts the workflow; *which*
 /// door recorded the final answer — the lawyer's form walk, the REST
-/// command boundary, or AIDA over A2A — is not supposed to change what
+/// command boundary, or Navigator MCP over A2A — is not supposed to change what
 /// happens next, and when this lived inside the form handler it did: the
 /// other two returned "complete" and left the notation parked at a machine
 /// nobody had started.
@@ -1588,7 +1588,7 @@ pub async fn begin_post_questionnaire_workflow(
 /// `AdminState` or the REST `ApiState`. Decoupling the core from either
 /// concrete state lets both doors render + park a notation identically.
 /// The host's implementation of [`workflows::PostQuestionnaireDrive`] — the
-/// object AIDA's `aida_answer_notation` hands a completed questionnaire to.
+/// object Navigator MCP's `answer_notation` hands a completed questionnaire to.
 ///
 /// It owns its dependencies rather than borrowing a request's state, because
 /// the agent door holds it for the life of the process (it rides

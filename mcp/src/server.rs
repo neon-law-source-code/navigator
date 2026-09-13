@@ -50,7 +50,7 @@ pub struct McpState {
     /// credentialed decision, so the `Option` stays `None` until it is made.
     /// The tool refuses cleanly rather than panicking when it is absent.
     pub forge: Option<Arc<dyn cloud::ForgeService>>,
-    /// The post-questionnaire workflow drive. `aida_answer_notation` hands a
+    /// The post-questionnaire workflow drive. `answer_notation` hands a
     /// questionnaire that has just reached END to it, so the agent door
     /// begins a notation's workflow exactly as the lawyer's form walk and
     /// the REST command boundary do — the drive itself lives in the host,

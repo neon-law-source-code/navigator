@@ -56,8 +56,8 @@ For each row:
 4. Create the Gemini Enterprise OAuth client using the setup in [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
 5. Store that client ID as `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI`. Store the Gemini client secret in that deployment's
    Gemini Enterprise data-store configuration, not in a different deployment.
-6. Ship, sign in through the browser client, and call an authenticated AIDA tool through the Gemini client. A client ID
-   appearing in the tree is not proof that either flow works.
+6. Ship, sign in through the browser client, and call an authenticated Navigator MCP tool through the Gemini client. A
+   client ID appearing in the tree is not proof that either flow works.
 
 The browser registration can precede the Gemini data store. During that interval `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI` is
 absent and `ops ship` renders a browser-only allowlist. Issue

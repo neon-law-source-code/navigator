@@ -285,7 +285,7 @@ pub async fn require_google_oauth(
     // token from the allowlisted client/domain is an *identity*, not an
     // authorization: it does not by itself confer lawyer access. An email
     // with no Neon Law Navigator account (or a client-tier one) gets `Client`, and
-    // the embedded Rego policy lawyer-gate on `/mcp` + `/app/api/aida/rpc` then denies it.
+    // the embedded Rego policy lawyer-gate on `/mcp` + `/app/api/mcp/rpc` then denies it.
     // Operators must seed legitimate agent identities as lawyer/admin in
     // `persons`, exactly as for the browser/CLI paths.
     let person = resolve_person(cfg.0.surreal.as_ref(), &email).await;

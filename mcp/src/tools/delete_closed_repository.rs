@@ -1,4 +1,4 @@
-//! `aida_delete_closed_repository` MCP tool.
+//! `delete_closed_repository` MCP tool.
 //!
 //! Deletes a closed Project's forge repository once its
 //! [`rules::kind::Kind::ClosedRepository`] archive is filed and verified
@@ -19,7 +19,7 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_delete_closed_repository",
+        "name": "delete_closed_repository",
         "description": "Delete a closed Project's forge repository. Refuses unless the Project is closed, a closed_repository document is filed for it, that document's recorded commit matches the forge's live HEAD, and the operator confirms the provider handoff.",
         "inputSchema": {
             "type": "object",
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn descriptor_requires_project_and_confirmation() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_delete_closed_repository");
+        assert_eq!(d["name"], "delete_closed_repository");
         assert_eq!(
             d["inputSchema"]["required"],
             json!(["project_id", "confirm_handoff"])

@@ -1,4 +1,4 @@
-//! `aida_list_deadlines` MCP tool.
+//! `list_deadlines` MCP tool.
 
 use serde_json::{json, Value};
 
@@ -7,7 +7,7 @@ use super::{ReadScope, ToolError};
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_list_deadlines",
+        "name": "list_deadlines",
         "description": "List the deadlines on Projects (matters) the signed-in caller \
                         participates in. Each deadline includes its due date, kind, status, \
                         statute, and source so the date can be traced to its authority and \
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn descriptor_names_the_tool_and_takes_no_arguments() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_list_deadlines");
+        assert_eq!(d["name"], "list_deadlines");
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         assert!(d["inputSchema"]["properties"]
             .as_object()

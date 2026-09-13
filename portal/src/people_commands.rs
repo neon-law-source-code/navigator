@@ -7,7 +7,7 @@
 //!
 //! `send_welcome` — the one command that needs the mailer — lives in
 //! `workflows::email::welcome` and is re-exported here. It moved down a
-//! crate so the `aida_send_welcome_email` MCP tool can reach the same
+//! crate so the `send_welcome_email` MCP tool can reach the same
 //! command: `portal` depends on `mcp`, so a command defined here was one
 //! the agent door structurally could not call, and it grew its own path
 //! instead (ENG-317).
@@ -68,7 +68,7 @@ mod tests {
         let mut mcp_state = mcp::McpState::new(surreal.clone(), Arc::new(InMemoryRuntime::new()));
         mcp_state.email = Some(mailer.clone());
         let tool_person = seed(&surreal, "Agent Recipient", "agent@example.com").await;
-        mcp::tools::aida_send_welcome_email::call(
+        mcp::tools::send_welcome_email::call(
             &mcp_state,
             &serde_json::json!({ "person_id": tool_person }),
         )

@@ -270,9 +270,8 @@ the same role. Two rows differing only by case cannot exist.
 `admin`, `lawyer`, `clerk`, or `client`, and a `client` is the only value on the client side.
 
 All three write doors go through `store::participation::add_participant` / `update_participant`, and none of them takes
-a participation: the lawyer matter-people form, `POST /app/api/projects/{id}/participants`, and
-`aida_link_person_project` each name a person and nothing else. A `participation` sent to any of them is surplus and
-unread.
+a participation: the lawyer matter-people form, `POST /app/api/projects/{id}/participants`, and `link_person_project`
+each name a person and nothing else. A `participation` sent to any of them is surplus and unread.
 
 ENG-478 closed the same rule at the schema boundary: the `person_project_role.participation` column now carries its own
 `ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client']`, mirroring the one `person.role` already carries.

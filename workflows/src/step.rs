@@ -167,13 +167,13 @@ pub const STEP_PREFIXES: &[(&str, StepKind)] = &[
     ("reask", StepKind::Reask),
     ("notarization", StepKind::Notarization),
     // Estate pipeline. The recorded sitting is transcribed
-    // *offline* — AIDA on the already-paid Google Gemini Enterprise turns
+    // *offline* — Navigator MCP on the already-paid Google Gemini Enterprise turns
     // the recording into a transcript at ~$0 marginal cost — and the
     // transcript is then *uploaded* through the reusable document-intake
     // step (`document_intake__transcript`): the worker files it into the
     // matter, so this kind has a real side effect (unlike the old
     // `transcribe__*` STT seam it replaces). The structured estate inputs
-    // are mined from that transcript (`extract__*`), again by AIDA/Gemini —
+    // are mined from that transcript (`extract__*`), again by Navigator MCP/Gemini —
     // no metered API — so extraction stays a System seam advanced by the
     // extraction-complete signal, like the signature webhook advances
     // `sent_for_signature__pending`.

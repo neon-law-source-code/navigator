@@ -11,7 +11,7 @@
 //!    `inject_bearer_session`; `/app/mcp` did not, so `inject_principal`
 //!    found no session to read an email from and every read answered as
 //!    the deployment.
-//! 2. `aida_list_projects` has to scope on that identity: participation
+//! 2. `list_projects` has to scope on that identity: participation
 //!    for a firm or client participant, the oversight directory for an
 //!    owner or admin.
 //!
@@ -109,13 +109,13 @@ async fn put_on_matter(
     .unwrap();
 }
 
-/// Call `aida_list_projects` over `/app/mcp` and return `structuredContent`.
+/// Call `list_projects` over `/app/mcp` and return `structuredContent`.
 async fn list_projects(app: &axum::Router, bearer: Option<&str>) -> Value {
     let body = json!({
         "jsonrpc": "2.0",
         "id": 1,
         "method": "tools/call",
-        "params": { "name": "aida_list_projects", "arguments": {} }
+        "params": { "name": "list_projects", "arguments": {} }
     });
     let mut builder = Request::builder()
         .method("POST")

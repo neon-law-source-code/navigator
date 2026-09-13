@@ -864,7 +864,7 @@ enum SiteCmd {
         #[arg(long)]
         host: Option<String>,
     },
-    /// Serve the AIDA tool catalog to Claude as a local MCP server over
+    /// Serve the Navigator MCP tool catalog to Claude as a local MCP server over
     /// stdio, dispatching each call to the host's A2A endpoint with the
     /// stored bearer token.
     ///

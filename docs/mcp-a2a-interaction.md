@@ -2,16 +2,17 @@
 publish: true
 ---
 
-# AIDA over A2A — confirmations and errors
+# Navigator MCP over A2A — confirmations and errors
 
-How AIDA behaves once a request reaches her over **A2A** — the surface Gemini Enterprise dials (and any other A2A
-client). The agent-card, OAuth, and one-time wiring live in [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md); this
-doc is the runtime interaction model: how a free-form ask becomes a tool call, where AIDA pauses to ask **yes/no**, and
-how a failure's *reason* gets back to the user instead of a blank non-result.
+How Navigator MCP behaves once a request reaches it over **A2A** — the surface Gemini Enterprise dials (and any other
+A2A client). The agent-card, OAuth, and one-time wiring live in [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md);
+this doc is the runtime interaction model: how a free-form ask becomes a tool call, where Navigator MCP pauses to ask
+**yes/no**, and how a failure's *reason* gets back to the user instead of a blank non-result.
 
 It answers two questions that came out of real Gemini Enterprise use:
 
-1. When AIDA already has every value she needs, why does she still ask, and can that be a tap instead of a typed reply?
+1. When Navigator MCP already has every value it needs, why does it still ask, and can that be a tap instead of a
+   typed reply?
 2. When a tool fails (bulk import was the case in point), why did the chat show "an error" with no message — and how is
    the reason propagated now?
 
@@ -29,7 +30,7 @@ show_person { email: "nick@neonlaw.com" }      ← read-only: runs inline, no pr
 send_welcome_email { person_id: <uuid> }       ← side-effecting: PAUSES here
    │
    ▼  Task state = input-required
-"Authorize this action? AIDA wants to Send Welcome Email for Nick (nick@neonlaw.com)…
+"Authorize this action? Navigator MCP wants to Send Welcome Email for Nick (nick@neonlaw.com)…
  Choose yes to authorize, or no to cancel."   ← message also carries a structured yes/no choice (data Part)
    │  second message/send, same taskId + contextId, structured choice { confirmation: "yes" }
    ▼
@@ -61,8 +62,9 @@ gets the same two-call handshake and the same audit events. The marker is the on
 an approved named skill runs its one call and stops, where an approved loop step carries on for its remaining step
 budget. Every check between the two is shared code.
 
-The gate is **not** decoration — it is a legal-supervision requirement. A client-facing act AIDA proposes is authorized
-by a licensed human (ABA Model Rule 5.3 supervision of a non-lawyer assistant). Two checks run before the call fires:
+The gate is **not** decoration — it is a legal-supervision requirement. A client-facing act Navigator MCP proposes is
+authorized by a licensed human (ABA Model Rule 5.3 supervision of a non-lawyer assistant). Two checks run before the
+call fires:
 
 - **Identity** — only the principal who *started* the task may confirm it.
 - **Role** — only a lawyer principal (`lawyer` or `admin`) may authorize a client-facing side-effect. A client or
@@ -117,8 +119,8 @@ The line between what we control and what we do not:
 
 The consensus action: keep the gate, advertise the structured yes/no choice, and accept only the exact `yes`/`no` token
 in either envelope. The router loop pauses on every side-effecting tool. The named-skill path is narrower: it
-additionally exempts four CRM writers from confirmation — `aida_create_person`, `aida_create_project`,
-`aida_link_person_project`, and `aida_bulk_import` (see [`CONFIRMATION_EXEMPT_TOOLS`](../mcp/src/tools/mod.rs)).
+additionally exempts four CRM writers from confirmation — `create_person`, `create_project`, `link_person_project`, and
+`bulk_import` (see [`CONFIRMATION_EXEMPT_TOOLS`](../mcp/src/tools/mod.rs)).
 
 ## Error propagation
 
@@ -141,7 +143,7 @@ Bulk import: 0 created, 0 updated, 0 unchanged, 0 failed.
 ```
 
 It folds the reasons into the **text** Part via [`ImportReport::problem_lines`](../import/src/apply.rs), so
-[`aida_bulk_import`](../mcp/src/tools/aida_bulk_import.rs) returns:
+[`bulk_import`](../mcp/src/tools/bulk_import.rs) returns:
 
 ```text
 Bulk import: 0 created, 0 updated, 0 unchanged, 0 failed.
@@ -166,12 +168,13 @@ planner to "show the user the error and ask whether to retry" (see
 ## The Navigator workshop runs on this surface
 
 The *Using the Navigator Workshop* ([`/workshops/use-the-navigator`](../server/content/workshops/navigator/README.md)),
-is the canonical end-user entry into exactly this A2A path. Lawyers add AIDA through Gemini's "Add AIDA" connector — no
-install, no CLI — and every "tool call" is a Gemini prompt routed through AIDA's tools over A2A. Two behaviors from this
-doc are the ones a workshop attendee feels directly:
+is the canonical end-user entry into exactly this A2A path. Lawyers add Navigator MCP through Gemini's "Add Navigator
+MCP" connector — no install, no CLI — and every "tool call" is a Gemini prompt routed through Navigator MCP's tools over
+A2A. Two behaviors from this doc are the ones a workshop attendee feels directly:
 
 - **The confirmation gate is the workshop's trust story.** "The deed is not signed until you, the attorney, explicitly
-  advance the workflow" is the same `input-required` pause described above — AIDA proposes, the lawyer authorizes.
+  advance the workflow" is the same `input-required` pause described above — Navigator MCP proposes, the lawyer
+  authorizes.
 - **Error text is the workshop's debugging story.** When a notation or import fails in class, the reason now shows in
   the chat, so an attendee can self-correct instead of seeing a blank failure.
 
@@ -183,15 +186,15 @@ Each behavior described above is grounded by a test or a BDD feature, so the doc
   `portal/src/a2a.rs::rpc_welcome_email_pauses_for_confirmation_then_sends_on_yes` (a stub router drives the real
   `show_person` → `send_welcome_email` chain against a real DB, no live LLM).
 - **Welcome-email lookup→confirm→send, as a story** —
-  [`aida_welcome_chain.feature`](../features/tests/features/aida_welcome_chain.feature).
+  [`welcome_chain.feature`](../features/tests/features/welcome_chain.feature).
 - **Bulk-import reasons reach the text Part** — the MCP tests `validation_reject_explains_why_in_the_text_content` and
-  `failed_row_reason_reaches_the_text_content` in [`aida_bulk_import.rs`](../mcp/src/tools/aida_bulk_import.rs), plus
+  `failed_row_reason_reaches_the_text_content` in [`bulk_import.rs`](../mcp/src/tools/bulk_import.rs), plus
   `unknown_jurisdiction_fails_only_its_row` in [`import/tests/apply.rs`](../import/tests/apply.rs).
 - **Bulk-import contract and validation** — [`bulk-contact-import.md`](bulk-contact-import.md), grounded by
   [`bulk_import_engagement.feature`](../features/tests/features/bulk_import_engagement.feature).
 - **Welcome-email audit trail across surfaces** —
   [`admin_send_welcome.feature`](../features/tests/features/admin_send_welcome.feature).
-- **Workshop end-to-end over the AIDA connector** — the [workshop
+- **Workshop end-to-end over the Navigator MCP connector** — the [workshop
   README](../server/content/workshops/navigator/README.md), grounded by its
   [feature](../features/tests/features/workshop_navigator_walkthrough.feature).
 - **Agent-card / OAuth / one-time setup** — [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md), grounded by the

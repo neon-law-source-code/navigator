@@ -30,11 +30,11 @@ and data rates may apply.** Reply STOP at any time to opt out, or HELP for help.
 share them for anyone's marketing or promotional purposes.** We use them only to communicate with you as described here.
 Our full text-messaging program terms are in our [Terms of Service](/terms).
 
-## AI Assistance (AIDA)
+## AI Assistance (Navigator MCP)
 
-When you use our AIDA assistant, your messages may be processed by a third-party AI provider (currently Google Vertex
-AI) solely to generate a response. We do not use your conversations to train third-party models. If you would rather not
-use AIDA, you can contact us directly instead.
+When you use our Navigator MCP assistant, your messages may be processed by a third-party AI provider (currently Google
+Vertex AI) solely to generate a response. We do not use your conversations to train third-party models. If you would
+rather not use Navigator MCP, you can contact us directly instead.
 
 ## Who We Share Information With
 

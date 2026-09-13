@@ -194,7 +194,7 @@ spec:
             - name: GOOGLE_OAUTH_REQUIRED_HD
               value: YOUR_GOOGLE_OAUTH_REQUIRED_HD
             # Enables the Vertex AI Gemini Flash router for free-form
-            # `message/send` calls on /app/api/aida/rpc (Gemini Enterprise
+            # `message/send` calls on /app/api/mcp/rpc (Gemini Enterprise
             # sends user text without `metadata.skill`; the router
             # translates that to a tool call). Auth via Workload
             # Identity — the pod's GSA carries roles/aiplatform.user.

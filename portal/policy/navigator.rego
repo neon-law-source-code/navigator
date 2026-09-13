@@ -388,12 +388,12 @@ allow if {
 }
 
 # A2A JSON-RPC dispatches to the same MCP tool registry — same
-# lawyer-tier requirement. The agent card at /app/api/aida.json is
+# lawyer-tier requirement. The agent card at /app/api/mcp.json is
 # decided at the router level, not here: it composes behind the session
 # boundary alone, because reading the card is not a tool call. So this
 # rule governs only the RPC endpoint, the path that actually dispatches.
 allow if {
-    input.path == ["app", "api", "aida", "rpc"]
+    input.path == ["app", "api", "mcp", "rpc"]
     is_lawyer(input.session)
 }
 

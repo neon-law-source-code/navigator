@@ -656,7 +656,7 @@ pub mod mcp_outcome {
 
 /// Record one `/mcp` tool invocation. Safe to call unconditionally: when OTLP is
 /// not configured the global meter is a no-op, so this costs nothing in dev.
-/// `tool` is the namespaced tool name (e.g. `aida_create_person`); `outcome` is
+/// `tool` is the namespaced tool name (e.g. `create_person`); `outcome` is
 /// one of the [`mcp_outcome`] constants. Identifiers and counts only — the tool
 /// name and the outcome enum, never the arguments or the result.
 pub fn record_mcp_tool_called(tool: &str, outcome: &str) {

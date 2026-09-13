@@ -2,7 +2,7 @@
 //!
 //! The bulk-import journey: a lawyer runs a list of organizations
 //! and contacts through the one shared `import` engine (the surface the
-//! CLI and the AIDA bulk-import tool both call), then opens a matter for
+//! CLI and the Navigator MCP bulk-import tool both call), then opens a matter for
 //! one of the imported people via the admin walker. It proves the seam
 //! between the import engine and the engagement flow: the imported person
 //! becomes the matter's respondent with no re-keying.

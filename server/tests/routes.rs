@@ -6945,7 +6945,7 @@ async fn visitor_analytics_counts_public_routes_and_excludes_private_surfaces() 
     for uri in [
         "/app/lawyer",
         "/admin",
-        "/app/api/aida.json",
+        "/app/api/mcp.json",
         "/app/mcp",
         "/public/app.css",
     ] {

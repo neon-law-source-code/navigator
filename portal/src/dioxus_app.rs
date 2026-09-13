@@ -721,7 +721,6 @@ fn title_segment(segment: &str) -> String {
         .split(['-', '_'])
         .filter(|word| !word.is_empty())
         .map(|word| match word {
-            "aida" => "AIDA".to_string(),
             "api" => "API".to_string(),
             "cto" => "CTO".to_string(),
             "gc" => "GC".to_string(),

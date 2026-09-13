@@ -1,5 +1,5 @@
 #![allow(clippy::doc_markdown)]
-//! The `navigator` CLI's own bearer must reach `/app/api/aida/rpc`.
+//! The `navigator` CLI's own bearer must reach `/app/api/mcp/rpc`.
 //!
 //! `navigator site mcp` bridges Claude to A2A using the credential
 //! `site login` stores — the HMAC-signed `SessionData` blob `cli_auth`
@@ -78,7 +78,7 @@ async fn dispatch(
     });
     let mut builder = Request::builder()
         .method("POST")
-        .uri("/app/api/aida/rpc")
+        .uri("/app/api/mcp/rpc")
         .header("content-type", "application/json");
     if let Some(b) = bearer {
         builder = builder.header("authorization", b);

@@ -314,7 +314,7 @@ pub struct AppState {
     /// when `GOOGLE_OAUTH_CLIENT_IDS` is unset (KIND / local dev).
     pub google_oauth: google_oauth::GoogleOauthConfig,
     /// Per-IP request limiter for the abuse-sensitive endpoints
-    /// (`/auth/*`, `/mcp`, `/app/api/aida/rpc`). Disabled in tests/dev;
+    /// (`/auth/*`, `/mcp`, `/app/api/mcp/rpc`). Disabled in tests/dev;
     /// `RateLimit::from_env` enables it in production.
     pub rate_limit: rate_limit::RateLimit,
     pub canonical_host: CanonicalHost,
@@ -1079,7 +1079,7 @@ pub fn bootstrap(
     // non-bundled template's spec can still be parsed.
     mcp_state.storage = Some(state.storage.clone());
     // The same mailer the JSON API routes hold — `LoggingEmail`-wrapped,
-    // so `aida_send_welcome_email` writes the `sent_emails` audit row the
+    // so `send_welcome_email` writes the `sent_emails` audit row the
     // API door writes. Injecting it here is what lets the agent door go
     // through the shared command instead of the Restate trigger (ENG-317).
     mcp_state.email = Some(state.email.clone());
@@ -1130,8 +1130,8 @@ pub fn bootstrap(
     // under `/app` is what produces `/app/mcp` without forking the handler
     // or the layer stack above.
     let app_mcp = Router::new().nest("/app", mcp_layered(mcp_state.clone()));
-    // A2A surface — the agent card at `/app/api/aida.json` and JSON-RPC
-    // at `/app/api/aida/rpc`, the latter behind the same auth stack as
+    // A2A surface — the agent card at `/app/api/mcp.json` and JSON-RPC
+    // at `/app/api/mcp/rpc`, the latter behind the same auth stack as
     // `/app/mcp`. Both are private, like every path under `/app/api`: the
     // card composes behind `session_boundary` below, so an anonymous
     // fetch gets the unauthenticated protocol document rather than the
@@ -3164,7 +3164,7 @@ async fn catalog_certificate_submit(
 }
 
 /// `GET /version` — report the release of the build that is actually
-/// running, so an operator/CI/AIDA/browser can confirm which release prod
+/// running, so an operator/CI/Navigator MCP/browser can confirm which release prod
 /// is on without shelling into a (shell-less) distroless pod.
 ///
 /// The headline field is `release`: the `YY.M.D` Artifact Registry tag the

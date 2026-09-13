@@ -1,22 +1,21 @@
 # Gemini Enterprise — Neon Law Navigator MCP server
 
 How to expose Neon Law Navigator's `/app/mcp` endpoint to **Gemini Enterprise** so the Workspace's LLMs can call its
-tool catalog — 11 of the firm's 14 tools are advertised: `aida_create_person`, `aida_show_person`,
-`aida_list_jurisdictions`, `aida_list_entities`, `aida_validate_notation`, `aida_create_project`, `aida_list_projects`,
-`aida_link_person_project`, `aida_list_tools`, `aida_bulk_import`, and `aida_spawn_legal_council` — during chat
-sessions, with no new identity provider to operate. All tool names are namespaced under the `aida_` prefix.
+tool catalog — 11 of the firm's 14 tools are advertised: `create_person`, `show_person`, `list_jurisdictions`,
+`list_entities`, `validate_notation`, `create_project`, `list_projects`, `link_person_project`, `list_tools`,
+`bulk_import`, and `spawn_legal_council` — during chat sessions, with no new identity provider to operate. All tool
+names are namespaced under the bare tool names.
 
-The endpoint serves a **narrower catalog than the firm has**. Three tools — `aida_create_notation`,
-`aida_answer_notation`, and `aida_send_welcome_email` — are supervised acts: they email a client, or create or answer a
-Notation, which is a binding legal artifact. `mcp::tools::requires_confirmation` classifies them, and MCP has no
-`input-required` state to pause in, so `/app/mcp` withholds them from `tools/list` and refuses one named anyway rather
-than simulating an approval it cannot collect. Those acts are performed in `/app`, where a human approves them and the
-approval is recorded against the matter. Reading the catalog and finding three tools missing is the design, not a
-registration fault.
+The endpoint serves a **narrower catalog than the firm has**. Three tools — `create_notation`, `answer_notation`, and
+`send_welcome_email` — are supervised acts: they email a client, or create or answer a Notation, which is a binding
+legal artifact. `mcp::tools::requires_confirmation` classifies them, and MCP has no `input-required` state to pause in,
+so `/app/mcp` withholds them from `tools/list` and refuses one named anyway rather than simulating an approval it cannot
+collect. Those acts are performed in `/app`, where a human approves them and the approval is recorded against the
+matter. Reading the catalog and finding three tools missing is the design, not a registration fault.
 
 This doc is the **setup** story — agent card, OAuth, registration. For the **runtime** behavior once a request lands —
-where AIDA pauses for a yes/no authorization and how a tool failure's reason reaches the user — see
-[`aida-a2a-interaction.md`](aida-a2a-interaction.md).
+where Navigator MCP pauses for a yes/no authorization and how a tool failure's reason reaches the user — see
+[`mcp-a2a-interaction.md`](mcp-a2a-interaction.md).
 
 The auth boundary is **in-app Google OAuth token validation** in the `web` pod
 (`portal::google_oauth::require_google_oauth`). Gemini Enterprise sends a standard OAuth 2.0 access token; the pod calls
@@ -50,8 +49,8 @@ handles the Bearer-JWT path — the existing test harness keeps working.
 
 That pass-through is a local-dev shape only. `GOOGLE_OAUTH_CLIENT_IDS` is a boot invariant on every deployed environment
 (`store::deployment::WEB_REQUIREMENTS`), so a staging or production `web` refuses to start without it rather than serve
-`/app/mcp` with no token validation — and, because no `Principal` reaches the tools, with AIDA's per-Project scope
-checks silently skipped.
+`/app/mcp` with no token validation — and, because no `Principal` reaches the tools, with Navigator MCP's per-Project
+scope checks silently skipped.
 
 **Why this rather than Identity-Aware Proxy?** IAP requires JWT-shaped ID tokens (`eyJ...`), but Gemini Enterprise's
 Custom MCP Server data store sends opaque OAuth 2.0 access tokens (`ya29....`) that IAP rejects with the message
@@ -229,25 +228,25 @@ prospects, opposing counsel contacts, and workshop attendees.
 Ambiguous-but-yes examples:
 
 - "Let's get Maya Patel into our records, her email is
-  maya@example.com" → call `aida_create_person`.
+  maya@example.com" → call `create_person`.
 - "I just met Diego Romero, diego@example.com, after the
-  Navigator workshop" → call `aida_create_person`.
+  Navigator workshop" → call `create_person`.
 
 For read-back: "show me Maya's record" or "look up
-maya@example.com" → call `aida_show_person` with that email (or
+maya@example.com" → call `show_person` with that email (or
 any case-insensitive substring of name and/or email — partial
 fragments work, the tool returns up to 50 matches sorted by name).
 
 For listing valid jurisdictions: "what states can we organize an
 entity in?" or "give me the code for Nevada" → call
-`aida_list_jurisdictions` (no arguments — returns every
+`list_jurisdictions` (no arguments — returns every
 jurisdiction in one shot).
 
 ### When NOT to call
 
 - The user has not provided an email address for a *create*. Every
   Person needs one; without an email, ask the user for it before
-  calling `aida_create_person`.
+  calling `create_person`.
 - The user wants to track a company / Entity / trust. Those are
   separate records and this server does not yet expose them.
 
@@ -265,11 +264,11 @@ jurisdiction in one shot).
 
 The data store's actions are automatically available to the default Gemini Enterprise chat — **you do not need to build
 a custom Agent Designer / Agent Engine / Dialogflow / A2A agent**. Confirmed live on 2026-05-23: a prompt to the default
-chat ran `aida_create_person` end-to-end and the row landed in the store.
+chat ran `create_person` end-to-end and the row landed in the store.
 
 1. In the data store's **Tools / Actions** tab, click **Reload custom actions**. The 11 advertised tools — including
-   `aida_create_person`, `aida_show_person`, and `aida_list_jurisdictions` — should appear. Toggle them on (Google ships
-   custom actions disabled by default).
+   `create_person`, `show_person`, and `list_jurisdictions` — should appear. Toggle them on (Google ships custom actions
+   disabled by default).
 2. Open the Gemini Enterprise web app (`vertexaisearch.cloud.google.com/.../r`). Pick the default chat or any of the
    pre-built agents.
 3. Prompt:
@@ -347,7 +346,7 @@ doesn't); if you add such a caller, add a `tower_http::cors::CorsLayer` ahead of
   section for the pivot story.
 - Not a public API. The `GOOGLE_OAUTH_REQUIRED_HD=neonlaw.com` enforcement and embedded Rego `lawyer`-role rule mean
   only Workspace users in the org can invoke tools.
-- Not self-service A2A onboarding. The agent card at `/app/api/aida.json` sits under the private `/app/api` prefix and
+- Not self-service A2A onboarding. The agent card at `/app/api/mcp.json` sits under the private `/app/api` prefix and
   requires a session, so a client cannot read it to discover the security schemes. That costs nothing here — the
   registered OAuth fields above are what this connector uses — but a standards-based A2A client needs those details
   handed over out of band. See [`access-model.md`](access-model.md) for the anonymous allowlist the card is absent from.

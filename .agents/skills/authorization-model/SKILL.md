@@ -40,10 +40,10 @@ anonymous, the participation vocabulary, the seeded people, and the OPA allow ru
   `person_firm_role`.
 - **`participation` is derived from `persons.role`, never entered.** `store::projects::participation_for_role` is the
   only way one is chosen, so the column holds a tier word and nothing else. No write door takes a participation — not
-  the lawyer matter-people form, not `POST /app/api/projects/{id}/participants`, not `aida_link_person_project`. A
-  proposal to add a matter-side word (`co_counsel`, `translator`) is the drift to fix: outside counsel is a `lawyer`
-  Person, and an adverse party gets no row at all. OPA reads no participation value; for the Rego layer the row's
-  *existence* is the signal.
+  the lawyer matter-people form, not `POST /app/api/projects/{id}/participants`, not `link_person_project`. A proposal
+  to add a matter-side word (`co_counsel`, `translator`) is the drift to fix: outside counsel is a `lawyer` Person, and
+  an adverse party gets no row at all. OPA reads no participation value; for the Rego layer the row's *existence* is the
+  signal.
 - **Don't conflate `persons.role` with `person_project_roles.participation`** — same English word, different columns,
   different decisions. And `participation` is not the `disclosures` table (conflicts of interest), which flows the other
   direction.

@@ -3,7 +3,7 @@
 //! A2A's design treats agents as opaque message handlers: the client
 //! sends a freeform user message via `message/send` and the agent
 //! decides which of its declared skills to invoke. Without a
-//! routing layer, AIDA can only serve clients that pre-fill
+//! routing layer, Navigator MCP can only serve clients that pre-fill
 //! `metadata.skill` themselves — which Gemini Enterprise does not.
 //!
 //! This module owns the routing layer. The [`AgentRouter`] trait
@@ -53,7 +53,7 @@ pub struct RoutedCall {
 pub enum Turn {
     /// The human's free-form request. Always the first entry.
     User(String),
-    /// A tool AIDA chose and the handler then executed this round.
+    /// A tool Navigator MCP chose and the handler then executed this round.
     /// `tool_name` is the unprefixed skill id (`show_person`).
     Call { tool_name: String, arguments: Value },
     /// The result that call returned, fed back to the model so it can
@@ -70,7 +70,7 @@ pub enum Turn {
 pub enum Step {
     /// Execute this call, append its result to the history, ask again.
     Call(RoutedCall),
-    /// No more tools — AIDA's final word. May be empty when the model
+    /// No more tools — Navigator MCP's final word. May be empty when the model
     /// stops without commentary.
     Done(String),
 }
@@ -275,7 +275,7 @@ impl AgentRouter for GeminiRouter {
         let (call, text) = parsed.into_call_or_text();
         Ok(match call {
             Some(call) => Step::Call(RoutedCall {
-                tool_name: strip_mcp_prefix(&call.name).to_string(),
+                tool_name: call.name,
                 arguments: call.args,
             }),
             None => Step::Done(text),
@@ -334,7 +334,7 @@ fn function_response_object(content: &Value) -> Value {
 /// abandoned for the lookup. The loop terminates when the model stops
 /// calling functions and replies with a plain-text confirmation.
 const SYSTEM_INSTRUCTION: &str =
-    "You are AIDA's tool router. Use the declared functions to fully carry out \
+    "You are Navigator MCP's tool router. Use the declared functions to fully carry out \
      the user's request, then stop. Call functions to act — do not ask the user \
      for information you can obtain with a function. When a function needs an \
      identifier you were not given (for example a person_id), first call a \
@@ -350,12 +350,11 @@ const SYSTEM_INSTRUCTION: &str =
 /// Convert an MCP tool descriptor into Vertex AI's
 /// `functionDeclarations[]` shape. The schemas are 1:1 — JSON Schema
 /// on both sides — but Vertex rejects `additionalProperties` so we
-/// strip it during translation. Also strips the `aida_` prefix so the
-/// function name Gemini sees matches the A2A skill id (Leo's UX point
-/// from the council: lawyer talks in natural names, not MCP namespace).
+/// strip it during translation. The tool name passes through unchanged:
+/// the MCP tool name, the A2A skill id and the Gemini function name are
+/// one string.
 fn skill_to_function_declaration(descriptor: &Value) -> Value {
-    let raw_name = descriptor["name"].as_str().unwrap_or_default();
-    let name = strip_mcp_prefix(raw_name);
+    let name = descriptor["name"].as_str().unwrap_or_default();
     let description = descriptor["description"].as_str().unwrap_or_default();
     let mut parameters = descriptor["inputSchema"].clone();
     sanitize_schema(&mut parameters);
@@ -384,11 +383,6 @@ fn sanitize_schema(schema: &mut Value) {
             sanitize_schema(items);
         }
     }
-}
-
-fn strip_mcp_prefix(name: &str) -> &str {
-    name.strip_prefix(mcp::tools::REQUIRED_PREFIX)
-        .unwrap_or(name)
 }
 
 // ---------------------------------------------------------------------------
@@ -556,7 +550,7 @@ mod tests {
     fn skills_fixture() -> Vec<Value> {
         vec![
             json!({
-                "name": "aida_create_person",
+                "name": "create_person",
                 "description": "Create a new person record.",
                 "inputSchema": {
                     "type": "object",
@@ -569,7 +563,7 @@ mod tests {
                 }
             }),
             json!({
-                "name": "aida_list_jurisdictions",
+                "name": "list_jurisdictions",
                 "description": "List all jurisdictions.",
                 "inputSchema": {
                     "type": "object",
@@ -773,53 +767,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gemini_router_strips_prefix_on_returned_function_name() {
-        // Defensive: even if Gemini hallucinates the `aida_` prefix
-        // back in the function name (the declarations don't include
-        // it, but be liberal), the router strips it before returning.
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "candidates": [{
-                    "content": {
-                        "parts": [{
-                            "functionCall": {
-                                "name": "aida_list_jurisdictions",
-                                "args": {}
-                            }
-                        }]
-                    }
-                }]
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let r = GeminiRouter::for_test("p", "us-west4", DEFAULT_VERTEX_MODEL, "t", server.uri());
-        let chosen = expect_call(
-            r.next_step(&user("list jurisdictions"), &skills_fixture())
-                .await
-                .unwrap(),
-        );
-        assert_eq!(chosen.tool_name, "list_jurisdictions");
-    }
-
-    /// Live probe against real Vertex AI — NOT run in CI. The
-    /// deterministic tests above prove the loop plumbing; this proves
-    /// the one thing a stub can't: that real Gemini Flash, handed the
-    /// real tool catalog, runs the lookup-then-act chain instead of
-    /// stopping at the lookup. It compiles in CI — so a change to the
-    /// tool descriptors or the router contract breaks it at build time
-    /// rather than letting it rot — but runs only on demand, on a
-    /// machine with GCP credentials:
-    ///
-    /// ```text
-    /// cargo test -p portal --lib real_gemini -- --ignored
-    /// ```
-    ///
-    /// Needs `NAVIGATOR_GCP_PROJECT_ID` (+ Workload Identity / ADC) so
-    /// the router can fetch a token and reach Vertex in
-    /// `NAVIGATOR_GCP_LOCATION`.
-    #[tokio::test]
     async fn real_gemini_chains_lookup_then_welcome() {
         // Live, paid, non-deterministic Vertex probe. Opt in explicitly
         // so it never costs money or flakes in the default suite or CI —
@@ -963,7 +910,7 @@ mod tests {
     #[test]
     fn skill_to_function_declaration_strips_prefix_and_sanitizes() {
         let decl = skill_to_function_declaration(&json!({
-            "name": "aida_create_person",
+            "name": "create_person",
             "description": "Create a person.",
             "inputSchema": {
                 "type": "object",

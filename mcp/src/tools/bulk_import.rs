@@ -1,10 +1,10 @@
-//! `aida_bulk_import` MCP tool.
+//! `bulk_import` MCP tool.
 //!
 //! Unlike most of the catalog (one row per call, the LLM loops), this
 //! tool takes a whole document — a list of organizations and the people
 //! who work at them — and find-or-creates `entities`, `persons`, and
 //! the links between them in one shot. The unit of work is the document,
-//! the same shape `aida_create_notation` already accepts. All the logic
+//! the same shape `create_notation` already accepts. All the logic
 //! lives in the shared `import` crate so the `cli import-contacts`
 //! subcommand and a future `web` upload route run the exact same engine.
 //!
@@ -23,7 +23,7 @@ use crate::principal::Principal;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_bulk_import",
+        "name": "bulk_import",
         "description": "Bulk-import organizations and the people who work at them into \
                         Neon Law Navigator. Find-or-creates an entity per organization, a person per \
                         contact, and a client_contact link between them. Idempotent: re-running \
@@ -100,7 +100,7 @@ pub async fn call(
     // `structuredContent` — which is exactly what Gemini Enterprise does.
     // When anything went wrong, fold the diagnostics and per-row reasons
     // into the text so the caller sees *why*. See
-    // [`docs/aida-a2a-interaction.md`](../../../docs/aida-a2a-interaction.md).
+    // [`docs/mcp-a2a-interaction.md`](../../../docs/mcp-a2a-interaction.md).
     let text = match report.problem_lines() {
         Some(problems) => format!(
             "Bulk import: {}.\n\nProblems:\n{problems}",
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn descriptor_names_the_tool_and_requires_orgs_and_people() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_bulk_import");
+        assert_eq!(d["name"], "bulk_import");
         let required = d["inputSchema"]["required"].as_array().unwrap();
         let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
         assert!(names.contains(&"organizations"));

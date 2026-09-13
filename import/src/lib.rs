@@ -4,7 +4,7 @@
 //! them.
 //!
 //! Mirrors the `rules` crate's shape: one library, many callers. The
-//! `cli` (`import-contacts`), an AIDA MCP tool (`aida_bulk_import`),
+//! `cli` (`import-contacts`), a Navigator MCP tool (`bulk_import`),
 //! and a future `web` upload route all parse a [`Payload`], run
 //! [`validate`] for structural diagnostics, then [`apply`] it against
 //! the database. Nothing here is surface-specific.

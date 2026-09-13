@@ -37,14 +37,14 @@ pub struct McpState {
     pub storage: Option<Arc<dyn cloud::StorageService>>,
     /// The outbound mailer, same `Arc` the JSON API routes hold — the
     /// `LoggingEmail`-wrapped service whose `send` writes the
-    /// `sent_emails` audit row. `aida_send_welcome_email` dispatches
+    /// `sent_emails` audit row. `send_welcome_email` dispatches
     /// through `workflows::email::welcome::send_welcome` with it, which
     /// is how the agent door records what the API door records. `web`
     /// always populates it; the `Option` is for test fixtures that
     /// exercise only the tools that never send mail, and the tool
     /// refuses rather than sending unaudited when it is absent.
     pub email: Option<Arc<dyn workflows::EmailService>>,
-    /// The source forge (GitHub today). `aida_delete_closed_repository` is
+    /// The source forge (GitHub today). `delete_closed_repository` is
     /// the only tool that reads it, and no deployment wires a live forge
     /// credential into this process yet — provisioning one is a separate,
     /// credentialed decision, so the `Option` stays `None` until it is made.
@@ -296,7 +296,7 @@ mod tests {
     /// confirmation-gated tools are absent and the other twelve present.
     ///
     /// This assertion used to run the other way — it pinned
-    /// `aida_create_notation` and `aida_answer_notation` as present,
+    /// `create_notation` and `answer_notation` as present,
     /// which is the defect ENG-315 fixed. Asserting the absent set is the
     /// point: a test that only checks what IS listed stays green when a
     /// supervised act is served by mistake.
@@ -311,11 +311,7 @@ mod tests {
         let tools = body["result"]["tools"].as_array().unwrap();
         let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
 
-        for gated in [
-            "aida_create_notation",
-            "aida_answer_notation",
-            "aida_send_welcome_email",
-        ] {
+        for gated in ["create_notation", "answer_notation", "send_welcome_email"] {
             assert!(
                 !names.contains(&gated),
                 "`{gated}` is a supervised act and must not be advertised on /mcp; got {names:?}"
@@ -323,20 +319,20 @@ mod tests {
         }
 
         for offered in [
-            "aida_create_person",
-            "aida_show_person",
-            "aida_list_jurisdictions",
-            "aida_list_entities",
-            "aida_validate_notation",
-            "aida_list_deadlines",
-            "aida_create_project",
-            "aida_close_project",
-            "aida_list_projects",
-            "aida_project_status",
-            "aida_link_person_project",
-            "aida_list_tools",
-            "aida_bulk_import",
-            "aida_spawn_legal_council",
+            "create_person",
+            "show_person",
+            "list_jurisdictions",
+            "list_entities",
+            "validate_notation",
+            "list_deadlines",
+            "create_project",
+            "close_project",
+            "list_projects",
+            "project_status",
+            "link_person_project",
+            "list_tools",
+            "bulk_import",
+            "spawn_legal_council",
         ] {
             assert!(
                 names.contains(&offered),
@@ -346,7 +342,10 @@ mod tests {
 
         assert_eq!(names.len(), 14, "got {names:?}");
         for name in &names {
-            assert!(name.starts_with("aida_"), "got `{name}`");
+            assert!(
+                !name.starts_with("aida_"),
+                "`{name}` still carries the retired vendor prefix"
+            );
         }
     }
 
@@ -394,7 +393,7 @@ mod tests {
                 "id": 4,
                 "method": "tools/call",
                 "params": {
-                    "name": "aida_create_notation",
+                    "name": "create_notation",
                     "arguments": { "template": "anything" }
                 }
             }),
@@ -402,7 +401,7 @@ mod tests {
         .await;
         assert_eq!(body["result"]["isError"], true);
         let text = body["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("aida_create_notation"), "got `{text}`");
+        assert!(text.contains("create_notation"), "got `{text}`");
         assert!(text.contains("Navigator app"), "got `{text}`");
         assert!(text.contains("approval"), "got `{text}`");
     }
@@ -420,7 +419,7 @@ mod tests {
                 "jsonrpc": "2.0",
                 "id": 5,
                 "method": "tools/call",
-                "params": { "name": "aida_not_a_tool", "arguments": {} }
+                "params": { "name": "not_a_tool", "arguments": {} }
             }),
         )
         .await;
@@ -433,7 +432,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tools_call_aida_create_person_inserts_a_row() {
+    async fn tools_call_create_person_inserts_a_row() {
         let surreal = db().await;
         let router = build_router(state(&surreal));
         let (_, body) = call(
@@ -443,7 +442,7 @@ mod tests {
                 "id": 3,
                 "method": "tools/call",
                 "params": {
-                    "name": "aida_create_person",
+                    "name": "create_person",
                     "arguments": { "name": "Libra", "email": "libra@example.com" }
                 }
             }),
@@ -460,7 +459,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tools_call_aida_show_person_returns_an_existing_row() {
+    async fn tools_call_show_person_returns_an_existing_row() {
         let surreal = db().await;
         let router = build_router(state(&surreal));
         // Seed via the create tool so the test exercises both surfaces.
@@ -471,7 +470,7 @@ mod tests {
                 "id": 1,
                 "method": "tools/call",
                 "params": {
-                    "name": "aida_create_person",
+                    "name": "create_person",
                     "arguments": { "name": "Libra", "email": "libra@example.com" }
                 }
             }),
@@ -484,7 +483,7 @@ mod tests {
                 "id": 2,
                 "method": "tools/call",
                 "params": {
-                    "name": "aida_show_person",
+                    "name": "show_person",
                     "arguments": { "email": "libra@example.com" }
                 }
             }),
@@ -503,7 +502,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tools_call_aida_list_jurisdictions_returns_seeded_rows() {
+    async fn tools_call_list_jurisdictions_returns_seeded_rows() {
         let surreal = db().await;
         store::jurisdictions::create(
             &surreal,
@@ -520,7 +519,7 @@ mod tests {
                 "id": 1,
                 "method": "tools/call",
                 "params": {
-                    "name": "aida_list_jurisdictions",
+                    "name": "list_jurisdictions",
                     "arguments": {}
                 }
             }),
@@ -583,7 +582,7 @@ mod tests {
                 "id": 6,
                 "method": "tools/call",
                 "params": {
-                    "name": "aida_create_person",
+                    "name": "create_person",
                     "arguments": { "name": "", "email": "libra@example.com" }
                 }
             }),

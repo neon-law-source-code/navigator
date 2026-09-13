@@ -499,7 +499,7 @@ mod tests {
         let index = bundled();
         let actual: BTreeSet<&str> = index.docs().iter().map(|doc| doc.slug.as_str()).collect();
         let expected = BTreeSet::from([
-            "aida-a2a-interaction",
+            "mcp-a2a-interaction",
             "bulk-contact-import",
             "command-boundary",
             "durable-workflows",

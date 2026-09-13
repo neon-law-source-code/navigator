@@ -1,4 +1,4 @@
-//! `aida_project_status` MCP tool.
+//! `project_status` MCP tool.
 //!
 //! Answers "what is the current state of this matter?" in one call:
 //! the deadline docket, the most recent notation-workflow events, and the
@@ -18,14 +18,14 @@ use super::{ReadScope, ToolError};
 
 /// How many of a matter's most recent notation events to surface. A status
 /// answer is a snapshot of *current* activity, not the full audit trail —
-/// `aida_validate_notation` and the portal's own history views are where a
+/// `validate_notation` and the portal's own history views are where a
 /// complete journal belongs.
 const RECENT_EVENTS_LIMIT: usize = 10;
 
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_project_status",
+        "name": "project_status",
         "description": "The current state of one Project (matter) the signed-in caller \
                         participates in: its name/code/status, open and satisfied \
                         deadlines with their authority and source, the most recent \
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn descriptor_requires_project_id() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_project_status");
+        assert_eq!(d["name"], "project_status");
         assert_eq!(d["inputSchema"]["required"], json!(["project_id"]));
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
     }

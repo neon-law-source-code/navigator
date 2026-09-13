@@ -83,9 +83,9 @@ rejects the broken-stub form in a temporary fixture.
   persistent and provisioned, shipped, and configured identically, with staging a role in the release order rather than
   a reduced topology. Ephemeral environments are for development only. Do not replace the KIND topology with ad hoc
   local services. Follow [Local KIND development](#local-kind-development).
-- **One AIDA catalog.** AIDA exposes the tools in `mcp/src/tools/` through A2A and MCP. A new router implements
-  `portal::agent_router::AgentRouter`; it never forks the catalog. See
-  [`docs/aida-a2a-interaction.md`](docs/aida-a2a-interaction.md).
+- **One Navigator MCP catalog.** Navigator MCP exposes the tools in `mcp/src/tools/` through A2A and MCP. A new router
+  implements `portal::agent_router::AgentRouter`; it never forks the catalog. See
+  [`docs/mcp-a2a-interaction.md`](docs/mcp-a2a-interaction.md).
 
 ## Ground every action
 

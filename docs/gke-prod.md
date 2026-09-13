@@ -98,7 +98,7 @@ unreachable over HTTPS for roughly half an hour between the DNS change and the e
 
 The public edge reaches three service Deployments:
 
-- `navigator-web` serves the portal, AIDA/API routes, and client-facing matter views.
+- `navigator-web` serves the portal, Navigator MCP/API routes, and client-facing matter views.
 - `workflows-service` hosts the Restate durable worker behind the public `workflows` host, which Restate Cloud dials
   into to invoke a registered service; `www` remains behind the tailnet perimeter.
 

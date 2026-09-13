@@ -1,4 +1,4 @@
-//! `aida_link_person_project` MCP tool.
+//! `link_person_project` MCP tool.
 //!
 //! Binds a Person to a Project. The tool names no role: participation
 //! follows the person's `persons.role`, so there is no word for a model to
@@ -19,7 +19,7 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_link_person_project",
+        "name": "link_person_project",
         "description":
             "Bind a Person to a Project. The matter-side participation follows the person's \
              system tier and is not an input. Idempotent: re-linking someone already on the \
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn descriptor_takes_two_ids_and_offers_no_role_field() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_link_person_project");
+        assert_eq!(d["name"], "link_person_project");
         let required: Vec<&str> = d["inputSchema"]["required"]
             .as_array()
             .unwrap()

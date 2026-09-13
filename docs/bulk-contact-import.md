@@ -16,7 +16,7 @@ Parse, validate, and apply live in the [`import`](../import) crate — the same 
 [`rules`](../rules) and are shared by `cli validate`, `navigator-lsp`, and `web`. Three thin surfaces call the one
 engine:
 
-- **`aida_bulk_import`** — the AIDA MCP tool; hands the engine a whole document. Lawyer/admin only. **`web` upload
+- **`bulk_import`** — the Navigator MCP tool; hands the engine a whole document. Lawyer/admin only. **`web` upload
   route** — *(fast-follow)* the same engine behind a browser upload page.
 
 No surface re-implements the logic. Adding the web page later is wiring, not new behavior.
@@ -99,7 +99,7 @@ surfaces at apply time as a per-row **failure** (that one row only; the rest of 
 Every diagnostic and per-row failure reason is folded into the human-readable result text via
 `ImportReport::problem_lines`, so a text-only client (Gemini Enterprise over A2A) sees *why* an import wrote nothing
 instead of a bland tally. The interaction model — confirmations and how errors reach the user — is in
-[`aida-a2a-interaction.md`](aida-a2a-interaction.md).
+[`mcp-a2a-interaction.md`](mcp-a2a-interaction.md).
 
 ## Telemetry
 

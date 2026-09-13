@@ -1,10 +1,10 @@
-//! `aida_spawn_legal_council` MCP tool.
+//! `spawn_legal_council` MCP tool.
 //!
 //! Returns the Legal Council brief — the twelve-lawyer review pattern
 //! documented in `docs/agent-decision-councils.md` — packaged as a
 //! prompt the calling LLM can run against a draft. The bench is a *council*
 //! (c-o-u-n-c-i-l — a group) of the firm's *counsels* (c-o-u-n-s-e-l —
-//! the attorneys): a council of counsels. AIDA is the agent that
+//! the attorneys): a council of counsels. Navigator MCP is the agent that
 //! carries the tool, not the name of the council. The server does not
 //! call an LLM; it ships the canonical personas + the user's draft and
 //! lets the model on the other end do the synthesis.
@@ -157,7 +157,7 @@ const DEFAULT_VOICE_COUNT: usize = 2;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_spawn_legal_council",
+        "name": "spawn_legal_council",
         "description":
             "Convene the firm's Legal Council — a twelve-lawyer review \
              pattern (a council of counsels) that shapes draft legal copy \
@@ -357,9 +357,9 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_names_the_tool_under_aida_namespace() {
+    fn descriptor_names_the_tool_under_tool_namespace() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_spawn_legal_council");
+        assert_eq!(d["name"], "spawn_legal_council");
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         let required = d["inputSchema"]["required"].as_array().unwrap();
         let required_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();

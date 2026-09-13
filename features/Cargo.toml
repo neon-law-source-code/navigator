@@ -74,7 +74,7 @@ name = "annual_report_filing"
 harness = false
 
 [[test]]
-name = "aida_create_notation"
+name = "create_notation"
 harness = false
 
 [[test]]
@@ -138,7 +138,7 @@ name = "deploy_the_navigator_walkthrough"
 harness = false
 
 [[test]]
-name = "aida_welcome_chain"
+name = "welcome_chain"
 harness = false
 
 [[test]]

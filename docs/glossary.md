@@ -18,9 +18,9 @@ plural `store::persons` and `store::projects` are Rust module names.
 For task-oriented navigation, start at [`index`](index.md). Its glossary quick links map the most common terms to the
 docs that explain how those terms behave in code, operations, and workflows.
 
-**Alphabetical index.** Every term on this page, grouped by initial letter.
+Index
 
-- **A** — [Actor Class](#actor-class) · [Address](#address) · [AIDA](#aida) · [Analysis](#analysis) · [Asset](#asset) ·
+- **A** — [Actor Class](#actor-class) · [Address](#address) · [Analysis](#analysis) · [Asset](#asset) ·
   [Authority](#authority)
 - **B** — [Brand](#brand) · [Brand Seed](#brand-seed)
 - **C** — [Certified Mail](#certified-mail) · [Client Review](#client-review) · [Closed Repository](#closed-repository)
@@ -35,14 +35,14 @@ docs that explain how those terms behave in code, operations, and workflows.
   [Entity](#entity) · [Entity Type](#entity-type) · [External System Identity](#external-system-identity) ·
   [Extract](#extract)
 - **F** — [Filing](#filing) · [Firm](#firm) · [Firm Brand](#firm-brand) · [Firm Signature](#firm-signature)
-- **G** — [GitHub Issue](#github-issue)
 - **H** — [Harvard Outline](#harvard-outline)
 - **I** — [Ingestion](#ingestion) · [Inquiry](#inquiry) · [Intake Persisted](#intake-persisted)
 - **J** — [Jurisdiction](#jurisdiction)
 - **L** — [Lawyer Review](#lawyer-review) · [Letter](#letter) · [Live Inquiry Session](#live-inquiry-session)
 - **M** — [Mailroom](#mailroom) · [Mailroom Receive](#mailroom-receive) · [Mailroom Send](#mailroom-send) ·
   [Matter](#matter) · [Module](#module)
-- **N** — [Neon Law Navigator](#neon-law-navigator) · [Notarization](#notarization) · [Notation Event](#notation-event)
+- **N** — [Navigator MCP](#navigator-mcp) · [Neon Law Navigator](#neon-law-navigator) · [Notarization](#notarization) ·
+  [Notation Event](#notation-event)
 - **O** — [Offboarding](#offboarding) · [On-Chain Record](#on-chain-record) · [Onboarding](#onboarding)
 - **P** — [Participation](#participation) · [Person](#person) · [Person–Entity Role](#personentity-role) · [Person–Firm
   Role](#personfirm-role) · [Person–Project Role](#personproject-role) · [Presentation](#presentation) ·
@@ -79,30 +79,21 @@ exclusivity is enforced by the application, not the schema.
 - Schema and queries: [`store::addresses`](../store/src/addresses.rs) (SurrealDB; #1093, ENG-20) —
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 
-## AIDA
-
-The workspace's **domain agent persona**. AIDA exposes the same tool catalog through two protocol surfaces — A2A and MCP
-— so clients across the ecosystem can drive Neon Law Navigator's workflows without caring which underlying LLM does the
-routing.
-
-- **A2A** (Agent2Agent) — session-gated agent card at `/app/api/aida.json`,
-  JSON-RPC at `/app/api/aida/rpc`. Used by Gemini Enterprise and any other A2A-compatible orchestrator. A free-form
-  `message/send` is interpreted by a pluggable [`AgentRouter`](../portal/src/agent_router.rs) (Vertex AI Gemini Flash in
-  prod) that maps the user's text to one of the declared tools.
-- **MCP** — JSON-RPC at `/app/mcp`. Used by Claude.ai Connectors, Claude Code, LibreChat, and other Anthropic-stack
-  clients. The MCP-side LLM (e.g. Claude) does its own tool routing client-side; our server just dispatches the named
-  tool.
-
-AIDA is **LLM-agnostic** by design — the router behind A2A is one implementation of a trait that could be swapped for
-Claude (direct or via Vertex AI Model Garden), a local model, or even a rules engine without touching the tool catalog
-or the A2A wire format.
-
-Skill names are mirrored across both protocols by [`mcp::tools::list_tools()`](../mcp/src/tools/mod.rs): MCP clients see
-them prefixed with `aida_` (`aida_create_person`); A2A clients see the unprefixed form (`create_person`) since AIDA
-herself is the namespace.
-
-- Card builder: [`portal::a2a`](../portal/src/a2a.rs) Router trait:
-  [`portal::agent_router`](../portal/src/agent_router.rs) Tool registry: [`mcp::tools`](../mcp/src/tools/mod.rs)
+```text
+┌─ address ───────────────────────────┐
+│ id           record                 │
+│ city         string                 │
+│ country      string                 │
+│ entity_id    option<record<entity>> │
+│ inserted_at  datetime               │
+│ line1        string                 │
+│ line2        option<string>         │
+│ person_id    option<record<person>> │
+│ postal_code  string                 │
+│ region       string                 │
+│ updated_at   datetime               │
+└─────────────────────────────────────┘
+```
 
 ## Analysis
 
@@ -259,9 +250,9 @@ own signed closing letter, and an operator files the archive afterward with its 
 matter code: `navigator site projects archive-repository <code>`. Asset-lane only: `Kind::valid_for(Lane::Template)`
 refuses it, so no template ever declares this kind.
 
-Deleting the repository from its forge is a separate, deliberate step an operator (or `aida_delete_closed_repository`)
-takes only after this document exists and its recorded commit SHA is checked against the live repository's current HEAD
-— the archive is what makes the delete safe, not the close itself.
+Deleting the repository from its forge is a separate, deliberate step an operator (or `delete_closed_repository`) takes
+only after this document exists and its recorded commit SHA is checked against the live repository's current HEAD — the
+archive is what makes the delete safe, not the close itself.
 
 ## Conflict-Check Graph
 
@@ -297,8 +288,8 @@ shared entity, a recorded [Disclosure](#disclosure)) are flagged for authorized 
 [Relationship Log](#relationship-log) when they do. The graph can *raise* a conflict; only a person can *clear* one,
 because it is never assumed complete.
 
-It runs on every create path (portal, [AIDA](#aida) MCP tool, CLI); the non-interactive paths have no acknowledgment
-seam, so any finding refuses the open and routes lawyer to the portal.
+It runs on every create path (portal, [Navigator MCP](#navigator-mcp) MCP tool, CLI); the non-interactive paths have no
+acknowledgment seam, so any finding refuses the open and routes lawyer to the portal.
 
 - Engine: [`store::conflicts`](../store/src/conflicts.rs), which traverses the resident graph. See
   [multi-cloud](multi-cloud.md) for the deployment shape.
@@ -312,7 +303,7 @@ Neon Law Navigator runs three, the same shape with a different bench:
 - The **Engineering Council** (the "Council of Twelve") — twelve practitioner-engineer voices for architecture
   decisions, design planning, and cross-cutting refactors.
 - The **Legal Council** — twelve lawyer voices for legal-drafting copy review, before copy becomes a
-  [Notation](notation.md#notation). Exposed to external agents as the `aida_spawn_legal_council` MCP tool.
+  [Notation](notation.md#notation). Exposed to external agents as the `spawn_legal_council` MCP tool.
 - The **Client Council** — twelve client-side voices for intake, portal UX, pricing, onboarding, and other decisions
   where the question is whether a real person walks in and stays.
 
@@ -326,8 +317,8 @@ See [`agent-decision-councils`](agent-decision-councils.md) for the shared proto
 An **attorney** — spelled c-o-u-n-s-e-l. The members of the [Legal Council](#council) are counsels; "ethics counsel,"
 "Senior Counsel," and "trial counsel" all use this spelling. Outside counsel working one of the firm's matters is a
 `lawyer` [Person](#person), not a separate [Participation](#participation) word. Distinct from [Council](#council)
-(c-o-u-n-c-i-l), which is the *group*: the Legal Council is a council of counsels. [AIDA](#aida) is the agent that
-carries the Legal Council tool — it is neither a counsel nor the name of the council.
+(c-o-u-n-c-i-l), which is the *group*: the Legal Council is a council of counsels. [Navigator MCP](#navigator-mcp) is
+the agent that carries the Legal Council tool — it is neither a counsel nor the name of the council.
 
 ## Coverage Finding
 
@@ -654,10 +645,10 @@ be a template whose declared `kind` opens a matter — see [Onboarding](#onboard
 whole workspace, `rules::kind::Kind::opens_a_matter`; see [`docs/frontmatter`](frontmatter.md) for the `kind`
 vocabulary. Later Notations — filings, letters — may be any kind.
 
-**[AIDA](#aida) is not bound by that rule**, because it is lawyer-directed rather than self-serve.
-`aida_create_notation` opens the notation through the policy-free `start_notation` primitive, so an attorney driving the
+**[Navigator MCP](#navigator-mcp) is not bound by that rule**, because it is lawyer-directed rather than self-serve.
+`create_notation` opens the notation through the policy-free `start_notation` primitive, so an attorney driving the
 agent may bind a filing or letter as a matter's first Notation; gating the agent door would forbid the agent's ordinary
-use. What constrains AIDA is authorization, not kind: the actor must be lawyer and in scope for the Project
+use. What constrains Navigator MCP is authorization, not kind: the actor must be lawyer and in scope for the Project
 (`store::projects::can_access_as_lawyer_in_surreal`), and the respondent is always the Project's client-side DRI.
 
 A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is the firm's onboarding letter,
@@ -937,6 +928,31 @@ relationship-log entry naming the module and the actor.
 - Commands and schema: [`store::project_modules`](../store/src/project_modules.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 
+## Navigator MCP
+
+The workspace's **agent surface**. Navigator MCP exposes one tool catalog through two protocol surfaces — A2A and MCP —
+so clients across the ecosystem can drive Neon Law Navigator's workflows without caring which underlying LLM does the
+routing.
+
+- **A2A** (Agent2Agent) — session-gated agent card at `/app/api/mcp.json`,
+  JSON-RPC at `/app/api/mcp/rpc`. Used by Gemini Enterprise and any other A2A-compatible orchestrator. A free-form
+  `message/send` is interpreted by a pluggable [`AgentRouter`](../portal/src/agent_router.rs) (Vertex AI Gemini Flash in
+  prod) that maps the user's text to one of the declared tools.
+- **MCP** — JSON-RPC at `/app/mcp`. Used by Claude.ai Connectors, Claude Code, LibreChat, and other Anthropic-stack
+  clients. The MCP-side LLM (e.g. Claude) does its own tool routing client-side; our server just dispatches the named
+  tool.
+
+Navigator MCP is **LLM-agnostic** by design — the router behind A2A is one implementation of a trait that could be
+swapped for Claude (direct or via Vertex AI Model Garden), a local model, or even a rules engine without touching the
+tool catalog or the A2A wire format.
+
+Skill names are mirrored across both protocols by [`mcp::tools::list_tools()`](../mcp/src/tools/mod.rs): the MCP tool
+name and the A2A skill id are one bare string (`create_person`). The server names itself in `serverInfo`, so a client
+that flattens several MCP servers into one list groups these by the server rather than by a prefix on every tool.
+
+- Card builder: [`portal::a2a`](../portal/src/a2a.rs) Router trait:
+  [`portal::agent_router`](../portal/src/agent_router.rs) Tool registry: [`mcp::tools`](../mcp/src/tools/mod.rs)
+
 ## Neon Law Navigator
 
 Short for **Neon Law Navigator** — the umbrella over this monorepo: the CLI (`navigator`), the one website (`neon` /
@@ -1085,12 +1101,24 @@ they are seeded `client` and promoted afterward, past the point this rule can se
 - Schema: [`store::firms`](../store/src/firms.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 
+```text
+┌─ person_firm_role ──────────┐
+│ id           record         │
+│ firm_id      record<firm>   │
+│ inserted_at  string         │
+│ is_dri       bool           │
+│ membership   string         │
+│ person_id    record<person> │
+│ updated_at   string         │
+└─────────────────────────────┘
+```
+
 ## Person–Project Role
 
 A Person's participation on a Project. The `participation` column records which side of the matter they are on, and it
 is **derived, never entered**: `store::projects::participation_for_role` maps `person.role` onto it, so the value is one
 of `owner`, `admin`, `lawyer`, `clerk`, or `client`. No write door takes a participation — not the lawyer form, not
-`POST /app/api/projects/{id}/participants`, not `aida_link_person_project`.
+`POST /app/api/projects/{id}/participants`, not `link_person_project`.
 
 The row answers two questions, and they are not the same question. Its **presence** gates whether a `client` or `lawyer`
 tier principal sees the Project at all. Its **value** decides which side of the matter that principal is on:
@@ -1143,13 +1171,13 @@ A **[Matter](#matter)** in client English. The durable container every [Notation
 a `Human` entity for a solo natural person. The `entity_id` FK is `NOT NULL`: a matter without an entity is a bug.
 
 Lifecycle status changes move through the shared transition command (`store::projects::transition_project`): the REST
-door is `POST /app/api/projects/{id}/lifecycle`, which the CLI's `site projects close` calls, and the
-`aida_close_project` MCP tool calls the command directly. The descriptive `PATCH /app/api/projects/{id}` never touches
-`status`; it rejects the field outright rather than accepting and forwarding it, so `closed_at` — derived only inside
-the transition command — cannot be bypassed by a partial update reaching it through a second door. Close and archive
-transitions may carry an RFC 3339 `effective_at` between matter-open and now; the command derives `closed_at` from that
-value so an existing retention start can be corrected. Without it, a new close starts at the server's current time and
-an existing stamp is preserved. Reopen accepts no effective time and clears `closed_at`.
+door is `POST /app/api/projects/{id}/lifecycle`, which the CLI's `site projects close` calls, and the `close_project`
+MCP tool calls the command directly. The descriptive `PATCH /app/api/projects/{id}` never touches `status`; it rejects
+the field outright rather than accepting and forwarding it, so `closed_at` — derived only inside the transition command
+— cannot be bypassed by a partial update reaching it through a second door. Close and archive transitions may carry an
+RFC 3339 `effective_at` between matter-open and now; the command derives `closed_at` from that value so an existing
+retention start can be corrected. Without it, a new close starts at the server's current time and an existing stamp is
+preserved. Reopen accepts no effective time and clears `closed_at`.
 
 **`source_state`** is a *derived* read-only signal on the lifecycle projection (`GET /app/api/projects/lifecycle`),
 never a stored column — [`store::project_surfaces::source_state`](../store/src/project_surfaces.rs) computes it purely
@@ -1163,8 +1191,9 @@ for an asynchronous provisioning path nothing in this codebase writes yet.
 `notations`. A Notation without a Project is a bug.
 
 Opening a Project never opens a Notation with it. The lawyer creates the engagement afterwards, on the Project, like any
-other Notation — through `web`, the CLI, or AIDA. Every door works this way: none auto-creates a retainer alongside the
-matter, and AIDA's `aida_create_notation` names the Project it acts on rather than opening one of its own.
+other Notation — through `web`, the CLI, or Navigator MCP. Every door works this way: none auto-creates a retainer
+alongside the matter, and Navigator MCP's `create_notation` names the Project it acts on rather than opening one of its
+own.
 
 Each Project has **one** deployment-scoped source repository, named for its `code`, holding that Project's notation
 templates under `templates/`, client portal under `apps/portal/`, and source-side document pointers under `documents/`.

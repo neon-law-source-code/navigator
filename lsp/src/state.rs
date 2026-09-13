@@ -816,7 +816,7 @@ Body.
         // Lines 17–20 (0-based) are the four `      <key>: <label>` entries.
         for (line, key, expected) in [
             (17, "web", "browser"),
-            (18, "api", "AIDA"),
+            (18, "api", "Navigator MCP"),
             (19, "infrastructure", "Kubernetes"),
             (20, "form", "templates/notations/forms/"),
         ] {

@@ -1,4 +1,4 @@
-//! `aida_create_person` MCP tool.
+//! `create_person` MCP tool.
 //!
 //! `LibreChat` asks the LLM to call this tool when a user (a Neon Law
 //! attorney, lawyer, or admin chatting through `LibreChat`) wants to
@@ -6,7 +6,7 @@
 //! `store::people_commands::create_person` command — the same write the
 //! `/app/api/people` REST route and the lawyer form travel — and returns the
 //! new id + name + email so the model can confirm what landed. Every Neon
-//! Law Navigator tool is namespaced under the `aida_` prefix so clients
+//! Law Navigator tool is namespaced under the bare tool names so clients
 //! can group them in their UI.
 
 use serde::Deserialize;
@@ -21,13 +21,13 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_create_person",
+        "name": "create_person",
         "description": "Create a NEW person record in Neon Law Navigator. Use this ONLY when \
                         the user explicitly asks to add or register a new contact, \
                         client, prospect, or lawyer. Do NOT call this to look up, \
                         message, email, or welcome someone — a request that mentions an \
                         email address is not a request to create a person. To find or \
-                        act on an existing person, call aida_show_person first. Returns \
+                        act on an existing person, call show_person first. Returns \
                         the new id, name, and email so the caller can reference the row.",
         "inputSchema": {
             "type": "object",
@@ -107,7 +107,7 @@ mod tests {
     use crate::tools::ToolError;
     use serde_json::json;
 
-    /// `aida_create_person` writes only `persons`, so its tests need only
+    /// `create_person` writes only `persons`, so its tests need only
     /// the engine that owns the table.
     async fn surreal() -> store::surreal::SurrealDb {
         store::test_support::mem_surreal().await
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn descriptor_names_the_tool_and_requires_name_and_email() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_create_person");
+        assert_eq!(d["name"], "create_person");
         let required = d["inputSchema"]["required"].as_array().unwrap();
         let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
         assert!(names.contains(&"name"));

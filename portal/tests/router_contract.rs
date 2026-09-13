@@ -116,7 +116,7 @@ const CONTRACT: &[(&str, Access)] = &[
     // surface consolidated under the private `/app/api` prefix: a client
     // now needs a session to read the card, so A2A discovery is not
     // self-service. See `portal::a2a` for why that is the accepted trade.
-    ("/app/api/aida.json", Access::ProtectedProtocol),
+    ("/app/api/mcp.json", Access::ProtectedProtocol),
     // `/app/mcp` is deliberately absent from this table: it carries a
     // Bearer-only `require_auth` stack (no session cookie), which
     // answers a bare `401` rather than the structured

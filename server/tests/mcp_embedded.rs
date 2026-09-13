@@ -134,7 +134,7 @@ async fn app_mcp_accepts_valid_bearer_token_when_auth_enforced() {
     let body = body_json(resp).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert!(names.contains(&"aida_create_person"));
+    assert!(names.contains(&"create_person"));
 }
 
 #[tokio::test]
@@ -168,9 +168,9 @@ async fn mcp_accepts_valid_bearer_token_when_auth_enforced() {
     let body = body_json(resp).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert!(names.contains(&"aida_create_person"));
-    assert!(names.contains(&"aida_show_person"));
-    assert!(names.contains(&"aida_list_jurisdictions"));
+    assert!(names.contains(&"create_person"));
+    assert!(names.contains(&"show_person"));
+    assert!(names.contains(&"list_jurisdictions"));
 }
 
 /// MCP answers under `/app` and nowhere else. It was mounted at the bare

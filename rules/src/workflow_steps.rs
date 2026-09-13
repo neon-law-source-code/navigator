@@ -24,7 +24,7 @@
 pub enum StepStatus {
     /// Real worker code runs (or a wired wait state the runtime drives).
     Implemented,
-    /// No worker code: an external system (AIDA / Gemini) does the work
+    /// No worker code: an external system (Navigator MCP / Gemini) does the work
     /// off-process and signals the workflow to advance.
     Seam,
     /// A human acts (approve, sign, notarize); the step only records the
@@ -41,7 +41,7 @@ impl StepStatus {
     pub fn label(self) -> &'static str {
         match self {
             Self::Implemented => "Implemented",
-            Self::Seam => "External seam (AIDA/Gemini)",
+            Self::Seam => "External seam (Navigator MCP/Gemini)",
             Self::Human => "Human step — no worker automation",
             Self::Scaffolded => "Scaffolded — deferred",
         }
@@ -108,7 +108,7 @@ pub const WORKFLOW_STEPS: &[WorkflowStep] = &[
         prefix: "extract",
         status: StepStatus::Seam,
         summary:
-            "External seam: AIDA/Gemini mines the structured estate inputs out of an uploaded \
+            "External seam: Navigator MCP/Gemini mines the structured estate inputs out of an uploaded \
                   transcript off-process, then signals the workflow to advance. No worker code \
                   runs in this step.",
     },

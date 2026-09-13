@@ -1,11 +1,11 @@
-//! `aida_answer_notation` MCP tool.
+//! `answer_notation` MCP tool.
 //!
 //! Submit one answer to a notation's questionnaire. Server
 //! advances the state machine and tells the LLM either the next
 //! question to ask or that the questionnaire is complete (so the
 //! caller can hand off to the post-intake workflow).
 //!
-//! Always pair this with a prior `aida_create_notation` call —
+//! Always pair this with a prior `create_notation` call —
 //! the `notation_id` returned there is what gets echoed back
 //! here. The `question_code` MUST match the code from the most
 //! recent `next_question` response; mismatches are rejected so a
@@ -21,11 +21,11 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_answer_notation",
+        "name": "answer_notation",
         "description":
             "Submit one answer to an in-flight notation questionnaire. \
-             Pass the `notation_id` from `aida_create_notation` (or a \
-             prior `aida_answer_notation` response), the `question_code` \
+             Pass the `notation_id` from `create_notation` (or a \
+             prior `answer_notation` response), the `question_code` \
              from the most recent `next_question`, and the user's `value`. \
              Returns `status: \"needs_answer\"` with the next \
              `next_question` to ask, or `status: \"complete\"` once the \
@@ -40,8 +40,8 @@ pub fn descriptor() -> Value {
                     "type": "string",
                     "description":
                         "UUID returned by the most recent \
-                         `aida_create_notation` (or echoed back from \
-                         the prior `aida_answer_notation`)."
+                         `create_notation` (or echoed back from \
+                         the prior `answer_notation`)."
                 },
                 "question_code": {
                     "type": "string",
@@ -87,7 +87,7 @@ pub async fn call(
         ));
     }
 
-    // AIDA answers as the firm's agent, not a Person row, so the answer
+    // Navigator MCP answers as the firm's agent, not a Person row, so the answer
     // is lawyer-sourced with no individual typist.
     let next = notation_session::answer_step(
         surreal,
@@ -376,9 +376,9 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_names_the_tool_under_aida_namespace() {
+    fn descriptor_names_the_tool_under_tool_namespace() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_answer_notation");
+        assert_eq!(d["name"], "answer_notation");
         let required: Vec<&str> = d["inputSchema"]["required"]
             .as_array()
             .unwrap()
@@ -473,7 +473,7 @@ mod tests {
 
     /// ENG-459: the agent surface never reaches
     /// `portal::intake::resolve_reference_answer`, so closing the choice set
-    /// there would have left AIDA able to put an arbitrary string into the
+    /// there would have left Navigator MCP able to put an arbitrary string into the
     /// engagement letter's governing-law and arbitration clause. The refusal
     /// lives in the shared write funnel, so this door is closed too, and the
     /// model is told the declared options so it can retry.

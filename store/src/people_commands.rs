@@ -2,7 +2,7 @@
 //!
 //! Every People mutation — create, update, delete — and the fuzzy
 //! People lookup live here so the JSON `/app/api/people*` surface, the
-//! browser lawyer forms, and the AIDA MCP tools travel one command
+//! browser lawyer forms, and the Navigator MCP tools travel one command
 //! boundary. This crate owns the persistence and business rules
 //! (validation, role rules, the bootstrap-owner guards, duplicate-email
 //! conflicts); the adapters render and authorize but never re-implement
@@ -513,8 +513,8 @@ pub async fn delete_person(
 /// all-`None` case (a blank query would return the whole directory).
 /// Results are ordered by name and capped at `limit`.
 ///
-/// This is the read half of the People command boundary: the AIDA
-/// `aida_show_person` tool and any web lookup share this one query
+/// This is the read half of the People command boundary: the Navigator MCP
+/// `show_person` tool and any web lookup share this one query
 /// instead of re-implementing the `LIKE` predicate.
 pub async fn search_people(
     db: &SurrealDb,

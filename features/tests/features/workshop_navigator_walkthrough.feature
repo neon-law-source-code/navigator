@@ -2,7 +2,7 @@ Feature: Workshop "Using the Neon Law Navigator to Rapidly Solve Legal Outcomes"
 
   Every Bloom-tagged claim the workshop README makes about Neon Law Navigator
   is grounded by an executable scenario in this file. If a scenario
-  here breaks, the workshop's prose is stale — the AIDA + engineer
+  here breaks, the workshop's prose is stale — the Navigator MCP + engineer
   council insisted on this contract so the page cannot drift away
   from the runtime that backs it.
 

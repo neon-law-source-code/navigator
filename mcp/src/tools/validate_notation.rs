@@ -1,4 +1,4 @@
-//! `aida_validate_notation` MCP tool.
+//! `validate_notation` MCP tool.
 //!
 //! Lints markdown without persisting anything. Mirrors the `cli
 //! validate` rule-set selection so a Template that passes the CLI
@@ -25,7 +25,7 @@ const DEFAULT_PATH: &str = "template.md";
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_validate_notation",
+        "name": "validate_notation",
         "description":
             "Lint markdown for Neon Law Navigator notation rules and return the \
              list of violations. Does NOT persist anything — safe to \
@@ -162,9 +162,9 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn descriptor_names_the_tool_under_aida_namespace() {
+    fn descriptor_names_the_tool_under_tool_namespace() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_validate_notation");
+        assert_eq!(d["name"], "validate_notation");
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         let required = d["inputSchema"]["required"].as_array().unwrap();
         let required_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();

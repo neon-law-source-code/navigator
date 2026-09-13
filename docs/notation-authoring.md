@@ -238,7 +238,7 @@ today:
 | `client_review` | State-only | Respondent approves attorney-reviewed drafts on the Phase A review surface. |
 | `reask__*` | State-only | Re-collects flagged answers after `changes_requested`, then loops back to `lawyer_review`. |
 | `document_intake__<slug>` | Implemented | Worker files a provided artifact (text/file/link) via `ingest_bytes`. |
-| `extract__*` | Seam | Estate inputs mined from the transcript by AIDA/Gemini; advanced on completion. |
+| `extract__*` | Seam | Estate inputs mined from the transcript by Navigator MCP/Gemini; advanced on completion. |
 | `analysis__*` | Seam | Contract review: web (Vertex Gemini) flags playbook deviations; System wait state. |
 | `document_drafts__*` | Implemented | Web renders drafts into review_documents rows (System wait state). |
 | `generate_pdf__retainer_pdf` | Implemented | Worker-dispatched: render + storage persist wrapped in `ctx.run`. |
@@ -479,7 +479,7 @@ attorney. Each design choice traces back to that mission:
   firm serve people a billable-hour model prices out.
 - **Faster resolution, lower cost.** A guided questionnaire plus automatic document generation collapses what used to be
   multiple back-and-forth meetings into a single self-serve intake the client finishes in minutes — answered in their
-  own words through AIDA, on whichever surface they already use.
+  own words through Navigator MCP, on whichever surface they already use.
 - **The human stays in the loop.** `lawyer_review` is mandatory by rule, not by convention. Automation does the
   repetitive assembly; a licensed attorney signs off on the substance. Faster *and* accountable, not faster *instead of*
   accountable.

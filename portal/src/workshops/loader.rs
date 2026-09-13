@@ -36,7 +36,7 @@ const NAVIGATOR_MANIFEST: &[ManifestEntry] = &[
         title: "Using Neon Law Navigator",
         description: "A single hands-on workshop for Lawyer users of the application. \
                       Open the litigation matter, bind the shared retainer template, and inspect \
-                      the client portal through the configured AIDA connector.",
+                      the client portal through the configured Navigator MCP connector.",
         audience: "For Lawyers and Clerks",
         benefit: "You walk out with a litigation matter walkthrough and a \
                   three-minute demo you can run at your firm. You also see the five stored \

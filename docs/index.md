@@ -72,10 +72,10 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 - [`bulk-contact-import.md`](bulk-contact-import.md) — turning a raw contact list into seeded Persons.
 - [`retainer_intake.md`](retainer_intake.md) — the retainer intake walkthrough.
 
-## AIDA, A2A, and MCP clients
+## Navigator MCP, A2A, and MCP clients
 
-- [`aida-a2a-interaction.md`](aida-a2a-interaction.md) — AIDA over A2A: confirmations and errors.
-- [`claude-mcp-client.md`](claude-mcp-client.md) — Claude as an AIDA client over MCP.
+- [`mcp-a2a-interaction.md`](mcp-a2a-interaction.md) — Navigator MCP over A2A: confirmations and errors.
+- [`claude-mcp-client.md`](claude-mcp-client.md) — Claude as a Navigator MCP client over MCP.
 - [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md) — the Gemini Enterprise MCP server.
 
 ## Billing, trust, and e-signature

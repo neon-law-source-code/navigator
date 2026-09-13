@@ -165,8 +165,8 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
     },
     // The OAuth client allowlist Gemini Enterprise's tokens are validated
     // against. Unset, `portal::google_oauth` degrades to a pass-through, so
-    // `portal::mcp_principal` never injects a `Principal` — and every AIDA tool
-    // that scopes on the authenticated actor (`aida_create_notation`'s
+    // `portal::mcp_principal` never injects a `Principal` — and every Navigator MCP tool
+    // that scopes on the authenticated actor (`create_notation`'s
     // project ACL) silently stops checking. Integration-tier: the explicit
     // staging CI harness has no real Google tenant to validate against.
     required!(integration "GOOGLE_OAUTH_CLIENT_IDS"),

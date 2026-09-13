@@ -1109,7 +1109,7 @@ an explicit capability choice, not evidence that an invoice reached the ledger.
 | CLI live inquiry | `NAVIGATOR_NOTATION_TEMPLATE`, `NAVIGATOR_SPEECH_BACKEND` |
 | Harness worktree/cache | `NAVIGATOR_WORKTREE_PATH`, `NAVIGATOR_CHROME_CACHE_DIR` |
 | Vertex coordinates | `NAVIGATOR_GCP_PROJECT_ID`, `NAVIGATOR_GCP_LOCATION`, `GOOGLE_METADATA_URL` |
-| AIDA router | `NAVIGATOR_ROUTER_MODEL` |
+| Navigator MCP router | `NAVIGATOR_ROUTER_MODEL` |
 | Contract reviewer | `NAVIGATOR_CONTRACT_REVIEW_MODEL` plus the same GCP project, location, and metadata variables |
 | On-chain attestation | `NAVIGATOR_ONCHAIN_BACKEND`, `SOLANA_RPC_URL`, `SOLANA_PROGRAM_ID`, `SOLANA_SIGNER_SECRET` |
 | Billing export | `BILLING_EXPORT_TABLE`, `BIGQUERY_PROJECT` |
@@ -1119,7 +1119,7 @@ an explicit capability choice, not evidence that an invoice reached the ledger.
 ---
 
 Matter creation must have a real Git writer even if the higher-level forge is local. The content variables only relocate
-the read-only files baked into the image. AIDA uses `NullRouter` without the GCP project; contract review uses
+the read-only files baked into the image. Navigator MCP uses `NullRouter` without the GCP project; contract review uses
 `StubContractReviewer` without the same Vertex coordinates. The on-chain backend defaults to `null`, recording no
 transaction. Scheduled cost and billing diagnostics stay disabled when their table or recipient variables are absent.
 
@@ -1213,7 +1213,7 @@ disposable `navigator dev staging` lane, not `neon-law-stg`.
 | E-signature | Stub IDs and documents | Non-binding DocuSign demo | Live DocuSign |
 | Billing | `StubBillingProvider` when Xero is absent | Same fallback | Same fallback today |
 | Contract review | Stub without Vertex | Same fallback | Reference uses Vertex |
-| AIDA free-form routing | `NullRouter` without Vertex | Same fallback | Reference uses Vertex |
+| Navigator MCP free-form routing | `NullRouter` without Vertex | Same fallback | Reference uses Vertex |
 
 ---
 
@@ -1471,7 +1471,7 @@ The staging browser client exists with the exact name and callback in this secti
 External/Testing, and the authenticated operator is its initial test user. Its deployment config carries only that
 browser ID and secret. The Gemini ID remains absent until the data store assigns it; `ops ship` temporarily renders a
 browser-only allowlist, and [#1126](https://github.com/neon-law-source-code/navigator/issues/1126) removes that seam
-after the authenticated staging AIDA smoke test.
+after the authenticated staging Navigator MCP smoke test.
 
 These clients are configured in **Google Auth Platform → Clients**. They are general OAuth clients, not IAP or Workforce
 Identity Federation clients. Google does not permit creating or modifying them programmatically, so neither ordinary
@@ -1646,8 +1646,8 @@ not everything it in turn connects to.
 
 A production install runs one Rust application in two operational roles:
 
-- `navigator-web` — the public portal, AIDA/API routes, webhooks, health probes, embedded Rego authorization, and
-  client-facing Documents/Engagements/Invoices views.
+- `navigator-web` — the public portal, Navigator MCP/API routes, webhooks, health probes, embedded Rego authorization,
+  and client-facing Documents/Engagements/Invoices views.
 - `workflows-service` — the durable Restate worker that renders documents, advances workflows, sends emails, and runs
   the background side effects the portal schedules.
 
@@ -1675,7 +1675,7 @@ flowchart TB
   edge["HTTPS Gateway"]
 
   subgraph gke["GKE namespace"]
-    web["navigator-web\nportal, AIDA, APIs"]
+    web["navigator-web\nportal, Navigator MCP, APIs"]
     worker["workflows-service\nDurable worker"]
   end
 

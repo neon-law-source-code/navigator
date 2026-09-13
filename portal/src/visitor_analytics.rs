@@ -674,7 +674,7 @@ mod tests {
         assert!(!should_count_route(&Method::GET, "/app/lawyer"));
         assert!(!should_count_route(&Method::GET, "/app/projects"));
         assert!(!should_count_route(&Method::GET, "/app/forms"));
-        assert!(!should_count_route(&Method::GET, "/app/api/aida.json"));
+        assert!(!should_count_route(&Method::GET, "/app/api/mcp.json"));
         assert!(!should_count_route(&Method::GET, "/app/api/people"));
         assert!(!should_count_route(&Method::GET, "/health"));
         assert!(!should_count_route(&Method::GET, "/public/app.css"));

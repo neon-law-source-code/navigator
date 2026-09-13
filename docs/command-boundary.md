@@ -24,8 +24,8 @@ own persistence logic.
   client and entity over `GET /app/api/people`/`/entities`/`/entity-types`/`/jurisdictions`, then opens the matter
   through `POST /app/api/projects` with the caller's own bearer token, so the conflict attestation stays a personal act
   rather than a shared service credential's. `store::projects::open_matter` itself is called by that route, the lawyer
-  web form, and the `aida_create_project` MCP tool — never directly from the CLI, which no longer holds a local-store
-  door onto it.
+  web form, and the `create_project` MCP tool — never directly from the CLI, which no longer holds a local-store door
+  onto it.
 - **Seed reconciliation.** `navigator site import <MODEL_NAME> <SEED_FILE>` reads seed YAML locally and sends it
   with the bearer from `navigator site login` to `POST /app/api/seed`. The deployment resolves the glossary model and
   validates its `lookup_fields`, then performs lookup/create there; `--overwrite` changes only fields represented in the
@@ -42,7 +42,7 @@ own persistence logic.
   staged file and the scoped document `PATCH` door for pointer visibility; it never calls object storage or writes the
   store itself.
 - **MCP.** A tool in `mcp/src/tools/` translates its arguments into a shared command. The `mcp` crate cannot depend on
-  `portal`, so it converges at the `store` / `workflows` layer — e.g. `aida_link_person_project` calls
+  `portal`, so it converges at the `store` / `workflows` layer — e.g. `link_person_project` calls
   `store::participation::add_participant` / `update_participant`, the same commands the participation `/app/api` door
   and the lawyer form use. That convergence is what makes one invariant hold at all three doors: the commands derive
   `participation` from `persons.role`, so none of the three can name one. A2A wraps the same tools behind its

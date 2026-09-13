@@ -1,4 +1,4 @@
-//! A2A (Agent2Agent) protocol surface for AIDA.
+//! A2A (Agent2Agent) protocol surface for Navigator MCP.
 //!
 //! Lives beside `/mcp` and reuses the exact same auth stack and tool
 //! registry — A2A is a second protocol skin on the same body. The
@@ -8,7 +8,7 @@
 //!
 //! Two endpoints, both under the private `/app/api` prefix:
 //!
-//! - `GET /app/api/aida.json` — the agent card: the agent's name,
+//! - `GET /app/api/mcp.json` — the agent card: the agent's name,
 //!   skills, transport, and `securitySchemes`. It needs a session like
 //!   every other path under `/app/api`, which means A2A discovery is
 //!   *not* self-service — a client cannot read the card to learn how to
@@ -18,7 +18,7 @@
 //!   spec-driven discovery (see `docs/gemini-enterprise-mcp.md`), so the
 //!   one client this serves is unaffected; onboarding a standards-based
 //!   A2A client means handing over the OAuth details out of band.
-//! - `POST /app/api/aida/rpc` — JSON-RPC 2.0. Same four-layer middleware
+//! - `POST /app/api/mcp/rpc` — JSON-RPC 2.0. Same four-layer middleware
 //!   stack as `/mcp` (`require_google_oauth` → `require_auth` →
 //!   `require_policy` → `inject_principal`). Method scope is
 //!   `message/send` only (synchronous completion). Two routing paths:
@@ -74,11 +74,11 @@ fn provider_url() -> &'static str {
 /// flows. Keep aligned with the `a2a-protocol.org` spec.
 pub const A2A_PROTOCOL_VERSION: &str = "0.3.0";
 
-/// AIDA's semver-style version. Independent from
+/// Navigator MCP's semver-style version. Independent from
 /// `CARGO_PKG_VERSION` because the agent's surface (skills, transport)
 /// evolves on a different cadence than the `web` binary's build
 /// version.
-pub const AIDA_VERSION: &str = "0.1.0";
+pub const MCP_VERSION: &str = "0.1.0";
 
 /// Default authority used when no canonical host is configured and the
 /// request did not arrive with a `Host` header (e.g. a unit test that
@@ -88,7 +88,7 @@ pub const AIDA_VERSION: &str = "0.1.0";
 /// against — production never reaches this branch.
 const FALLBACK_AUTHORITY: &str = "www.example.com";
 
-/// Top-level agent card. Serialized at `GET /app/api/aida.json`.
+/// Top-level agent card. Serialized at `GET /app/api/mcp.json`.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentCard {
     #[serde(rename = "protocolVersion")]
@@ -229,14 +229,14 @@ pub struct A2aState {
     /// omits `metadata.skill`. `NullRouter` in dev / KIND;
     /// `GeminiRouter` in prod.
     pub router: Arc<dyn AgentRouter>,
-    /// Side-effecting tool calls AIDA has proposed and is waiting on the
+    /// Side-effecting tool calls Navigator MCP has proposed and is waiting on the
     /// user to confirm, keyed by `taskId`. See [`PendingConfirmations`].
     pub pending: PendingConfirmations,
 }
 
 /// How long a paused (`input-required`) task waits for the user's
 /// confirmation before we forget it. We hold the resolved tool call
-/// AIDA is about to run in memory keyed by `taskId`; pruning anything
+/// Navigator MCP is about to run in memory keyed by `taskId`; pruning anything
 /// older than this keeps an abandoned confirmation from pinning memory
 /// or firing a stale side-effect days later. A2A lets an agent either
 /// persist task state or reconstruct it — a confirmation that outlives
@@ -252,7 +252,7 @@ struct PendingConfirmation {
     /// MUST reject mismatching `contextId`/`taskId`).
     context_id: String,
     /// The authenticated principal who started the task. Only the same
-    /// principal may confirm it — you can't approve an action AIDA
+    /// principal may confirm it — you can't approve an action Navigator MCP
     /// proposed to someone else.
     principal_email: String,
     /// The opaque actor identity and global role at proposal time. The
@@ -336,7 +336,7 @@ impl Resume {
 /// telemetry event, not this map — see [`audit_authorization`]. Consequence: a confirmation only
 /// resolves if the follow-up `message/send` reaches the same process
 /// within [`PENDING_TTL`]. On a multi-replica deploy without session
-/// affinity (or across a pod restart), the resume can miss and AIDA
+/// affinity (or across a pod restart), the resume can miss and Navigator MCP
 /// simply re-proposes from a fresh request. That is the accepted
 /// trade-off for not standing up a shared task store; revisit if `web`
 /// scales out and confirmation misses become common.
@@ -367,7 +367,7 @@ impl PendingConfirmations {
 }
 
 /// Build the A2A sub-router. Caller is responsible for layering the
-/// MCP-equivalent auth stack onto the `/app/api/aida/rpc` route, and the
+/// MCP-equivalent auth stack onto the `/app/api/mcp/rpc` route, and the
 /// session boundary onto the card route, before merging.
 pub fn routes(state: A2aState) -> (Router, Router) {
     // Two routers because the two endpoints take different stacks, not
@@ -375,10 +375,10 @@ pub fn routes(state: A2aState) -> (Router, Router) {
     // RPC endpoint needs the full Google-OAuth-and-policy stack that
     // `/mcp` takes. `bootstrap` layers each accordingly.
     let card = Router::new()
-        .route("/app/api/aida.json", get(card_handler))
+        .route("/app/api/mcp.json", get(card_handler))
         .with_state(state.clone());
     let rpc = Router::new()
-        .route("/app/api/aida/rpc", post(rpc_handler))
+        .route("/app/api/mcp/rpc", post(rpc_handler))
         .with_state(state);
     (card, rpc)
 }
@@ -458,20 +458,20 @@ pub fn build_agent_card(authority: &str) -> AgentCard {
     } else {
         "https"
     };
-    let url = format!("{scheme}://{authority}/app/api/aida/rpc");
+    let url = format!("{scheme}://{authority}/app/api/mcp/rpc");
     let skills = tools::list_tools()
         .iter()
         .map(skill_from_descriptor)
         .collect();
     AgentCard {
         protocol_version: A2A_PROTOCOL_VERSION,
-        name: "AIDA",
+        name: "Navigator MCP",
         description: "Neon Law Navigator's domain agent for legal-workflow automation: \
             people, entities, jurisdictions, notations, projects, and legal-council review. \
             Backed by the same MCP tool registry served at /mcp.",
         url,
         preferred_transport: "JSONRPC",
-        version: AIDA_VERSION,
+        version: MCP_VERSION,
         provider: Provider {
             organization: FIRM_BRAND.site_name,
             url: provider_url(),
@@ -494,7 +494,7 @@ pub fn build_agent_card(authority: &str) -> AgentCard {
 
 fn skill_from_descriptor(descriptor: &Value) -> Skill {
     let mcp_name = descriptor["name"].as_str().unwrap_or_default();
-    let id = strip_mcp_prefix(mcp_name).to_string();
+    let id = mcp_name.to_string();
     let description = descriptor["description"]
         .as_str()
         .unwrap_or_default()
@@ -507,32 +507,11 @@ fn skill_from_descriptor(descriptor: &Value) -> Skill {
     }
 }
 
-/// Drop the `aida_` MCP namespace from a tool name. The prefix exists
-/// because MCP clients (Claude.ai Connectors, LibreChat)
-/// flatten tools from every connected server into one list — the
-/// namespace prevents collisions. On A2A there is exactly one agent
-/// per card, so the namespace is implicit and the prefix is noise.
-fn strip_mcp_prefix(name: &str) -> &str {
-    name.strip_prefix(tools::REQUIRED_PREFIX).unwrap_or(name)
-}
-
-/// Inverse of [`strip_mcp_prefix`]. Bridge prepends the namespace
-/// before dispatching to `mcp::tools::call_tool`, which matches on the
-/// fully-qualified MCP tool name. Idempotent: a client that sends the
-/// prefixed form (`aida_create_person`) gets passed through unchanged.
-fn to_mcp_tool_name(skill_id: &str) -> String {
-    if skill_id.starts_with(tools::REQUIRED_PREFIX) {
-        skill_id.to_string()
-    } else {
-        format!("{}{skill_id}", tools::REQUIRED_PREFIX)
-    }
-}
-
-/// Turn `aida_create_person` into `"Create person"` for the
+/// Turn `create_person` into `"Create person"` for the
 /// human-readable `name` field. A2A clients use `id` for routing
 /// (the model only ever sees `id`); `name` is purely UI.
 fn humanize_tool_id(id: &str) -> String {
-    let trimmed = id.strip_prefix("aida_").unwrap_or(id);
+    let trimmed = id;
     let mut out = String::with_capacity(trimmed.len());
     for (idx, word) in trimmed.split('_').enumerate() {
         if idx > 0 {
@@ -722,7 +701,8 @@ async fn handle_message_send(
     // person up, *then* email them) actually complete.
     let user_text = extract_user_text(message);
     if user_text.is_empty() {
-        let text = "Empty message — include a text Part describing what you want AIDA to do, \
+        let text =
+            "Empty message — include a text Part describing what you want Navigator MCP to do, \
                     or set `metadata.skill` to dispatch a skill directly.";
         return RpcResponse::ok(
             id,
@@ -795,7 +775,7 @@ async fn dispatch_single(
                     context_id,
                     timestamp,
                     "This skill changes data and can be dispatched directly only by a lawyer \
-                     principal. Sign in as lawyer, or send it as free-form text so AIDA can \
+                     principal. Sign in as lawyer, or send it as free-form text so Navigator MCP can \
                      confirm the action with you first.",
                 ))
                 .expect("Task is always serializable"),
@@ -853,7 +833,7 @@ async fn dispatch_single(
             return response;
         }
     }
-    let mcp_tool_name = to_mcp_tool_name(skill);
+    let mcp_tool_name = skill.to_string();
     single_call_task(
         state,
         principal,
@@ -982,7 +962,7 @@ async fn drive_loop(
     mut history: Vec<Turn>,
     start_step: usize,
     // The last *successful* action — its result becomes the Task's
-    // artifact (the durable side-effect AIDA produced for the user).
+    // artifact (the durable side-effect Navigator MCP produced for the user).
     // Carried across a confirmation round-trip so an earlier approved
     // call still shows up as the artifact.
     mut last_action: Option<(String, Value)>,
@@ -1075,7 +1055,7 @@ async fn drive_loop(
                     return response;
                 }
 
-                let mcp_tool_name = to_mcp_tool_name(&tool_name);
+                let mcp_tool_name = tool_name.clone();
                 tracing::info!(
                     principal_kind = %principal_kind(principal_email),
                     skill = %tool_name,
@@ -1126,7 +1106,7 @@ async fn drive_loop(
         "a2a: router loop hit MAX_ROUTER_STEPS without finishing"
     );
     let text = format!(
-        "AIDA couldn't complete {user_text:?} within {MAX_ROUTER_STEPS} steps. \
+        "Navigator MCP couldn't complete {user_text:?} within {MAX_ROUTER_STEPS} steps. \
          Try rephrasing, or send `metadata.skill` to dispatch one skill directly."
     );
     RpcResponse::ok(
@@ -1246,7 +1226,7 @@ async fn resume_after_confirmation(
                 tool_name,
                 arguments,
             } = pending.pending_call;
-            let mcp_tool_name = to_mcp_tool_name(&tool_name);
+            let mcp_tool_name = tool_name.clone();
 
             // A direct skill was the entire request, so the approved
             // call is the answer. Run it and return the same Task shape
@@ -1389,7 +1369,7 @@ fn loop_completed_task(
         )
     } else {
         let text = if done_text.is_empty() {
-            "AIDA had nothing to do for that request.".to_string()
+            "Navigator MCP had nothing to do for that request.".to_string()
         } else {
             done_text.to_string()
         };
@@ -1579,7 +1559,7 @@ fn canceled_task(task_id: String, context_id: String, timestamp: String, text: &
     }
 }
 
-/// The prompt shown when AIDA pauses before a side-effecting call.
+/// The prompt shown when Navigator MCP pauses before a side-effecting call.
 ///
 /// Per the legal council, the approval is an *authorization* act by a
 /// licensed human, so the copy: (1) names the action in plain language,
@@ -1594,7 +1574,7 @@ fn confirmation_prompt(call: &RoutedCall, history: &[Turn]) -> String {
     let detail = describe_arguments(&call.arguments, &people);
     format!(
         "**Authorize this action?**\n\n\
-         AIDA wants to **{action}**{detail}.\n\n\
+         Navigator MCP wants to **{action}**{detail}.\n\n\
          This performs a real, client-facing action now and may not be reversible.\n\n\
          Choose **yes** to authorize, or **no** to cancel."
     )
@@ -1603,7 +1583,7 @@ fn confirmation_prompt(call: &RoutedCall, history: &[Turn]) -> String {
 /// Build an `id → \"Name (email)\"` map from the `show_person` results
 /// already in the conversation, so the confirmation prompt can name the
 /// human a UUID argument refers to. Reads the `structuredContent.persons`
-/// shape `aida_show_person` returns; ignores anything else.
+/// shape `show_person` returns; ignores anything else.
 fn resolve_person_refs(history: &[Turn]) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for turn in history {
@@ -1801,16 +1781,18 @@ fn extract_structured_choice(message: &Value) -> Option<String> {
 fn router_failure_message(err: &RouterError, user_text: &str) -> String {
     let skill_list = tools::list_tools()
         .iter()
-        .filter_map(|t| t["name"].as_str().map(|n| to_a2a_skill_id(n).to_string()))
+        .filter_map(|t| t["name"].as_str().map(ToString::to_string))
         .collect::<Vec<_>>()
         .join(", ");
     let reason = match err {
         RouterError::NotConfigured => {
-            "AIDA's natural-language router isn't configured in this environment."
+            "Navigator MCP's natural-language router isn't configured in this environment."
         }
-        RouterError::NoMatch(_) => "AIDA couldn't pick a skill that matches your request.",
-        RouterError::Transport(_) => "AIDA's router is temporarily unavailable.",
-        RouterError::InvalidResponse(_) => "AIDA's router returned an unexpected response.",
+        RouterError::NoMatch(_) => "Navigator MCP couldn't pick a skill that matches your request.",
+        RouterError::Transport(_) => "Navigator MCP's router is temporarily unavailable.",
+        RouterError::InvalidResponse(_) => {
+            "Navigator MCP's router returned an unexpected response."
+        }
     };
     // The raw `err` can carry upstream Vertex transport/body text — log it,
     // never surface it to the A2A client.
@@ -1822,14 +1804,6 @@ fn router_failure_message(err: &RouterError, user_text: &str) -> String {
          Tip: A2A clients can also send `metadata.skill` directly to bypass the router \
          — for example, `{{\"skill\":\"create_person\",\"arguments\":{{\"name\":\"…\",\"email\":\"…\"}}}}`."
     )
-}
-
-/// Inverse of `to_mcp_tool_name` — strip the MCP namespace so the
-/// returned id matches what A2A clients see on the agent card.
-fn to_a2a_skill_id(mcp_name: &str) -> &str {
-    mcp_name
-        .strip_prefix(tools::REQUIRED_PREFIX)
-        .unwrap_or(mcp_name)
 }
 
 /// Convert an MCP tool result into A2A artifact parts.
@@ -1846,7 +1820,7 @@ fn to_a2a_skill_id(mcp_name: &str) -> &str {
 ///    A2A clients can still parse the structured output.
 ///
 /// If the tool didn't supply a text summary, fall back to a
-/// generic "AIDA ran <skill>." line — the user still gets *some*
+/// generic "Navigator MCP ran <skill>." line — the user still gets *some*
 /// confirmation instead of an empty-looking response.
 fn tool_result_to_parts(skill: &str, result: &Value) -> Vec<Part> {
     let text = result
@@ -1854,7 +1828,10 @@ fn tool_result_to_parts(skill: &str, result: &Value) -> Vec<Part> {
         .and_then(Value::as_array)
         .and_then(|arr| arr.first())
         .and_then(|first| first.get("text").and_then(Value::as_str))
-        .map_or_else(|| format!("AIDA ran {skill}."), ToString::to_string);
+        .map_or_else(
+            || format!("Navigator MCP ran {skill}."),
+            ToString::to_string,
+        );
     let data = result
         .get("structuredContent")
         .cloned()
@@ -1864,7 +1841,7 @@ fn tool_result_to_parts(skill: &str, result: &Value) -> Vec<Part> {
 
 /// Find the tool arguments. v1 contract: arguments live in
 /// `metadata.arguments` (object) OR in the first `data` Part. The
-/// former is what `aida_spawn_legal_council`-style explicit RPC calls use;
+/// former is what `spawn_legal_council`-style explicit RPC calls use;
 /// the latter is what an A2A client that doesn't know about our
 /// metadata convention will send. Empty object if neither is present.
 fn resolve_arguments(message: &Value, metadata: &Value) -> Value {
@@ -1963,7 +1940,7 @@ mod tests {
     }
 
     /// An `McpState` shaped like the one `web` builds: the mailer is
-    /// injected, because `aida_send_welcome_email` reaches it through the
+    /// injected, because `send_welcome_email` reaches it through the
     /// shared command rather than the Restate trigger (ENG-317), and a
     /// fixture without one would exercise the refusal path instead of the
     /// send.
@@ -1999,7 +1976,7 @@ mod tests {
     }
 
     async fn get_card(router: Router, host: Option<&str>) -> (StatusCode, Value) {
-        let mut builder = Request::builder().method("GET").uri("/app/api/aida.json");
+        let mut builder = Request::builder().method("GET").uri("/app/api/mcp.json");
         if let Some(h) = host {
             builder = builder.header("host", h);
         }
@@ -2016,7 +1993,7 @@ mod tests {
     async fn post_rpc(router: Router, body: Value) -> (StatusCode, Value) {
         let req = Request::builder()
             .method("POST")
-            .uri("/app/api/aida/rpc")
+            .uri("/app/api/mcp/rpc")
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();
@@ -2034,7 +2011,7 @@ mod tests {
     async fn post_rpc_as(router: Router, body: Value, email: &str) -> (StatusCode, Value) {
         let mut req = Request::builder()
             .method("POST")
-            .uri("/app/api/aida/rpc")
+            .uri("/app/api/mcp/rpc")
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();
@@ -2064,13 +2041,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn card_skills_are_mcp_tools_with_aida_prefix_stripped() {
-        // Every MCP tool must appear as a skill on the card, with the
-        // `aida_` namespace dropped. A2A clients see clean IDs (AIDA
-        // herself is the namespace); MCP clients still see the
-        // prefixed names because their tool lists are flat across
-        // multiple servers. Drift between the two surfaces would mean
-        // a tool the model can call via /mcp but not via A2A.
+    async fn card_skills_are_the_mcp_tool_names() {
+        // Every MCP tool must appear as a skill on the card under the
+        // same name. The two surfaces share one vocabulary, so drift
+        // between them would mean a tool the model can call via /mcp
+        // but not via A2A.
         let (card, _) = routes(state_with(db().await));
         let (status, body) = get_card(card, None).await;
         assert_eq!(status, StatusCode::OK);
@@ -2082,7 +2057,7 @@ mod tests {
             .collect();
         let expected: Vec<String> = tools::list_tools()
             .iter()
-            .filter_map(|t| t["name"].as_str().map(|n| strip_mcp_prefix(n).to_string()))
+            .filter_map(|t| t["name"].as_str().map(ToString::to_string))
             .collect();
         for want in &expected {
             assert!(
@@ -2090,9 +2065,8 @@ mod tests {
                 "skill `{want}` missing from card; card has {skill_ids:?}"
             );
             assert!(
-                !want.starts_with(tools::REQUIRED_PREFIX),
-                "expected skill ids to strip `{}`, got `{want}`",
-                tools::REQUIRED_PREFIX
+                !want.starts_with("aida_"),
+                "skill ids are the bare MCP tool names now, got `{want}`"
             );
         }
         // These are production tools, not placeholders: the card must
@@ -2104,7 +2078,7 @@ mod tests {
                 assert!(
                     !id.starts_with(placeholder),
                     "skill id `{id}` carries placeholder prefix `{placeholder}`; \
-                     AIDA's A2A skills are production tools and must ship clean names"
+                     Navigator MCP's A2A skills are production tools and must ship clean names"
                 );
             }
         }
@@ -2116,7 +2090,7 @@ mod tests {
         let (card, _) = routes(state_with(db().await));
         let (_, body) = get_card(card, None).await;
         assert_eq!(body["protocolVersion"], A2A_PROTOCOL_VERSION);
-        assert_eq!(body["name"], "AIDA");
+        assert_eq!(body["name"], "Navigator MCP");
         assert_eq!(body["preferredTransport"], "JSONRPC");
         assert_eq!(body["capabilities"]["streaming"], false);
         assert_eq!(body["capabilities"]["pushNotifications"], false);
@@ -2135,7 +2109,7 @@ mod tests {
         let (card, _) = routes(state_with(db().await));
         let (_, body) = get_card(card, Some("evil.example.com")).await;
         let url = body["url"].as_str().unwrap();
-        assert_eq!(url, "https://www.example.com/app/api/aida/rpc");
+        assert_eq!(url, "https://www.example.com/app/api/mcp/rpc");
     }
 
     #[tokio::test]
@@ -2248,7 +2222,7 @@ mod tests {
         let engines = db().await;
         seed_person(
             &engines,
-            "Aida Lawyer",
+            "Navigator MCP Lawyer",
             "lawyer@example.com",
             store::persons::Role::Lawyer,
         )
@@ -2315,7 +2289,7 @@ mod tests {
                         "kind": "message",
                         "parts": [],
                         "metadata": {
-                            "skill": "aida_validate_notation",
+                            "skill": "validate_notation",
                             "arguments": { "contents": "# H\n", "markdown_only": true }
                         }
                     }
@@ -2354,10 +2328,9 @@ mod tests {
         let text = body["result"]["status"]["message"]["parts"][0]["text"]
             .as_str()
             .unwrap();
-        // The MCP dispatcher reports the fully-qualified tool name
-        // (after the bridge prepended `aida_`).
+        // The MCP dispatcher reports the tool name it was handed.
         assert!(
-            text.contains("aida_does_not_exist"),
+            text.contains("does_not_exist"),
             "expected error to name the resolved MCP tool, got: {text}"
         );
     }
@@ -2404,7 +2377,7 @@ mod tests {
         let (_, rpc) = routes(state);
         let req = Request::builder()
             .method("POST")
-            .uri("/app/api/aida/rpc")
+            .uri("/app/api/mcp/rpc")
             .header("content-type", "application/json")
             .body(Body::from("{ not json"))
             .unwrap();
@@ -2421,7 +2394,7 @@ mod tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/app/api/aida.json")
+                    .uri("/app/api/mcp.json")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2437,7 +2410,7 @@ mod tests {
         let resp2 = card
             .oneshot(
                 Request::builder()
-                    .uri("/app/api/aida.json")
+                    .uri("/app/api/mcp.json")
                     .header(header::IF_NONE_MATCH, &etag)
                     .body(Body::empty())
                     .unwrap(),
@@ -2449,20 +2422,17 @@ mod tests {
 
     #[test]
     fn humanize_tool_id_drops_prefix_and_title_cases() {
-        assert_eq!(humanize_tool_id("aida_create_person"), "Create Person");
+        assert_eq!(humanize_tool_id("create_person"), "Create Person");
+        assert_eq!(humanize_tool_id("list_jurisdictions"), "List Jurisdictions");
         assert_eq!(
-            humanize_tool_id("aida_list_jurisdictions"),
-            "List Jurisdictions"
-        );
-        assert_eq!(
-            humanize_tool_id("aida_spawn_legal_council"),
+            humanize_tool_id("spawn_legal_council"),
             "Spawn Legal Council"
         );
     }
 
     #[test]
     fn etag_is_stable_for_same_body() {
-        let body = br#"{"name":"AIDA"}"#;
+        let body = br#"{"name":"Navigator MCP"}"#;
         assert_eq!(compute_etag(body), compute_etag(body));
     }
 
@@ -3027,7 +2997,7 @@ mod tests {
                 _skills: &[Value],
             ) -> Result<crate::agent_router::Step, crate::agent_router::RouterError> {
                 Ok(crate::agent_router::Step::Done(
-                    "AIDA can create people, projects, and notations.".to_string(),
+                    "Navigator MCP can create people, projects, and notations.".to_string(),
                 ))
             }
         }
@@ -3204,7 +3174,7 @@ mod tests {
         let Part::Text { text } = &parts[0] else {
             panic!("expected fallback text, got {:?}", parts[0])
         };
-        assert_eq!(text, "AIDA ran spawn_legal_council.");
+        assert_eq!(text, "Navigator MCP ran spawn_legal_council.");
         // No structuredContent → emit the whole result as data.
         let Part::Data { data } = &parts[1] else {
             panic!("expected data part, got {:?}", parts[1])
@@ -3222,19 +3192,6 @@ mod tests {
             ]
         });
         assert_eq!(extract_user_text(&msg), "first\nsecond");
-    }
-
-    #[test]
-    fn strip_mcp_prefix_drops_aida_namespace() {
-        assert_eq!(strip_mcp_prefix("aida_create_person"), "create_person");
-        assert_eq!(strip_mcp_prefix("create_person"), "create_person");
-        assert_eq!(strip_mcp_prefix("aida_"), "");
-    }
-
-    #[test]
-    fn to_mcp_tool_name_is_idempotent_on_prefix() {
-        assert_eq!(to_mcp_tool_name("create_person"), "aida_create_person");
-        assert_eq!(to_mcp_tool_name("aida_create_person"), "aida_create_person");
     }
 
     /// A `metadata.skill` request for a named skill, with no confirmation

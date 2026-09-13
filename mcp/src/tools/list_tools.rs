@@ -1,21 +1,21 @@
-//! `aida_list_tools` MCP tool.
+//! `list_tools` MCP tool.
 //!
 //! A meta-tool: returns the name and description of every other tool
-//! AIDA advertises. MCP clients already learn this via the protocol's
+//! Navigator MCP advertises. MCP clients already learn this via the protocol's
 //! `tools/list` method, but A2A free-text callers and humans asking
 //! "what can you do?" benefit from a callable surface that returns the
 //! same information in one structured response. Sorted by name.
 
 use serde_json::{json, Value};
 
-use super::{list_tools, ToolError, REQUIRED_PREFIX};
+use super::{list_tools, ToolError};
 
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_list_tools",
-        "description": "List every other tool AIDA exposes, returning each tool's name and \
-                        description. Use this when the user asks what AIDA can do, what tools or \
+        "name": "list_tools",
+        "description": "List every other tool Navigator MCP exposes, returning each tool's name and \
+                        description. Use this when the user asks what Navigator MCP can do, what tools or \
                         skills are available, or which tool to reach for next. Takes no arguments.",
         "inputSchema": {
             "type": "object",
@@ -40,10 +40,8 @@ pub async fn call(_arguments: &Value) -> Result<Value, ToolError> {
     let tools: Vec<Value> = entries
         .iter()
         .map(|(name, description)| {
-            let short = name.strip_prefix(REQUIRED_PREFIX).unwrap_or(name);
             json!({
                 "name": name,
-                "short_name": short,
                 "description": description,
             })
         })
@@ -51,11 +49,7 @@ pub async fn call(_arguments: &Value) -> Result<Value, ToolError> {
 
     let listed = entries
         .iter()
-        .map(|(name, _)| {
-            name.strip_prefix(REQUIRED_PREFIX)
-                .unwrap_or(name)
-                .to_string()
-        })
+        .map(|(name, _)| name.clone())
         .collect::<Vec<_>>()
         .join(", ");
     let summary = format!("{} tools: {listed}.", entries.len());
@@ -72,13 +66,13 @@ pub async fn call(_arguments: &Value) -> Result<Value, ToolError> {
 #[cfg(test)]
 mod tests {
     use super::{call, descriptor};
-    use crate::tools::{list_tools, REQUIRED_PREFIX};
+    use crate::tools::list_tools;
     use serde_json::json;
 
     #[test]
     fn descriptor_names_the_tool_and_takes_no_arguments() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_list_tools");
+        assert_eq!(d["name"], "list_tools");
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         let props = d["inputSchema"]["properties"].as_object().unwrap();
         assert!(props.is_empty());
@@ -95,9 +89,9 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        assert!(names.contains(&"aida_list_tools"));
-        assert!(names.contains(&"aida_list_projects"));
-        assert!(names.contains(&"aida_list_entities"));
+        assert!(names.contains(&"list_tools"));
+        assert!(names.contains(&"list_projects"));
+        assert!(names.contains(&"list_entities"));
     }
 
     #[tokio::test]
@@ -115,20 +109,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn each_entry_carries_name_short_name_and_non_empty_description() {
+    async fn each_entry_carries_a_bare_name_and_non_empty_description() {
         let r = call(&json!({})).await.unwrap();
         for tool in r["structuredContent"]["tools"].as_array().unwrap() {
             let name = tool["name"].as_str().unwrap();
-            let short = tool["short_name"].as_str().unwrap();
             let description = tool["description"].as_str().unwrap();
-            assert!(name.starts_with(REQUIRED_PREFIX));
-            assert_eq!(short, name.strip_prefix(REQUIRED_PREFIX).unwrap());
+            assert!(
+                !name.starts_with("aida_"),
+                "`{name}` still carries the retired vendor prefix"
+            );
+            assert!(
+                tool.get("short_name").is_none(),
+                "`short_name` duplicated `name` once the prefix went away"
+            );
             assert!(!description.is_empty(), "{name} has an empty description");
         }
     }
 
     #[tokio::test]
-    async fn summary_uses_short_names_and_starts_with_count() {
+    async fn summary_lists_bare_names_and_starts_with_count() {
         let r = call(&json!({})).await.unwrap();
         let text = r["content"][0]["text"].as_str().unwrap();
         let count = list_tools().len();

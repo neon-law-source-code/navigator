@@ -157,7 +157,7 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   two paths, `client` and anonymous denied at each, plus the
     //   Clerk-reads-the-reference-not-the-directory pair) no longer describe
     //   anything this policy decides. Two replace them, mirroring the
-    //   `/app/api/aida.json` card below: an anonymous read must not be allowed
+    //   `/app/api/mcp.json` card below: an anonymous read must not be allowed
     //   by this policy either, which is the only half a Rego test can prove —
     //   `portal/tests/router_contract.rs` covers the routing half.
     // 391 − 13 + 2 = 380.

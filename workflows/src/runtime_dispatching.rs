@@ -88,13 +88,7 @@ impl DispatchingRuntime {
         next: &StateName,
         payload: Option<&str>,
     ) -> Result<(), WorkflowRuntimeError> {
-        // `issue_opener_from_env` yields the no-op `NullIssueOpener` when
-        // no token is configured, so wiring it here costs nothing for the
-        // flows that never reach a `github_issue__*` step — and without it
-        // every such step would fail `MissingIssueOpener` after the
-        // transition had already been persisted.
-        let mut deps = StepDeps::new(Arc::clone(&self.email), Arc::clone(&self.storage))
-            .with_issue_opener(crate::github::issue_opener_from_env());
+        let mut deps = StepDeps::new(Arc::clone(&self.email), Arc::clone(&self.storage));
         // The document steps need it: `assets` and `templates` moved to
         // SurrealDB with ENG-121, so `document_intake` files its row and
         // `generate_pdf` reads the pinned template's kind through this

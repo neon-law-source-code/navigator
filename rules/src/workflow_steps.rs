@@ -195,15 +195,6 @@ pub const WORKFLOW_STEPS: &[WorkflowStep] = &[
                   stays pending until a real chain backend is configured.",
     },
     WorkflowStep {
-        prefix: "github_issue",
-        status: StepStatus::Implemented,
-        summary: "Opens a GitHub issue from the rendered `kind: github` notation by calling the \
-                  GitHub REST API directly (reqwest, never the `gh` CLI), and journals the issue \
-                  number and URL. With no token configured the NullIssueOpener opens nothing and \
-                  reports that, so the workflow never claims an issue that does not exist. \
-                  Engineering intake, not a legal act — it does not sit behind lawyer_review.",
-    },
-    WorkflowStep {
         prefix: "_signature",
         status: StepStatus::Human,
         summary: "The respondent (or their witnesses) sign inside the portal; the signature is \

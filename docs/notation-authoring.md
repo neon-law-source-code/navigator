@@ -248,7 +248,6 @@ today:
 | `mailroom_send` | Implemented | Worker records a `filings` row in `ctx.run`; reached only after `lawyer_review`. |
 | `certified_mail`, `e_filing`, `filing__*` | Implemented | Worker submission steps; record `filings` post-review. |
 | `onchain__*` | Scaffolded | Node attestation → durable `attestations` row; `null` attestor keeps it `pending`. |
-| `github_issue__*` | Implemented | Opens a GitHub issue over the REST API (no `gh`); no token → opens nothing. |
 | `mailroom_receive` | State-only | Inbound mail logged by the SendGrid webhook, not a workflow step. |
 | `witnesses` | State-only | Respondent's witnesses sign (will); resolves to the Signature step kind. |
 
@@ -266,15 +265,6 @@ row stays `pending` and no live retainer can claim an on-chain record that does 
 wired into the binding `onboarding__letter` workflow; that one-line YAML edge lands together with `SolanaAttestor`
 (whose open questions — firm key custody, the client wallet, public-chain confidentiality of the hash, and finality —
 are decisions, not code). See `workflows::attest`.
-
-`github_issue__*` is the one step in the registry that is not a legal act. It belongs to the engineering intake shelf
-(`templates/github/`), so it is the only worker step that does not sit behind `lawyer_review` — nothing it does binds a
-client. GitHub is isolated behind the `workflows::github::IssueOpener` trait the same way the chain is isolated behind
-`Attestor`: `RestIssueOpener` calls `POST /repos/{owner}/{repo}/issues` directly with `reqwest`, and the runtime shells
-out to the `gh` CLI nowhere — an unpinned external binary has no place inside a durable step. Configure it with
-`NAVIGATOR_GITHUB_TOKEN` (or `GITHUB_TOKEN`) plus `NAVIGATOR_GITHUB_REPO`; with no token the default `NullIssueOpener`
-opens nothing and says so, so a KIND run or a test never reaches github.com. The opened issue's number and URL are
-journaled on the transition; a skipped open journals nothing rather than an issue that does not exist.
 
 The registry is deliberately small. Template authors should compose these prefixes with discriminators
 (`generate_pdf__articles_pdf`, `mailroom_send__notice_of_representation`) rather than creating per-matter verbs. If a

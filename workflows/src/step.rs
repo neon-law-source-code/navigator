@@ -103,18 +103,6 @@ pub enum StepKind {
     /// records no transaction, leaving the row `pending`. System-driven
     /// (no human in the loop), like `generate_pdf`.
     OnChainRecord,
-    /// `github_issue__*` — the worker opens a GitHub issue from the
-    /// rendered `kind: github` notation, calling the GitHub REST API
-    /// directly with `reqwest`. GitHub is isolated behind the
-    /// `workflows::github::IssueOpener` trait; the default
-    /// `NullIssueOpener` (no token configured) opens nothing and reports
-    /// that it did, so a workflow can never claim an issue that does not
-    /// exist. System-driven, like `generate_pdf`.
-    ///
-    /// This is the one step that is *not* a legal act — it belongs to the
-    /// engineering intake shelf (`templates/github/`), which is why it
-    /// never sits behind `lawyer_review`.
-    GithubIssue,
 }
 
 impl StepKind {
@@ -126,8 +114,7 @@ impl StepKind {
             | Self::GeneratePdf
             | Self::DocumentIntake
             | Self::EmailSend
-            | Self::OnChainRecord
-            | Self::GithubIssue => ActorClass::System,
+            | Self::OnChainRecord => ActorClass::System,
             Self::LawyerReview
             | Self::FirmSignature
             | Self::MailroomSend
@@ -206,9 +193,6 @@ pub const STEP_PREFIXES: &[(&str, StepKind)] = &[
     ("e_filing", StepKind::EFiling),
     ("filing", StepKind::Filing),
     ("onchain", StepKind::OnChainRecord),
-    // Engineering intake (`templates/github/`), not a legal act: the
-    // worker opens a GitHub issue from the rendered notation.
-    ("github_issue", StepKind::GithubIssue),
     ("witnesses", StepKind::Signature),
     // Documentation token for the `_signature` / `_signatures` suffix
     // family handled by the fall-through below.

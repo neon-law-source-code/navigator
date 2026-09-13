@@ -285,9 +285,10 @@ fn glossary_index_offers_no_path_to_point_somewhere_else() {
 
 /// `docs` becomes a `dev` member once `erd` moves to `db`: what is left are
 /// the developer/agent reference helpers, needing no cluster and no database.
-/// The two glossary sync helpers qualify on the same terms — one reads
-/// `docs/glossary.md` and rewrites its own derived index, the other prints the
-/// page a Notion push sends. Neither reaches an engine.
+/// The three glossary helpers qualify on the same terms — two rewrite
+/// `docs/glossary.md`'s own derived blocks (its index and its per-term schema
+/// boxes), the third prints the page a Notion push sends. None reaches an
+/// engine: the schema boxes come from the embedded `navigator.surql`.
 #[test]
 fn dev_docs_keeps_only_the_reference_helpers() {
     assert_eq!(
@@ -296,6 +297,7 @@ fn dev_docs_keeps_only_the_reference_helpers() {
             "glossary",
             "glossary-index",
             "glossary-notion",
+            "glossary-tables",
             "list",
             "help"
         ]

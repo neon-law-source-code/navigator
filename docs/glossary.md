@@ -117,6 +117,32 @@ matter-detail listing and "download all documents" archive; every ingest call si
   [`store::documents::ingest_bytes`](../store/src/documents.rs) (document assets),
   [`store::assets::ingest_content`](../store/src/assets.rs) (bare content).
 
+```text
+┌─ asset ────────────────────────────────────────┐
+│ id                     record                  │
+│ byte_size              int                     │
+│ content_type           string                  │
+│ description            option<string>          │
+│ filename               option<string>          │
+│ inserted_at            datetime                │
+│ kind                   option<string>          │
+│ metadata               any                     │
+│ project_id             option<record<project>> │
+│ published_at           option<string>          │
+│ received_at            option<string>          │
+│ secondary_storage_key  option<string>          │
+│ sha256_hex             string                  │
+│ slug                   option<string>          │
+│ source                 option<string>          │
+│ source_received_at     option<string>          │
+│ source_sender          option<string>          │
+│ source_subject         option<string>          │
+│ storage_key            string                  │
+│ updated_at             datetime                │
+│ visibility             string                  │
+└────────────────────────────────────────────────┘
+```
+
 ## Authority
 
 One case, statute, regulation, administrative proceeding, or secondary source, as **global reference data**. An
@@ -141,6 +167,23 @@ instead is the failure mode: it drifts from the record and cannot be re-verified
 - Vocabulary: [`rules::citation`](../rules/src/citation.rs) · Schema:
   [`authority` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::authorities`](../store/src/authorities.rs) Lives in: the `authority` table in SurrealDB
+
+```text
+┌─ authority ──────────────────────────────┐
+│ id                 record                │
+│ archived_asset_id  option<record<asset>> │
+│ canonical_url      option<string>        │
+│ checked_on         option<string>        │
+│ citation           string                │
+│ class              string                │
+│ inserted_at        datetime              │
+│ issued_on          option<string>        │
+│ publisher          option<string>        │
+│ short_cite         option<string>        │
+│ title              string                │
+│ updated_at         datetime              │
+└──────────────────────────────────────────┘
+```
 
 ## Brand
 
@@ -202,6 +245,23 @@ names *the serving binary's own composition*, and `SiteBrand` names *what the pa
 those three: it is the owning practice beneath the brand registry.
 
 - Deployment map: [`environments`](environments.md#why-the-brand-is-the-image)
+
+```text
+┌─ brand ─────────────────────────────────┐
+│ id                 record               │
+│ accent_color       option<string>       │
+│ brand_key          string               │
+│ firm_id            option<record<firm>> │
+│ font_licence       option<string>       │
+│ font_object_key    option<string>       │
+│ inserted_at        string               │
+│ is_law_firm        bool                 │
+│ legal_entity       option<string>       │
+│ logo_content_type  option<string>       │
+│ name               string               │
+│ updated_at         string               │
+└─────────────────────────────────────────┘
+```
 
 ## Brand Seed
 
@@ -336,6 +396,17 @@ pair `(person, jurisdiction)` is unique so the same attorney can't be double-lis
 - Schema and queries: [`store::credentials`](../store/src/credentials.rs) (SurrealDB; #1093, ENG-19, ENG-20) —
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 
+```text
+┌─ credential ──────────────────────────┐
+│ id               record               │
+│ inserted_at      datetime             │
+│ jurisdiction_id  record<jurisdiction> │
+│ license_number   string               │
+│ person_id        record<person>       │
+│ updated_at       datetime             │
+└───────────────────────────────────────┘
+```
+
 ## `ctx.run`
 
 The journaled **side-effect primitive**. Wraps any non-deterministic operation — a store write, an outbound HTTP call,
@@ -414,6 +485,21 @@ the client is never warned about that date.
 updates its row instead of duplicating it. A hand-entered deadline leaves the key unset, so two genuinely different
 pleadings sharing a kind and a trigger date stay two rows — an idempotency key, not a natural key that silently merges
 malpractice-relevant records.
+
+```text
+┌─ statutory_deadline ─────────┐
+│ id           record          │
+│ due_on       string          │
+│ inserted_at  string          │
+│ kind         string          │
+│ project_id   record<project> │
+│ source       string          │
+│ status       string          │
+│ statute      string          │
+│ trigger_on   string          │
+│ updated_at   string          │
+└──────────────────────────────┘
+```
 
 ## Deployment Environment
 
@@ -525,6 +611,17 @@ finding when a new matter reaches that entity.
 - Commands: [`store::disclosures`](../store/src/disclosures.rs) · Schema:
   [`disclosure`](../store/src/schema/navigator.surql)
 
+```text
+┌─ disclosure ─────────────────────────┐
+│ id           record                  │
+│ entity_id    option<record<entity>>  │
+│ inserted_at  datetime                │
+│ project_id   option<record<project>> │
+│ summary      string                  │
+│ updated_at   datetime                │
+└──────────────────────────────────────┘
+```
+
 ## Docket Entry
 
 One typed, numbered entry on a litigation case's docket — the court's own record of what was filed or served. The
@@ -551,6 +648,24 @@ Deadlines module answers what is due.
 
 - Commands: [`store::cases`](../store/src/cases.rs) · Schema:
   [`case_docket_entry`](../store/src/schema/navigator.surql)
+
+```text
+┌─ case_docket_entry ───────────────────────────────────┐
+│ id                  record                            │
+│ case_id             record<case>                      │
+│ document_asset_id   option<record<asset>>             │
+│ entry_number        string                            │
+│ filed_or_served_on  option<string>                    │
+│ inserted_at         datetime                          │
+│ kind                string                            │
+│ notation_id         option<record<notation>>          │
+│ party               option<string>                    │
+│ scheduled_on        option<datetime>                  │
+│ supersedes          option<record<case_docket_entry>> │
+│ title               string                            │
+│ updated_at          datetime                          │
+└───────────────────────────────────────────────────────┘
+```
 
 ## Document
 
@@ -669,6 +784,20 @@ A legal organization — an LLC, trust, corporation, foundation, etc. Has a name
   `entity_firm_anchor` index is the backstop behind it — it refuses a fork that is not a race, but racers write no
   shared key for the engine to conflict on, so the claim is what serializes them (ENG-272).
 
+```text
+┌─ entity ──────────────────────────────┐
+│ id               record               │
+│ entity_type_id   record<entity_type>  │
+│ firm_anchor_key  option<string>       │
+│ inserted_at      datetime             │
+│ jurisdiction_id  record<jurisdiction> │
+│ name             string               │
+│ phone            option<string>       │
+│ updated_at       datetime             │
+│ url              option<string>       │
+└───────────────────────────────────────┘
+```
+
 ## Entity Type
 
 The kind of legal Entity (`LLC`, `Trust`, `Corporation`, `Foundation`, …). Reference data, seeded from
@@ -676,6 +805,15 @@ The kind of legal Entity (`LLC`, `Trust`, `Corporation`, `Foundation`, …). Ref
 
 - Schema and queries: [`store::entity_types`](../store/src/entity_types.rs) (SurrealDB; #1093, ENG-20) —
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
+
+```text
+┌─ entity_type ─────────┐
+│ id           record   │
+│ inserted_at  datetime │
+│ name         string   │
+│ updated_at   datetime │
+└───────────────────────┘
+```
 
 ## External System Identity
 
@@ -701,6 +839,18 @@ wrong data, not a security incident.
 - Inertness guard: `cli/tests/external_identity_is_inert.rs`
 - Access model: [`access-model`](access-model.md#what-an-external-system-identity-is-not)
 
+```text
+┌─ person_external_identity ──┐
+│ id           record         │
+│ external_id  string         │
+│ handle       option<string> │
+│ inserted_at  datetime       │
+│ person_id    record<person> │
+│ system       string         │
+│ updated_at   datetime       │
+└─────────────────────────────┘
+```
+
 ## Extract
 
 The workflow prefix `extract` is a system wait state for structured-data extraction from a previously ingested artifact.
@@ -712,6 +862,20 @@ See [`notation-authoring`](notation-authoring.md#changing-the-workflow-compositi
 The workflow prefix `filing` records a named government filing. It is an outbound submission step and must sit behind
 [Lawyer Review](#lawyer-review). See the [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition)
 guide and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
+
+```text
+┌─ filing ───────────────────────┐
+│ id            record           │
+│ inserted_at   datetime         │
+│ kind          string           │
+│ notation_id   record<notation> │
+│ office        string           │
+│ reference     option<string>   │
+│ submitted_at  string           │
+│ summary       string           │
+│ updated_at    datetime         │
+└────────────────────────────────┘
+```
 
 ## Firm
 
@@ -756,6 +920,17 @@ cents beside paid cents) in inline server-rendered SVG, following the no-chartin
 - Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
 
+```text
+┌─ firm ──────────────────────────────┐
+│ id           record                 │
+│ entity_id    option<record<entity>> │
+│ inserted_at  string                 │
+│ name         string                 │
+│ status       string                 │
+│ updated_at   string                 │
+└─────────────────────────────────────┘
+```
+
 ## Firm Brand
 
 Which house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key`, and
@@ -776,21 +951,20 @@ duplicating the lookup or rendering a second Firm's brands.
 - Schema: [`firm_brand` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
 
+```text
+┌─ firm_brand ──────────────┐
+│ id           record       │
+│ firm_id      record<firm> │
+│ inserted_at  string       │
+│ updated_at   string       │
+└───────────────────────────┘
+```
+
 ## Firm Signature
 
 The workflow prefix `firm_signature` records a lawyer-side signature, usually the firm's countersignature or closing
 signature. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
-
-## GitHub Issue
-
-The workflow prefix `github_issue` opens a GitHub issue from a rendered `kind: github` notation — the engineering intake
-shelf at `templates/github/`, not legal work, and therefore the one worker step that never sits behind [Lawyer
-Review](#lawyer-review). GitHub is isolated behind the `workflows::github::IssueOpener` trait: the real
-`RestIssueOpener` calls the REST API with `reqwest` and the runtime never shells out to the `gh` CLI, while the default
-`NullIssueOpener` (no token configured) opens nothing and reports that, so a workflow can never claim an issue that does
-not exist. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition),
-[`workflows::github`](../workflows/src/github.rs), and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Harvard Outline
 
@@ -856,6 +1030,17 @@ A US state, federal jurisdiction, or foreign jurisdiction that an Entity can be 
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql) Seed:
   [`store/seeds/Jurisdiction.yaml`](../store/seeds/Jurisdiction.yaml)
 
+```text
+┌─ jurisdiction ──────────────┐
+│ id                 record   │
+│ code               string   │
+│ inserted_at        datetime │
+│ jurisdiction_type  string   │
+│ name               string   │
+│ updated_at         datetime │
+└─────────────────────────────┘
+```
+
 ## Lawyer Review
 
 The workflow prefix `lawyer_review` is the mandatory human attorney/lawyer gate before a document is sent for binding
@@ -873,6 +1058,19 @@ One physical piece of mail, incoming or outgoing, scoped to a Mailroom.
 - Schema and queries: [`store::letters`](../store/src/letters.rs) (SurrealDB; #1093, ENG-20) —
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 
+```text
+┌─ letter ──────────────────────┐
+│ id           record           │
+│ direction    string           │
+│ inserted_at  datetime         │
+│ mailroom_id  record<mailroom> │
+│ recipient    string           │
+│ sender       string           │
+│ summary      string           │
+│ updated_at   datetime         │
+└───────────────────────────────┘
+```
+
 ## Live Inquiry Session
 
 One Project-scoped, transcript-bearing event — for example an estate sitting, deposition, witness interview, or client
@@ -888,6 +1086,16 @@ A physical mail-receiving destination — an Address with a name. Letters land h
 
 - Schema and queries: [`store::mailrooms`](../store/src/mailrooms.rs) (SurrealDB; #1093, ENG-20) —
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
+
+```text
+┌─ mailroom ───────────────────┐
+│ id           record          │
+│ address_id   record<address> │
+│ inserted_at  datetime        │
+│ name         string          │
+│ updated_at   datetime        │
+└──────────────────────────────┘
+```
 
 ## Mailroom Receive
 
@@ -975,6 +1183,20 @@ The workflow prefix `notarization` records a respondent signing or refusing in f
 [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
+```text
+┌─ notarization ───────────────────────────┐
+│ id                record                 │
+│ asset_id          option<record<asset>>  │
+│ inserted_at       datetime               │
+│ notarized_at      option<string>         │
+│ notary_person_id  option<record<person>> │
+│ notation_id       record<notation>       │
+│ provider          string                 │
+│ provider_id       string                 │
+│ updated_at        datetime               │
+└──────────────────────────────────────────┘
+```
+
 ## Notation Event
 
 One immutable journal row for a [Notation](notation.md#notation)'s state machine. Each row records the fact that a given
@@ -987,6 +1209,23 @@ layers stay in sync because the worker writes them through `ctx.run`.
 
 - Schema: [`notation_event` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::notation_events`](../store/src/notation_events.rs) Lives in: the `notation_event` table in SurrealDB
+
+```text
+┌─ notation_event ──────────────────────┐
+│ id                   record           │
+│ acting_person_id     record<person>   │
+│ condition            string           │
+│ from_state           string           │
+│ inserted_at          datetime         │
+│ machine_kind         string           │
+│ notation_id          record<notation> │
+│ payload              option<string>   │
+│ recorded_at          string           │
+│ template_version_id  record<template> │
+│ to_state             string           │
+│ updated_at           datetime         │
+└───────────────────────────────────────┘
+```
 
 ## Offboarding
 
@@ -1054,6 +1293,29 @@ deleted, so a mailbox is reusable rather than locked out.
 - Schema: [`person` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::persons`](../store/src/persons.rs)
 
+```text
+┌─ person ──────────────────────────┐
+│ id                 record         │
+│ email              string         │
+│ email_confirmed    bool           │
+│ email_lower        string         │
+│ family_name        option<string> │
+│ given_name         option<string> │
+│ inserted_at        datetime       │
+│ is_admitted        bool           │
+│ linkedin_url       option<string> │
+│ middle_name        option<string> │
+│ name               string         │
+│ oidc_subject       option<string> │
+│ phone              option<string> │
+│ profile_image_url  option<string> │
+│ role               string         │
+│ title              option<string> │
+│ updated_at         datetime       │
+│ xero_contact_id    option<string> │
+└───────────────────────────────────┘
+```
+
 ## Person–Entity Role
 
 A Person's role within an Entity (e.g. `manager`, `member`, `beneficiary`, `trustee`). These are the structural ties the
@@ -1065,6 +1327,15 @@ There is no surrogate key: a tie's identity is its two endpoints plus its `role`
 
 - Schema and queries: [`store::entity_roles`](../store/src/entity_roles.rs) (SurrealDB; ENG-120) — Lives in the
   `entity_role` relation
+
+```text
+┌─ entity_role ─────────┐
+│ id           record   │
+│ inserted_at  datetime │
+│ role         string   │
+│ updated_at   datetime │
+└───────────────────────┘
+```
 
 ## Person–Firm Role
 
@@ -1136,6 +1407,18 @@ Values are stored folded — trimmed, lowercased, separators as single underscor
 
 - Schema: [`store::projects`](../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
+
+```text
+┌─ person_project_role ──────────┐
+│ id             record          │
+│ inserted_at    string          │
+│ is_client_dri  bool            │
+│ is_lawyer_dri  bool            │
+│ person_id      record<person>  │
+│ project_id     record<project> │
+│ updated_at     string          │
+└────────────────────────────────┘
+```
 
 ## Presentation
 
@@ -1262,6 +1545,25 @@ access, never source-forge access. `store::project_surfaces` creates or adopts t
 - Schema and commands: [`store::projects`](../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 
+```text
+┌─ project ──────────────────────────────────┐
+│ id                          record         │
+│ closed_at                   option<string> │
+│ description                 option<string> │
+│ drive_folder_id             option<string> │
+│ entity_id                   record<entity> │
+│ external_slack_channel_url  option<string> │
+│ forge_provisioned_at        option<string> │
+│ git_initialized_at          option<string> │
+│ inserted_at                 string         │
+│ internal_slack_channel_url  option<string> │
+│ name                        string         │
+│ shared_notion_page_url      option<string> │
+│ status                      string         │
+│ updated_at                  string         │
+└────────────────────────────────────────────┘
+```
+
 ## Question Type
 
 The `<type>` half of a questionnaire [State](#state) name (`<type>__<role>`) — a closed set defined by
@@ -1317,6 +1619,19 @@ Both endpoints are native `record<person|entity>` links, so an endpoint-kind typ
 - Schema and queries: [`store::relationships`](../store/src/relationships.rs) (SurrealDB; ENG-120) — Lives in the
   `relationship` relation
 
+```text
+┌─ relationship ──────────────────────────────────────────────┐
+│ id              record                                      │
+│ confidence_pct  int                                         │
+│ detail          option<string>                              │
+│ inserted_at     datetime                                    │
+│ kind            string                                      │
+│ source_id       option<record<relationship_log|disclosure>> │
+│ source_kind     string                                      │
+│ updated_at      datetime                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## Relationship Log
 
 Append-only audit trail of relationship changes — entries like `person joined entity` or `project closed`. The source of
@@ -1334,6 +1649,19 @@ transaction spanning it.
 - Schema and queries: [`store::relationship_logs`](../store/src/relationship_logs.rs) (SurrealDB; ENG-120) — Lives in:
   `relationship_log` table
 
+```text
+┌─ relationship_log ──────────────────────┐
+│ id               record                 │
+│ action           string                 │
+│ actor_person_id  option<record<person>> │
+│ detail           string                 │
+│ inserted_at      datetime               │
+│ subject_id       uuid                   │
+│ subject_type     string                 │
+│ updated_at       datetime               │
+└─────────────────────────────────────────┘
+```
+
 ## Repository
 
 A provenance record for an external git repository that notation content came from. The `git_repositories` row holds a
@@ -1347,6 +1675,16 @@ repository, and it is unrelated to Projects (see [Project](#project)), which hav
 
 - Schema and queries: [`store::git_repositories`](../store/src/git_repositories.rs) (SurrealDB; #1093, ENG-20) —
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
+
+```text
+┌─ git_repository ──────────┐
+│ id               record   │
+│ inserted_at      datetime │
+│ last_commit_sha  string   │
+│ remote_hash      string   │
+│ updated_at       datetime │
+└───────────────────────────┘
+```
 
 ## Resource
 
@@ -1497,6 +1835,21 @@ The workflow suffix family `_signature` / `_signatures`, plus the `witnesses` pr
 See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
+```text
+┌─ signature ──────────────────────────────┐
+│ id                record                 │
+│ field             option<string>         │
+│ inserted_at       datetime               │
+│ notation_id       record<notation>       │
+│ provider          string                 │
+│ provider_id       string                 │
+│ signed_at         option<string>         │
+│ signer_person_id  option<record<person>> │
+│ state             string                 │
+│ updated_at        datetime               │
+└──────────────────────────────────────────┘
+```
+
 ## Signature Block
 
 A `{{ signer.field }}` placeholder in a Template body that becomes an e-signature field on the rendered document. The
@@ -1593,6 +1946,24 @@ A Template is versioned by append rather than by edit: `templates.is_current` ma
 a row. Every Notation pins the exact `templates` row it was created from, which is what keeps approved text from
 silently re-rendering out of a later revision.
 
+```text
+┌─ template ─────────────────────────────────┐
+│ id                 record                  │
+│ asset_id           option<record<asset>>   │
+│ code               string                  │
+│ current_key        option<string>          │
+│ form_code          option<string>          │
+│ inserted_at        datetime                │
+│ is_current         bool                    │
+│ kind               option<string>          │
+│ project_id         option<record<project>> │
+│ respondent_type    string                  │
+│ source_commit_sha  option<string>          │
+│ title              string                  │
+│ updated_at         datetime                │
+└────────────────────────────────────────────┘
+```
+
 ## Transcript Segment
 
 One append-only chunk of text captured during a [Live Inquiry Session](#live-inquiry-session). A segment may carry a
@@ -1638,6 +2009,20 @@ axis, the outcome, the verifier, the revision SHA, and a duration. No quote, no 
 - Vocabulary: [`rules::citation`](../rules/src/citation.rs) · Schema:
   [`verification` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::verifications`](../store/src/verifications.rs) Lives in: the `verification` table in SurrealDB
+
+```text
+┌─ verification ───────────────────────┐
+│ id                  record           │
+│ citation_id         record<citation> │
+│ inserted_at         datetime         │
+│ revision_sha        string           │
+│ status_citation     string           │
+│ status_proposition  string           │
+│ status_quote        string           │
+│ updated_at          datetime         │
+│ verifier_person_id  record<person>   │
+└──────────────────────────────────────┘
+```
 
 ## Witnesses
 

@@ -6,11 +6,22 @@
 
 use workflows::step::STEP_PREFIXES;
 
+/// Prefixes deliberately carrying no glossary term.
+///
+/// `github_issue` drives the engineering intake shelf at `templates/github/`,
+/// not legal work, and its vocabulary was cut from the glossary; the prose that
+/// describes it now lives only beside the code, in
+/// [`workflows::github`](../src/github.rs).
+const UNGLOSSED: &[&str] = &["github_issue"];
+
 const GLOSSARY: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md"));
 
 #[test]
 fn every_workflow_prefix_has_a_linked_glossary_entry() {
     for (prefix, _) in STEP_PREFIXES {
+        if UNGLOSSED.contains(prefix) {
+            continue;
+        }
         let heading = glossary_heading_for_prefix(prefix);
         let section = glossary_section(heading)
             .unwrap_or_else(|| panic!("missing glossary heading `## {heading}` for `{prefix}`"));
@@ -43,7 +54,6 @@ fn glossary_heading_for_prefix(prefix: &str) -> &'static str {
         "document_drafts" => "Document Drafts",
         "document_intake" => "Document Intake",
         "generate_pdf" => "Document Open",
-        "github_issue" => "GitHub Issue",
         "e_filing" => "E-Filing",
         "email_send" => "Email Send",
         "extract" => "Extract",

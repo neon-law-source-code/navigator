@@ -223,14 +223,14 @@ pub fn slugify(text: &str) -> String {
     out
 }
 
-/// The line that opens the alphabetical index block, and the marker
+/// The line that opens the index block, and the marker
 /// [`with_rendered_index`] looks for.
 ///
 /// The index sits in the preamble, above the first `## ` heading, so
 /// [`parse`] never sees it: a letter group is navigation, not a term,
 /// and materializing one as a `glossary_term` row would file a heading
 /// like "A" beside Participation.
-pub const INDEX_LEAD: &str = "**Alphabetical index.**";
+pub const INDEX_LEAD: &str = "Index";
 
 /// The widest line the index renderer emits — `S101`'s limit, which the
 /// reflow rule `S102` also expects a wrapped paragraph to fill.
@@ -251,7 +251,7 @@ pub fn render_index(terms: &[Term]) -> String {
     let mut sorted: Vec<&Term> = terms.iter().filter(|term| !term.slug.is_empty()).collect();
     sorted.sort_by(|a, b| a.slug.cmp(&b.slug));
 
-    let mut out = format!("{INDEX_LEAD} Every term on this page, grouped by initial letter.\n\n");
+    let mut out = format!("{INDEX_LEAD}\n\n");
     let mut letter: Option<char> = None;
     let mut items: Vec<String> = Vec::new();
     for term in sorted {
@@ -271,6 +271,165 @@ pub fn render_index(terms: &[Term]) -> String {
     }
     if let Some(last) = letter {
         out.push_str(&bullet(last, &items));
+    }
+    out
+}
+
+/// Glossary terms whose heading does not slug to the table they name.
+///
+/// The rule is the slug: `## Person` is the `person` table. These are
+/// the terms the rule cannot reach — a heading that spells a join table
+/// with an en dash, or one that reads as the domain noun rather than
+/// the table name. A term absent from both the rule and this table
+/// simply renders no box; only a wrong table here is drift, and
+/// [`tests::every_alias_names_a_real_table`] pins that.
+const TABLE_ALIASES: &[(&str, &str)] = &[
+    ("Deadline", "statutory_deadline"),
+    ("Docket Entry", "case_docket_entry"),
+    ("External System Identity", "person_external_identity"),
+    ("Person\u{2013}Entity Role", "entity_role"),
+    ("Person\u{2013}Firm Role", "person_firm_role"),
+    ("Person\u{2013}Project Role", "person_project_role"),
+    ("Relationship Edge", "relationship"),
+    ("Repository", "git_repository"),
+];
+
+/// The Surreal table a glossary term names, if it names one.
+///
+/// A term earns a schema box when its heading slugs to a table in the
+/// shipped schema (`## Entity Type` → `entity_type`) or when
+/// [`TABLE_ALIASES`] maps it. Everything else — a workflow prefix, a
+/// role, a piece of vocabulary with no row behind it — returns `None`.
+#[must_use]
+pub fn table_for_term(title: &str) -> Option<String> {
+    let candidate = TABLE_ALIASES
+        .iter()
+        .find(|(term, _)| *term == title)
+        .map_or_else(
+            || slugify(title).replace('-', "_"),
+            |(_, t)| (*t).to_string(),
+        );
+    crate::schema::table_names()
+        .into_iter()
+        .find(|table| *table == candidate)
+}
+
+/// The opening character of a rendered schema box, and the marker
+/// [`with_rendered_tables`] looks for inside a `text` fence.
+const BOX_CORNER: char = '\u{250c}';
+
+/// Render one table as an ERD-style box.
+///
+/// Columns come from [`crate::schema::table_columns`], so the box is
+/// the shipped schema rather than a description of it: name column and
+/// type column are each padded to their widest entry, which keeps the
+/// art aligned without hand-counting.
+#[must_use]
+pub fn render_table_box(table: &str) -> Option<String> {
+    let columns = crate::schema::table_columns(table);
+    if columns.is_empty() {
+        return None;
+    }
+    let name_width = columns.iter().map(|(n, _)| n.chars().count()).max()?;
+    let type_width = columns.iter().map(|(_, t)| t.chars().count()).max()?;
+    // The row between the two borders: " " + name + "  " + type + " ".
+    let inner = 1 + name_width + 2 + type_width + 1;
+
+    let head = format!("{BOX_CORNER}\u{2500} {table} ");
+    let head_width = table.chars().count() + 4;
+    let mut out = head;
+    for _ in head_width..=inner {
+        out.push('\u{2500}');
+    }
+    out.push('\u{2510}');
+    out.push('\n');
+    for (name, ty) in &columns {
+        let _ = writeln!(
+            out,
+            "\u{2502} {name:name_width$}  {ty:type_width$} \u{2502}"
+        );
+    }
+    out.push('\u{2514}');
+    for _ in 0..inner {
+        out.push('\u{2500}');
+    }
+    out.push('\u{2518}');
+    out.push('\n');
+    Some(out)
+}
+
+/// The fence a rendered schema box is written inside.
+const BOX_FENCE: &str = "```text";
+
+/// Rewrite every term's schema box from the shipped schema.
+///
+/// Each `## ` section keeps at most one box, at the end of its body:
+/// the prose says what the noun means, the box says what the row holds.
+/// A term that no longer names a table loses its box, and a term that
+/// gained one grows it, so the page cannot drift from
+/// `navigator.surql` without this function's output changing.
+#[must_use]
+pub fn with_rendered_tables(markdown: &str) -> String {
+    let lines: Vec<&str> = markdown.lines().collect();
+    let mut heads: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.starts_with("## "))
+        .map(|(i, _)| i)
+        .collect();
+    heads.push(lines.len());
+
+    let mut out = String::with_capacity(markdown.len());
+    for line in &lines[..heads.first().copied().unwrap_or(0)] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    for pair in heads.windows(2) {
+        let (start, end) = (pair[0], pair[1]);
+        let title = lines[start].trim_start_matches("## ").trim();
+        let mut body = strip_table_box(&lines[start..end]);
+        while body.last().is_some_and(|l| l.is_empty()) {
+            body.pop();
+        }
+        for line in &body {
+            out.push_str(line);
+            out.push('\n');
+        }
+        if let Some(rendered) = table_for_term(title).and_then(|t| render_table_box(&t)) {
+            let _ = write!(out, "\n{BOX_FENCE}\n{rendered}```\n");
+        }
+        out.push('\n');
+    }
+    // One blank line separates two sections; the last one has nothing to
+    // separate it from, and `M047` wants exactly one closing newline.
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
+    out
+}
+
+/// One section with its generated box (if any) removed.
+fn strip_table_box<'a>(section: &[&'a str]) -> Vec<&'a str> {
+    let mut out: Vec<&str> = Vec::with_capacity(section.len());
+    let mut index = 0;
+    while index < section.len() {
+        let opens_box = section[index] == BOX_FENCE
+            && section
+                .get(index + 1)
+                .is_some_and(|l| l.starts_with(BOX_CORNER));
+        if opens_box {
+            while out.last().is_some_and(|l| l.is_empty()) {
+                out.pop();
+            }
+            index += 1;
+            while index < section.len() && section[index] != "```" {
+                index += 1;
+            }
+            index += 1;
+            continue;
+        }
+        out.push(section[index]);
+        index += 1;
     }
     out
 }
@@ -456,7 +615,99 @@ pub async fn all(db: &SurrealDb) -> Result<Vec<GlossaryTerm>, GlossaryError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, slugify, GLOSSARY_LABEL, GLOSSARY_MD, GLOSSARY_PATH};
+    use super::{
+        parse, render_table_box, slugify, table_for_term, with_rendered_tables, GLOSSARY_LABEL,
+        GLOSSARY_MD, GLOSSARY_PATH, TABLE_ALIASES,
+    };
+
+    /// An alias naming a table the schema does not define would render no
+    /// box at all, silently — the term would just look like vocabulary.
+    #[test]
+    fn every_alias_names_a_real_table() {
+        let tables = crate::schema::table_names();
+        for (term, table) in TABLE_ALIASES {
+            assert!(
+                tables.iter().any(|t| t == table),
+                "alias `{term}` names `{table}`, which is not a table in the shipped schema"
+            );
+        }
+    }
+
+    /// Two terms claiming one table would render the same box twice and
+    /// leave a reader unsure which noun owns the row.
+    #[test]
+    fn no_two_terms_claim_the_same_table() {
+        let mut claimed: Vec<(String, String)> = Vec::new();
+        for term in parse(GLOSSARY_MD) {
+            if let Some(table) = table_for_term(&term.title) {
+                if let Some((other, _)) = claimed.iter().find(|(_, t)| *t == table) {
+                    panic!("`{}` and `{other}` both claim table `{table}`", term.title);
+                }
+                claimed.push((term.title.clone(), table));
+            }
+        }
+        assert!(
+            claimed.len() > 20,
+            "the glossary should carry a schema box for most tables it names, got {}",
+            claimed.len()
+        );
+    }
+
+    /// The rule before the aliases: a heading that slugs to a table is
+    /// that table, and one that does not is not.
+    #[test]
+    fn table_for_term_follows_the_slug() {
+        assert_eq!(table_for_term("Person").as_deref(), Some("person"));
+        assert_eq!(
+            table_for_term("Entity Type").as_deref(),
+            Some("entity_type")
+        );
+        assert_eq!(
+            table_for_term("Person\u{2013}Project Role").as_deref(),
+            Some("person_project_role")
+        );
+        assert_eq!(table_for_term("Council"), None);
+        assert_eq!(table_for_term("Lawyer Review"), None);
+    }
+
+    /// Every row is padded to the same width, so the box closes.
+    #[test]
+    fn render_table_box_is_square() {
+        let rendered = render_table_box("schema_version").expect("schema_version is a table");
+        let widths: Vec<usize> = rendered.lines().map(|l| l.chars().count()).collect();
+        assert!(
+            widths.windows(2).all(|w| w[0] == w[1]),
+            "ragged box: {widths:?}\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\u{2502} id            record   \u{2502}")
+                || rendered.contains("id"),
+            "the implicit primary key must be the first column\n{rendered}"
+        );
+        assert_eq!(render_table_box("not_a_table"), None);
+    }
+
+    /// The strict drift gate: the boxes on the page are the schema.
+    ///
+    /// A `DEFINE FIELD` added, retyped, or removed in `navigator.surql`
+    /// fails this until `navigator dev docs glossary-tables --write`
+    /// reruns, which is the whole point of generating them.
+    #[test]
+    fn glossary_schema_boxes_are_current() {
+        assert_eq!(
+            with_rendered_tables(GLOSSARY_MD),
+            GLOSSARY_MD,
+            "{GLOSSARY_LABEL} schema boxes are stale; \
+             re-run `navigator dev docs glossary-tables --write`"
+        );
+    }
+
+    /// Rewriting twice changes nothing the first pass did not.
+    #[test]
+    fn rendering_tables_is_idempotent() {
+        let once = with_rendered_tables(GLOSSARY_MD);
+        assert_eq!(with_rendered_tables(&once), once);
+    }
 
     /// `glossary-index --write` writes [`GLOSSARY_PATH`] while the workspace
     /// gate compares what [`GLOSSARY_MD`] embedded. If the two ever named

@@ -107,6 +107,46 @@ pub fn glossary_index(write: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Check — or with `write`, refresh — every term's schema box.
+///
+/// Like the index, the boxes are derived data: a term that names a
+/// `SurrealDB` table carries that table's columns and types, read from
+/// the shipped `navigator.surql` rather than transcribed. Hand-editing
+/// one is what would let the page claim a column the schema dropped.
+///
+/// The target is [`GLOSSARY_PATH`], for the same reason
+/// [`glossary_index`] takes no flag: there is one authored glossary,
+/// and the workspace gate compares against the copy [`GLOSSARY_MD`]
+/// embeds from that path.
+#[must_use]
+pub fn glossary_tables(write: bool) -> ExitCode {
+    let raw = match std::fs::read_to_string(GLOSSARY_PATH) {
+        Ok(raw) => raw,
+        Err(error) => {
+            eprintln!("navigator: docs glossary-tables: {GLOSSARY_LABEL}: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let rendered = store::glossary::with_rendered_tables(&raw);
+    if rendered == raw {
+        println!("{GLOSSARY_LABEL}: schema boxes are current");
+        return ExitCode::SUCCESS;
+    }
+    if !write {
+        eprintln!(
+            "navigator: docs glossary-tables: {GLOSSARY_LABEL} schema boxes are stale; \
+             re-run with --write"
+        );
+        return ExitCode::from(1);
+    }
+    if let Err(error) = std::fs::write(GLOSSARY_PATH, rendered) {
+        eprintln!("navigator: docs glossary-tables: {GLOSSARY_LABEL}: {error}");
+        return ExitCode::from(1);
+    }
+    println!("{GLOSSARY_LABEL}: schema boxes rewritten");
+    ExitCode::SUCCESS
+}
+
 /// The public repository every rewritten source link points into.
 const REPO: &str = cloud::workspace::NAVIGATOR_REPOSITORY_URL;
 

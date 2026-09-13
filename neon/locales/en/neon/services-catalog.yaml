@@ -1,0 +1,419 @@
+# The firm's individual services, as structured records.
+#
+# This is the machine-readable twin of the prose cards in `services.yaml`: the
+# same work, carrying the identifiers, item numbers, categories, keywords, and
+# fees a reader can search and a consumer can pin. `views::locales::services`
+# is the typed check `navigator validate` runs over it (Y002), and
+# `cli/examples/export-services-catalog.rs` publishes it as an
+# integrity-checked artifact the way `shared.yaml` is published.
+#
+# DRAFT — PENDING ATTORNEY REVIEW. Every fee, item code, service name, and
+# `includes` scope line below was transcribed from the `navigator-ux` gallery
+# specimen at revision f2e1129adc696b5fb8fe0eac3eb88b40a8334787, where they are
+# invented specimen figures. A licensed attorney confirms each of them before
+# this catalog advertises a fee to the public. Changing a published legal fee
+# is an attorney decision; do not adjust these while authoring.
+#
+# Two deliberate deviations from that specimen, both for review alongside the
+# rest: contractions are expanded to match the register the firm already
+# publishes in `services.yaml`, and the trademark `period` reads `fees` rather
+# than the specimen's singular `fee`, because `fees` is the wording already
+# live on `/services`.
+catalog_version: 1
+
+# What a `flat_fee` service costs. Both flat-fee kinds resolve to this one
+# figure, so the page cannot print two different "flat fees".
+flat_fee: "$50"
+
+# The closed category vocabulary, and the words a reader sees for each. A
+# service naming anything outside this list is refused.
+categories:
+  - value: company
+    label: Start a business
+  - value: compliance
+    label: Run a business
+  - value: identity
+    label: Names & brands
+  - value: estate
+    label: Wills & family plans
+  - value: contracts
+    label: Contracts & forms
+  - value: urgent
+    label: Disputes & housing
+
+services:
+  - id: llc-file
+    item: "1101"
+    name: Start a company
+    blurb: >-
+      We help you set up a limited liability company, also called an LLC. A
+      lawyer checks your papers before we file them with the state.
+    category: company
+    flat_fee: form
+    period: per form
+    state_fee: true
+    includes:
+      - Check that your business name is available
+      - Prepare the papers to create your company
+      - Have a lawyer check and file the papers
+    related:
+      - llc-launch
+      - nv-address
+      - annual-report
+    keywords:
+      - LLC
+      - articles of organization
+      - formation
+      - File
+
+  - id: llc-launch
+    item: "1102"
+    name: Company setup package
+    blurb: >-
+      Set up your limited liability company and get the ownership agreement and
+      tax ID a bank will usually ask for.
+    category: company
+    flat_fee: form
+    period: per form
+    state_fee: true
+    includes:
+      - Set up your limited liability company
+      - An agreement between the owners
+      - A federal tax ID for your business
+    related:
+      - nv-address
+      - annual-report
+      - nda
+    keywords:
+      - LLC
+      - EIN
+      - operating agreement
+      - formation
+      - Launch
+
+  - id: nonprofit
+    item: "1103"
+    name: Start a nonprofit
+    blurb: >-
+      Set up your nonprofit and apply for federal tax exemption. Government fees
+      are separate.
+    category: company
+    flat_fee: form
+    period: per form
+    state_fee: true
+    includes:
+      - Papers to set up the nonprofit and explain how it runs
+      - Rules for handling personal interests in nonprofit decisions
+      - Prepare and file the application for federal tax exemption
+    related:
+      - nv-address
+    keywords:
+      - 501(c)(3)
+      - Form 1023
+      - bylaws
+      - conflict-of-interest policy
+
+  - id: annual-report
+    item: "1201"
+    name: Renew your Nevada business paperwork
+    blurb: >-
+      We file your company's yearly report and renew its state business license.
+    category: compliance
+    flat_fee: form
+    period: per form
+    state_fee: true
+    includes:
+      - Update the state's list of your company's officers or managers
+      - Renew your business license
+      - Have a lawyer check and file the papers
+    related:
+      - nv-address
+    keywords:
+      - annual report
+      - annual list
+      - licence
+      - compliance
+
+  - id: nv-address
+    item: "1202"
+    name: Nevada business address
+    blurb: >-
+      Get a Nevada street address to receive legal notices and mail. We forward
+      them to you.
+    category: compliance
+    amount: "$350"
+    period: per year
+    state_fee: false
+    includes:
+      - A street address for legal notices
+      - Your mail forwarded to you
+    related:
+      - annual-report
+    keywords:
+      - service of process
+
+  - id: trademark
+    item: "1301"
+    name: Apply for a trademark
+    blurb: >-
+      We check for similar names or logos and file your application for one
+      group of goods or services.
+    category: identity
+    members_only: true
+    flat_fee: trademark
+    period: + government filing fees
+    state_fee: true
+    includes:
+      - Search for similar names or logos
+      - One name or logo in one group of goods or services
+      - Have a lawyer check and file the application
+    keywords:
+      - USPTO
+      - trademark application
+      - clearance search
+      - class
+
+  - id: name-change
+    item: "1302"
+    name: Change your legal name
+    blurb: >-
+      We prepare your request, arrange the required public notice, and attend
+      the hearing. For name changes that no one is challenging.
+    category: identity
+    flat_fee: form
+    period: per form, plus court and publication costs
+    state_fee: true
+    includes:
+      - Your request to the court
+      - The required public notice
+      - A lawyer at your hearing
+    keywords:
+      - uncontested
+      - petition
+      - publication
+
+  - id: will
+    item: "1401"
+    name: Make a will
+    blurb: >-
+      Tell us who you want to leave things to. A lawyer prepares and reviews
+      your will.
+    category: estate
+    flat_fee: form
+    period: per form
+    state_fee: false
+    includes:
+      - Questions about your wishes
+      - A will prepared and checked by a lawyer
+      - Help signing your will with witnesses
+    related:
+      - estate-package
+      - trust
+    keywords:
+      - simple will
+      - estate
+
+  - id: estate-package
+    item: "1402"
+    name: Plan for your family
+    blurb: >-
+      Make a will and choose who can handle your money and healthcare decisions
+      if you can't.
+    category: estate
+    flat_fee: form
+    period: per form
+    state_fee: false
+    includes:
+      - A will
+      - A document naming someone to handle your finances
+      - Your wishes for medical care and who can make decisions for you
+    related:
+      - trust
+    keywords:
+      - estate package
+      - financial power of attorney
+      - healthcare directive
+
+  - id: trust
+    item: "1403"
+    name: Set up a living trust
+    blurb: >-
+      Create a trust you can change during your lifetime, plus a will and the
+      paperwork to put one Nevada property into the trust.
+    category: estate
+    flat_fee: form
+    period: per form
+    state_fee: false
+    includes:
+      - A living trust you can change
+      - A will that leaves property to the trust
+      - Paperwork to put one Nevada property into the trust
+    related:
+      - will
+    keywords:
+      - revocable living trust
+      - pour-over will
+      - deed
+      - estate
+
+  - id: nda
+    item: "1501"
+    name: Review a confidentiality agreement
+    blurb: >-
+      We will read your contract, suggest changes, and explain them. Covers one
+      agreement where both sides promise to keep information private.
+    category: contracts
+    members_only: true
+    amount: "$100"
+    period: per contract
+    state_fee: false
+    includes:
+      - Read the whole agreement
+      - Show suggested changes
+      - Explain what changed and why
+    related:
+      - consulting
+      - send-template
+    keywords:
+      - mutual NDA
+      - non-disclosure
+      - confidentiality
+      - redline
+
+  - id: consulting
+    item: "1502"
+    name: Review a freelance or consulting contract
+    blurb: >-
+      We will read your contract and suggest changes to protect your interests.
+    category: contracts
+    members_only: true
+    amount: "$250"
+    period: per contract
+    state_fee: false
+    includes:
+      - Read the whole contract
+      - Show suggested changes
+      - Check the terms for work as a contractor
+    related:
+      - employment
+      - nda
+    keywords:
+      - consulting agreement
+      - independent-contractor
+      - redline
+
+  - id: employment
+    item: "1503"
+    name: Review a job offer or employment contract
+    blurb: >-
+      We will check your offer, including any company shares you are offered and
+      limits on where you can work next.
+    category: contracts
+    members_only: true
+    amount: "$350"
+    period: per contract
+    state_fee: false
+    includes:
+      - Review your job offer or employment contract
+      - Check any offer of company shares
+      - Check limits on working for another employer
+    related:
+      - msa
+      - nda
+    keywords:
+      - employment agreement
+      - equity
+      - stock options
+      - non-compete
+
+  - id: msa
+    item: "1504"
+    name: Review a business services contract
+    blurb: >-
+      We review the main contract for ongoing work between your business and a
+      customer or supplier.
+    category: contracts
+    members_only: true
+    amount: "$500"
+    period: per contract
+    state_fee: false
+    includes:
+      - Read the whole contract
+      - Show suggested changes you can share with the other side
+    related:
+      - consulting
+    keywords:
+      - MSA
+      - master services agreement
+      - redline
+
+  - id: form-review
+    item: "1505"
+    name: Get a legal form
+    blurb: >-
+      Get the form you need. Any work by a lawyer is priced separately.
+    category: contracts
+    flat_fee: form
+    period: per form
+    state_fee: false
+    includes:
+      - The form you need
+      - A separate price for any work by a lawyer
+    related:
+      - send-template
+    keywords:
+      - form review
+
+  - id: send-template
+    item: "1506"
+    name: Send a contract to be signed
+    blurb: >-
+      Send one of our contracts for someone to sign online, and see when they
+      have signed.
+    category: contracts
+    amount: "$5"
+    period: per send, plus any form fee
+    state_fee: false
+    includes:
+      - Send the contract to be signed online
+      - See whether it has been signed
+    related:
+      - nda
+    keywords:
+      - template
+      - electronic signature
+
+  - id: demand
+    item: "1601"
+    name: Send a letter from a lawyer
+    blurb: >-
+      We review what you send us, then write and sign one letter asking the
+      other side to take action. Court work is not included.
+    category: urgent
+    amount: "$350"
+    period: for one letter
+    state_fee: false
+    includes:
+      - Review the information you send
+      - One letter signed by the firm
+    keywords:
+      - demand letter
+      - dispute
+
+  - id: eviction
+    item: "1602"
+    name: Get help with an eviction
+    blurb: >-
+      For tenants in Nevada's shorter eviction process. We prepare your response
+      to the court and speak for you at one hearing.
+    category: urgent
+    amount: "$750"
+    period: for one hearing
+    state_fee: false
+    includes:
+      - Your written response to the court
+      - A lawyer to speak for you at one hearing
+    keywords:
+      - tenant eviction defense
+      - summary eviction
+      - answer

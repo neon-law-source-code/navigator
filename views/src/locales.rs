@@ -15,6 +15,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub mod services;
 pub mod shared;
 
 /// The only locale directory the site publishes.
@@ -406,6 +407,9 @@ pub enum LocalePageKind {
     Marketing,
     /// `shared.yaml` — the cross-repository copy catalog, not a page.
     Shared,
+    /// `services-catalog.yaml` — the structured individual-services schedule
+    /// `/services` renders, not a page of its own.
+    ServicesCatalog,
 }
 
 /// The page kind for a catalog stem, if the stem is one this catalog publishes.
@@ -417,6 +421,7 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "fractional-gc" => Some(LocalePageKind::Transactional),
         "navigator" | "personal-plan" | "services" => Some(LocalePageKind::Marketing),
         shared::SHARED_CATALOG_STEM => Some(LocalePageKind::Shared),
+        services::SERVICES_CATALOG_STEM => Some(LocalePageKind::ServicesCatalog),
         _ => None,
     }
 }
@@ -478,13 +483,17 @@ pub fn locale_yaml_parts(path: &Path) -> Option<LocaleYamlParts<'_>> {
 pub fn parse_locale_file(stem: &str, yaml: &str) -> Result<(), String> {
     let kind = locale_page_kind(stem).ok_or_else(|| {
         format!(
-            "unknown locale page `{stem}`; expected one of {}, or `{}`",
+            "unknown locale page `{stem}`; expected one of {}, or `{}`, or `{}`",
             KNOWN_PAGES.join(", "),
-            shared::SHARED_CATALOG_STEM
+            shared::SHARED_CATALOG_STEM,
+            services::SERVICES_CATALOG_STEM
         )
     })?;
     if kind == LocalePageKind::Shared {
         return shared::SharedCatalog::parse(yaml).map(|_| ());
+    }
+    if kind == LocalePageKind::ServicesCatalog {
+        return services::ServicesCatalog::parse(yaml).map(|_| ());
     }
     // A page catalog is checked as authored: `{site_name}`, `{firm_email}`,
     // and `{shared:<key>}` all stay in the strings, so validate needs neither
@@ -496,7 +505,9 @@ pub fn parse_locale_file(stem: &str, yaml: &str) -> Result<(), String> {
         LocalePageKind::Litigation => deserialize::<LitigationCopy>(stem, yaml),
         LocalePageKind::Transactional => deserialize::<TransactionalCopy>(stem, yaml),
         LocalePageKind::Marketing => deserialize::<MarketingPageCopy>(stem, yaml),
-        LocalePageKind::Shared => unreachable!("handled above"),
+        LocalePageKind::Shared | LocalePageKind::ServicesCatalog => {
+            unreachable!("handled above")
+        }
     }
 }
 
@@ -662,10 +673,35 @@ bands:
         .expect("navigator catalog");
     }
 
+    /// The services catalog reaches its own validator through the same
+    /// `parse_locale_file` seam every page does, so `navigator validate`'s
+    /// locale pass covers it under `Y002` with no change to the walker.
+    #[test]
+    fn the_services_catalog_stem_routes_to_its_validator() {
+        assert_eq!(
+            locale_page_kind(services::SERVICES_CATALOG_STEM),
+            Some(LocalePageKind::ServicesCatalog)
+        );
+        let err = parse_locale_file(
+            services::SERVICES_CATALOG_STEM,
+            r"catalog_version: 1
+flat_fee: $50
+categories: []
+services: []
+",
+        )
+        .expect_err("a catalog with no category labels");
+        assert!(err.contains("category `company` has no label"), "{err}");
+    }
+
     #[test]
     fn unknown_stem_is_refused() {
         let err = parse_locale_file("about", "title: About\n").expect_err("unknown stem");
         assert!(err.contains("unknown locale page `about`"), "{err}");
+        // Both non-page catalogs are named, so the message tells an author
+        // every stem this directory accepts.
+        assert!(err.contains(shared::SHARED_CATALOG_STEM), "{err}");
+        assert!(err.contains(services::SERVICES_CATALOG_STEM), "{err}");
     }
 
     #[test]

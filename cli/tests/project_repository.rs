@@ -165,7 +165,7 @@ fn the_flat_manifest_shape_is_read_with_a_deprecation_warning() {
 
     validate(dir.path())
         .success()
-        .stdout(str::contains("Y012"))
+        .stdout(str::contains("Y013"))
         .stdout(str::contains("1 warning(s)"));
 }
 

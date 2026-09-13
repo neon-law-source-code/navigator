@@ -58,8 +58,8 @@ Nine normal validation passes happen in this order:
    spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name` to
    `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
    string. It refuses unknown keys by naming the set, refuses YAML comment tokens so a reason lives on the pull request
-   and in the repository contract rather than a `#` line, and tells a `navigator.yml` file to rename to
-   `navigator.yaml` before validation. The legacy flat shape remains a warning during migration.
+   and in the repository contract rather than a `#` line, and tells a `navigator.yml` file to rename to `navigator.yaml`
+   before validation. The legacy flat shape remains a warning during migration.
 8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project repository.
    Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a source-only tree
    can still validate, and is a finding under `--ci`, where the build has already run and nothing to scan means the pass

@@ -56,6 +56,42 @@ documented in `portal::api::documented_api_operations()` and `portal/src/openapi
 Lawyer, Clerk, and Client. Role semantics follow [`access-model`](access-model.md): embedded Rego reads the system tier
 (`persons.role`), and `participation` is derived from that same column rather than named by a caller.
 
+## Exporting the document for a consumer
+
+[`navigator-ux`](https://github.com/neon-law-source-code/navigator-ux) generates its API client from this same document.
+It does not read this repository at runtime and does not track `main`: it vendors a generated artifact, pinned to one
+immutable Navigator revision, at `spec/openapi.json`.
+
+```bash
+cargo run -p cli --example export-openapi -- \
+    --revision "$(git rev-parse origin/main)" \
+    --out ../navigator-ux/spec/openapi.json
+```
+
+The exporter is an example rather than a `navigator` subcommand on purpose: it is a build-time producer step, not
+something an operator runs against a deployment, so it leaves the shipped binary's surface unchanged. It mirrors
+[`export-marketing-catalog`](marketing-copy.md#exporting-the-catalog). The artifact is the same shape,
+`{generator,integrity,payload}`. `payload.document` is a whole OpenAPI document the consumer lifts out verbatim;
+`payload.source` names the repository, the 40-character commit, and `portal/src/openapi.rs`. `integrity` is `sha256:`
+over the **canonical payload** — compact JSON with every object key sorted — so one digest covers the document *and* its
+provenance, and a hand-edited or re-pinned artifact fails rather than quietly generating a client for a surface nobody
+serves.
+
+Three refusals keep the pin honest. A branch name is not a pin, so only a full 40-character sha is accepted. The
+checked-out `HEAD` must equal `--revision` exactly, with no uncommitted changes: the exporter serializes whatever
+`portal/src/openapi.rs` is on disk, not whatever the flag names, so a stale checkout, a different (even if
+also-reachable) commit, or local edits would export current source under someone else's revision. And the sha must be
+**reachable from `origin/main`**: a pull request squash-merges into a new commit, so its head survives on no branch and
+a fresh clone cannot resolve it — `git rev-parse HEAD` on the branch you exported from is the natural thing to type and
+exactly the value that rots. Export after the change lands, from a checkout that has fetched and is standing on
+`origin/main`. An `origin/main` that cannot be resolved is refused rather than skipped, so an unfetched remote cannot
+silently downgrade the check.
+
+The export pins a document; it does not check one. `server/tests/openapi_drift.rs` is what keeps the source document
+honest upstream of it, and the exporter inherits that guarantee rather than repeating it.
+[`cli/tests/openapi_export.rs`](../cli/tests/openapi_export.rs) drives the real exporter for determinism, digest
+coverage, tamper detection, operation parity with `portal::openapi::documented_operations()`, and all three refusals.
+
 ## Carve-outs — paths allowed to write directly
 
 These would be **system- and internal-initiated** writes, not user or tool commands, so they would not travel the

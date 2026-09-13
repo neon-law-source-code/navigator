@@ -127,7 +127,7 @@ mod tests {
         for t in [
             "https://x.com",
             "mailto:x@y.com",
-            "/documents/glossary",
+            "/docs/glossary",
             "#anchor",
             "{{url}}",
             "",

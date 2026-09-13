@@ -37,6 +37,8 @@
 //! shape against the applied schema. A component that renders both reads
 //! two sources.
 
+use std::fmt::Write as _;
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use surrealdb::types::SurrealValue;

@@ -1647,10 +1647,10 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     state.docs = portal::docs::loader::bundled();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // `/documents` and `/documents/glossary` have left this list. The
+    // `/docs` and `/docs/glossary` have left this list. The
     // workspace documentation reads anonymously now — the repository is
     // source-available, so a login door stood in front of the manual for
-    // software anyone can clone. `/app/documents` is the surface that still
+    // software anyone can clone. `/app/docs` is the surface that still
     // answers the login door, and it is listed below in its place.
     for path in [
         "/app/projects",
@@ -1660,8 +1660,8 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/team",
         "/app/admin/brands",
         "/app/owner",
-        "/app/documents",
-        "/app/documents/glossary",
+        "/app/docs",
+        "/app/docs/glossary",
         "/templates",
     ] {
         let resp = app
@@ -2185,12 +2185,12 @@ async fn robots_txt_advertises_sitemap_and_blocks_private_surfaces() {
     assert!(body.contains("Disallow: /app"));
     assert!(body.contains("Disallow: /admin"));
     assert!(body.contains("Sitemap: https://www.neonlaw.com/sitemap.xml"));
-    // `/documents` and `/templates` sit behind the session boundary (#732), so
+    // `/docs` and `/templates` sit behind the session boundary (#732), so
     // the policy names each rather than pointing a crawler at a login
     // redirect. `/design` reads anonymously now, and stays disallowed for the
     // other reason: a contributor reference gallery is not a page to index.
     for authenticated in [
-        "Disallow: /documents",
+        "Disallow: /docs",
         "Disallow: /design",
         "Disallow: /templates",
     ] {
@@ -2327,13 +2327,13 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
         "sitemap should not list authenticated app routes: {body}"
     );
     // `/templates` is authenticated (#732), and a sitemap entry pointing at a
-    // login redirect is worse than no entry at all. `/documents` and
+    // login redirect is worse than no entry at all. `/docs` and
     // `/design` read anonymously now but stay unadvertised for the same
     // reason as each other: both are contributor references, not pages a
     // search result should land a prospective client on. Advertising the
     // documentation is a separate decision from un-gating it, and is
     // deliberately not made here.
-    for authenticated in ["/documents", "/design", "/templates"] {
+    for authenticated in ["/docs", "/design", "/templates"] {
         assert!(
             !body.contains(&format!("<loc>https://www.neonlaw.com{authenticated}")),
             "sitemap must not advertise authenticated {authenticated}: {body}"
@@ -17372,7 +17372,7 @@ async fn delete_of_non_bootstrap_client_person_still_succeeds() {
 }
 
 // ---------------------------------------------------------------------------
-// Published workspace docs at /documents/:slug (portal::docs).
+// Published workspace docs at /docs/:slug (portal::docs).
 // ---------------------------------------------------------------------------
 
 /// State whose docs index is the real baked `docs/` tree (every other
@@ -17400,16 +17400,16 @@ async fn docs_glossary_renders_headings() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/documents/glossary").await;
+    let resp = get_signed_in(app, "/docs/glossary").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    // Firm-branded page title from the doc's leading H1. `/documents` is mounted
+    // Firm-branded page title from the doc's leading H1. `/docs` is mounted
     // once, in the composition every brand binary shares, so a second wordmark
     // here would publish another organization's identity on the firm's own host
     // and on every white-label tenant's. These are the Firm's own operating
     // docs.
     assert!(
-        body.contains("<title>Neon Law | Documents | Glossary</title>"),
+        body.contains("<title>Neon Law | Docs | Glossary</title>"),
         "docs pages wear the firm brand on every host"
     );
     // The title carries the whole distinction: a docs page wearing a retired
@@ -17421,7 +17421,7 @@ async fn docs_glossary_renders_headings() {
     );
     assert!(
         !body.contains(&format!(
-            "<title>{} | Documents | Glossary</title>",
+            "<title>{} | Docs | Glossary</title>",
             ["Neon", "Law", "Foundation"].join(" ")
         )),
         "the retired wordmark must not return"
@@ -17432,14 +17432,14 @@ async fn docs_glossary_renders_headings() {
         "glossary should render the Council heading with an anchor id"
     );
     // Cross-doc link rewritten to a site route.
-    assert!(body.contains("href=\"/documents/notation\""));
+    assert!(body.contains("href=\"/docs/notation\""));
     assert!(
         body.contains("class=\"docs-article\""),
         "article pages retain their reading layout"
     );
     assert!(
         !body.contains("docs-catalog"),
-        "the catalog presentation belongs only to /documents"
+        "the catalog presentation belongs only to /docs"
     );
 }
 
@@ -17450,7 +17450,7 @@ async fn docs_index_is_a_flat_accessible_catalog_of_every_published_guide() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let response = get_signed_in(app, "/documents").await;
+    let response = get_signed_in(app, "/docs").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = body_string(response).await;
 
@@ -17500,7 +17500,7 @@ async fn docs_index_is_a_flat_accessible_catalog_of_every_published_guide() {
     let cards = &body[cards_start..];
     let mut previous = 0;
     for doc in published {
-        let href = format!("href=\"/documents/{}\"", doc.slug);
+        let href = format!("href=\"/docs/{}\"", doc.slug);
         let position = cards
             .find(&href)
             .unwrap_or_else(|| panic!("missing {href}: {cards}"));
@@ -17523,14 +17523,14 @@ async fn docs_notation_renders_teaching_order_headings() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/documents/notation").await;
+    let resp = get_signed_in(app, "/docs/notation").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     // Template precedes Notation by design — both headings present.
     assert!(body.contains("<h2 id=\"template\">Template</h2>"));
     assert!(body.contains("<h2 id=\"notation\">Notation</h2>"));
-    // notation links glossary.md#asset → /documents/glossary#asset.
-    assert!(body.contains("href=\"/documents/glossary#asset\""));
+    // notation links glossary.md#asset → /docs/glossary#asset.
+    assert!(body.contains("href=\"/docs/glossary#asset\""));
 }
 
 #[tokio::test]
@@ -17545,7 +17545,7 @@ async fn every_published_doc_is_200() {
             state_with_docs().await,
             std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
         );
-        let uri = format!("/documents/{}", doc.slug);
+        let uri = format!("/docs/{}", doc.slug);
         let resp = get_signed_in(app, &uri).await;
         assert_eq!(resp.status(), StatusCode::OK, "{uri} should be 200");
     }
@@ -17570,9 +17570,9 @@ async fn docs_index_slug_redirects_to_canonical_docs_root() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/documents/index").await;
+    let resp = get_signed_in(app, "/docs/index").await;
     assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(resp.headers().get("location").unwrap(), "/documents");
+    assert_eq!(resp.headers().get("location").unwrap(), "/docs");
 }
 
 #[tokio::test]
@@ -17581,7 +17581,7 @@ async fn docs_unknown_slug_is_404() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/documents/no-such-doc").await;
+    let resp = get_signed_in(app, "/docs/no-such-doc").await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -17641,13 +17641,13 @@ fn docs_carry_no_client_confidences() {
     for doc in portal::docs::loader::bundled().docs() {
         assert!(
             !contains_dash_digit_pattern(&doc.body_html, &[3, 2, 4]),
-            "/documents/{} contains an SSN-shaped string — published docs must \
+            "/docs/{} contains an SSN-shaped string — published docs must \
              carry no client confidence",
             doc.slug
         );
         assert!(
             !contains_dash_digit_pattern(&doc.body_html, &[2, 7]),
-            "/documents/{} contains an EIN-shaped string — published docs must \
+            "/docs/{} contains an EIN-shaped string — published docs must \
              carry no client confidence",
             doc.slug
         );

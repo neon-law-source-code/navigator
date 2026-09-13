@@ -1172,7 +1172,7 @@ fn SiteFooterShowcase() -> Element {
                     ("API", "/api"),
                     ("Blog", "/blog"),
                     ("Contact", "/contact"),
-                    ("Docs", "/documents"),
+                    ("Docs", "/docs"),
                     ("Navigator", "/navigator"),
                     ("Notations", "/notations"),
                     ("Presentations", "/presentations"),

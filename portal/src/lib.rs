@@ -303,7 +303,7 @@ pub struct AppState {
     /// engine cannot serve anything.
     pub surreal: store::surreal::SurrealDb,
     pub workshops: WorkshopIndex,
-    /// Workspace docs published at `/documents/{slug}`, baked from the
+    /// Workspace docs published at `/docs/{slug}`, baked from the
     /// `docs/` tree at compile time. See [`docs`].
     pub docs: DocsIndex,
     /// Firm blog posts served at `/blog`, loaded at boot from a
@@ -883,21 +883,21 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the workspace documentation renders through Dioxus at
-    // /documents and /documents/{slug}. Its pre-layer resolves the doc from
+    // /docs and /docs/{slug}. Its pre-layer resolves the doc from
     // the compiled-in DocsIndex and owns the canonicalizing redirects and the
     // unknown-slug 404.
     let dioxus_docs_index = dioxus_app::docs_router(
-        dioxus_app::DOCUMENTS_PATH,
+        dioxus_app::DOCS_PATH,
         Some(dioxus_app::DOCS_INDEX_SLUG),
         state.docs.clone(),
     );
-    let dioxus_doc = dioxus_app::docs_router(dioxus_app::DOCUMENT_PATH, None, state.docs.clone());
+    let dioxus_doc = dioxus_app::docs_router(dioxus_app::DOC_PATH, None, state.docs.clone());
     // The same documentation, a second door: inside the authenticated
     // application, wearing the app chrome, for the tiers that operate
     // Navigator. The public mount above is unchanged — this adds a reader, it
     // does not move one.
     let dioxus_app_docs_index = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOCUMENTS_PATH,
+        dioxus_app::APP_DOCS_PATH,
         Some(dioxus_app::DOCS_INDEX_SLUG),
         state.docs.clone(),
         state.sessions.clone(),
@@ -905,7 +905,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     let dioxus_app_doc = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOCUMENT_PATH,
+        dioxus_app::APP_DOC_PATH,
         None,
         state.docs.clone(),
         state.sessions.clone(),
@@ -1863,12 +1863,12 @@ pub fn bootstrap(
     // `host_dioxus` because that list is firm-host-only and the gallery is a
     // shared Navigator tool that must answer on both hosts.
     //
-    // `/documents` and `/documents/{slug}` mount the same way, and for the same
+    // `/docs` and `/docs/{slug}` mount the same way, and for the same
     // reason: the workspace documentation is the manual for software anyone
     // can clone. It sat behind the session boundary while the source was
     // closed, which put a login door in front of the one document that
     // explains how to run what is now public — the argument that already
-    // un-gated the Navigator classes. `/app/documents` is untouched: it is the
+    // un-gated the Navigator classes. `/app/docs` is untouched: it is the
     // second, role-restricted door to the same index wearing the application
     // chrome, and it stays gated because it is part of the authenticated
     // surface, not because the documents are.
@@ -2054,10 +2054,7 @@ mod trailing_slash_tests {
 
     #[test]
     fn strips_a_trailing_slash_from_a_head() {
-        assert_eq!(
-            target(&Method::HEAD, "/documents/"),
-            Some("/documents".to_string())
-        );
+        assert_eq!(target(&Method::HEAD, "/docs/"), Some("/docs".to_string()));
     }
 
     #[test]
@@ -2244,7 +2241,7 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/dioxus-demo",
     "/app",
     "/auth",
-    "/documents",
+    "/docs",
     "/api",
 ];
 
@@ -2714,7 +2711,7 @@ User-agent: *
 Disallow: /app
 Disallow: /admin
 Disallow: /auth
-Disallow: /documents
+Disallow: /docs
 Disallow: /design
 Disallow: /templates
 ";
@@ -2777,7 +2774,7 @@ pub type SitemapPaths = fn(&AppState, views::brand::BrandKey) -> std::collection
 /// every brand serves, plus the brand's own anonymous pages.
 ///
 /// Only host pages appear: the shared Navigator tools that used to be listed
-/// here — `/documents`, `/templates`, `/design` — are authenticated
+/// here — `/docs`, `/templates`, `/design` — are authenticated
 /// now, and a sitemap entry pointing at a login redirect is worse than no
 /// entry at all.
 fn sitemap_paths(

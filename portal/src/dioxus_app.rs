@@ -84,13 +84,13 @@ pub const TEMPLATES_PATH: &str = "/templates";
 pub const TEMPLATE_ENTRY_PATH: &str = "/templates/{*path}";
 
 /// The workspace-documentation hub, which renders the `index` doc.
-pub const DOCUMENTS_PATH: &str = "/documents";
+pub const DOCS_PATH: &str = "/docs";
 
-/// The slug that [`DOCUMENTS_PATH`] renders — the hub has no path parameter.
+/// The slug that [`DOCS_PATH`] renders — the hub has no path parameter.
 pub const DOCS_INDEX_SLUG: &str = "index";
 
 /// One workspace doc, served by the Dioxus SSR port.
-pub const DOCUMENT_PATH: &str = "/documents/{slug}";
+pub const DOC_PATH: &str = "/docs/{slug}";
 
 /// The environment variable naming the built client-bundle directory. Read by
 /// `dioxus-server`'s `ServeConfig::new` (for the `index.html` template) and
@@ -1094,7 +1094,7 @@ pub fn app_forms_router(
 
 /// The matter-detail path. One page for every tier — the firm workbench and
 /// the client view of the same matter — with the lens picked from the caller's
-/// role. The mutation routes under it (`/contract-review`, `/documents/*`,
+/// role. The mutation routes under it (`/contract-review`, `/docs/*`,
 /// `/review/*`, `/conversation`, `/approve-plan`, …) and the edit-save `POST`
 /// on this path stay on the router; axum merges the same-path methods and
 /// routes the deeper paths.
@@ -3222,13 +3222,13 @@ pub fn catalog_material_routers(
     ]
 }
 
-/// The workspace-documentation routes (#956 Phase 4): `/documents` renders the
-/// `index` doc and `/documents/{slug}` renders one doc, both from the compiled-in
+/// The workspace-documentation routes (#956 Phase 4): `/docs` renders the
+/// `index` doc and `/docs/{slug}` renders one doc, both from the compiled-in
 /// [`DocsIndex`]. `slug` is `None` for the index route, which has no path
 /// parameter to read.
 ///
 /// [`inject_doc`] resolves the doc and owns every non-render outcome on the
-/// path — the kebab-case redirect, the `/documents/index` → `/documents`
+/// path — the kebab-case redirect, the `/docs/index` → `/docs`
 /// redirect, and the unknown-slug 404 — because axum cannot register a second
 /// `GET` handler where the render sits.
 ///
@@ -3264,14 +3264,14 @@ pub fn docs_router(
         ))
 }
 
-/// `/app/documents` and `/app/documents/{slug}` — the same workspace
+/// `/app/docs` and `/app/docs/{slug}` — the same workspace
 /// documentation, inside the authenticated application.
 ///
-/// The `/documents` mount is anonymous — the source is public, so its manual is
+/// The `/docs` mount is anonymous — the source is public, so its manual is
 /// too. This is a second door to the same [`crate::DocsIndex`], for the people
 /// who operate Navigator: it wears the application chrome and is scoped to the
 /// tiers that run the product. It restricts a *surface*, not the documents,
-/// which anyone can read at `/documents`. It differs from [`docs_router`] in
+/// which anyone can read at `/docs`. It differs from [`docs_router`] in
 /// two ways, both deliberate:
 ///
 /// * **It wears the application chrome, not the public one.** A signed-in
@@ -3282,7 +3282,7 @@ pub fn docs_router(
 ///   The Rego rule admits Lawyer and Clerk explicitly, and Owner/Admin
 ///   through the policy's route bypass — `client` is the one authenticated tier
 ///   denied, because these documents describe firm-side operation. That role
-///   restriction is what `/documents` does not have.
+///   restriction is what `/docs` does not have.
 pub fn app_docs_router(
     path: &'static str,
     slug: Option<&'static str>,
@@ -3314,9 +3314,9 @@ pub fn app_docs_router(
 }
 
 /// The authenticated documentation hub.
-pub const APP_DOCUMENTS_PATH: &str = "/app/documents";
+pub const APP_DOCS_PATH: &str = "/app/docs";
 /// One document inside the authenticated hub.
-pub const APP_DOCUMENT_PATH: &str = "/app/documents/{slug}";
+pub const APP_DOC_PATH: &str = "/app/docs/{slug}";
 
 /// The firm team home — the post-login landing for every firm tier.
 pub const APP_TEAM_PATH: &str = "/app/team";
@@ -3651,7 +3651,7 @@ pub const APP_OWNER_FIRM_NEW_PATH: &str = "/app/owner/firms/new";
 /// actually edit.
 pub const FIRM_EDIT_PATH: &str = "/app/admin/firms/{id}/edit";
 
-/// The `/documents` and `/documents/{slug}` pre-layer: canonicalize the slug,
+/// The `/docs` and `/docs/{slug}` pre-layer: canonicalize the slug,
 /// 404 an unknown one, or inject the matched doc for the render. This
 /// reproduces the `docs_page` / `render_doc_page` control flow.
 async fn inject_doc(
@@ -3677,10 +3677,10 @@ async fn inject_doc(
         if let Some(to) = crate::kebab_redirect_path(&["documents", &slug]) {
             return axum::response::Redirect::permanent(&to).into_response();
         }
-        // `/documents/index` is the index route's content, so it has one
+        // `/docs/index` is the index route's content, so it has one
         // canonical URL rather than two.
         if slug == "index" {
-            return axum::response::Redirect::permanent("/documents").into_response();
+            return axum::response::Redirect::permanent("/docs").into_response();
         }
     }
 
@@ -3692,7 +3692,7 @@ async fn inject_doc(
                     .filter(|entry| entry.slug != DOCS_INDEX_SLUG)
                     .map(|entry| webapp::docs_page::DocCatalogEntry {
                         title: entry.title.clone(),
-                        href: format!("/documents/{}", entry.slug),
+                        href: format!("/docs/{}", entry.slug),
                     })
                     .collect()
             } else {
@@ -4182,7 +4182,7 @@ mod tests {
         assert!(renders_app_footer("/app/projects/libra-formation"));
         assert!(renders_app_footer("/app/team"));
         assert!(!renders_app_footer("/blog"));
-        assert!(!renders_app_footer("/documents"));
+        assert!(!renders_app_footer("/docs"));
         assert!(renders_app_footer("/app/admin/entity-types"));
         assert!(renders_app_footer("/app/lawyer/notations"));
         assert!(!renders_app_footer("/app"));

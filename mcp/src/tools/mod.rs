@@ -31,7 +31,9 @@ pub mod list_jurisdictions;
 pub mod list_projects;
 pub mod list_tools;
 pub mod project_status;
+pub mod send_welcome_email;
 pub mod show_person;
+pub mod spawn_legal_council;
 pub mod validate_notation;
 
 /// Returns the list of tool descriptors `tools/list` advertises.

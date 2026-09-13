@@ -1935,10 +1935,10 @@ test_an_unnamed_api_read_is_denied if {
 	not authz.allow with input as {"path": ["app", "api", "invoices"], "method": "GET", "session": lawyer_session}
 }
 
-# ---------- /app/documents ----------
+# ---------- /app/docs ----------
 # The workspace documentation inside the application. Every tier that operates
 # Navigator reads it; `client` is the one authenticated tier denied.
-# `/documents` itself carries no rule in this policy — it sits behind the
+# `/docs` itself carries no rule in this policy — it sits behind the
 # session boundary alone — so this is a second, role-restricted door rather
 # than a gate closing over material that used to be open. (ENG-84 renamed
 # both paths from `/docs` / `/app/docs`.)
@@ -1969,7 +1969,7 @@ test_clerk_reaches_a_document_in_app_documents if {
 }
 
 # The denials. A client is authenticated and still refused: these documents
-# describe firm-side operation, and the public `/documents` mount is their door.
+# describe firm-side operation, and the public `/docs` mount is their door.
 test_client_denied_app_documents if {
 	not authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": client_session}
 }
@@ -1983,7 +1983,7 @@ test_anonymous_denied_app_documents if {
 }
 
 # ---------- /app/team ----------
-# The firm team home. Same audience as `/app/documents`: every firm tier is
+# The firm team home. Same audience as `/app/docs`: every firm tier is
 # admitted, with `client` the one authenticated tier denied.
 
 test_lawyer_reaches_app_portal if {

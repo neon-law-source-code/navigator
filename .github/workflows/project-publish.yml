@@ -97,21 +97,17 @@ jobs:
         if: steps.application.outputs.dist_dir != ''
         with:
           version: "26.9.14"
-      - name: Derive the deployment destination
-        id: destination
-        if: steps.application.outputs.dist_dir != ''
-        env:
-          HOST: ${{ inputs.host }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          host="${HOST%.}"
-          bucket="${host//./-}-applications"
-          echo "bucket=${bucket}" >> "${GITHUB_OUTPUT}"
+      # The applications bucket is deployment configuration, never derived
+      # from `host`: provisioning names it independently
+      # (`cli::devx::gcp::BucketNames::applications`, `<project_id>-applications`
+      # by default) and the publisher's IAM grant is conditioned on that exact
+      # name (`cli::devx::gcp::app_publisher::ensure_publisher_grant`). A host
+      # carries no GCP project id, so no string transform of it can be trusted
+      # to land on the bucket the grant actually names.
       - uses: neon-law-source-code/navigator/.github/actions/application-publish@26.9.14
         if: steps.application.outputs.dist_dir != ''
         with:
-          applications_bucket: ${{ steps.destination.outputs.bucket }}
+          applications_bucket: ${{ vars.NAVIGATOR_APP_PUBLISHER_BUCKET }}
           workload_identity_provider: ${{ vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
           service_account: ${{ vars.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
           repository: ${{ inputs.project }}

@@ -367,11 +367,15 @@ to. The shape rule is machine-checkable and `validate` enforces it; whether the 
 `cd.yml` is the thin main-only caller of two reusable workflows, both pinned to the same `YY.M.D`. Its `gate` job
 re-invokes `project-gate.yml`, the same file `ci.yml` calls on pull requests, so the live document verification, live
 Project gate, and seed import that only run on a push to `main` actually run on one. Its `publish` job `needs: gate` and
-calls `project-publish.yml`; both pass only `project` and `host`. The publish workflow builds and validates the
-application, derives the deployment bucket from `host`, and then calls the pinned application-publish action. The
-bucket name is never a literal in a Project repository, caller, or log. `workflow_dispatch` is the recovery path when a
-merge attributed to `GITHUB_TOKEN` creates no run; the workflow uses `cancel-in-progress: false` because cancelling a
+calls `project-publish.yml`; both pass only `project` and `host`. `workflow_dispatch` is the recovery path when a merge
+attributed to `GITHUB_TOKEN` creates no run; the publish job uses `cancel-in-progress: false` because cancelling a
 publish can leave an `index.html` naming assets that have not arrived.
+
+The publish workflow builds and validates the application, reads the deployment bucket from the repository variable
+below, and then calls the pinned application-publish action. `host` names no GCP project id, so the bucket is never
+derived from it: it is provisioning's own name for the bucket (`cli::devx::gcp::BucketNames::applications`) and the
+publisher's IAM grant is conditioned on that exact name. The bucket name is never a literal in a Project repository,
+caller, or log.
 
 **Nothing in a Project repository restates its owner.** The action derives the Project code from the checkout's own
 manifest, and the owner it publishes under is the one the workflow already runs as: `github.repository` is what the
@@ -384,16 +388,17 @@ but publishing or serving a second application requires the application-specific
 corresponding change to the prefix-conditioned IAM grant. This source-layout change does not widen that grant or guess
 which audience a new application should inherit.
 
-The deployment's WIF provider and service account remain repository variables. They are not source coordinates and are
-not copied into the manifest. An empty provider skips publication cleanly, which lets an unprovisioned or forked
-repository use the same caller without a red run.
+The deployment's WIF provider, service account, and applications bucket remain repository variables. They are not source
+coordinates and are not copied into the manifest. An empty provider skips publication cleanly, which lets an
+unprovisioned or forked repository use the same caller without a red run.
 
 | Variable | Value |
 | --- | --- |
 | `NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER` | the full Workload Identity provider resource, pool and provider id included |
 | `NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT` | `nav-pub-<code>@<project>.iam.gserviceaccount.com`, this Project's own |
+| `NAVIGATOR_APP_PUBLISHER_BUCKET` | this deployment's applications bucket, one per deployment rather than per Project |
 
-These two variables are deployment identifiers, not access control. Knowing them grants nothing: the Workload Identity
+These three variables are deployment identifiers, not access control. Knowing them grants nothing: the Workload Identity
 binding on Google's side is the gate, and it is the only one. A change that needs to widen or narrow real access belongs
 in `cli/src/devx/gcp/app_publisher.rs`, and the binding must not be weakened on the belief that hiding coordinates
 covers it.

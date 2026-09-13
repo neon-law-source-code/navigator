@@ -7,6 +7,7 @@
 //! alone — they resolve deployment-owned coordinates from [`cloud::workspace`]
 //! and inspect the operator's own machine.
 
+pub mod cli_docs;
 pub mod doctor;
 pub mod drift;
 pub mod gate;

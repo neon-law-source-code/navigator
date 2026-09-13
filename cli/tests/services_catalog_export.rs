@@ -289,6 +289,43 @@ fn a_dangling_related_id_never_becomes_an_artifact() {
     );
 }
 
+/// A bare `--out` filename writes beside the working directory.
+///
+/// The documented invocation passes a nested path, so the bare form is the
+/// one nothing exercised: its parent is the empty path, and whether that is
+/// created, skipped, or an error is the difference between a working command
+/// and a confusing failure. It works, and this keeps it working.
+#[test]
+fn a_bare_out_filename_is_written() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let catalog = write_catalog(&dir, |yaml| yaml);
+    let output = Command::new(exporter())
+        // Run *in* the temporary directory, so a bare filename has nowhere to
+        // resolve but here — and the shipped tree is never written to.
+        .current_dir(dir.path())
+        .args([
+            "--revision",
+            REVISION,
+            "--catalog",
+            &catalog.to_string_lossy(),
+            "--out",
+            "services-catalog.json",
+        ])
+        .output()
+        .expect("run the exporter");
+    assert!(
+        output.status.success(),
+        "a bare --out must write: {}",
+        stderr(&output)
+    );
+    let written = std::fs::read_to_string(dir.path().join("services-catalog.json"))
+        .expect("the bare filename landed in the working directory");
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&written).is_ok(),
+        "and it is the artifact, not a fragment"
+    );
+}
+
 /// Writing to a file produces the same bytes standard output does, so the
 /// documented build path and a manual run cannot disagree.
 #[test]

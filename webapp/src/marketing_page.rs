@@ -371,16 +371,18 @@ pub async fn marketing_page_view() -> Result<MarketingPageView, ServerFnError> {
     })
 }
 
-/// The request's `?q=`, or an empty needle.
+/// The request's `?q=`, cut to the search's cap, or an empty needle.
 ///
 /// A malformed query string is an empty needle rather than an error: the
 /// services band answers it by showing everything, which is a better page than
-/// a 500 for a URL a reader most likely did not type by hand.
+/// a 500 for a URL a reader most likely did not type by hand. The cap is
+/// applied here, at the edge, so no unbounded needle reaches the matcher — see
+/// [`crate::services_search::MAX_QUERY_LEN`].
 #[cfg(feature = "server")]
 async fn search_query() -> String {
     dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Query<MarketingQuery>, _>()
         .await
-        .map(|axum::extract::Query(query)| query.q)
+        .map(|axum::extract::Query(query)| crate::services_search::clamp_query(&query.q))
         .unwrap_or_default()
 }
 

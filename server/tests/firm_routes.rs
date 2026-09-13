@@ -999,6 +999,105 @@ async fn plans_and_services_publish_real_fees() {
     }
 }
 
+/// `/services` filters on the `?q=` the real route was given.
+///
+/// The component tests prove the band filters when it is handed a needle;
+/// this proves the needle actually arrives — query extraction through the
+/// mounted axum route, which no component test exercises. Without it, a
+/// regression in `search_query` would render the whole schedule for every
+/// query and every component test would stay green.
+#[tokio::test]
+async fn the_services_page_filters_on_its_query_parameter() {
+    let app = site_app().await;
+
+    let count = |body: &str| body.matches("fm-services__service").count();
+
+    let all = body_string(anon_get(&app, "/services").await).await;
+    assert!(count(&all) > 1, "the unfiltered page lists the schedule");
+    assert!(all.contains("Showing all"), "{all}");
+
+    let narrowed = body_string(anon_get(&app, "/services?q=llc").await).await;
+    assert!(
+        count(&narrowed) < count(&all) && count(&narrowed) > 0,
+        "`?q=llc` must narrow the schedule server-side: {} of {}",
+        count(&narrowed),
+        count(&all)
+    );
+    // The needle comes back in the control, so a reader can edit rather than
+    // retype it.
+    assert!(narrowed.contains(r#"value="llc""#), "{narrowed}");
+
+    // A needle that matches nothing renders an answer, not a blank band.
+    let empty = body_string(anon_get(&app, "/services?q=bankruptcy").await).await;
+    assert_eq!(count(&empty), 0, "{empty}");
+    assert!(empty.contains("fm-services__empty"), "{empty}");
+}
+
+/// A `?q=` nobody typed still renders a page, and the needle the matcher sees
+/// is bounded.
+///
+/// `?q=` is public and unauthenticated, and matching is linear in the term
+/// count, so an unbounded needle is unbounded server work per request. The
+/// route answers with a page rather than a 500 or a stall.
+#[tokio::test]
+async fn the_services_page_bounds_an_overlong_query() {
+    let app = site_app().await;
+
+    let long = "a".repeat(webapp::services_search::MAX_QUERY_LEN * 200);
+    let response = anon_get(&app, &format!("/services?q={long}")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    // The page renders, and the control reflects only the capped needle.
+    assert!(body.contains("fm-services__empty"), "{body}");
+    let capped = "a".repeat(webapp::services_search::MAX_QUERY_LEN);
+    assert!(
+        body.contains(&format!(r#"value="{capped}""#)),
+        "the rendered needle is cut to the cap"
+    );
+    assert!(
+        !body.contains(&format!(r#"value="{capped}a""#)),
+        "nothing past the cap reaches the page"
+    );
+}
+
+/// An odd `?q=` renders a page rather than a 500, whichever way it is odd.
+///
+/// Two different paths reach the same guarantee, and only one of them is
+/// obvious:
+///
+/// - `?q=%ZZ` is *not* rejected. Percent-decoding is lenient, so the needle
+///   becomes the literal `%ZZ` — a real search that happens to match nothing,
+///   which is the empty state rather than an error.
+/// - `?q=a&q=b` genuinely fails to deserialize (`duplicate field`). That is
+///   the branch `search_query`'s `unwrap_or_default` exists for, and until
+///   this test nothing exercised it: the page falls back to an empty needle
+///   and shows the whole schedule.
+#[tokio::test]
+async fn an_odd_query_string_renders_a_page_rather_than_an_error() {
+    let app = site_app().await;
+    let count = |body: &str| body.matches("fm-services__service").count();
+
+    // Lenient decoding: a literal needle nothing matches.
+    let response = anon_get(&app, "/services?q=%ZZ&=&;;").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert_eq!(count(&body), 0, "{body}");
+    assert!(
+        body.contains("fm-services__empty"),
+        "an unmatchable needle is the empty state, not an error: {body}"
+    );
+
+    // Extraction actually fails here, so the needle falls back to empty.
+    let response = anon_get(&app, "/services?q=a&q=b").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(
+        count(&body) > 1,
+        "an unreadable query falls back to the whole schedule: {body}"
+    );
+    assert!(body.contains("Showing all"), "{body}");
+}
+
 /// `/llms.txt` publishes no fee either.
 ///
 /// The machine-readable index is the other place the firm could leak a

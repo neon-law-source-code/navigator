@@ -221,7 +221,7 @@ impl ServicesCatalog {
                 self.catalog_version
             ));
         }
-        check_value("flat_fee", &self.flat_fee)?;
+        check_fee("flat_fee", &self.flat_fee)?;
         self.validate_categories()?;
         let ids = self.validate_services()?;
         for service in &self.services {
@@ -305,6 +305,9 @@ impl ServicesCatalog {
                     ))
                 }
                 _ => {}
+            }
+            if let Some(amount) = service.amount.as_deref() {
+                check_fee(&format!("{}.amount", service.id), amount)?;
             }
             if service.includes.is_empty() {
                 return Err(format!(
@@ -407,6 +410,51 @@ fn check_value(key: &str, value: &str) -> Result<(), String> {
                 shared::SUPPORTED_PLACEHOLDERS.join(", ")
             ));
         }
+    }
+    Ok(())
+}
+
+/// Refuse a published fee that is not a figure a reader can pay.
+///
+/// [`check_value`] asks only whether a string is safe to substitute. A fee is
+/// advertised to the public and has to clear more than that: `$0` on a legal
+/// fee schedule reads as free work the firm is not offering, `-$50` is not a
+/// price at all, and `free` is a claim rather than an amount — yet all three
+/// satisfy every text rule and would reach the page.
+///
+/// Positivity is decided by looking for a non-zero digit rather than by
+/// parsing. A fee is money, and money is the wrong thing to route through a
+/// binary float on its way to a public page.
+fn check_fee(key: &str, value: &str) -> Result<(), String> {
+    check_value(key, value)?;
+    let refuse = |reason: &str| {
+        Err(format!(
+            "{SERVICES_CATALOG_STEM}: `{key}` publishes `{value}`, which {reason}"
+        ))
+    };
+    let Some(amount) = value.strip_prefix('$') else {
+        return refuse("is not a fee; a published fee is a dollar figure such as `$350`");
+    };
+    let (whole, cents) = match amount.split_once('.') {
+        Some((whole, cents)) => (whole, Some(cents)),
+        None => (amount, None),
+    };
+    if whole.is_empty()
+        || !whole
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || byte == b',')
+    {
+        return refuse(
+            "is not a fee; the amount is digits, optionally grouped with commas, such as `$3,650`",
+        );
+    }
+    if let Some(cents) = cents {
+        if cents.len() != 2 || !cents.bytes().all(|byte| byte.is_ascii_digit()) {
+            return refuse("is not a fee; cents are exactly two digits, such as `$12.50`");
+        }
+    }
+    if !amount.bytes().any(|byte| matches!(byte, b'1'..=b'9')) {
+        return refuse("is not a fee a reader can pay; a published fee is greater than zero");
     }
     Ok(())
 }
@@ -604,6 +652,54 @@ services:
         let err = ServicesCatalog::parse(&fixture().replace("    amount: $350\n", ""))
             .expect_err("no fee");
         assert!(err.contains("`nv-address` publishes no fee"), "{err}");
+    }
+
+    /// A published fee has to be a figure a reader can pay. These all satisfy
+    /// every text rule — one line, no quotes, no stray placeholder — and would
+    /// otherwise reach the public fee schedule.
+    #[test]
+    fn a_fee_that_is_not_a_payable_figure_is_refused() {
+        for (amount, expected) in [
+            ("$0", "greater than zero"),
+            ("$0.00", "greater than zero"),
+            ("$000", "greater than zero"),
+            ("-$50", "is not a fee"),
+            ("$-50", "is not a fee"),
+            ("free", "is not a fee"),
+            ("350", "is not a fee"),
+            ("$35.0", "cents are exactly two digits"),
+            ("$35.000", "cents are exactly two digits"),
+            ("$", "is not a fee"),
+        ] {
+            let err = ServicesCatalog::parse(
+                &fixture().replace("amount: $350", &format!("amount: '{amount}'")),
+            )
+            .unwrap_err();
+            assert!(
+                err.contains("nv-address.amount") && err.contains(expected),
+                "`{amount}` must be refused as a fee mentioning {expected:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_fee_a_reader_can_pay_is_accepted() {
+        for amount in ["$5", "$350", "$3,650", "$12.50", "$0.50"] {
+            ServicesCatalog::parse(
+                &fixture().replace("amount: $350", &format!("amount: '{amount}'")),
+            )
+            .unwrap_or_else(|err| panic!("`{amount}` is a payable fee: {err}"));
+        }
+    }
+
+    /// The catalog-level flat fee is held to the same rule: it is the figure
+    /// every flat-fee service prints.
+    #[test]
+    fn a_flat_fee_that_is_not_a_payable_figure_is_refused() {
+        let err = ServicesCatalog::parse(&fixture().replace("flat_fee: $50", "flat_fee: '$0'"))
+            .expect_err("a zero flat fee");
+        assert!(err.contains("`flat_fee`"), "{err}");
+        assert!(err.contains("greater than zero"), "{err}");
     }
 
     #[test]

@@ -29,6 +29,28 @@ use crate::marketing_page::BandHeading;
 /// The query parameter the search reads and writes.
 pub const SEARCH_PARAM: &str = "q";
 
+/// The longest needle the search reads.
+///
+/// `?q=` is public and unauthenticated, and matching is linear in the needle's
+/// term count: every term is scanned against every service. A needle nobody
+/// typed — a megabyte of text in a crafted URL — would otherwise buy an
+/// unbounded amount of server work per request. A real search is a phrase, so
+/// the cap is set well above anything a reader types and the excess is dropped
+/// rather than refused: a long URL still renders a page.
+pub const MAX_QUERY_LEN: usize = 128;
+
+/// `raw`, cut to at most [`MAX_QUERY_LEN`] characters.
+///
+/// Cut on a character boundary, not a byte one: a needle ending mid-codepoint
+/// would panic on the slice.
+#[must_use]
+pub fn clamp_query(raw: &str) -> String {
+    match raw.char_indices().nth(MAX_QUERY_LEN) {
+        Some((index, _)) => raw[..index].to_string(),
+        None => raw.to_string(),
+    }
+}
+
 /// Words dropped from a search before matching.
 ///
 /// A visitor types a sentence — "help with my LLC" — not a keyword. Requiring
@@ -252,6 +274,7 @@ pub fn ServicesSearch(band: ServicesBand, query: String) -> Element {
                         name: "{SEARCH_PARAM}",
                         value: "{current}",
                         placeholder: "{band.search_placeholder}",
+                        maxlength: "{MAX_QUERY_LEN}",
                         autocomplete: "off",
                         oninput: move |event| needle.set(event.value()),
                     }
@@ -401,6 +424,39 @@ mod tests {
         assert_eq!(search_terms("llc-file"), vec!["llc", "file"]);
         assert_eq!(search_terms("501(c)(3)"), vec!["501", "c", "3"]);
         assert_eq!(search_terms("  LLC,  formation "), vec!["llc", "formation"]);
+    }
+
+    /// A needle nobody typed is cut rather than refused, so a crafted URL
+    /// still renders a page and still costs bounded work.
+    #[test]
+    fn an_overlong_needle_is_cut_to_the_cap() {
+        let long = "a".repeat(MAX_QUERY_LEN * 50);
+        assert_eq!(clamp_query(&long).chars().count(), MAX_QUERY_LEN);
+        // A needle at or under the cap is untouched.
+        assert_eq!(clamp_query("llc"), "llc");
+        let exact = "b".repeat(MAX_QUERY_LEN);
+        assert_eq!(clamp_query(&exact), exact);
+    }
+
+    /// Cutting happens on a character boundary. A byte-wise cut through a
+    /// multi-byte codepoint panics.
+    #[test]
+    fn the_cap_cuts_on_a_character_boundary() {
+        let multibyte = "é".repeat(MAX_QUERY_LEN * 2);
+        let cut = clamp_query(&multibyte);
+        assert_eq!(cut.chars().count(), MAX_QUERY_LEN);
+        assert!(multibyte.starts_with(&cut));
+    }
+
+    /// The rendered input carries the same cap the server applies, so the two
+    /// halves of the contract cannot drift.
+    #[test]
+    fn the_input_publishes_the_same_cap_the_server_applies() {
+        let out = render_with("");
+        assert!(
+            out.contains(&format!(r#"maxlength="{MAX_QUERY_LEN}""#)),
+            "{out}"
+        );
     }
 
     /// An untouched search box shows everything, and so does one holding only

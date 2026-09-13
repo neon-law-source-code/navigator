@@ -277,6 +277,13 @@ pub struct CardCopy {
     pub day_rate_bill: Option<u16>,
 }
 
+/// One example search the services band offers as a chip.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SearchExampleCopy {
+    pub label: String,
+    pub query: String,
+}
+
 /// One entry in a numbered walk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct StepCopy {
@@ -336,6 +343,38 @@ pub enum BandCopy {
         description: Option<String>,
         #[serde(default)]
         items: Vec<StepCopy>,
+    },
+    /// The firm's individual services, rendered from the brand's
+    /// `services-catalog.yaml` rather than listed here.
+    ///
+    /// The services are a schedule of work with identifiers and fees; this
+    /// band is the page copy *around* them — the heading, the search chrome, a
+    /// reader sees when the search finds nothing, and the two regulated badges.
+    /// Keeping the two apart is what lets the schedule be exported and
+    /// consumed while the page copy stays page copy.
+    Services {
+        #[serde(default)]
+        anchor: String,
+        overline: String,
+        heading: String,
+        #[serde(default)]
+        description: Option<String>,
+        search_label: String,
+        search_placeholder: String,
+        submit_label: String,
+        #[serde(default)]
+        examples: Vec<SearchExampleCopy>,
+        fee_label: String,
+        includes_label: String,
+        related_label: String,
+        /// The chip a service requiring a plan carries.
+        members_badge: String,
+        /// The chip a service carrying a government charge carries. A
+        /// regulated disclosure, not decoration.
+        state_fee_badge: String,
+        empty: String,
+        empty_help: String,
+        clear_label: String,
     },
     ProjectNetwork {
         #[serde(default)]

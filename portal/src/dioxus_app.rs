@@ -4650,6 +4650,116 @@ mod tests {
         );
     }
 
+    /// A `/services` page whose individual-services band is the searchable
+    /// one, built here rather than pulled from the brand crate: `neon`
+    /// depends on `portal`, so this crate cannot read its catalog.
+    fn services_page() -> webapp::marketing_page::PageContent {
+        webapp::marketing_page::PageContent {
+            head_title: "Plans & services".to_string(),
+            meta_description: "The firm's individual services.".to_string(),
+            title: "Plans & services".to_string(),
+            tagline: "Choose the help you need.".to_string(),
+            bands: vec![webapp::marketing_page::Band::Services(Box::new(
+                webapp::services_search::ServicesBand {
+                    anchor: "fees".to_string(),
+                    overline: "Individual services".to_string(),
+                    heading: "What we can help with".to_string(),
+                    search_label: "Search individual services".to_string(),
+                    submit_label: "Search".to_string(),
+                    services: vec![webapp::services_search::Service {
+                        id: "llc-file".to_string(),
+                        item: "1101".to_string(),
+                        name: "Start a company".to_string(),
+                        blurb: "A lawyer files the papers.".to_string(),
+                        category: "Start a business".to_string(),
+                        includes: vec!["Prepare the papers".to_string()],
+                        fee: "$50".to_string(),
+                        period: "per form".to_string(),
+                        ..webapp::services_search::Service::default()
+                    }],
+                    ..webapp::services_search::ServicesBand::default()
+                },
+            ))],
+            ..webapp::marketing_page::PageContent::default()
+        }
+    }
+
+    /// `/services` is the public site's first hydrated route, so it has to
+    /// carry the same per-response nonce policy `DIOXUS_DEMO_PATH` does.
+    ///
+    /// The route already reaches [`dioxus_document_head`] through
+    /// [`marketing_page_router`], which is why this is a guard rather than a
+    /// change: without it, a later refactor of the marketing router could drop
+    /// the layer and the page would keep rendering — readable, filtering only
+    /// on a form submission, with nothing failing. The search would simply
+    /// stop being live, silently.
+    #[tokio::test]
+    async fn the_services_route_carries_the_hydration_nonce_policy() {
+        let router = marketing_page_router(FIRM_SERVICES_PATH, services_page());
+
+        let resp = router
+            .oneshot(
+                Request::builder()
+                    .uri(FIRM_SERVICES_PATH)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let csp = resp
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .expect("the render carries a policy")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let bytes = axum::body::to_bytes(resp.into_body(), MAX_RENDER_BYTES)
+            .await
+            .unwrap();
+        let html = String::from_utf8(bytes.to_vec()).unwrap();
+
+        // The policy is the demo route's, nonce and all.
+        let nonce = csp
+            .split("'nonce-")
+            .nth(1)
+            .and_then(|rest| rest.split('\'').next())
+            .expect("the policy carries a nonce")
+            .to_string();
+        assert!(!nonce.is_empty());
+        assert_eq!(csp, csp_with_nonce(&nonce, crate::asset_csp_origin(), None));
+        assert!(
+            csp.contains("script-src 'self' 'nonce-") && csp.contains("'wasm-unsafe-eval'"),
+            "hydration needs the nonce and wasm: {csp}"
+        );
+        // A nonce is only stronger than `'unsafe-inline'` if the blanket
+        // allowance is actually absent — from `script-src` specifically.
+        // `style-src` carries it and always has; reading the whole policy for
+        // the token would fail on that unrelated directive.
+        let script_src = csp
+            .split("; ")
+            .find(|directive| directive.starts_with("script-src "))
+            .expect("the policy declares script-src");
+        assert!(
+            !script_src.contains("'unsafe-inline'"),
+            "the policy must never admit blanket inline script: {script_src}"
+        );
+        // Every inline script Dioxus emitted is tagged, so hydration runs.
+        assert_eq!(
+            html.matches("<script>").count(),
+            0,
+            "an untagged inline script would be blocked: {html}"
+        );
+        // The GET form submits same-origin, which `form-action` must allow.
+        assert!(csp.contains("form-action 'self'"), "{csp}");
+        assert!(
+            html.contains(r#"action="/services""#) && html.contains(r#"method="get""#),
+            "the no-JS search path is a same-origin GET: {html}"
+        );
+        // And the band itself is server-rendered, readable before hydration.
+        assert!(html.contains("Start a company"), "{html}");
+    }
+
     /// `/team` is a static page: no store read, no per-request roster.
     #[tokio::test]
     async fn team_index_serves_the_static_statement() {

@@ -77,6 +77,21 @@ impl ServiceCategory {
         Self::Urgent,
     ];
 
+    /// Words a service in this category should be findable by that a reader
+    /// would never see printed.
+    ///
+    /// "Wills & family plans" is the firm's shelf label; a visitor types
+    /// "family" or "legacy". These are searched and never rendered, so the
+    /// page can meet a reader's word without publishing a word the firm would
+    /// not choose.
+    #[must_use]
+    pub const fn search_aliases(self) -> &'static str {
+        match self {
+            Self::Estate => "personal family legacy",
+            _ => "",
+        }
+    }
+
     /// The value this category is written as in YAML and JSON.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -327,10 +342,7 @@ impl ServicesCatalog {
     /// fee. Infallible for the same reason [`Self::category_label`] is.
     #[must_use]
     pub fn fee<'a>(&'a self, service: &'a ServiceCopy) -> &'a str {
-        service
-            .amount
-            .as_deref()
-            .unwrap_or(self.flat_fee.as_str())
+        service.amount.as_deref().unwrap_or(self.flat_fee.as_str())
     }
 
     /// The bytes an integrity digest covers: compact JSON with every object

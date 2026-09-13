@@ -972,9 +972,15 @@ async fn plans_and_services_publish_real_fees() {
     let app = site_app().await;
 
     for (priced, expected_figures) in [
+        // The services schedule prints an amount and its cadence as
+        // neighbouring elements rather than one `$350/year` chip, so both
+        // halves are asserted: an amount with no cadence is a number a reader
+        // cannot act on.
         (
             "/services",
-            vec!["$50", "$350/year", "$100", "$250", "$350", "$500"],
+            vec![
+                "$50", "$350", "per year", "$100", "$250", "$500", "$750", "$5",
+            ],
         ),
         ("/business", vec!["$3,650", "$10"]),
         ("/personal", vec!["$365", "$1"]),

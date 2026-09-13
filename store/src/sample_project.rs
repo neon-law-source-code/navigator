@@ -58,25 +58,6 @@ pub const ENTRY_CACHE_CONTROL: &str = "no-store";
 /// must not land in a shared cache.
 pub const ASSET_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
 
-/// A project application's `navigator.yaml`.
-///
-/// One field read here. It is a manifest rather than a convention over the
-/// repository name because the repository name is the application's to choose:
-/// a repository may be named for something other than the Project it mounts on,
-/// and no rule can recover the code from a name that never encoded it. The
-/// sample repositories happen to be named for their codes, which makes the two
-/// agree — by convention, not because anything derives one from the other.
-///
-/// Unknown keys are ignored rather than refused (`#[derive(Deserialize)]`
-/// carries no `deny_unknown_fields`): a Project repository's own manifest also
-/// carries `host:`, and this reader has no business rejecting a key it does
-/// not need.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct Manifest {
-    /// The Project code this bundle belongs to.
-    pub project: String,
-}
-
 /// Why a manifest could not be turned into a publish prefix.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ManifestError {
@@ -90,13 +71,36 @@ pub enum ManifestError {
 
 /// Read the Project code a bundle declares, and prove it is one.
 ///
+/// One field is read here. It is a manifest rather than a convention over the
+/// repository name because the repository name is the application's to choose:
+/// a repository may be named for something other than the Project it mounts on,
+/// and no rule can recover the code from a name that never encoded it. Unknown
+/// keys are ignored because the full Project-repository manifest carries
+/// coordinates and handles this publisher does not need.
+///
 /// The code is validated with the same [`crate::projects::is_valid_code`] the
 /// store uses, so a manifest cannot introduce a code the rest of Navigator
 /// would reject — and cannot smuggle path segments into a bucket key.
 pub fn project_code_from_manifest(yaml: &str) -> Result<String, ManifestError> {
-    let manifest: Manifest =
+    let manifest: serde_yaml::Value =
         serde_yaml::from_str(yaml).map_err(|e| ManifestError::Unparsable(e.to_string()))?;
-    let name = manifest.project.trim().to_string();
+    let mapping = manifest
+        .as_mapping()
+        .ok_or_else(|| ManifestError::Unparsable("navigator.yaml must be a mapping".to_string()))?;
+    let project = mapping.get("project").ok_or_else(|| {
+        ManifestError::Unparsable("navigator.yaml is missing project".to_string())
+    })?;
+    let project = project
+        .as_mapping()
+        .and_then(|map| map.get("name"))
+        .unwrap_or(project);
+    let name = project
+        .as_str()
+        .ok_or_else(|| {
+            ManifestError::Unparsable("navigator.yaml project must be text".to_string())
+        })?
+        .trim()
+        .to_string();
     if !crate::projects::is_valid_code(&name) {
         return Err(ManifestError::InvalidCode(name));
     }

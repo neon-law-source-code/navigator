@@ -25,6 +25,10 @@ pub const ROWLESS_CODE: &str = "Y007";
 pub const RENAME_CODE: &str = "Y008";
 /// `Y011` — a Project manifest must not carry YAML comment tokens.
 pub const COMMENT_CODE: &str = "Y011";
+/// `Y012` — `version` must be an exact release tag.
+pub const VERSION_CODE: &str = "Y012";
+/// `Y013` — the flat manifest shape is deprecated.
+pub const DEPRECATED_CODE: &str = "Y013";
 
 /// Every top-level key `navigator.yaml` may carry.
 ///
@@ -38,6 +42,29 @@ pub const ACCEPTED_KEYS: &[&str] = &[
     "host",
     "no_live_row",
     "project",
+    "version",
+];
+
+const PROJECT_KEYS: &[&str] = &[
+    "client_dri",
+    "host",
+    "lawyer_dri",
+    "name",
+    "private_notion_page",
+    "private_slack_channel",
+    "shared_notion_page",
+    "shared_slack_channel",
+    "xero_customer",
+];
+
+const HANDLE_KEYS: &[&str] = &[
+    "lawyer_dri",
+    "client_dri",
+    "private_slack_channel",
+    "private_notion_page",
+    "shared_slack_channel",
+    "shared_notion_page",
+    "xero_customer",
 ];
 
 /// A Project repository's root manifest.
@@ -45,16 +72,22 @@ pub const ACCEPTED_KEYS: &[&str] = &[
 /// Unknown keys are not stored: [`lint`] refuses them before a caller reads
 /// this struct. The `no_live_row` field stays untyped so `true` cannot coerce
 /// into a plausible reason.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[allow(dead_code)]
+#[derive(Debug, Clone, Default)]
 pub struct Manifest {
+    pub version: Option<String>,
     pub host: Option<String>,
     pub project: Option<String>,
+    pub lawyer_dri: Option<String>,
+    pub client_dri: Option<String>,
+    pub private_slack_channel: Option<String>,
+    pub private_notion_page: Option<String>,
+    pub shared_slack_channel: Option<String>,
+    pub shared_notion_page: Option<String>,
+    pub xero_customer: Option<String>,
     pub no_live_row: Option<serde_yaml::Value>,
-    #[serde(default)]
     pub allowed_hosts: BTreeMap<String, String>,
-    #[serde(default)]
     pub allowed_links: BTreeMap<String, String>,
-    #[serde(default)]
     pub allowed_prefixes: BTreeMap<String, String>,
 }
 
@@ -65,6 +98,7 @@ pub struct ManifestFinding {
     pub line: usize,
     pub code: &'static str,
     pub message: String,
+    pub warning: bool,
 }
 
 impl ManifestFinding {
@@ -79,6 +113,17 @@ impl ManifestFinding {
             line,
             code,
             message: message.into(),
+            warning: false,
+        }
+    }
+
+    fn warning(path: &Path, line: usize, code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            line,
+            code,
+            message: message.into(),
+            warning: true,
         }
     }
 }
@@ -360,7 +405,15 @@ pub fn lint_contents(path: &Path, contents: &str) -> Vec<ManifestFinding> {
     let mut findings = lint_comments(path, contents);
     let document: serde_yaml::Value = match serde_yaml::from_str(contents) {
         Ok(document) => document,
-        Err(_) => return findings,
+        Err(error) => {
+            findings.push(ManifestFinding::at(
+                path,
+                1,
+                UNKNOWN_KEY_CODE,
+                format!("navigator.yaml is not valid YAML: {error}"),
+            ));
+            return findings;
+        }
     };
     let Some(mapping) = document.as_mapping() else {
         findings.push(ManifestFinding::at(
@@ -375,8 +428,41 @@ pub fn lint_contents(path: &Path, contents: &str) -> Vec<ManifestFinding> {
         return findings;
     };
     findings.extend(lint_keys(path, mapping));
-    findings.extend(lint_host(path, mapping));
-    findings.extend(lint_project(path, mapping));
+    findings.extend(lint_version(path, mapping));
+    match mapping.get("project") {
+        Some(serde_yaml::Value::Mapping(project)) => {
+            findings.extend(lint_nested_project(path, project));
+        }
+        Some(serde_yaml::Value::String(_)) => {
+            if mapping.contains_key("version") {
+                findings.push(ManifestFinding::at(
+                    path,
+                    1,
+                    PROJECT_CODE,
+                    "`project` must be a map with `host` and `name` when `version` is present",
+                ));
+            } else {
+                findings.push(ManifestFinding::warning(
+                    path,
+                    1,
+                    DEPRECATED_CODE,
+                    "flat `host:`/`project:` is deprecated; use `version:` and `project.host`/`project.name`",
+                ));
+                findings.extend(lint_flat_host(path, mapping));
+                findings.extend(lint_flat_project(path, mapping));
+            }
+        }
+        Some(_) => findings.push(ManifestFinding::at(
+            path,
+            1,
+            PROJECT_CODE,
+            "`project` must be a Project code or a map with `host` and `name`",
+        )),
+        None => {
+            findings.extend(lint_flat_host(path, mapping));
+            findings.extend(lint_flat_project(path, mapping));
+        }
+    }
     findings.extend(lint_rowless(path, mapping));
     if let Ok(manifest) = parse(contents) {
         findings.extend(lint_allowlists(path, &manifest));
@@ -452,7 +538,28 @@ fn lint_keys(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding>
     findings
 }
 
-fn lint_host(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
+fn lint_version(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
+    match mapping.get("version") {
+        None => Vec::new(),
+        Some(value) => match scalar_string(value) {
+            Some(version) if crate::devx::registry::is_release_tag(&version) => Vec::new(),
+            Some(version) => vec![ManifestFinding::at(
+                path,
+                1,
+                VERSION_CODE,
+                format!("version must be an exact release tag, not '{version}'."),
+            )],
+            None => vec![ManifestFinding::at(
+                path,
+                1,
+                VERSION_CODE,
+                "version must be an exact release tag, not ''.",
+            )],
+        },
+    }
+}
+
+fn lint_flat_host(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
     match mapping.get("host") {
         Some(host) => match host_string(host) {
             None => vec![ManifestFinding::at(
@@ -478,7 +585,7 @@ fn lint_host(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding>
     }
 }
 
-fn lint_project(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
+fn lint_flat_project(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
     match mapping.get("project").and_then(scalar_string) {
         Some(code) if store::projects::is_valid_code(&code) => Vec::new(),
         Some(code) => vec![ManifestFinding::at(
@@ -500,6 +607,119 @@ fn lint_project(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFindi
             "`project` is required and must be a valid Project code",
         )],
     }
+}
+
+fn lint_nested_project(path: &Path, project: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
+    let mut findings = Vec::new();
+    for key in project.keys() {
+        let Some(name) = key.as_str() else {
+            findings.push(ManifestFinding::at(
+                path,
+                1,
+                UNKNOWN_KEY_CODE,
+                "navigator.yaml project-map keys must be strings",
+            ));
+            continue;
+        };
+        if !PROJECT_KEYS.contains(&name) {
+            findings.push(ManifestFinding::at(
+                path,
+                1,
+                UNKNOWN_KEY_CODE,
+                format!(
+                    "unknown project key `{name}`; expected one of {}",
+                    PROJECT_KEYS.join(", ")
+                ),
+            ));
+        }
+    }
+
+    let Some(host) = project.get("host").and_then(scalar_string) else {
+        findings.push(ManifestFinding::at(
+            path,
+            1,
+            HOST_CODE,
+            "`project.host` is required and must be a hostname",
+        ));
+        return findings;
+    };
+    if !is_hostname(&host) {
+        findings.push(ManifestFinding::at(
+            path,
+            1,
+            HOST_CODE,
+            format!("`project.host: {host}` is not a hostname"),
+        ));
+    }
+
+    match project.get("name").and_then(scalar_string) {
+        Some(name) if store::projects::is_valid_code(&name) => {}
+        Some(name) => findings.push(ManifestFinding::at(
+            path,
+            1,
+            PROJECT_CODE,
+            format!("`project.name: {name}` is not a valid Project code"),
+        )),
+        None => findings.push(ManifestFinding::at(
+            path,
+            1,
+            PROJECT_CODE,
+            "`project.name` is required and must be a Project code",
+        )),
+    }
+
+    for key in HANDLE_KEYS {
+        if let Some(value) = project.get(*key) {
+            findings.extend(lint_handle(path, key, value));
+        }
+    }
+    findings
+}
+
+fn lint_handle(path: &Path, key: &str, value: &serde_yaml::Value) -> Vec<ManifestFinding> {
+    let Some(value) = scalar_string(value) else {
+        return vec![ManifestFinding::at(
+            path,
+            1,
+            PROJECT_CODE,
+            format!("`project.{key}` must be non-empty text"),
+        )];
+    };
+    let valid = match key {
+        "lawyer_dri" | "client_dri" => is_email(&value),
+        "private_slack_channel"
+        | "private_notion_page"
+        | "shared_slack_channel"
+        | "shared_notion_page" => is_https_url(&value),
+        "xero_customer" => true,
+        _ => false,
+    };
+    if valid {
+        Vec::new()
+    } else {
+        vec![ManifestFinding::at(
+            path,
+            1,
+            PROJECT_CODE,
+            format!("`project.{key}` has the wrong shape"),
+        )]
+    }
+}
+
+fn is_email(value: &str) -> bool {
+    let Some((local, domain)) = value.split_once('@') else {
+        return false;
+    };
+    !local.is_empty()
+        && !domain.is_empty()
+        && !value.chars().any(char::is_whitespace)
+        && domain.contains('.')
+}
+
+fn is_https_url(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|url| {
+        url.scheme() == "https" && url.host_str().is_some_and(|host| !host.is_empty())
+    })
 }
 
 fn lint_rowless(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
@@ -525,7 +745,82 @@ fn lint_rowless(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFindi
 /// known to be well-shaped). Unknown keys are ignored here the way serde
 /// default-denies nothing: callers that need the closed set call [`lint`].
 pub fn parse(contents: &str) -> Result<Manifest, String> {
-    serde_yaml::from_str(contents).map_err(|error| format!("not valid YAML: {error}"))
+    let document: serde_yaml::Value = serde_yaml::from_str(contents)
+        .map_err(|error| format!("navigator.yaml is not valid YAML: {error}"))?;
+    let mapping = document
+        .as_mapping()
+        .ok_or_else(|| "navigator.yaml must be a mapping".to_string())?;
+    let version = mapping.get("version").map(parse_text).transpose()?;
+    let (host, project, project_map) = match mapping.get("project") {
+        Some(serde_yaml::Value::Mapping(project)) => (
+            Some(required_text(project, "host")?),
+            Some(required_text(project, "name")?),
+            Some(project),
+        ),
+        Some(value) => (
+            mapping.get("host").map(parse_text).transpose()?,
+            Some(required_text_value(value, "project")?),
+            None,
+        ),
+        None => (mapping.get("host").map(parse_text).transpose()?, None, None),
+    };
+    let values = |key: &str| {
+        project_map
+            .and_then(|project| project.get(key))
+            .map(parse_text)
+            .transpose()
+    };
+    Ok(Manifest {
+        version,
+        host,
+        project,
+        lawyer_dri: values("lawyer_dri")?,
+        client_dri: values("client_dri")?,
+        private_slack_channel: values("private_slack_channel")?,
+        private_notion_page: values("private_notion_page")?,
+        shared_slack_channel: values("shared_slack_channel")?,
+        shared_notion_page: values("shared_notion_page")?,
+        xero_customer: values("xero_customer")?,
+        no_live_row: mapping.get("no_live_row").cloned(),
+        allowed_hosts: parse_reason_map(mapping, "allowed_hosts")?,
+        allowed_links: parse_reason_map(mapping, "allowed_links")?,
+        allowed_prefixes: parse_reason_map(mapping, "allowed_prefixes")?,
+    })
+}
+
+fn parse_text(value: &serde_yaml::Value) -> Result<String, String> {
+    scalar_string(value).ok_or_else(|| "value must be non-empty text".to_string())
+}
+
+fn required_text(mapping: &serde_yaml::Mapping, key: &str) -> Result<String, String> {
+    mapping
+        .get(key)
+        .ok_or_else(|| format!("navigator.yaml project.{key} is required"))
+        .and_then(parse_text)
+}
+
+fn required_text_value(value: &serde_yaml::Value, key: &str) -> Result<String, String> {
+    parse_text(value).map_err(|_| format!("navigator.yaml {key} must be non-empty text"))
+}
+
+fn parse_reason_map(
+    mapping: &serde_yaml::Mapping,
+    key: &str,
+) -> Result<BTreeMap<String, String>, String> {
+    mapping.get(key).map_or_else(
+        || Ok(BTreeMap::new()),
+        |value| {
+            value
+                .as_mapping()
+                .ok_or_else(|| format!("navigator.yaml {key} must be a map"))?
+                .iter()
+                .map(|(key, value)| {
+                    let key = parse_text(key)?;
+                    Ok((key, parse_text(value)?))
+                })
+                .collect()
+        },
+    )
 }
 
 fn accepted_keys_phrase() -> String {
@@ -596,6 +891,7 @@ mod tests {
             "host",
             "no_live_row",
             "project",
+            "version",
         ];
         assert_eq!(
             BTreeSet::from_iter(ACCEPTED_KEYS.iter().copied()),
@@ -618,7 +914,58 @@ mod tests {
         assert_eq!(parsed.allowed_hosts.len(), 1);
         assert_eq!(parsed.allowed_links.len(), 1);
         assert_eq!(parsed.allowed_prefixes.len(), 1);
-        assert!(codes(yaml).is_empty());
+        assert_eq!(codes(yaml), vec![DEPRECATED_CODE]);
+    }
+
+    #[test]
+    fn nested_manifest_reads_release_and_handles() {
+        let yaml = concat!(
+            "version: 26.9.14\n",
+            "project:\n",
+            "  host: staging.neonlaw.com\n",
+            "  name: acme\n",
+            "  lawyer_dri: lawyer@example.com\n",
+            "  client_dri: client@example.com\n",
+            "  private_slack_channel: https://slack.example.com/private\n",
+            "  private_notion_page: https://notion.example.com/private\n",
+            "  shared_slack_channel: https://slack.example.com/shared\n",
+            "  shared_notion_page: https://notion.example.com/shared\n",
+            "  xero_customer: customer-1\n",
+        );
+        let parsed = parse(yaml).expect("nested manifest deserializes");
+        assert_eq!(parsed.version.as_deref(), Some("26.9.14"));
+        assert_eq!(parsed.host.as_deref(), Some("staging.neonlaw.com"));
+        assert_eq!(parsed.project.as_deref(), Some("acme"));
+        assert_eq!(parsed.lawyer_dri.as_deref(), Some("lawyer@example.com"));
+        assert_eq!(parsed.xero_customer.as_deref(), Some("customer-1"));
+        assert!(lint_contents(Path::new(FILE), yaml).is_empty());
+    }
+
+    #[test]
+    fn malformed_nested_manifest_reports_one_manifest_finding() {
+        let findings = lint_contents(
+            Path::new(FILE),
+            "version: 26.9.14\nproject:\n  host: [staging.neonlaw.com]\n  name: acme\n",
+        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].path, Path::new(FILE));
+        assert_eq!(findings[0].code, HOST_CODE);
+    }
+
+    #[test]
+    fn version_must_be_an_exact_release_tag() {
+        for version in ["latest", "main", "HEAD", ""] {
+            let yaml = format!(
+                "version: \"{version}\"\nproject:\n  host: staging.neonlaw.com\n  name: acme\n"
+            );
+            let finding = lint_contents(Path::new(FILE), &yaml)
+                .into_iter()
+                .find(|finding| finding.code == VERSION_CODE)
+                .expect("invalid version finding");
+            assert!(finding
+                .message
+                .contains("version must be an exact release tag"));
+        }
     }
 
     #[test]
@@ -676,10 +1023,12 @@ mod tests {
         assert!(empty
             .iter()
             .any(|f| f.code == ROWLESS_CODE && f.message.contains("must give the reason")));
-        assert!(codes(
+        assert!(lint_contents(
+            Path::new("navigator.yaml"),
             "host: staging.neonlaw.com\nproject: acme\nno_live_row: the matter closed\n"
         )
-        .is_empty());
+        .iter()
+        .all(|finding| finding.warning));
     }
 
     #[test]

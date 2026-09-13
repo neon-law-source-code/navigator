@@ -170,8 +170,8 @@ fn read_argv(log: &Path) -> Vec<String> {
 ///
 /// `manifest` is the root `navigator.yaml` content, when the fixture carries
 /// one at all. `repository` is the resolved `repository:` input — the
-/// fallback this step uses only when the manifest is absent or declares no
-/// `project:`. `index_html` is written verbatim as `portal/dist/index.html`,
+/// fallback this step uses only when the manifest is absent. `index_html` is
+/// written verbatim as `portal/dist/index.html`,
 /// so a caller controls exactly which mount the "built" bundle claims.
 fn run_derive_step(
     manifest: Option<&str>,
@@ -522,14 +522,13 @@ fn the_action_records_this_as_disclosure_reduction_not_access_control() {
 
 // ── ENG-290: the manifest is the source of truth for the Project code ─────
 
-/// The manifest wins even when the `repository:` fallback names a different,
-/// otherwise-plausible Project — the settled decision this action now
-/// implements, not merely tolerates.
+/// The manifest code is used for the destination and checked against the
+/// repository input, rather than being silently replaced by a fallback.
 #[test]
-fn the_manifests_declared_project_wins_over_the_repository_fallback() {
+fn the_manifest_project_is_checked_against_the_repository_input() {
     let outputs = run_derive_step(
         Some("host: www.example.com\nproject: acme\n"),
-        "sample-litigation",
+        "acme",
         "<script type=\"module\" src=\"/app/projects/acme/portal/assets/app.js\"></script>",
     )
     .expect("the step succeeds when the manifest matches the built mount");
@@ -564,10 +563,22 @@ fn the_repository_input_is_the_fallback_when_no_manifest_is_present() {
 fn an_unknown_manifest_key_does_not_block_the_derived_code() {
     let outputs = run_derive_step(
         Some("project: acme\nno_live_row: the matter closed\n"),
-        "sample-litigation",
+        "acme",
         "<script type=\"module\" src=\"/app/projects/acme/portal/assets/app.js\"></script>",
     )
     .expect("an unrelated manifest key must not fail the derive step");
+
+    assert_eq!(outputs.get("code").map(String::as_str), Some("acme"));
+}
+
+#[test]
+fn the_nested_manifest_project_name_is_read() {
+    let outputs = run_derive_step(
+        Some("version: 26.9.14\nproject:\n  host: staging.neonlaw.com\n  name: acme\n"),
+        "acme",
+        "<script type=\"module\" src=\"/app/projects/acme/portal/assets/app.js\"></script>",
+    )
+    .expect("the nested manifest name should be read");
 
     assert_eq!(outputs.get("code").map(String::as_str), Some("acme"));
 }

@@ -45,7 +45,7 @@ impl Rule for M056TableColumnCount {
             };
             if delimiter_no != header_no + 1
                 || !is_table_row(header)
-                || !is_delimiter_row(delimiter)
+                || !is_delimiter_row(delimiter, header)
             {
                 index += 1;
                 continue;
@@ -246,6 +246,18 @@ mod tests {
     #[test]
     fn prose_carrying_a_pipe_does_not_open_a_table() {
         let s = "Run `a | b` to pipe.\nThen read the output of `c | d | e`.\n";
+        assert!(M056TableColumnCount.lint(&f(s)).is_empty());
+    }
+
+    #[test]
+    fn prose_with_a_pipe_and_a_pipe_less_rule_does_not_open_a_table() {
+        let s = "some | prose\n---\n";
+        assert!(M056TableColumnCount.lint(&f(s)).is_empty());
+    }
+
+    #[test]
+    fn recognizes_a_one_column_table_with_outer_pipes() {
+        let s = "| a |\n| - |\n";
         assert!(M056TableColumnCount.lint(&f(s)).is_empty());
     }
 

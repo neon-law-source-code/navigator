@@ -449,7 +449,7 @@ fn html_block_start(line: &str) -> Option<HtmlBlockTerminator> {
     }
     if line
         .strip_prefix("<!")
-        .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_alphabetic()))
+        .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()))
     {
         return Some(HtmlBlockTerminator::Marker(">"));
     }
@@ -475,11 +475,13 @@ fn html_block_start(line: &str) -> Option<HtmlBlockTerminator> {
     {
         return Some(HtmlBlockTerminator::Blank);
     }
-    // Condition 7: any other complete tag, alone on its line. A raw-text
-    // tag name is excluded here — condition 1 already owns it.
-    if RAW_TEXT_TAGS
-        .iter()
-        .any(|(raw_text_tag, _)| name.eq_ignore_ascii_case(raw_text_tag))
+    // Condition 7: any other complete tag, alone on its line. An opening
+    // raw-text tag is excluded here — condition 1 already owns it — while a
+    // standalone closing raw-text tag is structural under condition 7.
+    if !closing
+        && RAW_TEXT_TAGS
+            .iter()
+            .any(|(raw_text_tag, _)| name.eq_ignore_ascii_case(raw_text_tag))
     {
         return None;
     }
@@ -663,12 +665,33 @@ fn link_destination(rest: &str) -> Option<&str> {
         }
         return None;
     }
-    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-    let destination = &rest[..end];
-    if destination.is_empty() || destination.chars().any(|c| c.is_ascii_control()) {
-        return None;
+    let mut depth = 0;
+    let mut escaped = false;
+    for (index, character) in rest.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' => escaped = true,
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
+            ')' => return None,
+            character if character.is_whitespace() || character.is_ascii_control() => {
+                if depth != 0 {
+                    return None;
+                }
+                let destination = &rest[..index];
+                return (!destination.is_empty()).then_some(&rest[index..]);
+            }
+            _ => {}
+        }
     }
-    Some(&rest[end..])
+    if depth == 0 && !rest.is_empty() {
+        Some("")
+    } else {
+        None
+    }
 }
 
 /// A reference definition's optional title: a span delimited by `"…"`,
@@ -1128,6 +1151,22 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn a_bare_destination_requires_balanced_unescaped_parentheses() {
+        assert!(super::is_reference_definition(
+            "[guide]: https://example.com/a_(b)"
+        ));
+        assert!(super::is_reference_definition(
+            r"[guide]: https://example.com/a_\(b"
+        ));
+        assert!(!super::is_reference_definition(
+            "[guide]: https://example.com/a_(b"
+        ));
+        assert!(!super::is_reference_definition(
+            "[guide]: https://example.com/a_(b))"
+        ));
+    }
+
     /// The reported false positive: a destination followed by more words is
     /// prose that happens to open with a bracketed word, not a definition.
     #[test]
@@ -1205,6 +1244,13 @@ mod tests {
         assert!(!super::is_reference_title("Guide title"));
     }
 
+    #[test]
+    fn empty_reference_titles_are_valid() {
+        assert!(super::is_reference_title("\"\""));
+        assert!(super::is_reference_title("''"));
+        assert!(super::is_reference_title("()"));
+    }
+
     // --- HTML blocks ----------------------------------------------------
 
     #[test]
@@ -1228,6 +1274,11 @@ mod tests {
     }
 
     #[test]
+    fn a_declaration_requires_an_uppercase_ascii_letter_after_its_marker() {
+        assert!(super::html_block_start("<!doctype html").is_none());
+    }
+
+    #[test]
     fn a_raw_text_tag_runs_to_its_closing_tag() {
         for (open, marker) in [
             ("<pre>", "</pre>"),
@@ -1241,6 +1292,14 @@ mod tests {
                 "{open} did not open a raw-text block ending at {marker}"
             );
         }
+    }
+
+    #[test]
+    fn a_standalone_raw_text_closing_tag_is_a_structural_html_block() {
+        assert!(matches!(
+            super::html_block_start("</script>"),
+            Some(super::HtmlBlockTerminator::Blank)
+        ));
     }
 
     #[test]

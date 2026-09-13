@@ -1655,6 +1655,18 @@ fn validate_tells_a_yml_manifest_to_rename() {
         .stdout(str::contains("the manifest is navigator.yaml, rename it"));
 }
 
+#[test]
+fn validate_does_not_report_prose_followed_by_a_pipe_less_rule_as_a_table() {
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "Prose.md", "some | prose\n---\n");
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+}
+
 /// A GFM table is a table only while its delimiter row carries as many
 /// cells as its header. The shape below — a header that gained a fourth
 /// column while the delimiter row kept three — passed the gate and
@@ -1852,5 +1864,25 @@ fn validate_fix_gives_a_next_line_title_only_to_a_title_less_definition() {
         fs::read_to_string(dir.path().join("Titles.md")).unwrap(),
         expected,
         "a repeated fix changed the fixture"
+    );
+}
+
+#[test]
+fn validate_fix_preserves_a_standalone_raw_text_closing_tag() {
+    let dir = TempDir::new().unwrap();
+    let original = "</script>\nShort line.\nNext line.\n";
+    write(dir.path(), "RawText.md", original);
+
+    navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("Fixed 0 file(s)"));
+
+    assert_eq!(
+        fs::read_to_string(dir.path().join("RawText.md")).unwrap(),
+        original,
+        "a closing raw-text tag was folded into prose"
     );
 }

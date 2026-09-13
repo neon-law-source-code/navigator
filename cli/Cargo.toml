@@ -12,6 +12,9 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+# `notations preview` serves the real `/notations/{slug}` router on a local
+# bind, so the binary owns an axum server of its own.
+axum.workspace = true
 base64.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
@@ -58,6 +61,8 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 views.workspace = true
+# `notations preview` names `PreviewDoc` to build the page it serves.
+webapp = { workspace = true, features = ["server"] }
 word.workspace = true
 walkdir.workspace = true
 webp.workspace = true
@@ -74,10 +79,12 @@ zip.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
-axum.workspace = true
 lopdf.workspace = true
 neon.workspace = true
 predicates.workspace = true
+# `tower::ServiceExt::oneshot` drives the preview router in-process, with no
+# bind and no port.
+tower.workspace = true
 regorus.workspace = true
 store = { workspace = true, features = ["test-support"] }
 wiremock.workspace = true

@@ -130,6 +130,28 @@ to. **The Template declares the questionnaire; the Notation asks it.**
   `MachineKind` and `notation_id` — so a single Restate virtual object per Notation hosts both timelines on one logical
   journal. See [`docs/retainer_intake.md`](retainer_intake.md) for the end-to-end walkthrough.
 
+### Reaching END begins the workflow
+
+**A questionnaire that reaches `END` starts its Notation's [Workflow](#template).** That is a property of the
+questionnaire completing, not of the door that recorded the last answer, and all three doors reach it through one
+function — [`portal::retainer_walk::begin_post_questionnaire_workflow`](../portal/src/retainer_walk.rs):
+
+- the lawyer's form walk (`POST /app/lawyer/notations/{id}/step`),
+- the REST command boundary (`POST /app/api/notations/{id}/answers`), and
+- Navigator MCP's `answer_notation`, which takes the drive as a
+  [`workflows::PostQuestionnaireDrive`](../workflows/src/post_questionnaire.rs) because beginning a closing letter's
+  workflow means rendering one, and `workflows` owns no renderer.
+
+What it begins is the bound Template's business rather than the caller's. A signed template advances to the
+`lawyer_review` human gate and stops: nothing is sent and no PDF is rendered on the request that completed intake, so a
+render failure lands at the lawyer's step rather than on the respondent's last answer, and `lawyer_review` stays a true
+human gate (`N116`). A closing letter, which the firm signs and which ends the matter, runs through to `END`.
+
+**The client's own intake is a subset and does not reach `END`.** A client sees only the questions whose `audience` is
+`client` or `both` and their answers are written straight to the `answers` table; the questionnaire runtime's pointer is
+the *firm's* progress, so the client finishing their portion leaves the rest for the firm and starts nothing. See
+[`workflows::notation_session::client_intake_step`](../workflows/src/notation_session.rs).
+
 ### Conversational notation (Navigator MCP)
 
 The same questionnaire state machine is also driven from outside the HTML form by two catalog tools: `create_notation`

@@ -120,81 +120,16 @@ fn notation_card(
     }
 }
 
-/// The template's declared questionnaire, in order, ready for the "Try
-/// answering this" demo (ENG-452) — parsed with no live Notation and no
-/// domain-crate dependency (brand crates cannot depend on `workflows` or
-/// `store`; see `views::questionnaire_preview`'s own doc comment).
-fn demo_questions(frontmatter: &str) -> Vec<webapp::notation_demo::DemoQuestion> {
-    views::questionnaire_preview::parse(frontmatter)
-        .into_iter()
-        .map(|q| {
-            let interactive = q.is_interactive();
-            webapp::notation_demo::DemoQuestion {
-                code: q.code,
-                answer_type: q.answer_type,
-                prompt: q.prompt,
-                choices: q.choices,
-                interactive,
-            }
-        })
-        .collect()
-}
-
-/// The template's declared `workflow:` state machine, ready for the sample
-/// "Workflow" runs — parsed with no live Restate invocation and no
-/// domain-crate dependency (see `views::workflow_preview`'s own doc
-/// comment).
-fn demo_workflow(frontmatter: &str) -> Vec<webapp::notation_workflow::WorkflowStateView> {
-    views::workflow_preview::parse(frontmatter)
-        .into_iter()
-        .map(|s| webapp::notation_workflow::WorkflowStateView {
-            name: s.name,
-            transitions: s.transitions.into_iter().map(|t| (t.event, t.to)).collect(),
-        })
-        .collect()
-}
-
-/// A sample letter, parsed into the highlighted-preview stage.
-fn letter_preview_doc(
-    slug: &str,
-    source_path: &str,
-    src: &str,
-) -> webapp::notation_preview::PreviewDoc {
-    let doc = views::harvard_outline::parse(src);
-    let frontmatter = doc.frontmatter.clone().unwrap_or_default();
-    webapp::notation_preview::PreviewDoc {
-        slug: slug.to_string(),
-        title: doc.title.clone(),
-        source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
-        demo_questions: demo_questions(&frontmatter),
-        demo_workflow: demo_workflow(&frontmatter),
-        frontmatter,
-        stage_html: views::harvard_outline::stage_html(&doc),
-        origin_url: None,
-    }
-}
-
-/// A government form, parsed into the same stepping stage as a letter, plus
-/// a link to the government's own blank form when the template declares
-/// `origin_url`.
-fn form_preview_doc(
-    slug: &str,
-    source_path: &str,
-    src: &str,
-) -> webapp::notation_preview::PreviewDoc {
-    let doc = views::harvard_outline::parse(src);
-    let frontmatter = doc.frontmatter.clone().unwrap_or_default();
-    let origin_url = views::harvard_outline::frontmatter_field(&frontmatter, "origin_url");
-    webapp::notation_preview::PreviewDoc {
-        slug: slug.to_string(),
-        title: doc.title.clone(),
-        source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
-        demo_questions: demo_questions(&frontmatter),
-        demo_workflow: demo_workflow(&frontmatter),
-        frontmatter,
-        stage_html: views::harvard_outline::stage_html(&doc),
-        origin_url,
-    }
+/// One bundled notation's show-page content, projected from its own
+/// Markdown by [`portal::notation_preview_doc`] — the same projection
+/// `navigator notations preview` applies to a file on disk, so the local
+/// preview and this published page cannot disagree.
+fn preview_doc(slug: &str, source_path: &str, src: &str) -> webapp::notation_preview::PreviewDoc {
+    portal::notation_preview_doc::from_markdown(
+        slug,
+        &format!("{NOTATIONS_BLOB_BASE}{source_path}"),
+        src,
+    )
 }
 
 /// Every bundled notation's show-page content — the two sample letters and
@@ -237,62 +172,62 @@ fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
     );
 
     vec![
-        letter_preview_doc(
+        preview_doc(
             "onboarding-letter",
             "notations/neon_law/shared/onboarding_letter.md",
             ONBOARDING,
         ),
-        letter_preview_doc(
+        preview_doc(
             "offboarding-letter",
             "notations/neon_law/shared/offboarding_letter.md",
             OFFBOARDING,
         ),
-        form_preview_doc(
+        preview_doc(
             "irs-form-990",
             "notations/forms/united_states/federal/irs/us__form_990.md",
             FORM_990,
         ),
-        form_preview_doc(
+        preview_doc(
             "application-for-naturalization",
             "notations/forms/united_states/federal/uscis/us__naturalization.md",
             NATURALIZATION,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-llc-formation",
             "notations/forms/united_states/nevada/state/nv__llc_formation.md",
             NV_LLC,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-profit-corporation-formation",
             "notations/forms/united_states/nevada/state/nv__profit_corp_formation.md",
             NV_PROFIT_CORP,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-business-trust-formation",
             "notations/forms/united_states/nevada/state/nv__business_trust_formation.md",
             NV_BUSINESS_TRUST,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-nonprofit-formation",
             "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
             NV_NONPROFIT,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-annual-list",
             "notations/forms/united_states/nevada/state/nv__annual_report.md",
             NV_ANNUAL_REPORT,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-llc-dissolution",
             "notations/forms/united_states/nevada/state/nv__dissolution.md",
             NV_DISSOLUTION,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-modified-business-tax",
             "notations/forms/united_states/nevada/state/nv__modified_business_tax.md",
             NV_MODIFIED_BUSINESS_TAX,
         ),
-        form_preview_doc(
+        preview_doc(
             "nevada-charitable-solicitation-registration",
             "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
             NV_CHARITABLE,

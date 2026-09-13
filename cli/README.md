@@ -73,6 +73,24 @@ navigator site notation create offboarding__letter \
   --client-email <client@example.com>
 ```
 
+## Reading a template the way a reader will
+
+```bash
+navigator notations preview templates/notations/neon_law/shared/onboarding_letter.md
+navigator notations preview onboarding-letter          # a name, looked up under templates/
+```
+
+This serves that one template's `/notations/{slug}` show page on a local bind and prints the URL. It is the same axum
+router the public site mounts, fed by the same projection, so the questionnaire section walks the template's own
+declared question order in Navigator's real field controls and the workflow section draws its declared state machine. A
+template that reads badly here reads badly published.
+
+Nothing is persisted: no Notation, no Answer, no runtime signal, no store connection. Stepping the questions is
+hydration, so it needs the Dioxus client bundle `navigator dev build-webapp` stages; without one the page still renders
+every question and the graph, and the command says so rather than leaving a dead "Next" button unexplained. The command
+runs anywhere, including inside a Project repository that has no `server/public` of its own — the stylesheets it needs
+are compiled into this binary.
+
 You do not need a site to work locally. Use `navigator validate`, the `navigator notations` authoring commands, and the
 KIND-backed `navigator dev` loop, and `navigator erd` to introspect the schema; seed a local catalog with `navigator
 site seed` when that command's local store and storage environment are available, or import deployment data with

@@ -129,6 +129,7 @@ pub(crate) mod integrations_api;
 pub mod marketing;
 pub mod matter_documents;
 pub mod mcp_principal;
+pub mod notation_preview_doc;
 pub mod oauth;
 pub mod openapi;
 pub mod password_reset;
@@ -1082,6 +1083,20 @@ pub fn bootstrap(
     // API door writes. Injecting it here is what lets the agent door go
     // through the shared command instead of the Restate trigger (ENG-317).
     mcp_state.email = Some(state.email.clone());
+    // A questionnaire the agent door completes begins its workflow, the same
+    // way one the lawyer's form walk or the REST door completes does. The
+    // drive itself is `portal`'s, because beginning a closing letter's
+    // workflow renders one; the agent door holds it as a trait object
+    // (`workflows::PostQuestionnaireDrive`).
+    mcp_state.post_questionnaire = Some(std::sync::Arc::new(
+        crate::retainer_walk::PostQuestionnaire {
+            surreal: state.surreal.clone(),
+            workflow_runtime: state.workflow_runtime.clone(),
+            storage: state.storage.clone(),
+            assets_storage: state.assets_storage.clone(),
+            forms_registry: state.forms_registry.clone(),
+        },
+    ));
     let mcp_layered = |mcp_state: mcp::McpState| {
         mcp::build_router(mcp_state)
             .route_layer(axum::middleware::from_fn_with_state(

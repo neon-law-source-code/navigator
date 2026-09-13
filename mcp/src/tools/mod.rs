@@ -246,7 +246,14 @@ pub async fn call_tool(
             .await
         }
         "answer_notation" => {
-            answer_notation::call(surreal, runtime, state.storage.as_ref(), arguments).await
+            answer_notation::call(
+                surreal,
+                runtime,
+                state.storage.as_ref(),
+                state.post_questionnaire.as_deref(),
+                arguments,
+            )
+            .await
         }
         "validate_notation" => validate_notation::call(arguments).await,
         "create_project" => create_project::call(surreal, principal, arguments).await,

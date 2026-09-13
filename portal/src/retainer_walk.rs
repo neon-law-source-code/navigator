@@ -230,6 +230,21 @@ pub async fn start_post(
         }
     };
 
+    // Brand is the door (`views::brand::brand_key`); Firm is the house.
+    // Resolve ownership before any write so an unworn brand cannot open
+    // an orphan that the next boot would assign to the anchor Firm.
+    let brand = views::brand::brand_key();
+    let firm_id = match store::firms::firm_id_for_brand_key(&state.surreal, brand.as_str()).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            return refuse_start(&body, "this brand is not worn by a firm");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "start_post: firm lookup for brand failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        }
+    };
+
     // `projects.entity_id` is NOT NULL, but a self-serve intake has no
     // lawyer to designate a pre-existing entity. Open the matter against
     // a fresh `Human` entity for this natural person.
@@ -265,8 +280,9 @@ pub async fn start_post(
             ),
             name: format!("(pending) {client_email}"),
             status: "open".into(),
-            brand: views::brand::brand_key().as_str().to_string(),
+            brand: brand.as_str().to_string(),
             entity_id,
+            firm_id: Some(firm_id),
             ..Default::default()
         },
     )
@@ -3104,8 +3120,10 @@ fn progress_from_chain(order: &[StateName], current_state: &StateName) -> (usize
 mod tests {
     use super::{
         context_from_answers, progress_from_chain, questionnaire_chain,
-        render_context_from_answers, substitute_template_body, typst_body_from_template,
+        render_context_from_answers, start_post, substitute_template_body,
+        typst_body_from_template, StartWalkBody,
     };
+    use axum::http::StatusCode;
     use std::collections::BTreeMap;
     use uuid::Uuid;
     use workflows::{retainer_intake_questionnaire, StateName};
@@ -3843,6 +3861,166 @@ Sign: {{client.signature}}";
             rendered.contains("governed by the law of Nevada"),
             "expected the Nevada default in:\n{}",
             governing_law_clause(&rendered),
+        );
+    }
+
+    async fn start_walk_state() -> (crate::admin::AdminState, store::surreal::SurrealDb) {
+        let surreal = store::test_support::mem_surreal().await;
+        let app = crate::test_support::app_state(surreal.clone()).await;
+        store::seed::seed_canonical(&app.surreal, &app.storage)
+            .await
+            .expect("canonical seed");
+        let state = crate::admin::AdminState {
+            surreal: app.surreal,
+            workflow_runtime: app.workflow_runtime,
+            signature_provider: app.signature_provider,
+            retainer_intake_questionnaire: workflows::retainer_intake_questionnaire(),
+            questionnaire_runtime: app.questionnaire_runtime,
+            storage: app.storage,
+            assets_storage: app.assets_storage,
+            forms_registry: app.forms_registry,
+            email: app.email,
+            billing_provider: app.billing_provider,
+            contract_reviewer: app.contract_reviewer,
+            bootstrap_owner_email: app.bootstrap_owner_email,
+            bootstrap_company: crate::admin::bootstrap_company_from_env(),
+            sessions: app.sessions,
+            secure_cookies: false,
+            attachment_scanner: app.attachment_scanner,
+        };
+        (state, surreal)
+    }
+
+    async fn start_walk_on_brand(
+        state: crate::admin::AdminState,
+        branding: &'static views::brand::Branding,
+        client_email: &str,
+    ) -> axum::response::Response {
+        views::brand::scope(
+            branding,
+            start_post(
+                axum::extract::State(state),
+                None,
+                axum::extract::Form(StartWalkBody {
+                    client_email: client_email.to_string(),
+                    retainer_template_code: "onboarding__letter".into(),
+                }),
+            ),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn start_post_writes_the_firm_that_wears_the_request_brand() {
+        let (state, surreal) = start_walk_state().await;
+        let email = format!("walk-firm-{}@example.com", Uuid::now_v7());
+        let worn = store::firms::firm_id_for_brand_key(&surreal, "neon")
+            .await
+            .expect("brand lookup")
+            .expect("seed practice wears neon");
+
+        let resp = start_walk_on_brand(state, &views::brand::DEFAULT_BRANDING, &email).await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+        let project = store::projects::find_by_name(&surreal, &format!("(pending) {email}"))
+            .await
+            .expect("project lookup")
+            .expect("project row inserted");
+        assert_eq!(project.brand, "neon");
+        assert_eq!(project.firm_id, Some(worn));
+    }
+
+    #[tokio::test]
+    async fn start_post_does_not_assign_the_anchor_when_the_brand_belongs_to_another_firm() {
+        let (state, surreal) = start_walk_state().await;
+        let anchor = store::firms::anchor_firm(&surreal)
+            .await
+            .expect("anchor lookup")
+            .expect("seeded practice is the anchor");
+        let admin = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Other Admin DRI",
+                format!("other-admin-{}@example.com", Uuid::now_v7()),
+                store::persons::Role::Admin,
+            ),
+        )
+        .await
+        .expect("other admin");
+        let other = store::firms::create(
+            &surreal,
+            &store::firms::NewFirm {
+                name: format!("Other Practice {}", Uuid::now_v7()),
+                status: "active".into(),
+                entity_id: store::test_support::seed_entity(&surreal).await,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .expect("other firm");
+        store::firms::detach_brand(
+            &surreal,
+            store::persons::Role::Owner,
+            None,
+            anchor.id,
+            "lawyer-shook",
+        )
+        .await
+        .expect("detach lawyer-shook from the seed practice");
+        store::firms::attach_brand(&surreal, other.id, "lawyer-shook")
+            .await
+            .expect("other firm wears lawyer-shook");
+
+        let email = format!("walk-other-firm-{}@example.com", Uuid::now_v7());
+        let resp = start_walk_on_brand(state, &views::brand::LAWYER_SHOOK_BRANDING, &email).await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+        let project = store::projects::find_by_name(&surreal, &format!("(pending) {email}"))
+            .await
+            .expect("project lookup")
+            .expect("project row inserted");
+        assert_eq!(project.brand, "lawyer-shook");
+        assert_eq!(project.firm_id, Some(other.id));
+        assert_ne!(project.firm_id, Some(anchor.id));
+    }
+
+    #[tokio::test]
+    async fn start_post_refuses_when_no_firm_wears_the_request_brand() {
+        let (state, surreal) = start_walk_state().await;
+        let anchor = store::firms::anchor_firm(&surreal)
+            .await
+            .expect("anchor lookup")
+            .expect("seeded practice is the anchor");
+        store::firms::detach_brand(
+            &surreal,
+            store::persons::Role::Owner,
+            None,
+            anchor.id,
+            "delete-your-data",
+        )
+        .await
+        .expect("detach delete-your-data so no Firm wears it");
+
+        let email = format!("walk-unworn-{}@example.com", Uuid::now_v7());
+        let resp =
+            start_walk_on_brand(state, &views::brand::DELETE_YOUR_DATA_BRANDING, &email).await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        let loc = resp
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(
+            loc.contains("this+brand+is+not+worn+by+a+firm")
+                || loc.contains("this%20brand%20is%20not%20worn%20by%20a%20firm"),
+            "redirect was {loc:?}"
+        );
+        assert!(
+            store::projects::find_by_name(&surreal, &format!("(pending) {email}"))
+                .await
+                .expect("project lookup")
+                .is_none(),
+            "an unworn brand must not open a Project"
         );
     }
 

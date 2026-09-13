@@ -1213,8 +1213,10 @@ field, so it cannot be changed after open, the same immutability `code` has. `st
 `Project::brand` is a plain validated `String`; the SurrealDB schema's `ASSERT` is the single source of truth for which
 values are valid, not a shared Rust enum.
 
-**`firm_id` records which [Firm](#firm) owns the matter.** Optional until a backfill points existing rows at a firm
-record. Distinct from `brand`: the brand is the door, the firm is the house. `UpdateProjectCommand` does not accept
+**`firm_id` records which [Firm](#firm) owns the matter.** Distinct from `brand`: the brand is the door, the firm is the
+house. The self-serve retainer walk (`portal::retainer_walk::start_post`) writes it at matter-open from
+`store::firms::firm_id_for_brand_key` for the request brand, and refuses to open when no Firm wears that key. Existing
+rows that still have none are pointed at the anchor Firm by the boot backfill. `UpdateProjectCommand` does not accept
 `firm_id` from a client-submitted form.
 
 Object-storage artifacts (rendered PDFs, signed documents, generated exports) live in

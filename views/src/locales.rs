@@ -542,7 +542,7 @@ practices:
   - mark: technology
     heading: Personal Plan
     body: We protect your personal legal matters.
-    href: /personal-plan
+    href: /personal
 "#,
         )
         .expect("home catalog");

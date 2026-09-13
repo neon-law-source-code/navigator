@@ -693,12 +693,11 @@ impl OAuthConfig {
             .map_err(|error| OAuthSetupError::InvalidApplePrivateKey(error.to_string()))?;
 
         let doc = fetch_discovery(DEFAULT_APPLE_ISSUER).await?;
-        let verifier = IdTokenVerifier::from_jwks_url_with_algorithm(
+        let verifier = IdTokenVerifier::from_jwks_url(
             &doc.jwks_uri,
             &doc.issuer,
             &client_id,
             IssuerPolicy::Exact,
-            Algorithm::ES256,
         )
         .await
         .map_err(|e| OAuthSetupError::DiscoveryFetch(e.to_string()))?;
@@ -1615,9 +1614,9 @@ impl IdTokenVerifier {
         Self::from_keys_with_algorithm(keys, issuer, audience, issuer_policy, Algorithm::RS256)
     }
 
-    /// Build a fixed-key verifier for a specific signing algorithm. Apple
-    /// publishes ES256 signing keys; Google, Rauthy, and Microsoft continue
-    /// through [`Self::from_keys`] on the existing RS256 path.
+    /// Build a fixed-key verifier for a specific signing algorithm. The
+    /// primary, Microsoft, and Apple ID-token paths use the existing RS256
+    /// default; Apple's separate client-secret JWT uses ES256.
     #[must_use]
     pub fn from_keys_with_algorithm(
         keys: Vec<(String, DecodingKey)>,
@@ -1742,8 +1741,9 @@ impl IdTokenVerifier {
     }
 
     /// Fetch a provider JWKS and build the self-refreshing verifier for its
-    /// signing algorithm. Apple uses this method with ES256; the existing
-    /// `from_jwks_url` wrapper remains the RS256 default.
+    /// signing algorithm. The `from_jwks_url` wrapper is the RS256 default;
+    /// the algorithm-specific form is available for providers that publish a
+    /// different id-token signing algorithm.
     pub async fn from_jwks_url_with_algorithm(
         url: &str,
         issuer: &str,
@@ -3188,6 +3188,97 @@ mod tests {
             .expect("valid Apple token");
         assert_eq!(claims.sub, "apple-subject");
         assert_eq!(claims.email.as_deref(), Some("apple-user@example.test"));
+    }
+
+    fn apple_rsa_jwks_fixture() -> JwksDocument {
+        use base64::Engine as _;
+
+        let modulus_for =
+            |fill| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(vec![fill; 256]);
+        serde_json::from_value(serde_json::json!({
+            "keys": [
+                {
+                    "kty": "RSA",
+                    "kid": "GNCf4J83Oh",
+                    "use": "sig",
+                    "alg": "RS256",
+                    "n": modulus_for(0xA5_u8),
+                    "e": "AQAB"
+                },
+                {
+                    "kty": "RSA",
+                    "kid": "8nTlO3M2Bk",
+                    "use": "sig",
+                    "alg": "RS256",
+                    "n": modulus_for(0xA6_u8),
+                    "e": "AQAB"
+                },
+                {
+                    "kty": "RSA",
+                    "kid": "nP41CGTvOz",
+                    "use": "sig",
+                    "alg": "RS256",
+                    "n": modulus_for(0xA7_u8),
+                    "e": "AQAB"
+                }
+            ]
+        }))
+        .expect("Apple's RSA JWKS fixture parses")
+    }
+
+    #[tokio::test]
+    async fn apple_rsa_jwks_shape_is_usable_by_the_apple_loader() {
+        let document = apple_rsa_jwks_fixture();
+        let verifier = IdTokenVerifier::from_jwks_document(
+            &document,
+            "https://apple.test",
+            "client-test",
+            IssuerPolicy::Exact,
+        )
+        .expect("Apple's RSA JWKS keys must be usable");
+
+        assert_eq!(verifier.keys.read().await.len(), 3);
+    }
+
+    #[test]
+    fn primary_jwks_loader_remains_on_rs256() {
+        let document = apple_rsa_jwks_fixture();
+        let verifier = IdTokenVerifier::from_jwks_document(
+            &document,
+            "https://google.test",
+            "client-test",
+            IssuerPolicy::Exact,
+        )
+        .expect("the primary provider's RSA JWKS keys must remain usable");
+
+        assert_eq!(verifier.algorithm, Algorithm::RS256);
+    }
+
+    #[test]
+    fn apple_jwks_with_no_usable_keys_fails_loudly() {
+        let document = JwksDocument {
+            keys: vec![JwksKey {
+                kid: Some("ec-key".into()),
+                kty: "EC".into(),
+                n: None,
+                e: None,
+                crv: Some("P-256".into()),
+                x: None,
+                y: None,
+                alg: Some("ES256".into()),
+            }],
+        };
+        let Err(error) = IdTokenVerifier::from_jwks_document_with_algorithm(
+            &document,
+            "https://apple.test",
+            "client-test",
+            IssuerPolicy::Exact,
+            Algorithm::RS256,
+        ) else {
+            panic!("a JWKS document with no usable keys must fail");
+        };
+
+        assert_eq!(error.to_string(), "no usable keys in JWKS document");
     }
 
     #[test]

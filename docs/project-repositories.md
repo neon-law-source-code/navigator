@@ -23,7 +23,7 @@ holds that Project's notation templates and application workspaces side by side:
 ```text
 <the Project's repository>
 ├── .github/workflows/ci.yml
-├── .github/workflows/publish.yml
+├── .github/workflows/cd.yml
 ├── .gitattributes       # keep checkout text files at LF
 ├── apps/
 │   └── portal/        # React + Vite; discovered by its package.json
@@ -93,12 +93,15 @@ extension, keyed `name:`, is retired, and a checkout still carrying it reads as 
 and the same reader serve both a Project repository and a staged sample-project bundle:
 `store::sample_project::MANIFEST_FILE` and `cli/src/projects/repository.rs`'s `PROJECT_MANIFEST` name the identical
 string on purpose, so a rename of one cannot leave the other stale. The accepted top-level keys are `host`, `project`,
-`no_live_row`, `allowed_hosts`, `allowed_prefixes`, and `allowed_links`. An unknown key is refused, naming that set.
-`host` is a hostname, not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a
-non-empty reason string. `allowed_links` names hosts that appear only as citation `href`s; each such anchor must carry
-`rel="noreferrer"` so the portal URL is not sent as `Referer`. YAML comments are refused: a `#` line is a reason no tool
-can find later, so the pull request that adds an allowlist entry and the repository contract are where that reason is
-recorded. A `#` inside a quoted or block scalar is content, not a comment.
+`no_live_row`, `allowed_hosts`, `allowed_prefixes`, and `allowed_links`. An unknown key is refused, naming that set. The
+current shape is `version: YY.M.D` plus a nested `project:` map with `host` and `name`. The earlier flat `host:` and
+scalar `project:` shape remains readable with a deprecation warning. `version` is an exact release tag, never `latest`,
+`main`, or `HEAD`. `project` may also carry the optional DRI, Slack, Notion, and Xero handle keys; the reader checks
+their shape but does not resolve them live. `host` is a hostname, not a row in a deployment table. `name` is a Navigator
+Project code. `no_live_row` is a non-empty reason string. `allowed_links` names hosts that appear only as citation
+`href`s; each such anchor must carry `rel="noreferrer"` so the portal URL is not sent as `Referer`. YAML comments are
+refused: a `#` line is a reason no tool can find later, so the pull request that adds an allowlist entry and the
+repository contract are where that reason is recorded. A `#` inside a quoted or block scalar is content, not a comment.
 
 ## Document staging and pointers
 
@@ -294,54 +297,38 @@ forge.
 
 ## The CI gate
 
-A Project repository's `ci.yml` is a thin caller of Navigator's reusable workflow `.github/workflows/project-gate.yml`,
-pinned to an exact release tag. The pin is the version: `ops github setup` bumps the caller's `uses:` ref and does not
-resolve `latest`. Validate does not check that the pin exists on the registry. A tag that was never published fails on
-the run that downloads it.
+A Project repository's `ci.yml` and `cd.yml` are thin callers of Navigator's reusable workflows, pinned to one exact
+release tag. `navigator.yaml` is the source of that pin; the gate reads it after checkout and before downloading the
+CLI. `ops github setup` reconciles both callers and does not resolve `latest`. Validate does not check that the pin
+exists on the registry. A tag that was never published fails on the run that downloads it.
 
 ```yaml
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@YY.M.D
-    secrets: inherit
     with:
-      version: "YY.M.D"
-      host: ${{ vars.NAVIGATOR_HOST }}
+      project: "project-code"
+      host: "staging.neonlaw.com"
 ```
 
-It downloads that CLI tag and runs `navigator validate` after the JS build. `navigator site projects gate --ci` is the
-OIDC door for live document verification at `POST /auth/ci/document-token`; without GitHub's OIDC request URL it exits 2
-rather than minting a session. Staging sample repositories stay public by design. `ops github setup --dry-run` reports a
-visibility finding and never flips visibility.
+The caller is pull-request-only and has no permissions or inherited secrets. A called workflow cannot widen the token
+the caller grants it, so fork PRs cannot mint OIDC credentials; the reusable gate's live jobs remain main-only. The `ci`
+job is the required check and stays named exactly `ci`.
 
-The `manifest` job runs `navigator site projects gate` offline on every event. When `vars.NAVIGATOR_HOST` is set, it
-adds the live status check with `--ci --host` only on a push to `main`, where the CI token policy permits the OIDC
-exchange. The `documents` job follows the same two-event contract: pointer validation runs on pull requests, and live
-document verification runs only on a push to `main`.
+The scaffold generates five feeder jobs — lint, verify, notation, documents, and manifest — for the Project check. A
+malformed manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce
+misleading findings. Each feeder job runs unconditionally and no-ops over a half this repository does not carry.
+Application steps discover direct app manifests and include the root portal during the transition.
 
-`navigator site projects repository scaffold` generates the shape every Project repository converged on by hand before
-this generator caught up: five feeder jobs — `lint`, `verify` (typecheck, test, build), `notation`, `documents`, and
-`manifest` — fan into one required check. Each feeder job runs unconditionally and no-ops over a half this repository
-does not carry. Application steps discover direct `apps/*/package.json` manifests at run time and also include a root
-`portal/package.json` during the transition; the same gate therefore works before the first application exists and
-cannot silently skip a later one.
-
-A fourth job, `documents`, validates every `documents/` pointer — offline on every event, and additionally against the
-live asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange
+The `documents` job validates every `documents/` pointer — offline on every event, and additionally against the live
+asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange
 `seed-import` uses, at `POST /auth/ci/document-token`). It runs unconditionally alongside the other three and no-ops
 over a repository carrying no `documents/`, and is one of the required check's dependencies. Its offline half keeps pull
 requests independent of a live deployment; its live half runs only on a push to `main`.
 
-A fifth job, `manifest`, runs `navigator site projects gate` offline on every event. With `vars.NAVIGATOR_HOST` set, it
-adds the live status check with `--ci --host` only on a push to `main`, where the CI token policy permits the OIDC
-exchange. A sixth job, `seeds`, reconciles `seeds/` the same way. `navigator validate` already covers the offline shape
-of every `seeds/*.yaml` document (the `notation` job, above), on every event including a pull request from a fork, so
-`seeds` mints nothing there — a token is mintable only from `refs/heads/main`, which is exactly why a PR check stays
-offline-only. On a push to `main` with `vars.NAVIGATOR_HOST` set, it exchanges the runner's own OIDC identity token at
-`POST /auth/ci/seed-token` and runs `navigator site import --ci --host <host> --dir seeds`, **never** `--overwrite`: the
-natural key makes a re-run a no-op, and a CI job that can replace a client's recorded field unattended is not one the
-firm wants. A repository with no `seeds/` exits `0` with a message. `seeds` is outside the required check's dependencies
-because its live half needs a reachable deployment.
+The `manifest` and `seeds` jobs retain their main-only live checks. `navigator validate` covers the offline shape of
+every `seeds/*.yaml` document on pull requests, while the live reconciliation remains outside the required `ci`
+dependencies because it needs a reachable deployment.
 
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
 and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository
@@ -367,23 +354,21 @@ What the gate proves:
   instead. Navigator's own namespaces, `/app/` and `/auth/`, are the deliberate exception: a portal links back to
   `/app/projects` and out through `/auth/logout`, and those are outside the mount on purpose.
 
-Pin the action to an exact immutable release tag (`YY.M.D`, or `YY.M.D-hotfix.N`), never `main` or `latest`. Publishing
-a rolling pointer is allowed; consuming one is not. The tag must also be one this repository actually published: a
-`uses:` at a ref that does not exist fails the run outright with "unable to resolve action", and unlike a renamed
-repository — which GitHub redirects, so the old spelling keeps working — a missing ref has nothing to redirect to. The
-shape rule is machine-checkable and `validate` enforces it; whether the tag exists is not, which is why `scaffold`
-derives the pin from a release rather than accepting a version someone typed from memory.
+Pin both callers to an exact immutable release tag (`YY.M.D`, or `YY.M.D-hotfix.N`), never `main` or `latest`.
+Publishing a rolling pointer is allowed; consuming one is not. The tag must also be one this repository actually
+published: a `uses:` at a ref that does not exist fails the run outright with "unable to resolve action", and unlike a
+renamed repository — which GitHub redirects, so the old spelling keeps working — a missing ref has nothing to redirect
+to. The shape rule is machine-checkable and `validate` enforces it; whether the tag exists is not, which is why
+`scaffold` derives the pin from a release rather than accepting a version someone typed from memory.
 
 ## Publishing the built bundle
 
-The gate proves the bundle; a second composite action publishes it.
-`neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D` runs after the gate, in the same job, and
-uploads `portal/dist/` to `<code>/portal/` in the deployment's private `<deployment>-applications` bucket, which
-Navigator streams object-by-object. Objects land **flat** under that prefix; the action reads `<code>` from the
-repository's own `navigator.yaml` manifest, falling back to `github.event.repository.name` (its `repository:` input)
-only when no manifest is present. The mount check the same step runs against the built `index.html` is what keeps a
-wrong or malformed declared code from silently publishing: the object prefix must match the Vite base the portal was
-actually built with, wherever the repository is hosted.
+`cd.yml` is the thin main-only caller of `neon-law-source-code/navigator/.github/workflows/project-publish.yml@YY.M.D`.
+It passes only `project` and `host`. The reusable workflow builds and validates the application, derives the deployment
+bucket from `host`, and then calls the pinned application-publish action. The bucket name is never a literal in a
+Project repository, caller, or log. `workflow_dispatch` is the recovery path when a merge attributed to `GITHUB_TOKEN`
+creates no run; the workflow uses `cancel-in-progress: false` because cancelling a publish can leave an `index.html`
+naming assets that have not arrived.
 
 **Nothing in a Project repository restates its owner.** The action derives the Project code from the checkout's own
 manifest, and the owner it publishes under is the one the workflow already runs as: `github.repository` is what the
@@ -396,27 +381,19 @@ but publishing or serving a second application requires the application-specific
 corresponding change to the prefix-conditioned IAM grant. This source-layout change does not widen that grant or guess
 which audience a new application should inherit.
 
-It carries no organization, host, or client. The three coordinates it cannot derive are passed as repository
-**secrets**:
+The deployment's WIF provider and service account remain repository variables. They are not source coordinates and are
+not copied into the manifest. An empty provider skips publication cleanly, which lets an unprovisioned or forked
+repository use the same caller without a red run.
 
-| Secret | Value |
+| Variable | Value |
 | --- | --- |
-| `NAVIGATOR_APPLICATIONS_BUCKET` | the deployment's private applications bucket, e.g. `neon-law-applications` |
 | `NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER` | the full Workload Identity provider resource, pool and provider id included |
 | `NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT` | `nav-pub-<code>@<project>.iam.gserviceaccount.com`, this Project's own |
 
-**Secrets for disclosure reduction, not for access control.** All three are public identifiers and knowing them grants
-nothing; the Workload Identity binding on Google's side is the gate, and it is the only one. They are secrets because
-two of them carry the deployment's GCP project identity in their own text — the service-account email *is* the project
-id, and the provider resource *is* the project number — and the bucket is named `<deployment>-applications`. Project
-repositories are public and so are their Actions logs, and GitHub redacts secrets from logs while leaving variables in
-full, so passing these as variables published a map of the organization's GCP topology beside every build. Nothing about
-this substitutes for the binding: a change that needs to widen or narrow real access belongs in
-`cli/src/devx/gcp/app_publisher.rs`, and the binding must not be weakened on the belief that this covers it.
-
-Because GitHub redacts a secret's exact text and not the identifiers inside it, the action additionally registers
-`::add-mask::` for the bare project id and project number, decomposed from those two coordinates, before any step runs —
-`gcloud` prints them on their own, where neither is the whole of a registered secret.
+These two variables are deployment identifiers, not access control. Knowing them grants nothing: the Workload Identity
+binding on Google's side is the gate, and it is the only one. A change that needs to widen or narrow real access belongs
+in `cli/src/devx/gcp/app_publisher.rs`, and the binding must not be weakened on the belief that hiding coordinates
+covers it.
 
 Authentication is keyless: the job mints a short-lived OIDC token from GitHub's issuer
 `https://token.actions.githubusercontent.com` and federates it into the publisher, so no service-account key exists.
@@ -432,52 +409,30 @@ Navigator's own `navigator-ci-pusher` deploy identity included, so a clause appe
 deploys an hour later and somewhere else.
 
 The thin caller workflow lives in the Project repository. `navigator site projects repository scaffold` writes
-`.github/workflows/publish.yml`, so a scaffolded repository never hand-copies it. It grants `id-token: write`, installs
-with a locked dependency graph, lints, typechecks, tests, and builds with the derived Vite base, runs the gate, imports
-`seeds/` when `vars.NAVIGATOR_HOST` is set, then publishes:
+`.github/workflows/cd.yml`, so a scaffolded repository never hand-copies the build or publish implementation:
 
 ```yaml
-# <organization>/<project-code>/.github/workflows/publish.yml — an example of what a
+# <project-code>/.github/workflows/cd.yml — an example of what a
 # Project repository contains, not a file in this repository.
-name: publish
+name: cd
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
-  id-token: write            # WIF for the publisher, and GitHub OIDC for seed import
+  id-token: write            # only the main-only publish caller mints WIF
 jobs:
   publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@<sha>            # v7
-      - run: pnpm --dir portal install --frozen-lockfile
-      - run: pnpm --dir portal lint
-      - run: pnpm --dir portal typecheck
-      - run: pnpm --dir portal test
-      - run: pnpm --dir portal build            # Vite base /app/projects/<code>/portal/
-      - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
-        with:
-          version: "YY.M.D"
-      - name: Import seed documents
-        if: vars.NAVIGATOR_HOST != ''
-        uses: neon-law-source-code/navigator/.github/actions/seed-import@YY.M.D
-        with:
-          version: "YY.M.D"
-          host: ${{ vars.NAVIGATOR_HOST }}
-      - uses: neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D
-        with:
-          applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}
-          workload_identity_provider: ${{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
-          service_account: ${{ secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
+    uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@YY.M.D
+    with:
+      project: "<project-code>"
+      host: "staging.neonlaw.com"
 ```
 
-`NAVIGATOR_HOST` is a repository variable naming the deployment (`staging.neonlaw.com` on staging). The seed-import
-action downloads the pinned `navigator` CLI and runs `navigator site import --ci --host … --dir seeds`. GitHub mints an
-OIDC token for this repository on `refs/heads/main`; Navigator verifies it, binds the run to the live Project whose
-`repository_url` is that GitHub repository, and returns a session scoped to `POST /app/api/seed` for that Project's
-code. A missing or empty `seeds/` directory is a no-op. Seed YAML uses nested natural keys for join tables
-(`person.email` + `project.code`, `person.email` + `entity.name`) rather than stored UUIDs.
+Seed and document reconciliation remains in the reusable gate's main-only jobs where applicable. The caller carries no
+deployment variable or CLI command: its only deployment coordinate is the `host` input above, and an empty provider
+makes the publisher no-op for an unprovisioned or forked repository.
 
 ### The publisher's grant is prefix-conditioned, and one identity cannot serve two Projects
 
@@ -539,21 +494,12 @@ hold one sample portal, named for the Project code it mounts on. Because the rep
 derived prefix is already correct and no `repository:` override is needed. `dist_dir: dist` is set because these
 applications live at the repository root, so the build emits `dist/` rather than `portal/dist/`.
 
-The caller workflow for them is `docs/examples/sample-portal-publish.yml`, copied into each repository as
-`.github/workflows/publish.yml`. **It is applied and live**: `neon-law-stg` carries a `nav-pub-<code>` publisher
-identity for each of the three, and every `publish` run since it went in on 2026-08-26 has completed successfully. The
-two credential coordinates are read from repository *variables*, not secrets — a Workload Identity provider resource
-name and a service-account email are public identifiers with no key behind them, so GitHub's per-repository OIDC
-condition and the bucket's IAM prefix condition are the actual trust boundary, not the secrecy of these two strings. The
-bucket and object prefix are not passed in at all; each repository derives them from its own `navigator.yaml`. The
-origin scan is `navigator validate` rule `Y009` over each built `dist/`, not a copied Python file. A portal that quotes
-an opinion renders footnote URLs as plain text rather than autolinks, so a court's own words are not an `href` and do
-not need `allowed_links`. A new sample repository is `navigator site projects repository scaffold`; it does not copy
-`.github/*.py` from an existing Project.
+The example at `docs/examples/sample-portal-publish.yml` is the same thin `cd.yml` caller that the scaffold emits. It
+passes the release pin, Project code, and staging host to the reusable publisher; it contains no build script, Python,
+bucket name, or credential. A new sample repository is `navigator site projects repository scaffold`.
 
-The three live sample repositories may still carry a historical `publish.yml` that shells those scripts until they are
-regenerated. That copy is not the contract. The CLI parser refuses unknown manifest keys by naming the accepted set, and
-the origin scan skips an empty first label so a regex-literal `//.test(` is not a host.
+The CLI parser refuses unknown manifest keys by naming the accepted set, and the origin scan skips an empty first label
+so a regex-literal `//.test(` is not a host.
 
 **Upload order is load-bearing, and the never-delete rule is what distinguishes a private, shared applications bucket
 from a public marketing site.** The action uploads in two passes — everything except `index.html` first, then
@@ -596,9 +542,8 @@ Delete rule from ever reaching a live asset. `--dry-run` prints the resolved buc
 object count, and the last key, and writes nothing; it is the rehearsal before a publish to a real deployment. No
 deployment coordinate enters the repository: the bucket is an argument and the credential is the operator's.
 
-The versioned reusable-workflow home for the shared caller is `ux/core`; wiring the thin caller there — so a Project
-repository consumes one `uses:` line instead of transcribing the job above — is a hand-off, because this repository
-cannot push to `ux/core`.
+The shared reusable-workflow home is this Navigator repository. A Project repository consumes one `uses:` line for CI
+and one for CD; it does not copy the job implementations or any Python helper.
 
 ## Scaffolding a repository
 
@@ -608,13 +553,14 @@ navigator validate .
 ```
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `.gitattributes` pinning
-checkout text files to LF, `navigator.yaml` (requiring `--host`), the thin `ci.yml` caller, a `publish.yml` job guarded
-on `vars.NAVIGATOR_HOST`, `README.md`, and `AGENTS.md`. It also writes a `CLAUDE.md` that delivers `AGENTS.md` (a
-relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder `templates/<code>__engagement.md` whose stem
-is the Project code with hyphens replaced by underscores. A hand-copied `ci.yml` of 268 lines or more is left alone
-unless `--replace-gate` is passed. `navigator validate` requires that pair: `AGENTS.md` must exist, `CLAUDE.md` must
-deliver the same bytes (the nine-byte stub form is refused), and the contract must name the Lawyers team as where a
-Navigator CLI gap is filed rather than recorded as a workaround in the matter repository.
+checkout text files to LF, a versioned nested `navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml`
+caller guarded by the reusable publisher's deployment configuration, `README.md`, and `AGENTS.md`. It also writes a
+`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder
+`templates/<code>__engagement.md` uses the Project code stem, with hyphens replaced by underscores. Existing hand-copied
+`ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator validate` requires that
+pair: `AGENTS.md` must exist, `CLAUDE.md` must deliver the same bytes (the nine-byte stub form is refused), and the
+contract must name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the
+matter repository.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

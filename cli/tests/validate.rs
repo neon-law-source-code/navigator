@@ -56,9 +56,9 @@ on: [pull_request]
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
-    secrets: inherit
     with:
-      version: "26.8.23"
+      project: "{code}"
+      host: "staging.neonlaw.com"
 "#,
     );
 }

@@ -117,17 +117,17 @@ nothing a human deliberately adds is taken away either.
 
 #### Reconciling generated workflow content
 
-Every Project repository's `.github/workflows/ci.yml` — and `.github/workflows/publish.yml`, if it carries a portal —
-pins Navigator's reusable project-gate workflow to an exact release tag, the same way [`scaffold`'s generated
+Every Project repository's `.github/workflows/ci.yml` and `.github/workflows/cd.yml` pin Navigator's reusable gate and
+publish workflows to an exact release tag, the same way [`scaffold`'s generated
 gate](project-repositories.md#scaffolding-a-repository) does. Before this, moving that pin forward across the fleet
 after a release meant hand-editing it in every one of the 19+ Project repositories that carry it — a manual, unreviewed
 in spirit, per-repository chore.
 
-`ops github setup` now reconciles that content too, using the exact same templates `scaffold` writes
-(`cli/src/projects/repository.rs`'s `workflow`/`cd_workflow`) rather than a second copy that could drift from them. It
-first has to know whether the target repository is one this applies to at all:
+`ops github setup` now reconciles that content too, using the exact templates in `cli/src/projects/repository.rs`.
 
-- `neon-law-source-code/navigator` and the Homebrew tap carry no generated `ci.yml`/`publish.yml` in this shape, so
+`scaffold` writes callers through `workflow_for`/`cd_workflow_for` and checks whether the repository is in scope:
+
+- `neon-law-source-code/navigator` and the Homebrew tap carry no generated `ci.yml`/`cd.yml` in this shape, so
   this half of the reconcile is a no-op for both, same as before this feature existed.
 - The deploy repository — named by the optional `NAVIGATOR_GITHUB_DEPLOY_REPO` environment variable, never a literal in
   source, the same reason `.github/workflows/deploy.yml` carries its own checkout as the `DEPLOY_REPO` Actions variable
@@ -148,11 +148,11 @@ the desired payload directly *is* the reconciliation. A workflow file is differe
 whose own ruleset already requires a pull request, a passing `ci`, and a code owner's approval to change `main` at all,
 so writing it directly would either be rejected by the very ruleset this command maintains or, on a repository where
 that ruleset is not yet applied, bypass it outright — for a binding legal-services practice, that is not an acceptable
-trade for one fewer manual step. So when `ci.yml` or `publish.yml` (or both) drift, the command opens a branch off
-`main`, commits the regenerated file(s) there, and opens an ordinary pull request back into `main` — the same shape a
-human bumping the pin by hand opens today, gated the same way. Re-running before that pull request merges is idempotent:
-the branch is named for the exact pin, so a second run finds it already holding the identical, deterministic template
-output and only makes sure the pull request is still open, rather than stacking a duplicate.
+trade for one fewer manual step. So when `ci.yml` or `cd.yml` (or both) drift, the command opens a branch off `main`,
+commits the regenerated file(s) there, and opens an ordinary pull request back into `main` — the same shape a human
+bumping the pin by hand opens today, gated the same way. Re-running before that pull request merges is idempotent: the
+branch is named for the exact pin, so a second run finds it already holding the identical, deterministic template output
+and only makes sure the pull request is still open, rather than stacking a duplicate.
 
 Run a dry run before applying drift, then rerun without it:
 

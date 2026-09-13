@@ -1,0 +1,118 @@
+name: project-publish
+
+# The reusable publication half of a Project repository. The caller owns only
+# the two deployment coordinates that are safe to declare in source: project
+# and host. Publisher credentials remain deployment configuration.
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: Project code declared by navigator.yaml.
+        required: true
+        type: string
+      host:
+        description: Deployment host declared by navigator.yaml.
+        required: true
+        type: string
+
+concurrency:
+  group: project-publish-${{ inputs.project }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        with:
+          node-version: "22"
+      - name: Locate the pnpm manifest
+        id: pnpm-manifest
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          candidates=(portal/package.json apps/portal/package.json)
+          candidates+=(apps/*/package.json)
+          candidates+=(package.json)
+          for candidate in "${candidates[@]}"; do
+              if [ -f "${candidate}" ]; then
+                  echo "manifest=${candidate}" >> "${GITHUB_OUTPUT}"
+                  exit 0
+              fi
+          done
+          echo "::error::the application guard matched but no package.json was found."
+          exit 1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        with:
+          package_json_file: ${{ steps.pnpm-manifest.outputs.manifest }}
+      - name: Build applications
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
+          for package_json in "${package_manifests[@]}"; do
+              app_dir="${package_json%/package.json}"
+              pnpm --dir "${app_dir}" install --frozen-lockfile
+              pnpm --dir "${app_dir}" lint
+              pnpm --dir "${app_dir}" typecheck
+              pnpm --dir "${app_dir}" test
+              pnpm --dir "${app_dir}" build
+          done
+      - name: Resolve the built application
+        id: application
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f portal/package.json ]; then
+              echo "dist_dir=portal/dist" >> "${GITHUB_OUTPUT}"
+          elif [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              echo "dist_dir=dist" >> "${GITHUB_OUTPUT}"
+          else
+              app="$(find apps -mindepth 2 -maxdepth 2 -name package.json -print -quit)"
+              test -n "${app}"
+              echo "dist_dir=${app%/package.json}/dist" >> "${GITHUB_OUTPUT}"
+          fi
+      - uses: neon-law-source-code/navigator/.github/actions/validate@26.9.14
+        if: steps.application.outputs.dist_dir != ''
+        with:
+          version: "26.9.14"
+      - name: Derive the deployment destination
+        id: destination
+        if: steps.application.outputs.dist_dir != ''
+        env:
+          HOST: ${{ inputs.host }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="${HOST%.}"
+          bucket="${host//./-}-applications"
+          echo "bucket=${bucket}" >> "${GITHUB_OUTPUT}"
+      - uses: neon-law-source-code/navigator/.github/actions/application-publish@26.9.14
+        if: steps.application.outputs.dist_dir != ''
+        with:
+          applications_bucket: ${{ steps.destination.outputs.bucket }}
+          workload_identity_provider: ${{ vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
+          service_account: ${{ vars.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
+          repository: ${{ inputs.project }}
+          dist_dir: ${{ steps.application.outputs.dist_dir }}

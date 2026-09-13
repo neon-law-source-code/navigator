@@ -44,7 +44,8 @@ did.
 - [`access-model.md`](access-model.md) — the role and participation model: who can see what.
 - [`rego-policy.md`](rego-policy.md) — the embedded Rego policy that decides authorization.
 - [`oidc.md`](oidc.md) — OIDC sign-in and database-role authorization.
-- [`command-boundary.md`](command-boundary.md) — the REST/OpenAPI command boundary.
+- [`command-boundary.md`](command-boundary.md) — the REST/OpenAPI command boundary, and exporting the OpenAPI
+  document for a consumer to pin.
 - [`public-contributor-safety.md`](public-contributor-safety.md) — safe public experimentation without touching
   client data.
 

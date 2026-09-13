@@ -54,10 +54,11 @@ Nine normal validation passes happen in this order:
 6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yml` only when the validation root is a Project
    repository declared by `navigator.yaml`. It checks the closed asset kind and visibility vocabularies, current
    revision metadata, revision-chain linkage, and the retained document extension without reading the network or bytes.
-7. **A Project-manifest pass** (rules `Y004`–`Y008`) runs when the walked root carries `navigator.yaml` or the retired
-   `navigator.yml` spelling. It holds `host` to a hostname shape, `project` to `store::projects::is_valid_code`,
-   `no_live_row` to a non-empty reason string, refuses an unknown top-level key by naming the accepted set, and tells a
-   `navigator.yml` file to rename to `navigator.yaml`.
+7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`) runs when the walked root carries `navigator.yaml` or
+   the retired `navigator.yml` spelling. It holds `host` to a hostname shape, `project` to
+   `store::projects::is_valid_code`, `no_live_row` to a non-empty reason string, refuses an unknown top-level key by
+   naming the accepted set, refuses YAML comment tokens so a reason lives on the pull request and in the repository
+   contract rather than a `#` line, and tells a `navigator.yml` file to rename to `navigator.yaml`.
 8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project repository.
    Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a source-only tree
    can still validate, and is a finding under `--ci`, where the build has already run and nothing to scan means the pass
@@ -120,7 +121,7 @@ Reading it is how to answer "which line do I fix"; the summary counts and the ex
 
 ## Rule codes
 
-Every code below is defined in `rules/src/`, except `Y001`–`Y010`, which live in `cli/src/` because the typed YAML,
+Every code below is defined in `rules/src/`, except `Y001`–`Y011`, which live in `cli/src/` because the typed YAML,
 Project-manifest, and origin passes run outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the file
 for that violation without a human decision; every other code needs a person to resolve it.
 
@@ -271,8 +272,12 @@ literally and the columns disappear.
 | `Y008` | Error | The Project manifest filename is `navigator.yaml`; rename `navigator.yml`. | No |
 | `Y009` | Error | Off-origin hosts fail unless listed in `allowed_links` with `rel="noreferrer"`. | No |
 | `Y010` | Error | A Project template naming `Neon Law` with a corporate suffix must name the entity of record. | No |
+| `Y011` | Error | A Project manifest must not contain YAML comments. | No |
 
 `Y010` runs inside the Project-repository check that `navigator validate` applies when the walked root is a Project
 repository. It reads each `templates/<code>.md` and compares any `Neon Law` spelled with a corporate suffix (`, Inc.`,
 `LLC`, `PLLC`, and the like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature
 instrument cannot name a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.
+
+`Y011` runs in the Project-manifest pass. A `#` comment token is an error; the reason belongs on the pull request that
+adds the entry and in the repository contract. A `#` inside a quoted or block scalar is not a comment.

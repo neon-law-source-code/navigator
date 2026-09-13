@@ -1677,6 +1677,25 @@ fn validate_tells_a_yml_manifest_to_rename() {
 }
 
 #[test]
+fn validate_refuses_a_comment_in_a_project_manifest() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "navigator.yaml",
+        "host: staging.neonlaw.com\n# exemption reason\nproject: acme\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y011"))
+        .stdout(str::contains("pull request"))
+        .stdout(str::contains("repository contract"));
+}
+
+#[test]
 fn validate_does_not_report_prose_followed_by_a_pipe_less_rule_as_a_table() {
     let dir = TempDir::new().unwrap();
     write(dir.path(), "Prose.md", "some | prose\n---\n");

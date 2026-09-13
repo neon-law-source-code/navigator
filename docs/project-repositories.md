@@ -96,7 +96,9 @@ string on purpose, so a rename of one cannot leave the other stale. The accepted
 `no_live_row`, `allowed_hosts`, `allowed_prefixes`, and `allowed_links`. An unknown key is refused, naming that set.
 `host` is a hostname, not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a
 non-empty reason string. `allowed_links` names hosts that appear only as citation `href`s; each such anchor must carry
-`rel="noreferrer"` so the portal URL is not sent as `Referer`.
+`rel="noreferrer"` so the portal URL is not sent as `Referer`. YAML comments are refused: a `#` line is a reason no tool
+can find later, so the pull request that adds an allowlist entry and the repository contract are where that reason is
+recorded. A `#` inside a quoted or block scalar is content, not a comment.
 
 ## Document staging and pointers
 
@@ -824,9 +826,9 @@ known-good repositories as failures is a command nobody runs twice. The reposito
 carries:
 
 ```yaml
-# navigator.yaml
-project: <project-code>
-no_live_row: the matter closed in <month>; no row was opened
+host: staging.neonlaw.com
+project: acme
+no_live_row: the matter closed in March; no row was opened
 ```
 
 The value is the reason, not a boolean, because a boolean records that someone silenced a finding without recording why.

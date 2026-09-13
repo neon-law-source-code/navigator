@@ -23,6 +23,7 @@ mod login;
 mod lsp_publish;
 mod mcp_bridge;
 mod narrate;
+mod notations_preview;
 mod notices;
 mod palette;
 mod projects;
@@ -687,6 +688,28 @@ enum NotationsCmd {
         /// Where to write the self-contained HTML stage.
         #[arg(long)]
         out: PathBuf,
+    },
+    /// Serve one template's `/notations/{slug}` show page on a local
+    /// bind — the same page the firm's public site publishes, fed by the
+    /// same projection, so what reads badly here reads badly published.
+    ///
+    /// The questionnaire section walks the template's own declared
+    /// question order with Navigator's real field controls, and the
+    /// workflow section draws its declared state machine. Both are
+    /// client-side only: no Notation is created, no answer is saved, and
+    /// no workflow runs. Stepping the questions needs the Dioxus client
+    /// bundle (`navigator dev build-webapp`); without one the page still
+    /// renders every question, it just does not advance.
+    Preview {
+        /// The template to serve: a path, or a notation `code` looked up
+        /// under `templates/` and then `templates/notations/`. Underscores
+        /// and hyphens are interchangeable in a name.
+        file: PathBuf,
+        /// Port to bind on `127.0.0.1`. Defaults to an OS-assigned free
+        /// port, so two previews can run at once; the bound URL is
+        /// printed either way.
+        #[arg(long, default_value_t = 0)]
+        port: u16,
     },
     /// Render a single notation template to a PDF, framed by an output
     /// format (a plain document, a firm `letter` on Neon Law letterhead
@@ -2098,6 +2121,9 @@ fn main() -> ExitCode {
         Command::Notations { action } => match action {
             NotationsCmd::Format { file } => format::run(&file),
             NotationsCmd::Narrate { file, out } => narrate::run(&file, &out),
+            NotationsCmd::Preview { file, port } => {
+                devx_result(runtime().block_on(notations_preview::run(&file, port)))
+            }
             NotationsCmd::Render {
                 file,
                 out,

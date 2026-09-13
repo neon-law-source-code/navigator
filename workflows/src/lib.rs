@@ -27,6 +27,7 @@ pub mod intake;
 pub mod integrations;
 pub mod notation_session;
 pub mod notify;
+pub mod post_questionnaire;
 pub mod runtime;
 pub mod runtime_dispatching;
 pub mod runtime_restate;
@@ -67,6 +68,7 @@ pub use notify::{
     ops_slack_messages, CapturingNotifier, CapturingSlackBot, Notifier, NotifyError, SlackBot,
     SlackBotClient, SlackBotError, SlackChannel, SlackNotifier, SlackOpsDelivery,
 };
+pub use post_questionnaire::{PostQuestionnaireDrive, PostQuestionnaireError};
 pub use runtime::{
     InMemoryRuntime, SignalContext, StateMachineRuntime, WorkflowEvent, WorkflowRuntimeError,
 };

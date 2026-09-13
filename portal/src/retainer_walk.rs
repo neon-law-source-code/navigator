@@ -1176,42 +1176,29 @@ pub async fn step_post(
             // transition it fires (intake, render, approve, close) — attribute
             // them to that session Person, not the notation's client (#252).
             let acting = resolve_lawyer_actor(&state.surreal, session.as_deref()).await;
-            // The closing letter is firm-signed and ends the matter, so
-            // it drives a different post-questionnaire workflow than the
-            // client-signed retainer. Branch on the bound template.
-            if notation_template_code(&state.surreal, notation_id)
-                .await
-                .as_deref()
-                == Some("offboarding__letter")
+            // Which workflow, and how far it runs, is the bound template's
+            // business and not this handler's: every door hands a completed
+            // questionnaire to the same drive.
+            match begin_post_questionnaire_workflow(&render_deps(&state), notation_id, acting).await
             {
-                return match drive_closing_workflow(&state, notation_id, acting).await {
-                    // The matter is now closed and the letter firm-signed.
-                    // Closing a matter records legal work; it raises no
-                    // money. Accounting originates in Xero, where lawyers
-                    // agree the price and raise the invoice themselves.
-                    Ok(_end) => Redirect::to("/app/lawyer").into_response(),
-                    Err(e) => {
-                        tracing::error!(error = %e, %notation_id, "walker: closing drive failed");
-                        (StatusCode::INTERNAL_SERVER_ERROR, "closing failed").into_response()
-                    }
-                };
-            }
-            // Hand off to the post-intake workflow: intake →
-            // retainer_rendered → sent_for_signature. The
-            // rendering context comes from the Answer rows the
-            // walker just landed, so the workflow drive is
-            // self-contained.
-            match drive_post_questionnaire_workflow(&state, notation_id, acting).await {
-                Ok(out) => {
-                    // Lawyer who complete intake themselves land here parked at
-                    // lawyer_review — offer the same "Request changes" panel the
-                    // review page does, so a wrong answer can be flagged for
-                    // re-collection without a detour.
+                Ok(final_state) => {
                     tracing::info!(
                         %notation_id,
-                        final_state = %out.final_state.as_str(),
+                        final_state = %final_state.as_str(),
                         "walker: intake complete",
                     );
+                    // A closing letter has just ended the matter and there is
+                    // no review to offer. Closing a matter records legal work;
+                    // it raises no money, and accounting originates in Xero
+                    // where lawyers agree the price and raise the invoice
+                    // themselves.
+                    if workflows::spec::StateName::end() == final_state {
+                        return Redirect::to("/app/lawyer").into_response();
+                    }
+                    // A lawyer who completed intake themselves lands parked at
+                    // `lawyer_review` — offer the same "Request changes" panel
+                    // the review page does, so a wrong answer can be flagged
+                    // for re-collection without a detour.
                     back_to_review(notation_id)
                 }
                 Err(e) => {
@@ -1513,7 +1500,7 @@ pub async fn advance_to_lawyer_review(
 }
 
 async fn drive_post_questionnaire_workflow(
-    state: &AdminState,
+    deps: &RenderDeps<'_>,
     notation_id: Uuid,
     acting: Option<Uuid>,
 ) -> Result<WorkflowOutput, WorkflowDriveError> {
@@ -1528,19 +1515,52 @@ async fn drive_post_questionnaire_workflow(
     // never on the client's last answer, and makes `lawyer_review` a true
     // human gate (N116). The matter-open form reaches this same gate through
     // `advance_to_lawyer_review` directly.
-    let final_state = advance_to_lawyer_review(
-        &state.surreal,
-        state.questionnaire_runtime.as_ref(),
-        notation_id,
-        acting,
-    )
-    .await?;
+    let final_state =
+        advance_to_lawyer_review(deps.surreal, deps.runtime, notation_id, acting).await?;
     // Assemble the document here even though the caller redirects to a screen
     // that assembles it again: a substitution failure has to surface as an error
     // on the request that completed intake, not as a silently-empty preview on
     // the review screen. The markup itself is discarded.
-    render_assembled_document(state, notation_id).await?;
+    render_assembled_document(deps, notation_id).await?;
     Ok(WorkflowOutput { final_state })
+}
+
+/// **Begin the notation's workflow, because its questionnaire reached END.**
+///
+/// This is the whole of what a door owes a completed questionnaire, and it
+/// is deliberately one function rather than a step each door remembers to
+/// take. The questionnaire completing is what starts the workflow; *which*
+/// door recorded the final answer — the lawyer's form walk, the REST
+/// command boundary, or Navigator MCP over A2A — is not supposed to change what
+/// happens next, and when this lived inside the form handler it did: the
+/// other two returned "complete" and left the notation parked at a machine
+/// nobody had started.
+///
+/// Two shapes, branched on the bound template rather than on the caller:
+///
+/// * A **closing** letter is firm-signed and ends the matter, so it drives
+///   its own workflow through to END ([`drive_closing_workflow`]).
+/// * Everything else — the retainer, the engagement, any future signed
+///   template — advances to the `lawyer_review` human gate and stops there
+///   ([`drive_post_questionnaire_workflow`]). Nothing is sent, and no PDF
+///   is rendered on this request; the approve and send commands own those.
+///
+/// Returns the state the notation now sits in.
+pub async fn begin_post_questionnaire_workflow(
+    deps: &RenderDeps<'_>,
+    notation_id: Uuid,
+    acting: Option<Uuid>,
+) -> Result<StateName, WorkflowDriveError> {
+    if notation_template_code(deps.surreal, notation_id)
+        .await
+        .as_deref()
+        == Some("offboarding__letter")
+    {
+        return drive_closing_workflow(deps, notation_id, acting).await;
+    }
+    drive_post_questionnaire_workflow(deps, notation_id, acting)
+        .await
+        .map(|out| out.final_state)
 }
 
 /// Render the reviewed document on the worker and PARK — the durable
@@ -1567,7 +1587,60 @@ async fn drive_post_questionnaire_workflow(
 /// `acroform_payload`) borrows from whichever web state drives it — the lawyer
 /// `AdminState` or the REST `ApiState`. Decoupling the core from either
 /// concrete state lets both doors render + park a notation identically.
-pub(crate) struct RenderDeps<'a> {
+/// The host's implementation of [`workflows::PostQuestionnaireDrive`] — the
+/// object Navigator MCP's `answer_notation` hands a completed questionnaire to.
+///
+/// It owns its dependencies rather than borrowing a request's state, because
+/// the agent door holds it for the life of the process (it rides
+/// `mcp::McpState` beside the storage and the mailer). Everything it holds
+/// is the same `Arc` the lawyer console and the REST door hold, so all three
+/// begin a workflow through one code path with one set of dependencies.
+#[derive(Clone)]
+pub struct PostQuestionnaire {
+    pub surreal: store::surreal::SurrealDb,
+    pub workflow_runtime: Arc<dyn StateMachineRuntime>,
+    pub storage: Arc<dyn cloud::StorageService>,
+    pub assets_storage: Arc<dyn cloud::StorageService>,
+    pub forms_registry: Arc<Vec<forms::FormMeta>>,
+}
+
+#[async_trait::async_trait]
+impl workflows::PostQuestionnaireDrive for PostQuestionnaire {
+    async fn begin(
+        &self,
+        notation_id: Uuid,
+        acting: Option<Uuid>,
+    ) -> Result<String, workflows::PostQuestionnaireError> {
+        let deps = RenderDeps {
+            surreal: &self.surreal,
+            runtime: self.workflow_runtime.as_ref(),
+            storage: &self.storage,
+            assets_storage: &self.assets_storage,
+            forms_registry: &self.forms_registry,
+        };
+        begin_post_questionnaire_workflow(&deps, notation_id, acting)
+            .await
+            .map(|state| state.as_str().to_string())
+            .map_err(|e| workflows::PostQuestionnaireError(e.to_string()))
+    }
+}
+
+/// The dependency bundle, read off the lawyer console's state.
+///
+/// The REST door builds the same bundle from [`crate::api::ApiState`]: both
+/// states hold the same `Arc`s, and taking the bundle rather than either
+/// state is what lets one drive serve both doors.
+pub(crate) fn render_deps(state: &AdminState) -> RenderDeps<'_> {
+    RenderDeps {
+        surreal: &state.surreal,
+        runtime: state.workflow_runtime.as_ref(),
+        storage: &state.storage,
+        assets_storage: &state.assets_storage,
+        forms_registry: &state.forms_registry,
+    }
+}
+
+pub struct RenderDeps<'a> {
     /// The other store — the bound client's identity is a `persons` row.
     pub surreal: &'a store::surreal::SurrealDb,
     pub runtime: &'a dyn StateMachineRuntime,
@@ -2046,7 +2119,7 @@ pub(crate) async fn resolve_intake_review(
         .into_response());
     }
 
-    let rendered_html = render_assembled_document(state, notation_id)
+    let rendered_html = render_assembled_document(&render_deps(state), notation_id)
         .await
         .unwrap_or_else(|e| {
             tracing::warn!(error = %e, %notation_id, "review: render failed");
@@ -2443,22 +2516,22 @@ pub async fn reask_post(
 /// Re-render a notation's assembled document (template body + custom
 /// clauses + answers) to the HTML preview, for the result page.
 async fn render_assembled_document(
-    state: &AdminState,
+    deps: &RenderDeps<'_>,
     notation_id: Uuid,
 ) -> Result<String, WorkflowDriveError> {
-    let notation_row = store::notations::find_by_id(&state.surreal, notation_id)
+    let notation_row = store::notations::find_by_id(deps.surreal, notation_id)
         .await?
         .ok_or(WorkflowDriveError::TemplateMissing(notation_id))?;
-    let template_row = store::templates::find_by_id(&state.surreal, notation_row.template_id)
+    let template_row = store::templates::find_by_id(deps.surreal, notation_row.template_id)
         .await?
         .ok_or(WorkflowDriveError::TemplateMissing(notation_id))?;
     let raw_template_body =
-        store::templates::body(&state.surreal, &state.storage, &template_row).await?;
-    let clauses = store::notation_clauses::for_notation(&state.surreal, notation_id)
+        store::templates::body(deps.surreal, deps.storage, &template_row).await?;
+    let clauses = store::notation_clauses::for_notation(deps.surreal, notation_id)
         .await
         .map_err(|error| WorkflowDriveError::Db(error.to_string()))?;
     let template_body = store::notation_clauses::splice(&raw_template_body, &clauses);
-    let ctx = render_context_from_answers(&state.surreal, notation_id).await?;
+    let ctx = render_context_from_answers(deps.surreal, notation_id).await?;
     Ok(views::notation::render_filled_in(&template_body, &ctx))
 }
 
@@ -2520,7 +2593,7 @@ async fn notation_template_code(
 /// `close_matter` side effect on the firm-signature transition. Returns
 /// the terminal state (END).
 async fn drive_closing_workflow(
-    state: &AdminState,
+    deps: &RenderDeps<'_>,
     notation_id: Uuid,
     acting: Option<Uuid>,
 ) -> Result<StateName, WorkflowDriveError> {
@@ -2528,22 +2601,21 @@ async fn drive_closing_workflow(
         .ok_or(WorkflowDriveError::TemplateMissing(notation_id))?;
     let spec = workflows::workflow_spec_from_yaml(yaml)
         .map_err(|e| WorkflowDriveError::Spec(e.to_string()))?;
-    let runtime = state.workflow_runtime.as_ref();
+    let runtime = deps.runtime;
 
     StateMachineRuntime::start(runtime, MachineKind::Workflow, notation_id, &spec).await?;
     let s = signal_workflow(runtime, notation_id, "close_requested", None, acting).await?;
-    sync_notation_state(&state.surreal, notation_id, s.as_str()).await?;
+    sync_notation_state(deps.surreal, notation_id, s.as_str()).await?;
 
     // Render the closing letter from the answers the walker just landed.
-    let notation_row = store::notations::find_by_id(&state.surreal, notation_id)
+    let notation_row = store::notations::find_by_id(deps.surreal, notation_id)
         .await?
         .ok_or(WorkflowDriveError::TemplateMissing(notation_id))?;
-    let template_row = store::templates::find_by_id(&state.surreal, notation_row.template_id)
+    let template_row = store::templates::find_by_id(deps.surreal, notation_row.template_id)
         .await?
         .ok_or(WorkflowDriveError::TemplateMissing(notation_id))?;
-    let template_body =
-        store::templates::body(&state.surreal, &state.storage, &template_row).await?;
-    let ctx = render_context_from_answers(&state.surreal, notation_id).await?;
+    let template_body = store::templates::body(deps.surreal, deps.storage, &template_row).await?;
+    let ctx = render_context_from_answers(deps.surreal, notation_id).await?;
 
     // Lawyer review short-circuits to `approved` in the dev loop (a real
     // lawyer-review handler swaps in for prod). The `approved` signal
@@ -2563,15 +2635,15 @@ async fn drive_closing_workflow(
         acting,
     )
     .await?;
-    sync_notation_state(&state.surreal, notation_id, s.as_str()).await?;
+    sync_notation_state(deps.surreal, notation_id, s.as_str()).await?;
 
     let s = signal_workflow(runtime, notation_id, "pdf_persisted", None, acting).await?;
-    sync_notation_state(&state.surreal, notation_id, s.as_str()).await?;
+    sync_notation_state(deps.surreal, notation_id, s.as_str()).await?;
 
     // The firm signs the closing letter; this transition lands on END
     // and closes the matter (the runtime's `close_matter` side effect).
     let s = signal_workflow(runtime, notation_id, "signed", None, acting).await?;
-    sync_notation_state(&state.surreal, notation_id, s.as_str()).await?;
+    sync_notation_state(deps.surreal, notation_id, s.as_str()).await?;
 
     Ok(s)
 }

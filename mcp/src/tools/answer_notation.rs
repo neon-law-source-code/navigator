@@ -76,6 +76,7 @@ pub async fn call(
     surreal: &store::surreal::SurrealDb,
     runtime: &dyn StateMachineRuntime,
     storage: Option<&std::sync::Arc<dyn cloud::StorageService>>,
+    post_questionnaire: Option<&dyn workflows::PostQuestionnaireDrive>,
     arguments: &Value,
 ) -> Result<Value, ToolError> {
     let args: Args = super::decode_args(arguments)?;
@@ -117,17 +118,49 @@ pub async fn call(
                 format!("Answer accepted. Ask the user: {prompt}"),
             )
         }
-        NextStep::QuestionnaireComplete => (
-            json!({
-                "notation_id": args.notation_id,
-                "status": "complete",
-            }),
-            format!(
-                "Answer accepted. Questionnaire for notation {} complete; \
-                 trigger the post-intake workflow next.",
-                args.notation_id
+        // The questionnaire reaching END is what begins the workflow, so
+        // this door begins it rather than telling the model to. Answering
+        // through Navigator MCP and answering through the lawyer's form now
+        // leave the notation in the same place, which is the point of the
+        // shared drive (`workflows::post_questionnaire`).
+        NextStep::QuestionnaireComplete => match post_questionnaire {
+            Some(drive) => {
+                // Navigator MCP answers as the firm's agent rather than as a
+                // Person row, so the transitions carry no individual actor —
+                // the same attribution the answer above was written with.
+                let state = drive
+                    .begin(args.notation_id, None)
+                    .await
+                    .map_err(|e| ToolError::Internal(e.to_string()))?;
+                (
+                    json!({
+                        "notation_id": args.notation_id,
+                        "status": "complete",
+                        "workflow_state": state,
+                    }),
+                    format!(
+                        "Answer accepted. Questionnaire for notation {} complete; its workflow \
+                         has begun and is now at `{state}`.",
+                        args.notation_id
+                    ),
+                )
+            }
+            // No drive wired in: say so plainly. A questionnaire reported
+            // complete with nothing started is a fact the caller needs,
+            // not something to paper over.
+            None => (
+                json!({
+                    "notation_id": args.notation_id,
+                    "status": "complete",
+                    "workflow_state": Value::Null,
+                }),
+                format!(
+                    "Answer accepted. Questionnaire for notation {} complete. Its workflow was \
+                     NOT started: this deployment has no post-questionnaire drive configured.",
+                    args.notation_id
+                ),
             ),
-        ),
+        },
     };
 
     Ok(json!({
@@ -402,6 +435,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
+            None,
             &json!({
                 "notation_id": id,
                 "question_code": code,
@@ -451,6 +485,7 @@ mod tests {
                 &surreal,
                 &runtime,
                 None,
+                None,
                 &json!({
                     "notation_id": id,
                     "question_code": code,
@@ -465,10 +500,93 @@ mod tests {
             }
         }
         assert_eq!(last["structuredContent"]["status"], "complete");
+        // No drive is wired into this fixture, so the tool says plainly that
+        // the workflow was not started rather than implying it was.
+        assert!(last["structuredContent"]["workflow_state"].is_null());
         assert!(last["content"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("trigger the post-intake workflow"));
+            .contains("NOT started"));
+    }
+
+    /// A questionnaire completing is what begins the notation's workflow, and
+    /// this door begins it rather than telling the model to. The drive itself
+    /// belongs to the host (it renders documents), so the tool takes it as a
+    /// trait object and this stub stands in for
+    /// `portal::retainer_walk::PostQuestionnaire`.
+    #[derive(Default)]
+    struct StubDrive {
+        began: std::sync::Mutex<Vec<Uuid>>,
+    }
+
+    #[async_trait::async_trait]
+    impl workflows::PostQuestionnaireDrive for StubDrive {
+        async fn begin(
+            &self,
+            notation_id: Uuid,
+            _acting: Option<Uuid>,
+        ) -> Result<String, workflows::PostQuestionnaireError> {
+            self.began.lock().unwrap().push(notation_id);
+            Ok("lawyer_review".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn the_last_answer_begins_the_notations_workflow() {
+        let surreal = db().await;
+        seed(&surreal).await;
+        let runtime = InMemoryRuntime::new();
+        let (id, mut code) = start_retainer(&surreal, &runtime).await;
+        let drive = StubDrive::default();
+
+        let values = [
+            ("entity", "Northstar Ventures LLC"),
+            (
+                "address__principal_office",
+                "100 Innovation Way, Reno, NV 89501",
+            ),
+            ("person__client", "Libra"),
+            ("person__lawyer_dri", "Firm Principal"),
+            ("project__engagement", "Apollo"),
+            ("custom_datetime__engagement_start_date", "2026-09-01"),
+            (
+                "custom_text__engagement_scope",
+                "Draft and file the Apollo formation documents.",
+            ),
+            ("custom_single_choice__governing_law", "nevada"),
+        ];
+        let mut last: Value = Value::Null;
+        for (expected_code, value) in values {
+            assert_eq!(code, expected_code);
+            let out = call(
+                &surreal,
+                &runtime,
+                None,
+                Some(&drive),
+                &json!({
+                    "notation_id": id,
+                    "question_code": code,
+                    "value": value,
+                }),
+            )
+            .await
+            .unwrap();
+            last = out.clone();
+            if let Some(next_code) = out["structuredContent"]["next_question"]["code"].as_str() {
+                code = next_code.to_string();
+            }
+        }
+
+        assert_eq!(last["structuredContent"]["status"], "complete");
+        assert_eq!(
+            last["structuredContent"]["workflow_state"], "lawyer_review",
+            "the tool reports where the workflow it began now sits"
+        );
+        assert_eq!(
+            *drive.began.lock().unwrap(),
+            vec![id],
+            "the drive is called exactly once, on the answer that ended the questionnaire"
+        );
     }
 
     /// ENG-459: the agent surface never reaches
@@ -504,6 +622,7 @@ mod tests {
                 &surreal,
                 &runtime,
                 None,
+                None,
                 &json!({ "notation_id": id, "question_code": code, "value": value }),
             )
             .await
@@ -518,6 +637,7 @@ mod tests {
         let err = call(
             &surreal,
             &runtime,
+            None,
             None,
             &json!({
                 "notation_id": id,
@@ -544,6 +664,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
+            None,
             &json!({ "notation_id": id, "question_code": code, "value": "nevada" }),
         )
         .await
@@ -560,6 +681,7 @@ mod tests {
         let err = call(
             &surreal,
             &runtime,
+            None,
             None,
             &json!({
                 "notation_id": id,
@@ -586,6 +708,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
+            None,
             &json!({
                 "notation_id": Uuid::nil(),
                 "question_code": "person__client",
@@ -609,6 +732,7 @@ mod tests {
         let err = call(
             &surreal,
             &runtime,
+            None,
             None,
             &json!({
                 "notation_id": id,

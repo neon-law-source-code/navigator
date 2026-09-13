@@ -2035,6 +2035,22 @@ async fn answer_notation_step(
         workflows::AnswerAuthor::lawyer(lawyer.0.person_id),
     )
     .await?;
+    // The questionnaire reaching END is what begins the notation's workflow,
+    // whichever door recorded the last answer. This one used to return
+    // `complete` and stop, leaving the notation parked at a machine nobody
+    // had started while the same answer through the lawyer's form walk
+    // reached `lawyer_review`.
+    if matches!(next, workflows::NextStep::QuestionnaireComplete) {
+        let deps = crate::retainer_walk::RenderDeps {
+            surreal: &state.surreal,
+            runtime: state.workflow_runtime.as_ref(),
+            storage: &state.storage,
+            assets_storage: &state.assets_storage,
+            forms_registry: &state.forms_registry,
+        };
+        crate::retainer_walk::begin_post_questionnaire_workflow(&deps, id, lawyer.0.person_id)
+            .await?;
+    }
     Ok((StatusCode::OK, Json(NotationStepResponse::from(next))).into_response())
 }
 

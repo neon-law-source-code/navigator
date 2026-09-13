@@ -304,6 +304,175 @@
   font-weight: 600;
 }
 
+/* ---- Individual services ------------------------------------------------ */
+
+/* The one band on a marketing page that a reader operates rather than reads.
+   Its list reuses `.fm-cards` / `.fm-card`, so only the search chrome and the
+   per-service detail need rules of their own. */
+
+.fm-services__search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  width: min(100%, 44rem);
+  margin: 0 auto 1rem;
+}
+
+.fm-services__input {
+  flex: 1 1 18rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius-lg);
+  background: var(--nav-color-surface);
+  color: var(--nav-color-text);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.fm-services__input:focus-visible {
+  outline: 2px solid var(--nav-color-primary);
+  outline-offset: 2px;
+}
+
+.fm-services__examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+/* The chips are real links, not buttons: each carries its own `?q=`, so one
+   works with no JavaScript and can be opened in a new tab or bookmarked. */
+.fm-services__example {
+  display: inline-block;
+  padding: 0.375rem 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--nav-color-primary) 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nav-color-primary) 6%, transparent);
+  color: var(--nav-color-text);
+  font-size: 0.875rem;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.fm-services__example:hover,
+.fm-services__example:focus-visible {
+  background: color-mix(in srgb, var(--nav-color-primary) 14%, transparent);
+}
+
+.fm-services__count {
+  margin: 0 0 1.5rem;
+  color: var(--nav-color-text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* A search that finds nothing still says something. A blank band reads as a
+   broken page; this reads as an answer. */
+.fm-services__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px dashed color-mix(in srgb, var(--nav-color-primary) 30%, transparent);
+  border-radius: var(--nav-radius-lg);
+  color: var(--nav-color-text-muted);
+  text-align: center;
+}
+
+.fm-services__empty-heading {
+  margin: 0;
+  color: var(--nav-color-text);
+  font-family: var(--nav-font-family);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.fm-services__empty p {
+  margin: 0;
+  max-width: 48ch;
+}
+
+.fm-services__service {
+  gap: 0.625rem;
+}
+
+.fm-services__item {
+  margin: 0;
+  color: var(--nav-color-text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fm-services__category {
+  margin: 0;
+  color: var(--nav-color-text-muted);
+  font-size: 0.8125rem;
+}
+
+/* The fee and what it is charged per, on one line, with the label above it —
+   so a reader scanning the column reads amounts rather than sentences. */
+.fm-services__fee {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0;
+}
+
+.fm-services__fee-label {
+  flex-basis: 100%;
+  color: var(--nav-color-text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fm-services__fee-amount {
+  color: var(--nav-color-text);
+  font-family: var(--nav-font-family);
+  font-size: 1.375rem;
+  font-weight: 600;
+}
+
+.fm-services__fee-period {
+  color: var(--nav-color-text-muted);
+  font-size: 0.875rem;
+}
+
+.fm-services__includes-label,
+.fm-services__related-label {
+  margin: 0.5rem 0 0;
+  color: var(--nav-color-text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fm-services__includes,
+.fm-services__related {
+  margin: 0;
+  padding-inline-start: 1.125rem;
+  color: var(--nav-color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.fm-services__related {
+  list-style: none;
+  padding-inline-start: 0;
+}
+
+.fm-services__related a {
+  font-weight: 600;
+}
+
 /* ---- Connected Project -------------------------------------------------- */
 
 .fm-band--project-network {

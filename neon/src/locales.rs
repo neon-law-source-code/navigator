@@ -32,6 +32,9 @@ const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractiona
 const NEON_PERSONAL_PLAN_YAML: &str = include_str!("../locales/en/neon/personal-plan.yaml");
 const NEON_NAVIGATOR_YAML: &str = include_str!("../locales/en/neon/navigator.yaml");
 const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml");
+/// The firm's individual services as records. Only Neon publishes one; the
+/// other house brands render `/services` without an individual-services band.
+const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
 const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
@@ -64,6 +67,9 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "personal-plan") => Some(NEON_PERSONAL_PLAN_YAML),
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
+        (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
+            Some(NEON_SERVICES_CATALOG_YAML)
+        }
         (BrandKey::DeleteYourData, "home") => Some(DELETE_YOUR_DATA_HOME_YAML),
         (BrandKey::DeleteYourData, "services") => Some(DELETE_YOUR_DATA_SERVICES_YAML),
         (BrandKey::LawyerShook, "services") => Some(LAWYER_SHOOK_SERVICES_YAML),
@@ -86,6 +92,33 @@ fn load<T: serde::de::DeserializeOwned>(yaml: &str, branding: &views::brand::Bra
     let raw = interpolate(&shared, branding.firm.site_name, branding.firm_email);
     serde_yaml::from_str(&raw)
         .expect("invariant: shipped locale YAML deserializes; navigator validate Y002 is the gate")
+}
+
+/// The brand's individual-services schedule, if it publishes one.
+///
+/// Resolved per brand rather than parsed once, because a catalog value may
+/// carry the brand placeholders the way page copy does. Routers are built at
+/// startup, so this runs a handful of times per process.
+#[must_use]
+pub fn services_catalog(
+    branding: &views::brand::Branding,
+) -> Option<views::locales::services::ServicesCatalog> {
+    let yaml = catalog_yaml(
+        branding.brand_key,
+        views::locales::services::SERVICES_CATALOG_STEM,
+    )?;
+    let shared = views::locales::shared::resolve_references(
+        yaml,
+        shared_catalog(),
+        branding.brand_key.as_str(),
+    )
+    .expect("invariant: every `{shared:…}` reference resolves; the catalog test is the gate");
+    let raw = interpolate(&shared, branding.firm.site_name, branding.firm_email);
+    Some(
+        views::locales::services::ServicesCatalog::parse(&raw).expect(
+            "invariant: the shipped services catalog is valid; navigator validate Y002 is the gate",
+        ),
+    )
 }
 
 fn load_page<T: serde::de::DeserializeOwned>(branding: &views::brand::Branding, page: &str) -> T {
@@ -306,7 +339,102 @@ fn fill_downloads(
     }
 }
 
-fn band(copy: BandCopy) -> Band {
+/// One service, resolved for rendering: the catalog's record with its fee,
+/// category label, and `related` names filled in.
+fn service(
+    catalog: &views::locales::services::ServicesCatalog,
+    record: &views::locales::services::ServiceCopy,
+) -> webapp::services_search::Service {
+    webapp::services_search::Service {
+        id: record.id.clone(),
+        item: record.item.clone(),
+        name: record.name.clone(),
+        blurb: record.blurb.clone(),
+        category: catalog.category_label(record.category).to_string(),
+        audience: record.category.search_aliases().to_string(),
+        includes: record.includes.clone(),
+        keywords: record.keywords.clone(),
+        fee: catalog.fee(record).to_string(),
+        period: record.period.clone(),
+        members_only: record.members_only,
+        state_fee: record.state_fee,
+        // A `related` id resolves by construction — the catalog refuses a
+        // dangling one — so an unresolvable entry is dropped rather than
+        // rendered as a link to nowhere.
+        related: record
+            .related
+            .iter()
+            .filter_map(|id| {
+                catalog
+                    .get(id)
+                    .map(|target| webapp::services_search::RelatedService {
+                        id: target.id.clone(),
+                        name: target.name.clone(),
+                    })
+            })
+            .collect(),
+    }
+}
+
+/// The individual-services band: page copy from the catalog file's sibling
+/// `services.yaml`, and the services themselves from the catalog.
+///
+/// Panics on any other band, which the one call site's `copy @` pattern makes
+/// unreachable.
+fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCatalog) -> Band {
+    let BandCopy::Services {
+        anchor,
+        overline,
+        heading,
+        description,
+        search_label,
+        search_placeholder,
+        submit_label,
+        examples,
+        fee_label,
+        includes_label,
+        related_label,
+        members_badge,
+        state_fee_badge,
+        empty,
+        empty_help,
+        clear_label,
+    } = copy
+    else {
+        unreachable!("services_band is called with a services band")
+    };
+    Band::Services(Box::new(webapp::services_search::ServicesBand {
+        anchor,
+        overline,
+        heading,
+        description,
+        search_label,
+        search_placeholder,
+        submit_label,
+        examples: examples
+            .into_iter()
+            .map(|example| webapp::services_search::SearchExample {
+                label: example.label,
+                query: example.query,
+            })
+            .collect(),
+        fee_label,
+        includes_label,
+        related_label,
+        members_badge,
+        state_fee_badge,
+        empty,
+        empty_help,
+        clear_label,
+        services: catalog
+            .services
+            .iter()
+            .map(|record| service(catalog, record))
+            .collect(),
+    }))
+}
+
+fn band(copy: BandCopy, catalog: Option<&views::locales::services::ServicesCatalog>) -> Band {
     match copy {
         BandCopy::Statement {
             heading,
@@ -381,6 +509,13 @@ fn band(copy: BandCopy) -> Band {
             archive_label,
             package,
         ),
+        copy @ BandCopy::Services { .. } => services_band(
+            copy,
+            catalog.expect(
+                "invariant: a page carrying a `services` band publishes a services catalog; \
+                 `the_services_band_only_ships_where_a_catalog_does` is the gate",
+            ),
+        ),
         BandCopy::Cta {
             heading,
             body,
@@ -395,7 +530,10 @@ fn band(copy: BandCopy) -> Band {
     }
 }
 
-fn marketing_page(copy: MarketingPageCopy) -> PageContent {
+fn marketing_page(
+    copy: MarketingPageCopy,
+    catalog: Option<&views::locales::services::ServicesCatalog>,
+) -> PageContent {
     PageContent {
         head_title: copy.head_title,
         meta_description: copy.meta_description,
@@ -408,7 +546,11 @@ fn marketing_page(copy: MarketingPageCopy) -> PageContent {
             .hero_cta
             .map(|HeroCtaCopy { href, label }| HeroCta { href, label }),
         skin: page_skin(copy.skin),
-        bands: copy.bands.into_iter().map(band).collect(),
+        bands: copy
+            .bands
+            .into_iter()
+            .map(|copy| band(copy, catalog))
+            .collect(),
     }
 }
 
@@ -524,17 +666,20 @@ pub fn fractional_gc(
 
 /// `/personal`, from this brand's `personal-plan.yaml`.
 pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "personal-plan"))
+    marketing_page(load_page(branding, "personal-plan"), None)
 }
 
 /// `/navigator`, from this brand's `navigator.yaml`.
 pub fn navigator(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "navigator"))
+    marketing_page(load_page(branding, "navigator"), None)
 }
 
 /// `/services`, from this brand's `services.yaml`.
 pub fn legal_services(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "services"))
+    marketing_page(
+        load_page(branding, "services"),
+        services_catalog(branding).as_ref(),
+    )
 }
 
 #[cfg(test)]
@@ -542,6 +687,7 @@ mod tests {
     use super::*;
     use views::brand::BrandKey;
     use views::locales::parse_locale_file;
+    use webapp::marketing_page::Band as RenderedBand;
 
     /// The shipped shared catalog is the contract both repositories consume.
     /// If it stops parsing, the export the other repository pins stops being
@@ -620,6 +766,109 @@ mod tests {
                 parse_locale_file(page, yaml)
                     .unwrap_or_else(|err| panic!("{} `{page}`: {err}", key.as_str()));
             }
+        }
+    }
+
+    /// The band a brand declares in its `services.yaml` and the catalog file
+    /// beside it must agree. A `kind: services` band with no catalog panics at
+    /// router build; a catalog nothing renders is a file nobody reads.
+    #[test]
+    fn the_services_band_only_ships_where_a_catalog_does() {
+        for key in BrandKey::ALL {
+            if !key.catalog_pages().contains(&"services") {
+                continue;
+            }
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            let declares_band = catalog_yaml(*key, "services")
+                .expect("a brand shipping `services` ships the file")
+                .contains("kind: services");
+            assert_eq!(
+                declares_band,
+                services_catalog(branding).is_some(),
+                "{}: a `kind: services` band and a services catalog ship together",
+                key.as_str()
+            );
+        }
+    }
+
+    /// `/services` renders the schedule from the catalog: every service, with
+    /// its fee resolved and its `related` ids turned into names a reader can
+    /// follow.
+    #[test]
+    fn the_services_page_renders_the_whole_catalog() {
+        let catalog =
+            services_catalog(&views::brand::DEFAULT_BRANDING).expect("Neon ships a catalog");
+        let content = legal_services(&views::brand::DEFAULT_BRANDING);
+        let band = content
+            .bands
+            .iter()
+            .find_map(RenderedBand::services)
+            .expect("the page renders its services band");
+        assert_eq!(band.services.len(), catalog.services.len());
+        assert_eq!(band.services.len(), 18);
+
+        // The fee is resolved: a flat-fee service reads the catalog's one
+        // figure rather than shipping an empty price.
+        let llc = band
+            .services
+            .iter()
+            .find(|service| service.id == "llc-file")
+            .expect("llc-file renders");
+        assert_eq!(llc.fee, catalog.flat_fee);
+        assert_eq!(llc.category, "Start a business");
+        // `related` carries names, not ids: a reader follows a service, not a
+        // slug.
+        assert!(
+            llc.related.iter().any(
+                |related| related.id == "llc-launch" && related.name == "Company setup package"
+            ),
+            "related services render their names"
+        );
+        // The estate audience words ride along, searched and never printed.
+        let will = band
+            .services
+            .iter()
+            .find(|service| service.id == "will")
+            .expect("will renders");
+        assert_eq!(will.audience, "personal family legacy");
+        assert!(
+            will.matches("family"),
+            "estate work is findable by `family`"
+        );
+    }
+
+    /// The search finds services by the words a reader would actually type,
+    /// through the shipped catalog rather than a fixture.
+    #[test]
+    fn the_shipped_catalog_answers_a_readers_words() {
+        let content = legal_services(&views::brand::DEFAULT_BRANDING);
+        let band = content
+            .bands
+            .iter()
+            .find_map(RenderedBand::services)
+            .expect("the page renders its services band");
+        for (needle, expected) in [
+            ("help with my LLC", "llc-file"),
+            ("trademark", "trademark"),
+            ("eviction", "eviction"),
+            ("I need a will", "will"),
+            ("1504", "msa"),
+        ] {
+            let found = band.matching(needle);
+            assert!(
+                found.iter().any(|service| service.id == expected),
+                "`{needle}` must find `{expected}`; found {:?}",
+                found.iter().map(|s| &s.id).collect::<Vec<_>>()
+            );
+        }
+        // Every example chip the band offers finds something. A chip that
+        // lands on the empty state is a chip advertising a dead end.
+        for example in &band.examples {
+            assert!(
+                !band.matching(&example.query).is_empty(),
+                "the `{}` chip finds nothing",
+                example.label
+            );
         }
     }
 

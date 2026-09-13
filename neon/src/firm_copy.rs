@@ -47,6 +47,55 @@ mod firm_copy_tests {
     /// rendering to the reader like any other sentence. A guard that reads
     /// only some of the page is a guard that reports green on the half it
     /// cannot see.
+    /// Every string the services band puts in front of a reader: the
+    /// heading, the search chrome, the empty state, and each service's name,
+    /// category, fee, period, scope, and the two regulated badges.
+    ///
+    /// The keywords are absent because they are search metadata a reader never
+    /// sees; `audience` is absent for the same reason. A guard reading this
+    /// text is reading the page, not the data behind it.
+    fn services_text(services: &webapp::services_search::ServicesBand) -> String {
+        let entries = services
+            .services
+            .iter()
+            .map(|service| {
+                let mut badges = String::new();
+                if service.members_only {
+                    badges.push_str(&services.members_badge);
+                    badges.push(' ');
+                }
+                if service.state_fee {
+                    badges.push_str(&services.state_fee_badge);
+                }
+                format!(
+                    "{} {} {} {} {} {} {} {badges}",
+                    service.item,
+                    service.name,
+                    service.category,
+                    service.fee,
+                    service.period,
+                    service.blurb,
+                    service.includes.join(" "),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let description = services.description.clone().unwrap_or_default();
+        format!(
+            "{} {} {description} {} {} {} {} {} {} {} {} {entries}",
+            services.overline,
+            services.heading,
+            services.search_label,
+            services.search_placeholder,
+            services.submit_label,
+            services.fee_label,
+            services.includes_label,
+            services.related_label,
+            services.empty,
+            services.empty_help,
+        )
+    }
+
     fn band_text(band: &Band) -> String {
         fn paragraphs(body: &[Paragraph]) -> String {
             body.iter()
@@ -149,6 +198,7 @@ mod firm_copy_tests {
                     "{overline} {heading} {description} {version} {archive_label} {boxes} {package}"
                 )
             }
+            Band::Services(services) => services_text(services),
             Band::Cta { heading, body, .. } => {
                 format!("{heading} {}", body.clone().unwrap_or_default())
             }
@@ -159,20 +209,19 @@ mod firm_copy_tests {
         bands.iter().map(band_text).collect::<Vec<_>>().join(" ")
     }
 
-    /// The fee schedule's cards, resolved from the page rather than restated.
+    /// The fee schedule, resolved from the page rather than restated.
     ///
     /// Every guard below reads the rendered band, so adding a matter without
     /// scoping it — or shipping a placeholder in its price — fails here rather
     /// than passing against a list this file happened to keep in step.
-    fn fee_cards(content: &webapp::marketing_page::PageContent) -> &[webapp::marketing_page::Card] {
+    fn schedule(
+        content: &webapp::marketing_page::PageContent,
+    ) -> &webapp::services_search::ServicesBand {
         content
             .bands
             .iter()
-            .find_map(|band| match band {
-                Band::Cards { items, .. } => Some(items.as_slice()),
-                _ => None,
-            })
-            .expect("the Legal Services page renders its fee schedule as a card band")
+            .find_map(Band::services)
+            .expect("the Legal Services page renders its fee schedule as a services band")
     }
 
     /// The platform page offers free use to attorneys who co-counsel with the firm.
@@ -279,17 +328,22 @@ mod firm_copy_tests {
     #[test]
     fn the_schedule_lists_scoped_matters() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
-        let fees = fee_cards(&content);
+        let services = &schedule(&content).services;
         assert!(
-            fees.len() >= 5,
+            services.len() >= 5,
             "the schedule is the page; {} matters is not a schedule",
-            fees.len()
+            services.len()
         );
-        for card in fees {
+        for service in services {
             assert!(
-                !card.body.is_empty(),
+                !service.includes.is_empty(),
                 "{} names no scope, which reads as covering everything",
-                card.title
+                service.name
+            );
+            assert!(
+                !service.blurb.trim().is_empty(),
+                "{} says nothing about what the work is",
+                service.name
             );
         }
     }
@@ -305,25 +359,27 @@ mod firm_copy_tests {
     #[test]
     fn any_published_fee_is_a_real_figure() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
-        for card in fee_cards(&content) {
-            let Some(price) = card.chips.first() else {
-                continue;
-            };
+        for service in &schedule(&content).services {
+            let price = &service.fee;
             assert!(
                 price.starts_with('$'),
                 "{} publishes {price:?}, which is not a fee",
-                card.title
+                service.name
             );
             assert!(
                 price.chars().any(|c| c.is_ascii_digit()),
                 "{} publishes {price:?}, which carries no amount",
-                card.title
+                service.name
+            );
+            // One fee per matter, and it says what it is charged per. The
+            // catalog refuses two fees on one record; this is the same rule
+            // observed on the rendered page.
+            assert!(
+                !service.period.trim().is_empty(),
+                "{} prints {price:?} with nothing saying what it buys",
+                service.name
             );
         }
-        assert!(
-            fee_cards(&content).iter().all(|card| card.chips.len() <= 1),
-            "a matter carries one fee or none; two prices on one card is not a flat fee"
-        );
     }
 
     /// A fee that depends on a government body's own charge says so.
@@ -336,47 +392,59 @@ mod firm_copy_tests {
     #[test]
     fn a_fee_with_a_pass_through_names_it() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
-        for card in fee_cards(&content) {
-            let Some(price) = card.chips.first() else {
-                continue;
-            };
-            if price.contains('+') {
+        for service in &schedule(&content).services {
+            let printed = format!("{} {}", service.fee, service.period);
+            if printed.contains('+') {
                 assert!(
-                    price.contains("fee"),
-                    "{} adds a pass-through without naming it: {price}",
-                    card.title
+                    printed.contains("fee"),
+                    "{} adds a pass-through without naming it: {printed}",
+                    service.name
                 );
             }
         }
     }
 
-    /// Every matter whose fee depends on a government charge says so in its
-    /// scope, whether or not a figure is set yet.
+    /// Every matter whose fee depends on a government charge says so.
     ///
-    /// The pass-through is a property of the work, not of the price, so it can
-    /// be stated before the fee is. A reader deciding whether they can afford a
-    /// formation needs to know a second bill is coming even on a page that has
-    /// not named the first one.
+    /// The pass-through is a property of the work, not of the price, so it is
+    /// stated whether or not a figure is set. A reader deciding whether they
+    /// can afford a formation needs to know a second bill is coming.
+    ///
+    /// The disclosure now rides a structured flag rather than a sentence
+    /// somebody remembered to write, so this reads the flag *and* the badge
+    /// the band prints from it — a flag nothing renders would disclose
+    /// nothing. The matters are named by catalog id, not by display title:
+    /// the titles are draft copy pending attorney review, and a guard that
+    /// pinned them would fail on a wording change rather than on a lost
+    /// disclosure.
     #[test]
     fn a_matter_with_a_government_charge_discloses_it() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
-        let cards = fee_cards(&content);
-        for matter in ["LLC formation", "Trademark application"] {
-            let card = cards
+        let schedule = schedule(&content);
+        assert!(
+            !schedule.state_fee_badge.trim().is_empty()
+                && schedule.state_fee_badge.to_lowercase().contains("fee"),
+            "the pass-through badge must name a fee: {:?}",
+            schedule.state_fee_badge
+        );
+        for matter in ["llc-file", "trademark"] {
+            let service = schedule
+                .services
                 .iter()
-                .find(|card| card.title == matter)
+                .find(|service| service.id == matter)
                 .unwrap_or_else(|| panic!("{matter} is on the schedule"));
-            let scope: String = card
-                .body
-                .iter()
-                .flat_map(|p| p.iter().map(|r| r.text.clone()))
-                .collect::<Vec<_>>()
-                .join(" ");
             assert!(
-                scope.contains("fee"),
-                "{matter} carries a government charge the scope must disclose: {scope}"
+                service.state_fee,
+                "{} carries a government charge the page must disclose",
+                service.name
             );
         }
+        // The badge reaches the reader, not just the data.
+        let rendered = page_text(&content.bands);
+        assert!(
+            rendered.contains(&schedule.state_fee_badge),
+            "the pass-through disclosure must reach the page: {rendered}"
+        );
     }
 
     /// The page states the attorney review the work rests on.
@@ -408,13 +476,23 @@ mod firm_copy_tests {
         assert!(text.contains("legal work outside your plan and government fees cost extra"));
         assert!(text.contains("custom contract reviews and trademarks require a plan"));
         assert!(text.contains("free consultation"));
-        let trademark = fee_cards(&content)
+        let schedule = schedule(&content);
+        let trademark = schedule
+            .services
             .iter()
-            .find(|card| card.title == "Trademark application")
+            .find(|service| service.id == "trademark")
             .expect("the trademark service remains available");
-        assert_eq!(
-            trademark.chips.first().map(String::as_str),
-            Some("$50 + government filing fees")
+        assert_eq!(trademark.fee, "$50");
+        assert_eq!(trademark.period, "+ government filing fees");
+        // The page says a plan is required for it, and says so where the fee
+        // is — not only in the statement band above the schedule.
+        assert!(
+            trademark.members_only,
+            "the trademark filing requires a plan"
+        );
+        assert!(
+            !schedule.members_badge.trim().is_empty(),
+            "a plan-only matter must carry a badge saying so"
         );
     }
 
@@ -430,12 +508,12 @@ mod firm_copy_tests {
     #[test]
     fn the_services_page_does_not_price_litigation_or_fractional_gc() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
-        let fees = fee_cards(&content);
+        let services = &schedule(&content).services;
         for quoted in ["litigation", "fractional"] {
             assert!(
-                !fees
+                !services
                     .iter()
-                    .any(|card| card.title.to_lowercase().contains(quoted)),
+                    .any(|service| service.name.to_lowercase().contains(quoted)),
                 "{quoted} is quoted per engagement and must not appear in the fee schedule"
             );
         }

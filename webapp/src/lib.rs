@@ -105,6 +105,7 @@ pub mod reask;
 pub mod retainer_start;
 pub mod review;
 pub mod schedules;
+pub mod services_search;
 pub mod source_repository;
 pub mod team_home;
 pub mod team_page;

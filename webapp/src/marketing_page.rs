@@ -23,6 +23,7 @@ use crate::components::{
 };
 use crate::litigation_page::HeroWord;
 use crate::public_chrome::{PublicChrome, PublicFooter};
+use crate::services_search::{ServicesBand, ServicesSearch};
 
 /// The marketing-page stylesheet, hoisted alongside `theme.css` and the shared
 /// token layer.
@@ -221,6 +222,13 @@ pub enum Band {
         items: Vec<Download>,
         package: Option<PackageInstall>,
     },
+    /// The firm's individual services, as a searchable schedule.
+    ///
+    /// Unlike every other band, this one is interactive: it is the public
+    /// site's first hydrated surface. It is boxed because a `ServicesBand`
+    /// carries the whole schedule, which would otherwise make every `Band` —
+    /// and so every `Vec<Band>` — as large as the largest one.
+    Services(Box<ServicesBand>),
     /// The closing call to action. The firm publishes one route in on these
     /// pages — its inbox — so this carries an address rather than a form.
     Cta {
@@ -242,6 +250,19 @@ impl Band {
     #[must_use]
     pub const fn is_downloads(&self) -> bool {
         matches!(self, Self::Downloads { .. })
+    }
+
+    /// The services schedule this band carries, if it is one.
+    ///
+    /// The firm's published-copy guards read the schedule through this rather
+    /// than scraping the rendered band's text, so a regulated claim is checked
+    /// against the field it was authored in.
+    #[must_use]
+    pub const fn services(&self) -> Option<&ServicesBand> {
+        match self {
+            Self::Services(band) => Some(band),
+            _ => None,
+        }
     }
 }
 
@@ -321,6 +342,18 @@ pub struct InjectedMarketingPage(pub PageContent);
 pub struct MarketingPageView {
     pub chrome: PublicChrome,
     pub content: PageContent,
+    /// The `?q=` the request carried, for the searchable services band. Empty
+    /// on every page that has no such band, and on an absent or unreadable
+    /// query string.
+    pub query: String,
+}
+
+/// The one query parameter a marketing page reads.
+#[cfg(feature = "server")]
+#[derive(Deserialize, Default)]
+struct MarketingQuery {
+    #[serde(default)]
+    q: String,
 }
 
 /// Resolve the public chrome and one marketing page's static copy.
@@ -334,7 +367,23 @@ pub async fn marketing_page_view() -> Result<MarketingPageView, ServerFnError> {
     Ok(MarketingPageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
+        query: search_query().await,
     })
+}
+
+/// The request's `?q=`, cut to the search's cap, or an empty needle.
+///
+/// A malformed query string is an empty needle rather than an error: the
+/// services band answers it by showing everything, which is a better page than
+/// a 500 for a URL a reader most likely did not type by hand. The cap is
+/// applied here, at the edge, so no unbounded needle reaches the matcher — see
+/// [`crate::services_search::MAX_QUERY_LEN`].
+#[cfg(feature = "server")]
+async fn search_query() -> String {
+    dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Query<MarketingQuery>, _>()
+        .await
+        .map(|axum::extract::Query(query)| crate::services_search::clamp_query(&query.q))
+        .unwrap_or_default()
 }
 
 /// A marketing page's route entry.
@@ -346,7 +395,7 @@ pub fn MarketingPageEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        MarketingPage { chrome: view.chrome, content: view.content }
+        MarketingPage { chrome: view.chrome, content: view.content, query: view.query }
     }
 }
 
@@ -429,7 +478,7 @@ fn MarketingShell(
 /// One marketing page. Prop-driven, so it server-renders and unit-tests
 /// without a server future.
 #[component]
-pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
+pub fn MarketingPage(chrome: PublicChrome, content: PageContent, query: String) -> Element {
     let hero_day_rate = content.bands.iter().find_map(|band| match band {
         Band::Cards {
             items,
@@ -520,7 +569,7 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
                         }
                     }
                 }
-                Bands { items: content.bands.clone() }
+                Bands { items: content.bands.clone(), query }
             }
         }
     }
@@ -528,7 +577,7 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
 
 /// Render a page's bands in order.
 #[component]
-fn Bands(items: Vec<Band>) -> Element {
+fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
     rsx! {
         for band in items.iter() {
             match band {
@@ -610,6 +659,12 @@ fn Bands(items: Vec<Band>) -> Element {
                                 }
                             }
                         }
+                    }
+                },
+                Band::Services(services) => rsx! {
+                    ServicesSearch {
+                        band: (**services).clone(),
+                        query: query.clone(),
                     }
                 },
                 Band::Steps { anchor, overline, heading, description, items } => rsx! {
@@ -829,7 +884,11 @@ fn Bands(items: Vec<Band>) -> Element {
 
 /// A band's overline, heading, and optional standfirst.
 #[component]
-fn BandHeading(overline: String, heading: String, description: Option<String>) -> Element {
+pub(crate) fn BandHeading(
+    overline: String,
+    heading: String,
+    description: Option<String>,
+) -> Element {
     rsx! {
         div { class: "fm-band__heading",
             p { class: "fm-overline", "{overline}" }
@@ -1203,7 +1262,7 @@ mod tests {
 
     fn page_html() -> String {
         fn app() -> Element {
-            rsx! { MarketingPage { chrome: chrome(), content: sample_page() } }
+            rsx! { MarketingPage { chrome: chrome(), content: sample_page(), query: String::new() } }
         }
         render(app)
     }
@@ -1399,6 +1458,7 @@ mod tests {
                 MarketingPageProps {
                     chrome: chrome(),
                     content,
+                    query: String::new(),
                 },
             );
             dom.rebuild_in_place();
@@ -1470,7 +1530,7 @@ mod tests {
                 }],
                 skin: PageSkin::Marketing,
             };
-            rsx! { MarketingPage { chrome: chrome(), content } }
+            rsx! { MarketingPage { chrome: chrome(), content, query: String::new() } }
         }
         let out = render(app);
         assert!(out.contains("Fractional General Counsel"), "title: {out}");

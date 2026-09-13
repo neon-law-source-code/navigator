@@ -38,124 +38,35 @@ bands:
         - text: free consultation
           href: /disputes
         - text: ". You do not need a subscription for that first conversation."
-  - kind: cards
+  - kind: services
     anchor: fees
     overline: Individual services
     heading: "{shared:services.catalog_heading}"
     description: >-
       Choose the help you need. We will explain what it includes and what it
       costs before work starts. Government fees are separate. Contract reviews
-      require a plan and run $100–$500 depending on the contract type.
-    items:
-      - title: Simple will
-        body:
-          - - text: >-
-                One will, drafted from your answers and reviewed by a licensed
-                attorney, through signing and witnessing.
-      - title: Estate package
-        body:
-          - - text: >-
-                A will, a financial power of attorney, and a healthcare
-                directive, drafted together so they agree with one another.
-      - title: Revocable living trust
-        body:
-          - - text: >-
-                The trust, a pour-over will, and the deed transferring one
-                Nevada property into it. Further properties are quoted.
-      - title: Uncontested name change
-        body:
-          - - text: >-
-                The petition, the publication notice, and the hearing. Court
-                filing and publication costs are billed at cost.
-      - title: Demand letter
-        body:
-          - - text: >-
-                One letter over the firm's signature, after we read what you
-                have. It is not a retainer to litigate if the letter does not
-                work.
-      - title: Tenant eviction defense
-        body:
-          - - text: >-
-                The answer and one hearing in a Nevada summary eviction. An
-                appeal or a contested trial is a separate engagement.
-      - title: LLC formation
-        body:
-          - - text: >-
-                Articles, an operating agreement, the EIN, and the initial state
-                filing. The Secretary of State sets its own fee.
-      - title: Nonprofit formation and 501(c)(3)
-        body:
-          - - text: >-
-                Articles, bylaws, a conflict-of-interest policy, and the Form
-                1023 application. The IRS sets its own user fee.
-      - title: Trademark application
-        chips:
-          - "$50 + government filing fees"
-        body:
-          - - text: >-
-                A clearance search and one class of one application, through
-                filing. The USPTO sets its own per-class fee.
-      - title: Nevada annual report
-        body:
-          - - text: >-
-                The annual list and the state business licence renewal for one
-                entity. The state sets its own fee.
-      - title: Mutual NDA review
-        chips:
-          - "$100"
-        body:
-          - - text: >-
-                One NDA, read end-to-end and redlined, with a short note on
-                what we changed and why.
-      - title: Consulting agreement review
-        chips:
-          - "$250"
-        body:
-          - - text: >-
-                One consulting or independent-contractor agreement, read
-                end-to-end and redlined against your interests.
-      - title: Employment agreement review
-        chips:
-          - "$350"
-        body:
-          - - text: >-
-                One offer letter or employment agreement, read end-to-end,
-                including any equity or non-compete terms.
-      - title: MSA review
-        chips:
-          - "$500"
-        body:
-          - - text: >-
-                One master services agreement, read end-to-end and redlined —
-                the counterparty's paper, not one we drafted for you.
-      - title: Form review
-        chips:
-          - "$50"
-        body:
-          - - text: >-
-                Filling out and reviewing one government or intake form,
-                returned by a licensed attorney. Forms are free with a plan or
-                $50 each otherwise. Any government or third-party fee is
-                separate.
-      - title: Nevada business address
-        chips:
-          - "$350/year"
-        body:
-          - - text: >-
-                A Nevada street address for service of process and mail,
-                forwarded to you. Billed annually.
-      - title: Send a template contract
-        chips:
-          - "$5"
-        body:
-          - - text: >-
-                One of our own template contracts, sent to your counterparty
-                through DocuSign for signature. Per contract sent.
-      - title: Custom or ad-hoc business work
-        body:
-          - - text: >-
-                Something outside this list. Tell us what you need and we will
-                scope and quote it before starting.
+      require a plan and run $100-$500 depending on the contract type.
+    search_label: Search individual services
+    search_placeholder: A contract, my business, a will, a dispute
+    submit_label: Search
+    examples:
+      - label: My business
+        query: business
+      - label: A contract
+        query: contract
+      - label: My family
+        query: family
+      - label: A dispute
+        query: dispute
+    fee_label: Legal fee
+    includes_label: What this includes
+    related_label: Other ways we can help
+    members_badge: Plan required
+    state_fee_badge: Government fees cost extra
+    empty: We could not find a match.
+    empty_help: >-
+      Tell us what you need and we will let you know whether we can help.
+    clear_label: Show all services
   - kind: steps
     anchor: how
     overline: How it works

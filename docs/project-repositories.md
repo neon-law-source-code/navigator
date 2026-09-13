@@ -312,8 +312,9 @@ jobs:
 ```
 
 The caller is pull-request-only and has no permissions or inherited secrets. A called workflow cannot widen the token
-the caller grants it, so fork PRs cannot mint OIDC credentials; the reusable gate's live jobs remain main-only. The `ci`
-job is the required check and stays named exactly `ci`.
+the caller grants it, so fork PRs cannot mint OIDC credentials; the reusable gate's live jobs remain main-only, and
+`cd.yml`'s own `gate` job (below) is what re-invokes this same reusable workflow on a push to `main` so those live jobs
+actually run. The `ci` job is the required check and stays named exactly `ci`.
 
 The scaffold generates five feeder jobs — lint, verify, notation, documents, and manifest — for the Project check. A
 malformed manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce
@@ -363,12 +364,14 @@ to. The shape rule is machine-checkable and `validate` enforces it; whether the 
 
 ## Publishing the built bundle
 
-`cd.yml` is the thin main-only caller of `neon-law-source-code/navigator/.github/workflows/project-publish.yml@YY.M.D`.
-It passes only `project` and `host`. The reusable workflow builds and validates the application, derives the deployment
-bucket from `host`, and then calls the pinned application-publish action. The bucket name is never a literal in a
-Project repository, caller, or log. `workflow_dispatch` is the recovery path when a merge attributed to `GITHUB_TOKEN`
-creates no run; the workflow uses `cancel-in-progress: false` because cancelling a publish can leave an `index.html`
-naming assets that have not arrived.
+`cd.yml` is the thin main-only caller of two reusable workflows, both pinned to the same `YY.M.D`. Its `gate` job
+re-invokes `project-gate.yml`, the same file `ci.yml` calls on pull requests, so the live document verification, live
+Project gate, and seed import that only run on a push to `main` actually run on one. Its `publish` job `needs: gate` and
+calls `project-publish.yml`; both pass only `project` and `host`. The publish workflow builds and validates the
+application, derives the deployment bucket from `host`, and then calls the pinned application-publish action. The
+bucket name is never a literal in a Project repository, caller, or log. `workflow_dispatch` is the recovery path when a
+merge attributed to `GITHUB_TOKEN` creates no run; the workflow uses `cancel-in-progress: false` because cancelling a
+publish can leave an `index.html` naming assets that have not arrived.
 
 **Nothing in a Project repository restates its owner.** The action derives the Project code from the checkout's own
 manifest, and the owner it publishes under is the one the workflow already runs as: `github.repository` is what the
@@ -421,18 +424,25 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  id-token: write            # only the main-only publish caller mints WIF
+  id-token: write            # both main-only callers below mint WIF
 jobs:
+  gate:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@YY.M.D
+    with:
+      project: "<project-code>"
+      host: "staging.neonlaw.com"
   publish:
+    needs: gate
     uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@YY.M.D
     with:
       project: "<project-code>"
       host: "staging.neonlaw.com"
 ```
 
-Seed and document reconciliation remains in the reusable gate's main-only jobs where applicable. The caller carries no
-deployment variable or CLI command: its only deployment coordinate is the `host` input above, and an empty provider
-makes the publisher no-op for an unprovisioned or forked repository.
+Seed and document reconciliation remains in the reusable gate's main-only jobs, and `gate` (above) is what runs them:
+`ci.yml` calls the same reusable workflow only on `pull_request`, so nothing else would trigger their live half. The
+caller carries no deployment variable or CLI command: its only deployment coordinate is the `host` input above, and an
+empty provider makes the publisher no-op for an unprovisioned or forked repository.
 
 ### The publisher's grant is prefix-conditioned, and one identity cannot serve two Projects
 

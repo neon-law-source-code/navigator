@@ -10,16 +10,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
-concurrency:
-  group: project-publish-example-project
-  cancel-in-progress: false
-
 permissions:
   contents: read
   id-token: write
 
 jobs:
+  gate:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.9.14
+    with:
+      project: "example-project"
+      host: "staging.neonlaw.com"
   publish:
+    needs: gate
     uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.9.14
     with:
       project: "example-project"

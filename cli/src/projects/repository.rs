@@ -1523,6 +1523,12 @@ jobs:
 pub(crate) const HAND_COPIED_GATE_LINES: usize = 268;
 
 /// The thin `cd.yml` caller for Navigator's reusable publisher.
+///
+/// `gate` re-invokes `project-gate.yml` on this same push-to-`main` event so
+/// its live document verification, live Project gate, and seed import run
+/// here — `ci.yml` above calls that file only on `pull_request`, so nothing
+/// else triggers those live jobs. `publish` `needs: gate`: a push publishes
+/// only after the live checks it depends on have passed.
 #[allow(dead_code)]
 pub(crate) fn cd_workflow(action_version: &str) -> String {
     cd_workflow_for(action_version, "acme", "staging.neonlaw.com")
@@ -1543,10 +1549,18 @@ permissions:
 
 # The reusable publisher mints its deployment token only on this main-only
 # caller. The PR caller above has no permissions block: a called workflow
-# cannot widen the token the caller granted it.
+# cannot widen the token the caller granted it. `gate` needs the same token
+# to exercise project-gate.yml's live document verification, live Project
+# gate, and seed import, which only run on a push to `main`.
 
 jobs:
+  gate:
+    uses: {PROJECT_GATE_WORKFLOW}{action_version}
+    with:
+      project: "{project_code}"
+      host: "{host}"
   publish:
+    needs: gate
     uses: {PROJECT_PUBLISH_WORKFLOW}{action_version}
     with:
       project: "{project_code}"

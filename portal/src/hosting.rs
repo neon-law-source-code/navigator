@@ -419,7 +419,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         // unless `NAVIGATOR_GCP_PROJECT_ID` is set.
         identity_admin: crate::idp_admin::IdentityAdminConfig::from_env(),
         // Production picks the router from env inside `bootstrap`
-        // (Gemini when configured, else Null); no override here.
+        // (Vertex when configured, else Null); no override here.
         a2a_router: None,
     };
 

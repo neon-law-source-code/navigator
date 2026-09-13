@@ -271,7 +271,7 @@ fn deployment_provider_attachments_stay_local_to_each_config() {
 }
 
 #[test]
-fn deployment_workshop_records_the_staging_oauth_checkpoint_and_nullable_gemini() {
+fn deployment_workshop_records_the_staging_oauth_checkpoint() {
     let deploy = repo_file("server/content/workshops/navigator/DEPLOY.md");
     let prose = deploy.split_whitespace().collect::<Vec<_>>().join(" ");
 
@@ -279,9 +279,8 @@ fn deployment_workshop_records_the_staging_oauth_checkpoint_and_nullable_gemini(
         "The staging browser client exists",
         "External/Testing",
         "the authenticated operator is its initial test user",
-        "deployment config carries only that browser ID and secret",
-        "Gemini ID remains absent",
-        "issues/1126",
+        "carries that browser ID and secret",
+        "renders a browser-only allowlist",
     ] {
         assert!(
             prose.contains(observed),

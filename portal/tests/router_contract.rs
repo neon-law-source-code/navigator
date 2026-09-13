@@ -75,14 +75,14 @@ const CONTRACT: &[(&str, Access)] = &[
     // source-available, so these documents are the manual for software anyone can
     // clone — a login door in front of them guarded nothing and cost a reader
     // the one page that explains how to run it.
-    ("/documents", Access::PortalPublic),
-    ("/documents/glossary", Access::PortalPublic),
-    // The same documentation inside the application. `/documents` above renders
+    ("/docs", Access::PortalPublic),
+    ("/docs/glossary", Access::PortalPublic),
+    // The same documentation inside the application. `/docs` above renders
     // for anyone; these carry the session boundary plus a policy rule that
     // admits only the tiers who operate Navigator. What that gates is the
     // application surface, not the documents.
-    ("/app/documents", Access::ProtectedHuman),
-    ("/app/documents/glossary", Access::ProtectedHuman),
+    ("/app/docs", Access::ProtectedHuman),
+    ("/app/docs/glossary", Access::ProtectedHuman),
     // The operational probes: anonymous, with no session requirement. They
     // are the only paths Kubernetes dials, and they answer on `/app` alone.
     ("/app/health", Access::PublicIngress),
@@ -116,7 +116,7 @@ const CONTRACT: &[(&str, Access)] = &[
     // surface consolidated under the private `/app/api` prefix: a client
     // now needs a session to read the card, so A2A discovery is not
     // self-service. See `portal::a2a` for why that is the accepted trade.
-    ("/app/api/aida.json", Access::ProtectedProtocol),
+    ("/app/api/mcp.json", Access::ProtectedProtocol),
     // `/app/mcp` is deliberately absent from this table: it carries a
     // Bearer-only `require_auth` stack (no session cookie), which
     // answers a bare `401` rather than the structured
@@ -363,7 +363,7 @@ async fn private_bucket_asset_proxy_hides_missing_and_unsafe_keys() {
 
     for path in [
         "/assets/img/missing.svg",
-        "/assets/%2e%2e/documents/private.pdf",
+        "/assets/%2e%2e/docs/private.pdf",
         "/assets/img%5cprivate.pdf",
     ] {
         assert_eq!(
@@ -456,7 +456,7 @@ async fn a_signed_session_passes_the_shared_boundary() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/documents/glossary")
+                .uri("/docs/glossary")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -469,7 +469,7 @@ async fn a_signed_session_passes_the_shared_boundary() {
         StatusCode::OK,
         "an authenticated reader still gets the shared docs"
     );
-    // `/documents` is anonymous, so this no longer proves the boundary passes a
+    // `/docs` is anonymous, so this no longer proves the boundary passes a
     // signed session — a gated surface does. `/templates` is behind the same
     // boundary and renders for any authenticated person.
     let gallery = app_for_gallery
@@ -537,7 +537,7 @@ async fn mount_keeps_host_public_routes_and_protects_portal_routes() {
         "the host keeps serving its own public page"
     );
 
-    // `/templates`, not `/documents`: the documentation reads anonymously now, so it
+    // `/templates`, not `/docs`: the documentation reads anonymously now, so it
     // can no longer stand for "the boundary still closes under a host mount".
     // The template gallery is the nearest shared surface that is still gated.
     let gallery_response = anonymous_get(&app, "/templates").await;

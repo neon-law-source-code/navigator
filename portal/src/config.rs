@@ -341,8 +341,8 @@ mod tests {
     #[test]
     fn prod_invariants_require_the_google_oauth_client_allowlist() {
         // Unset, `google_oauth` degrades to a pass-through and
-        // `mcp_principal` never injects a `Principal` — so AIDA's
-        // project-scope check on `aida_create_notation` silently stops
+        // `mcp_principal` never injects a `Principal` — so Navigator MCP's
+        // project-scope check on `create_notation` silently stops
         // running. Fail at boot rather than fail open per request.
         let base = [
             ("RESTATE_BROKER_URL", "http://restate:9070"),

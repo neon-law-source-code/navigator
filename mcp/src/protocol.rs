@@ -94,13 +94,13 @@ mod tests {
             "jsonrpc": "2.0",
             "id": 7,
             "method": "tools/call",
-            "params": { "name": "aida_create_person", "arguments": {} }
+            "params": { "name": "create_person", "arguments": {} }
         });
         let req: Request = serde_json::from_value(raw).unwrap();
         assert_eq!(req.jsonrpc, "2.0");
         assert_eq!(req.id, Some(json!(7)));
         assert_eq!(req.method, "tools/call");
-        assert_eq!(req.params["name"], "aida_create_person");
+        assert_eq!(req.params["name"], "create_person");
     }
 
     #[test]

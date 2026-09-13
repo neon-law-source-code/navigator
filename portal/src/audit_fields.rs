@@ -24,7 +24,7 @@
 //! There is deliberately no helper that hashes a tool-call payload to record
 //! *what* a caller passed. The agent-action authorization records carry no
 //! arguments, argument keys, digest, or count — see `a2a::audit_authorization`
-//! and `docs/aida-a2a-interaction.md` — and a digest is the wrong primitive to
+//! and `docs/mcp-a2a-interaction.md` — and a digest is the wrong primitive to
 //! reopen that with.
 //!
 //! A digest looks content-free and is not. An unsalted hash is deterministic by

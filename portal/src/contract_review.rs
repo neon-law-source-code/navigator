@@ -4,12 +4,12 @@
 //! This is the first review-*in* analysis step. It mirrors
 //! [`crate::signature`]: a trait with two implementations selected at
 //! [`crate::AppState`] build time, exactly like
-//! [`crate::agent_router::build`-style selection](crate::agent_router).
+//! [`crate::agent_router`]-style trait selection.
 //!
 //! - [`GeminiContractReviewer`] — production. Calls Vertex AI Gemini's
 //!   `generateContent` with the playbook positions and the contract text,
 //!   asking for a strict-JSON deviation report. Auth via Workload Identity,
-//!   the same GKE-metadata access token [`crate::agent_router::GeminiRouter`]
+//!   a GKE-metadata access token
 //!   uses — no new credential.
 //! - [`StubContractReviewer`] — KIND / tests. Deterministic: it flags every
 //!   playbook position as a finding the attorney must act on. Not a real
@@ -129,7 +129,7 @@ impl ContractReviewer for StubContractReviewer {
 // ---------------------------------------------------------------------------
 
 /// Vertex AI–backed contract reviewer. Reuses the same region/model/auth
-/// shape as [`crate::agent_router::GeminiRouter`].
+/// shape Vertex AI expects.
 pub struct GeminiContractReviewer {
     project_id: String,
     location: String,
@@ -138,6 +138,20 @@ pub struct GeminiContractReviewer {
     vertex_base_url: String,
     http: reqwest::Client,
 }
+
+/// Default GKE metadata-server URL for a Workload Identity access
+/// token. The metadata server lives on a link-local address inside
+/// every GKE pod and the `Metadata-Flavor: Google` header is
+/// mandatory. Overridable via `GOOGLE_METADATA_URL` so tests can point
+/// it at a mock.
+pub const DEFAULT_METADATA_TOKEN_URL: &str =
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+
+/// Vertex AI region. Must be one where the chosen model is served.
+pub const DEFAULT_VERTEX_LOCATION: &str = "us-west4";
+
+/// Vertex AI model backing the review.
+pub const DEFAULT_VERTEX_MODEL: &str = "gemini-2.5-flash";
 
 /// Where the Vertex access token comes from: the GKE metadata server in
 /// production, or a baked-in string in tests.
@@ -156,11 +170,11 @@ impl GeminiContractReviewer {
             return None;
         }
         let location = std::env::var("NAVIGATOR_GCP_LOCATION")
-            .unwrap_or_else(|_| crate::agent_router::DEFAULT_VERTEX_LOCATION.to_string());
+            .unwrap_or_else(|_| DEFAULT_VERTEX_LOCATION.to_string());
         let model = std::env::var("NAVIGATOR_CONTRACT_REVIEW_MODEL")
-            .unwrap_or_else(|_| crate::agent_router::DEFAULT_VERTEX_MODEL.to_string());
+            .unwrap_or_else(|_| DEFAULT_VERTEX_MODEL.to_string());
         let metadata_url = std::env::var("GOOGLE_METADATA_URL")
-            .unwrap_or_else(|_| crate::agent_router::DEFAULT_METADATA_TOKEN_URL.to_string());
+            .unwrap_or_else(|_| DEFAULT_METADATA_TOKEN_URL.to_string());
         let vertex_base_url = format!("https://{location}-aiplatform.googleapis.com");
         Some(Self {
             project_id,
@@ -447,8 +461,8 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(format!(
-                "/v1/projects/p/locations/us-west4/publishers/google/models/{}:generateContent",
-                crate::agent_router::DEFAULT_VERTEX_MODEL
+                "/v1/projects/p/locations/us-west4/publishers/google/models/\
+                 {DEFAULT_VERTEX_MODEL}:generateContent"
             )))
             .and(header("authorization", "Bearer test-token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -468,7 +482,7 @@ mod tests {
         let r = GeminiContractReviewer::for_test(
             "p",
             "us-west4",
-            crate::agent_router::DEFAULT_VERTEX_MODEL,
+            DEFAULT_VERTEX_MODEL,
             "test-token",
             server.uri(),
         );
@@ -496,7 +510,7 @@ mod tests {
         let r = GeminiContractReviewer::for_test(
             "p",
             "us-west4",
-            crate::agent_router::DEFAULT_VERTEX_MODEL,
+            DEFAULT_VERTEX_MODEL,
             "t",
             server.uri(),
         );

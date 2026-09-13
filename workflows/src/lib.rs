@@ -22,7 +22,6 @@ pub mod compliance;
 pub mod dispatch;
 pub mod document;
 pub mod email;
-pub mod github;
 pub mod guardrail;
 pub mod intake;
 pub mod integrations;

@@ -13,7 +13,7 @@
 //! abstraction, many instances:
 //!
 //! - **transcript** (estate) — the first instance. The sitting
-//!   is recorded offline and transcribed by AIDA on the already-paid
+//!   is recorded offline and transcribed by Navigator MCP on the already-paid
 //!   Google Gemini Enterprise (~$0 marginal cost, the access-to-justice
 //!   lever); the transcript text is then uploaded here.
 //! - **executed e-sign PDF** — the signed instrument filed back into the

@@ -1,4 +1,4 @@
-//! `aida_close_project` MCP tool.
+//! `close_project` MCP tool.
 //!
 //! Closes an existing Project through the shared lifecycle command. The
 //! attestation is explicit because closing is a firm-policy decision, and the
@@ -14,7 +14,7 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_close_project",
+        "name": "close_project",
         "description": "Close an existing Project (matter) in Neon Law Navigator. This is a lifecycle transition: it sets status to closed and stamps closed_at for retention. The closing attorney must explicitly attest that the matter is ready to close.",
         "inputSchema": {
             "type": "object",
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn descriptor_requires_project_and_attestation() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_close_project");
+        assert_eq!(d["name"], "close_project");
         assert_eq!(
             d["inputSchema"]["required"],
             json!(["project_id", "attestation"])

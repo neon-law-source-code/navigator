@@ -1,7 +1,7 @@
-//! Cucumber runner for `features/aida_create_notation.feature`.
+//! Cucumber runner for `features/create_notation.feature`.
 //!
 //! Drives the conversational notation walk over the A2A surface
-//! (`POST /app/api/aida/rpc`) through the fully composed app: auth
+//! (`POST /app/api/mcp/rpc`) through the fully composed app: auth
 //! stack, route mounting, and all. The client names the
 //! `create_notation` / `answer_notation` skills directly, which is the
 //! `metadata.skill` path every non-Gemini A2A client uses, so no model
@@ -33,7 +33,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 use workflows::{InMemoryRuntime, MachineKind, StateMachineRuntime, StateName};
 
-/// The firm-side principal driving AIDA. Only a lawyer/admin may
+/// The firm-side principal driving Navigator MCP. Only a lawyer/admin may
 /// authorize a supervised act, and `create_notation` additionally
 /// checks that this lawyer is scoped to the matter, so this identity
 /// is both the caller and the approver in every scenario.
@@ -45,7 +45,7 @@ struct NotationWorld {
     app: Option<axum::Router>,
     runtime: Option<Arc<InMemoryRuntime>>,
     notation_id: Option<Uuid>,
-    /// The matter the lawyer opens the notation on. AIDA never creates
+    /// The matter the lawyer opens the notation on. Navigator MCP never creates
     /// one: `create_notation` names an existing Project.
     project_id: Option<Uuid>,
     /// JSON-RPC `id` counter so each call gets a fresh request id.
@@ -95,7 +95,7 @@ impl NotationWorld {
     async fn post_as_lawyer(&mut self, body: Value) {
         let mut req = Request::builder()
             .method("POST")
-            .uri("/app/api/aida/rpc")
+            .uri("/app/api/mcp/rpc")
             .header(
                 "authorization",
                 portal::test_support::lawyer_bearer_header(),
@@ -145,7 +145,7 @@ impl NotationWorld {
 #[given("a fresh Neon Law Navigator app with the canonical templates seeded")]
 async fn build_app(world: &mut NotationWorld) {
     let surreal = features::shared_surreal().await;
-    let storage = fs_storage("aida-create-notation").await;
+    let storage = fs_storage("create-notation").await;
     seed::seed_canonical(&surreal, &storage)
         .await
         .expect("seed canonical");
@@ -254,7 +254,7 @@ async fn name_answer_notation(world: &mut NotationWorld, code: String, value: St
         .await;
 }
 
-#[then(regex = r#"^AIDA pauses for authorization to "([^"]+)"$"#)]
+#[then(regex = r#"^Navigator MCP pauses for authorization to "([^"]+)"$"#)]
 async fn assert_paused(world: &mut NotationWorld, action: String) {
     let task = world.task();
     assert_eq!(
@@ -365,7 +365,7 @@ async fn assert_task_failed(world: &mut NotationWorld, needle: String) {
     );
 }
 
-#[when(regex = r#"^the LLM calls aida_create_notation for "([^"]+)" on that matter over /mcp$"#)]
+#[when(regex = r#"^the LLM calls create_notation for "([^"]+)" on that matter over /mcp$"#)]
 async fn call_over_mcp(world: &mut NotationWorld, template_code: String) {
     let project_id = world.project_id.expect("no matter opened");
     let rpc_id = world.fresh_rpc_id();
@@ -374,7 +374,7 @@ async fn call_over_mcp(world: &mut NotationWorld, template_code: String) {
         "id": rpc_id,
         "method": "tools/call",
         "params": {
-            "name": "aida_create_notation",
+            "name": "create_notation",
             "arguments": {
                 "template_code": template_code,
                 "project_id": project_id,
@@ -414,7 +414,7 @@ async fn assert_mcp_refusal(world: &mut NotationWorld) {
     let text = result["content"][0]["text"]
         .as_str()
         .expect("refusal carries text");
-    assert!(text.contains("aida_create_notation"), "got `{text}`");
+    assert!(text.contains("create_notation"), "got `{text}`");
     assert!(text.contains("approval"), "got `{text}`");
     assert!(text.contains("Navigator app"), "got `{text}`");
 }
@@ -433,5 +433,5 @@ async fn assert_no_notation(world: &mut NotationWorld) {
 
 #[tokio::main]
 async fn main() {
-    NotationWorld::run("tests/features/aida_create_notation.feature").await;
+    NotationWorld::run("tests/features/create_notation.feature").await;
 }

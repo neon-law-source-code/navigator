@@ -114,7 +114,7 @@ pub async fn trigger_welcome(
 ///
 /// This is the **command** every door goes through — the JSON API route
 /// (`POST /app/api/people/{id}/welcome`), the `/app/admin/people/{id}` "Send
-/// welcome" button, and the `aida_send_welcome_email` MCP tool. It lives
+/// welcome" button, and the `send_welcome_email` MCP tool. It lives
 /// here rather than in `portal` because `mcp` cannot depend on `portal`
 /// (that crate depends on `mcp`), and a command only two of the three
 /// doors could reach is how the agent door drifted in the first place.

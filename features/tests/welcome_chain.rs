@@ -1,6 +1,6 @@
-//! Cucumber runner for `features/aida_welcome_chain.feature`.
+//! Cucumber runner for `features/welcome_chain.feature`.
 //!
-//! Drives the A2A surface (`/app/api/aida/rpc`) end-to-end through the full
+//! Drives the A2A surface (`/app/api/mcp/rpc`) end-to-end through the full
 //! fully composed app — auth stack, route mounting, and all. A
 //! scripted [`WelcomeChainRouter`] stands in for Gemini so the agentic
 //! loop runs deterministically; everything it drives (the real
@@ -111,9 +111,9 @@ impl ChainWorld {
     }
 }
 
-#[given("a CapturingEmail-backed Neon Law Navigator app whose AIDA router runs the lookup-then-send chain")]
+#[given("a CapturingEmail-backed Neon Law Navigator app whose Navigator MCP router runs the lookup-then-send chain")]
 async fn build_app(world: &mut ChainWorld) {
-    let storage = fs_storage("aida-welcome-chain").await;
+    let storage = fs_storage("welcome-chain").await;
     let runtime = Arc::new(InMemoryRuntime::new());
     let email = Arc::new(CapturingEmail::new());
     let mut state = app_state_with_email(
@@ -139,7 +139,7 @@ async fn build_app(world: &mut ChainWorld) {
     world.captured = Some(email);
 }
 
-/// The firm-side operator driving AIDA from Gemini Enterprise. The
+/// The firm-side operator driving Navigator MCP from Gemini Enterprise. The
 /// confirmation gate only lets a lawyer/admin principal authorize a
 /// client-facing send, so every request in this scenario is made as
 /// this principal — injected the same way the prod auth middleware
@@ -177,7 +177,7 @@ async fn seed_person_with_role(
 async fn post_as_lawyer(world: &mut ChainWorld, body: Value) {
     let mut req = Request::builder()
         .method("POST")
-        .uri("/app/api/aida/rpc")
+        .uri("/app/api/mcp/rpc")
         .header(
             "authorization",
             portal::test_support::lawyer_bearer_header(),
@@ -198,7 +198,7 @@ async fn post_as_lawyer(world: &mut ChainWorld, body: Value) {
     world.last_task = Some(envelope["result"].clone());
 }
 
-#[when(regex = r#"^AIDA receives the A2A message "([^"]+)"$"#)]
+#[when(regex = r#"^Navigator MCP receives the A2A message "([^"]+)"$"#)]
 async fn send_message(world: &mut ChainWorld, text: String) {
     let body = json!({
         "jsonrpc": "2.0",
@@ -214,7 +214,9 @@ async fn send_message(world: &mut ChainWorld, text: String) {
     post_as_lawyer(world, body).await;
 }
 
-#[then(regex = r#"^AIDA pauses for authorization to send the welcome email to "([^"]+)"$"#)]
+#[then(
+    regex = r#"^Navigator MCP pauses for authorization to send the welcome email to "([^"]+)"$"#
+)]
 async fn assert_pauses(world: &mut ChainWorld, person: String) {
     let task = world.task();
     assert_eq!(
@@ -315,6 +317,6 @@ async fn assert_subject(world: &mut ChainWorld, expected: String) {
 #[tokio::main]
 async fn main() {
     ChainWorld::cucumber()
-        .run_and_exit("tests/features/aida_welcome_chain.feature")
+        .run_and_exit("tests/features/welcome_chain.feature")
         .await;
 }

@@ -12,7 +12,7 @@
 //!
 //! Binding a notation is a `mcp::tools::requires_confirmation` act, so
 //! the walk runs over the supervised A2A surface (`POST
-//! /app/api/aida/rpc`): the attorney names the `create_notation` skill,
+//! /app/api/mcp/rpc`): the attorney names the `create_notation` skill,
 //! the task pauses in `input-required`, and the same attorney
 //! authorizes it before anything is written. `/mcp` withholds the skill
 //! outright, which is exactly the workshop's point — the instrument
@@ -99,7 +99,7 @@ impl WorkshopWorld {
             .expect("the workshop seed registers the attorney persona");
         let mut req = Request::builder()
             .method("POST")
-            .uri("/app/api/aida/rpc")
+            .uri("/app/api/mcp/rpc")
             .header(
                 "authorization",
                 portal::test_support::lawyer_bearer_header(),

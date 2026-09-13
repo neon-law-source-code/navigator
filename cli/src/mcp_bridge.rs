@@ -1,7 +1,7 @@
 //! `navigator site mcp` — a stdio MCP server that speaks A2A upstream.
 //!
 //! Claude speaks MCP: local stdio servers and remote HTTP connectors. It
-//! has no A2A client, so pointing it at `/app/api/aida/rpc` does nothing
+//! has no A2A client, so pointing it at `/app/api/mcp/rpc` does nothing
 //! on its own. This is the adapter: MCP over stdio facing Claude, A2A
 //! `message/send` facing a running deployment.
 //!
@@ -10,7 +10,7 @@
 //!   │  MCP JSON-RPC over stdio (newline-delimited)
 //!   ▼
 //! navigator site mcp
-//!   │  POST /app/api/aida/rpc, metadata.skill, Bearer <site login token>
+//!   │  POST /app/api/mcp/rpc, metadata.skill, Bearer <site login token>
 //!   ▼
 //! web → portal::a2a::dispatch_single → mcp::tools::call_tool
 //! ```
@@ -59,7 +59,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 
 /// The A2A JSON-RPC endpoint every call is dispatched to.
-const A2A_RPC_PATH: &str = "/app/api/aida/rpc";
+const A2A_RPC_PATH: &str = "/app/api/mcp/rpc";
 
 /// What this server calls itself on `initialize`. Distinct from the
 /// in-cluster `navigator-mcp` that `mcp::server` reports, so a client
@@ -209,7 +209,7 @@ async fn dispatch(
 /// a newly-gated tool is withheld from both without a second edit.
 ///
 /// Confirmation is the only reason a tool is withheld. It used to not be:
-/// `aida_list_projects` was also held back because the read carried no
+/// `list_projects` was also held back because the read carried no
 /// principal and returned every matter in the deployment. Since ENG-216
 /// it answers through the caller's own lens — a firm or client
 /// participant gets the matters they are on, an owner or admin gets the
@@ -544,12 +544,12 @@ mod tests {
 
         // The onboarding chain this bridge exists to drive.
         for wanted in [
-            "aida_create_person",
-            "aida_create_project",
-            "aida_link_person_project",
-            "aida_bulk_import",
-            "aida_list_entities",
-            "aida_show_person",
+            "create_person",
+            "create_project",
+            "link_person_project",
+            "bulk_import",
+            "list_entities",
+            "show_person",
         ] {
             assert!(
                 names.iter().any(|n| n == wanted),
@@ -560,16 +560,12 @@ mod tests {
         // the caller's own lens, so it discloses nothing this connection
         // could not already see. Re-withholding it would be a regression.
         assert!(
-            names.iter().any(|n| n == "aida_list_projects"),
-            "aida_list_projects is participation-scoped, so it must be advertised; got \
+            names.iter().any(|n| n == "list_projects"),
+            "list_projects is participation-scoped, so it must be advertised; got \
              {names:?}"
         );
         // The tools MCP cannot supervise must not appear at all.
-        for gated in [
-            "aida_send_welcome_email",
-            "aida_create_notation",
-            "aida_answer_notation",
-        ] {
+        for gated in ["send_welcome_email", "create_notation", "answer_notation"] {
             assert!(
                 !names.iter().any(|n| n == gated),
                 "{gated} needs an approval this transport cannot collect, so it must not \
@@ -606,7 +602,7 @@ mod tests {
             &request(
                 "tools/call",
                 &json!({
-                    "name": "aida_create_person",
+                    "name": "create_person",
                     "arguments": { "name": "Ada Counsel", "email": "ada@example.com" }
                 }),
             ),
@@ -617,7 +613,7 @@ mod tests {
 
         let calls = up.calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "exactly one upstream dispatch");
-        assert_eq!(calls[0].0, "aida_create_person");
+        assert_eq!(calls[0].0, "create_person");
         assert_eq!(calls[0].1["email"], "ada@example.com");
 
         let result = resp.result.unwrap();
@@ -633,7 +629,7 @@ mod tests {
         let resp = handle(
             &request(
                 "tools/call",
-                &json!({ "name": "aida_send_welcome_email", "arguments": { "person_id": "x" } }),
+                &json!({ "name": "send_welcome_email", "arguments": { "person_id": "x" } }),
             ),
             &up,
         )
@@ -662,7 +658,7 @@ mod tests {
         // apply.
         let up = FakeUpstream::returning(completed_task("the matters you are on"));
         let resp = handle(
-            &request("tools/call", &json!({ "name": "aida_list_projects" })),
+            &request("tools/call", &json!({ "name": "list_projects" })),
             &up,
         )
         .await
@@ -680,7 +676,7 @@ mod tests {
     async fn calling_an_unknown_tool_says_so_without_dispatching() {
         let up = FakeUpstream::returning(completed_task("nope"));
         let resp = handle(
-            &request("tools/call", &json!({ "name": "aida_not_a_tool" })),
+            &request("tools/call", &json!({ "name": "not_a_tool" })),
             &up,
         )
         .await
@@ -716,7 +712,7 @@ mod tests {
         });
         let up = FakeUpstream::returning(failed);
         let resp = handle(
-            &request("tools/call", &json!({ "name": "aida_create_person" })),
+            &request("tools/call", &json!({ "name": "create_person" })),
             &up,
         )
         .await
@@ -743,7 +739,7 @@ mod tests {
         });
         let up = FakeUpstream::returning(paused);
         let resp = handle(
-            &request("tools/call", &json!({ "name": "aida_create_person" })),
+            &request("tools/call", &json!({ "name": "create_person" })),
             &up,
         )
         .await
@@ -759,7 +755,7 @@ mod tests {
     #[tokio::test]
     async fn an_expired_token_becomes_a_readable_tool_error() {
         let resp = handle(
-            &request("tools/call", &json!({ "name": "aida_create_person" })),
+            &request("tools/call", &json!({ "name": "create_person" })),
             &BrokenUpstream,
         )
         .await
@@ -838,7 +834,7 @@ mod tests {
                 &client(),
                 &server.uri(),
                 "the-stored-token",
-                "aida_create_person",
+                "create_person",
                 &json!({ "name": "Ada", "email": "ada@example.com" }),
             )
             .await
@@ -848,7 +844,7 @@ mod tests {
         async fn the_request_carries_the_bearer_and_the_named_skill() {
             let server = MockServer::start().await;
             Mock::given(method("POST"))
-                .and(path("/app/api/aida/rpc"))
+                .and(path("/app/api/mcp/rpc"))
                 .and(header("authorization", "Bearer the-stored-token"))
                 .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                     "jsonrpc": "2.0",

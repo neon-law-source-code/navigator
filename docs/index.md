@@ -4,10 +4,9 @@ publish: true
 
 # Documentation
 
-Published guides also appear at `/documents` in one alphabetical catalog. This page is the map: every document under
-`docs/`, grouped by topic, with a stable place for anything new to land. `cli/tests/docs_index_completeness.rs` fails
-the build when a file exists under `docs/` with no entry here, so this list cannot decay the way the old seven-line stub
-did.
+Published guides also appear at `/docs` in one alphabetical catalog. This page is the map: every document under `docs/`,
+grouped by topic, with a stable place for anything new to land. `cli/tests/docs_index_completeness.rs` fails the build
+when a file exists under `docs/` with no entry here, so this list cannot decay the way the old seven-line stub did.
 
 ## Start here
 
@@ -74,11 +73,10 @@ did.
 - [`bulk-contact-import.md`](bulk-contact-import.md) — turning a raw contact list into seeded Persons.
 - [`retainer_intake.md`](retainer_intake.md) — the retainer intake walkthrough.
 
-## AIDA, A2A, and MCP clients
+## Navigator MCP, A2A, and MCP clients
 
-- [`aida-a2a-interaction.md`](aida-a2a-interaction.md) — AIDA over A2A: confirmations and errors.
-- [`claude-mcp-client.md`](claude-mcp-client.md) — Claude as an AIDA client over MCP.
-- [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md) — the Gemini Enterprise MCP server.
+- [`mcp-a2a-interaction.md`](mcp-a2a-interaction.md) — Navigator MCP over A2A: confirmations and errors.
+- [`claude-mcp-client.md`](claude-mcp-client.md) — Claude as a Navigator MCP client over MCP.
 
 ## Billing, trust, and e-signature
 

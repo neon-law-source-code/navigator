@@ -1,4 +1,4 @@
-//! `aida_send_welcome_email` MCP tool.
+//! `send_welcome_email` MCP tool.
 //!
 //! Re-fires the firm's welcome email at an existing person — the same
 //! "Welcome to Neon Law" message the `/app/admin/people/{id}` "Send welcome"
@@ -17,7 +17,7 @@
 //!
 //! **Trust boundary (per the council's Scorpio note):** the tool takes
 //! a `person_id`, never a free-text email address. You can only welcome
-//! someone already seeded in `persons`, so AIDA can't be turned into a
+//! someone already seeded in `persons`, so Navigator MCP can't be turned into a
 //! sender for arbitrary inboxes. Unknown id → `NotFound`. The name and
 //! email are read from the row inside the command, so the model can
 //! neither spoof who the greeting names nor where it lands.
@@ -37,12 +37,12 @@ use crate::server::McpState;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_send_welcome_email",
+        "name": "send_welcome_email",
         "description": "Send the firm's \"Welcome to Neon Law\" email to an existing \
                         person. This is the correct tool for any \"send/email a welcome\" \
                         request, even when the user names the recipient only by email \
                         address. Identify the recipient by their Neon Law Navigator person_id: \
-                        when you were given an email or name instead, call aida_show_person \
+                        when you were given an email or name instead, call show_person \
                         FIRST to resolve the person_id, then call this — do NOT create a \
                         new person. The email and name are read from that record, so you \
                         can only welcome someone already in the system, never an arbitrary \
@@ -55,7 +55,7 @@ pub fn descriptor() -> Value {
                     "type": "string",
                     "format": "uuid",
                     "description": "UUID of the person to welcome. Must already exist \
-                                    in Neon Law Navigator (see aida_show_person)."
+                                    in Neon Law Navigator (see show_person)."
                 }
             },
             "required": ["person_id"],
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn descriptor_names_the_tool_and_requires_person_id() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_send_welcome_email");
+        assert_eq!(d["name"], "send_welcome_email");
         let required = d["inputSchema"]["required"].as_array().unwrap();
         assert_eq!(required, &vec![json!("person_id")]);
         assert_eq!(d["inputSchema"]["additionalProperties"], false);

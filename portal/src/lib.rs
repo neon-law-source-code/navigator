@@ -303,7 +303,7 @@ pub struct AppState {
     /// engine cannot serve anything.
     pub surreal: store::surreal::SurrealDb,
     pub workshops: WorkshopIndex,
-    /// Workspace docs published at `/documents/{slug}`, baked from the
+    /// Workspace docs published at `/docs/{slug}`, baked from the
     /// `docs/` tree at compile time. See [`docs`].
     pub docs: DocsIndex,
     /// Firm blog posts served at `/blog`, loaded at boot from a
@@ -314,7 +314,7 @@ pub struct AppState {
     /// when `GOOGLE_OAUTH_CLIENT_IDS` is unset (KIND / local dev).
     pub google_oauth: google_oauth::GoogleOauthConfig,
     /// Per-IP request limiter for the abuse-sensitive endpoints
-    /// (`/auth/*`, `/mcp`, `/app/api/aida/rpc`). Disabled in tests/dev;
+    /// (`/auth/*`, `/mcp`, `/app/api/mcp/rpc`). Disabled in tests/dev;
     /// `RateLimit::from_env` enables it in production.
     pub rate_limit: rate_limit::RateLimit,
     pub canonical_host: CanonicalHost,
@@ -456,8 +456,7 @@ pub struct AppState {
     pub identity_admin: Option<idp_admin::IdentityAdminConfig>,
     /// Optional override for the A2A natural-language router. `None` in
     /// production and KIND — [`bootstrap`] then selects
-    /// [`agent_router::GeminiRouter`] (when `NAVIGATOR_GCP_PROJECT_ID`
-    /// is set) or [`agent_router::NullRouter`]. Tests inject a scripted
+    /// [`agent_router::NullRouter`]. Tests inject a scripted
     /// [`agent_router::AgentRouter`] here to drive the agentic loop
     /// deterministically — exercising the loop, the real tools, and the
     /// real email side-effects — without a live LLM.
@@ -883,21 +882,21 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the workspace documentation renders through Dioxus at
-    // /documents and /documents/{slug}. Its pre-layer resolves the doc from
+    // /docs and /docs/{slug}. Its pre-layer resolves the doc from
     // the compiled-in DocsIndex and owns the canonicalizing redirects and the
     // unknown-slug 404.
     let dioxus_docs_index = dioxus_app::docs_router(
-        dioxus_app::DOCUMENTS_PATH,
+        dioxus_app::DOCS_PATH,
         Some(dioxus_app::DOCS_INDEX_SLUG),
         state.docs.clone(),
     );
-    let dioxus_doc = dioxus_app::docs_router(dioxus_app::DOCUMENT_PATH, None, state.docs.clone());
+    let dioxus_doc = dioxus_app::docs_router(dioxus_app::DOC_PATH, None, state.docs.clone());
     // The same documentation, a second door: inside the authenticated
     // application, wearing the app chrome, for the tiers that operate
     // Navigator. The public mount above is unchanged — this adds a reader, it
     // does not move one.
     let dioxus_app_docs_index = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOCUMENTS_PATH,
+        dioxus_app::APP_DOCS_PATH,
         Some(dioxus_app::DOCS_INDEX_SLUG),
         state.docs.clone(),
         state.sessions.clone(),
@@ -905,7 +904,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     let dioxus_app_doc = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOCUMENT_PATH,
+        dioxus_app::APP_DOC_PATH,
         None,
         state.docs.clone(),
         state.sessions.clone(),
@@ -1057,11 +1056,11 @@ pub fn bootstrap(
     // `POST /app/mcp`. The layer stack (outermost first):
     //
     //   1. google_oauth::require_google_oauth — prod: validates the
-    //      Google OAuth access token Gemini Enterprise sends as
+    //      Google OAuth access token an agent client sends as
     //      Bearer via tokeninfo, populates AuthClaims. Pass-through
     //      when GOOGLE_OAUTH_CLIENT_IDS is unset (KIND / local dev).
     //      Replaces the earlier IAP layer; IAP couldn't parse the
-    //      opaque ya29.* tokens Gemini Enterprise actually sends.
+    //      opaque ya29.* tokens those clients actually send.
     //   2. require_auth — KIND: validates Bearer JWT. In prod the
     //      Google-OAuth layer already populated AuthClaims so this
     //      short-circuits.
@@ -1079,7 +1078,7 @@ pub fn bootstrap(
     // non-bundled template's spec can still be parsed.
     mcp_state.storage = Some(state.storage.clone());
     // The same mailer the JSON API routes hold — `LoggingEmail`-wrapped,
-    // so `aida_send_welcome_email` writes the `sent_emails` audit row the
+    // so `send_welcome_email` writes the `sent_emails` audit row the
     // API door writes. Injecting it here is what lets the agent door go
     // through the shared command instead of the Restate trigger (ENG-317).
     mcp_state.email = Some(state.email.clone());
@@ -1130,8 +1129,8 @@ pub fn bootstrap(
     // under `/app` is what produces `/app/mcp` without forking the handler
     // or the layer stack above.
     let app_mcp = Router::new().nest("/app", mcp_layered(mcp_state.clone()));
-    // A2A surface — the agent card at `/app/api/aida.json` and JSON-RPC
-    // at `/app/api/aida/rpc`, the latter behind the same auth stack as
+    // A2A surface — the agent card at `/app/api/mcp.json` and JSON-RPC
+    // at `/app/api/mcp/rpc`, the latter behind the same auth stack as
     // `/app/mcp`. Both are private, like every path under `/app/api`: the
     // card composes behind `session_boundary` below, so an anonymous
     // fetch gets the unauthenticated protocol document rather than the
@@ -1139,22 +1138,17 @@ pub fn bootstrap(
     // the deliberate cost — see the module docs on `a2a` for why the one
     // client this serves does not need it.
     //
-    // The natural-language router maps free-form messages
-    // (`message/send` without `metadata.skill`) onto a skill via
-    // Vertex AI Gemini Flash. Pod's GSA needs `roles/aiplatform.user`
-    // for Workload Identity to fetch a token. When
-    // `NAVIGATOR_GCP_PROJECT_ID` is unset (KIND / local dev), falls
-    // back to `NullRouter` which returns a helpful Task explaining
-    // the `metadata.skill` backdoor.
+    // Free-form messages (`message/send` without `metadata.skill`) reach
+    // the natural-language router seam. No provider ships: the Vertex AI
+    // Vertex router retired with the Gemini Enterprise registration, so
+    // `NullRouter` answers with a Task naming the `metadata.skill` door.
+    // A future provider is an `impl AgentRouter` chosen here.
     let router: Arc<dyn agent_router::AgentRouter> =
         if let Some(injected) = state.a2a_router.clone() {
             tracing::info!("a2a router: injected override (test harness)");
             injected
-        } else if let Some(gemini) = agent_router::GeminiRouter::from_env() {
-            tracing::info!("a2a router: Vertex AI Gemini Flash");
-            Arc::new(gemini)
         } else {
-            tracing::info!("a2a router: NullRouter (set NAVIGATOR_GCP_PROJECT_ID to enable)");
+            tracing::info!("a2a router: NullRouter (free-text routing is not configured)");
             Arc::new(agent_router::NullRouter)
         };
     let a2a_state = a2a::A2aState {
@@ -1863,12 +1857,12 @@ pub fn bootstrap(
     // `host_dioxus` because that list is firm-host-only and the gallery is a
     // shared Navigator tool that must answer on both hosts.
     //
-    // `/documents` and `/documents/{slug}` mount the same way, and for the same
+    // `/docs` and `/docs/{slug}` mount the same way, and for the same
     // reason: the workspace documentation is the manual for software anyone
     // can clone. It sat behind the session boundary while the source was
     // closed, which put a login door in front of the one document that
     // explains how to run what is now public — the argument that already
-    // un-gated the Navigator classes. `/app/documents` is untouched: it is the
+    // un-gated the Navigator classes. `/app/docs` is untouched: it is the
     // second, role-restricted door to the same index wearing the application
     // chrome, and it stays gated because it is part of the authenticated
     // surface, not because the documents are.
@@ -2054,10 +2048,7 @@ mod trailing_slash_tests {
 
     #[test]
     fn strips_a_trailing_slash_from_a_head() {
-        assert_eq!(
-            target(&Method::HEAD, "/documents/"),
-            Some("/documents".to_string())
-        );
+        assert_eq!(target(&Method::HEAD, "/docs/"), Some("/docs".to_string()));
     }
 
     #[test]
@@ -2244,7 +2235,7 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/dioxus-demo",
     "/app",
     "/auth",
-    "/documents",
+    "/docs",
     "/api",
 ];
 
@@ -2714,7 +2705,7 @@ User-agent: *
 Disallow: /app
 Disallow: /admin
 Disallow: /auth
-Disallow: /documents
+Disallow: /docs
 Disallow: /design
 Disallow: /templates
 ";
@@ -2777,7 +2768,7 @@ pub type SitemapPaths = fn(&AppState, views::brand::BrandKey) -> std::collection
 /// every brand serves, plus the brand's own anonymous pages.
 ///
 /// Only host pages appear: the shared Navigator tools that used to be listed
-/// here — `/documents`, `/templates`, `/design` — are authenticated
+/// here — `/docs`, `/templates`, `/design` — are authenticated
 /// now, and a sitemap entry pointing at a login redirect is worse than no
 /// entry at all.
 fn sitemap_paths(
@@ -3167,7 +3158,7 @@ async fn catalog_certificate_submit(
 }
 
 /// `GET /version` — report the release of the build that is actually
-/// running, so an operator/CI/AIDA/browser can confirm which release prod
+/// running, so an operator/CI/Navigator MCP/browser can confirm which release prod
 /// is on without shelling into a (shell-less) distroless pod.
 ///
 /// The headline field is `release`: the `YY.M.D` Artifact Registry tag the

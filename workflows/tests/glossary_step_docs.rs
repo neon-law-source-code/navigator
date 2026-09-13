@@ -43,7 +43,6 @@ fn glossary_heading_for_prefix(prefix: &str) -> &'static str {
         "document_drafts" => "Document Drafts",
         "document_intake" => "Document Intake",
         "generate_pdf" => "Document Open",
-        "github_issue" => "GitHub Issue",
         "e_filing" => "E-Filing",
         "email_send" => "Email Send",
         "extract" => "Extract",

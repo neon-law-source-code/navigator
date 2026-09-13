@@ -1,7 +1,7 @@
 //! `navigator dev docs ...` — command-line access to published workspace docs.
 //!
 //! The glossary is the same vocabulary the website publishes at
-//! `/documents/glossary`: parsed from `docs/glossary.md` by
+//! `/docs/glossary`: parsed from `docs/glossary.md` by
 //! [`store::glossary::parse`] so the CLI cannot drift from the page.
 
 use std::process::ExitCode;
@@ -16,15 +16,11 @@ use crate::palette;
 pub fn list() -> ExitCode {
     let docs = portal::docs::loader::bundled();
     for doc in docs.docs() {
-        println!(
-            "/documents/{slug}\t{title}",
-            slug = doc.slug,
-            title = doc.title
-        );
+        println!("/docs/{slug}\t{title}", slug = doc.slug, title = doc.title);
     }
     for entry in glossary_entries() {
         println!(
-            "/documents/glossary#{slug}\tGlossary: {title}",
+            "/docs/glossary#{slug}\tGlossary: {title}",
             slug = entry.slug,
             title = entry.title,
         );
@@ -108,6 +104,46 @@ pub fn glossary_index(write: bool) -> ExitCode {
         return ExitCode::from(1);
     }
     println!("{GLOSSARY_LABEL}: index rewritten");
+    ExitCode::SUCCESS
+}
+
+/// Check — or with `write`, refresh — every term's schema box.
+///
+/// Like the index, the boxes are derived data: a term that names a
+/// `SurrealDB` table carries that table's columns and types, read from
+/// the shipped `navigator.surql` rather than transcribed. Hand-editing
+/// one is what would let the page claim a column the schema dropped.
+///
+/// The target is [`GLOSSARY_PATH`], for the same reason
+/// [`glossary_index`] takes no flag: there is one authored glossary,
+/// and the workspace gate compares against the copy [`GLOSSARY_MD`]
+/// embeds from that path.
+#[must_use]
+pub fn glossary_tables(write: bool) -> ExitCode {
+    let raw = match std::fs::read_to_string(GLOSSARY_PATH) {
+        Ok(raw) => raw,
+        Err(error) => {
+            eprintln!("navigator: docs glossary-tables: {GLOSSARY_LABEL}: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let rendered = store::glossary::with_rendered_tables(&raw);
+    if rendered == raw {
+        println!("{GLOSSARY_LABEL}: schema boxes are current");
+        return ExitCode::SUCCESS;
+    }
+    if !write {
+        eprintln!(
+            "navigator: docs glossary-tables: {GLOSSARY_LABEL} schema boxes are stale; \
+             re-run with --write"
+        );
+        return ExitCode::from(1);
+    }
+    if let Err(error) = std::fs::write(GLOSSARY_PATH, rendered) {
+        eprintln!("navigator: docs glossary-tables: {GLOSSARY_LABEL}: {error}");
+        return ExitCode::from(1);
+    }
+    println!("{GLOSSARY_LABEL}: schema boxes rewritten");
     ExitCode::SUCCESS
 }
 
@@ -448,7 +484,7 @@ mod tests {
         let docs = portal::docs::loader::bundled();
         let glossary = docs
             .find("glossary")
-            .expect("glossary is published at /documents/glossary");
+            .expect("glossary is published at /docs/glossary");
         assert!(
             !entries.is_empty(),
             "the CLI glossary must parse the authored vocabulary"
@@ -466,14 +502,14 @@ mod tests {
         let slugs: Vec<String> = entries.iter().map(|entry| entry.slug.clone()).collect();
         assert_eq!(
             slugs, html_ids,
-            "navigator dev docs glossary drifted from /documents/glossary"
+            "navigator dev docs glossary drifted from /docs/glossary"
         );
         for entry in &entries {
             assert!(
                 glossary
                     .body_html
                     .contains(&format!("<h2 id=\"{}\">", entry.slug)),
-                "published /documents/glossary missing heading for `{}`",
+                "published /docs/glossary missing heading for `{}`",
                 entry.title
             );
         }
@@ -484,7 +520,7 @@ mod tests {
         let docs = portal::docs::loader::bundled();
         assert!(
             docs.docs().iter().any(|doc| doc.slug == "glossary"),
-            "the published docs index must include /documents/glossary"
+            "the published docs index must include /docs/glossary"
         );
         assert_eq!(
             docs.find("glossary").map(|doc| doc.title.as_str()),

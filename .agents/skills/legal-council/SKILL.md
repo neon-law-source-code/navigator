@@ -1,9 +1,8 @@
 ---
-name: legal-council
-description: >
+name: legal-council description: >
   Twelve-perspective copy-review pattern for legal drafting ("The Legal Council" — a *council* (c-o-u-n-c-i-l, a group)
-  of the firm's *counsels* (c-o-u-n-s-e-l, the attorneys): a council of counsels. AIDA is the agent that carries the
-  tool, not the name of the council; the sibling engineering review at `/council` is the other council). Each voice
+of the firm's *counsels* (c-o-u-n-s-e-l, the attorneys): a council of counsels. Navigator MCP is the agent that carries
+  the tool, not the name of the council; the sibling engineering review at `/council` is the other council). Each voice
   fuses a zodiac stance with a distinct lawyer's background — Capricorn the managing partner leads, Scorpio the ethics
   counsel cuts to the core, Leo the immigration defender boldly speaks for the client whose right to stay is on the
   line, Cancer the legal-aid / tenant-defense attorney reads as the applicant going through deep struggles yet bold
@@ -15,14 +14,13 @@ description: >
   reviewing draft legal copy before it lands in `notation_templates/` or a questionnaire seed. Default to Scorpio +
   Capricorn only; expand to full twelve only when the user asks for the full council. Skip for already-binding documents
   (a signed retainer) — those go through lawyer review, not the council. Render inline as voices → consensus → revised
-  copy.
----
+  copy. ---
 
 # The Legal Council
 
 The draft-side council: a *council* (c-o-u-n-c-i-l, a group) of the firm's *counsels* (c-o-u-n-s-e-l, the attorneys) — a
-council of counsels, the legal-drafting sibling of the engineering `/council`. AIDA is the *agent* that exposes it as a
-tool (`aida_spawn_legal_council`), not the name of the council itself.
+council of counsels, the legal-drafting sibling of the engineering `/council`. Navigator MCP is the *agent* that exposes
+it as a tool (`spawn_legal_council`), not the name of the council itself.
 
 **Default to Scorpio + Capricorn.** Capricorn (managing partner) speaks first; Scorpio (ethics counsel) sharpens. The
 full twelve is the exception — open it only when the user asks, or the copy touches an unusual practice area or the

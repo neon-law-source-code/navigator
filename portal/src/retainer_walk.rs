@@ -3818,7 +3818,7 @@ Sign: {{client.signature}}";
     ///
     /// This walks the real bundled `onboarding__letter` questionnaire
     /// through the real write funnel (`workflows::answer_step`, which every
-    /// write surface — lawyer walker, client intake, REST, AIDA — passes
+    /// write surface — lawyer walker, client intake, REST, Navigator MCP — passes
     /// through) and renders the real template body.
     #[tokio::test]
     async fn an_undeclared_governing_law_never_reaches_the_rendered_letter() {

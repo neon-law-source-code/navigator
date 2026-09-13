@@ -121,10 +121,11 @@ Have each attendee sign in with the role relevant to their work. Keep the browse
 3. **Notation** — one client and one Template bound inside the Project.
 4. **Workflow** — the states and transitions that move a Notation from intake through review and signature.
 
-The shared retainer template is available in the canonical catalog. A lawyer can bind it through the AIDA catalog:
+The shared retainer template is available in the canonical catalog. A lawyer can bind it through the Navigator MCP
+catalog:
 
 ```text
-aida_create_notation(template_code="onboarding__letter", project_id=<sample-litigation project id>)
+create_notation(template_code="onboarding__letter", project_id=<sample-litigation project id>)
 ```
 
 The notation begins in its seeded workflow state. The lawyer reviews the generated work, advances the workflow through
@@ -144,8 +145,8 @@ representation. Those two shared catalog codes are `onboarding__letter` and `off
 does not create either notation; a lawyer binds them like any other template. The self-serve doors refuse any other kind
 as the matter's first notation.
 
-The CLI seeds both letters. This workshop still binds the retainer through AIDA as one onboarding walk. Close the matter
-with the offboarding letter. Do not bind two onboardings on one Project:
+The CLI seeds both letters. This workshop still binds the retainer through Navigator MCP as one onboarding walk. Close
+the matter with the offboarding letter. Do not bind two onboardings on one Project:
 
 ```bash
 navigator site notation create onboarding__letter \
@@ -164,11 +165,11 @@ still counts if it declares `kind: onboarding` or `kind: offboarding`.
 
 ### Walk the retainer intake one question at a time
 
-AIDA binds the retainer in one call, but a lawyer can also walk it by hand at `/app/lawyer/notations/{notation_id}/step`
-— one question per screen, the same focus-set chrome the client's own self-serve intake shares: a step list naming the
-whole chain, a progress bar, and the question's own control below it. A closed choice — the engagement's governing law,
-or a yes/no — renders as cards to choose between, not a bare checkbox or a compact radio list. Completed steps show as
-plain markers; there is no revisit route today.
+Navigator MCP binds the retainer in one call, but a lawyer can also walk it by hand at
+`/app/lawyer/notations/{notation_id}/step` — one question per screen, the same focus-set chrome the client's own
+self-serve intake shares: a step list naming the whole chain, a progress bar, and the question's own control below it. A
+closed choice — the engagement's governing law, or a yes/no — renders as cards to choose between, not a bare checkbox or
+a compact radio list. Completed steps show as plain markers; there is no revisit route today.
 
 The client-facing half of the same chain is `/app/projects/{code}/intake/{notation_id}` — the client confirms or
 corrects whatever the lawyer already entered, through the identical chrome.

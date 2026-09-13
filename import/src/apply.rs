@@ -103,7 +103,7 @@ impl ImportReport {
     ///
     /// This exists because the structured `diagnostics` / `RowOutcome.detail`
     /// fields are invisible on surfaces that render only text: the
-    /// `aida_bulk_import` MCP/A2A `content` Part (Gemini Enterprise shows
+    /// `bulk_import` MCP/A2A `content` Part (Gemini Enterprise shows
     /// that text and drops the structured payload) and the CLI. Folding the
     /// detail into one block is what lets a caller see *why* `0 created`
     /// instead of a silent, message-less non-result.

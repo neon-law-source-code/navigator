@@ -74,6 +74,74 @@ pub fn table_names() -> Vec<String> {
     tables
 }
 
+/// Every field a table declares in the shipped schema, as
+/// `(name, Surreal type)` pairs.
+///
+/// Ordered the way `navigator erd` orders a box: the implicit `id`
+/// primary key first — every Surreal record has one, and it never
+/// appears in a `DEFINE FIELD` — then the declared fields
+/// alphabetically. Reading [`DEFINITIONS`] rather than introspecting a
+/// live engine keeps this pure, so a renderer or a drift test can call
+/// it without a database.
+///
+/// An unknown table yields an empty vector rather than an error: the
+/// caller asking "is this a table?" is [`table_names`].
+#[must_use]
+pub fn table_columns(table: &str) -> Vec<(String, String)> {
+    let mut fields: Vec<(String, String)> = Vec::new();
+    for statement in DEFINITIONS.split(';') {
+        let Some((name, on, ty)) = parse_define_field(statement) else {
+            continue;
+        };
+        if on == table {
+            fields.push((name, ty));
+        }
+    }
+    if fields.is_empty() {
+        return Vec::new();
+    }
+    fields.sort_by(|a, b| a.0.cmp(&b.0));
+    fields.dedup_by(|a, b| a.0 == b.0);
+    let mut columns = vec![("id".to_string(), "record".to_string())];
+    columns.append(&mut fields);
+    columns
+}
+
+/// Split one `DEFINE FIELD` statement into `(field, table, type)`.
+///
+/// The statement may wrap across lines and may carry `OVERWRITE` or
+/// `IF NOT EXISTS` before the field name, so this works on whitespace
+/// tokens rather than on the line. The type is the single token after
+/// `TYPE` — Surreal spells a composite type without spaces
+/// (`option<record<person>>`), so the clauses that may follow
+/// (`DEFAULT`, `ASSERT`, `READONLY`, …) are simply the tokens after it.
+fn parse_define_field(statement: &str) -> Option<(String, String, String)> {
+    let mut words = statement.split_whitespace();
+    if words.next()? != "DEFINE" || words.next()? != "FIELD" {
+        return None;
+    }
+    let mut name = words.next()?;
+    if name == "OVERWRITE" {
+        name = words.next()?;
+    } else if name == "IF" {
+        // `IF NOT EXISTS <name>`
+        words.next()?;
+        words.next()?;
+        name = words.next()?;
+    }
+    if words.next()? != "ON" {
+        return None;
+    }
+    let mut on = words.next()?;
+    if on == "TABLE" {
+        on = words.next()?;
+    }
+    if words.next()? != "TYPE" {
+        return None;
+    }
+    Some((name.to_string(), on.to_string(), words.next()?.to_string()))
+}
+
 /// How a database's applied schema compares to this build's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemaState {

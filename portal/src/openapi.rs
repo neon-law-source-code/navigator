@@ -121,7 +121,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/people": {
           "get": {
             "summary": "List all people",
-            "x-mcp-tool": "aida_show_person",
+            "x-mcp-tool": "show_person",
             "responses": {
               "200": { "description": "Person list", "content": { "application/json": {
                 "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Person" } }
@@ -130,7 +130,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Create a person",
-            "x-mcp-tool": "aida_create_person",
+            "x-mcp-tool": "create_person",
             "description":
               "Creates one Person row. The `role` field defaults conservatively to `client`; \
                supported values are `owner`, `admin`, `lawyer`, `clerk`, and `client`, and non-empty invalid \
@@ -250,7 +250,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/people/{id}/welcome": {
           "post": {
             "summary": "Send this person the welcome email",
-            "x-mcp-tool": "aida_send_welcome_email",
+            "x-mcp-tool": "send_welcome_email",
             "description":
               "Renders and dispatches the welcome email to the Person, journaling one \
                `sent_emails` row per attempt. Authorization: the caller's `persons.role` must be \
@@ -318,7 +318,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/entities": {
           "get": {
             "summary": "List all entities",
-            "x-mcp-tool": "aida_list_entities",
+            "x-mcp-tool": "list_entities",
             "responses": {
               "200": { "description": "Entity list", "content": { "application/json": {
                 "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } }
@@ -474,7 +474,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/jurisdictions": {
           "get": {
             "summary": "List all jurisdictions",
-            "x-mcp-tool": "aida_list_jurisdictions",
+            "x-mcp-tool": "list_jurisdictions",
             "responses": {
               "200": { "description": "Jurisdiction list", "content": { "application/json": {
                 "schema": { "type": "array",
@@ -693,7 +693,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/projects": {
           "get": {
             "summary": "List the caller's matters",
-            "x-mcp-tool": "aida_list_projects",
+            "x-mcp-tool": "list_projects",
             "description":
               "Every matter the caller may see, already scoped — the directory lens for \
                Owner/Admin, participation for lawyer/clerk, the client's own matters for a client. \
@@ -706,7 +706,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Open a matter",
-            "x-mcp-tool": "aida_create_project",
+            "x-mcp-tool": "create_project",
             "description":
               "Opens a new Project: it runs the conflict check, requires the opening attorney's \
                conflict attestation, and designates both DRIs. The Project's Drive ingest folder \
@@ -894,7 +894,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/projects/{id}/lifecycle": {
           "post": {
             "summary": "Move a matter through its lifecycle",
-            "x-mcp-tool": "aida_close_project",
+            "x-mcp-tool": "close_project",
             "description":
               "Moves a matter directly through `open` → `closed` → `archived`, the REST door onto \
                `store::projects::transition_project`. Distinct from `POST /app/api/projects/{id}/close`: \
@@ -1020,7 +1020,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Add a person to a matter's participation ledger",
-            "x-mcp-tool": "aida_link_person_project",
+            "x-mcp-tool": "link_person_project",
             "description":
               "Adds a person to a matter as a participant. The matter and the person must \
                pre-exist, and a person appears on a matter at most once. The body names only the \
@@ -1229,7 +1229,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Open a notation on a matter",
-            "x-mcp-tool": "aida_create_notation",
+            "x-mcp-tool": "create_notation",
             "description":
               "Opens a notation on an existing matter from a template. The template is read from the \
                matter's own git repo, auto-saved as an immutable version, and the notation opens \
@@ -1318,7 +1318,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/notations/{id}/answers": {
           "post": {
             "summary": "Answer a notation's current questionnaire step",
-            "x-mcp-tool": "aida_answer_notation",
+            "x-mcp-tool": "answer_notation",
             "description":
               "Records an answer to the step the notation's questionnaire is currently asking, \
                attributed to the acting lawyer (the notation's bound Person stays the respondent). \
@@ -2459,7 +2459,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/templates/validate": {
           "post": {
             "summary": "Lint a Template markdown file without saving it",
-            "x-mcp-tool": "aida_validate_notation",
+            "x-mcp-tool": "validate_notation",
             "description":
               "Runs the Neon Law Navigator rule engine over the supplied markdown and returns the \
                violations. Stateless: no row is inserted and no Template is registered; nothing \
@@ -3211,37 +3211,37 @@ pub fn documented_operations() -> Vec<(String, String)> {
 /// of that pressure, so it needs a reason a reader can disagree with.
 pub const TOOLS_WITHOUT_AN_API_OPERATION: &[(&str, &str)] = &[
     (
-        "aida_list_tools",
+        "list_tools",
         "Protocol, not capability: it enumerates the catalog itself. The \
          OpenAPI document is the API surface's own equivalent, so an \
          operation for it would be circular.",
     ),
     (
-        "aida_bulk_import",
+        "bulk_import",
         "No route today. Bulk contact loading is agent-only; the API door \
          exposes single-record `POST /app/api/people` and nothing that \
          takes a batch.",
     ),
     (
-        "aida_spawn_legal_council",
+        "spawn_legal_council",
         "No route today. The council is an authoring aid that renders a \
          review inline and writes nothing, so there is no command for an \
          API operation to share.",
     ),
     (
-        "aida_list_deadlines",
+        "list_deadlines",
         "No route today. Deadline reads are an MCP-only aggregate over the \
          existing Project-scoped deadline query, so there is no API operation \
          for the tool to share.",
     ),
     (
-        "aida_project_status",
+        "project_status",
         "No route today. It is an MCP-only aggregate over three existing \
          Project-scoped queries (deadlines, notation events, participation), \
          so there is no single API operation for the tool to share.",
     ),
     (
-        "aida_delete_closed_repository",
+        "delete_closed_repository",
         "No route today. Deleting a forge repository is a supervised, \
          confirmation-gated destructive act with no HTTP-side command to \
          share — there is no `DELETE /app/api/projects/{id}/repository` — \
@@ -3691,7 +3691,7 @@ mod tests {
     fn an_annotated_mutating_operation_still_documents_its_authz_failures() {
         let doc = document();
         let op = &doc["paths"]["/app/api/people/{id}/welcome"]["post"];
-        assert_eq!(op["x-mcp-tool"], "aida_send_welcome_email");
+        assert_eq!(op["x-mcp-tool"], "send_welcome_email");
         assert!(
             op["responses"]["403"].is_object() || op["responses"]["401"].is_object(),
             "expected a documented authz failure on the annotated operation: {op}"

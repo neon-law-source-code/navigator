@@ -557,8 +557,8 @@ pub async fn has_firm_participation(
 /// a participation row of every tier, so privileged reach is an explicit
 /// place you navigate to rather than an invisible widening. What remains are
 /// the callers that legitimately act as the deployment rather than as a
-/// person on a matter: the MCP *write* tools, `aida_create_notation` and
-/// `aida_create_project`, which check that the matter they are about to write
+/// person on a matter: the MCP *write* tools, `create_notation` and
+/// `create_project`, which check that the matter they are about to write
 /// to is one the acting principal may write to.
 ///
 /// Not the MCP reads. Since ENG-216 those answer through the caller's own
@@ -1390,7 +1390,7 @@ pub async fn close_for_notation(
 /// by a PATCH, not silently accepted and forwarded here. Deserializes from
 /// the lowercase wire form (`"close"`, `"reopen"`, `"archive"`) so
 /// `POST /app/api/projects/{id}/lifecycle`, the CLI, and the
-/// `aida_close_project` MCP tool all name the same three transitions.
+/// `close_project` MCP tool all name the same three transitions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Transition {

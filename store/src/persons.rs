@@ -694,7 +694,7 @@ pub async fn find_by_oidc_subject(
 
 /// The firm-side person to designate as a matter's lawyer DRI when a create
 /// path has no explicit opener — the self-serve intake (no lawyer in the
-/// room), the CLI, and AIDA's tool calls. Returns the lowest-id `owner`,
+/// room), the CLI, and Navigator MCP's tool calls. Returns the lowest-id `owner`,
 /// else the lowest-id `admin`, else the lowest-id `lawyer` — i.e. the firm
 /// principal in a seeded install, resolved by **role**, not a hard-coded
 /// email, so a white-label fork gets its own principal with no code
@@ -786,8 +786,8 @@ pub async fn list_directory(
 /// all-`None` case (a blank query would return the whole directory).
 /// Results are ordered by name and capped at `limit`.
 ///
-/// This is the read half of the People command boundary: the AIDA
-/// `aida_show_person` tool and any web lookup share this one query
+/// This is the read half of the People command boundary: the Navigator MCP
+/// `show_person` tool and any web lookup share this one query
 /// instead of re-implementing the predicate.
 ///
 /// # Errors

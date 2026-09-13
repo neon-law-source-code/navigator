@@ -14,7 +14,7 @@ Two copies of one vocabulary, and they are not peers:
 
 - **[`docs/glossary.md`](../../../docs/glossary.md) is the source of truth.** It is reviewed in pull requests, compiled
   into the binary through `store::glossary::GLOSSARY_MD`, materialized into `glossary_term` rows on every boot, and
-  published at `/documents/glossary`. A definition is not real until it lands here.
+  published at `/docs/glossary`. A definition is not real until it lands here.
 - **The Notion page is the reading and proposing surface** — a colleague without a checkout can open it, comment, and
   type. Its page URL is `https://app.notion.com/p/3d8c909308608139829dff990512a174`, titled **Glossary** in the **✏️
   Writing** database (`Type: Guideline`). Every push rewrites it wholesale, so an edit made there survives only until

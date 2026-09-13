@@ -1,4 +1,4 @@
-//! `aida_create_project` MCP tool.
+//! `create_project` MCP tool.
 //!
 //! Opens a new Project (a [Matter] in client English) without
 //! attaching a Notation yet. Use this when onboarding a matter
@@ -20,7 +20,7 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_create_project",
+        "name": "create_project",
         "description": "Open a new Project (matter) in Neon Law Navigator. A matter always opens against a \
                         pre-existing Entity — pass its uuid as `entity_id` (create the Entity \
                         first if needed). Every open requires the attorney's conflict \
@@ -49,7 +49,7 @@ pub fn descriptor() -> Value {
                 "attestation": {
                     "type": "boolean",
                     "description": "The opening attorney's conflict attestation. Must be `true`: opening \
-                                    a Project through AIDA affirms the requesting attorney (the lawyer \
+                                    a Project through Navigator MCP affirms the requesting attorney (the lawyer \
                                     principal on the call) has checked for conflicts, and that either \
                                     none prevent the open or this Project is not legal advice. The \
                                     open is refused without it — it is never defaulted."
@@ -112,7 +112,7 @@ pub async fn call(
     }
 
     // The code is required and passed through to `open_matter` exactly as
-    // given — it is stored verbatim, so an AIDA-invented code risks
+    // given — it is stored verbatim, so a Navigator MCP-invented code risks
     // mismatching the repository and Drive coordinates the attorney already
     // committed to. Ask the attorney for their exact code per the descriptor.
     let code = args
@@ -156,7 +156,7 @@ pub async fn call(
         )));
     }
     // The firm-side DRI is the authenticated caller — the attorney opening
-    // the matter through AIDA — so the matter lands in their workbench, the
+    // the matter through Navigator MCP — so the matter lands in their workbench, the
     // same identity the lawyer web form uses (`portal::admin::resolve_lawyer_dri`).
     // A `client`-role principal must never own a matter from the firm side, so
     // the caller is required to be lawyer-tier.
@@ -197,7 +197,7 @@ pub async fn call(
     // create`) uses (#355). It owns the conflict block,
     // the attestation audit row, both DRI designations, and repo provisioning
     // in one transaction; this tool is one more adapter that resolves ids and
-    // renders the outcome. `attestation` must be `true` (the AIDA caller
+    // renders the outcome. `attestation` must be `true` (the Navigator MCP caller
     // affirms the requesting attorney has cleared conflicts); soft findings
     // proceed on it, a blocking conflict is refused.
     let created = store::projects::open_matter(
@@ -208,7 +208,7 @@ pub async fn call(
             client_id: client.id,
             entity_id,
             description: None,
-            // AIDA runs firm-side with no per-request host to resolve; it
+            // Navigator MCP runs firm-side with no per-request host to resolve; it
             // always opens against the firm's own default brand.
             brand: "neon".to_string(),
             attestation: args.attestation.unwrap_or(false),
@@ -326,7 +326,7 @@ mod tests {
 
     /// Seed a `Role::Lawyer` person — a firm attorney who can open matters —
     /// and return its id. This is the caller the fix must record as the
-    /// lawyer DRI when it opens a matter through AIDA.
+    /// lawyer DRI when it opens a matter through Navigator MCP.
     async fn seed_lawyer(surreal: &store::surreal::SurrealDb, email: &str) -> Uuid {
         store::persons::create(
             surreal,
@@ -360,10 +360,10 @@ mod tests {
     #[test]
     fn descriptor_names_the_tool_and_requires_name_code_and_entity() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_create_project");
+        assert_eq!(d["name"], "create_project");
         let required = d["inputSchema"]["required"].as_array().unwrap();
         let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
-        // `code` is required on the schema, not just in `call`: AIDA must be
+        // `code` is required on the schema, not just in `call`: Navigator MCP must be
         // told to ask for the exact code rather than discovering the refusal
         // by trying an open.
         assert_eq!(
@@ -448,7 +448,7 @@ mod tests {
 
     #[tokio::test]
     async fn authenticated_lawyer_becomes_the_lawyer_dri() {
-        // The bug: a matter opened through AIDA was assigned to
+        // The bug: a matter opened through Navigator MCP was assigned to
         // `default_firm_dri` (the first admin), so it never appeared in the
         // workbench of the attorney who opened it. Seed an admin *and* the
         // acting lawyer attorney; the caller — not the admin — must be the
@@ -619,7 +619,7 @@ mod tests {
     async fn missing_attestation_is_refused() {
         // Every matter open requires the attorney's conflict attestation. Omit
         // it and the shared command refuses the open, opening nothing — the
-        // AIDA door onto the same gate the web form and CLI enforce (#355).
+        // Navigator MCP door onto the same gate the web form and CLI enforce (#355).
         let surreal = db().await;
         let eid = seed_entity(&surreal).await;
         let cid = seed_client(&surreal).await;
@@ -693,7 +693,7 @@ mod tests {
         );
     }
 
-    /// An AIDA-opened matter must be reachable by its own accountable
+    /// An Navigator MCP-opened matter must be reachable by its own accountable
     /// lawyer. Designating a DRI writes the membership row and the marker
     /// together, so this is now structural — there is no way to open a matter
     /// naming a lawyer who is not on it.

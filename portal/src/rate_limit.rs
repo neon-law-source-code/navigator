@@ -3,7 +3,7 @@
 //! A small in-process fixed-window limiter keyed on the client IP. It is
 //! the application-layer backstop for credential stuffing against
 //! `/auth/*` and floods against the LLM-backed agent endpoints
-//! (`/mcp`, `/app/api/aida/rpc`) — the edge (Cloud Armor on the GKE Gateway)
+//! (`/mcp`, `/app/api/mcp/rpc`) — the edge (Cloud Armor on the GKE Gateway)
 //! is the first line, this is defense in depth that travels with the
 //! binary so an OSS fork without an edge WAF still has a floor.
 //!

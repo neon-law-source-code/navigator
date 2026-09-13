@@ -1,7 +1,7 @@
 //! Walk a Notation's questionnaire one answer at a time.
 //!
 //! Both the admin HTML form (`portal::retainer_walk`) and the MCP
-//! tools (`aida_create_notation`, `aida_answer_notation`) drive a
+//! tools (`create_notation`, `answer_notation`) drive a
 //! Notation through the same two state machines: a questionnaire
 //! that asks one question per signal, then a post-intake workflow.
 //! This module owns the questionnaire half; the workflow half is
@@ -1205,7 +1205,7 @@ fn is_multi_valued_choice(state: &str) -> bool {
 ///
 /// So the set is closed here, where an answer enters. The browser's radio
 /// group is the only surface that *cannot* post an off-list value; the CLI,
-/// the REST command boundary, the AIDA tool surface, and a hand-crafted POST
+/// the REST command boundary, the Navigator MCP tool surface, and a hand-crafted POST
 /// all can.
 ///
 /// Reads the declared set through the same [`metadata_lookup`] the render
@@ -3181,7 +3181,7 @@ mod tests {
         // and arbitration clause. An off-list value is refused before the
         // write, so nothing is stored and the walk does not advance. The
         // browser's radio group cannot produce one, so reaching here is the
-        // CLI, the REST boundary, AIDA, or a hand-crafted POST.
+        // CLI, the REST boundary, Navigator MCP, or a hand-crafted POST.
         let surreal = db().await;
         let runtime = InMemoryRuntime::new();
         let notation_id = walk_to_governing_law(&surreal, &runtime).await;

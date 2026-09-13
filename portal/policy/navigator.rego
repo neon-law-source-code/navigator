@@ -189,7 +189,7 @@ allow if {
     is_admin(input.session)
 }
 
-# /app/documents is the workspace documentation inside the application. It
+# /app/docs is the workspace documentation inside the application. It
 # admits every tier that operates Navigator — Lawyer and Clerk by the two
 # rules below, Owner and Admin through the route bypass at the top of this
 # policy.
@@ -197,11 +197,11 @@ allow if {
 # `client` is the one authenticated tier denied here. These documents describe
 # how the firm runs the product, not anything a client does.
 #
-# Note what this does and does not change. `/documents` carries no rule in
+# Note what this does and does not change. `/docs` carries no rule in
 # this policy and is not behind the session boundary either: it is an
 # anonymous public surface, because the repository is source-available and
 # those documents are the manual for software anyone can clone.
-# `/app/documents` is therefore not a gate over the documents at all — it is a
+# `/app/docs` is therefore not a gate over the documents at all — it is a
 # second door to the same index wearing the application chrome, and what it
 # restricts is that surface. (ENG-84 renamed both from `/docs` /
 # `/app/docs`; the split above is unchanged.)
@@ -388,12 +388,12 @@ allow if {
 }
 
 # A2A JSON-RPC dispatches to the same MCP tool registry — same
-# lawyer-tier requirement. The agent card at /app/api/aida.json is
+# lawyer-tier requirement. The agent card at /app/api/mcp.json is
 # decided at the router level, not here: it composes behind the session
 # boundary alone, because reading the card is not a tool call. So this
 # rule governs only the RPC endpoint, the path that actually dispatches.
 allow if {
-    input.path == ["app", "api", "aida", "rpc"]
+    input.path == ["app", "api", "mcp", "rpc"]
     is_lawyer(input.session)
 }
 

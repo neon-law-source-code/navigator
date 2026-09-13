@@ -32,7 +32,6 @@ use crate::attest::{dispatch_onchain_record, Attestor, OnChainPayload};
 use crate::compliance::{dispatch_compliance, is_dispatched_submission, CompliancePayload};
 use crate::document::{dispatch_generate_pdf, DocumentPayload};
 use crate::email::{dispatch_state, EmailPayload, EmailService};
-use crate::github::{default_repo_from_env, GithubIssuePayload, IssueOpener, IssueRequest};
 use crate::intake::{dispatch_document_intake, IntakePayload};
 use crate::spec::StateName;
 use crate::step::{step_kind_for, StepKind};
@@ -62,14 +61,6 @@ pub struct StepDeps {
     /// production/dev attestor is [`crate::attest::NullAttestor`] (records
     /// no transaction), selected by `crate::attest::attestor_from_env`.
     pub attestor: Option<Arc<dyn Attestor>>,
-    /// Opener for the `github_issue__*` step. Optional like `attestor` —
-    /// only the engineering-intake shelf reaches it, so callers that never
-    /// walk a `kind: github` notation leave it `None` and a GitHub step
-    /// reached without one errors clearly. Set via
-    /// [`StepDeps::with_issue_opener`]; the default for a process that
-    /// wants one is [`crate::github::issue_opener_from_env`], which yields
-    /// a no-op [`crate::github::NullIssueOpener`] when no token is set.
-    pub issue_opener: Option<Arc<dyn IssueOpener>>,
 }
 
 impl StepDeps {
@@ -80,7 +71,6 @@ impl StepDeps {
             storage,
             surreal: None,
             attestor: None,
-            issue_opener: None,
         }
     }
 
@@ -98,15 +88,6 @@ impl StepDeps {
     #[must_use]
     pub fn with_attestor(mut self, attestor: Arc<dyn Attestor>) -> Self {
         self.attestor = Some(attestor);
-        self
-    }
-
-    /// Attach an [`IssueOpener`] so the `github_issue__*` step can open a
-    /// GitHub issue in-process. Required for any workflow that reaches a
-    /// `github_issue__*` step.
-    #[must_use]
-    pub fn with_issue_opener(mut self, issue_opener: Arc<dyn IssueOpener>) -> Self {
-        self.issue_opener = Some(issue_opener);
         self
     }
 }
@@ -133,9 +114,6 @@ pub enum StepDispatchError {
     /// An on-chain step was reached without an attestor configured.
     #[error("{0} step requires an attestor (StepDeps::with_attestor)")]
     MissingAttestor(&'static str),
-    /// A GitHub step was reached without an issue opener configured.
-    #[error("{0} step requires an issue opener (StepDeps::with_issue_opener)")]
-    MissingIssueOpener(&'static str),
     /// The underlying dispatch fn (email / document / compliance) failed.
     #[error("dispatch: {0}")]
     Dispatch(String),
@@ -154,7 +132,6 @@ pub fn dispatches_side_effect(next: &StateName) -> bool {
                 | StepKind::GeneratePdf
                 | StepKind::DocumentIntake
                 | StepKind::OnChainRecord
-                | StepKind::GithubIssue
         )
     ) || is_dispatched_submission(next)
 }
@@ -224,31 +201,6 @@ pub async fn dispatch_step(
             .await
             .map(|()| None)
             .map_err(|e| StepDispatchError::Dispatch(e.to_string()))
-        }
-        Some(StepKind::GithubIssue) => {
-            let payload = decode::<GithubIssuePayload>("github_issue", payload)?;
-            let opener = deps
-                .issue_opener
-                .as_ref()
-                .ok_or(StepDispatchError::MissingIssueOpener("github_issue"))?;
-            let request = IssueRequest::from_payload(&payload, default_repo_from_env().as_deref())
-                .map_err(|e| StepDispatchError::Dispatch(e.to_string()))?;
-            let created = opener
-                .open_issue(&request)
-                .await
-                .map_err(|e| StepDispatchError::Dispatch(e.to_string()))?;
-            // The opened issue's number and URL are journaled on the
-            // transition so the notation records *which* issue it opened.
-            // A `None` (no token configured) journals nothing rather than
-            // an issue that does not exist.
-            created
-                .map(|issue| {
-                    serde_json::to_string(&issue).map_err(|source| StepDispatchError::Decode {
-                        what: "github_issue",
-                        source,
-                    })
-                })
-                .transpose()
         }
         _ if is_dispatched_submission(next) => {
             let payload = decode::<CompliancePayload>("compliance submission", payload)?;

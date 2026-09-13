@@ -1,4 +1,4 @@
-//! `aida_list_projects` MCP tool.
+//! `list_projects` MCP tool.
 //!
 //! Scoped to the caller's own matters. Which matters those are is the
 //! caller's [`ReadScope`], and the two authenticated lenses answer
@@ -28,7 +28,7 @@ use super::{ReadScope, ToolError};
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_list_projects",
+        "name": "list_projects",
         "description": "List the Projects (matters) the signed-in caller may see. A firm or \
                         client participant gets the matters they are on, each with id, name, \
                         status, brand (which house brand's storefront the matter was opened \
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn descriptor_names_the_tool_and_takes_no_arguments() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_list_projects");
+        assert_eq!(d["name"], "list_projects");
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         let props = d["inputSchema"]["properties"].as_object().unwrap();
         assert!(props.is_empty());

@@ -193,8 +193,7 @@ struct Substitution {
 /// values the deployer-private overlay used to substitute (`docs/gke-prod.md`
 /// §"The private overlay"): the GCP project (buckets / GSA), the primary
 /// domain (www / workflows / HD / redirect URI / public
-/// base URL), the required browser OAuth client ID, and the optional Gemini
-/// Enterprise data-store client ID.
+/// base URL), and the required browser OAuth client ID.
 ///
 /// Takes a getter closure over the deployment's coordinates, exactly like
 /// `portal::config::enforce_deployment_invariants`, so the failure message
@@ -255,29 +254,6 @@ where
             .map(|&(token, env)| required_substitution(deployment, token, env, &get))
             .collect::<Result<Vec<_>>>()?,
     );
-    let browser_client_id = substitutions
-        .iter()
-        .find(|substitution| substitution.token == "YOUR_OAUTH_CLIENT_ID_BROWSER")
-        .expect("the required browser OAuth substitution is in TABLE")
-        .value
-        .clone();
-    let gemini_client_id = match non_empty_env("NAVIGATOR_OAUTH_CLIENT_ID_GEMINI", &get) {
-        Some(value) => {
-            validate_google_oauth_client_id("NAVIGATOR_OAUTH_CLIENT_ID_GEMINI", &value)?;
-            value
-        }
-        // Gemini Enterprise supplies or selects its OAuth client while the
-        // data store is registered. A website rollout must not depend on that
-        // later connector step. Reusing the browser ID in the rendered
-        // allowlist is a harmless set duplicate; `config.toml` omits the key
-        // until the real, distinct Gemini client ID exists.
-        None => browser_client_id,
-    };
-    substitutions.push(Substitution {
-        token: "YOUR_OAUTH_CLIENT_ID_GEMINI",
-        env: "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI",
-        value: gemini_client_id,
-    });
     // Optional, and absence means `false`. A deployment carrying sample
     // matters has to say so; every other deployment says nothing and gets the
     // production answer. Deliberately not in TABLE, whose entries all bail
@@ -3384,10 +3360,6 @@ mod tests {
             "NAVIGATOR_OAUTH_CLIENT_ID_BROWSER",
             "111-browser.apps.googleusercontent.com",
         ),
-        (
-            "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI",
-            "222-gemini.apps.googleusercontent.com",
-        ),
         ("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL", "owner@example.com"),
     ];
 
@@ -3425,10 +3397,6 @@ mod tests {
         (
             "NAVIGATOR_OAUTH_CLIENT_ID_BROWSER",
             "111-browser.apps.googleusercontent.com",
-        ),
-        (
-            "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI",
-            "222-gemini.apps.googleusercontent.com",
         ),
         ("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL", "owner@example.com"),
     ];
@@ -3485,7 +3453,6 @@ mod tests {
         "navigator-web-secrets",
         "YOUR_GOOGLE_OAUTH_REQUIRED_HD",
         "YOUR_OAUTH_CLIENT_ID_BROWSER",
-        "YOUR_OAUTH_CLIENT_ID_GEMINI",
         "YOUR_BOOTSTRAP_OWNER_EMAIL",
         "YOUR_CHATWOOT_WEBSITE_TOKEN",
         "YOUR_CHATWOOT_BASE_URL",
@@ -3698,8 +3665,8 @@ mod tests {
             "browser OAuth client id substituted (no doubled suffix)"
         );
         assert!(
-            web_env.contains("222-gemini.apps.googleusercontent.com"),
-            "gemini OAuth client id substituted"
+            web_env.contains("111-browser.apps.googleusercontent.com"),
+            "browser OAuth client id substituted"
         );
         assert!(
             web_env.contains("https://www.neonlaw.com/auth/callback"),
@@ -4086,86 +4053,49 @@ mod tests {
     }
 
     #[test]
-    fn resolve_substitutions_allows_gemini_to_remain_null_before_registration() {
-        let getter = |key: &str| {
-            if key == "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI" {
-                None
-            } else {
-                env_getter(FULL_ENV)(key)
-            }
-        };
-        let substitutions =
-            resolve_substitutions_for_deployment("neon-production", "26.7.15", getter)
-                .expect("browser-only OAuth configuration must ship");
-        let browser = substitutions
-            .iter()
-            .find(|substitution| substitution.token == "YOUR_OAUTH_CLIENT_ID_BROWSER")
-            .unwrap();
-        let gemini = substitutions
-            .iter()
-            .find(|substitution| substitution.token == "YOUR_OAUTH_CLIENT_ID_GEMINI")
-            .unwrap();
-
-        assert_eq!(gemini.value, browser.value);
-        assert_eq!(gemini.env, "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI");
-    }
-
-    #[test]
     fn resolve_substitutions_rejects_a_bare_oauth_client_id() {
         // A bare OAuth id (no `.apps.googleusercontent.com`) renders an
         // `OAUTH_CLIENT_ID` Google won't match, breaking login. The resolve
         // must refuse it by name rather than ship a broken redirect.
-        for bare in [
-            "NAVIGATOR_OAUTH_CLIENT_ID_BROWSER",
-            "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI",
-        ] {
-            let getter = |key: &str| {
-                Some(if key == bare {
-                    "1234567890-bareid".to_string() // no suffix
-                } else if key.starts_with("NAVIGATOR_OAUTH_CLIENT_ID") {
-                    "999-other.apps.googleusercontent.com".to_string()
-                } else {
-                    "some-value".to_string()
-                })
-            };
-            let err = resolve_substitutions_for_deployment("neon-production", "26.7.15", getter)
-                .expect_err("a bare OAuth id must fail the resolve")
-                .to_string();
-            assert!(
-                err.contains(bare),
-                "error names the offending var `{bare}`: {err}"
-            );
-            assert!(
-                err.contains(GOOGLE_OAUTH_CLIENT_ID_SUFFIX),
-                "error names the required suffix: {err}"
-            );
-        }
+        let bare = "NAVIGATOR_OAUTH_CLIENT_ID_BROWSER";
+        let getter = |key: &str| {
+            Some(if key == bare {
+                "1234567890-bareid".to_string() // no suffix
+            } else {
+                "some-value".to_string()
+            })
+        };
+        let err = resolve_substitutions_for_deployment("neon-production", "26.7.15", getter)
+            .expect_err("a bare OAuth id must fail the resolve")
+            .to_string();
+        assert!(
+            err.contains(bare),
+            "error names the offending var `{bare}`: {err}"
+        );
+        assert!(
+            err.contains(GOOGLE_OAUTH_CLIENT_ID_SUFFIX),
+            "error names the required suffix: {err}"
+        );
 
         // A value with the suffix somewhere in the MIDDLE (trailing garbage
         // after it) is also malformed — Google matches the client id
         // verbatim, so `123.apps.googleusercontent.com.extra` renders an
         // `OAUTH_CLIENT_ID` login rejects. The suffix must be at the END.
-        for malformed in [
-            "NAVIGATOR_OAUTH_CLIENT_ID_BROWSER",
-            "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI",
-        ] {
-            let getter = |key: &str| {
-                Some(if key == malformed {
-                    "123.apps.googleusercontent.com.extra".to_string() // suffix not at end
-                } else if key.starts_with("NAVIGATOR_OAUTH_CLIENT_ID") {
-                    "999-other.apps.googleusercontent.com".to_string()
-                } else {
-                    "some-value".to_string()
-                })
-            };
-            let err = resolve_substitutions_for_deployment("neon-production", "26.7.15", getter)
-                .expect_err("a client id with the suffix not at the end must fail")
-                .to_string();
-            assert!(
-                err.contains(malformed),
-                "error names the offending var `{malformed}`: {err}"
-            );
-        }
+        let malformed = "NAVIGATOR_OAUTH_CLIENT_ID_BROWSER";
+        let getter = |key: &str| {
+            Some(if key == malformed {
+                "123.apps.googleusercontent.com.extra".to_string() // suffix not at end
+            } else {
+                "some-value".to_string()
+            })
+        };
+        let err = resolve_substitutions_for_deployment("neon-production", "26.7.15", getter)
+            .expect_err("a client id with the suffix not at the end must fail")
+            .to_string();
+        assert!(
+            err.contains(malformed),
+            "error names the offending var `{malformed}`: {err}"
+        );
 
         // The full-id form (both OAuth vars carry the suffix) resolves fine.
         assert!(resolve_substitutions_for_deployment(

@@ -1,4 +1,4 @@
-Feature: AIDA walks a notation to END under a lawyer's authorization
+Feature: Navigator MCP walks a notation to END under a lawyer's authorization
 
   An A2A client names the `create_notation` and `answer_notation`
   skills directly and drives the retainer questionnaire end to end.
@@ -25,13 +25,13 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
 
   Scenario: A full retainer walk over A2A advances the questionnaire to END
     When the LLM names the create_notation skill for "onboarding__letter" on that matter
-    Then AIDA pauses for authorization to "Create Notation"
+    Then Navigator MCP pauses for authorization to "Create Notation"
     When the firm authorizes the pending action
     Then the task completes with status "needs_answer"
     And the next question is "entity"
 
     When the LLM names the answer_notation skill with code "entity" value "Northstar Ventures LLC"
-    Then AIDA pauses for authorization to "Answer Notation"
+    Then Navigator MCP pauses for authorization to "Answer Notation"
     When the firm authorizes the pending action
     Then the task completes with status "needs_answer"
     And the next question is "address__principal_office"
@@ -81,6 +81,6 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
     Then the task fails mentioning "entity"
 
   Scenario: The same act named on /mcp is refused instead of run
-    When the LLM calls aida_create_notation for "onboarding__letter" on that matter over /mcp
+    When the LLM calls create_notation for "onboarding__letter" on that matter over /mcp
     Then the MCP result refuses the act and routes the caller to the Navigator app
     And no notation exists on that matter

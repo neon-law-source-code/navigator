@@ -196,12 +196,12 @@ The anonymous allowlist is explicit, small, and pinned by `portal/tests/router_c
   `workflows-service`, a separate host, and `web` answers `404` for it
   (`portal/tests/router_contract.rs::web_does_not_serve_the_github_webhook_receiver`);
 - the DocuSign consent callback, the provider's return leg of an admin-initiated consent grant;
-- the two contributor reference surfaces, `/design` and the workspace documentation at `/documents` and
-  `/documents/{slug}`. Both render their own `200` for a reader with no account rather than answering the login door,
-  and both carry `inject_optional_session` so a signed-in reader still gets the authenticated nav. The documentation is
+- the two contributor reference surfaces, `/design` and the workspace documentation at `/docs` and
+  `/docs/{slug}`. Both render their own `200` for a reader with no account rather than answering the login door, and
+  both carry `inject_optional_session` so a signed-in reader still gets the authenticated nav. The documentation is
   anonymous because the repository is source-available: those documents are the manual for software anyone can clone, so
-  a login door in front of them guarded nothing. `/app/documents` is a second door to the same index wearing the
-  application chrome, and it stays gated — what it restricts is that surface, not the documents.
+  a login door in front of them guarded nothing. `/app/docs` is a second door to the same index wearing the application
+  chrome, and it stays gated — what it restricts is that surface, not the documents.
 
 `/app/mcp` is **not** on this allowlist — a caller still needs a credential — but it is not behind the session-cookie
 boundary either. It mounts a Bearer-only stack (`require_auth`, `require_policy`, and in production
@@ -270,9 +270,8 @@ the same role. Two rows differing only by case cannot exist.
 `admin`, `lawyer`, `clerk`, or `client`, and a `client` is the only value on the client side.
 
 All three write doors go through `store::participation::add_participant` / `update_participant`, and none of them takes
-a participation: the lawyer matter-people form, `POST /app/api/projects/{id}/participants`, and
-`aida_link_person_project` each name a person and nothing else. A `participation` sent to any of them is surplus and
-unread.
+a participation: the lawyer matter-people form, `POST /app/api/projects/{id}/participants`, and `link_person_project`
+each name a person and nothing else. A `participation` sent to any of them is surplus and unread.
 
 ENG-478 closed the same rule at the schema boundary: the `person_project_role.participation` column now carries its own
 `ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client']`, mirroring the one `person.role` already carries.

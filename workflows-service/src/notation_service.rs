@@ -321,13 +321,7 @@ impl NotationService {
             // actually dispatches, so human/wait states (`lawyer_review`,
             // `_signature`, …) stay dispatch-free as before.
             let dispatch_payload: Option<String> = if dispatches_side_effect(&next) {
-                // Wire the GitHub opener for the same reason the in-process
-                // runtime does: it resolves to a credential-free default when
-                // nothing is configured (`NullIssueOpener`), and its absence
-                // would fail every `github_issue__*` step *after* the
-                // transition had already been persisted.
                 let deps = StepDeps::new(Arc::clone(&self.email), Arc::clone(&self.storage))
-                    .with_issue_opener(workflows::github::issue_opener_from_env())
                     // `assets` and `templates` moved to SurrealDB with ENG-121:
                     // `document_intake` files its row and `generate_pdf` reads
                     // the pinned template's declared kind through this handle.

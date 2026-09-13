@@ -1,8 +1,8 @@
-//! `aida_list_entities` MCP tool.
+//! `list_entities` MCP tool.
 //!
 //! Returns every row in the `entities` table with its resolved
 //! `entity_type` and jurisdiction names — enough for the model to
-//! pick an `entity_id` when calling `aida_create_project`. The
+//! pick an `entity_id` when calling `create_project`. The
 //! entity set is bounded (firms, trusts, foundations a single law
 //! practice manages) so we don't paginate. Sorted by `name`.
 
@@ -14,7 +14,7 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_list_entities",
+        "name": "list_entities",
         "description": "List every legal Entity Neon Law Navigator knows about (LLCs, trusts, \
                         corporations, foundations, etc.), returning id, name, entity_type, \
                         and jurisdiction. Use this when a user wants to bind a Project to \
@@ -140,7 +140,7 @@ mod tests {
     #[test]
     fn descriptor_names_the_tool_and_takes_no_arguments() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_list_entities");
+        assert_eq!(d["name"], "list_entities");
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         let props = d["inputSchema"]["properties"].as_object().unwrap();
         assert!(props.is_empty());

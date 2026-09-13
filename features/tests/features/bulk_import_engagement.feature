@@ -7,7 +7,7 @@ Feature: Bulk-import to engagement, end to end
   off that list.
 
   The list goes through the one shared import engine every surface uses (the
-  CLI, the AIDA bulk-import tool): organizations become entities, contacts
+  CLI, the Navigator MCP bulk-import tool): organizations become entities, contacts
   become persons, and each contact is linked to its organization. An
   imported contact carries the `client_contact` role — a known person, not
   yet an engaged client — until a matter is opened for them.

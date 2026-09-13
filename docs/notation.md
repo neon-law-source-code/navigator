@@ -130,18 +130,18 @@ to. **The Template declares the questionnaire; the Notation asks it.**
   `MachineKind` and `notation_id` — so a single Restate virtual object per Notation hosts both timelines on one logical
   journal. See [`docs/retainer_intake.md`](retainer_intake.md) for the end-to-end walkthrough.
 
-### Conversational notation (AIDA)
+### Conversational notation (Navigator MCP)
 
-The same questionnaire state machine is also driven from outside the HTML form by two catalog tools:
-`aida_create_notation` (start the Notation, get the first question) and `aida_answer_notation` (submit one answer, get
-the next question or "complete"). The LLM client is the UI; the server owns the state. Both the form and these tools
-call the same [`workflows::notation_session`](../workflows/src/notation_session.rs) service, so changes to the walking
-logic touch exactly one codepath.
+The same questionnaire state machine is also driven from outside the HTML form by two catalog tools: `create_notation`
+(start the Notation, get the first question) and `answer_notation` (submit one answer, get the next question or
+"complete"). The LLM client is the UI; the server owns the state. Both the form and these tools call the same
+[`workflows::notation_session`](../workflows/src/notation_session.rs) service, so changes to the walking logic touch
+exactly one codepath.
 
 Creating or answering a Notation is a supervised act, so that walk runs over A2A, where every call pauses in
 `input-required` until a firm principal authorizes it. The `/app/mcp` endpoint and the stdio bridge withhold both tools
 and refuse one named anyway: neither can collect an approval, and simulating one is worse than declining. See
-[`docs/aida-a2a-interaction.md`](aida-a2a-interaction.md) for the authorization round trip.
+[`docs/mcp-a2a-interaction.md`](mcp-a2a-interaction.md) for the authorization round trip.
 
 ## Question
 

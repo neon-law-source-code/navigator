@@ -84,10 +84,10 @@ pub const CHANGE_SURFACES: &[(&str, &str, &str)] = &[
     (
         "api",
         "API feature",
-        "A change to a contract other code calls — an HTTP/JSON route, an AIDA tool in \
+        "A change to a contract other code calls — an HTTP/JSON route, a Navigator MCP tool in \
          `mcp/src/tools/`, or an A2A/MCP surface. Gate: the workspace test suite, and a \
          router that implements `portal::agent_router::AgentRouter` rather than forking the \
-         AIDA catalog.",
+         Navigator MCP catalog.",
     ),
     (
         "infrastructure",

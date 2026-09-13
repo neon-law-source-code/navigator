@@ -1,7 +1,7 @@
 # Store
 
 `store` is Navigator's SurrealDB data layer. It owns the schema, canonical seeds, connection configuration, and shared
-data-access rules used by the web server, CLI, workflows, and AIDA.
+data-access rules used by the web server, CLI, workflows, and Navigator MCP.
 
 The schema lives in one file. [`src/schema/navigator.surql`](src/schema/navigator.surql) holds idempotent `DEFINE`
 statements that any process applies on boot, and a `schema_version` record names the revision a database carries. The

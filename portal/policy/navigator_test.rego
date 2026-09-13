@@ -396,18 +396,18 @@ test_clerk_denied_on_mcp if {
 	not authz.allow with input as {"path": ["mcp"], "method": "POST", "session": clerk_session}
 }
 
-# ---------- /app/api/aida/rpc (lawyer tier only) ----------
+# ---------- /app/api/mcp/rpc (lawyer tier only) ----------
 
-test_lawyer_reaches_aida_rpc if {
-	authz.allow with input as {"path": ["app", "api", "aida", "rpc"], "method": "POST", "session": lawyer_session}
+test_lawyer_reaches_agent_rpc if {
+	authz.allow with input as {"path": ["app", "api", "mcp", "rpc"], "method": "POST", "session": lawyer_session}
 }
 
-test_client_denied_on_aida_rpc if {
-	not authz.allow with input as {"path": ["app", "api", "aida", "rpc"], "method": "POST", "session": client_session}
+test_client_denied_on_agent_rpc if {
+	not authz.allow with input as {"path": ["app", "api", "mcp", "rpc"], "method": "POST", "session": client_session}
 }
 
-test_clerk_denied_on_aida_rpc if {
-	not authz.allow with input as {"path": ["app", "api", "aida", "rpc"], "method": "POST", "session": clerk_session}
+test_clerk_denied_on_agent_rpc if {
+	not authz.allow with input as {"path": ["app", "api", "mcp", "rpc"], "method": "POST", "session": clerk_session}
 }
 
 # ---------- /app/api/* read paths ----------
@@ -1793,7 +1793,7 @@ test_removed_notations_validate_alias_denied_for_anonymous if {
 # OpenAPI document beside it are public: `portal::bootstrap` mounts all three
 # with no session boundary and no `require_policy` layer at all, so this
 # policy never evaluates a request for them — see the note above
-# `/app/api/aida.json`'s own such rule, and `portal/tests/router_contract.rs`
+# `/app/api/mcp.json`'s own such rule, and `portal/tests/router_contract.rs`
 # for the router-level half this Rego test cannot see. Mirrored here like the
 # A2A agent card below: an anonymous read must not be allowed by this policy
 # either, which is the only half a policy test can prove.
@@ -1818,8 +1818,8 @@ test_anonymous_denied_retired_openapi if {
 
 # The A2A agent card. It is gated by the session boundary rather than by a rule
 # here, so an anonymous read must not be allowed by this policy either.
-test_policy_does_not_decide_aida_card if {
-	not authz.allow with input as {"path": ["app", "api", "aida.json"], "method": "GET", "session": null}
+test_policy_does_not_decide_agent_card if {
+	not authz.allow with input as {"path": ["app", "api", "mcp.json"], "method": "GET", "session": null}
 }
 
 # ---------------------------------------------------------------------------
@@ -1935,10 +1935,10 @@ test_an_unnamed_api_read_is_denied if {
 	not authz.allow with input as {"path": ["app", "api", "invoices"], "method": "GET", "session": lawyer_session}
 }
 
-# ---------- /app/documents ----------
+# ---------- /app/docs ----------
 # The workspace documentation inside the application. Every tier that operates
 # Navigator reads it; `client` is the one authenticated tier denied.
-# `/documents` itself carries no rule in this policy — it sits behind the
+# `/docs` itself carries no rule in this policy — it sits behind the
 # session boundary alone — so this is a second, role-restricted door rather
 # than a gate closing over material that used to be open. (ENG-84 renamed
 # both paths from `/docs` / `/app/docs`.)
@@ -1969,7 +1969,7 @@ test_clerk_reaches_a_document_in_app_documents if {
 }
 
 # The denials. A client is authenticated and still refused: these documents
-# describe firm-side operation, and the public `/documents` mount is their door.
+# describe firm-side operation, and the public `/docs` mount is their door.
 test_client_denied_app_documents if {
 	not authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": client_session}
 }
@@ -1983,7 +1983,7 @@ test_anonymous_denied_app_documents if {
 }
 
 # ---------- /app/team ----------
-# The firm team home. Same audience as `/app/documents`: every firm tier is
+# The firm team home. Same audience as `/app/docs`: every firm tier is
 # admitted, with `client` the one authenticated tier denied.
 
 test_lawyer_reaches_app_portal if {

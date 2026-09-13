@@ -167,7 +167,7 @@ mod tests {
 
     #[tokio::test]
     async fn google_enforced_still_reads_the_verified_email_from_claims() {
-        // The pre-existing Gemini Enterprise path, unchanged: no session,
+        // The Google-OAuth agent path: no session,
         // enforcement on, `sub` is the tokeninfo-verified address.
         assert_eq!(
             probe(

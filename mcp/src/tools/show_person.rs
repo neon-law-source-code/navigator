@@ -1,4 +1,4 @@
-//! `aida_show_person` MCP tool.
+//! `show_person` MCP tool.
 //!
 //! Fuzzy-find people by name and/or email. Both fields are matched
 //! case-insensitively as substrings (`LOWER(col) LIKE '%needle%'`),
@@ -32,7 +32,7 @@ const MAX_RESULTS: u64 = 50;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_show_person",
+        "name": "show_person",
         "description": "Fuzzy-find people in Neon Law Navigator by name and/or email. \
                         Both fields are matched case-insensitively as substrings, \
                         so partial fragments (\"libra\", \"@neonlaw.com\") work. \
@@ -152,7 +152,7 @@ mod tests {
     use crate::tools::{ReadScope, ToolError};
     use serde_json::json;
 
-    /// `aida_show_person` reads only `persons`, so its tests need only
+    /// `show_person` reads only `persons`, so its tests need only
     /// the engine that owns the table.
     async fn surreal() -> store::surreal::SurrealDb {
         store::test_support::mem_surreal().await
@@ -169,9 +169,9 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_names_the_tool_under_aida_namespace() {
+    fn descriptor_names_the_tool_under_tool_namespace() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_show_person");
+        assert_eq!(d["name"], "show_person");
         // Neither key is hard-required at the schema level — the
         // handler enforces "at least one" so the model gets a clearer
         // error than a JSON-Schema mismatch.

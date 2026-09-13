@@ -1532,14 +1532,14 @@ mod tests {
     #[test]
     fn addr_and_name_extraction() {
         assert_eq!(
-            extract_addr("AIDA Smoke <smoke@neonlaw.com>"),
+            extract_addr("Navigator MCP Smoke <smoke@neonlaw.com>"),
             "smoke@neonlaw.com"
         );
         assert_eq!(extract_addr("plain@example.com"), "plain@example.com");
         assert_eq!(extract_addr("UPPER@Example.COM"), "upper@example.com");
         assert_eq!(
-            extract_name("AIDA Smoke <smoke@neonlaw.com>").as_deref(),
-            Some("AIDA Smoke")
+            extract_name("Navigator MCP Smoke <smoke@neonlaw.com>").as_deref(),
+            Some("Navigator MCP Smoke")
         );
         assert_eq!(extract_name("plain@example.com"), None);
     }

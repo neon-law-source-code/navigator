@@ -864,7 +864,7 @@ enum SiteCmd {
         #[arg(long)]
         host: Option<String>,
     },
-    /// Serve the AIDA tool catalog to Claude as a local MCP server over
+    /// Serve the Navigator MCP tool catalog to Claude as a local MCP server over
     /// stdio, dispatching each call to the host's A2A endpoint with the
     /// stored bearer token.
     ///
@@ -1730,6 +1730,15 @@ enum DocsAction {
         #[arg(long)]
         write: bool,
     },
+    /// Check the per-term schema boxes in `docs/glossary.md` against the
+    /// shipped `navigator.surql`, or rewrite them with `--write`. A term
+    /// naming a `SurrealDB` table carries that table's columns and types as
+    /// ERD-style art; the boxes are derived data, like the index.
+    GlossaryTables {
+        /// Rewrite the boxes in place instead of only reporting drift.
+        #[arg(long)]
+        write: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2009,6 +2018,7 @@ fn main() -> ExitCode {
             DocsAction::List => docs::list(),
             DocsAction::Glossary { term } => docs::glossary(term.as_deref()),
             DocsAction::GlossaryIndex { write } => docs::glossary_index(write),
+            DocsAction::GlossaryTables { write } => docs::glossary_tables(write),
             DocsAction::GlossaryNotion => docs::glossary_notion(),
         },
         Command::Erd { format } => runtime().block_on(run_erd(format)),

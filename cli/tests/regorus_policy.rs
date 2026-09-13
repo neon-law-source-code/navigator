@@ -37,7 +37,7 @@ fn regorus_matches_every_checked_in_policy_decision() {
     let tests = include_str!("../../portal/policy/navigator_test.rego");
     let test_names = test_rule_names(tests);
 
-    // 178 + 9 for `/app/documents` (renamed from `/app/docs` by ENG-84): four
+    // 178 + 9 for `/app/docs` (renamed from `/app/docs` by ENG-84): four
     // admitted tiers at the hub, two of them
     // again one document deeper, and the three denials that matter — a client
     // at the hub, a client at a document, and an anonymous request.
@@ -157,7 +157,7 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   two paths, `client` and anonymous denied at each, plus the
     //   Clerk-reads-the-reference-not-the-directory pair) no longer describe
     //   anything this policy decides. Two replace them, mirroring the
-    //   `/app/api/aida.json` card below: an anonymous read must not be allowed
+    //   `/app/api/mcp.json` card below: an anonymous read must not be allowed
     //   by this policy either, which is the only half a Rego test can prove —
     //   `portal/tests/router_contract.rs` covers the routing half.
     // 391 − 13 + 2 = 380.

@@ -1,9 +1,9 @@
-//! `aida_create_notation` MCP tool.
+//! `create_notation` MCP tool.
 //!
 //! Kick off a conversational notation from a template. The tool
 //! creates the Notation row, starts the questionnaire runtime,
 //! and returns the first question so the LLM can ask the user
-//! and then call `aida_answer_notation` with the answer. The
+//! and then call `answer_notation` with the answer. The
 //! server is the sole owner of questionnaire state; the LLM is
 //! the UI.
 //!
@@ -17,8 +17,8 @@
 //! [`workflows::notation_session::start_notation`] primitive, so the
 //! engagement-first rule the `web` and CLI create path applies
 //! ([`workflows::notation_session::create_notation_from_repo`]) does NOT
-//! constrain AIDA: a lawyer directing the agent may bind any kind as a
-//! matter's first notation. Gating this door would forbid AIDA from ever
+//! constrain Navigator MCP: a lawyer directing the agent may bind any kind as a
+//! matter's first notation. Gating this door would forbid Navigator MCP from ever
 //! opening a filing or letter on a fresh matter, which is the agent's
 //! ordinary use. The authorization that does apply is the project scope
 //! check above — the actor must be lawyer and in scope.
@@ -43,14 +43,14 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_create_notation",
+        "name": "create_notation",
         "description":
             "Start a conversational notation from a template. Looks up the \
              existing Project, creates a Notation for that Project's client \
              DRI, starts \
              the questionnaire state machine, and returns the first question \
              to ask. Reply to the user with the returned `prompt` verbatim; \
-             once they answer, call `aida_answer_notation` with \
+             once they answer, call `answer_notation` with \
              `notation_id`, `question_code`, and `value` to advance. \
              Returns `next_question` (with `code`, `prompt`, `answer_type`) \
              while the questionnaire is in progress, or `status: \"complete\"` \
@@ -122,7 +122,7 @@ pub async fn call(
         }
     }
 
-    // The respondent is always a client-side DRI — AIDA cannot name one.
+    // The respondent is always a client-side DRI — Navigator MCP cannot name one.
     // Resolved after the authorization check so an unauthorized caller never
     // triggers the lookup.
     //
@@ -427,9 +427,9 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_names_the_tool_under_aida_namespace() {
+    fn descriptor_names_the_tool_under_tool_namespace() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_create_notation");
+        assert_eq!(d["name"], "create_notation");
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         let required: Vec<&str> = d["inputSchema"]["required"]
             .as_array()
@@ -444,7 +444,7 @@ mod tests {
 
     #[tokio::test]
     async fn creates_a_notation_on_an_explicit_project() {
-        // The lawyer names the matter; AIDA opens no Project of its own.
+        // The lawyer names the matter; Navigator MCP opens no Project of its own.
         let surreal = db().await;
         seed_template(&surreal, "onboarding").await;
         let client = seed_person(&surreal, "libra@example.com").await;
@@ -471,8 +471,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_filing_may_open_a_matter_through_aida() {
-        // AIDA is lawyer-directed and opens the notation through the
+    async fn a_filing_may_open_a_matter_through_mcp() {
+        // Navigator MCP is lawyer-directed and opens the notation through the
         // policy-free primitive, so the engagement-first rule that governs
         // the `web`/CLI create path does not apply here: a filing on a
         // fresh matter is the agent's ordinary use, not an error.

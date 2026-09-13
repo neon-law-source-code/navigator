@@ -1,4 +1,4 @@
-//! `aida_list_jurisdictions` MCP tool.
+//! `list_jurisdictions` MCP tool.
 //!
 //! Returns every row in the `jurisdiction` table — which lives in
 //! `SurrealDB` since its slice of #1093 (ENG-20). The list is small and
@@ -16,7 +16,7 @@ use super::ToolError;
 #[must_use]
 pub fn descriptor() -> Value {
     json!({
-        "name": "aida_list_jurisdictions",
+        "name": "list_jurisdictions",
         "description": "List every jurisdiction Neon Law Navigator knows about \
                         (US states, federal, foreign), returning id, name, \
                         and short code (`NV`, `CA`, `US`). Use this when a \
@@ -85,9 +85,9 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_names_the_tool_under_aida_namespace() {
+    fn descriptor_names_the_tool_under_tool_namespace() {
         let d = descriptor();
-        assert_eq!(d["name"], "aida_list_jurisdictions");
+        assert_eq!(d["name"], "list_jurisdictions");
         // No required fields — caller passes `{}`.
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
         let props = d["inputSchema"]["properties"].as_object().unwrap();

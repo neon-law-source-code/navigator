@@ -1,11 +1,11 @@
-# Claude as an AIDA client
+# Claude as a Navigator MCP client
 
 How to point **Claude** — Claude Code or Claude Desktop — at a running Neon Law Navigator deployment, so an attorney can
 open a matter with its entities and people by asking for it in plain English.
 
-This is the **setup and capability** story. The runtime interaction model — where AIDA pauses, how a failure's reason
-reaches the user — is [`aida-a2a-interaction.md`](aida-a2a-interaction.md). The Gemini Enterprise equivalent, which
-dials `/app/mcp` over HTTPS instead, is [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
+This is the **setup and capability** story. The runtime interaction model — where Navigator MCP pauses, how a failure's
+reason reaches the user — is [`mcp-a2a-interaction.md`](mcp-a2a-interaction.md). The Gemini Enterprise equivalent, which
+dials `/app/mcp` over HTTPS directly.
 
 ## What runs where
 
@@ -17,7 +17,7 @@ Claude Code / Claude Desktop
    │   MCP JSON-RPC 2.0, newline-delimited, over stdio
    ▼
 navigator site mcp            ← runs on the attorney's laptop
-   │   POST /app/api/aida/rpc
+   │   POST /app/api/mcp/rpc
    │   metadata.skill = the tool Claude chose
    │   Authorization: Bearer <the 1h token `site login` stored>
    ▼
@@ -93,17 +93,17 @@ plus the writes that touch only the firm's own records:
 | Offered | Why |
 | --- | --- |
 | all 9 reads | a lookup changes nothing, and answers through the caller's own lens |
-| `aida_create_person` | a contact row, visible and correctable in `/app/admin` |
-| `aida_create_project` | opens a Project on the attorney's two-limb conflict attestation |
-| `aida_close_project` | moves a matter to `closed`, on the closing attorney's own attestation |
-| `aida_link_person_project` | participation on a matter |
-| `aida_bulk_import` | a whole contacts document — organizations, people, and the links |
+| `create_person` | a contact row, visible and correctable in `/app/admin` |
+| `create_project` | opens a Project on the attorney's two-limb conflict attestation |
+| `close_project` | moves a matter to `closed`, on the closing attorney's own attestation |
+| `link_person_project` | participation on a matter |
+| `bulk_import` | a whole contacts document — organizations, people, and the links |
 
 | Withheld | Why |
 | --- | --- |
-| `aida_send_welcome_email` | it emails a client |
-| `aida_create_notation` | a Notation is a binding legal artifact |
-| `aida_answer_notation` | it answers one |
+| `send_welcome_email` | it emails a client |
+| `create_notation` | a Notation is a binding legal artifact |
+| `answer_notation` | it answers one |
 
 The withheld three need a lawyer's explicit approval, which is an `input-required` pause on the A2A side. **MCP has no
 way to pause a call and ask a person.** A two-call handshake would not fix that: if Claude makes both calls, the model
@@ -113,8 +113,8 @@ Naming one anyway is refused by the bridge without any dispatch, with a result s
 
 Do those three in `/app`, where a human approves in a UI and the approval is recorded against the matter.
 
-Confirmation is the only reason anything is withheld. `aida_list_projects` is offered because the read answers through
-the caller's own lens, so there is nothing left to withhold.
+Confirmation is the only reason anything is withheld. `list_projects` is offered because the read answers through the
+caller's own lens, so there is nothing left to withhold.
 
 Which lens depends on the tier, and the two answer different questions, so they return different shapes. The `lens`
 field on the response says which one came back.
@@ -135,7 +135,7 @@ An authenticated email with no `persons` row lists nothing, and neither does a c
 participation row. Sign-in does not create a Person, so a stranger with a valid token is exactly the caller who must
 reach nothing.
 
-`aida_show_person` searches the firm's own people directory, so it is firm-side: `owner`, `admin`, and `lawyer` read it,
+`show_person` searches the firm's own people directory, so it is firm-side: `owner`, `admin`, and `lawyer` read it,
 while `clerk` and `client` are refused. A refusal rather than an empty list, because nothing the model could type would
 make the read succeed, and "no matches" would teach it the directory is empty.
 
@@ -144,19 +144,19 @@ make the read succeed, and "no matches" would teach it the directory is empty.
 Everything the onboarding chain needs is in the offered set, so this is one conversation:
 
 1. **The organization and its people.** Hand Claude the contact list and ask it to load them. It calls
-   `aida_bulk_import` with one document; find-or-create means a re-run changes nothing. The payload contract is
+   `bulk_import` with one document; find-or-create means a re-run changes nothing. The payload contract is
    [`bulk-contact-import.md`](bulk-contact-import.md).
-2. **The matter.** `aida_create_project` against the entity that import created. It needs a `code`, stored exactly as
+2. **The matter.** `create_project` against the entity that import created. It needs a `code`, stored exactly as
    given — later the base of its repository name. A code is chosen once at matter-open and never changes; give Claude
    the exact code rather than a stem for it to slug, since a code already in use by another matter is refused, not
    disambiguated. It also requires the opening attorney's conflict `attestation`, and refuses without it.
-3. **Who is on it.** `aida_link_person_project` per participant.
+3. **Who is on it.** `link_person_project` per participant.
 
-`aida_create_project` provisions the matter's repository itself, best-effort:
-`store::project_surfaces::reconcile_after_open` runs right after the matter opens and, when forge credentials are
-configured, creates or adopts the GitHub repository named for the code and records its URL on `projects.repository_url`.
-Missing forge configuration skips that step rather than failing the open, so an unconfigured deployment still records
-the coordinate with no repository behind it yet. An operator reconciles later:
+`create_project` provisions the matter's repository itself, best-effort: `store::project_surfaces::reconcile_after_open`
+runs right after the matter opens and, when forge credentials are configured, creates or adopts the GitHub repository
+named for the code and records its URL on `projects.repository_url`. Missing forge configuration skips that step rather
+than failing the open, so an unconfigured deployment still records the coordinate with no repository behind it yet. An
+operator reconciles later:
 
 ```bash
 navigator site projects surfaces reconcile --project <code>

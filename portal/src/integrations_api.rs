@@ -43,6 +43,8 @@
 //! needs to know what happened, not where it happened — the coordinate is
 //! already recorded on the Project row for the surfaces that may read it.
 
+use std::collections::BTreeSet;
+
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -116,10 +118,12 @@ fn selector_error() -> ApiError {
 ///
 /// Two layers, and both are needed. `store::access::visible_projects` is the
 /// same scoping the list door uses, so an admin sweep can never reach a matter
-/// the read surface would hide. [`authorize_project`] then asks whether this
-/// caller may spend the owning Firm's integrations at all — visibility is not
-/// that permission, so `--all` sweeps the Projects that clear both, and a
-/// Project only the lens admits is dropped rather than provisioned.
+/// the read surface would hide. A single-code door then asks
+/// [`authorize_project`] whether this caller may spend the owning Firm's
+/// integrations. The `--all` path uses the batch counterpart instead, so the
+/// capability read and its telemetry happen once per sweep; visibility is not
+/// that permission, so a Project only the lens admits is dropped rather than
+/// provisioned.
 async fn targets(
     state: &ApiState,
     authed: &AdminSession,
@@ -132,14 +136,33 @@ async fn targets(
     match (&selector.project_code, selector.all) {
         (Some(code), false) => Ok(vec![one_target(state, authed, visible, code).await?]),
         (None, true) => {
-            let mut authorized = Vec::new();
-            for project in visible {
-                match authorize_project(state, authed, project).await {
-                    Ok(project) => authorized.push(project),
-                    Err(ApiError::NotFound) => {}
-                    Err(error) => return Err(error),
-                }
-            }
+            let admitted_firm_ids = store::firm_capability::allowed_firm_ids(
+                &state.surreal,
+                authed.0.role,
+                authed.0.person_id,
+                store::firm_capability::FirmCapability::UseIntegrations,
+            )
+            .await
+            .map_err(|error| ApiError::Db(error.to_string()))?;
+            let admitted_firm_ids: BTreeSet<_> = admitted_firm_ids.into_iter().collect();
+            let visible_project_count = visible.len();
+            let authorized: Vec<_> = visible
+                .into_iter()
+                .filter(|project| {
+                    project
+                        .firm_id
+                        .is_some_and(|firm_id| admitted_firm_ids.contains(&firm_id))
+                })
+                .collect();
+            tracing::info!(
+                target: "firm_capability.sweep",
+                capability = "use_integrations",
+                person_id = authed.0.person_id.map(|id| id.to_string()),
+                admitted_firm_count = admitted_firm_ids.len(),
+                visible_project_count,
+                selected_project_count = authorized.len(),
+                "firm capability sweep",
+            );
             Ok(authorized)
         }
         _ => Err(selector_error()),

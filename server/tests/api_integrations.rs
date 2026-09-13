@@ -18,7 +18,8 @@
 //!   must never reach a provider credential its Firm did not write, so
 //!   "unconfigured" is an outcome and not a stub that pretends to succeed.
 
-use std::sync::Arc;
+use std::io::Write;
+use std::sync::{Arc, Mutex, Once};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -29,6 +30,7 @@ use portal::{AppState, SessionStore};
 use store::persons::Role;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
+use tracing_subscriber::prelude::*;
 use uuid::Uuid;
 
 const KEY: &str = "api-integrations-test-key";
@@ -47,10 +49,17 @@ struct Fixture {
 
 struct TwoFirmFixture {
     app: axum::Router,
+    surreal: store::surreal::SurrealDb,
     providers: FakeIntegrations,
     code: String,
+    entity_a: Uuid,
+    entity_b: Uuid,
+    firm_a: Uuid,
+    firm_b: Uuid,
+    admin_a_id: Uuid,
     admin_a: String,
     admin_b: String,
+    admin_b_id: Uuid,
 }
 
 trait AppFixture {
@@ -159,7 +168,7 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
     let entity_b = store::test_support::seed_entity(&surreal).await;
     let requester_id = person(&surreal, "Admin A", Role::Admin).await;
     let member_id = person(&surreal, "Admin B", Role::Admin).await;
-    let _firm_a = store::firms::create(
+    let firm_a = store::firms::create(
         &surreal,
         &store::firms::NewFirm {
             name: "Firm A".into(),
@@ -236,15 +245,56 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
     let providers = FakeIntegrations::new();
     let mut state = AppState {
         sessions: SessionStore::new(KEY),
-        ..portal::test_support::app_state(surreal).await
+        ..portal::test_support::app_state(surreal.clone()).await
     };
     state.integration_providers = Arc::new(providers.clone());
     TwoFirmFixture {
         app: server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR)),
+        surreal,
         providers,
         code,
+        entity_a,
+        entity_b,
+        firm_a: firm_a.id,
+        firm_b: firm_b.id,
+        admin_a_id: requester_id,
         admin_a: bearer(requester_id, Role::Admin),
         admin_b: bearer(member_id, Role::Admin),
+        admin_b_id: member_id,
+    }
+}
+
+fn ensure_callsite_interest() {
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let _ = tracing::subscriber::set_global_default(
+            tracing_subscriber::registry().with(tracing_subscriber::filter::LevelFilter::INFO),
+        );
+    });
+}
+
+#[derive(Clone)]
+struct TelemetryWriter(Arc<Mutex<Vec<u8>>>);
+
+impl Write for TelemetryWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("telemetry writer lock poisoned")
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for TelemetryWriter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
     }
 }
 
@@ -514,6 +564,126 @@ async fn the_all_sweep_drops_a_visible_project_in_another_firm() {
             "the Firm's own Admin still sweeps its matter: {door}"
         );
     }
+}
+
+/// A mixed visibility set proves the batch filter does not turn a caller's
+/// admitted Firm into permission to spend another Firm's credential.
+#[tokio::test]
+async fn the_all_sweep_keeps_admitted_firms_and_drops_denied_firms() {
+    for door in [ALL_DOORS[0], ALL_DOORS[1]] {
+        let fx = build_two_firm_fixture().await;
+        let admitted_code = format!("firm-a-matter-{}", Uuid::now_v7().simple());
+        let admitted = store::projects::create(
+            &fx.surreal,
+            &store::projects::NewProject {
+                code: admitted_code.clone(),
+                name: "Firm A Matter".into(),
+                status: "open".into(),
+                entity_id: fx.entity_a,
+                firm_id: Some(fx.firm_a),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        store::projects::add_participation(&fx.surreal, admitted.id, fx.admin_a_id, "admin")
+            .await
+            .unwrap();
+
+        let swept = post(
+            &fx,
+            door,
+            Some(&fx.admin_a),
+            serde_json::json!({ "all": true }),
+        )
+        .await;
+        assert_eq!(swept.status(), StatusCode::OK, "{door}");
+        assert_eq!(
+            outcomes(&json(swept).await)
+                .into_iter()
+                .map(|(code, _)| code)
+                .collect::<Vec<_>>(),
+            vec![admitted_code],
+            "only the caller's admitted Firm remains in the sweep: {door}"
+        );
+        assert_eq!(
+            fx.providers.notion_calls(),
+            1,
+            "the denied Firm's provider is never touched: {door}"
+        );
+    }
+}
+
+/// The batch capability resolver is called once for the whole sweep, even
+/// when the caller can see more than one Project in the same Firm.
+#[tokio::test]
+async fn the_all_sweep_reads_capability_once_for_all_visible_projects() {
+    let fx = build_two_firm_fixture().await;
+    let second_code = format!("second-firm-b-matter-{}", Uuid::now_v7().simple());
+    let second = store::projects::create(
+        &fx.surreal,
+        &store::projects::NewProject {
+            code: second_code.clone(),
+            name: "Second Firm B Matter".into(),
+            status: "open".into(),
+            entity_id: fx.entity_b,
+            firm_id: Some(fx.firm_b),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&fx.surreal, second.id, fx.admin_b_id, "admin")
+        .await
+        .unwrap();
+
+    ensure_callsite_interest();
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(TelemetryWriter(output.clone()))
+        .finish();
+    let swept = {
+        let _guard = tracing::subscriber::set_default(subscriber);
+        post(
+            &fx,
+            ALL_DOORS[0],
+            Some(&fx.admin_b),
+            serde_json::json!({ "all": true }),
+        )
+        .await
+    };
+    assert_eq!(swept.status(), StatusCode::OK);
+    assert_eq!(fx.providers.notion_calls(), 2);
+    assert_eq!(
+        outcomes(&json(swept).await)
+            .into_iter()
+            .map(|(code, _)| code)
+            .collect::<Vec<_>>(),
+        vec![fx.code.clone(), second_code],
+    );
+
+    let logged = String::from_utf8(
+        output
+            .lock()
+            .expect("telemetry output lock poisoned")
+            .clone(),
+    )
+    .unwrap();
+    let events: Vec<&str> = logged
+        .lines()
+        .filter(|line| line.contains("firm capability sweep"))
+        .collect();
+    assert_eq!(events.len(), 1, "one capability event per sweep: {logged}");
+    assert!(
+        events[0].contains("\"visible_project_count\":2"),
+        "{logged}"
+    );
+    assert!(
+        events[0].contains("\"selected_project_count\":2"),
+        "{logged}"
+    );
 }
 
 /// Slack ensure records the channel id and invites nobody: the adapter takes

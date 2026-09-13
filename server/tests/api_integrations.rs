@@ -52,8 +52,11 @@ struct TwoFirmFixture {
     surreal: store::surreal::SurrealDb,
     providers: FakeIntegrations,
     code: String,
+    entity_a: Uuid,
     entity_b: Uuid,
+    firm_a: Uuid,
     firm_b: Uuid,
+    admin_a_id: Uuid,
     admin_a: String,
     admin_b: String,
     admin_b_id: Uuid,
@@ -165,7 +168,7 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
     let entity_b = store::test_support::seed_entity(&surreal).await;
     let requester_id = person(&surreal, "Admin A", Role::Admin).await;
     let member_id = person(&surreal, "Admin B", Role::Admin).await;
-    let _firm_a = store::firms::create(
+    let firm_a = store::firms::create(
         &surreal,
         &store::firms::NewFirm {
             name: "Firm A".into(),
@@ -250,8 +253,11 @@ async fn build_two_firm_fixture() -> TwoFirmFixture {
         surreal,
         providers,
         code,
+        entity_a,
         entity_b,
+        firm_a: firm_a.id,
         firm_b: firm_b.id,
+        admin_a_id: requester_id,
         admin_a: bearer(requester_id, Role::Admin),
         admin_b: bearer(member_id, Role::Admin),
         admin_b_id: member_id,
@@ -556,6 +562,54 @@ async fn the_all_sweep_drops_a_visible_project_in_another_firm() {
                 .collect::<Vec<_>>(),
             vec![fx.code.clone()],
             "the Firm's own Admin still sweeps its matter: {door}"
+        );
+    }
+}
+
+/// A mixed visibility set proves the batch filter does not turn a caller's
+/// admitted Firm into permission to spend another Firm's credential.
+#[tokio::test]
+async fn the_all_sweep_keeps_admitted_firms_and_drops_denied_firms() {
+    for door in [ALL_DOORS[0], ALL_DOORS[1]] {
+        let fx = build_two_firm_fixture().await;
+        let admitted_code = format!("firm-a-matter-{}", Uuid::now_v7().simple());
+        let admitted = store::projects::create(
+            &fx.surreal,
+            &store::projects::NewProject {
+                code: admitted_code.clone(),
+                name: "Firm A Matter".into(),
+                status: "open".into(),
+                entity_id: fx.entity_a,
+                firm_id: Some(fx.firm_a),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        store::projects::add_participation(&fx.surreal, admitted.id, fx.admin_a_id, "admin")
+            .await
+            .unwrap();
+
+        let swept = post(
+            &fx,
+            door,
+            Some(&fx.admin_a),
+            serde_json::json!({ "all": true }),
+        )
+        .await;
+        assert_eq!(swept.status(), StatusCode::OK, "{door}");
+        assert_eq!(
+            outcomes(&json(swept).await)
+                .into_iter()
+                .map(|(code, _)| code)
+                .collect::<Vec<_>>(),
+            vec![admitted_code],
+            "only the caller's admitted Firm remains in the sweep: {door}"
+        );
+        assert_eq!(
+            fx.providers.notion_calls(),
+            1,
+            "the denied Firm's provider is never touched: {door}"
         );
     }
 }

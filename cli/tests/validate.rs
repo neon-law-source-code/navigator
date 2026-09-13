@@ -51,7 +51,8 @@ fn write_project_shell(dir: &Path, code: &str) {
     write(
         dir,
         ".github/workflows/ci.yml",
-        r#"name: ci
+        &format!(
+            r#"name: ci
 on: [pull_request]
 jobs:
   ci:
@@ -59,7 +60,8 @@ jobs:
     with:
       project: "{code}"
       host: "staging.neonlaw.com"
-"#,
+"#
+        ),
     );
 }
 

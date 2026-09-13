@@ -2095,10 +2095,7 @@ jobs:
             "{generated}"
         );
         assert!(generated.contains("workflow_dispatch:"), "{generated}");
-        assert!(
-            generated.contains("project: \"example-project\""),
-            "{generated}"
-        );
+        assert!(generated.contains("project: \"acme\""), "{generated}");
         assert!(
             generated.contains("host: \"staging.neonlaw.com\""),
             "{generated}"

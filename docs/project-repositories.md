@@ -610,7 +610,9 @@ checkout text files to LF, `navigator.yaml` (requiring `--host`), the thin `ci.y
 on `vars.NAVIGATOR_HOST`, `README.md`, and `AGENTS.md`. It also writes a `CLAUDE.md` that delivers `AGENTS.md` (a
 relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder `templates/<code>__engagement.md` whose stem
 is the Project code with hyphens replaced by underscores. A hand-copied `ci.yml` of 268 lines or more is left alone
-unless `--replace-gate` is passed.
+unless `--replace-gate` is passed. `navigator validate` requires that pair: `AGENTS.md` must exist, `CLAUDE.md` must
+deliver the same bytes (the nine-byte stub form is refused), and the contract must name the Lawyers team as where a
+Navigator CLI gap is filed rather than recorded as a workaround in the matter repository.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

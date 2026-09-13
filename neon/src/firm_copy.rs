@@ -10,7 +10,7 @@ use webapp::marketing_page::PageContent;
 
 use crate::locales;
 
-/// `/personal-plan` — the firm's consumer legal plan. See
+/// `/personal` — the firm's consumer legal plan. See
 /// `locales/en/neon/personal-plan.yaml`.
 pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
     locales::personal_plan(branding)
@@ -424,7 +424,7 @@ mod firm_copy_tests {
     /// in advance; a published litigation "price" would be a floor dressed as
     /// a fee, the misleading-fee-advertising problem the flat-fee schedule
     /// exists to avoid. Fractional GC is different: it now publishes its own
-    /// figures, but on its own page (`/fractional-gc`) as a retainer, not here
+    /// figures, but on its own page (`/business`) as a retainer, not here
     /// — this schedule is for one-time matters, and a recurring retainer does
     /// not belong on it regardless of whether it has a public number.
     #[test]

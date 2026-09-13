@@ -162,8 +162,8 @@ async fn the_index_advertises_the_firms_pages() {
     for firm_page in [
         "/",
         "/services",
-        "/litigation",
-        "/fractional-gc",
+        "/disputes",
+        "/business",
         "/navigator",
         "/notations",
         "/contact",
@@ -285,7 +285,7 @@ async fn the_delete_your_data_llms_txt_is_that_brands_pages_under_its_host() {
     assert!(body.starts_with("# DeleteYourData.com\n"), "{body}");
     assert!(body.contains(&format!("https://{host}/)")), "{body}");
     assert!(!body.contains("neonlaw.com"), "{body}");
-    assert!(!body.contains("/litigation"), "{body}");
+    assert!(!body.contains("/disputes"), "{body}");
     for path in advertised_paths(&body) {
         let (status, _) = get_on_host(&app, &path, Some(host)).await;
         assert_eq!(
@@ -307,7 +307,7 @@ async fn the_lawyer_shook_llms_txt_is_that_brands_pages_under_its_host() {
     assert!(body.starts_with("# Shook Law PLLC\n"), "{body}");
     assert!(body.contains(&format!("https://{host}/)")), "{body}");
     assert!(!body.contains("neonlaw.com"), "{body}");
-    assert!(!body.contains("/litigation"), "{body}");
+    assert!(!body.contains("/disputes"), "{body}");
     assert!(!body.contains("/services"), "{body}");
     assert!(!body.contains("/contact"), "{body}");
     for path in advertised_paths(&body) {

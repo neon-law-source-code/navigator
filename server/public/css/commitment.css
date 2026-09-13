@@ -1,6 +1,6 @@
 /* Shared treatment for the firm's recurring-fee pages.
 
-   `/fractional-gc` and `/personal-plan` have different supporting sections,
+   `/business` and `/personal` have different supporting sections,
    but their decision point is the same: one predictable daily commitment,
    one offer card, and one clear next step. This layer is loaded after each
    page's own CSS so those three pieces cannot drift apart visually. */

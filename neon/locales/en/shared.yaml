@@ -28,7 +28,7 @@ entries:
   services.subscriptions_heading: A lawyer you can turn to.
   services.catalog_heading: Need help with one thing?
 
-  # `/fractional-gc` — the Business plan.
+  # `/business` — the Business plan.
   fractional_gc.eyebrow: Business plan
   fractional_gc.title: A lawyer for your business.
   fractional_gc.lede: Get help with contracts, hiring, and the paperwork that comes with running a business.
@@ -40,14 +40,14 @@ entries:
   fractional_gc.included.privacy_forms: Forms for keeping business information private and working with customers
   fractional_gc.included.tax_and_state: Help with business taxes and state paperwork
 
-  # `/personal-plan`
+  # `/personal`
   personal_plan.eyebrow: Personal plan
   personal_plan.title: Help with the things you need to take care of.
   personal_plan.price: $365
   personal_plan.included.data_removal: Help asking companies to remove your personal information
   personal_plan.included.credit_monitoring: Optional credit monitoring
 
-  # `/litigation` — disputes.
+  # `/disputes`
   litigation.eyebrow: Help with a dispute
   litigation.title: Your story deserves to be heard.
   litigation.lede: Start with a free consultation. Tell us what happened, what you need, and whether you have a deadline.

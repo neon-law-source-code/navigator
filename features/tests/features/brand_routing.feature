@@ -37,12 +37,12 @@ Feature: Public routing on the firm's own host
     Then the response status is 200
 
     Examples:
-      | path           |
-      | /notations     |
-      | /contact       |
-      | /litigation    |
-      | /fractional-gc |
-      | /services      |
+      | path       |
+      | /notations |
+      | /contact   |
+      | /disputes  |
+      | /business  |
+      | /services  |
 
   Scenario Outline: A path with no firm page answers 404
     When a visitor opens <path>

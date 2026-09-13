@@ -606,7 +606,7 @@ mod tests {
                             mark: PracticeMark::Scales,
                             heading: "Litigation".to_string(),
                             body: "We try cases on both sides of the v.".to_string(),
-                            href: "/litigation".to_string(),
+                            href: "/disputes".to_string(),
                         }],
                         service: Some(ServiceSection {
                             heading: "What we do".to_string(),
@@ -917,7 +917,7 @@ mod tests {
             "the section labels itself: {out}"
         );
         assert!(
-            out.contains(r#"<a class="neon-card home-practice" href="/litigation""#),
+            out.contains(r#"<a class="neon-card home-practice" href="/disputes""#),
             "the box is the anchor: {out}"
         );
         assert!(

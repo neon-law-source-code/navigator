@@ -1,4 +1,4 @@
-//! The firm fractional general counsel page (`/fractional-gc`) — accurate, efficient, and
+//! The firm fractional general counsel page (`/business`) — accurate, efficient, and
 //! speedy company counsel on a published flat fee.
 //!
 //! The page's argument is that recurring counsel should be simple to buy and
@@ -182,7 +182,7 @@ fn SpeedHero(content: TransactionalContent) -> Element {
                         span {
                             class: if word.accent { "speed-word speed-word--accent" } else { "speed-word" },
                             // No trailing space: the word gaps are a margin in
-                            // the stylesheet, the same convention `/litigation`
+                            // the stylesheet, the same convention `/disputes`
                             // uses for the same reason.
                             "{word.text}"
                         }

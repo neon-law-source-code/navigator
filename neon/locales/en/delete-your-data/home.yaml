@@ -24,7 +24,7 @@ service:
         emphasis: true
       - text: " per company, paid before we send it. It is also included at no added cost for a "
       - text: Neon Law Personal Plan
-        href: "https://www.neonlaw.com/personal-plan"
+        href: "https://www.neonlaw.com/personal"
       - text: >-
           , as a
           member. Whether a particular request is available, and what it

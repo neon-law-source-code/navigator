@@ -137,22 +137,15 @@ impl NavLink {
     }
 }
 
-/// The firm's header navigation: the practice the firm leads with, then the
-/// three engagements beside it.
+/// The firm's header navigation, in the same order the home page's practice
+/// cards publish: the company-counsel plan, the consumer legal plan, the
+/// flat-fee schedule, then the disputes practice.
 ///
-/// Litigation leads because it is what the firm leads with — the home page
-/// opens on the disputes practice and states it as the one thing above the
-/// fold. The order is the claim, so it is asserted rather than left to this
-/// literal.
-///
-/// The three that follow are real engagements with pages of their own, and a
-/// reader who came for one of them must not have to hunt the footer:
-/// `/fractional-gc` (fractional general counsel) the company-counsel plan,
-/// `/personal-plan` the consumer legal plan, and `/services` the
-/// flat-fee schedule of routine one-time matters — which now requires an
-/// active plan on one of the two. The two plans sit nearer the lead practice
-/// than the schedule does, because a firm or a person reading the lead is the
-/// reader those two are for.
+/// `/business` (fractional general counsel) is the company-counsel plan,
+/// `/personal` the consumer legal plan, `/services` the flat-fee schedule of
+/// routine one-time matters — which now requires an active plan on one of the
+/// two — and `/disputes` the litigation practice. The two plans lead because a
+/// firm or a person reading the header is the reader those two are for.
 ///
 /// Every entry is the firm's own work, and no label here repeats in
 /// [`FIRM_FOOTER_NAV`] — see the
@@ -161,10 +154,10 @@ impl NavLink {
 /// Everything a reader looks for second — the Blog, Navigator, how to reach
 /// the firm — stays in [`FIRM_FOOTER_NAV`].
 const FIRM_NAV: &[NavLink] = &[
-    NavLink::leaf("Litigation", "/litigation"),
-    NavLink::leaf("Fractional GC", "/fractional-gc"),
-    NavLink::leaf("Personal Plan", "/personal-plan"),
+    NavLink::leaf("Fractional GC", "/business"),
+    NavLink::leaf("Personal Plan", "/personal"),
     NavLink::leaf("Legal Services", "/services"),
+    NavLink::leaf("Litigation", "/disputes"),
 ];
 
 /// The rest of the firm's public surface, rendered in the footer rather than the
@@ -1330,7 +1323,7 @@ mod tests {
     }
 
     /// The disclaimer states the past-results line, wherever a reader could
-    /// infer one. It moved off `/litigation` into this shared string, so the
+    /// infer one. It moved off `/disputes` into this shared string, so the
     /// guard that it is still said belongs here rather than on that page.
     #[test]
     fn the_disclaimer_carries_the_past_results_line() {
@@ -1488,38 +1481,34 @@ mod tests {
         }
     }
 
-    /// The firm's header leads with the lead practice, then the three
-    /// engagements beside it.
-    ///
-    /// Litigation is first on purpose and this is the assertion that keeps it
-    /// there: it is what the firm leads with, and the home page opens on it.
-    /// Demoting it would put the lead behind the things it leads.
+    /// The firm's header matches the order the home page's practice cards
+    /// publish: the two plans, then the fee schedule, then disputes.
     ///
     /// Team used to close the row, and the nonprofit's home after it. Both
     /// pages were retired outright — routers, views, path constants, sitemap
     /// and llms.txt rows — so a header entry for either would now be a link to
     /// a retired URL.
     #[test]
-    fn the_firm_nav_leads_with_the_lead_practice_then_the_engagements() {
+    fn the_firm_nav_matches_the_home_page_card_order() {
         let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
         assert_eq!(
             labels,
             [
-                "Litigation",
                 "Fractional GC",
                 "Personal Plan",
-                "Legal Services"
+                "Legal Services",
+                "Litigation"
             ]
         );
         assert_eq!(
             FIRM_BRAND.nav.first().map(|link| link.href),
-            Some("/litigation"),
-            "the lead practice is the first thing in the header"
+            Some("/business"),
+            "the header leads with the same practice the home page cards lead with"
         );
         assert_eq!(
             FIRM_BRAND.nav.last().map(|link| link.href),
-            Some("/services"),
-            "the published fee schedule closes the row"
+            Some("/disputes"),
+            "the header closes with the same practice the home page cards close with"
         );
         assert!(
             FIRM_BRAND.nav.iter().all(|link| !link.is_dropdown()),
@@ -1930,12 +1919,12 @@ mod tests {
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/services"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/contact"));
-        assert!(!BrandKey::DeleteYourData.publishes_firm_path("/litigation"));
+        assert!(!BrandKey::DeleteYourData.publishes_firm_path("/disputes"));
         assert!(BrandKey::LawyerShook.publishes_firm_path("/"));
         assert!(!BrandKey::LawyerShook.publishes_firm_path("/services"));
         assert!(!BrandKey::LawyerShook.publishes_firm_path("/contact"));
-        assert!(!BrandKey::LawyerShook.publishes_firm_path("/litigation"));
-        assert!(BrandKey::Neon.publishes_firm_path("/litigation"));
+        assert!(!BrandKey::LawyerShook.publishes_firm_path("/disputes"));
+        assert!(BrandKey::Neon.publishes_firm_path("/disputes"));
     }
 
     /// A mounted white-label manifest replaces the *default* brand's identity,

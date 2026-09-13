@@ -20,9 +20,9 @@ Neon Law (`neon/`):
 | File | Page |
 | --- | --- |
 | `neon/locales/en/neon/home.yaml` | `/` |
-| `neon/locales/en/neon/litigation.yaml` | `/litigation` |
-| `neon/locales/en/neon/fractional-gc.yaml` | `/fractional-gc` |
-| `neon/locales/en/neon/personal-plan.yaml` | `/personal-plan` |
+| `neon/locales/en/neon/litigation.yaml` | `/disputes` |
+| `neon/locales/en/neon/fractional-gc.yaml` | `/business` |
+| `neon/locales/en/neon/personal-plan.yaml` | `/personal` |
 | `neon/locales/en/neon/navigator.yaml` | `/navigator` |
 | `neon/locales/en/neon/services.yaml` | `/services` |
 

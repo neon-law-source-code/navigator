@@ -1585,14 +1585,14 @@ async fn portal_only_mode_redirects_root_to_portal_and_drops_host_pages() {
         "/app/projects"
     );
 
-    // A marketing page is no longer mounted under portal-only. `/litigation`
+    // A marketing page is no longer mounted under portal-only. `/disputes`
     // rather than a retired route: this must fail because portal-only unmounts
     // the marketing surface, not because the path 404s everywhere anyway.
     let resp = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/litigation")
+                .uri("/disputes")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2360,7 +2360,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     }
     // The firm's pages ARE advertised — one host, one sitemap. What must not
     // appear is a firm page filed beneath `/foundation`.
-    for firm_page in ["/blog", "/litigation", "/notations"] {
+    for firm_page in ["/blog", "/disputes", "/notations"] {
         assert!(
             body.contains(&format!("<loc>https://www.neonlaw.com{firm_page}</loc>")),
             "sitemap must advertise the firm page {firm_page}: {body}"
@@ -9076,7 +9076,7 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
     let litigation = app
         .oneshot(
             Request::builder()
-                .uri("/litigation")
+                .uri("/disputes")
                 .header(header::HOST, "staging.deleteyourdata.com")
                 .body(Body::empty())
                 .unwrap(),

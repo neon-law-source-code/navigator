@@ -182,8 +182,8 @@ async fn the_sitemap_advertises_the_firms_pages() {
     for firm_page in [
         "/",
         "/services",
-        "/litigation",
-        "/fractional-gc",
+        "/disputes",
+        "/business",
         "/navigator",
         "/notations",
         "/contact",
@@ -257,7 +257,7 @@ async fn the_delete_your_data_sitemap_lists_only_that_brands_pages_under_its_hos
         );
     }
     assert!(
-        !paths.iter().any(|path| path == "/litigation"),
+        !paths.iter().any(|path| path == "/disputes"),
         "house-brand sitemap must not advertise Neon practice pages: {paths:?}"
     );
     for path in &paths {
@@ -297,7 +297,7 @@ async fn the_lawyer_shook_sitemap_lists_only_that_brands_pages_under_its_host() 
         );
     }
     // A bare holding page, not a marketing site: it publishes `/` alone.
-    for absent in ["/services", "/contact", "/litigation"] {
+    for absent in ["/services", "/contact", "/disputes"] {
         assert!(
             !paths.iter().any(|path| path == absent),
             "must not advertise {absent}: {paths:?}"

@@ -260,7 +260,7 @@ pub struct PageContent {
     /// The `<h1>` as lines of words: the outer `Vec` is the line breaks the
     /// statement sets for itself, the inner one the words on that line, so the
     /// practice skin can set the opening ones in the firm's own colour the way
-    /// `/litigation` does.
+    /// `/disputes` does.
     ///
     /// Lines are data rather than a `<br>` in a string, because where a
     /// statement breaks is a typographic decision the copy makes — leaving it to
@@ -297,7 +297,7 @@ pub enum PageSkin {
     #[default]
     Marketing,
     /// The firm's practice look — the serif statement, the glow, and the carded
-    /// body the `/litigation` and `/fractional-gc` pages wear.
+    /// body the `/disputes` and `/business` pages wear.
     Practice,
 }
 
@@ -449,7 +449,7 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
             div { class: "fm-page{content.skin.modifier()}",
                 section { class: "fm-hero fm-hero--page commitment-hero",
                     // The practice skin leads with the eyebrow and sets the
-                    // tagline as the `<h1>`, the way `/litigation` does: on a
+                    // tagline as the `<h1>`, the way `/disputes` does: on a
                     // practice page the statement is the headline and the
                     // practice name is the label above it. The marketing skin
                     // keeps the title as the headline.
@@ -1137,7 +1137,7 @@ mod tests {
                         title: "Company counsel".to_string(),
                         chips: vec!["Flat monthly fee".to_string()],
                         body: vec![vec![Run::plain("Cap table and employee agreements.")]],
-                        href: Some("/fractional-gc".to_string()),
+                        href: Some("/business".to_string()),
                         href_label: Some("See the practice".to_string()),
                         cadence: None,
                         features: Vec::new(),
@@ -1227,7 +1227,7 @@ mod tests {
                         lead: String::new(),
                         body: vec![vec![
                             Run::plain("Business filings included in our "),
-                            Run::link("fractional GC", "/fractional-gc"),
+                            Run::link("fractional GC", "/business"),
                             Run::plain(" projects."),
                         ]],
                     }],
@@ -1236,7 +1236,7 @@ mod tests {
         }
         let out = render(app);
         assert!(
-            out.contains(r#"href="/fractional-gc""#),
+            out.contains(r#"href="/business""#),
             "an inline link run renders as an anchor: {out}"
         );
         assert!(
@@ -1327,7 +1327,7 @@ mod tests {
     fn a_card_deep_links_to_the_page_that_expands_it() {
         let out = page_html();
         assert!(
-            out.contains(r#"href="/fractional-gc""#),
+            out.contains(r#"href="/business""#),
             "the card links the page that expands it: {out}"
         );
         assert!(out.contains("See the practice"), "link label: {out}");
@@ -1376,7 +1376,7 @@ mod tests {
     ///
     /// A campaign page reads as a campaign: the title is the headline. A
     /// practice page reads as a practice: the practice name is the label and
-    /// the statement is the headline, the way `/litigation` reads. One renderer
+    /// the statement is the headline, the way `/disputes` reads. One renderer
     /// serves both, so this is what keeps a change to one from silently
     /// restyling the other.
     #[test]
@@ -1484,7 +1484,7 @@ mod tests {
     }
 
     /// A pricing-style Cards band maps each card's `day_rate` onto the shared
-    /// `PricingCard`, the same field `/fractional-gc` publishes through — one
+    /// `PricingCard`, the same field `/business` publishes through — one
     /// bill photo for both surfaces rather than a second drawing.
     #[test]
     fn a_pricing_style_card_carries_its_day_rate_through() {

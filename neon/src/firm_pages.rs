@@ -473,11 +473,11 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     // The practice pages the home page's cards lead into. Static copy like the
     // home page's, resolved here so the `<title>` names the mounted brand.
     routers.push(dioxus_app::litigation_router(
-        "/litigation",
+        "/disputes",
         resolve_litigation_content(branding),
     ));
     routers.push(dioxus_app::transactional_router(
-        "/fractional-gc",
+        "/business",
         resolve_transactional_content(branding),
     ));
     // The platform page. It carries a commercial offer, so it sits with the
@@ -644,7 +644,7 @@ fn resolve_firm_contact_content(
 /// the work the firm focuses on (impact litigation whose point is to make a
 /// person's life better) because a reader deciding whether to call needs both
 /// the open door and the aim in the first two sentences. It does not list
-/// causes of action; those live on `/litigation`. Speed stays method, and the
+/// causes of action; those live on `/disputes`. Speed stays method, and the
 /// lead binds the aim so it is not read as a promised result.
 ///
 /// **The page leads with litigation, then shows the whole firm.** The
@@ -756,7 +756,7 @@ mod lawyer_shook_holding_page_tests {
     }
 }
 
-/// Resolve the firm `/litigation` page — the statement, the practice, and how
+/// Resolve the firm `/disputes` page — the statement, the practice, and how
 /// the firm runs a matter.
 ///
 /// **The page's claim is speed, and speed is stated as method rather than as
@@ -841,7 +841,7 @@ pub(crate) fn resolve_litigation_content(
     locales::litigation(branding)
 }
 
-/// Resolve the firm `/fractional-gc` page — the company counsel practice with
+/// Resolve the firm `/business` page — the company counsel practice with
 /// its own published pricing, the published turnaround, and the work that
 /// sits outside the retainer.
 ///

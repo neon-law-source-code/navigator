@@ -140,10 +140,10 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
 
     for path in [
         "/",
-        "/personal-plan",
+        "/personal",
         "/services",
-        "/litigation",
-        "/fractional-gc",
+        "/disputes",
+        "/business",
         "/navigator",
         "/blog",
         "/notations",
@@ -168,12 +168,12 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
     // monitoring (beta) on one flat annual or daily fee — the personal-side
     // counterpart to Fractional GC, and it publishes a real figure.
     let app = site_app().await;
-    let resp = anon_get(&app, "/personal-plan").await;
+    let resp = anon_get(&app, "/personal").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("<title>Neon Law | Personal Plan"),
-        "the page titles itself Personal Plan: {body}"
+        body.contains("<title>Neon Law | Personal"),
+        "the page titles itself Personal: {body}"
     );
     assert!(
         body.contains("fm-hero__title"),
@@ -198,7 +198,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         "estate planning belongs to /services, not the personal plan: {body}"
     );
     assert!(
-        body.contains(r#"href="/fractional-gc""#),
+        body.contains(r#"href="/business""#),
         "the header nav still reaches the company-side counterpart: {body}"
     );
     assert!(
@@ -217,9 +217,9 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
     }
 }
 
-/// `/personal-plan` and `/services` wear the practice-page header.
+/// `/personal` and `/services` wear the practice-page header.
 ///
-/// The same five parts `/litigation` opens on: the ringed mark, the eyebrow
+/// The same five parts `/disputes` opens on: the ringed mark, the eyebrow
 /// above the statement, the statement with its opening words in the firm's own
 /// colour, the lead under it, and one call to action. Asserted as structure on
 /// both pages at once — the wording is the firm's to edit, the shape is the
@@ -227,7 +227,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
 #[tokio::test]
 async fn the_practice_pages_wear_the_same_header() {
     let app = site_app().await;
-    for path in ["/personal-plan", "/services"] {
+    for path in ["/personal", "/services"] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in ["site-header", "public-shell__main", "mailto:"] {
             assert!(
@@ -259,7 +259,7 @@ async fn site_host_serves_the_legal_services_page() {
     // link distinguishable by colour alone (axe `link-in-text-block`, which is
     // how this page failed the public accessibility gate).
     assert!(
-        body.contains(r#"<a href="/fractional-gc""#),
+        body.contains(r#"<a href="/business""#),
         "business filings link to the fractional GC page, with no class: {body}"
     );
     for promise in [
@@ -286,10 +286,10 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     // strip, and a fee section all came off — so this asserts what is on it and
     // the next test asserts what is not.
     let app = site_app().await;
-    let resp = anon_get(&app, "/litigation").await;
+    let resp = anon_get(&app, "/disputes").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law | Litigation</title>"));
+    assert!(body.contains("<title>Neon Law | Disputes</title>"));
     for copy in [
         "Start with a free consultation.",
         "what happened, what you need, and whether you have a deadline",
@@ -333,7 +333,7 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
 #[tokio::test]
 async fn litigation_publishes_no_quantified_efficiency_claim() {
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     let lowered = body.to_lowercase();
     for banned in [
         "substantially saves",
@@ -366,7 +366,7 @@ async fn litigation_publishes_no_quantified_efficiency_claim() {
 #[tokio::test]
 async fn litigation_states_speed_as_method_and_not_as_outcome() {
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     assert!(
         body.contains("what it costs before you decide"),
         "the page makes cost discussion precede the decision: {body}"
@@ -386,7 +386,7 @@ async fn litigation_states_speed_as_method_and_not_as_outcome() {
 #[tokio::test]
 async fn litigation_publishes_no_em_dash() {
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     assert!(
         !body.contains('\u{2014}'),
         "the litigation page must publish no em dash: {body}"
@@ -403,7 +403,7 @@ async fn litigation_publishes_no_em_dash() {
 #[tokio::test]
 async fn litigation_claims_only_capabilities_the_workspace_carries() {
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     // What the firm does not run out of this workspace, and so does not say.
     // Daily evidence scraping is the claim this page came closest to
     // publishing; there is no scraper, no docket poller, and no case-reporter
@@ -444,7 +444,7 @@ async fn litigation_carries_none_of_the_sections_it_shed() {
     // together they buried what the firm actually wanted to say. Guarded by the
     // copy that carried them, so re-adding any one fails here.
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     for gone in [
         "What a class action is",
         "What we litigate",
@@ -472,7 +472,7 @@ async fn litigation_cites_no_decided_case() {
     // the strip carries enacted text only. This guards the shape, not one
     // citation: no reporter cite, and no link to a case reporter.
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     assert!(
         !body.contains("courtlistener.com"),
         "the page must link no case reporter: {body}"
@@ -502,7 +502,7 @@ async fn litigation_carries_the_regulated_copy_and_no_results_promise() {
     // rather than a design change. Everything else on the page is the firm's own
     // filed copy, and the sections that came off are guarded above.
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     // The notice reaches the reader once, through the shared footer, and it
     // opens by naming itself an advertisement. The page carries no second copy
     // of its own: what the rule requires is that the reader sees it, not that
@@ -543,10 +543,10 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
     // flat annual figure, framed per-day in the card body, plus the DocuSign
     // per-contract line — rather than quoting it through `/contact`.
     let app = site_app().await;
-    let resp = anon_get(&app, "/fractional-gc").await;
+    let resp = anon_get(&app, "/business").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law | Fractional GC</title>"));
+    assert!(body.contains("<title>Neon Law | Business</title>"));
     assert!(
         body.contains("Clear") && body.contains("Practical") && body.contains("Responsive"),
         "the statement: {body}"
@@ -601,7 +601,7 @@ async fn litigation_still_publishes_no_currency_amount() {
     // as a fee. Fractional GC and Legal Services both publish real figures
     // now, so this guard narrowed to the one page that still must not.
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     // Measured over the page body: the shared header and footer chrome is
     // not this page's copy, and a guard that swept them would fail for a
     // reason no edit here could fix.
@@ -611,7 +611,7 @@ async fn litigation_still_publishes_no_currency_amount() {
         .map_or(body.as_str(), |(page, _)| page);
     assert!(
         !main.contains('$'),
-        "/litigation must publish no currency amount: {main}"
+        "/disputes must publish no currency amount: {main}"
     );
 }
 
@@ -622,8 +622,8 @@ async fn both_practice_pages_hoist_their_own_stylesheet() {
     // motion the copy is built around.
     let app = site_app().await;
     for (path, sheet) in [
-        ("/litigation", "/public/css/litigation.css"),
-        ("/fractional-gc", "/public/css/transactional.css"),
+        ("/disputes", "/public/css/litigation.css"),
+        ("/business", "/public/css/transactional.css"),
     ] {
         let body = body_string(anon_get(&app, path).await).await;
         assert!(
@@ -637,7 +637,7 @@ async fn both_practice_pages_hoist_their_own_stylesheet() {
 #[tokio::test]
 async fn recurring_offer_pages_share_the_commitment_treatment() {
     let app = site_app().await;
-    for path in ["/fractional-gc", "/personal-plan"] {
+    for path in ["/business", "/personal"] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in [
             "/public/css/commitment.css",
@@ -655,7 +655,7 @@ async fn recurring_offer_pages_share_the_commitment_treatment() {
 }
 
 #[tokio::test]
-async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
+async fn the_firm_nav_matches_the_home_page_card_order() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     // The header carries the lead offering and the three practices. Sliced to
@@ -668,10 +668,10 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
         .map(|(links, _)| links)
         .expect("the header renders its link list");
     for href in [
-        r#"href="/personal-plan""#,
+        r#"href="/personal""#,
         r#"href="/services""#,
-        r#"href="/litigation""#,
-        r#"href="/fractional-gc""#,
+        r#"href="/disputes""#,
+        r#"href="/business""#,
     ] {
         assert!(
             header.contains(href),
@@ -683,24 +683,24 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
         !header.contains(r#"href="/team""#),
         "the team page does not exist, so the header must not link it: {header}"
     );
-    // Litigation leads, then the two plans, then the schedule. The ordering is
-    // a product decision and is asserted rather than left to the array
-    // literal: the firm leads with the practice the home page opens on.
-    let litigation = header
-        .find(r#"href="/litigation""#)
-        .expect("Litigation is in the nav");
+    // The two plans lead, then the schedule, then disputes — the same order
+    // the home page's practice cards publish. The ordering is a product
+    // decision and is asserted rather than left to the array literal.
     let transactional = header
-        .find(r#"href="/fractional-gc""#)
+        .find(r#"href="/business""#)
         .expect("Fractional GC is in the nav");
     let personal = header
-        .find(r#"href="/personal-plan""#)
+        .find(r#"href="/personal""#)
         .expect("Personal Plan is in the nav");
     let services = header
         .find(r#"href="/services""#)
         .expect("Legal Services is in the nav");
+    let litigation = header
+        .find(r#"href="/disputes""#)
+        .expect("Litigation is in the nav");
     assert!(
-        litigation < transactional && transactional < personal && personal < services,
-        "the lead practice leads, then the two plans, then the schedule: {header}"
+        transactional < personal && personal < services && services < litigation,
+        "the two plans lead, then the schedule, then disputes: {header}"
     );
     assert_eq!(
         header.matches("<li").count(),
@@ -717,7 +717,7 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
 #[tokio::test]
 async fn the_footer_carries_the_pages_the_header_does_not() {
     // All ten routes are one click away from every public page. Checked on
-    // `/litigation` rather than `/`, because the footer is shared chrome and a
+    // `/disputes` rather than `/`, because the footer is shared chrome and a
     // page that is not the home page proves it renders everywhere.
     //
     // Workshops joined the row when the classes became public, and Docs when the
@@ -745,7 +745,7 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         "/workshops",
     ];
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     let footer = body
         .split_once(r#"aria-label="More pages""#)
         .and_then(|(_, rest)| rest.split_once("</nav>"))
@@ -783,9 +783,9 @@ async fn the_firm_footer_publishes_no_bar_number_and_no_qualified_office() {
     // Both halves are the assertion. A bar number reappearing means
     // `views::brand::FIRM_ATTORNEYS` was refilled; an office note reappearing
     // means an address is being published with a qualification on it. Checked
-    // on `/litigation` because the footer is shared chrome.
+    // on `/disputes` because the footer is shared chrome.
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     for retired in [
         "Bar No.",
         "Admitted in",
@@ -824,7 +824,7 @@ async fn the_firm_footer_publishes_no_bar_number_and_no_qualified_office() {
 #[tokio::test]
 async fn the_firm_footer_sets_each_office_over_three_lines() {
     let app = site_app().await;
-    let full_body = body_string(anon_get(&app, "/litigation").await).await;
+    let full_body = body_string(anon_get(&app, "/disputes").await).await;
     let body = full_body
         .split(r#"<ul class="site-footer__offices""#)
         .nth(1)
@@ -862,7 +862,7 @@ async fn every_public_page_wears_the_brand_mark_as_its_tab_icon() {
     // no `document::*` content, so a component test would pass on a page that
     // ships no icon at all.
     let app = site_app().await;
-    for path in ["/", "/litigation", "/fractional-gc"] {
+    for path in ["/", "/disputes", "/business"] {
         let body = body_string(anon_get(&app, path).await).await;
         let head = body.split_once("</head>").map_or("", |(head, _)| head);
         assert!(
@@ -890,7 +890,7 @@ async fn the_sitemap_advertises_both_practice_pages() {
     // `/navigator` is a public marketing page like the two practice pages, so
     // it is discoverable like one. A page reachable only from a footer link is
     // a page search engines never find.
-    for path in ["/services", "/litigation", "/fractional-gc", "/navigator"] {
+    for path in ["/services", "/disputes", "/business", "/navigator"] {
         assert!(
             body.contains(path),
             "the sitemap must advertise {path}: {body}"
@@ -937,7 +937,7 @@ fn publishes_a_fee(body: &str) -> bool {
 }
 
 /// No page on this host publishes a fee, except the two that now do on
-/// purpose: `/services` and `/fractional-gc`.
+/// purpose: `/services` and `/business`.
 ///
 /// Litigation, being quoted per engagement, stays unpriced because its scope
 /// is not knowable in advance and a posted number would fit nobody. `/contact`
@@ -950,7 +950,7 @@ async fn no_firm_page_publishes_a_fee_except_the_two_that_do() {
     for unpriced in [
         "/notations",
         "/contact",
-        "/litigation",
+        "/disputes",
         "/navigator",
         "/blog",
         "/privacy",
@@ -976,8 +976,8 @@ async fn plans_and_services_publish_real_fees() {
             "/services",
             vec!["$50", "$350/year", "$100", "$250", "$350", "$500"],
         ),
-        ("/fractional-gc", vec!["$3,650", "$10"]),
-        ("/personal-plan", vec!["$365", "$1"]),
+        ("/business", vec!["$3,650", "$10"]),
+        ("/personal", vec!["$365", "$1"]),
     ] {
         let body = body_string(anon_get(&app, priced).await).await;
         assert!(
@@ -1365,12 +1365,7 @@ async fn home_points_at_the_four_practices_from_its_foot() {
         body.contains(r#"id="home-practices-heading""#),
         "the heading renders: {body}"
     );
-    for href in [
-        "/litigation",
-        "/fractional-gc",
-        "/personal-plan",
-        "/services",
-    ] {
+    for href in ["/disputes", "/business", "/personal", "/services"] {
         assert!(
             body.contains(&format!(
                 r#"<a class="neon-card home-practice" href="{href}""#
@@ -1498,12 +1493,7 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     // these two links distinguishable by colour alone (axe
     // `link-in-text-block`, which is how this page failed the public
     // accessibility gate on the 26.9.10 release in the dark scheme).
-    for href in [
-        "/fractional-gc",
-        "/personal-plan",
-        "/services",
-        "/litigation",
-    ] {
+    for href in ["/business", "/personal", "/services", "/disputes"] {
         assert!(body.contains(href), "{href} renders: {body}");
     }
 
@@ -1532,7 +1522,7 @@ async fn home_renders_the_statement_and_the_practice_prose() {
 async fn home_does_not_restore_retired_home_surfaces() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
-    // Causes of action belong on `/litigation`. Listing them in the home hero
+    // Causes of action belong on `/disputes`. Listing them in the home hero
     // is what made the page read as four firms at once.
     for retired in [
         "Personal injury",
@@ -1815,7 +1805,7 @@ async fn a_talk_wears_the_firm_footer() {
 async fn the_firm_footer_links_the_talks_catalog() {
     let app = site_app_with_talks().await;
 
-    for path in ["/", "/litigation", "/presentations"] {
+    for path in ["/", "/disputes", "/presentations"] {
         let body = body_string(anon_get(&app, path).await).await;
         assert!(
             body.contains("href=\"/presentations\""),
@@ -1836,7 +1826,7 @@ async fn the_firm_footer_links_the_talks_catalog() {
 async fn the_firm_footer_links_privacy_and_terms() {
     let app = site_app_with_talks().await;
 
-    for path in ["/", "/litigation", "/presentations"] {
+    for path in ["/", "/disputes", "/presentations"] {
         let body = body_string(anon_get(&app, path).await).await;
         for href in ["/privacy", "/terms"] {
             assert!(
@@ -2641,7 +2631,7 @@ async fn a_mounted_brand_bundle_rebrands_the_firm_home() {
 #[tokio::test]
 async fn the_firm_footer_publishes_no_registered_address_row() {
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/litigation").await).await;
+    let body = body_string(anon_get(&app, "/disputes").await).await;
     for retired in [
         "site-footer__legal-addresses",
         r#"class="site-footer__legal-address""#,
@@ -2732,7 +2722,7 @@ async fn every_firm_page_renders_the_shared_catalog_it_references() {
             ][..],
         ),
         (
-            "/fractional-gc",
+            "/business",
             &[
                 "fractional_gc.eyebrow",
                 "fractional_gc.title",
@@ -2747,7 +2737,7 @@ async fn every_firm_page_renders_the_shared_catalog_it_references() {
             ][..],
         ),
         (
-            "/personal-plan",
+            "/personal",
             &[
                 "personal_plan.eyebrow",
                 "personal_plan.title",
@@ -2757,7 +2747,7 @@ async fn every_firm_page_renders_the_shared_catalog_it_references() {
             ][..],
         ),
         (
-            "/litigation",
+            "/disputes",
             &[
                 "litigation.eyebrow",
                 "litigation.title",
@@ -2789,9 +2779,9 @@ async fn no_firm_page_publishes_an_unresolved_placeholder() {
     for path in [
         "/",
         "/services",
-        "/fractional-gc",
-        "/personal-plan",
-        "/litigation",
+        "/business",
+        "/personal",
+        "/disputes",
         "/navigator",
     ] {
         let body = body_string(anon_get(&app, path).await).await;

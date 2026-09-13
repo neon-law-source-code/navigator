@@ -130,7 +130,7 @@ mod tests {
                     mark: PracticeMark::Technology,
                     heading: "Personal Plan".to_string(),
                     body: String::new(),
-                    href: "/personal-plan".to_string(),
+                    href: "/personal".to_string(),
                     heading_id: "practice-pp".to_string(),
                 }
             }
@@ -143,7 +143,7 @@ mod tests {
             html.contains(r#"class="neon-card home-practice""#),
             "{html}"
         );
-        assert!(html.contains(r#"href="/personal-plan""#), "{html}");
+        assert!(html.contains(r#"href="/personal""#), "{html}");
         assert!(html.contains(r#"aria-labelledby="practice-pp""#), "{html}");
         assert!(html.contains("Personal Plan"), "{html}");
         assert!(

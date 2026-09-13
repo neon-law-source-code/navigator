@@ -460,7 +460,7 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     }
 }
 
-/// The `/litigation` page, resolved from this brand's `litigation.yaml`.
+/// The `/disputes` page, resolved from this brand's `litigation.yaml`.
 pub fn litigation(branding: &views::brand::Branding) -> webapp::litigation_page::LitigationContent {
     let copy: LitigationCopy = load_page(branding, "litigation");
     webapp::litigation_page::LitigationContent {
@@ -475,7 +475,7 @@ pub fn litigation(branding: &views::brand::Branding) -> webapp::litigation_page:
     }
 }
 
-/// The `/fractional-gc` page, resolved from this brand's `fractional-gc.yaml`.
+/// The `/business` page, resolved from this brand's `fractional-gc.yaml`.
 pub fn fractional_gc(
     branding: &views::brand::Branding,
 ) -> webapp::transactional_page::TransactionalContent {
@@ -522,7 +522,7 @@ pub fn fractional_gc(
     }
 }
 
-/// `/personal-plan`, from this brand's `personal-plan.yaml`.
+/// `/personal`, from this brand's `personal-plan.yaml`.
 pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
     marketing_page(load_page(branding, "personal-plan"))
 }
@@ -654,7 +654,7 @@ mod tests {
         );
     }
 
-    /// `/fractional-gc` publishes its base package as a $10-a-day retainer;
+    /// `/business` publishes its base package as a $10-a-day retainer;
     /// the bill photo the hero and fee section draw reads that same figure
     /// and resolves through the asset seam rather than a bare filename.
     #[test]
@@ -712,7 +712,7 @@ mod tests {
         assert!(!text.contains("Navigator"));
     }
 
-    /// `/personal-plan` publishes its one flat fee as a $1-a-day plan.
+    /// `/personal` publishes its one flat fee as a $1-a-day plan.
     #[test]
     fn personal_plan_publishes_its_one_dollar_day_rate() {
         let content = personal_plan(&views::brand::DEFAULT_BRANDING);
@@ -1002,7 +1002,7 @@ mod tests {
             .body
             .iter()
             .flatten()
-            .find(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal-plan"))
+            .find(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal"))
             .expect("a run links the Neon Law Personal Plan");
         assert_eq!(personal_plan_run.text, "Neon Law Personal Plan");
         // The linked run's own text carries no leading/trailing run-boundary

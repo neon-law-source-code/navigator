@@ -128,14 +128,15 @@ fn lint_comments(path: &Path, contents: &str) -> Vec<ManifestFinding> {
 
 /// 1-based lines that a YAML scanner treats as comments.
 fn yaml_comment_lines(contents: &str) -> Vec<usize> {
+    let contents = contents.strip_prefix('\u{feff}').unwrap_or(contents);
     let bytes = contents.as_bytes();
     let mut i = 0;
     let mut line = 1;
     let mut lines = Vec::new();
     while i < bytes.len() {
         match bytes[i] {
-            b'\'' => skip_single_quoted(bytes, &mut i, &mut line),
-            b'"' => skip_double_quoted(bytes, &mut i, &mut line),
+            b'\'' if is_quote_start(bytes, i) => skip_single_quoted(bytes, &mut i, &mut line),
+            b'"' if is_quote_start(bytes, i) => skip_double_quoted(bytes, &mut i, &mut line),
             b'|' | b'>' if is_block_scalar_header(bytes, i) => {
                 if let Some(comment_line) = comment_on_rest_of_line(bytes, i, line) {
                     lines.push(comment_line);
@@ -169,6 +170,19 @@ fn is_comment_start(bytes: &[u8], i: usize) -> bool {
         || bytes[i - 1] == b'\t'
         || bytes[i - 1] == b'\n'
         || bytes[i - 1] == b'\r'
+}
+
+/// A quote opens a scalar only at a token boundary. An apostrophe inside a
+/// plain value (`the author's closed file`) is content; treating it as a
+/// quote start would skip the rest of the document and hide a later comment.
+fn is_quote_start(bytes: &[u8], i: usize) -> bool {
+    if i == 0 {
+        return true;
+    }
+    matches!(
+        bytes[i - 1],
+        b':' | b'[' | b'{' | b',' | b' ' | b'\t' | b'\n' | b'\r'
+    )
 }
 
 fn comment_on_rest_of_line(bytes: &[u8], mut i: usize, line: usize) -> Option<usize> {
@@ -712,6 +726,41 @@ mod tests {
         );
         let quoted_value = "host: staging.neonlaw.com\nproject: \"acme # synthetic\"\n";
         assert!(!codes(quoted_value).contains(&COMMENT_CODE));
+        let single_quoted = "host: staging.neonlaw.com\nproject: 'acme # synthetic'\n";
+        assert!(!codes(single_quoted).contains(&COMMENT_CODE));
+        let flow = concat!(
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+            "allowed_prefixes: [\"https://react.dev/errors/#\", 'https://doc.rust-lang.org/error_codes/#']\n",
+        );
+        assert!(
+            !codes(flow).contains(&COMMENT_CODE),
+            "{:?}",
+            lint_contents(Path::new("navigator.yaml"), flow)
+        );
+        let apostrophe_then_comment = concat!(
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+            "no_live_row: the author's closed file # record the reason\n",
+        );
+        assert!(
+            codes(apostrophe_then_comment).contains(&COMMENT_CODE),
+            "{:?}",
+            lint_contents(Path::new("navigator.yaml"), apostrophe_then_comment)
+        );
+        let bom = concat!(
+            "\u{feff}",
+            "# record the exemption in the pull request\n",
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+        );
+        let bom_findings = lint_contents(Path::new("navigator.yaml"), bom);
+        assert!(
+            bom_findings
+                .iter()
+                .any(|f| f.code == COMMENT_CODE && f.line == 1),
+            "{bom_findings:?}"
+        );
         let block = concat!(
             "host: staging.neonlaw.com\n",
             "project: acme\n",

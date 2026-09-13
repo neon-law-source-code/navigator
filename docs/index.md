@@ -76,7 +76,6 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 
 - [`mcp-a2a-interaction.md`](mcp-a2a-interaction.md) — Navigator MCP over A2A: confirmations and errors.
 - [`claude-mcp-client.md`](claude-mcp-client.md) — Claude as a Navigator MCP client over MCP.
-- [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md) — the Gemini Enterprise MCP server.
 
 ## Billing, trust, and e-signature
 

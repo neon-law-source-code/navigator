@@ -1109,7 +1109,6 @@ an explicit capability choice, not evidence that an invoice reached the ledger.
 | CLI live inquiry | `NAVIGATOR_NOTATION_TEMPLATE`, `NAVIGATOR_SPEECH_BACKEND` |
 | Harness worktree/cache | `NAVIGATOR_WORKTREE_PATH`, `NAVIGATOR_CHROME_CACHE_DIR` |
 | Vertex coordinates | `NAVIGATOR_GCP_PROJECT_ID`, `NAVIGATOR_GCP_LOCATION`, `GOOGLE_METADATA_URL` |
-| Navigator MCP router | `NAVIGATOR_ROUTER_MODEL` |
 | Contract reviewer | `NAVIGATOR_CONTRACT_REVIEW_MODEL` plus the same GCP project, location, and metadata variables |
 | On-chain attestation | `NAVIGATOR_ONCHAIN_BACKEND`, `SOLANA_RPC_URL`, `SOLANA_PROGRAM_ID`, `SOLANA_SIGNER_SECRET` |
 | Billing export | `BILLING_EXPORT_TABLE`, `BIGQUERY_PROJECT` |
@@ -1163,7 +1162,7 @@ any repo owned by that org.
 | Optional fork Config Sync | `NAVIGATOR_CONFIG_SYNC_REPO`, `NAVIGATOR_CONFIG_SYNC_DIR` (unset for Navigator's three) |
 | Image registry | `NAVIGATOR_IMAGE_REGISTRY`, `NAVIGATOR_WEB_IMAGE` |
 | Manifest source | `NAVIGATOR_GKE_OVERLAY` |
-| Public OAuth clients | `NAVIGATOR_OAUTH_CLIENT_ID_BROWSER` (required), `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI` |
+| Public OAuth clients | `NAVIGATOR_OAUTH_CLIENT_ID_BROWSER` (required) |
 | Brand and base URL | `NAVIGATOR_CUSTOM_BRANDING`, `NAVIGATOR_PRIMARY_DOMAIN`, `NAV_BASE_URL` |
 | Public hosts | `NAVIGATOR_PUBLIC_HOST`, `NAVIGATOR_WORKFLOWS_HOST`, `GOOGLE_OAUTH_REQUIRED_HD` |
 | Runtime Secret | `NAVIGATOR_WEB_SECRET_NAME` |
@@ -1174,8 +1173,7 @@ any repo owned by that org.
 
 These values belong to the deployment operator, not an application admin. Provisioning consumes the cloud and cluster
 coordinates; shipping consumes the already-provisioned target plus image, public identity, Secret, and Restate wiring.
-Keep the distinction visible when debugging: changing an admin role cannot repair a missing GKE context or Secret. The
-Gemini client ID is the one nullable entry: it stays unset until that deployment's data store assigns it.
+Keep the distinction visible when debugging: changing an admin role cannot repair a missing GKE context or Secret.
 
 ### Ancillary operations and opt-in test controls
 
@@ -1452,26 +1450,20 @@ Public coordinates are not key material and do not belong in this file. A GitHub
 OAuth **client** ID are greppable, diffable, reviewable values: they live in `config.toml`. Only the App private key and
 the OAuth client **secret** cross into `secrets.enc.yaml`.
 
-#### Google OAuth: six clients, not three shared secrets
+#### Google OAuth: one client per deployment, not one shared secret
 
-Create two OAuth clients per deployment in its row's GCP project:
+Create one OAuth client per deployment in its row's GCP project: a Web application client for browser sign-in, with
+exactly the callback in the table.
 
-- a Web application client for browser sign-in, with exactly the callback in the table;
-- a Gemini Enterprise MCP client for that deployment's data store.
-
-That is six clients total. The staging pair lives in the `neon-law-stg` GCP project's Google Auth Platform consent
-configuration. The three production pairs live in their matching projects. Store the browser ID in
-`NAVIGATOR_OAUTH_CLIENT_ID_BROWSER`, its secret in `OAUTH_CLIENT_SECRET`, and the Gemini ID in
-`NAVIGATOR_OAUTH_CLIENT_ID_GEMINI`. The Gemini client secret belongs in that deployment's Gemini data-store setup.
-Google matches a browser redirect exactly, so do not put several sites' callbacks on one client. An Internal audience
-requires the project to belong to the matching Workspace organization; an External audience needs test users or the
-applicable verification and domain-ownership work.
+The staging client lives in the `neon-law-stg` GCP project's Google Auth Platform consent configuration. The three
+production clients live in their matching projects. Store the browser ID in `NAVIGATOR_OAUTH_CLIENT_ID_BROWSER` and its
+secret in `OAUTH_CLIENT_SECRET`. Google matches a browser redirect exactly, so do not put several sites' callbacks on
+one client. An Internal audience requires the project to belong to the matching Workspace organization; an External
+audience needs test users or the applicable verification and domain-ownership work.
 
 The staging browser client exists with the exact name and callback in this section. Its consent configuration is
-External/Testing, and the authenticated operator is its initial test user. Its deployment config carries only that
-browser ID and secret. The Gemini ID remains absent until the data store assigns it; `ops ship` temporarily renders a
-browser-only allowlist, and [#1126](https://github.com/neon-law-source-code/navigator/issues/1126) removes that seam
-after the authenticated staging Navigator MCP smoke test.
+External/Testing, and the authenticated operator is its initial test user. Its deployment config carries that browser ID
+and secret, and `ops ship` renders a browser-only allowlist.
 
 These clients are configured in **Google Auth Platform → Clients**. They are general OAuth clients, not IAP or Workforce
 Identity Federation clients. Google does not permit creating or modifying them programmatically, so neither ordinary
@@ -1514,8 +1506,7 @@ dialog, which reveals the secret once.
    project, client name, and exact callback. It verifies presence, not that a non-empty value is a usable Google
    credential.
 
-Do not recycle a browser client, callback, or secret across rows. The Gemini client ID, when a deployment's data store
-assigns one, remains `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI`; it is not a substitute for either browser value above.
+Do not recycle a browser client, callback, or secret across rows.
 
 Delete the obsolete `navigator-neon-law-stg-browser`, `navigator-neon-law-stg-gemini`, `navigator-neon-staging-browser`,
 and `navigator-neon-staging-gemini` registrations from the `neon-law-stg` project. Their retired configs are not proof
@@ -1613,7 +1604,7 @@ stack runs on) and **feature vendors** (each lights up one capability and stubs 
 | --- | --- | --- | --- |
 | Google Cloud | Storage, OIDC, archive | platform | required — provisioned by `navigator ops gcp setup` |
 | Restate Cloud | Durable workflow execution (`workflows-service`) | platform | required — the workflow broker |
-| Vertex AI | The A2A agent-router LLM (Gemini Flash in prod) | platform | optional — `NullRouter` until configured |
+| Vertex AI | Inbound contract review | feature | optional — the stub reviewer until configured |
 | GitHub | Private per-Project repositories | platform | required in the requested cloud topology |
 | DocuSign | E-signature | feature | CI-harness stub; required in a normal dev deployment and production |
 | Xero | Accounting / billing (`ACCREC` invoices) | feature | `StubBillingProvider` until `XERO_*` is complete |
@@ -1719,9 +1710,9 @@ and history — through the same portal, not a separate privileged tier.
 
 Provisioning gives you an empty cluster; now pin one deployment to one published release. The `--deployment` flag
 selects the `deployments/<name>/config.toml` that supplies the exact project, cluster context, namespace, image name,
-hosts, buckets, SQL instance, required browser OAuth client, optional post-registration Gemini client, and runtime
-Secret name. First-install order is load-bearing: apply the deployment's Secret Manager objects, install observability
-so `navigator-otel-env` exists, render the release, then apply it:
+hosts, buckets, SQL instance, required browser OAuth client, and runtime Secret name. First-install order is
+load-bearing: apply the deployment's Secret Manager objects, install observability so `navigator-otel-env` exists,
+render the release, then apply it:
 
 Before shipping from a checkout whose deployment changes have not reached your installed binary, install that checkout's
 CLI. A stale global binary may enforce an obsolete ship contract even when the selected deployment's config correctly

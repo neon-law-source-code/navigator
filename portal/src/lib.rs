@@ -456,8 +456,7 @@ pub struct AppState {
     pub identity_admin: Option<idp_admin::IdentityAdminConfig>,
     /// Optional override for the A2A natural-language router. `None` in
     /// production and KIND — [`bootstrap`] then selects
-    /// [`agent_router::GeminiRouter`] (when `NAVIGATOR_GCP_PROJECT_ID`
-    /// is set) or [`agent_router::NullRouter`]. Tests inject a scripted
+    /// [`agent_router::NullRouter`]. Tests inject a scripted
     /// [`agent_router::AgentRouter`] here to drive the agentic loop
     /// deterministically — exercising the loop, the real tools, and the
     /// real email side-effects — without a live LLM.
@@ -1057,11 +1056,11 @@ pub fn bootstrap(
     // `POST /app/mcp`. The layer stack (outermost first):
     //
     //   1. google_oauth::require_google_oauth — prod: validates the
-    //      Google OAuth access token Gemini Enterprise sends as
+    //      Google OAuth access token an agent client sends as
     //      Bearer via tokeninfo, populates AuthClaims. Pass-through
     //      when GOOGLE_OAUTH_CLIENT_IDS is unset (KIND / local dev).
     //      Replaces the earlier IAP layer; IAP couldn't parse the
-    //      opaque ya29.* tokens Gemini Enterprise actually sends.
+    //      opaque ya29.* tokens those clients actually send.
     //   2. require_auth — KIND: validates Bearer JWT. In prod the
     //      Google-OAuth layer already populated AuthClaims so this
     //      short-circuits.
@@ -1139,22 +1138,17 @@ pub fn bootstrap(
     // the deliberate cost — see the module docs on `a2a` for why the one
     // client this serves does not need it.
     //
-    // The natural-language router maps free-form messages
-    // (`message/send` without `metadata.skill`) onto a skill via
-    // Vertex AI Gemini Flash. Pod's GSA needs `roles/aiplatform.user`
-    // for Workload Identity to fetch a token. When
-    // `NAVIGATOR_GCP_PROJECT_ID` is unset (KIND / local dev), falls
-    // back to `NullRouter` which returns a helpful Task explaining
-    // the `metadata.skill` backdoor.
+    // Free-form messages (`message/send` without `metadata.skill`) reach
+    // the natural-language router seam. No provider ships: the Vertex AI
+    // Vertex router retired with the Gemini Enterprise registration, so
+    // `NullRouter` answers with a Task naming the `metadata.skill` door.
+    // A future provider is an `impl AgentRouter` chosen here.
     let router: Arc<dyn agent_router::AgentRouter> =
         if let Some(injected) = state.a2a_router.clone() {
             tracing::info!("a2a router: injected override (test harness)");
             injected
-        } else if let Some(gemini) = agent_router::GeminiRouter::from_env() {
-            tracing::info!("a2a router: Vertex AI Gemini Flash");
-            Arc::new(gemini)
         } else {
-            tracing::info!("a2a router: NullRouter (set NAVIGATOR_GCP_PROJECT_ID to enable)");
+            tracing::info!("a2a router: NullRouter (free-text routing is not configured)");
             Arc::new(agent_router::NullRouter)
         };
     let a2a_state = a2a::A2aState {

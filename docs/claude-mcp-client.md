@@ -5,7 +5,7 @@ open a matter with its entities and people by asking for it in plain English.
 
 This is the **setup and capability** story. The runtime interaction model — where Navigator MCP pauses, how a failure's
 reason reaches the user — is [`mcp-a2a-interaction.md`](mcp-a2a-interaction.md). The Gemini Enterprise equivalent, which
-dials `/app/mcp` over HTTPS instead, is [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
+dials `/app/mcp` over HTTPS directly.
 
 ## What runs where
 

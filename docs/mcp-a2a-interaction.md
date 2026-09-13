@@ -4,12 +4,14 @@ publish: true
 
 # Navigator MCP over A2A — confirmations and errors
 
-How Navigator MCP behaves once a request reaches it over **A2A** — the surface Gemini Enterprise dials (and any other
-A2A client). The agent-card, OAuth, and one-time wiring live in [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md);
-this doc is the runtime interaction model: how a free-form ask becomes a tool call, where Navigator MCP pauses to ask
-**yes/no**, and how a failure's *reason* gets back to the user instead of a blank non-result.
+How Navigator MCP behaves once a request reaches it over **A2A**. This doc is the runtime interaction model: how a named
+skill becomes a tool call, where Navigator MCP pauses to ask **yes/no**, and how a failure's *reason* gets back to the
+user instead of a blank non-result.
 
-It answers two questions that came out of real Gemini Enterprise use:
+An A2A caller names the tool itself in `metadata.skill`: Navigator ships no natural-language router, so free-form text
+is answered with a Task naming that door rather than guessed at.
+
+It answers two questions:
 
 1. When Navigator MCP already has every value it needs, why does it still ask, and can that be a tap instead of a
    typed reply?
@@ -161,9 +163,8 @@ tool) so the `cli import-contacts` path and the future `web` upload route surfac
 ### The general rule
 
 Put the *why* in `content[0].text`. A tool whose failure reason exists only in `structuredContent` will read as a
-message-less non-result on any text-only A2A client. The Gemini Enterprise MCP-server description already tells the
-planner to "show the user the error and ask whether to retry" (see
-[`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md)) — that only works if the error text is actually in the result.
+message-less non-result on any text-only A2A client. A planner told to "show the user the error and ask whether to
+retry" can only do that if the error text is actually in the result.
 
 ## The Navigator workshop runs on this surface
 
@@ -197,7 +198,6 @@ Each behavior described above is grounded by a test or a BDD feature, so the doc
 - **Workshop end-to-end over the Navigator MCP connector** — the [workshop
   README](../server/content/workshops/navigator/README.md), grounded by its
   [feature](../features/tests/features/workshop_navigator_walkthrough.feature).
-- **Agent-card / OAuth / one-time setup** — [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md), grounded by the
-  card tests in `portal/src/a2a.rs`.
+- **Agent-card shape and its OAuth security schemes** — grounded by the card tests in `portal/src/a2a.rs`.
 - **`/app/mcp` is Bearer-only** — it carries no session cookie, so `/app` being private-by-default does not change how
   this path authenticates. See [`access-model.md`](access-model.md).

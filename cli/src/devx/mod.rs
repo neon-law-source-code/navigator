@@ -635,7 +635,6 @@ pub enum GcpCmd {
     Hub(GcpHubCmd),
     /// Identity-Aware Proxy operations for the `navigator-web`
     /// backend. Run after the GKE Ingress has provisioned the LB.
-    /// See `docs/gemini-enterprise-mcp.md`.
     #[command(subcommand)]
     Iap(IapCmd),
 }

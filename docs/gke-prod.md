@@ -227,14 +227,10 @@ repo:
 | `GOOGLE_OAUTH_REQUIRED_HD` | `GOOGLE_OAUTH_REQUIRED_HD` |
 | `namespace: navigator` | `NAVIGATOR_K8S_NAMESPACE` |
 | `YOUR_OAUTH_CLIENT_ID_BROWSER` | `NAVIGATOR_OAUTH_CLIENT_ID_BROWSER` |
-| `YOUR_OAUTH_CLIENT_ID_GEMINI` | `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI` (nullable until data-store registration) |
 
 A missing or blank required var bails **by name** before anything is written — a half-substituted manifest never reaches
-the cluster. Before Gemini Enterprise registration, `ops ship` substitutes the browser ID for the absent Gemini token,
-which renders the same ID twice in a set-valued allowlist and leaves browser login functional. Issue
-[#1126](https://github.com/neon-law-source-code/navigator/issues/1126) removes that temporary fallback after the staging
-data store exists. Firm-specific values that are *secrets or operator toggles* (SendGrid, DocuSign, the inbound-email
-host, DKIM enforcement) stay in the `navigator-web-secrets` K8s Secret and arrive via `envFrom`. The base's inline-env
+the cluster. Firm-specific values that are *secrets or operator toggles* (SendGrid, DocuSign, the inbound-email host,
+DKIM enforcement) stay in the `navigator-web-secrets` K8s Secret and arrive via `envFrom`. The base's inline-env
 `$patch: replace` does not touch that Secret reference, so a full apply preserves them.
 
 A key that Secret projects must reach a pod **from the Secret**, never as an inline `value`. The scheduled triggers

@@ -2,9 +2,8 @@
 //!
 //! Lives beside `/mcp` and reuses the exact same auth stack and tool
 //! registry — A2A is a second protocol skin on the same body. The
-//! point is to make Gemini Enterprise (and any future A2A-native
-//! client) onboard from an agent-card URL rather than configuring a
-//! custom MCP data store.
+//! point is to let an A2A-native client onboard from an agent-card URL
+//! rather than configuring a custom MCP data store.
 //!
 //! Two endpoints, both under the private `/app/api` prefix:
 //!
@@ -13,22 +12,19 @@
 //!   every other path under `/app/api`, which means A2A discovery is
 //!   *not* self-service — a client cannot read the card to learn how to
 //!   authenticate, because reading it already requires authenticating.
-//!   That is a deliberate trade. Gemini Enterprise's connector takes its
-//!   OAuth details from the registration form rather than from
-//!   spec-driven discovery (see `docs/gemini-enterprise-mcp.md`), so the
-//!   one client this serves is unaffected; onboarding a standards-based
-//!   A2A client means handing over the OAuth details out of band.
+//!   That is a deliberate trade: onboarding an A2A client means handing
+//!   over the OAuth details out of band rather than letting the client
+//!   discover them from the card.
 //! - `POST /app/api/mcp/rpc` — JSON-RPC 2.0. Same four-layer middleware
 //!   stack as `/mcp` (`require_google_oauth` → `require_auth` →
 //!   `require_policy` → `inject_principal`). Method scope is
-//!   `message/send` only (synchronous completion). Two routing paths:
-//!   if the client sends `metadata.skill`, dispatch directly; if not,
-//!   delegate to the natural-language [`AgentRouter`] (Vertex AI
-//!   Gemini Flash in prod, NullRouter in KIND).
+//!   `message/send` only (synchronous completion). The client names
+//!   the tool in `metadata.skill` and it dispatches directly; free-form
+//!   text reaches the [`AgentRouter`] seam, which ships no provider
+//!   (`NullRouter`) and answers with a Task naming that door.
 //!
 //! Future: task persistence (`tasks/get`, `tasks/cancel`), streaming,
-//! push notifications. None of these is required for Gemini Enterprise
-//! registration today.
+//! push notifications.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -226,8 +222,7 @@ pub struct A2aState {
     pub mcp: McpState,
     pub canonical_host: CanonicalHost,
     /// Natural-language router used when an incoming `message/send`
-    /// omits `metadata.skill`. `NullRouter` in dev / KIND;
-    /// `GeminiRouter` in prod.
+    /// omits `metadata.skill`. `NullRouter` unless a test injects one.
     pub router: Arc<dyn AgentRouter>,
     /// Side-effecting tool calls Navigator MCP has proposed and is waiting on the
     /// user to confirm, keyed by `taskId`. See [`PendingConfirmations`].
@@ -672,7 +667,7 @@ async fn handle_message_send(
     let task_id = new_uuid();
 
     // Path 1 — the client named the skill: dispatch it directly, no
-    // LLM. This is the `metadata.skill` backdoor every non-Gemini A2A
+    // LLM. This is the `metadata.skill` door every A2A
     // client uses, and stays a single deterministic tool call.
     if let Some(named_skill) = metadata.get("skill").and_then(Value::as_str) {
         let arguments = resolve_arguments(message, &metadata);
@@ -696,7 +691,7 @@ async fn handle_message_send(
         .await;
     }
 
-    // Path 2 — free-form text (Gemini Enterprise's shape): run the
+    // Path 2 — free-form text: run the
     // natural-language agentic loop so multi-step requests (look a
     // person up, *then* email them) actually complete.
     let user_text = extract_user_text(message);
@@ -1420,7 +1415,7 @@ fn extract_user_text(message: &Value) -> String {
 
 /// Build a failed Task whose status carries a single Agent text Part.
 /// Used by the router-failure path: a *failed* (not error) Task means
-/// Gemini Enterprise renders the message to the user instead of
+/// An A2A client renders the message to the user instead of
 /// surfacing a JSON-RPC error envelope.
 /// Client-facing text for a tool error. The variants whose message is
 /// about the caller's own input (unknown tool, bad arguments, not-found,
@@ -1730,7 +1725,7 @@ enum Confirmation {
 /// one-tap Yes/No and the approver types nothing. The decision is read
 /// from the structured selection first; if the client doesn't wrap the
 /// choice in a `data` Part but echoes the chosen token back as plain text
-/// (Gemini Enterprise's shape), that token is accepted too — so the gate
+/// (the common client shape), that token is accepted too — so the gate
 /// behaves identically regardless of envelope, with no external client
 /// behavior left to verify.
 ///
@@ -1774,7 +1769,7 @@ fn extract_structured_choice(message: &Value) -> Option<String> {
 }
 
 /// Human-readable explanation of why the router didn't dispatch.
-/// Lists the available skills so Gemini Enterprise's UI shows the
+/// Lists the available skills so the client's UI shows the
 /// user *what to try* — the enhanced-error path from the council's
 /// "Leo + Capricorn" agreement. Uses unprefixed skill ids since
 /// that's the public A2A vocabulary.
@@ -1812,7 +1807,7 @@ fn router_failure_message(err: &RouterError, user_text: &str) -> String {
 /// structuredContent: { ... } }`. A2A artifacts accept multiple
 /// parts of different kinds. We emit:
 ///
-/// 1. A `text` Part with the MCP `content[0].text` so Gemini
+/// 1. A `text` Part with the MCP `content[0].text` so a client
 ///    Enterprise (and any chat-UI A2A client) renders a
 ///    human-readable success line to the user.
 /// 2. A `data` Part with `structuredContent` (or the raw result
@@ -2071,7 +2066,7 @@ mod tests {
         }
         // These are production tools, not placeholders: the card must
         // never advertise a `mock_`/`demo_`/`test_` prefixed skill. A
-        // client (Gemini Enterprise) derives its tool names from these
+        // client derives its tool names from these
         // ids, so a stray placeholder prefix would surface to end users.
         for id in &skill_ids {
             for placeholder in ["mock_", "demo_", "test_", "stub_"] {
@@ -2103,7 +2098,7 @@ mod tests {
     #[tokio::test]
     async fn card_url_uses_canonical_host_over_request_host() {
         // Spoofed Host header must be ignored when canonical_host is
-        // configured — Gemini Enterprise will dial whatever URL the
+        // configured — a client will dial whatever URL the
         // card advertises, so the card MUST point at the real
         // hostname, not whatever an attacker put in the Host header.
         let (card, _) = routes(state_with(db().await));
@@ -2468,7 +2463,7 @@ mod tests {
         }
     }
 
-    /// Scripted two-step router emulating what Gemini *should* do for
+    /// Scripted two-step router emulating what a provider *should* do for
     /// "send a welcome email to <addr>": first look the person up by
     /// email, then — reading the id straight out of the lookup result
     /// fed back in the history — send the welcome, then finish. Lets
@@ -3029,7 +3024,7 @@ mod tests {
 
     #[tokio::test]
     async fn rpc_message_send_without_skill_falls_through_to_router() {
-        // Gemini Enterprise's actual wire shape: free-form text Part,
+        // The common A2A wire shape: free-form text Part,
         // no metadata.skill. The router (mocked) decides which tool.
         let stub = Arc::new(StubRouter {
             tool_name: "validate_notation".to_string(),
@@ -3063,7 +3058,7 @@ mod tests {
     #[tokio::test]
     async fn rpc_message_send_with_null_router_returns_enhanced_error_task() {
         // No metadata.skill, no real router → completed-with-failed
-        // Task that lists the catalog so Gemini Enterprise renders
+        // Task that lists the catalog so the client renders
         // it to the user. NOT a JSON-RPC error envelope.
         let (_, rpc) = routes(state_with(db().await));
         let (_, body) = post_rpc(

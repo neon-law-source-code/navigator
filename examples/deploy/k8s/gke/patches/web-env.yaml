@@ -185,35 +185,20 @@ spec:
             # tokeninfo endpoint and accepts the request when the
             # token's `aud`/`azp` is in this allowlist, `email_verified`
             # is true, and the email ends with the required domain.
-            # Both Workspace OAuth clients are listed so either
-            # navigator-web's (browser SSO) or the Gemini Enterprise
-            # data-store client is accepted. Add another client by
+            # navigator-web's browser SSO client. Add another client by
             # appending `,<id>.apps.googleusercontent.com`.
             - name: GOOGLE_OAUTH_CLIENT_IDS
-              value: "YOUR_OAUTH_CLIENT_ID_GEMINI,YOUR_OAUTH_CLIENT_ID_BROWSER"
+              value: "YOUR_OAUTH_CLIENT_ID_BROWSER"
             - name: GOOGLE_OAUTH_REQUIRED_HD
               value: YOUR_GOOGLE_OAUTH_REQUIRED_HD
-            # Enables the Vertex AI Gemini Flash router for free-form
-            # `message/send` calls on /app/api/mcp/rpc (Gemini Enterprise
-            # sends user text without `metadata.skill`; the router
-            # translates that to a tool call). Auth via Workload
+            # Vertex AI project for contract review. Auth via Workload
             # Identity — the pod's GSA carries roles/aiplatform.user.
-            # When this env is unset the binary falls back to
-            # NullRouter and returns an enhanced-error Task.
+            # Free-form `message/send` routing is not wired to a provider:
+            # A2A callers name the tool in `metadata.skill`.
             - name: NAVIGATOR_GCP_PROJECT_ID
               value: YOUR_PROJECT_ID
             - name: NAVIGATOR_GCP_LOCATION
               value: us-west4
-            # `gemini-2.5-flash` is the unpinned current Flash build.
-            # Probe before changing:
-            #   curl -X POST -H "Authorization: Bearer $(gcloud auth \
-            #     application-default print-access-token)" \
-            #     "https://us-west4-aiplatform.googleapis.com/v1/projects/\
-            #      YOUR_PROJECT_ID/locations/us-west4/publishers/google/\
-            #      models/<MODEL>:generateContent" -d '{}'
-            # 200 = available, 404 = model not in this region.
-            - name: NAVIGATOR_ROUTER_MODEL
-              value: gemini-2.5-flash
           envFrom:
             # Collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) — shared with
             # workflows-service and the *-trigger CronJobs.

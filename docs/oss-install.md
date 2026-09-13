@@ -305,8 +305,8 @@ embedded Rego, OIDC, and Restate handshakes. Any missing env var crashes the pod
 
 ## Where things go from here
 
-- For Restate Cloud setup, see [`gke-prod.md`](gke-prod.md). For the Gemini Enterprise (A2A) wiring, see
-  [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
+- For Restate Cloud setup, see [`gke-prod.md`](gke-prod.md). For driving Navigator from an agent, see
+  [`claude-mcp-client.md`](claude-mcp-client.md).
 - For an OSS-friendly deploy via GitHub Actions, a fork inherits the canonical
   [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), which builds every image and publishes it to the
   fork's own GHCR namespace (`ghcr.io/<owner>`) with the run's `GITHUB_TOKEN` — no registry key, no Workload Identity

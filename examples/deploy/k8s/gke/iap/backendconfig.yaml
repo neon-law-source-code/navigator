@@ -11,7 +11,7 @@
 # Auth for /app/mcp now lives inside the `web` pod
 # (`web::google_oauth`), which calls Google's tokeninfo endpoint
 # to validate the bearer token's `aud`, `email`, and
-# `email_verified` claims. See docs/gemini-enterprise-mcp.md.
+# `email_verified` claims. See docs/access-model.md.
 #
 # The BackendConfig (and the parallel navigator-web-mcp Service
 # under ./navigator-web-mcp-service.yaml plus the Ingress path

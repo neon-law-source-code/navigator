@@ -2,12 +2,12 @@
 //!
 //! Why this exists instead of Identity-Aware Proxy: Google IAP
 //! requires a JWT-shaped ID token (`eyJ...`) on incoming requests,
-//! but Gemini Enterprise's Custom MCP Server data store sends the
-//! standard *opaque* OAuth 2.0 access token (`ya29....`) instead.
-//! IAP responds `"Invalid IAP credentials: Unable to parse JWT"` and
-//! the request never reaches the pod. To accept what Gemini
-//! actually sends, we drop IAP at the LB and validate the access
-//! token in-process via Google's `tokeninfo` endpoint.
+//! while a Google-authenticated agent client sends the standard
+//! *opaque* OAuth 2.0 access token (`ya29....`) instead. IAP responds
+//! `"Invalid IAP credentials: Unable to parse JWT"` and the request
+//! never reaches the pod. To accept what those clients actually send,
+//! we drop IAP at the LB and validate the access token in-process via
+//! Google's `tokeninfo` endpoint.
 //!
 //! Validation rules (env-driven, all required for "enforced"):
 //!

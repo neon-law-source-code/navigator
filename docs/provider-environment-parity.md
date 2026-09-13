@@ -53,16 +53,8 @@ For each row:
 2. Create a Web application browser client with only that row's callback.
 3. Store its client ID as `NAVIGATOR_OAUTH_CLIENT_ID_BROWSER` in the matching `deployments/<name>/config.toml` and its
    secret as `OAUTH_CLIENT_SECRET` in that deployment's `secrets.enc.yaml`.
-4. Create the Gemini Enterprise OAuth client using the setup in [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
-5. Store that client ID as `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI`. Store the Gemini client secret in that deployment's
-   Gemini Enterprise data-store configuration, not in a different deployment.
-6. Ship, sign in through the browser client, and call an authenticated Navigator MCP tool through the Gemini client. A
+4. Ship, sign in through the browser client, and call an authenticated Navigator MCP tool through the CLI bridge. A
    client ID appearing in the tree is not proof that either flow works.
-
-The browser registration can precede the Gemini data store. During that interval `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI` is
-absent and `ops ship` renders a browser-only allowlist. Issue
-[#1126](https://github.com/neon-law-source-code/navigator/issues/1126) tracks the remaining staging registration and
-removal of that temporary nullable seam.
 
 Google does not permit these general Google Sign-In/API OAuth clients to be created or modified programmatically. The
 similarly named `gcloud iam oauth-clients` surface creates Workforce Identity Federation clients and is not a

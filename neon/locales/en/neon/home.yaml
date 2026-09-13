@@ -17,10 +17,10 @@ service:
     - - text: "{shared:home.mission_north_star} {shared:home.mission_promise}"
     - - text: "Choose the "
       - text: Business plan
-        href: /fractional-gc
+        href: /business
       - text: " for ongoing help with your company, or the "
       - text: Personal plan
-        href: /personal-plan
+        href: /personal
       - text: " for help with taxes and personal information."
     - - text: "Need one thing? See our "
       - text: individual services
@@ -30,7 +30,7 @@ service:
           and government fees may cost extra.
     - - text: "If you have a dispute, start with a "
       - text: free consultation
-        href: /litigation
+        href: /disputes
       - text: ". You do not need a subscription for that first conversation."
 practices_heading: Choose the help that fits.
 practices:
@@ -39,13 +39,13 @@ practices:
     body: >-
       Ongoing legal help for your business: contracts, hiring, company records,
       and paperwork.
-    href: /fractional-gc
+    href: /business
   - mark: technology
     heading: Personal plan
     body: >-
       Help with taxes and personal information, including optional credit
       monitoring.
-    href: /personal-plan
+    href: /personal
   - mark: gavel
     heading: Individual services
     body: >-
@@ -55,4 +55,4 @@ practices:
     heading: Disputes
     body: >-
       Tell us what happened and what you need in a free consultation.
-    href: /litigation
+    href: /disputes

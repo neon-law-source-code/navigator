@@ -23,10 +23,10 @@ bands:
     body:
       - - text: "See the "
         - text: Business plan
-          href: /fractional-gc
+          href: /business
         - text: " or "
         - text: Personal plan
-          href: /personal-plan
+          href: /personal
         - text: >-
             . Forms are free with a plan or $50 each otherwise. Legal work
             outside your plan and government fees cost extra.
@@ -36,7 +36,7 @@ bands:
             plan.
       - - text: "Have a dispute? Start with a "
         - text: free consultation
-          href: /litigation
+          href: /disputes
         - text: ". You do not need a subscription for that first conversation."
   - kind: cards
     anchor: fees

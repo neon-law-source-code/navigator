@@ -187,7 +187,7 @@ pub struct PracticeLinkCopy {
     pub href: String,
 }
 
-/// The `/litigation` catalog.
+/// The `/disputes` catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LitigationCopy {
     pub head_title: String,
@@ -224,7 +224,7 @@ pub struct PricingCardCopy {
     pub day_rate_bill: Option<u16>,
 }
 
-/// The `/fractional-gc` catalog.
+/// The `/business` catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionalCopy {
     pub head_title: String,
@@ -320,7 +320,7 @@ pub enum BandCopy {
         #[serde(default)]
         items: Vec<CardCopy>,
         /// Render this band's cards with the shared "Navigator-UX" pricing-card
-        /// treatment (the same one `/fractional-gc` uses) instead of the plain
+        /// treatment (the same one `/business` uses) instead of the plain
         /// grid. A card's `href`/`href_label` become its call to action, and
         /// its first chip becomes the price beside `cadence`.
         #[serde(default)]
@@ -375,7 +375,7 @@ pub enum BandCopy {
     },
 }
 
-/// A marketing page (`/navigator`, `/personal-plan`, `/services`).
+/// A marketing page (`/navigator`, `/personal`, `/services`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MarketingPageCopy {
     pub head_title: String,

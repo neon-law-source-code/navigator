@@ -1,4 +1,4 @@
-//! The firm litigation page (`/litigation`) — the disputes practice, told from
+//! The firm litigation page (`/disputes`) — the disputes practice, told from
 //! both sides of the v.
 //!
 //! The page states one thing: the firm tries cases fast, for the party bringing

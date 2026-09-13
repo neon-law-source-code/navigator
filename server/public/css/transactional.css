@@ -53,7 +53,7 @@
 /* The three words are still one sentence in the markup — each sits in its own
    `span` for the accent colour, not for motion, so a screen reader and search
    still read one unbroken string. The heading keeps its single entrance
-   animation rather than staggering per word the way `/litigation` does. */
+   animation rather than staggering per word the way `/disputes` does. */
 .speed-hero__heading {
   margin: 0;
   font-family: var(--firm-serif);
@@ -66,7 +66,7 @@
 }
 
 /* The word gap is a margin rather than a space in the markup, the same
-   convention `/litigation`'s `.zeal-word` uses: each word is its own
+   convention `/disputes`'s `.zeal-word` uses: each word is its own
    inline-block so its colour can be set alone, and an inline-block collapses
    the whitespace at its own end. */
 .speed-word {

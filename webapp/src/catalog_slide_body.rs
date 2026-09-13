@@ -119,13 +119,13 @@ mod tests {
                 mark: PracticeMark::Scales,
                 heading: "Litigation".into(),
                 body: String::new(),
-                href: "/litigation".into(),
+                href: "/disputes".into(),
             },
             PracticeLink {
                 mark: PracticeMark::Technology,
                 heading: "Personal Plan".into(),
                 body: String::new(),
-                href: "/personal-plan".into(),
+                href: "/personal".into(),
             },
         ]
     }
@@ -143,10 +143,7 @@ mod tests {
             "{html}"
         );
         assert_eq!(html.matches("neon-card home-practice").count(), 2, "{html}");
-        for (heading, href) in [
-            ("Litigation", "/litigation"),
-            ("Personal Plan", "/personal-plan"),
-        ] {
+        for (heading, href) in [("Litigation", "/disputes"), ("Personal Plan", "/personal")] {
             assert!(html.contains(heading), "missing {heading}: {html}");
             assert!(html.contains(&format!(r#"href="{href}""#)), "{html}");
         }

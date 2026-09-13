@@ -40,10 +40,10 @@ pub use firm_pages::firm_public_dioxus_routers;
 pub const PUBLIC_PATHS: &[&str] = &[
     // --- The firm ---------------------------------------------------------
     "/",
-    "/personal-plan",
+    "/personal",
     "/services",
-    "/litigation",
-    "/fractional-gc",
+    "/disputes",
+    "/business",
     "/navigator",
     "/notations",
     "/notations/{slug}",
@@ -100,10 +100,10 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
         BrandKey::Neon => {
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
-                "/personal-plan",
+                "/personal",
                 "/services",
-                "/litigation",
-                "/fractional-gc",
+                "/disputes",
+                "/business",
                 "/navigator",
                 "/notations",
                 "/contact",
@@ -251,7 +251,7 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         ),
         page(
             "Personal Plan",
-            "/personal-plan",
+            "/personal",
             "The firm's consumer legal plan: tax filing, privacy protection, and credit \
                  monitoring (beta), on one flat annual or daily fee.",
         ),
@@ -267,13 +267,13 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         ),
         page(
             "Litigation",
-            "/litigation",
+            "/disputes",
             "Plaintiff and defense: complex technology disputes for companies, and fraud \
                  cases for the people on the receiving end. Quoted per engagement.",
         ),
         page(
             "Fractional General Counsel",
-            "/fractional-gc",
+            "/business",
             "Company counsel on a flat annual or daily fee — cap table, employee agreements, \
                  and state tax filings, with a one-business-day redline turnaround.",
         ),

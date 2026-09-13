@@ -2721,7 +2721,7 @@ pub fn template_card(
 }
 
 /// One marketing page built from the shared band vocabulary — `/navigator`,
-/// `/personal-plan`, and `/services`.
+/// `/personal`, and `/services`.
 ///
 /// One router serves them all: they differ only in the copy the caller
 /// resolves, which is what keeps a further page a data change.
@@ -2751,8 +2751,8 @@ pub const FIRM_NAVIGATOR_PATH: &str = "/navigator";
 
 /// The firm's consumer legal plan: estate planning, tax filing, privacy
 /// protection, and credit monitoring (beta) on one flat annual or daily fee —
-/// the personal-side counterpart to `/fractional-gc`.
-pub const FIRM_PERSONAL_PLAN_PATH: &str = "/personal-plan";
+/// the personal-side counterpart to `/business`.
+pub const FIRM_PERSONAL_PLAN_PATH: &str = "/personal";
 
 /// The firm's Legal Services page: the published flat-fee catalog of one-time
 /// consumer legal work — a will, a trust, a name change, a formation — each
@@ -3734,7 +3734,7 @@ pub fn home_router(path: &str, content: webapp::home::HomeContent) -> Router {
         .with_state(FullstackState::new(cfg, webapp::home::HomePageEntry))
 }
 
-/// The firm `/litigation` page — the disputes practice. Static like
+/// The firm `/disputes` page — the disputes practice. Static like
 /// [`home_router`]: the caller resolves the copy brand-safely at router-build
 /// time and injects it through `ServeConfig::context_providers`, and the page
 /// resolves no per-request data.
@@ -3761,7 +3761,7 @@ pub fn litigation_router(
         ))
 }
 
-/// The firm `/fractional-gc` page — the flat-monthly-fee company-counsel
+/// The firm `/business` page — the flat-monthly-fee company-counsel
 /// practice. Static and injected exactly like [`litigation_router`].
 pub fn transactional_router(
     path: &str,

@@ -633,7 +633,7 @@
 
 /* One renderer serves both of the firm's marketing looks, and they want
    different typography. A page that names `PageSkin::Practice` gets the
-   look the `/litigation` and `/fractional-gc` pages wear: an eyebrow over a
+   look the `/disputes` and `/business` pages wear: an eyebrow over a
    serif statement, left-aligned, with the body in the firm's card.
 
    The rules mirror `litigation.css` rather than importing it — that sheet is the
@@ -650,18 +650,18 @@
 
 /* The bands carry 1.5rem of inline padding and the hero carried none, which
    left the statement 24px left of every heading under it — and, worse, 24px
-   left of `/litigation` and `/fractional-gc`'s own hero, whose sheets never
+   left of `/disputes` and `/business`'s own hero, whose sheets never
    add that padding at all: those pages take their whole inset from
    `.public-shell__main`'s 1rem. A practice page's mark, eyebrow, and heading
    are the site's one strip readers see repeat across four routes, so both the
    hero and the bands now take their inset from the shell alone, matching
-   `/litigation` and `/fractional-gc` pixel for pixel instead of only matching
+   `/disputes` and `/business` pixel for pixel instead of only matching
    each other.
 
    The base hero's own wash comes off. It is a radial gradient centred at 50%,
    and the practice skin adds `firm-glow` — a second centred wash — so the two
    stacked into a blotch sitting in the middle of a hero whose type is hard
-   left. The glow is the one that stays, which is what `/litigation` carries over
+   left. The glow is the one that stays, which is what `/disputes` carries over
    a plain background. */
 .fm-page--practice .fm-hero--page {
   position: relative;
@@ -674,7 +674,7 @@
 }
 
 /* The band's own inline padding is what pushed a practice page's content
-   24px right of `/litigation` and `/fractional-gc`; the shell's 1rem is
+   24px right of `/disputes` and `/business`; the shell's 1rem is
    already the inset every other practice-skin element aligns to. */
 .fm-page--practice .fm-band {
   padding-inline: 0;
@@ -715,13 +715,13 @@
 }
 
 /* One word of the statement. The opening words carry the firm's colour, the way
-   `/litigation` sets "Litigation attorneys" — the practice name in brand, the
+   `/disputes` sets "Litigation attorneys" — the practice name in brand, the
    claim after it in text.
 
    The gap between words is a margin rather than a space in the markup: each word
    is its own inline-block, and an inline-block collapses the whitespace at its
    own end, so a space in the view would render as nothing and run the heading
-   together. No reveal animation here — `/litigation` staggers its words on
+   together. No reveal animation here — `/disputes` staggers its words on
    entry, and that flourish belongs to the page the firm leads with rather than
    to every practice page. */
 .fm-page--practice .fm-word {
@@ -745,7 +745,7 @@
 /* The one call to action in the hero wears the firm's colour rather than the
    product chrome's cyan. `theme.css` sets the primary button through
    `.nav-theme a.nav-btn--primary`, so this has to match that specificity to
-   win — the same pairing `/litigation` uses for the same button. */
+   win — the same pairing `/disputes` uses for the same button. */
 .nav-theme a.nav-btn--primary.fm-hero__cta,
 .nav-theme a.nav-btn--primary.fm-hero__cta:hover,
 .nav-theme a.nav-btn--primary.fm-hero__cta:focus-visible {

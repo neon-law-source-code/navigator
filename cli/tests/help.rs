@@ -129,6 +129,7 @@ fn notations_help_lists_the_notation_authoring_workbench() {
         vec![
             "format",
             "narrate",
+            "preview",
             "render",
             "scaffold",
             "transcribe",

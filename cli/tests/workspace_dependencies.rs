@@ -100,6 +100,7 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "serde_yaml",
     "server",
     "sha2",
+    "solana-attestation-service-client",
     "store",
     "strum",
     "surrealdb",

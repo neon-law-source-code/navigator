@@ -33,6 +33,7 @@ mod release_default_tag;
 mod release_version;
 #[allow(dead_code)]
 mod remote;
+mod sas;
 mod scaffold;
 mod sendgrid_openapi;
 mod surreal_archive;
@@ -1325,6 +1326,15 @@ enum OpsCmd {
         #[command(subcommand)]
         action: FirmsAction,
     },
+    /// Inspect the fixed Solana devnet SAS program account.
+    #[command(subcommand)]
+    Sas(SasCmd),
+}
+
+#[derive(Subcommand)]
+enum SasCmd {
+    /// Read the SAS program at finalized commitment.
+    Program,
 }
 
 #[derive(Subcommand)]
@@ -2172,10 +2182,18 @@ fn main() -> ExitCode {
             | OpsCmd::ReleaseDefaultTag { .. }
             | OpsCmd::Release { .. }
             | OpsCmd::Notices { .. }
-            | OpsCmd::Firms { .. }),
+            | OpsCmd::Firms { .. }
+            | OpsCmd::Sas(_)),
         ) => match action {
             OpsCmd::Firms { action } => match action {
                 FirmsAction::Doctor => firms_doctor::run(),
+            },
+            OpsCmd::Sas(SasCmd::Program) => match runtime().block_on(sas::program()) {
+                Ok(code) => code,
+                Err(error) => {
+                    eprintln!("navigator: SAS: {error:#}");
+                    ExitCode::FAILURE
+                }
             },
             OpsCmd::Notices { out, check } => notices::run(&out, check),
             OpsCmd::ReleaseDefaultTag { repo, no_fetch } => {

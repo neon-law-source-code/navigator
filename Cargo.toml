@@ -129,6 +129,7 @@ jsonwebtoken = { version = "11", default-features = false, features = ["use_pem"
 p256 = "0.14"
 rand = "0.10"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "query", "form", "multipart"] }
+solana-attestation-service-client = "1.0.9"
 # Rust-native Rego interpreter. The compatibility gate uses only the
 # thread-safe core needed by Navigator's policy; the default feature set
 # pulls in unrelated JSON Schema, URL, crypto, and coverage machinery.

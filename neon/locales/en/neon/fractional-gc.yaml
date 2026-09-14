@@ -23,7 +23,7 @@ virtues:
       something is urgent so we can discuss the right next step.
 fee_heading: One annual price
 fee_body: >-
-  The Business plan is $3,650 per year. That is about $10 a day. Work outside
+  The Business plan is $3,650 per year. That is $10 a day. Work outside
   the plan, custom contract reviews, and government fees cost extra. We will
   explain the cost before we begin additional work.
 pricing:
@@ -31,7 +31,7 @@ pricing:
     price: "{shared:fractional_gc.price}"
     cadence: /year
     blurb: >-
-      About $10 a day for ongoing help with the legal side of your business.
+      $10 a day for ongoing help with the legal side of your business.
     features:
       - "{shared:fractional_gc.included.records}"
       - "{shared:fractional_gc.included.hiring_forms}"

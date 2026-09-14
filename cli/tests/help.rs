@@ -623,6 +623,7 @@ fn ops_help_lists_operator_members() {
             "release",
             "release-default-tag",
             "restate",
+            "sas",
             "secrets",
             "ship",
             "surreal-archive",

@@ -575,7 +575,9 @@ caller guarded by the reusable publisher's deployment configuration, `README.md`
 `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator validate` requires that
 pair: `AGENTS.md` must exist, `CLAUDE.md` must deliver the same bytes (the nine-byte stub form is refused), and the
 contract must name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the
-matter repository.
+matter repository. The same `validate` walk extracts `navigator …` invocations from the repository's Markdown and checks
+each against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit
+that introduced the rename.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

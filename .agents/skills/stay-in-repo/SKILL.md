@@ -5,7 +5,7 @@ description: >
   checkout, another Project's repository, the home directory, or system temp. Trigger at the start of every session in a
   Navigator Project repository (a client portal or notation-template checkout), and whenever a task seems to need
   something from outside the current tree. Synced verbatim into every Project repository's `.claude/skills/` by
-  `navigator projects repository sync-skills`; this canonical copy lives in Navigator's own `.agents/skills/`.
+  `navigator site projects repository sync-skills`; this canonical copy lives in Navigator's own `.agents/skills/`.
 ---
 
 # Stay inside this repository

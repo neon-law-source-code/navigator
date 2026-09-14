@@ -32,10 +32,11 @@
 //!    guard at this layer, *not* a claim about what an operator sees. Do not
 //!    justify it as "help output"; that was the mistake this comment replaces.
 //!
-//! Deliberately out of scope: `//` and `//!` comments outside `main.rs`. Those
-//! are developer prose about a module, not text the CLI shows anyone, and they
-//! carry the same unresolvable `cli <path>` spelling in another dozen places.
-//! Widening the scan to them is a copy sweep, not a guard, and can follow.
+//! Deliberately out of scope: `//` and `//!` comments outside `main.rs`, and
+//! `#[cfg(test)]` items. Comments are developer prose, not text the CLI shows
+//! anyone. Test modules name retired verbs on purpose so a gate can prove it
+//! refuses them. Widening the scan to comments is a copy sweep, not a guard,
+//! and can follow.
 //!
 //! ## How a path is resolved
 //!
@@ -391,6 +392,53 @@ fn resolve(cache: &mut BTreeMap<Vec<String>, Node>, path: &[String]) -> Result<(
     Ok(())
 }
 
+/// Drop `#[cfg(test)]` items so a covering test can name a retired verb.
+///
+/// Those strings are never printed to an operator. Scanning them would make
+/// this guard refuse the negative examples the Project-repository CLI gate
+/// needs to prove it fails a documented `navigator template render`.
+fn exclude_cfg_test_items(source: &str) -> String {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+        if let Some(after_attr) = trimmed.strip_prefix("#[cfg(test)]") {
+            i += 1;
+            let mut remainder = after_attr.trim();
+            if remainder.is_empty() {
+                while i < lines.len()
+                    && (lines[i].trim().is_empty() || lines[i].trim_start().starts_with("#["))
+                {
+                    i += 1;
+                }
+                if i >= lines.len() {
+                    break;
+                }
+                remainder = lines[i].trim_start();
+                i += 1;
+            }
+            let mut depth: i32 = remainder.chars().fold(0, |n, c| match c {
+                '{' => n + 1,
+                '}' => n - 1,
+                _ => n,
+            });
+            while depth > 0 && i < lines.len() {
+                depth += lines[i].chars().fold(0, |n, c| match c {
+                    '{' => n + 1,
+                    '}' => n - 1,
+                    _ => n,
+                });
+                i += 1;
+            }
+            continue;
+        }
+        out.push(lines[i]);
+        i += 1;
+    }
+    out.join("\n")
+}
+
 /// Every invocation in every operator-facing string under `cli/src`, in a
 /// stable order — `walkdir` yields NTFS and ext4 directories differently, so
 /// the failure list must not depend on which one ran it.
@@ -412,6 +460,7 @@ fn scan_cli_src() -> Vec<Invocation> {
             .replace('\\', "/");
         let file = format!("cli/src/{relative}");
         let source = std::fs::read_to_string(entry.path()).expect("read a cli source file");
+        let source = exclude_cfg_test_items(&source);
         // `main.rs` is the clap surface, so its `///` blocks are `--help`.
         found.extend(invocations_in(&file, &source, relative == "main.rs"));
     }
@@ -534,6 +583,26 @@ fn a_trailing_word_on_a_leaf_that_takes_no_argument_does_not_resolve() {
     assert!(
         why.contains("takes no argument"),
         "the failure must say why the trailing word cannot be typed: {why}"
+    );
+}
+
+#[test]
+fn a_retired_verb_in_a_cfg_test_module_is_not_scanned() {
+    let source = concat!(
+        "fn prod() { let _ = \"run `navigator notations format`\"; }\n",
+        "#[cfg(test)]\n",
+        "mod tests {\n",
+        "    fn example() { let _ = \"run `navigator template render x`\"; }\n",
+        "}\n",
+    );
+    let found = invocations_in("cli/src/example.rs", &exclude_cfg_test_items(source), false);
+    assert_eq!(
+        found
+            .iter()
+            .map(|invocation| invocation.literal.as_str())
+            .collect::<Vec<_>>(),
+        vec!["navigator notations format"],
+        "{found:?}"
     );
 }
 

@@ -147,6 +147,12 @@ struct Cli {
     command: Option<Command>,
 }
 
+/// The live clap tree this binary dispatches. Project-repository validation
+/// walks documented `navigator …` invocations against it.
+pub(crate) fn navigator_command() -> clap::Command {
+    Cli::command()
+}
+
 /// Return the first sentence of `text`, capped at ten words.
 ///
 /// Clap derives help from the detailed Rust documentation beside each command.

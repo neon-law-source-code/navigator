@@ -489,6 +489,7 @@ fn validate_inner(root: &Path, repository: Option<&str>, gate_files: bool) -> Ex
         validate_layout(root, &mut errors, &mut warnings)
     };
     validate_skills(root, &mut errors);
+    validate_documented_cli(root, &mut errors);
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
     let applications = application_workspaces(root, &mut errors);
     let templates = if has_templates && manifest_valid {
@@ -520,6 +521,24 @@ fn validate_inner(root: &Path, repository: Option<&str>, gate_files: bool) -> Ex
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
+    }
+}
+
+fn validate_documented_cli(root: &Path, errors: &mut Vec<Finding>) {
+    let tree = crate::navigator_command();
+    for path in super::cli_docs::markdown_paths(root) {
+        let Ok(markdown) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for finding in super::cli_docs::unresolved_invocations(&markdown, &tree) {
+            errors.push(Finding::at(
+                path.clone(),
+                format!(
+                    "line {}: documented `{}` does not resolve; `{}` is not a subcommand of this navigator",
+                    finding.line, finding.command, finding.verb
+                ),
+            ));
+        }
     }
 }
 
@@ -1934,6 +1953,31 @@ jobs:
         assert_eq!(
             layout_findings(root.path()),
             vec!["path is outside the source-only Project repository layout".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_documented_cli_verb_that_does_not_resolve_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::write(
+            root.path().join("AGENTS.md"),
+            "# contract\n\nRun `navigator template render file.md` then `navigator notations format`.\n",
+        )
+        .unwrap();
+        let mut errors: Vec<Finding> = Vec::new();
+        super::validate_documented_cli(root.path(), &mut errors);
+        let found: Vec<String> = errors.into_iter().map(|error| error.message).collect();
+        assert!(
+            found.iter().any(|finding| finding.contains("template")
+                && finding.contains("does not resolve")),
+            "{found:?}"
+        );
+        assert!(
+            found
+                .iter()
+                .all(|finding| !finding.contains("notations format")),
+            "{found:?}"
         );
     }
 

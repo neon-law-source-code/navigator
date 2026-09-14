@@ -2680,7 +2680,7 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
 /// since `store` cannot depend on `views`.
 fn compiled_brand_presentation(key: &str) -> (&'static str, &'static str) {
     match key {
-        "delete-your-data" => ("system-sans", "#b91c1c"),
+        "delete-your-data" => ("plus-jakarta-sans", "#b91c1c"),
         "lawyer-shook" => ("tinos", "#5c5100"),
         _ => ("gorp-serif", "#007c91"),
     }
@@ -4976,7 +4976,7 @@ records:
             .await
             .unwrap()
             .expect("delete-your-data brand");
-        assert_eq!(dyd.typeface.as_deref(), Some("system-sans"));
+        assert_eq!(dyd.typeface.as_deref(), Some("plus-jakarta-sans"));
         assert_eq!(dyd.primary_color.as_deref(), Some("#b91c1c"));
     }
 

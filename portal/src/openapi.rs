@@ -3032,7 +3032,7 @@ pub fn document_with_base(base: &str) -> Value {
             "properties": {
               "typeface": { "type": "string",
                             "description": "A closed catalog id, or \"uploaded\" to use font_family with a font uploaded via the native multipart door.",
-                            "enum": ["gorp-serif", "tinos", "system-serif", "system-sans", "uploaded"] },
+                            "enum": ["gorp-serif", "plus-jakarta-sans", "tinos", "system-serif", "system-sans", "uploaded"] },
               "primary_color": { "type": "string",
                             "description": "A #rrggbb hex, refused unless its best on-primary contrast (white or black) clears WCAG AA 4.5:1." },
               "font_family": { "type": "string",

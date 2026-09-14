@@ -137,8 +137,9 @@ pub fn router() -> Option<Router> {
 ///   matching route-scoped CSP, so hydration runs under `script-src 'self'
 ///   'nonce-…' 'wasm-unsafe-eval'` without ever admitting blanket
 ///   `'unsafe-inline'` or a CDN host;
-/// - declare the licensed GORP Serif faces against the deployment asset origin,
-///   so the page is set in the firm's typeface (see the module docs); and
+/// - declare the brand's own faces against the deployment asset origin, so the
+///   page is set in that brand's typeface rather than a fallback (see the
+///   module docs); and
 /// - mark the platform and authenticated Navigator surfaces with the wheel
 ///   favicon, while public firm pages keep their brand-selected icon; and
 /// - boot the support-chat widget on public pages, when the deployment carries
@@ -200,7 +201,7 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     };
     let font_head: &str = match views::brand::brand_key() {
         views::brand::BrandKey::Neon => &GORP_HEAD,
-        views::brand::BrandKey::DeleteYourData => "",
+        views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
         views::brand::BrandKey::LawyerShook => &TINOS_HEAD,
     };
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
@@ -389,6 +390,19 @@ static GORP_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
         "GORP Serif",
         &views::assets::asset_url("fonts/gorp-serif/GORPSerif-Regular.woff2"),
         &views::assets::asset_url("fonts/gorp-serif/GORPSerif-Bold.woff2"),
+    )
+});
+
+/// DeleteYourData.com's Plus Jakarta Sans, built from the process asset
+/// origin exactly as GORP's is: the faces are bucket-served on the same
+/// operator-upload lane, so a fresh clone carries no font bytes. The family
+/// is OFL-1.1 rather than licensed, which changes where the bytes may be
+/// redistributed, not where this deployment fetches them from.
+static PLUS_JAKARTA_SANS_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    font_head_fragment(
+        "Plus Jakarta Sans",
+        &views::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2"),
+        &views::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2"),
     )
 });
 

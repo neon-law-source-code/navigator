@@ -339,8 +339,8 @@ fn fill_downloads(
     }
 }
 
-/// One service, resolved for rendering: the catalog's record with its fee,
-/// category label, and `related` names filled in.
+/// One service, resolved for rendering: the catalog's record with its fee and
+/// category label filled in.
 fn service(
     catalog: &views::locales::services::ServicesCatalog,
     record: &views::locales::services::ServiceCopy,
@@ -358,21 +358,6 @@ fn service(
         period: record.period.clone(),
         members_only: record.members_only,
         state_fee: record.state_fee,
-        // A `related` id resolves by construction — the catalog refuses a
-        // dangling one — so an unresolvable entry is dropped rather than
-        // rendered as a link to nowhere.
-        related: record
-            .related
-            .iter()
-            .filter_map(|id| {
-                catalog
-                    .get(id)
-                    .map(|target| webapp::services_search::RelatedService {
-                        id: target.id.clone(),
-                        name: target.name.clone(),
-                    })
-            })
-            .collect(),
     }
 }
 
@@ -393,7 +378,6 @@ fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCat
         examples,
         fee_label,
         includes_label,
-        related_label,
         members_badge,
         state_fee_badge,
         empty,
@@ -420,7 +404,6 @@ fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCat
             .collect(),
         fee_label,
         includes_label,
-        related_label,
         members_badge,
         state_fee_badge,
         empty,
@@ -810,14 +793,6 @@ mod tests {
             .expect("llc-file renders");
         assert_eq!(llc.fee, catalog.flat_fee);
         assert_eq!(llc.category, "Start a business");
-        // `related` carries names, not ids: a reader follows a service, not a
-        // slug.
-        assert!(
-            llc.related.iter().any(
-                |related| related.id == "llc-launch" && related.name == "Company setup package"
-            ),
-            "related services render their names"
-        );
         // The estate audience words ride along, searched and never printed.
         let will = band
             .services

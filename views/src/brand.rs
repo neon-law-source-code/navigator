@@ -156,7 +156,7 @@ impl NavLink {
 const FIRM_NAV: &[NavLink] = &[
     NavLink::leaf("Fractional GC", "/business"),
     NavLink::leaf("Personal Plan", "/personal"),
-    NavLink::leaf("Legal Services", "/services"),
+    NavLink::leaf("ServiceS", "/services"),
     NavLink::leaf("Disputes", "/disputes"),
 ];
 
@@ -1493,12 +1493,7 @@ mod tests {
         let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
         assert_eq!(
             labels,
-            [
-                "Fractional GC",
-                "Personal Plan",
-                "Legal Services",
-                "Disputes"
-            ]
+            ["Fractional GC", "Personal Plan", "ServiceS", "Disputes"]
         );
         assert_eq!(
             FIRM_BRAND.nav.first().map(|link| link.href),

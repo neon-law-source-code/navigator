@@ -357,7 +357,6 @@ pub enum BandCopy {
         examples: Vec<SearchExampleCopy>,
         fee_label: String,
         includes_label: String,
-        related_label: String,
         /// The chip a service requiring a plan carries.
         members_badge: String,
         /// The chip a service carrying a government charge carries. A

@@ -79,13 +79,6 @@ pub fn search_terms(needle: &str) -> Vec<String> {
         .collect()
 }
 
-/// Another service worth reading next: its anchor and the name to print.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct RelatedService {
-    pub id: String,
-    pub name: String,
-}
-
 /// One service, resolved for rendering.
 ///
 /// Plain data with the fees already resolved: the wasm client filters this
@@ -93,7 +86,7 @@ pub struct RelatedService {
 /// flat-fee lookup or its category vocabulary.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Service {
-    /// The catalog id, used as the card's anchor and by `related` links.
+    /// The catalog id, used as the card's anchor.
     pub id: String,
     /// The item code a reader can quote back to the firm.
     pub item: String,
@@ -116,7 +109,6 @@ pub struct Service {
     pub members_only: bool,
     /// Whether a government body charges its own fee on top.
     pub state_fee: bool,
-    pub related: Vec<RelatedService>,
 }
 
 impl Service {
@@ -187,7 +179,6 @@ pub struct ServicesBand {
     pub examples: Vec<SearchExample>,
     pub fee_label: String,
     pub includes_label: String,
-    pub related_label: String,
     /// The chip a service requiring a plan carries.
     pub members_badge: String,
     /// The chip a service with a government charge carries. This is a
@@ -317,7 +308,6 @@ pub fn ServicesSearch(band: ServicesBand, query: String) -> Element {
                     ul { class: "fm-cards fm-services__list",
                         for service in matched.iter() {
                             li { class: "fm-card fm-services__service", id: "service-{service.id}",
-                                p { class: "fm-services__item", "No. {service.item}" }
                                 h3 { class: "fm-card__title", "{service.name}" }
                                 p { class: "fm-services__category", "{service.category}" }
                                 p { class: "fm-services__fee",
@@ -343,16 +333,6 @@ pub fn ServicesSearch(band: ServicesBand, query: String) -> Element {
                                     ul { class: "fm-services__includes",
                                         for line in service.includes.iter() {
                                             li { "{line}" }
-                                        }
-                                    }
-                                }
-                                if !service.related.is_empty() {
-                                    p { class: "fm-services__related-label", "{band.related_label}" }
-                                    ul { class: "fm-services__related",
-                                        for related in service.related.iter() {
-                                            li {
-                                                a { href: "#service-{related.id}", "{related.name}" }
-                                            }
                                         }
                                     }
                                 }
@@ -383,7 +363,6 @@ mod tests {
             period: "per form".to_string(),
             members_only: false,
             state_fee: false,
-            related: Vec::new(),
         }
     }
 
@@ -542,7 +521,6 @@ mod tests {
             }],
             fee_label: "Legal fee".to_string(),
             includes_label: "What this includes".to_string(),
-            related_label: "Other ways we can help".to_string(),
             members_badge: "Plan required".to_string(),
             state_fee_badge: "Government fees cost extra".to_string(),
             empty: "We could not find a match.".to_string(),

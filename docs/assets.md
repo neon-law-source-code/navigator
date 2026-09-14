@@ -130,9 +130,9 @@ A missing object is a loud `502`, never a fallback — the same pull-and-verify 
 
 ### DeleteYourData.com's typeface
 
-The `delete-your-data` house brand seeds the closed `system-sans` typeface (the operating-system sans stack). Plus
-Jakarta Sans remains an operator-uploadable OFL family for deployments that still serve those files, but it is not a
-value on `views::brand::TYPEFACES` and is not injected into the document head.
+The `delete-your-data` house brand seeds the closed `plus-jakarta-sans` typeface, matching the brand's entry in the
+`navigator-ux` gallery. Plus Jakarta Sans is OFL-1.1, so it carries no `operator_licence_required` flag, but its faces
+are bucket-served on the same operator-upload lane as GORP's rather than committed to this repository.
 
 ```bash
 cargo run -p cli -- ops assets fonts upload --family plus-jakarta-sans \
@@ -142,8 +142,9 @@ cargo run -p cli -- ops assets fonts upload --family plus-jakarta-sans \
 The directory must hold `PlusJakartaSans-Regular.woff2` and `PlusJakartaSans-Bold.woff2`; the command uploads both to
 `fonts/plus-jakarta-sans/` in the public assets bucket (`--family gorp-serif`, the default, is unchanged). Local
 development and tests resolve the same fallback `/public/fonts/plus-jakarta-sans/` path GORP's faces use when
-`NAVIGATOR_ASSET_BASE_URL` is unset. `portal::dioxus_app` injects GORP for Neon and Tinos for Lawyer Shook; a
-`delete-your-data` page does not declare a webfont in the head.
+`NAVIGATOR_ASSET_BASE_URL` is unset. `portal::dioxus_app` injects a preload and the `@font-face` block for each brand's
+own family: GORP for Neon, Plus Jakarta Sans for DeleteYourData.com, and Tinos for Lawyer Shook. The generated
+`brand-{key}-tokens.css` declares the same faces alongside the brand's `--nav-font-family`.
 
 Publication is not verified by CI. `deploy.yml` builds and publishes images, and its local KIND gate proves only the
 placeholder image. A full or image-only `ops ship` run verifies the selected deployment's public asset origin after the

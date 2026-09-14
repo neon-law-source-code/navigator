@@ -45,14 +45,23 @@ pub struct Palette {
     pub dark: PaletteScheme,
 }
 
-/// GORP Serif, Tinos, one system serif, and one system sans. Plus Jakarta Sans
-/// is not on this list: a brand that used it seeds `system-sans` instead.
+/// GORP Serif, Plus Jakarta Sans, Tinos, one system serif, and one system
+/// sans. GORP is the only face whose licence is the Firm's rather than a
+/// redistributable one, so it alone sets `operator_licence_required`. Plus
+/// Jakarta Sans is OFL-1.1 and rides GORP's bucket lane anyway, so a fresh
+/// clone carries no font bytes for either.
 pub const TYPEFACES: &[Typeface] = &[
     Typeface {
         id: "gorp-serif",
         label: "GORP Serif",
         stack: "\"GORP Serif\", Georgia, serif",
         operator_licence_required: true,
+    },
+    Typeface {
+        id: "plus-jakarta-sans",
+        label: "Plus Jakarta Sans",
+        stack: "\"Plus Jakarta Sans\", ui-sans-serif, system-ui, sans-serif",
+        operator_licence_required: false,
     },
     Typeface {
         id: "tinos",
@@ -206,7 +215,7 @@ impl BrandKey {
         match self {
             Self::Neon => typeface_by_id("gorp-serif").expect("gorp-serif is catalogued"),
             Self::DeleteYourData => {
-                typeface_by_id("system-sans").expect("system-sans is catalogued")
+                typeface_by_id("plus-jakarta-sans").expect("plus-jakarta-sans is catalogued")
             }
             Self::LawyerShook => typeface_by_id("tinos").expect("tinos is catalogued"),
         }
@@ -297,6 +306,11 @@ fn webfont_css(face: &Typeface) -> Option<String> {
             "GORP Serif",
             &crate::assets::asset_url("fonts/gorp-serif/GORPSerif-Regular.woff2"),
             &crate::assets::asset_url("fonts/gorp-serif/GORPSerif-Bold.woff2"),
+        )),
+        "plus-jakarta-sans" => Some(font_face_css(
+            "Plus Jakarta Sans",
+            &crate::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2"),
+            &crate::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2"),
         )),
         "tinos" => Some(font_face_css(
             "Tinos",
@@ -508,19 +522,61 @@ pub fn scheme_bg(scheme: &PaletteScheme, dark: bool) -> [u8; 3] {
 mod tests {
     use super::*;
 
+    /// The list stays closed, and only GORP is licence-encumbered: Plus
+    /// Jakarta Sans is OFL-1.1, so it is bucket-served like GORP without
+    /// carrying GORP's `operator_licence_required` flag.
     #[test]
-    fn the_typeface_list_is_closed_and_excludes_jakarta() {
+    fn the_typeface_list_is_closed_and_only_gorp_needs_a_licence() {
         let ids: Vec<_> = TYPEFACES.iter().map(|face| face.id).collect();
-        assert_eq!(ids, ["gorp-serif", "tinos", "system-serif", "system-sans"]);
-        assert!(TYPEFACES
-            .iter()
-            .all(|face| !face.stack.to_lowercase().contains("jakarta")));
+        assert_eq!(
+            ids,
+            [
+                "gorp-serif",
+                "plus-jakarta-sans",
+                "tinos",
+                "system-serif",
+                "system-sans"
+            ]
+        );
         assert!(
             typeface_by_id("gorp-serif")
                 .unwrap()
                 .operator_licence_required
         );
         assert!(!typeface_by_id("tinos").unwrap().operator_licence_required);
+        assert!(
+            !typeface_by_id("plus-jakarta-sans")
+                .unwrap()
+                .operator_licence_required
+        );
+    }
+
+    /// The DeleteYourData.com brand renders Plus Jakarta Sans from the assets
+    /// bucket, the same operator-upload lane GORP rides: both faces resolve
+    /// through `assets::asset_url`, so they follow the deployment's asset
+    /// origin. Tinos, by contrast, hard-codes the `/public/fonts/...` static
+    /// mount. With `NAVIGATOR_ASSET_BASE_URL` unset — as under test —
+    /// `asset_url` falls back to that same `/public` mount, so comparing
+    /// against it is what distinguishes the two lanes; a bare `/public`
+    /// substring check cannot.
+    #[test]
+    fn plus_jakarta_sans_serves_its_faces_through_the_asset_origin() {
+        let css = tokens_stylesheet(
+            typeface_by_id("plus-jakarta-sans").unwrap(),
+            palette_by_id("delete-your-data").unwrap(),
+        );
+        assert!(css.contains("font-family:'Plus Jakarta Sans'"), "{css}");
+        for face in [
+            "PlusJakartaSans-Regular.woff2",
+            "PlusJakartaSans-Bold.woff2",
+        ] {
+            let url = crate::assets::asset_url(&format!("fonts/plus-jakarta-sans/{face}"));
+            assert!(css.contains(&format!("url('{url}')")), "{face}: {css}");
+        }
+        assert!(
+            css.contains("--nav-font-family: \"Plus Jakarta Sans\""),
+            "{css}"
+        );
     }
 
     #[test]
@@ -584,7 +640,7 @@ mod tests {
         assert_eq!(BrandKey::Neon.default_palette().id, "neon-teal");
         assert_eq!(
             BrandKey::DeleteYourData.default_typeface().id,
-            "system-sans"
+            "plus-jakarta-sans"
         );
         assert_eq!(
             BrandKey::DeleteYourData.default_palette().id,

@@ -254,6 +254,11 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The signature check walks `base.sha..head.sha`. Depth 1 is the
+          # merge commit only, so an unsigned PR commit would not be in the
+          # clone. Full history is cheap next to building the CLI.
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
@@ -265,6 +270,16 @@ jobs:
         run: cargo build -p cli --quiet
       - name: validate content tree with navigator
         run: "${CARGO_TARGET_DIR:-target}/debug/navigator validate ."
+      # `production` requires signatures on `main`. Squash-merge writes a
+      # GitHub-signed commit there, which does not prove the PR head was
+      # signed. Inspect the pull-request head — not the workflow merge commit —
+      # so Cloud Agent HSM signatures and human GPG/SSH signatures are both
+      # required, and a `git commit` with `commit.gpgsign=false` is refused.
+      - name: refuse unsigned commits on the PR head
+        run: |
+          "${CARGO_TARGET_DIR:-target}/debug/navigator" ops github check-signatures \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"
 
   rust:
     name: cargo test (workspace)

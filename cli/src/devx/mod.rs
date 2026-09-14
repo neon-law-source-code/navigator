@@ -41,6 +41,7 @@ pub(crate) mod registry;
 mod runtime;
 mod sample_project;
 mod ship;
+mod signed_commits;
 mod staging;
 mod surreal;
 mod webapp;
@@ -815,6 +816,11 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             dry_run,
             &action_version,
         ),
+        crate::Command::Ops(crate::OpsCmd::Github(crate::GithubCmd::CheckSignatures {
+            base,
+            head,
+            git_dir,
+        })) => signed_commits::check_range(&git_dir, &base, &head),
         crate::Command::Ops(crate::OpsCmd::Gcp(GcpCmd::Setup {
             project_id,
             public_base_url,

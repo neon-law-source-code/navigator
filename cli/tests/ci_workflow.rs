@@ -213,3 +213,58 @@ fn windows_cli_and_lsp_check_is_path_scoped_and_optional() {
         "the Windows check must remain optional until it has been observed green"
     );
 }
+
+/// Every job that downloads the pinned CLI re-checks the version `read-manifest`
+/// already admitted, so the file carries the same guard six times. A job holding
+/// a narrower copy fails a tag the other five accept, and because `read-manifest`
+/// is the one that resolves the tag, the divergence only surfaces halfway through
+/// a Project's run.
+#[test]
+fn every_project_gate_version_guard_uses_the_same_shape() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".github")
+        .join("workflows")
+        .join("project-gate.yml");
+    let source = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+
+    let guards: Vec<(usize, &str)> = source
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let (_, rest) = line.split_once("=~ ")?;
+            let (pattern, _) = rest.split_once(" ]]")?;
+            Some((index + 1, pattern))
+        })
+        .collect();
+
+    assert_eq!(
+        guards.len(),
+        6,
+        "expected the manifest read plus the five CLI downloads to guard the version"
+    );
+    let (first_line, expected) = guards[0];
+    for (line, pattern) in &guards[1..] {
+        assert_eq!(
+            pattern, &expected,
+            "line {line} guards the version differently from line {first_line}"
+        );
+    }
+
+    // A release candidate is the shape a Project migrating to the two thin
+    // callers has to pin, because the input contract changed in one.
+    for (line, pattern) in &guards {
+        let matched = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(format!(r#"[[ "$1" =~ {pattern} ]]"#))
+            .arg("bash")
+            .arg("26.9.15-rc.1")
+            .status()
+            .expect("run bash");
+        assert!(
+            matched.success(),
+            "line {line} refuses a release candidate the manifest read admits"
+        );
+    }
+}

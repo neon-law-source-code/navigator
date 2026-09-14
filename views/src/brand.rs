@@ -157,7 +157,7 @@ const FIRM_NAV: &[NavLink] = &[
     NavLink::leaf("Fractional GC", "/business"),
     NavLink::leaf("Personal Plan", "/personal"),
     NavLink::leaf("Legal Services", "/services"),
-    NavLink::leaf("Litigation", "/disputes"),
+    NavLink::leaf("Disputes", "/disputes"),
 ];
 
 /// The rest of the firm's public surface, rendered in the footer rather than the
@@ -1497,7 +1497,7 @@ mod tests {
                 "Fractional GC",
                 "Personal Plan",
                 "Legal Services",
-                "Litigation"
+                "Disputes"
             ]
         );
         assert_eq!(

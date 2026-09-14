@@ -121,7 +121,10 @@ pub async fn run(file: &Path, port: u16) -> Result<()> {
 /// scripts, and a root that lands the reader on the page rather than a 404.
 fn router(doc: webapp::notation_preview::PreviewDoc) -> Router {
     let slug = doc.slug.clone();
-    let mut app = portal::dioxus_app::notation_preview_router(vec![doc]);
+    let mut app = portal::dioxus_app::notation_preview_router(
+        vec![doc],
+        webapp::notation_preview::NotationPreviewMode::Local,
+    );
     // Mounts the wasm and the wasm-bindgen glue at the paths the bundle's own
     // `index.html` references. `None` when no bundle is staged, which is the
     // SSR-only case the banner above already reported.
@@ -377,6 +380,46 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("/notations/sample-letter")
         );
+    }
+
+    /// The local authoring server renders the notation alone while retaining
+    /// the actual document, questionnaire, and workflow surfaces.
+    #[tokio::test]
+    async fn local_preview_omits_global_chrome_and_keeps_notation_surfaces() {
+        use axum::body::to_bytes;
+        use tower::ServiceExt;
+
+        let doc = portal::notation_preview_doc::from_markdown(
+            "sample-letter",
+            "/tmp/sample__letter.md",
+            TEMPLATE,
+        );
+        let response = router(doc)
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/notations/sample-letter")
+                    .body(axum::body::Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let html = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("body")
+                .to_vec(),
+        )
+        .expect("UTF-8 HTML");
+        assert!(!html.contains("site-header"), "header chrome: {html}");
+        assert!(
+            !html.contains("site-footer__legal"),
+            "footer chrome: {html}"
+        );
+        assert!(html.contains("Sample Letter"), "document: {html}");
+        assert!(html.contains("Try answering this"), "questionnaire: {html}");
+        assert!(html.contains("notation-workflow"), "workflow: {html}");
     }
 
     /// The stylesheets the page hoists are served out of this binary, so a

@@ -121,6 +121,19 @@ pub mod walker_step;
 /// is exactly the property Phase 0 exists to demonstrate.
 #[allow(non_snake_case)]
 pub fn App() -> Element {
+    let notation_preview = use_server_future(notation_preview::notation_preview_view)?;
+    if let Some(Ok(view)) = &*notation_preview.read() {
+        if !view.content.title.is_empty() {
+            return rsx! {
+                notation_preview::NotationPreviewPage {
+                    chrome: view.chrome.clone(),
+                    content: view.content.clone(),
+                    mode: view.mode,
+                }
+            };
+        }
+    }
+
     let mut clicks = use_signal(|| 0_u32);
 
     rsx! {

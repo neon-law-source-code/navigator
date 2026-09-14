@@ -340,6 +340,13 @@ mod tests {
             Ok(None)
         }
 
+        async fn head_commit_committed_at(
+            &self,
+            _project_code: &str,
+        ) -> Result<Option<String>, ForgeError> {
+            Ok(None)
+        }
+
         async fn delete_repository(&self, _project_code: &str) -> Result<(), ForgeError> {
             Err(ForgeError::Authentication)
         }

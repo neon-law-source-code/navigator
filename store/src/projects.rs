@@ -3134,6 +3134,40 @@ mod surreal_read_tests {
         );
     }
 
+    /// `closed` is well-formed and still refused, in Rust *and* in the engine —
+    /// the same reasoning as `new`, for `/app/projects/closed` (the
+    /// closed-matters tab) instead of the matter-open form.
+    #[tokio::test]
+    async fn the_project_code_closed_is_refused_in_rust_and_in_the_engine() {
+        assert!(
+            cloud::workspace::is_valid_slug("closed"),
+            "`closed` is a well-formed slug — the shape check is not what rejects it"
+        );
+        assert!(!super::is_valid_code("closed"));
+        assert!(super::is_valid_code("closed-matter"));
+        assert!(super::is_valid_code("foreclosed"));
+
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+        let direct = db
+            .query(
+                "CREATE $id SET code = 'closed', name = 'Closed', status = 'open', \
+                 entity_id = $entity_id, inserted_at = '2026-08-11T00:00:00Z', \
+                 updated_at = '2026-08-11T00:00:00Z'",
+            )
+            .bind((
+                "id",
+                crate::surreal::record_id("project", uuid::Uuid::now_v7()),
+            ))
+            .bind(("entity_id", record_id(ENTITY_TABLE, uuid::Uuid::now_v7())))
+            .await
+            .and_then(surrealdb::IndexedResults::check);
+        assert!(
+            direct.is_err(),
+            "the engine must refuse a Project coded `closed` written around is_valid_code"
+        );
+    }
+
     /// Immutability is structural: an `UPDATE` that rewrites `code` on an
     /// existing row is refused by the engine itself, not only by the absence
     /// of a handler that offers to change it (`UpdateProjectCommand` has no

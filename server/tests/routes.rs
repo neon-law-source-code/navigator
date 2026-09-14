@@ -8270,6 +8270,113 @@ async fn lawyer_projects_list_links_each_row_to_detail_page() {
     );
 }
 
+/// `/app/projects` defaults to the Open tab and hides closed matters; the
+/// `/app/projects/closed` sibling shows only them. Two tabs of one list, not
+/// two separate surfaces — see `webapp::project_list::ProjectListScope`.
+#[tokio::test]
+async fn lawyer_projects_list_hides_closed_by_default_and_the_closed_tab_shows_them() {
+    let (state, surreal) = state_with_engines().await;
+    let (open_id, lawyer, cookie, _csrf) = lawyer_project_fixture(&surreal).await;
+    let closed_project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("closed-fixture-{}", uuid::Uuid::now_v7()),
+            name: "Estate of a Retired Matter".into(),
+            status: "closed".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, closed_project.id, lawyer.id, "lawyer")
+        .await
+        .unwrap();
+    let open_name = store::projects::find_by_id(&surreal, open_id)
+        .await
+        .unwrap()
+        .expect("fixture project")
+        .name;
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let open_tab = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header(header::COOKIE, cookie.clone())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(open_tab.status(), StatusCode::OK);
+    let open_body = body_string(open_tab).await;
+    assert!(open_body.contains(&open_name), "{open_body}");
+    assert!(
+        !open_body.contains("Estate of a Retired Matter"),
+        "the Open tab must hide a closed matter by default: {open_body}"
+    );
+    assert!(
+        open_body.contains(r#"href="/app/projects/closed""#),
+        "the Open tab must link to the Closed tab: {open_body}"
+    );
+
+    let closed_tab = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects/closed")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(closed_tab.status(), StatusCode::OK);
+    let closed_body = body_string(closed_tab).await;
+    assert!(
+        closed_body.contains("Estate of a Retired Matter"),
+        "{closed_body}"
+    );
+    assert!(
+        !closed_body.contains(&open_name),
+        "the Closed tab must not show an open matter: {closed_body}"
+    );
+    assert!(closed_body.contains("nav-tab is-active"), "{closed_body}");
+}
+
+/// The `Created` and `Last commit` columns render on both tabs — `created_at`
+/// always has a value; `last_committed_at` degrades to an em dash when no
+/// GitHub forge is configured (the case in every test process).
+#[tokio::test]
+async fn lawyer_projects_list_renders_created_and_last_commit_columns() {
+    let (state, surreal) = state_with_engines().await;
+    let (_project_id, _lawyer, cookie, _csrf) = lawyer_project_fixture(&surreal).await;
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("Created"), "{body}");
+    assert!(body.contains("Last commit"), "{body}");
+    assert!(body.contains(r#"class="project-created-at""#), "{body}");
+    assert!(
+        body.contains(r#"class="project-last-committed-at""#) && body.contains('—'),
+        "no forge is configured in tests, so the column degrades to an em dash: {body}"
+    );
+}
+
 #[tokio::test]
 async fn client_portal_lists_single_project_with_kpi_cards() {
     let (state, _surreal) = state_with_engines().await;

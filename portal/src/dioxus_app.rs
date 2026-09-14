@@ -827,9 +827,17 @@ fn viewer_role(role: store::persons::Role) -> webapp::people::ViewerRole {
 /// router.
 pub const PROJECTS_PATH: &str = "/app/projects";
 
+/// The closed-matters tab of the same list, firm-tier only (`get_project_list`
+/// 404s a non-lawyer caller regardless of scope). A static sibling path, not a
+/// query flag, so it round-trips as a bookmarkable, linkable tab; `closed` is
+/// reserved in [`cloud::workspace::RESERVED_PROJECT_CODES`] so no Project code
+/// can collide with it.
+pub const PROJECTS_CLOSED_PATH: &str = "/app/projects/closed";
+
 /// Reject a `?sort=` targeting a field the projects list does not advertise (it
-/// advertises `code` / `name` / `status` / `entity_name`), returning `400`
-/// before the render runs — the JSON:API `SortSpec::validated` contract.
+/// advertises `code` / `name` / `status` / `entity_name` / `created_at`),
+/// returning `400` before the render runs — the JSON:API `SortSpec::validated`
+/// contract.
 async fn reject_unadvertised_projects_sort(request: Request, next: Next) -> Response {
     use std::collections::{HashMap, HashSet};
     let Ok(params) = axum::extract::Query::<HashMap<String, String>>::try_from_uri(request.uri())
@@ -837,7 +845,7 @@ async fn reject_unadvertised_projects_sort(request: Request, next: Next) -> Resp
     else {
         return (StatusCode::BAD_REQUEST, "malformed query string").into_response();
     };
-    let allowed: HashSet<&str> = ["code", "name", "status", "entity_name"]
+    let allowed: HashSet<&str> = ["code", "name", "status", "entity_name", "created_at"]
         .into_iter()
         .collect();
     match views::components::SortSpec::parse(params.get("sort").map(String::as_str))
@@ -846,6 +854,20 @@ async fn reject_unadvertised_projects_sort(request: Request, next: Next) -> Resp
         Ok(_) => next.run(request).await,
         Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
     }
+}
+
+/// Inject which tab of the projects list this route mount answers as the
+/// wasm-safe [`webapp::project_list::ProjectListScope`] request extension —
+/// bound once per router via `from_fn_with_state`, since the tab is a property
+/// of the mount ([`PROJECTS_PATH`] vs. [`PROJECTS_CLOSED_PATH`]), not of the
+/// request.
+async fn inject_projects_scope(
+    axum::extract::State(scope): axum::extract::State<webapp::project_list::ProjectListScope>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    req.extensions_mut().insert(scope);
+    next.run(req).await
 }
 
 /// The gated Dioxus matter list — one mount for every tier, and the client's
@@ -865,6 +887,43 @@ pub fn projects_router(
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
 ) -> Router {
+    projects_router_for(
+        PROJECTS_PATH,
+        webapp::project_list::ProjectListScope::Open,
+        surreal,
+        sessions,
+        policy,
+        auth,
+    )
+}
+
+/// [`projects_router`]'s closed-tab sibling at [`PROJECTS_CLOSED_PATH`]. Same
+/// gates, same dispatch-by-tier component; only the injected
+/// [`webapp::project_list::ProjectListScope`] differs.
+pub fn projects_closed_router(
+    surreal: store::surreal::SurrealDb,
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+) -> Router {
+    projects_router_for(
+        PROJECTS_CLOSED_PATH,
+        webapp::project_list::ProjectListScope::Closed,
+        surreal,
+        sessions,
+        policy,
+        auth,
+    )
+}
+
+fn projects_router_for(
+    path: &'static str,
+    scope: webapp::project_list::ProjectListScope,
+    surreal: store::surreal::SurrealDb,
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+) -> Router {
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         // A server fn can only reach what this list provides — a route
         // that renders a person and forgets it 500s at `consume_context`,
@@ -879,12 +938,13 @@ pub fn projects_router(
             .layer(from_fn(inject_app_brand_mark))
             .layer(from_fn(inject_person_id))
             .layer(from_fn(inject_dri_view))
+            .layer(from_fn_with_state(scope, inject_projects_scope))
             .layer(from_fn(dioxus_document_head))
             .layer(from_fn(reject_unadvertised_projects_sort))
     };
 
     Router::<FullstackState>::new()
-        .route(PROJECTS_PATH, page())
+        .route(path, page())
         .with_state(FullstackState::new(cfg, webapp::matter_surface::Projects))
         .route_layer(from_fn_with_state(
             (sessions, policy),

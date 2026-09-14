@@ -14775,6 +14775,7 @@ dependencies = [
  "dioxus",
  "dioxus-fullstack-core",
  "dioxus-ssr",
+ "futures",
  "percent-encoding",
  "reqwest 0.13.4",
  "rules",

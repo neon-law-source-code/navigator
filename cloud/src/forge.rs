@@ -100,6 +100,16 @@ pub trait ForgeService: Send + Sync {
     /// archived document's recorded commit sees whatever has actually been
     /// pushed since.
     async fn head_commit_sha(&self, project_code: &str) -> Result<Option<String>, ForgeError>;
+    /// The committer date (RFC 3339) of the commit at the tip of the
+    /// repository's default branch, or `None` if the repository does not
+    /// exist or the forge reported no date. Same freshness contract as
+    /// [`Self::head_commit_sha`]: read fresh, never cached — a lawyer
+    /// workbench listing calls this per row on every render rather than
+    /// trusting a stale value.
+    async fn head_commit_committed_at(
+        &self,
+        project_code: &str,
+    ) -> Result<Option<String>, ForgeError>;
     /// Permanently delete the repository. Irreversible; callers must have
     /// already confirmed an archive exists and matches before calling this.
     async fn delete_repository(&self, project_code: &str) -> Result<(), ForgeError>;
@@ -122,6 +132,10 @@ struct FakeForgeState {
     /// Set only by [`FakeForge::set_head_commit_sha`] — tests control what
     /// the "live" HEAD is rather than this fake deriving one from nothing.
     head_shas: BTreeMap<String, String>,
+    /// Set only by [`FakeForge::set_head_commit_committed_at`] — tests
+    /// control the "live" HEAD's committer date rather than this fake
+    /// deriving one from nothing.
+    head_committed_ats: BTreeMap<String, String>,
 }
 
 impl FakeForge {
@@ -173,6 +187,21 @@ impl FakeForge {
             .head_shas
             .insert(project_code.to_string(), sha.into());
     }
+
+    /// Test control: declare what
+    /// [`ForgeService::head_commit_committed_at`] reports for
+    /// `project_code`.
+    pub fn set_head_commit_committed_at(
+        &self,
+        project_code: &str,
+        committed_at: impl Into<String>,
+    ) {
+        self.state
+            .lock()
+            .expect("fake forge mutex poisoned")
+            .head_committed_ats
+            .insert(project_code.to_string(), committed_at.into());
+    }
 }
 
 impl Default for FakeForge {
@@ -212,10 +241,19 @@ impl ForgeService for FakeForge {
         Ok(state.head_shas.get(project_code).cloned())
     }
 
+    async fn head_commit_committed_at(
+        &self,
+        project_code: &str,
+    ) -> Result<Option<String>, ForgeError> {
+        let state = self.state.lock().expect("fake forge mutex poisoned");
+        Ok(state.head_committed_ats.get(project_code).cloned())
+    }
+
     async fn delete_repository(&self, project_code: &str) -> Result<(), ForgeError> {
         let mut state = self.state.lock().expect("fake forge mutex poisoned");
         state.repositories.remove(project_code);
         state.head_shas.remove(project_code);
+        state.head_committed_ats.remove(project_code);
         Ok(())
     }
 }
@@ -382,6 +420,56 @@ impl GitHubForge {
         // failure worth catching before anything else configures it.
         parse_repository(response, "creating repository", true).await
     }
+
+    /// The commit at the tip of the repository's default branch — the shared
+    /// two-request fetch (resolve `default_branch`, then read its tip) behind
+    /// both [`ForgeService::head_commit_sha`] and
+    /// [`ForgeService::head_commit_committed_at`], so a caller wanting either
+    /// fact makes the same two calls rather than each growing its own copy.
+    async fn head_commit(&self, project_code: &str) -> Result<Option<CommitBody>, ForgeError> {
+        let action = "reading repository for HEAD commit";
+        let response = self
+            .http
+            .get(self.repos_url(project_code))
+            .bearer_auth(&self.token)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .send()
+            .await;
+        let response = match response {
+            Ok(response) if response.status().as_u16() == 404 => return Ok(None),
+            other => Self::checked(other, action)?,
+        };
+        let detail = response
+            .json::<RepositoryDetail>()
+            .await
+            .map_err(|source| ForgeError::Response { action, source })?;
+        let branch = detail
+            .default_branch
+            .ok_or(ForgeError::MissingUrl { action })?;
+
+        let action = "reading HEAD commit";
+        let commit_url = format!(
+            "{}/repos/{}/{project_code}/commits/{branch}",
+            self.api_base, self.organization
+        );
+        let response = self
+            .http
+            .get(commit_url)
+            .bearer_auth(&self.token)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .send()
+            .await;
+        let response = Self::checked(response, action)?;
+        let commit = response
+            .json::<CommitBody>()
+            .await
+            .map_err(|source| ForgeError::Response { action, source })?;
+        Ok(Some(commit))
+    }
 }
 
 #[derive(Serialize)]
@@ -407,6 +495,20 @@ struct RepositoryDetail {
 #[derive(Deserialize)]
 struct CommitBody {
     sha: String,
+    #[serde(default)]
+    commit: Option<CommitDetail>,
+}
+
+#[derive(Deserialize)]
+struct CommitDetail {
+    #[serde(default)]
+    committer: Option<CommitPerson>,
+}
+
+#[derive(Deserialize)]
+struct CommitPerson {
+    #[serde(default)]
+    date: Option<String>,
 }
 
 async fn parse_repository(
@@ -456,48 +558,22 @@ impl ForgeService for GitHubForge {
     }
 
     async fn head_commit_sha(&self, project_code: &str) -> Result<Option<String>, ForgeError> {
-        let action = "reading repository for HEAD sha";
-        let response = self
-            .http
-            .get(self.repos_url(project_code))
-            .bearer_auth(&self.token)
-            .header(reqwest::header::USER_AGENT, USER_AGENT)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .send()
-            .await;
-        let response = match response {
-            Ok(response) if response.status().as_u16() == 404 => return Ok(None),
-            other => Self::checked(other, action)?,
-        };
-        let detail = response
-            .json::<RepositoryDetail>()
-            .await
-            .map_err(|source| ForgeError::Response { action, source })?;
-        let branch = detail
-            .default_branch
-            .ok_or(ForgeError::MissingUrl { action })?;
+        Ok(self
+            .head_commit(project_code)
+            .await?
+            .map(|commit| commit.sha))
+    }
 
-        let action = "reading HEAD commit";
-        let commit_url = format!(
-            "{}/repos/{}/{project_code}/commits/{branch}",
-            self.api_base, self.organization
-        );
-        let response = self
-            .http
-            .get(commit_url)
-            .bearer_auth(&self.token)
-            .header(reqwest::header::USER_AGENT, USER_AGENT)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .send()
-            .await;
-        let response = Self::checked(response, action)?;
-        let commit = response
-            .json::<CommitBody>()
-            .await
-            .map_err(|source| ForgeError::Response { action, source })?;
-        Ok(Some(commit.sha))
+    async fn head_commit_committed_at(
+        &self,
+        project_code: &str,
+    ) -> Result<Option<String>, ForgeError> {
+        Ok(self
+            .head_commit(project_code)
+            .await?
+            .and_then(|commit| commit.commit)
+            .and_then(|detail| detail.committer)
+            .and_then(|person| person.date))
     }
 
     async fn delete_repository(&self, project_code: &str) -> Result<(), ForgeError> {
@@ -556,6 +632,18 @@ mod tests {
         assert_eq!(
             forge.head_commit_sha("acme").await.unwrap(),
             Some("deadbeef".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn fake_forge_reports_no_committed_at_until_one_is_set() {
+        let forge = FakeForge::new();
+        forge.ensure_repository("acme").await.unwrap();
+        assert_eq!(forge.head_commit_committed_at("acme").await.unwrap(), None);
+        forge.set_head_commit_committed_at("acme", "2026-09-01T12:00:00Z");
+        assert_eq!(
+            forge.head_commit_committed_at("acme").await.unwrap(),
+            Some("2026-09-01T12:00:00Z".to_string())
         );
     }
 
@@ -826,6 +914,40 @@ mod tests {
         .expect("configured forge");
         let sha = forge.head_commit_sha("acme").await.unwrap();
         assert_eq!(sha, Some("deadbeefcafe".to_string()));
+    }
+
+    #[tokio::test]
+    async fn github_forge_reads_the_default_branchs_head_commit_committed_at() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/an-organization/acme"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "html_url": "https://forge.example/an-organization/acme",
+                "name": "acme",
+                "default_branch": "main"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/an-organization/acme/commits/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "sha": "deadbeefcafe",
+                "commit": { "committer": { "date": "2026-09-01T12:00:00Z" } }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let forge = GitHubForge::from_lookup(lookup(&[
+            (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
+            (NAVIGATOR_GITHUB_ORG, "an-organization"),
+            (NAVIGATOR_GITHUB_TOKEN_ENV, "test-token"),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
+        ]))
+        .expect("configured forge");
+        let committed_at = forge.head_commit_committed_at("acme").await.unwrap();
+        assert_eq!(committed_at, Some("2026-09-01T12:00:00Z".to_string()));
     }
 
     #[tokio::test]

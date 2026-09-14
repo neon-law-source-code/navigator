@@ -16,9 +16,16 @@
 //! that gate. `store::access::visible_projects_as_lawyer` is the scoped read
 //! for the matter surface.
 //! The resolved entity-name column and the pill are computed server-side, so
-//! all four sort columns (`code` / `name` / `status` / `entity_name`) sort in
-//! one in-memory composite comparator. The "Add project" control links to the
-//! `/app/projects/new` create page, which remains an Axum form route.
+//! all five sort columns (`code` / `name` / `status` / `entity_name` /
+//! `created_at`) sort in one in-memory composite comparator. The "Add project"
+//! control links to the `/app/projects/new` create page, which remains an
+//! Axum form route. A `Last commit` column is fixed (not sortable) and reads
+//! live from GitHub via [`last_committed_at`] — best-effort, degrading to an
+//! em dash rather than blocking the render.
+//!
+//! Two tabs, one list: `/app/projects` (Open, the default) and
+//! `/app/projects/closed` filter the same query by [`ProjectListScope`] —
+//! see `portal::dioxus_app::projects_router` / `projects_closed_router`.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -26,6 +33,19 @@ use serde::{Deserialize, Serialize};
 use crate::components::{Column, DataTable, SortState};
 use crate::people::ViewerRole;
 use crate::portal_project_list::PersonId;
+
+/// Which lifecycle lens the projects list renders: the open matters (the
+/// default, `/app/projects`) or the closed ones (`/app/projects/closed`).
+/// Set once per route mount via `Extension` — see
+/// `portal::dioxus_app::projects_router` / `projects_closed_router` — not
+/// derived from the URL inside the loader, so a direct hit on the generated
+/// `#[server]` endpoint still defaults to Open.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProjectListScope {
+    #[default]
+    Open,
+    Closed,
+}
 
 /// One matter row, in a wasm-safe shape (plain fields — no `store`/`SeaORM`
 /// types cross to the client build).
@@ -37,6 +57,17 @@ pub struct ProjectRow {
     pub status: String,
     /// The resolved entity (matter owner) name; `?` when the FK does not resolve.
     pub entity_name: String,
+    /// `store::projects::Project::inserted_at` (RFC 3339) — when the matter
+    /// was opened.
+    pub created_at: String,
+    /// The committer date (RFC 3339) of the tip commit on the Project's
+    /// GitHub-hosted repository's default branch, fetched live from
+    /// `cloud::forge::ForgeService::head_commit_committed_at` on every
+    /// render. `None` when the matter has no repository, its repository is
+    /// not under this deployment's configured GitHub organization, or the
+    /// live fetch failed — a missing value is not distinguished from an
+    /// unreachable one, since neither is actionable from this list.
+    pub last_committed_at: Option<String>,
     /// A `closed` matter with no offboarding letter on file — surfaced as a
     /// warning badge. (The matching "missing onboarding" signal already has a
     /// home: the `lifecycle_*` fields below fold it into the status pill
@@ -63,6 +94,11 @@ pub struct ProjectListView {
     pub rows: Vec<ProjectRow>,
     pub sort: String,
     pub role: ViewerRole,
+    /// Which tab this render answers — Open (`/app/projects`) or Closed
+    /// (`/app/projects/closed`) — so the page highlights the active tab and
+    /// keeps sort links on the same tab.
+    #[serde(default)]
+    pub scope: ProjectListScope,
     /// The deploy's brand mark for the navbar. `None` when the mounted brand
     /// configures none.
     #[serde(default)]
@@ -131,6 +167,7 @@ fn project_row(
     m: store::projects::Project,
     has_engagement: bool,
     has_closing: bool,
+    last_committed_at: Option<String>,
 ) -> ProjectRow {
     let (missing_onboarding, missing_offboarding_letter) =
         store::projects::matter_flags(has_engagement, &m.status, has_closing);
@@ -144,12 +181,96 @@ fn project_row(
         id: m.id.to_string(),
         code: m.code,
         name: m.name,
+        created_at: m.inserted_at,
+        last_committed_at,
         status: m.status,
         missing_offboarding_letter,
         lifecycle_class: lifecycle.class().to_string(),
         lifecycle_label: lifecycle.label().to_string(),
         lifecycle_title: lifecycle.title().to_string(),
     }
+}
+
+/// Read the injected [`ProjectListScope`] extension, defaulting to Open when
+/// the request carried none (a direct hit on the generated `#[server]`
+/// endpoint need not run behind either route mount's layer).
+#[cfg(feature = "server")]
+async fn injected_projects_scope() -> ProjectListScope {
+    dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<ProjectListScope>, _>()
+        .await
+        .map(|axum::Extension(scope)| scope)
+        .unwrap_or_default()
+}
+
+/// One composite comparator so the first requested `?sort=` field is primary
+/// and later fields only break ties (the JSON:API `SortSpec` precedence
+/// contract).
+#[cfg(feature = "server")]
+fn sort_matters(
+    matters: &mut [store::projects::Project],
+    parsed: &[(String, bool)],
+    by_entity: impl Fn(uuid::Uuid) -> String,
+) {
+    matters.sort_by(|a, b| {
+        parsed
+            .iter()
+            .fold(std::cmp::Ordering::Equal, |acc, (key, descending)| {
+                acc.then_with(|| {
+                    let ordering = match key.as_str() {
+                        "code" => a.code.cmp(&b.code),
+                        "name" => a.name.cmp(&b.name),
+                        "status" => a.status.cmp(&b.status),
+                        "entity_name" => by_entity(a.entity_id).cmp(&by_entity(b.entity_id)),
+                        "created_at" => a.inserted_at.cmp(&b.inserted_at),
+                        _ => std::cmp::Ordering::Equal,
+                    };
+                    if *descending {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                })
+            })
+    });
+}
+
+/// Every matter's live [`last_committed_at`], fetched concurrently so N rows
+/// cost one round trip's latency, not N. Missing forge configuration is a
+/// skip, not an error — the same rule `project_surfaces::reconcile_from_env`
+/// applies to the same forge.
+#[cfg(feature = "server")]
+async fn fetch_last_committed_ats(matters: &[store::projects::Project]) -> Vec<Option<String>> {
+    let forge = cloud::forge::GitHubForge::from_env().ok();
+    let workspace = cloud::workspace::WorkspaceConfig::from_env().ok();
+    futures::future::join_all(matters.iter().map(|m| {
+        let forge = forge.as_ref();
+        let workspace = workspace.as_ref();
+        async move { last_committed_at(forge, workspace, m).await }
+    }))
+    .await
+}
+
+/// The Project's live HEAD commit's committer date, best-effort: `None` when
+/// the matter has no `repository_url`, when that URL is not this
+/// deployment's own GitHub organization (an external or manually-entered
+/// forge is not reachable through the deployment's configured token), or when
+/// the live fetch itself fails. A per-row forge fault degrades the column,
+/// not the whole list.
+#[cfg(feature = "server")]
+async fn last_committed_at(
+    forge: Option<&cloud::forge::GitHubForge>,
+    workspace: Option<&cloud::workspace::WorkspaceConfig>,
+    project: &store::projects::Project,
+) -> Option<String> {
+    use cloud::forge::ForgeService;
+
+    let forge = forge?;
+    let workspace = workspace?;
+    let repository_url = project.repository_url.as_deref()?;
+    if repository_url != workspace.expected_repository_url(&project.code) {
+        return None;
+    }
+    forge.head_commit_committed_at(&project.code).await.ok()?
 }
 
 /// Fetch the lawyer projects list for the current request: refuse non-lawyer,
@@ -188,6 +309,7 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
             .map(|axum::Extension(id)| id)
             .unwrap_or_default();
     let person_id = person_id.and_then(|raw| raw.parse::<uuid::Uuid>().ok());
+    let scope = injected_projects_scope().await;
     let axum::extract::Query(query) = dioxus_fullstack_core::FullstackContext::extract::<
         axum::extract::Query<ProjectListQuery>,
         _,
@@ -215,6 +337,20 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
             .map_err(loader_error)?
     };
 
+    // The tab is the filter: Open hides `closed` matters (the common case —
+    // a firm tier working the docket does not want every closed matter of
+    // the deployment's history in the way), Closed shows only them. There is
+    // no third tab for "archived" — that lifecycle step exists only in
+    // documentation so far ([`store::projects`] module doc), not as a status
+    // any matter actually carries.
+    matters.retain(|m| {
+        let is_closed = m.status.eq_ignore_ascii_case("closed");
+        match scope {
+            ProjectListScope::Open => !is_closed,
+            ProjectListScope::Closed => is_closed,
+        }
+    });
+
     let entities = store::entities::all(&surreal).await.map_err(loader_error)?;
     let by_entity = |id: uuid::Uuid| {
         entities
@@ -230,36 +366,17 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
         .await
         .map_err(loader_error)?;
 
-    // One composite comparator so the first requested field is primary and later
-    // fields only break ties (the JSON:API `SortSpec` precedence contract).
-    matters.sort_by(|a, b| {
-        parsed
-            .iter()
-            .fold(std::cmp::Ordering::Equal, |acc, (key, descending)| {
-                acc.then_with(|| {
-                    let ordering = match key.as_str() {
-                        "code" => a.code.cmp(&b.code),
-                        "name" => a.name.cmp(&b.name),
-                        "status" => a.status.cmp(&b.status),
-                        "entity_name" => by_entity(a.entity_id).cmp(&by_entity(b.entity_id)),
-                        _ => std::cmp::Ordering::Equal,
-                    };
-                    if *descending {
-                        ordering.reverse()
-                    } else {
-                        ordering
-                    }
-                })
-            })
-    });
+    sort_matters(&mut matters, &parsed, by_entity);
+    let last_committed_ats = fetch_last_committed_ats(&matters).await;
 
     let rows = matters
         .into_iter()
-        .map(|m| {
+        .zip(last_committed_ats)
+        .map(|(m, last_committed_at)| {
             let entity_name = by_entity(m.entity_id);
             let has_eng = has_engagement.contains(&m.id);
             let has_close = has_closing.contains(&m.id);
-            project_row(entity_name, m, has_eng, has_close)
+            project_row(entity_name, m, has_eng, has_close, last_committed_at)
         })
         .collect();
 
@@ -268,6 +385,7 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
         rows,
         sort,
         role,
+        scope,
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         error: query.error.filter(|message| !message.is_empty()),
@@ -296,11 +414,34 @@ pub fn LawyerProjects() -> Element {
     };
 
     let sort = SortState::parse(Some(&view.sort));
+    let is_closed_tab = view.scope == ProjectListScope::Closed;
+    let base_path = if is_closed_tab {
+        "/app/projects/closed"
+    } else {
+        "/app/projects"
+    };
+    let open_tab_class = if is_closed_tab {
+        "nav-tab"
+    } else {
+        "nav-tab is-active"
+    };
+    let closed_tab_class = if is_closed_tab {
+        "nav-tab is-active"
+    } else {
+        "nav-tab"
+    };
+    let empty_message = if is_closed_tab {
+        "No closed projects."
+    } else {
+        "No projects yet."
+    };
     let columns = vec![
         Column::sortable("code", "Code"),
         Column::sortable("name", "Name"),
         Column::sortable("status", "Status"),
         Column::sortable("entity_name", "Entity"),
+        Column::sortable("created_at", "Created"),
+        Column::fixed("last_committed_at", "Last commit"),
     ];
     let error = view.error.clone();
     let is_empty = view.rows.is_empty();
@@ -318,19 +459,25 @@ pub fn LawyerProjects() -> Element {
                 h1 { "Projects" }
                 p { a { class: "nav-btn nav-btn--primary", href: "/app/projects/new", "Add project" } }
             }
+            nav { class: "nav-tabs", aria_label: "Project status",
+                a { class: "{open_tab_class}", href: "/app/projects", "Open" }
+                a { class: "{closed_tab_class}", href: "/app/projects/closed", "Closed" }
+            }
             if let Some(error) = error.as_ref() {
                 p { class: "nav-form-error", role: "alert", "{error}" }
             }
             if is_empty {
                 p { class: "projects-empty",
-                    "No projects yet. "
-                    a { href: "/app/projects/new", "Add the first." }
+                    "{empty_message} "
+                    if !is_closed_tab {
+                        a { href: "/app/projects/new", "Add the first." }
+                    }
                 }
             } else {
                 DataTable {
                     columns,
                     sort,
-                    base_path: "/app/projects".to_string(),
+                    base_path: base_path.to_string(),
                     for row in view.rows.iter() {
                         tr { class: "project-row",
                             td { class: "project-code",
@@ -360,6 +507,10 @@ pub fn LawyerProjects() -> Element {
                                 }
                             }
                             td { class: "project-entity", "{row.entity_name}" }
+                            td { class: "project-created-at", "{row.created_at}" }
+                            td { class: "project-last-committed-at",
+                                {row.last_committed_at.clone().unwrap_or_else(|| "—".to_string())}
+                            }
                         }
                     }
                 }

@@ -819,18 +819,37 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
         "{SESSION_COOKIE_NAME}={}",
         SessionStore::new(SESSION_KEY).encode(&admin)
     );
-    let resp = app
+    let open_resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/app/projects")
+                .header("cookie", cookie.clone())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(open_resp.status(), StatusCode::OK);
+    // The Open tab hides `closed` matters by default (ENG-81 follow-up), so
+    // the two closed fixtures (C, D) render only on the Closed tab — the html
+    // this test scans is both tabs' rows combined, not one page's.
+    let closed_resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects/closed")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let html = body_string(resp).await;
+    assert_eq!(closed_resp.status(), StatusCode::OK);
+    let html = format!(
+        "{}{}",
+        body_string(open_resp).await,
+        body_string(closed_resp).await
+    );
 
     // Scope each check to the matter's own table row (the canonical seed
     // also carries projects without onboarding notations, so a global
@@ -906,18 +925,36 @@ async fn projects_list_renders_each_lifecycle_state_with_its_own_class() {
         "{SESSION_COOKIE_NAME}={}",
         SessionStore::new(SESSION_KEY).encode(&admin)
     );
-    let resp = app
+    let open_resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/app/projects")
+                .header("cookie", cookie.clone())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(open_resp.status(), StatusCode::OK);
+    // "Red lifecycle matter" is closed, so the Open tab (which hides closed
+    // matters by default) never renders it — combine both tabs' rows.
+    let closed_resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects/closed")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let html = body_string(resp).await;
+    assert_eq!(closed_resp.status(), StatusCode::OK);
+    let html = format!(
+        "{}{}",
+        body_string(open_resp).await,
+        body_string(closed_resp).await
+    );
     let row_for = |name: &str| -> String {
         html.split("<tr")
             .find(|frag| frag.contains(name))

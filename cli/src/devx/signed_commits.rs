@@ -23,13 +23,15 @@ pub(crate) fn commit_object_is_signed(object: &str) -> bool {
         .any(|line| line.starts_with("gpgsig ") || line.starts_with("gpgsig-sha256 "))
 }
 
-/// Commit ids in `base..head` whose objects carry no signature header.
-pub(crate) fn unsigned_commits(repo: &Path, base: &str, head: &str) -> Result<Vec<String>> {
-    let range = format!("{base}..{head}");
-    let listed = git_stdout(repo, &["rev-list", &range])?;
+/// Commit ids in `base..tip` whose objects carry no signature header.
+pub(crate) fn unsigned_commits(repo: &Path, base: &str, tip: &str) -> Result<Vec<String>> {
+    let listed = git_rev_list(repo, base, tip)?;
     let mut unsigned = Vec::new();
     for sha in listed.lines().filter(|line| !line.is_empty()) {
-        let object = git_stdout(repo, &["cat-file", "-p", sha])?;
+        // `git cat-file -p` prints the `gpgsig` payload. That byte string is
+        // never written to a log: CodeQL's rust/cleartext-logging query
+        // treats it as a secret (see store/tests/project_code_storage.rs).
+        let object = git_commit_object(repo, sha)?;
         if !commit_object_is_signed(&object) {
             unsigned.push(sha.to_string());
         }
@@ -37,18 +39,26 @@ pub(crate) fn unsigned_commits(repo: &Path, base: &str, head: &str) -> Result<Ve
     Ok(unsigned)
 }
 
-/// Exit non-zero when `base..head` contains an unsigned commit.
-pub(crate) fn check_range(repo: &Path, base: &str, head: &str) -> Result<()> {
-    let unsigned = unsigned_commits(repo, base, head)?;
+/// Exit non-zero when `base..tip` contains an unsigned commit.
+pub(crate) fn check_range(repo: &Path, base: &str, tip: &str) -> Result<()> {
+    let unsigned = unsigned_commits(repo, base, tip)?;
     if unsigned.is_empty() {
-        eprintln!("navigator: every commit in {base}..{head} is signed");
+        eprintln!("navigator: every commit in the range is signed");
         return Ok(());
     }
     bail!(
-        "{} unsigned commit(s) in {base}..{head}:\n{}",
+        "{} unsigned commit(s) in the range:\n{}",
         unsigned.len(),
         unsigned.join("\n")
     )
+}
+
+fn git_rev_list(repo: &Path, base: &str, tip: &str) -> Result<String> {
+    git_stdout(repo, &["rev-list", &format!("{base}..{tip}")])
+}
+
+fn git_commit_object(repo: &Path, sha: &str) -> Result<String> {
+    git_stdout(repo, &["cat-file", "-p", sha])
 }
 
 fn git_stdout(repo: &Path, args: &[&str]) -> Result<String> {
@@ -59,11 +69,8 @@ fn git_stdout(repo: &Path, args: &[&str]) -> Result<String> {
         .output()
         .with_context(|| format!("run git {}", args.join(" ")))?;
     if !output.status.success() {
-        bail!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
+        let verb = args.first().copied().unwrap_or("git");
+        bail!("git {verb} failed");
     }
     String::from_utf8(output.stdout).context("git stdout is UTF-8")
 }

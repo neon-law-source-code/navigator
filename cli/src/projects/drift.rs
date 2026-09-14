@@ -1153,7 +1153,8 @@ mod tests {
                 "allowed_prefixes",
                 "host",
                 "no_live_row",
-                "project"
+                "project",
+                "version"
             ]
         );
     }

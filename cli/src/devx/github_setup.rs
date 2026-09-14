@@ -717,7 +717,7 @@ enum Action {
     UpdateLabel {
         name: String,
     },
-    /// A confirmed Project repository's `gate.yml` or `publish.yml` no longer
+    /// A confirmed Project repository's generated `ci.yml` or `cd.yml` no longer
     /// matches [`project_repository::workflow`]/[`project_repository::cd_workflow`]
     /// at the resolved `action_version`.
     ///
@@ -1561,25 +1561,25 @@ fn workflow_drifted(live: Option<&str>, desired: &str) -> bool {
     live != Some(desired)
 }
 
-/// What, if anything, this run's `gate.yml`/`publish.yml` content
+/// What, if anything, this run's `ci.yml`/`cd.yml` content
 /// reconciliation applies to.
 ///
 /// Distinct from [`RepositoryPolicy`], which governs the API-visible policy
 /// (rulesets, settings, labels) every repository in scope always carries.
 /// This is narrower on purpose: it decides whether the repository has a
 /// generated workflow template to be reconciled *against* at all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum WorkflowTemplateScope {
     /// Navigator's own repository, the Homebrew tap, or the deploy
-    /// repository — none of them carry `gate.yml`/`publish.yml` in the shape
+    /// repository — none of them carry `ci.yml`/`cd.yml` in the shape
     /// [`project_repository::workflow`] generates, so this feature leaves
     /// them alone exactly as it did before this feature existed.
     Excluded,
     /// A confirmed Project repository: `navigator.yaml` was read at its root.
-    /// `has_portal` gates whether `publish.yml` is reconciled too, the same
-    /// way `scaffold` and the generated `gate.yml` itself gate every
+    /// `ci.yml` and `cd.yml` are reconciled together, the same way
+    /// `scaffold` emits both generated callers.
     /// portal-specific step — by whether a portal actually exists.
-    Project { has_portal: bool },
+    Project { project: String, host: String },
 }
 
 /// Classify `client`'s repository for [`WorkflowTemplateScope`], fetching
@@ -1625,7 +1625,7 @@ async fn workflow_template_scope(
             project_repository::PROJECT_MANIFEST
         )))
         .await?;
-    if manifest.is_none() {
+    let Some(manifest) = manifest else {
         let slug = &client.repository;
         bail!(
             "{slug} carries no `{}` at its root, so `ops github setup` cannot confirm it is a \
@@ -1633,17 +1633,27 @@ async fn workflow_template_scope(
              to {DEPLOY_REPOSITORY_ENV} if it is a deploy repository this feature should leave alone.",
             project_repository::PROJECT_MANIFEST
         );
-    }
-    let has_portal = client
-        .exists(&client.repo_path(&format!(
-            "/contents/{}/package.json",
-            project_repository::PORTAL_DIRECTORY
-        )))
-        .await?
-        || client
-            .exists(&client.repo_path("/contents/vite.config.ts"))
-            .await?;
-    Ok(WorkflowTemplateScope::Project { has_portal })
+    };
+    let parsed = crate::projects::manifest::parse(&manifest).map_err(|error| {
+        anyhow!(
+            "{} has an unreadable navigator.yaml: {error}",
+            client.repository
+        )
+    })?;
+    let project = parsed
+        .project
+        .filter(|project| !project.is_empty())
+        .ok_or_else(|| {
+            anyhow!(
+                "{} has no Project name in navigator.yaml",
+                client.repository
+            )
+        })?;
+    let host = parsed
+        .host
+        .filter(|host| !host.is_empty())
+        .ok_or_else(|| anyhow!("{} has no host in navigator.yaml", client.repository))?;
+    Ok(WorkflowTemplateScope::Project { project, host })
 }
 
 /// `main` everywhere in this workspace, per `docs/gitops.md`; the generated
@@ -1663,8 +1673,8 @@ fn workflow_update_branch(action_version: &str) -> String {
 ///
 /// Every other [`Action`] in this module reconciles GitHub-API-visible state
 /// (a ruleset, a label, repository settings) that has no review history of
-/// its own; a diff there simply *is* the desired state. `gate.yml` and
-/// `publish.yml` are different — they are files in the tree, on a repository
+/// its own; a diff there simply *is* the desired state. `ci.yml` and
+/// `cd.yml` are different — they are files in the tree, on a repository
 /// whose own ruleset requires a pull request, a passing `ci`, and a code
 /// owner's approval to change `main` at all. Writing them directly would
 /// either be rejected by the very ruleset this command maintains, or — on a
@@ -1682,6 +1692,8 @@ async fn open_workflow_update_pull_request(
     client: &GitHubClient,
     action_version: &str,
     paths: &[String],
+    project: &str,
+    host: &str,
 ) -> Result<()> {
     let branch = workflow_update_branch(action_version);
     let base_sha = client.default_branch_head_sha(DEFAULT_BASE_BRANCH).await?;
@@ -1689,9 +1701,9 @@ async fn open_workflow_update_pull_request(
     if created {
         for path in paths {
             let desired = if path == project_repository::WORKFLOW {
-                project_repository::workflow(action_version)
+                project_repository::workflow_for(action_version, project, host)
             } else {
-                project_repository::cd_workflow(action_version)
+                project_repository::cd_workflow_for(action_version, project, host)
             };
             let live = client
                 .get_optional_file(&client.repo_path(&format!("/contents/{path}")))
@@ -1714,7 +1726,7 @@ async fn open_workflow_update_pull_request(
             DEFAULT_BASE_BRANCH,
             &format!(
                 "Reconciles this repository's generated workflow(s) against Navigator's \
-                 `gate.yml`/`publish.yml` template, pinned to `{action_version}` — the exact \
+                 `ci.yml`/`cd.yml` template, pinned to `{action_version}` — the exact \
                  change `navigator ops github setup` computed. This is a normal pull request: it \
                  still needs the `ci` check and a code owner's approval before it can merge.\n\n\
                  Updated: {}",
@@ -1748,7 +1760,7 @@ pub fn run(target: &RepositoryTarget, dry_run: bool, action_version: &str) -> Re
 
 /// The read-only half of the workflow-content reconciliation: classify the
 /// repository, and — only for a confirmed [`WorkflowTemplateScope::Project`]
-/// — diff its live `gate.yml` (and `publish.yml`, if it has a portal) against
+/// — diff its live `ci.yml` and `cd.yml` against
 /// the desired template, returning the paths that drifted.
 ///
 /// Split out of [`reconcile`] itself so that function stays one readable
@@ -1760,11 +1772,11 @@ async fn plan_workflow_updates(
     client: &GitHubClient,
     policy: RepositoryPolicy,
     action_version: &str,
-) -> Result<Vec<String>> {
-    let WorkflowTemplateScope::Project { has_portal } =
+) -> Result<(Vec<String>, String, String)> {
+    let WorkflowTemplateScope::Project { project, host } =
         workflow_template_scope(client, policy).await?
     else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), String::new(), String::new()));
     };
     let action_version = action_version.trim();
     if !super::registry::is_release_tag(action_version) {
@@ -1791,24 +1803,22 @@ async fn plan_workflow_updates(
         .await?;
     if workflow_drifted(
         gate_live.as_deref(),
-        &project_repository::workflow(action_version),
+        &project_repository::workflow_for(action_version, &project, &host),
     ) {
         drifted.push(project_repository::WORKFLOW.to_string());
     }
-    if has_portal {
-        let publish_live = client
-            .get_optional_text(
-                &client.repo_path(&format!("/contents/{}", project_repository::CD_WORKFLOW)),
-            )
-            .await?;
-        if workflow_drifted(
-            publish_live.as_deref(),
-            &project_repository::cd_workflow(action_version),
-        ) {
-            drifted.push(project_repository::CD_WORKFLOW.to_string());
-        }
+    let publish_live = client
+        .get_optional_text(
+            &client.repo_path(&format!("/contents/{}", project_repository::CD_WORKFLOW)),
+        )
+        .await?;
+    if workflow_drifted(
+        publish_live.as_deref(),
+        &project_repository::cd_workflow_for(action_version, &project, &host),
+    ) {
+        drifted.push(project_repository::CD_WORKFLOW.to_string());
     }
-    Ok(drifted)
+    Ok((drifted, project, host))
 }
 
 /// Read every desired ruleset's live counterpart, positionally matched to
@@ -1940,7 +1950,8 @@ async fn reconcile(
     // `Action` is added, so a repository this feature does not (yet) cover
     // ends the reconcile here rather than midway through the ruleset/label
     // writes above.
-    let workflow_paths = plan_workflow_updates(client, policy, action_version).await?;
+    let (workflow_paths, project, host) =
+        plan_workflow_updates(client, policy, action_version).await?;
     actions.extend(
         workflow_paths
             .iter()
@@ -1963,7 +1974,14 @@ async fn reconcile(
         return Ok(());
     }
     if !workflow_paths.is_empty() {
-        open_workflow_update_pull_request(client, action_version.trim(), &workflow_paths).await?;
+        open_workflow_update_pull_request(
+            client,
+            action_version.trim(),
+            &workflow_paths,
+            &project,
+            &host,
+        )
+        .await?;
     }
     for action in actions {
         if matches!(action, Action::UpdateWorkflow { .. }) {
@@ -4288,7 +4306,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------
-    // ENG-378: `gate.yml`/`publish.yml` content reconciliation.
+    // ENG-378: generated `ci.yml`/`cd.yml` content reconciliation.
     // ---------------------------------------------------------------------
 
     const FIXTURE_ACTION_VERSION: &str = "26.8.23";
@@ -4355,7 +4373,10 @@ mod tests {
         let client = test_client(&server);
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/navigator.yaml"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("host: staging.neonlaw.com\nproject: acme\n"),
+            )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -4368,23 +4389,26 @@ mod tests {
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
-        assert_eq!(
+        assert!(matches!(
             workflow_template_scope(&client, COMMON_POLICY)
                 .await
                 .unwrap(),
-            WorkflowTemplateScope::Project { has_portal: false }
-        );
+            WorkflowTemplateScope::Project { .. }
+        ));
     }
 
-    /// The same repository, but with a portal — `has_portal` flips, which is
-    /// what gates whether `publish.yml` is reconciled at all.
+    /// A repository with a portal has the same workflow scope as one without:
+    /// both generated callers are reconciled together.
     #[tokio::test]
     async fn workflow_template_scope_confirms_a_project_repository_with_a_portal() {
         let server = MockServer::start().await;
         let client = test_client(&server);
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/navigator.yaml"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("host: staging.neonlaw.com\nproject: acme\n"),
+            )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -4397,12 +4421,12 @@ mod tests {
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
-        assert_eq!(
+        assert!(matches!(
             workflow_template_scope(&client, CLIENT_POLICY)
                 .await
                 .unwrap(),
-            WorkflowTemplateScope::Project { has_portal: true }
-        );
+            WorkflowTemplateScope::Project { .. }
+        ));
     }
 
     /// A repository this command governs (`COMMON_POLICY`/`CLIENT_POLICY`) but
@@ -4443,7 +4467,10 @@ mod tests {
         .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/navigator.yaml"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("host: staging.neonlaw.com\nproject: acme\n"),
+            )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -4454,6 +4481,17 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/vite.config.ts"))
             .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/repos/acme/navigator/contents/.github/workflows/cd.yml",
+            ))
+            .and(header("accept", "application/vnd.github.raw+json"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(project_repository::cd_workflow(FIXTURE_ACTION_VERSION)),
+            )
             .mount(&server)
             .await;
 
@@ -4487,7 +4525,10 @@ mod tests {
         .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/navigator.yaml"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("host: staging.neonlaw.com\nproject: acme\n"),
+            )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -4498,6 +4539,17 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/vite.config.ts"))
             .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/repos/acme/navigator/contents/.github/workflows/cd.yml",
+            ))
+            .and(header("accept", "application/vnd.github.raw+json"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(project_repository::cd_workflow(FIXTURE_ACTION_VERSION)),
+            )
             .mount(&server)
             .await;
         let branch = workflow_update_branch(FIXTURE_ACTION_VERSION);
@@ -4576,7 +4628,10 @@ mod tests {
         .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/navigator.yaml"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("host: staging.neonlaw.com\nproject: acme\n"),
+            )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -4618,7 +4673,10 @@ mod tests {
         .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/navigator.yaml"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("host: staging.neonlaw.com\nproject: acme\n"),
+            )
             .mount(&server)
             .await;
         Mock::given(method("GET"))

@@ -173,19 +173,13 @@ fn the_guarded_workflow_exists() {
 }
 
 #[test]
-fn project_gate_arms_auto_merge_without_the_workflow_token() {
+fn project_gate_does_not_own_auto_merge_or_inherit_secrets() {
     let path = repo_root().join(".github/workflows/project-gate.yml");
     let source = std::fs::read_to_string(&path).expect("read project-gate.yml");
     let workflow: serde_yaml::Value =
         serde_yaml::from_str(&source).expect("project-gate.yml parses");
-    let job = serde_yaml::to_string(&workflow["jobs"]["enable-automerge"])
-        .expect("enable-automerge re-serialises");
-    for spelling in ["github.token", "secrets.GITHUB_TOKEN"] {
-        assert!(
-            !job.contains(spelling),
-            "project-gate.yml must not hand `{spelling}` to enable-automerge"
-        );
-    }
+    assert!(workflow["jobs"]["enable-automerge"].is_null());
+    assert!(!source.contains("secrets: inherit"));
     assert!(
         source.contains("navigator site projects gate --ci"),
         "project-gate.yml must run the live-status door"

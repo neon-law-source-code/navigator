@@ -382,6 +382,13 @@ pub async fn ensure(
          NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER={}",
         wif_provider_resource(&number)
     );
+    // `project-publish.yml` reads this bucket directly rather than deriving
+    // it from `host`: a host string carries no GCP project id, and the
+    // publisher's IAM grant below is conditioned on this exact bucket name.
+    eprintln!(
+        "gcp setup [{project_id}] set repository variable \
+         NAVIGATOR_APP_PUBLISHER_BUCKET={applications_bucket}"
+    );
 
     for publisher in &publishers {
         let PublisherIdentity { code, email, .. } = publisher;

@@ -8,8 +8,8 @@
 //!
 //! ```text
 //! <organization>/<project-code>
-//! ├── .github/workflows/gate.yml
-//! ├── .github/workflows/publish.yml
+//! ├── .github/workflows/ci.yml
+//! ├── .github/workflows/cd.yml
 //! ├── .claude/skills/    # synced from Navigator via `sync-skills`
 //! ├── apps/              # React + Vite workspaces, discovered by package.json
 //! │   └── portal/
@@ -23,16 +23,13 @@
 //!
 //! # Where the Project code comes from
 //!
-//! [`validate`] still takes it from the repository name, and CI has that name
-//! as `github.event.repository.name`. Each application mount is that name plus
-//! the application directory name.
+//! [`validate`] still uses the repository name for application mount checks, and
+//! CI has that name as `github.event.repository.name`. Each application mount
+//! is that name plus the application directory name.
 //!
-//! A repository also declares its Project in a root manifest — `navigator.yaml`,
-//! `project:` — and that manifest is part of the layout. So the code is
-//! derived in one place and declared in another, and nothing makes the two
-//! agree. Every repository shipping today aligns them by convention —
-//! `neon-law-staging/sample-litigation` is named for the code it publishes
-//! under — but a repository named for anything else would split them.
+//! A repository also declares its release and Project coordinates in a root
+//! manifest — `navigator.yaml`, with `version:` and a nested `project:` map —
+//! and the gate checks the workflow inputs against it.
 //! `store::sample_project::project_code_for` is what refuses a bundle
 //! declaring a code other than the one it is published under, so a
 //! disagreement is rejected rather than unrepresentable.
@@ -85,7 +82,7 @@ pub(crate) const DOCUMENT_DIRECTORY: &str = "documents";
 /// The legacy client portal's Vite workspace.
 ///
 /// `pub(crate)` because [`super::super::devx::github_setup`] still uses its
-/// presence to decide whether the legacy single-portal publisher is applicable.
+/// presence while reconciling the supported application layouts.
 pub(crate) const PORTAL_DIRECTORY: &str = "portal";
 /// Application workspaces, each declared by `apps/<app>/package.json`.
 const APPLICATIONS_DIRECTORY: &str = "apps";
@@ -97,7 +94,7 @@ pub(crate) const WORKFLOW: &str = ".github/workflows/ci.yml";
 /// repository that has not yet been rewritten is classified, not ignored.
 pub(crate) const RETIRED_WORKFLOW: &str = ".github/workflows/gate.yml";
 /// `pub(crate)` for the same reason as [`WORKFLOW`], but for [`cd_workflow`].
-pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
+pub(crate) const CD_WORKFLOW: &str = ".github/workflows/cd.yml";
 /// The manifest a Project repository declares its Project in.
 ///
 /// `pub(crate)` rather than private because [`super::drift`] and
@@ -320,15 +317,22 @@ pub fn scaffold(
         }
     }
 
-    let manifest = format!("host: {host}\nproject: {project_code}\n");
+    let manifest =
+        format!("version: {action_version}\nproject:\n  host: {host}\n  name: {project_code}\n");
     let template_stem = placeholder_template_stem(project_code);
     let files = [
         (root.join(".gitattributes"), GITATTRIBUTES.to_string()),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
         (root.join("tests/README.md"), tests_readme()),
-        (root.join(WORKFLOW), workflow(action_version)),
-        (root.join(CD_WORKFLOW), cd_workflow(action_version)),
+        (
+            root.join(WORKFLOW),
+            workflow_for(action_version, project_code, host),
+        ),
+        (
+            root.join(CD_WORKFLOW),
+            cd_workflow_for(action_version, project_code, host),
+        ),
         (root.join(PROJECT_MANIFEST), manifest),
         (
             root.join(TEMPLATE_DIRECTORY)
@@ -479,15 +483,15 @@ fn validate_inner(root: &Path, repository: Option<&str>, gate_files: bool) -> Ex
         ));
     }
 
-    if gate_files {
-        validate_layout_for_gate(root, &mut errors);
+    let manifest_valid = if gate_files {
+        validate_layout_for_gate(root, &mut errors, &mut warnings)
     } else {
-        validate_layout(root, &mut errors);
-    }
+        validate_layout(root, &mut errors, &mut warnings)
+    };
     validate_skills(root, &mut errors);
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
     let applications = application_workspaces(root, &mut errors);
-    let templates = if has_templates {
+    let templates = if has_templates && manifest_valid {
         validate_templates(root, &code, &mut errors, &mut warnings)
     } else {
         0
@@ -602,12 +606,16 @@ fn git_tracked_and_stageable_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
-    validate_layout_with_files(root, errors, false);
+fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {
+    validate_layout_with_files(root, errors, false, warnings)
 }
 
-fn validate_layout_for_gate(root: &Path, errors: &mut Vec<Finding>) {
-    validate_layout_with_files(root, errors, true);
+fn validate_layout_for_gate(
+    root: &Path,
+    errors: &mut Vec<Finding>,
+    warnings: &mut Vec<Finding>,
+) -> bool {
+    validate_layout_with_files(root, errors, true, warnings)
 }
 
 fn layout_entries(
@@ -647,7 +655,12 @@ fn layout_entries(
     Some(entries)
 }
 
-fn validate_layout_with_files(root: &Path, errors: &mut Vec<Finding>, gate_files: bool) {
+fn validate_layout_with_files(
+    root: &Path,
+    errors: &mut Vec<Finding>,
+    gate_files: bool,
+    warnings: &mut Vec<Finding>,
+) -> bool {
     if !root.join("README.md").is_file() {
         errors.push(Finding::at(
             root.join("README.md"),
@@ -656,20 +669,25 @@ fn validate_layout_with_files(root: &Path, errors: &mut Vec<Finding>, gate_files
     }
 
     validate_agent_contract(root, errors);
-    validate_manifest(root, errors);
+    let manifest_valid = validate_manifest(root, errors, warnings);
+    let manifest = fs::read_to_string(root.join(PROJECT_MANIFEST))
+        .ok()
+        .and_then(|contents| super::manifest::parse(&contents).ok());
 
     let workflow_path = root.join(WORKFLOW);
     let retired_workflow = root.join(RETIRED_WORKFLOW);
     match fs::read_to_string(&workflow_path) {
-        Ok(contents) => validate_workflow(&workflow_path, &contents, errors),
+        Ok(contents) => validate_workflow(&workflow_path, &contents, manifest.as_ref(), errors),
         Err(_) => match fs::read_to_string(&retired_workflow) {
-            Ok(contents) => validate_workflow(&retired_workflow, &contents, errors),
+            Ok(contents) => {
+                validate_workflow(&retired_workflow, &contents, manifest.as_ref(), errors);
+            }
             Err(_) => errors.push(Finding::at(workflow_path, "missing required CI gate")),
         },
     }
 
     let Some(entries) = layout_entries(root, errors, gate_files) else {
-        return;
+        return manifest_valid;
     };
 
     for (path, is_file) in entries {
@@ -742,6 +760,7 @@ fn validate_layout_with_files(root: &Path, errors: &mut Vec<Finding>, gate_files
             }
         }
     }
+    manifest_valid
 }
 
 /// The phrase a Project `AGENTS.md` must carry so a CLI gap is filed on the
@@ -803,13 +822,23 @@ fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>) {
 /// Hold a Project repository's `navigator.yaml` to the closed key set and
 /// value shapes [`super::manifest::lint`] owns. There is no per-repository
 /// exemption mechanism.
-fn validate_manifest(root: &Path, errors: &mut Vec<Finding>) {
+fn validate_manifest(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {
+    let mut valid = true;
     for finding in super::manifest::lint(root) {
-        errors.push(Finding::at(
+        if !finding.warning {
+            valid = false;
+        }
+        let converted = Finding::at(
             finding.path,
             format!("{}: {}", finding.code, finding.message),
-        ));
+        );
+        if finding.warning {
+            warnings.push(converted);
+        } else {
+            errors.push(converted);
+        }
     }
+    valid
 }
 
 /// A synced skill that is missing, or whose content has drifted from the
@@ -973,9 +1002,6 @@ fn validate_application(application: &Path, errors: &mut Vec<Finding>) {
 /// The reusable workflow a Project repository's thin `ci.yml` must call.
 const PROJECT_GATE_WORKFLOW: &str =
     "neon-law-source-code/navigator/.github/workflows/project-gate.yml@";
-/// The retired composite-action pin a `gate.yml` used to call.
-const VALIDATE_ACTION: &str = "neon-law-source-code/navigator/.github/actions/validate@";
-
 /// Just enough of a workflow to find one step and read its inputs.
 ///
 /// Deliberately permissive: every field is optional and unknown keys are
@@ -1008,9 +1034,14 @@ fn scalar(value: &serde_yaml::Value) -> Option<String> {
     }
 }
 
-/// Hold the CI gate to calling Navigator's reusable project-gate workflow, at
-/// an exact release tag matching the `version` input.
-fn validate_workflow(path: &Path, contents: &str, errors: &mut Vec<Finding>) {
+/// Hold the CI gate to calling Navigator's reusable project-gate workflow at
+/// an exact release tag matching the repository manifest.
+fn validate_workflow(
+    path: &Path,
+    contents: &str,
+    manifest: Option<&super::manifest::Manifest>,
+    errors: &mut Vec<Finding>,
+) {
     let workflow: Workflow = match serde_yaml::from_str(contents) {
         Ok(workflow) => workflow,
         Err(error) => {
@@ -1042,21 +1073,39 @@ fn validate_workflow(path: &Path, contents: &str, errors: &mut Vec<Finding>) {
         .trim()
         .strip_prefix(PROJECT_GATE_WORKFLOW)
         .unwrap_or_default();
-    let Some(input_version) = job.with.get("version").and_then(scalar) else {
+    let Some(input_project) = job.with.get("project").and_then(scalar) else {
         errors.push(Finding::at(
             path,
-            "CI gate must pass the reusable workflow's exact release tag as `version`",
+            "CI gate must pass the repository Project code as `project`",
         ));
         return;
     };
-
-    if action_version != input_version {
+    if job.with.get("host").and_then(scalar).is_none() {
         errors.push(Finding::at(
             path,
-            format!(
-                "project-gate workflow ref `{action_version}` must equal its `version` input `{input_version}`"
-            ),
+            "CI gate must pass the deployment hostname as `host`",
         ));
+    }
+    if let Some(expected_project) = manifest.and_then(|manifest| manifest.project.as_deref()) {
+        if input_project != expected_project {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "project-gate workflow `project` input `{input_project}` must equal manifest project `{expected_project}`"
+                ),
+            ));
+        }
+    }
+
+    if let Some(expected_version) = manifest.and_then(|manifest| manifest.version.as_deref()) {
+        if action_version != expected_version {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "project-gate workflow ref `{action_version}` must equal manifest version `{expected_version}`"
+                ),
+            ));
+        }
     }
     if !is_release_tag(action_version) {
         errors.push(Finding::at(
@@ -1394,16 +1443,9 @@ fn tests_readme() -> String {
 /// SHA-pinned per `docs/gitops.md`, each resolved from the tag named in its
 /// trailing comment via the GitHub API rather than typed from memory: a wrong
 /// SHA is indistinguishable from a correct one until the run that needs it.
-const SETUP_NODE_ACTION: &str =
-    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0";
-const PNPM_SETUP_ACTION: &str =
-    "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10";
-const CHECKOUT_ACTION: &str = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1";
-
 /// The pinned publish action a Project repository's CD workflow calls.
-const APPLICATION_PUBLISH_ACTION: &str =
-    "neon-law-source-code/navigator/.github/actions/application-publish@";
-const SEED_IMPORT_ACTION: &str = "neon-law-source-code/navigator/.github/actions/seed-import@";
+const PROJECT_PUBLISH_WORKFLOW: &str =
+    "neon-law-source-code/navigator/.github/workflows/project-publish.yml@";
 
 /// The tree-derived condition for generated application steps.
 ///
@@ -1411,6 +1453,7 @@ const SEED_IMPORT_ACTION: &str = "neon-law-source-code/navigator/.github/actions
 /// the second keeps the root-portal transition green. This gates tool setup on
 /// repositories that actually need Node; the shell loop below still derives
 /// the complete list independently rather than trusting a declared matrix.
+#[allow(dead_code)]
 const IF_APPLICATION_PRESENT: &str =
     "hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''";
 
@@ -1419,6 +1462,7 @@ const IF_APPLICATION_PRESENT: &str =
 /// runs: every Project repository observed today uses pnpm, and a repository
 /// that genuinely needs a different one remains free to hand-edit the
 /// generated file, the same way it is already free to add anything else.
+#[allow(dead_code)]
 fn pnpm_step(name: &str, script: &str) -> String {
     format!(
         r#"      - name: {name}
@@ -1444,41 +1488,30 @@ fn pnpm_step(name: &str, script: &str) -> String {
     )
 }
 
-fn setup_steps() -> String {
-    format!(
-        "      - uses: {CHECKOUT_ACTION}\n      \
-         - uses: {SETUP_NODE_ACTION}\n        if: {IF_APPLICATION_PRESENT}\n        with:\n          node-version: \"22\"\n      \
-         - uses: {PNPM_SETUP_ACTION}\n        if: {IF_APPLICATION_PRESENT}\n"
-    )
-}
-
 /// A thin `ci.yml` caller: one required job named [`REQUIRED_CHECK`] that
 /// calls Navigator's reusable project-gate workflow at `action_version`.
 ///
 /// The jobs themselves live in `.github/workflows/project-gate.yml` in this
 /// repository. Pinning that file is the thing that scales; a Project
 /// repository does not copy them.
+#[allow(dead_code)]
 pub(crate) fn workflow(action_version: &str) -> String {
+    workflow_for(action_version, "acme", "staging.neonlaw.com")
+}
+
+pub(crate) fn workflow_for(action_version: &str, project_code: &str, host: &str) -> String {
     format!(
         r#"name: {REQUIRED_CHECK}
 
 on:
   pull_request:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
-  id-token: write
-  pull-requests: write
 
 jobs:
   {REQUIRED_CHECK}:
     uses: {PROJECT_GATE_WORKFLOW}{action_version}
-    secrets: inherit
     with:
-      version: "{action_version}"
-      host: ${{{{ vars.NAVIGATOR_HOST }}}}
+      project: "{project_code}"
+      host: "{host}"
 "#
     )
 }
@@ -1489,65 +1522,50 @@ jobs:
 /// or a human may still be looking at.
 pub(crate) const HAND_COPIED_GATE_LINES: usize = 268;
 
-/// The Project publication workflow: install, lint, typecheck, test, and build
-/// the portal, re-validate the whole repository, then publish through the
-/// pinned `application-publish` action — the same shape
-/// `docs/project-repositories.md` already documents as the thin caller a
-/// Project repository carries, generated here instead of hand-copied into
-/// each one.
+/// The thin `cd.yml` caller for Navigator's reusable publisher.
 ///
-/// The three deployment coordinates (`applications_bucket`,
-/// `workload_identity_provider`, `service_account`) are read from repository
-/// secrets, never written as literals: they are this deployment's own, not a
-/// Project's, and a Project repository's own generated workflow must not
-/// carry them.
-///
-/// `pub(crate)` for the same reason as [`workflow`].
+/// `gate` re-invokes `project-gate.yml` on this same push-to-`main` event so
+/// its live document verification, live Project gate, and seed import run
+/// here — `ci.yml` above calls that file only on `pull_request`, so nothing
+/// else triggers those live jobs. `publish` `needs: gate`: a push publishes
+/// only after the live checks it depends on have passed.
+#[allow(dead_code)]
 pub(crate) fn cd_workflow(action_version: &str) -> String {
-    let setup = setup_steps();
-    let install = pnpm_step(
-        "Install application dependencies",
-        "install --frozen-lockfile",
-    );
+    cd_workflow_for(action_version, "acme", "staging.neonlaw.com")
+}
+
+pub(crate) fn cd_workflow_for(action_version: &str, project_code: &str, host: &str) -> String {
     format!(
-        r#"name: publish
+        r#"name: cd
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
+# The reusable publisher mints its deployment token only on this main-only
+# caller. The PR caller above has no permissions block: a called workflow
+# cannot widen the token the caller granted it. `gate` needs the same token
+# to exercise project-gate.yml's live document verification, live Project
+# gate, and seed import, which only run on a push to `main`.
+
 jobs:
+  gate:
+    uses: {PROJECT_GATE_WORKFLOW}{action_version}
+    with:
+      project: "{project_code}"
+      host: "{host}"
   publish:
-    if: vars.NAVIGATOR_HOST != ''
-    runs-on: ubuntu-latest
-    steps:
-{setup}{install}{lint_step}{typecheck_step}{test_step}{build_step}      - uses: {VALIDATE_ACTION}{action_version}
-        with:
-          version: "{action_version}"
-      - name: Import seed documents
-        uses: {SEED_IMPORT_ACTION}{action_version}
-        with:
-          version: "{action_version}"
-          host: ${{{{ vars.NAVIGATOR_HOST }}}}
-      # Multi-application publication needs a separate prefix/IAM and runtime
-      # authorization decision. This preserves only the existing root portal
-      # publisher during the source-layout transition.
-      - name: Publish the legacy root portal
-        if: hashFiles('portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        uses: {APPLICATION_PUBLISH_ACTION}{action_version}
-        with:
-          applications_bucket: ${{{{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}}}
-          workload_identity_provider: ${{{{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}}}
-          service_account: ${{{{ secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}}}
+    needs: gate
+    uses: {PROJECT_PUBLISH_WORKFLOW}{action_version}
+    with:
+      project: "{project_code}"
+      host: "{host}"
 "#,
-        lint_step = pnpm_step("Lint applications", "lint"),
-        typecheck_step = pnpm_step("Typecheck applications", "typecheck"),
-        test_step = pnpm_step("Test applications", "test"),
-        build_step = pnpm_step("Build applications", "build"),
     )
 }
 
@@ -1558,6 +1576,7 @@ mod tests {
         placeholder_template, repository_name, scaffold, validate_layout, validate_workflow,
         workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST, WORKFLOW,
     };
+    use crate::projects::manifest::Manifest;
     use std::path::Path;
 
     /// The pin the fixtures below scaffold with.
@@ -1572,7 +1591,7 @@ mod tests {
     /// The messages `validate_workflow` reports for one gate file.
     fn findings(contents: &str) -> Vec<String> {
         let mut errors: Vec<Finding> = Vec::new();
-        validate_workflow(Path::new("gate.yml"), contents, &mut errors);
+        validate_workflow(Path::new("gate.yml"), contents, None, &mut errors);
         errors.into_iter().map(|error| error.message).collect()
     }
 
@@ -1598,7 +1617,8 @@ mod tests {
 
     fn layout_findings(root: &Path) -> Vec<String> {
         let mut errors: Vec<Finding> = Vec::new();
-        validate_layout(root, &mut errors);
+        let mut warnings = Vec::new();
+        validate_layout(root, &mut errors, &mut warnings);
         errors.into_iter().map(|error| error.message).collect()
     }
 
@@ -1701,7 +1721,8 @@ jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
     with:
-      version: "26.7.27"
+      project: "acme"
+      host: "staging.neonlaw.com"
 "#;
         assert_eq!(findings(contents), Vec::<String>::new());
     }
@@ -1714,12 +1735,20 @@ jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
     with:
-      version: "26.7.26"
+      project: "acme"
+      host: "staging.neonlaw.com"
 "#;
-        let found = findings(contents);
+        let manifest = Manifest {
+            version: Some("26.7.26".to_string()),
+            project: Some("acme".to_string()),
+            ..Manifest::default()
+        };
+        let mut errors = Vec::new();
+        validate_workflow(Path::new("ci.yml"), contents, Some(&manifest), &mut errors);
+        let found: Vec<String> = errors.into_iter().map(|error| error.message).collect();
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].contains("must equal its `version` input"),
+            found[0].contains("must equal manifest version"),
             "{found:?}"
         );
     }
@@ -1732,7 +1761,8 @@ jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@main
     with:
-      version: "main"
+      project: "acme"
+      host: "staging.neonlaw.com"
 "#;
         let found = findings(contents);
         assert_eq!(found.len(), 1, "{found:?}");
@@ -1938,6 +1968,10 @@ jobs:
             "a path-filtered required check can be satisfied by a skip"
         );
         assert!(generated.contains("project-gate.yml@"));
+        assert!(generated.contains("project: \"acme\""));
+        assert!(generated.contains("host: \"staging.neonlaw.com\""));
+        assert!(!generated.contains("push:"));
+        assert!(!generated.contains("permissions:"));
         assert!(!generated.contains("project_repository: true"));
     }
 
@@ -1952,7 +1986,8 @@ jobs:
             ),
             "{generated}"
         );
-        assert!(generated.contains(r#"version: "26.8.23""#), "{generated}");
+        assert!(generated.contains("project: \"acme\""), "{generated}");
+        assert!(!generated.contains("version:"), "{generated}");
         assert!(
             !generated.contains("26.7.27"),
             "a hard-coded literal is back:\n{generated}"
@@ -1970,7 +2005,7 @@ jobs:
         }
         assert!(
             generated
-                .contains("\n  ci:\n    needs: [lint, verify, notation, documents, manifest]\n"),
+                .contains("\n  ci:\n    needs: [read-manifest, lint, verify, notation, documents, manifest]\n"),
             "{generated}"
         );
     }
@@ -1979,7 +2014,14 @@ jobs:
     fn the_required_check_asserts_every_dependencys_result() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(generated.contains("if: always()"), "{generated}");
-        for job in ["lint", "verify", "notation", "documents", "manifest"] {
+        for job in [
+            "read-manifest",
+            "lint",
+            "verify",
+            "notation",
+            "documents",
+            "manifest",
+        ] {
             assert!(
                 generated.contains(&format!("needs.{job}.result")),
                 "the required check does not check `{job}`'s result:\n{generated}"
@@ -2050,8 +2092,7 @@ jobs:
         assert_eq!(apps, vec![root.path().to_path_buf()]);
     }
 
-    /// The publish workflow is the real thing now, not a placeholder that
-    /// reads as configured while doing nothing.
+    /// The generated CD caller delegates publication to Navigator's reusable workflow.
     #[test]
     fn cd_workflow_publishes_through_the_pinned_actions() {
         let generated = cd_workflow(FIXTURE_PIN);
@@ -2063,42 +2104,30 @@ jobs:
         assert!(generated.contains("id-token: write"), "{generated}");
         assert!(
             generated.contains(
-                "neon-law-source-code/navigator/.github/actions/application-publish@26.8.23"
+                "neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23"
             ),
             "{generated}"
         );
+        assert!(generated.contains("workflow_dispatch:"), "{generated}");
+        assert!(generated.contains("project: \"acme\""), "{generated}");
         assert!(
-            generated
-                .contains("neon-law-source-code/navigator/.github/actions/seed-import@26.8.23"),
+            generated.contains("host: \"staging.neonlaw.com\""),
             "{generated}"
         );
-        assert!(generated.contains("vars.NAVIGATOR_HOST"), "{generated}");
-        for secret in [
-            "secrets.NAVIGATOR_APPLICATIONS_BUCKET",
-            "secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER",
-            "secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT",
-        ] {
-            assert!(generated.contains(secret), "{generated}");
-        }
-        // The three deployment coordinates are read from secrets, never
-        // written as literals: they are this deployment's own, not a
-        // Project's.
-        assert!(!generated.contains("neon-law-applications"), "{generated}");
+        assert!(
+            !generated.contains("NAVIGATOR_APPLICATIONS_BUCKET"),
+            "{generated}"
+        );
     }
 
-    /// The pin reaches the publish action too, and no literal survives.
+    /// The pin reaches the reusable publisher, and no literal survives.
     #[test]
     fn cd_workflow_pins_the_version_it_was_given() {
         let generated = cd_workflow("26.8.23");
         assert!(
             generated.contains(
-                "neon-law-source-code/navigator/.github/actions/application-publish@26.8.23"
+                "neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23"
             ),
-            "{generated}"
-        );
-        assert!(
-            generated
-                .contains("neon-law-source-code/navigator/.github/actions/seed-import@26.8.23"),
             "{generated}"
         );
         assert!(
@@ -2232,7 +2261,10 @@ jobs:
             ),
             "{generated}"
         );
-        assert!(generated.contains(r#"version: "26.8.23""#), "{generated}");
+        assert!(
+            generated.contains("project: \"example-project\""),
+            "{generated}"
+        );
     }
 
     /// `Y010`: the mark with a corporate suffix is an entity claim, and the

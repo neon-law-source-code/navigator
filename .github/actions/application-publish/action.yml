@@ -206,10 +206,9 @@ runs:
         echo "registered log masks for the deployment coordinates"
 
     # The Project reads its own code from its root `navigator.yaml` manifest —
-    # the same file and `project:` key `store::sample_project::MANIFEST_FILE`
-    # and `navigator site projects drift` read. `repository:` (the `inputs.repository`
-    # fallback) is used only when the checkout carries no manifest, which is why
-    # it still defaults to the repository name.
+    # the same file and nested `project.name` that the gate reads. `repository:`
+    # (the `inputs.repository` fallback) is used only when the checkout carries
+    # no manifest, which is why it still defaults to the repository name.
     #
     # The manifest's `project:` is not re-validated as a slug here: the mount
     # check just below is what refuses a wrong or malformed code, because the
@@ -226,14 +225,22 @@ runs:
 
         code=""
         if [ -f "navigator.yaml" ]; then
-            code="$(awk -F': *' '/^project:[[:space:]]*/ { print $2; exit }' navigator.yaml \
-                | tr -d '"' | xargs || true)"
+            code="$(ruby -ryaml -e '
+                manifest = YAML.load_file(ARGV.fetch(0)) || {}
+                project = manifest["project"]
+                project = project["name"] if project.is_a?(Hash)
+                puts project if project.is_a?(String)
+            ' navigator.yaml)"
         fi
         if [ -z "${code}" ]; then
             code="${REPOSITORY}"
         fi
         if [ -z "${code}" ]; then
             echo "::error::no navigator.yaml project: and no repository name to derive the Project code from."
+            exit 1
+        fi
+        if [ "${code}" != "${REPOSITORY}" ]; then
+            echo "::error::navigator.yaml project.name '${code}' does not match project input '${REPOSITORY}'."
             exit 1
         fi
 

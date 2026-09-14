@@ -6,21 +6,20 @@ name: project-gate
 #     jobs:
 #       ci:
 #         uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@YY.M.D
-#         secrets: inherit
 #         with:
-#           version: "YY.M.D"
+#           project: "project-code"
+#           host: "staging.neonlaw.com"
 #
-# The pin *is* the version: this workflow downloads that CLI tag and runs
-# `navigator validate`. It does not resolve `latest`. There is no schedule.
+# The checkout's `navigator.yaml` supplies the pin. This workflow does not
+# resolve `latest` and does not trust a caller-supplied version.
 # `ops github setup` bumps the caller's pin; it never edits this file.
-# Pull requests run the offline checks. A push to `main` additionally runs
-# live verification, because the CI token policy only permits minting there.
+# Pull requests run the offline checks. Live verification belongs to `cd.yml`.
 
 on:
   workflow_call:
     inputs:
-      version:
-        description: Exact Navigator release tag to download and run.
+      project:
+        description: Project code declared by navigator.yaml.
         required: true
         type: string
       host:
@@ -29,12 +28,45 @@ on:
         type: string
         default: ""
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
+  read-manifest:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.manifest.outputs.version }}
+      project: ${{ steps.manifest.outputs.project }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read and check navigator.yaml
+        id: manifest
+        env:
+          EXPECTED_PROJECT: ${{ inputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          values="$(ruby -e 'require "yaml"; m = YAML.safe_load(File.read("navigator.yaml"), aliases: false) || {}; p = m["project"]; p = p["name"] if p.is_a?(Hash); abort("navigator.yaml is missing project.name") unless p.is_a?(String) && !p.strip.empty?; v = m["version"]; v = v.strip if v.is_a?(String); v = "" unless v.is_a?(String); puts "version=#{v}"; puts "project=#{p.strip}"')"
+          version=""
+          project=""
+          while IFS='=' read -r key value; do
+              case "${key}" in
+                version) version="${value}" ;;
+                project) project="${value}" ;;
+              esac
+          done <<< "${values}"
+          if [ "${project}" != "${EXPECTED_PROJECT}" ]; then
+              echo "::error::navigator.yaml project.name '${project}' does not match project input '${EXPECTED_PROJECT}'."
+              exit 1
+          fi
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+              echo "::error::version must be an exact release tag, not '${version}'."
+              exit 1
+          fi
+          {
+              echo "version=${version}"
+              echo "project=${project}"
+          } >> "${GITHUB_OUTPUT}"
+
   lint:
+    needs: read-manifest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,6 +142,7 @@ jobs:
           done
 
   verify:
+    needs: read-manifest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -227,16 +260,14 @@ jobs:
       - name: download and install the navigator CLI
         if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.read-manifest.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${VERSION}" in
-            latest|main|HEAD|"")
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
               echo "::error::version must be an exact release tag, not '${VERSION}'."
               exit 1
-              ;;
-          esac
+          fi
           asset="navigator-${VERSION}-linux.tar.gz"
           tmp="$(mktemp -d)"
           gh release download "${VERSION}" \
@@ -253,21 +284,20 @@ jobs:
         run: navigator validate . --ci
 
   notation:
+    needs: read-manifest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: download and install the navigator CLI
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.read-manifest.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${VERSION}" in
-            latest|main|HEAD|"")
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
               echo "::error::version must be an exact release tag, not '${VERSION}'."
               exit 1
-              ;;
-          esac
+          fi
           asset="navigator-${VERSION}-linux.tar.gz"
           tmp="$(mktemp -d)"
           gh release download "${VERSION}" \
@@ -283,6 +313,7 @@ jobs:
         run: navigator validate .
 
   documents:
+    needs: read-manifest
     permissions:
       contents: read
       id-token: write
@@ -291,16 +322,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: download and install the navigator CLI
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.read-manifest.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${VERSION}" in
-            latest|main|HEAD|"")
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
               echo "::error::version must be an exact release tag, not '${VERSION}'."
               exit 1
-              ;;
-          esac
+          fi
           asset="navigator-${VERSION}-linux.tar.gz"
           tmp="$(mktemp -d)"
           gh release download "${VERSION}" \
@@ -330,6 +359,7 @@ jobs:
           fi
 
   manifest:
+    needs: read-manifest
     permissions:
       contents: read
       id-token: write
@@ -338,16 +368,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: download and install the navigator CLI
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.read-manifest.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${VERSION}" in
-            latest|main|HEAD|"")
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
               echo "::error::version must be an exact release tag, not '${VERSION}'."
               exit 1
-              ;;
-          esac
+          fi
           asset="navigator-${VERSION}-linux.tar.gz"
           tmp="$(mktemp -d)"
           gh release download "${VERSION}" \
@@ -385,6 +413,7 @@ jobs:
   # a reachable deployment, and the always-required check must never depend
   # on that.
   seeds:
+    needs: read-manifest
     permissions:
       contents: read
       id-token: write
@@ -393,16 +422,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: download and install the navigator CLI
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.read-manifest.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${VERSION}" in
-            latest|main|HEAD|"")
+          if [[ ! "${VERSION}" =~ ^[0-9]{2}\.[0-9]+\.[0-9]+(-hotfix\.[0-9]+)?$ ]]; then
               echo "::error::version must be an exact release tag, not '${VERSION}'."
               exit 1
-              ;;
-          esac
+          fi
           asset="navigator-${VERSION}-linux.tar.gz"
           tmp="$(mktemp -d)"
           gh release download "${VERSION}" \
@@ -431,69 +458,14 @@ jobs:
               echo "seeds/*.yaml is validated offline by navigator validate; reconciling against a live deployment happens on push to main"
           fi
 
-  enable-automerge:
-    name: enable PR auto-merge
-    permissions:
-      contents: write
-      pull-requests: write
-    if: >
-      github.event_name == 'pull_request' &&
-      (github.event.action == 'opened' || github.event.action == 'ready_for_review' || github.event.action == 'synchronize') &&
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    env:
-      AUTOMERGE_APP_ID: ${{ secrets.AUTOMERGE_APP_ID }}
-    steps:
-      - name: mint app token
-        id: app-token
-        if: env.AUTOMERGE_APP_ID != ''
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.AUTOMERGE_APP_ID }}
-          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
-      - name: request auto-merge
-        if: env.AUTOMERGE_APP_ID != ''
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: |
-          set -euo pipefail
-          GH_HOST="${GITHUB_SERVER_URL#https://}"
-          export GH_HOST
-          auto_merge_enabled="$(
-              gh pr view "${PR_URL}" \
-                  --json autoMergeRequest \
-                  --jq '.autoMergeRequest != null'
-          )"
-          if [ "${auto_merge_enabled}" = "true" ]; then
-              echo "auto-merge already enabled; nothing to do."
-              exit 0
-          fi
-          pr_id="$(gh pr view "${PR_URL}" --json id --jq '.id')"
-          if ! result="$(gh api graphql -f pr="${pr_id}" -f query='
-              mutation($pr: ID!) {
-                enablePullRequestAutoMerge(input: { pullRequestId: $pr, mergeMethod: SQUASH }) {
-                  pullRequest { number }
-                }
-              }' 2>&1)"; then
-              if printf '%s' "${result}" | grep -q 'refusing to allow a GitHub App to create or update workflow'; then
-                  echo "::warning::the App was refused for lack of the \`workflows\` permission on a PR that edits workflow files. Merge this PR manually."
-                  printf '%s\n' "${result}"
-                  exit 0
-              fi
-              printf '%s\n' "${result}" >&2
-              exit 1
-          fi
-          printf '%s\n' "${result}"
-
   ci:
-    needs: [lint, verify, notation, documents, manifest]
+    needs: [read-manifest, lint, verify, notation, documents, manifest]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every job to have succeeded
         run: |
+          test "${{ needs.read-manifest.result }}" = "success"
           test "${{ needs.lint.result }}" = "success"
           test "${{ needs.verify.result }}" = "success"
           test "${{ needs.notation.result }}" = "success"

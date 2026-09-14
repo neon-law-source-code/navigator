@@ -2,11 +2,9 @@
 //!
 //! One repository per Project code, holding notation templates under
 //! `templates/` and application source under `apps/<app>/`. There is one
-//! scaffold and one validator for both, and the validator takes the Project
-//! code from the repository name. A legacy root `portal/` remains valid during
-//! the source-layout transition. A repository may also carry a root manifest
-//! declaring that code — the layout admits one — but the scaffold does not
-//! write it and these tests do not depend on it.
+//! scaffold and one validator for both. A legacy root `portal/` remains valid
+//! during the source-layout transition. The scaffold writes the versioned
+//! nested `navigator.yaml` manifest and the thin `ci.yml`/`cd.yml` callers.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -83,11 +81,11 @@ fn project_gate_source() -> String {
 }
 
 #[test]
-fn the_reusable_gate_asks_the_deployment_and_arms_auto_merge() {
+fn the_reusable_gate_keeps_live_work_out_of_the_required_check() {
     let source = project_gate_source();
     assert!(source.contains("navigator site projects gate --ci"));
-    assert!(source.contains("enable-automerge:"));
-    assert!(source.contains("needs: [lint, verify, notation, documents, manifest]"));
+    assert!(!source.contains("enable-automerge:"));
+    assert!(source.contains("needs: [read-manifest, lint, verify, notation, documents, manifest]"));
 }
 
 #[test]
@@ -137,8 +135,10 @@ fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
         r#"if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then"#
     ));
     assert!(source.contains(r#"navigator site import --ci --host "${HOST}" --dir seeds"#));
-    assert!(source.contains("needs: [lint, verify, notation, documents, manifest]"));
-    assert!(!source.contains("needs: [lint, verify, notation, documents, manifest, seeds]"));
+    assert!(source.contains("needs: read-manifest"));
+    assert!(source.contains("needs: [read-manifest, lint, verify, notation, documents, manifest]"));
+    assert!(!source
+        .contains("needs: [read-manifest, lint, verify, notation, documents, manifest, seeds]"));
 }
 
 fn validate(dir: &Path) -> assert_cmd::assert::Assert {
@@ -151,6 +151,59 @@ fn validate_as(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
         .arg(dir)
         .env("GITHUB_REPOSITORY", format!("org/{repository}"))
         .assert()
+}
+
+#[test]
+fn the_flat_manifest_shape_is_read_with_a_deprecation_warning() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::write(
+        dir.path().join("navigator.yaml"),
+        "host: staging.neonlaw.com\nproject: example-project\n",
+    )
+    .unwrap();
+
+    validate(dir.path())
+        .success()
+        .stdout(str::contains("Y013"))
+        .stdout(str::contains("1 warning(s)"));
+}
+
+#[test]
+fn a_malformed_manifest_is_reported_without_template_cascade() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::write(
+        dir.path().join("navigator.yaml"),
+        "version: 26.9.14\nproject: [not, a, project]\n",
+    )
+    .unwrap();
+
+    validate(dir.path())
+        .failure()
+        .stderr(str::contains("navigator.yaml"))
+        .stderr(str::contains("Y005"))
+        .stdout(str::contains("0 template(s)"))
+        .stdout(str::contains("template `code`").not());
+}
+
+#[test]
+fn the_ci_ref_must_match_the_manifest_version() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let ci = dir.path().join(".github/workflows/ci.yml");
+    let contents = fs::read_to_string(&ci).unwrap();
+    fs::write(
+        &ci,
+        contents.replace("project-gate.yml@26.8.23", "project-gate.yml@26.8.22"),
+    )
+    .unwrap();
+
+    validate(dir.path())
+        .failure()
+        .stderr(str::contains("must equal manifest version"))
+        .stderr(str::contains("26.8.22"))
+        .stderr(str::contains("26.8.23"));
 }
 
 /// A minimal Vite workspace, which is the whole portal contract: a
@@ -223,31 +276,26 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
     let workflow = fs::read_to_string(dir.path().join(".github/workflows/ci.yml")).unwrap();
     assert!(workflow.contains("project-gate.yml@"));
-    assert!(workflow.contains("on:\n  pull_request:\n  push:\n    branches: [main]"));
+    assert!(workflow.contains("on:\n  pull_request:"));
+    assert!(!workflow.contains("push:"));
     assert!(!workflow.contains("project_repository: true"));
     let workflow_yaml: serde_yaml::Value =
         serde_yaml::from_str(&workflow).expect("scaffolded ci.yml parses as YAML");
-    for (permission, expected) in [
-        ("contents", "write"),
-        ("id-token", "write"),
-        ("pull-requests", "write"),
-    ] {
-        assert_eq!(
-            workflow_yaml["permissions"][permission].as_str(),
-            Some(expected),
-            "scaffolded caller must grant {permission}: {expected}"
-        );
-    }
-    let cd = fs::read_to_string(dir.path().join(".github/workflows/publish.yml")).unwrap();
+    assert!(workflow_yaml["permissions"].is_null());
+    assert!(workflow.contains("project: \"example-project\""));
+    assert!(workflow.contains("host: \"staging.neonlaw.com\""));
+    let cd = fs::read_to_string(dir.path().join(".github/workflows/cd.yml")).unwrap();
     assert!(
         !cd.contains("TBD"),
         "the publish workflow is still a placeholder:\n{cd}"
     );
     assert!(cd.contains("id-token: write"));
     assert!(
-        cd.contains("neon-law-source-code/navigator/.github/actions/application-publish@26.8.23")
+        cd.contains("neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23")
     );
-    assert!(cd.contains("secrets.NAVIGATOR_APPLICATIONS_BUCKET"));
+    assert!(cd.contains("workflow_dispatch:"));
+    assert!(cd.contains("project: \"example-project\""));
+    assert!(cd.contains("host: \"staging.neonlaw.com\""));
 
     // Neither retired manifest is written. `mount.json` and `navigator.toml`
     // declared a repository's own coordinates and every reader of them is gone;

@@ -54,11 +54,12 @@ Nine normal validation passes happen in this order:
 6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yml` only when the validation root is a Project
    repository declared by `navigator.yaml`. It checks the closed asset kind and visibility vocabularies, current
    revision metadata, revision-chain linkage, and the retained document extension without reading the network or bytes.
-7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`) runs when the walked root carries `navigator.yaml` or
-   the retired `navigator.yml` spelling. It holds `host` to a hostname shape, `project` to
-   `store::projects::is_valid_code`, `no_live_row` to a non-empty reason string, refuses an unknown top-level key by
-   naming the accepted set, refuses YAML comment tokens so a reason lives on the pull request and in the repository
-   contract rather than a `#` line, and tells a `navigator.yml` file to rename to `navigator.yaml`.
+7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`–`Y013`) runs when the walked root carries either manifest
+   spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name` to
+   `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
+   string. It refuses unknown keys by naming the set, refuses YAML comment tokens so a reason lives on the pull request
+   and in the repository contract rather than a `#` line, and tells a `navigator.yml` file to rename to `navigator.yaml`
+   before validation. The legacy flat shape remains a warning during migration.
 8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project repository.
    Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a source-only tree
    can still validate, and is a finding under `--ci`, where the build has already run and nothing to scan means the pass
@@ -90,9 +91,10 @@ same fix the `navigator-lsp` `source.fixAll` editor action ships.
 
 A rule's severity is either `Error` or `Warning`. An Error-severity violation, a YAML parse failure, a seed-document
 failure, a locale-catalog failure, or a consumed mutable tag all fail the gate (exit code `1`). A Warning-severity
-violation prints alongside everything else but never fails the run — it is a heads-up, not a blocker. Only two codes are
-`Warning`: `N112` (a workflow step is allowed but its automation is not built yet) and `M061` (a relative docs link the
-renderer cannot map onto a site route or GitHub). Every other code, including `Y001` and `Y002`, is `Error`.
+violation prints alongside everything else but never fails the run — it is a heads-up, not a blocker. Only three codes
+are `Warning`: `N112` (a workflow step is allowed but its automation is not built yet), `M061` (a relative docs link the
+renderer cannot map onto a site route or GitHub), and `Y013` (the legacy flat Project-manifest shape). Every other code,
+including `Y001` and `Y002`, is `Error`.
 
 Every rule-backed finding in the primary listing opens with `error:` or `warning:`, the way `rustc` and `clippy` write
 one, before the `path:line`, the rule code, and the message. The raw YAML-syntax and consumed-tag passes retain their
@@ -121,7 +123,7 @@ Reading it is how to answer "which line do I fix"; the summary counts and the ex
 
 ## Rule codes
 
-Every code below is defined in `rules/src/`, except `Y001`–`Y011`, which live in `cli/src/` because the typed YAML,
+Every code below is defined in `rules/src/`, except `Y001`–`Y013`, which live in `cli/src/` because the typed YAML,
 Project-manifest, and origin passes run outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the file
 for that violation without a human decision; every other code needs a person to resolve it.
 
@@ -273,6 +275,8 @@ literally and the columns disappear.
 | `Y009` | Error | Off-origin hosts fail unless listed in `allowed_links` with `rel="noreferrer"`. | No |
 | `Y010` | Error | A Project template naming `Neon Law` with a corporate suffix must name the entity of record. | No |
 | `Y011` | Error | A Project manifest must not contain YAML comments. | No |
+| `Y012` | Error | A Project manifest `version` must be an exact Navigator release tag. | No |
+| `Y013` | Warning | Flat `host`/`project` shape should be replaced by the versioned nested shape. | No |
 
 `Y010` runs inside the Project-repository check that `navigator validate` applies when the walked root is a Project
 repository. It reads each `templates/<code>.md` and compares any `Neon Law` spelled with a corporate suffix (`, Inc.`,

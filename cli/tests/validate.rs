@@ -51,15 +51,17 @@ fn write_project_shell(dir: &Path, code: &str) {
     write(
         dir,
         ".github/workflows/ci.yml",
-        r#"name: ci
+        &format!(
+            r#"name: ci
 on: [pull_request]
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
-    secrets: inherit
     with:
-      version: "26.8.23"
-"#,
+      project: "{code}"
+      host: "staging.neonlaw.com"
+"#
+        ),
     );
 }
 

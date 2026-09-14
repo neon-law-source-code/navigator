@@ -1480,7 +1480,7 @@ enum GithubCmd {
         #[arg(long)]
         dry_run: bool,
         /// Exact release tag a confirmed Project repository's reconciled
-        /// `gate.yml`/`publish.yml` pins Navigator's validate action to.
+        /// `ci.yml`/`cd.yml` callers pin Navigator's reusable workflows to.
         /// Defaults to this binary's own version when — and only when — that
         /// version is one this repository has actually published, the same
         /// default `projects repository scaffold --action-version` uses.
@@ -2587,13 +2587,10 @@ fn is_project_repository(dir: &std::path::Path) -> bool {
     let Ok(raw) = std::fs::read_to_string(dir.join("navigator.yaml")) else {
         return false;
     };
-    serde_yaml::from_str::<serde_yaml::Value>(&raw).is_ok_and(|value| {
-        value
-            .get("project")
-            .and_then(serde_yaml::Value::as_str)
-            .map(str::trim)
-            .is_some_and(|project| !project.is_empty())
-    })
+    serde_yaml::from_str::<serde_yaml::Value>(&raw)
+        .ok()
+        .and_then(|value| value.get("project").cloned())
+        .is_some()
 }
 
 fn document_pointer_path(
@@ -3017,17 +3014,27 @@ fn project_manifest_pass(dir: &std::path::Path) -> Vec<GateError> {
     let mut errors = Vec::with_capacity(findings.len());
     for finding in findings {
         let location = format!("{}:{}", finding.path.display(), finding.line);
-        print_violation(
-            &finding.path.display().to_string(),
-            finding.line,
-            finding.code,
-            &finding.message,
-        );
-        errors.push(GateError::new(
-            location,
-            Some(finding.code),
-            finding.message,
-        ));
+        if finding.warning {
+            println!(
+                "{}:{}: warning: {}: {}",
+                finding.path.display(),
+                finding.line,
+                finding.code,
+                finding.message
+            );
+        } else {
+            print_violation(
+                &finding.path.display().to_string(),
+                finding.line,
+                finding.code,
+                &finding.message,
+            );
+            errors.push(GateError::new(
+                location,
+                Some(finding.code),
+                finding.message,
+            ));
+        }
     }
     if dir.join(crate::projects::manifest::FILE).is_file()
         || dir.join(crate::projects::manifest::RETIRED_FILE).is_file()

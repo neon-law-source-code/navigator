@@ -60,21 +60,21 @@ pub static JURISDICTIONS: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
         .collect()
 });
 
-/// True when an ancestor of `path` carries `navigator.yaml` with a
-/// non-empty `project:` — the signal that this tree is a Project
-/// repository rather than Navigator's catalog.
+/// True when an ancestor of `path` carries a YAML `navigator.yaml` with a
+/// `project` key — the signal that this tree is a Project repository rather
+/// than Navigator's catalog. A malformed project value still claims the
+/// repository shape, so its manifest finding does not cascade into catalog
+/// path findings.
 fn is_project_repository_tree(path: &Path) -> bool {
     let mut current = path.parent();
     while let Some(dir) = current {
         let manifest = dir.join("navigator.yaml");
         if let Ok(raw) = std::fs::read_to_string(&manifest) {
-            if serde_yaml::from_str::<serde_yaml::Value>(&raw).is_ok_and(|value| {
-                value
-                    .get("project")
-                    .and_then(serde_yaml::Value::as_str)
-                    .map(str::trim)
-                    .is_some_and(|project| !project.is_empty())
-            }) {
+            if serde_yaml::from_str::<serde_yaml::Value>(&raw)
+                .ok()
+                .and_then(|value| value.get("project").cloned())
+                .is_some()
+            {
                 return true;
             }
         }

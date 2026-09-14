@@ -39,14 +39,16 @@ Load-bearing rules from those docs:
   ```
 
   Total line coverage stays ≥ 90.6%, and the default nextest profile prints failures only.
-- **Measure coverage locally before pushing** — a green `cargo test` reports pass/fail, and coverage is a separate read.
-  The floor rides inside the `cargo test (workspace)` check (`cargo llvm-cov --fail-under-lines 90.6`). Harness-gated
-  browser/e2e tests (`new_client_or_skip`) skip in CI's coverage pass, so code covered *only* by them counts as
-  uncovered; give handlers and routes a non-gated covering test through the router, and spin up just what CI's coverage
-  job does — the OPA binary the policy tests use — to measure. A test that needs the full KIND stack skips in that job
-  like the e2e, so it counts as uncovered too. The floor measures the whole workspace, so cover what you wrote yourself.
-  See the full note in the doc's [Create a PR](../../../docs/agent-workflows.md#create-a-pr) gate.
+- **Measure coverage before pushing** — a green `cargo test` reports pass/fail; coverage is a separate read, taken by
+  `cargo llvm-cov --fail-under-lines 90.6` inside the `cargo test (workspace)` check. CI's coverage pass skips
+  harness-gated tests (`new_client_or_skip`, anything needing the KIND stack), so code covered *only* by those counts as
+  uncovered. Give handlers and routes a non-gated test through the router. The floor is a workspace total and can stay
+  green while your change goes uncovered, so cover what you wrote. Full note in the doc's [Create a
+  PR](../../../docs/agent-workflows.md#create-a-pr) gate.
 - Group by blast radius: one reviewable concern per commit, staging each path explicitly.
+- **If the change removes anything, sweep before pushing.** `git grep -n '<removed-name>'` comes back empty apart from
+  the test that guards its absence. Manifest entries, fixtures, and doc prose are where a half-removal hides; see
+  [[rust]].
 - **Link the Linear issue by identifier, and by nothing else.** Put one magic-word trailer in the PR body — `Closes
   ENG-1234` — so Linear links the PR and completes the issue on merge. Keep the identifier out of the PR title, which
   becomes the squash-merge subject. The roadmap stays private even though the code is public, so no `linear.app` URL

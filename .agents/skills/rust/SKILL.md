@@ -25,9 +25,12 @@ The doc owns the conventions; this skill is the short list of guards that are ea
   in full) and compile-check with `cargo build -q --message-format short` — not bare `cargo test`/`cargo build`, whose
   success noise buries the diagnostic that matters. The one exception is the cucumber `features` package: nextest cannot
   drive its custom harness, so those suites run with `cargo test -p features`.
-- **Comments and tests describe the present.** No "we used to…"/"no longer…"/"legacy" narration, no deprecated-but-kept
-  flags or aliases — delete the old path; git history holds the past. Keep only the *why* behind a live invariant and
-  guard tests that assert today's behavior.
+- **Comments and tests describe the present.** No "we used to…"/"legacy" narration and no deprecated-but-kept flags or
+  aliases — delete the old path; git history holds the past. Keep the *why* behind a live invariant, nothing else.
+- **A removal removes the whole seam.** Deleting the caller is half the job. In the same change, delete the types,
+  catalog and manifest entries, fixtures, CSS, tests, and docs that existed only for it, and any enum variant or
+  constant left with no member. Then sweep: `git grep -n '<removed-name>'` returns nothing but the guard test asserting
+  it is gone. What survives a half-removal is dead weight a reader trusts, or an entry some later verify step fails on.
 - **Opportunistic file pass.** [`random-refactor`](../random-refactor/SKILL.md) picks one tracked `.rs` file and
   compares it to this skill, The Rust Book, a `/tmp` standard-library clone, and similar patterns in the repository.
 

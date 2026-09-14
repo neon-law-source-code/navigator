@@ -74,7 +74,7 @@ include_dir = "0.7"
 # Pure-Rust PDF read-modify-write, used by `pdf::fill_acroform` to
 # populate fillable government forms (AcroForm `/Fields`). Distinct from
 # the Typst `render` path, which only emits fresh PDFs.
-lopdf = "0.44"
+lopdf = "0.45"
 parquet = { version = "59", default-features = false, features = ["arrow", "snap"] }
 # Plain-text extraction from an arbitrary PDF, for `navigator site document diff`
 # (#485) — distinct from `lopdf` (read-modify-write for AcroForm filling) and

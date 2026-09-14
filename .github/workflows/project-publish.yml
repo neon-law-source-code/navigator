@@ -93,10 +93,14 @@ jobs:
               test -n "${app}"
               echo "dist_dir=${app%/package.json}/dist" >> "${GITHUB_OUTPUT}"
           fi
-      - uses: neon-law-source-code/navigator/.github/actions/validate@26.9.14
-        if: steps.application.outputs.dist_dir != ''
-        with:
-          version: "26.9.14"
+      # No validate step here. `project-gate.yml` has already validated this
+      # commit — `cd.yml` makes the gate a `needs:` of the publish job — and a
+      # second pass pinned to a fixed release validates the repository with a
+      # CLI that is not the one `navigator.yaml` selects. That is not a
+      # theoretical mismatch: pinned at 26.9.14 it rejected the nested manifest
+      # this very release introduced, with Y004, Y005, and Y006 on a file the
+      # gate had just accepted, and every Project portal stopped publishing
+      # while the required check stayed green.
       # The applications bucket is deployment configuration, never derived
       # from `host`: provisioning names it independently
       # (`cli::devx::gcp::BucketNames::applications`, `<project_id>-applications`

@@ -371,10 +371,12 @@ calls `project-publish.yml`; both pass only `project` and `host`. `workflow_disp
 attributed to `GITHUB_TOKEN` creates no run; the publish job uses `cancel-in-progress: false` because cancelling a
 publish can leave an `index.html` naming assets that have not arrived.
 
-The publish workflow builds and validates the application, reads the deployment bucket from the repository variable
-below, and then calls the pinned application-publish action. `host` names no GCP project id, so the bucket is never
-derived from it: it is provisioning's own name for the bucket (`cli::devx::gcp::BucketNames::applications`) and the
-publisher's IAM grant is conditioned on that exact name. The bucket name is never a literal in a Project repository,
+The publish workflow builds the application, reads the deployment bucket from the repository variable below, and then
+calls the pinned application-publish action. It runs no validate step of its own: `cd.yml` makes `project-gate.yml` a
+`needs:` of the publish job, so the repository has already been validated with the CLI `navigator.yaml` selects, and a
+second pass pinned to a fixed release would hold it to a different one. `host` names no GCP project id, so the bucket is
+never derived from it: it is provisioning's own name for the bucket (`cli::devx::gcp::BucketNames::applications`) and
+the publisher's IAM grant is conditioned on that exact name. The bucket name is never a literal in a Project repository,
 caller, or log.
 
 **Nothing in a Project repository restates its owner.** The action derives the Project code from the checkout's own

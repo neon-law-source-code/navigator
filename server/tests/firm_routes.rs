@@ -1506,24 +1506,24 @@ async fn home_points_at_the_four_practices_from_its_foot() {
 }
 
 #[tokio::test]
-async fn home_opens_on_the_new_york_photograph_and_practice_statement() {
-    // The supplied skyline is the public home-page hero. The statement still
-    // follows it and remains the page's only h1.
+async fn home_opens_on_the_question_with_no_photograph() {
+    // The page leads with "What is your legal need?" and nothing above it.
+    // The skyline that used to sit there is gone: no `<picture>`, no hero
+    // band, and the question remains the page's only h1.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
 
     assert!(
         body.contains(r#"<h1 class="home-statement__heading""#),
-        "the statement is the first thing on the page: {body}"
+        "the question is the first thing on the page: {body}"
     );
     assert!(
-        body.contains("new-york.png"),
-        "the home page ships the skyline: {body}"
+        body.contains("What is your legal need?"),
+        "the h1 asks the question: {body}"
     );
-    assert!(
-        body.contains("New York City skyline at sunset"),
-        "the hero has accurate alt text: {body}"
-    );
+    for gone in ["<picture", "home-hero", "new-york.png"] {
+        assert!(!body.contains(gone), "{gone} no longer ships: {body}");
+    }
     assert_eq!(
         body.matches("<h1").count(),
         1,

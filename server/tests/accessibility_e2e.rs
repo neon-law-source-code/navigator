@@ -72,8 +72,8 @@
 //! element over a real photograph is permanently undecidable: failing on it
 //! would redden the gate on every image-backed band on the site, which converts
 //! a signal into noise and gets the check deleted. But silence is what lets a
-//! contrast defect sit unmeasured — the state `.home-hero` was in before #162,
-//! when nothing on the page declared an opaque colour under the wordmark. So
+//! contrast defect sit unmeasured — the state the firm's old home hero band was
+//! in before #162, when nothing declared an opaque colour under its wordmark. So
 //! every `incomplete` is printed with the colours axe did resolve, and the one
 //! narrow shape that is a real defect rather than a genuine undecidable is
 //! asserted on: [`undecidable_contrast_failures`].
@@ -376,11 +376,11 @@ fn contrast_data(node: &serde_json::Value) -> Option<&serde_json::Value> {
 ///   opaque background and found none, so `bgColor` comes back null. That is
 ///   not a limit of the tool — it means the page never declares what colour is
 ///   behind this text, so its contrast is whatever the viewport happens to be.
-///   It is exactly the state `.home-hero` was in before PR #162, where the
-///   light theme put a white wordmark on a near-white page.
+///   It is exactly the state the firm's old home hero band was in before PR
+///   #162, where the light theme put a white wordmark on a near-white page.
 ///
 /// So the second shape is asserted on and the first is only reported. This
-/// keeps the gate quiet about the hero photograph while refusing to stay quiet
+/// keeps the gate quiet about a genuine photograph while refusing to stay quiet
 /// about text with no declared background at all.
 fn undecidable_contrast_failures(incomplete: &[serde_json::Value]) -> Vec<String> {
     incomplete
@@ -447,7 +447,7 @@ async fn assert_route_passes_axe_at(
          declared background at all — axe found no opaque ancestor to measure \
          against, so the contrast is whatever the viewport happens to be:\n  {}\n\
          Give the element (or an ancestor) an opaque background in the theme's \
-         own tokens, as `.home-hero` does.",
+         own tokens.",
         scheme.label(),
         report.undecidable_contrast.len(),
         report.undecidable_contrast.join("\n  "),
@@ -626,8 +626,8 @@ fn the_incomplete_policy_separates_undecidable_from_unmeasurable() {
 
     // No background found at all, and no reason given: the page never declares
     // what colour is behind this text, so its contrast is whatever the viewport
-    // happens to be. That is a defect, and it is the state `.home-hero` was in
-    // before PR #162 put an opaque shade under the wordmark.
+    // happens to be. That is a defect, and it is the state the firm's old home
+    // hero band was in before PR #162 put an opaque shade under its wordmark.
     let unmeasurable = result(serde_json::json!({
         "fgColor": "#ffffff", "bgColor": null, "messageKey": null,
     }));

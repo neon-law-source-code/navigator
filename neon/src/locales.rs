@@ -560,12 +560,6 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     webapp::home::HomeContent {
         head_title: copy.head_title,
         meta_description: copy.meta_description,
-        hero: copy.hero.map(|hero| webapp::home::HeroPicture {
-            sources: Vec::new(),
-            fallback_src: views::assets::asset_url(&hero.asset),
-            alt: hero.alt,
-            sizes: "100vw".to_string(),
-        }),
         heading: copy.heading,
         lead: copy.lead,
         contact_href: format!("mailto:{}", branding.firm_email),

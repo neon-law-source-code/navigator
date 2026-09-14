@@ -676,7 +676,6 @@ mod lawyer_shook_holding_page_tests {
             bare.paragraph
         );
         // No marketing content at all: nothing else is on the screen.
-        assert!(content.hero.is_none());
         assert!(content.service.is_none());
         assert!(content.practices.is_empty());
         assert!(content.provenance.is_none());

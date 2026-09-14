@@ -34,33 +34,6 @@ pub struct CopyRun {
     pub href: Option<String>,
 }
 
-/// One `<source>` of the hero `<picture>` — the MIME type the browser tests
-/// for, and the width-keyed candidates it chooses from.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct HeroSource {
-    pub mime: String,
-    pub srcset: String,
-}
-
-/// The hero photograph, resolved to plain URLs.
-///
-/// Resolved server-side rather than here: the variant URLs come from
-/// `views::assets`, which reads `NAVIGATOR_ASSET_BASE_URL` to decide whether
-/// the bytes live on the local `/public` mount or in the deployment's public
-/// assets bucket. A wasm view cannot answer that question, so the router
-/// answers it once and injects the result.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct HeroPicture {
-    /// `<source>` elements in negotiation order: AVIF, WebP, JPEG.
-    pub sources: Vec<HeroSource>,
-    /// The `<img>` `src` every browser understands.
-    pub fallback_src: String,
-    /// What the photograph shows. A real description rather than an empty
-    /// `alt`: the picture is the page's subject, not decoration behind it.
-    pub alt: String,
-    pub sizes: String,
-}
-
 /// The firm's engagements, in the firm's own words.
 ///
 /// A heading and the paragraphs under it, drawn as a full-width band so the
@@ -146,11 +119,8 @@ pub struct ProvenancePillar {
 pub struct HomeContent {
     pub head_title: String,
     pub meta_description: String,
-    /// The hero photograph the page opens on. `None` when the deployment
-    /// publishes no hero: the page then opens on the statement alone
-    /// rather than over a broken image.
-    pub hero: Option<HeroPicture>,
-    /// The practice statement under the hero.
+    /// The question the page opens on. It is the page's one `<h1>` and the
+    /// first thing a reader sees under the header: nothing sits above it.
     pub heading: String,
     pub lead: String,
     pub contact_href: String,
@@ -167,7 +137,7 @@ pub struct HomeContent {
     #[serde(default)]
     pub provenance: Option<ProvenanceSection>,
     /// When set, the page renders nothing but this statement — no header,
-    /// footer, hero, CTA, or practice boxes. A house brand that is a bare
+    /// footer, CTA, or practice boxes. A house brand that is a bare
     /// holding notice rather than an active marketing site (Lawyer Shook).
     #[serde(default)]
     pub bare: Option<BareStatement>,
@@ -175,7 +145,7 @@ pub struct HomeContent {
 
 /// A brand's entire home page, collapsed to a title and one paragraph. Used
 /// when [`HomeContent::bare`] is set: [`HomePage`] then renders none of its
-/// usual header, footer, hero, CTA, or practice boxes.
+/// usual header, footer, CTA, or practice boxes.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct BareStatement {
     pub heading: String,
@@ -295,43 +265,10 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
         document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
         document::Stylesheet { href: HOME_STYLESHEET_HREF }
         PublicShell { header, footer,
-            // The hero: the photograph, and nothing over it. The wordmark used
-            // to sit on the picture, which said the firm's name a third time —
-            // the header mark and the browser tab already do — and cost the
-            // photograph its middle. The page's `<h1>` is the practice
-            // statement below it, which is the first thing on the page that
-            // says something a reader does not already know.
-            section { class: "home-hero",
-                if let Some(hero) = content.hero.as_ref() {
-                    picture { class: "home-hero__picture",
-                        for source in hero.sources.iter() {
-                            // `srcset`/`sizes` are not in Dioxus's `source`
-                            // element definition, so they are written as raw
-                            // attributes rather than typed ones.
-                            source {
-                                r#type: "{source.mime}",
-                                "srcset": "{source.srcset}",
-                                "sizes": "{hero.sizes}",
-                            }
-                        }
-                        img {
-                            class: "home-hero__image",
-                            src: "{hero.fallback_src}",
-                            alt: "{hero.alt}",
-                            sizes: "{hero.sizes}",
-                            // The hero is the largest paint on the page; keep
-                            // it out of lazy loading so it is not deferred
-                            // behind the fold.
-                            fetchpriority: "high",
-                        }
-                    }
-                }
-            }
+            // The page opens on the question. No photograph above it and no
+            // glow behind it: the question is the page, so it is the first
+            // thing under the header and set large enough to read as such.
             section { class: "home-statement",
-                // No glow behind the statement. The hero above it is now the
-                // page's decoration, and the wash bled past the photograph's
-                // edge into the margin, which read as a rendering fault rather
-                // than as lighting.
                 h1 { class: "home-statement__heading", "{content.heading}" }
                 p { class: "home-statement__lead", "{content.lead}" }
                 a {
@@ -578,25 +515,6 @@ mod tests {
                     content: HomeContent {
                         head_title: "Home".to_string(),
                         meta_description: "AI enablement for law firms.".to_string(),
-                        hero: Some(HeroPicture {
-                            sources: vec![
-                                HeroSource {
-                                    mime: "image/avif".to_string(),
-                                    srcset: "/public/img/berkeley-bay/berkeley-bay-400w.avif 400w, \
-                                             /public/img/berkeley-bay/berkeley-bay-1200w.avif 1200w"
-                                        .to_string(),
-                                },
-                                HeroSource {
-                                    mime: "image/jpeg".to_string(),
-                                    srcset: "/public/img/berkeley-bay/berkeley-bay-1200w.jpg 1200w"
-                                        .to_string(),
-                                },
-                            ],
-                            fallback_src: "/public/img/berkeley-bay/berkeley-bay-1200w.jpg"
-                                .to_string(),
-                            alt: "The San Francisco Bay seen from the Berkeley hills.".to_string(),
-                            sizes: "100vw".to_string(),
-                        }),
                         heading: "AI enablement for law firms".to_string(),
                         lead: "Our clients are law firms.".to_string(),
                         contact_href: "mailto:contact@neonlaw.com".to_string(),
@@ -660,65 +578,29 @@ mod tests {
         assert!(out.contains("Contact us"), "CTA label");
     }
 
-    /// The photograph carries no text. The wordmark used to sit on it, which
-    /// said the firm's name a third time — the header mark and the browser tab
-    /// already do — and cost the picture its middle. The page's one `<h1>` is
-    /// therefore the practice statement, which is the first thing on the page
-    /// that tells a reader something they did not already know.
+    /// The page opens on the question, and nothing sits above it. A skyline
+    /// photograph used to lead the page; it said nothing a reader came for and
+    /// pushed the question toward the fold. The one `<h1>` is the question,
+    /// and it is the first thing inside the shell's `<main>`.
     #[test]
-    fn the_page_h1_is_the_practice_statement_and_the_photograph_carries_no_text() {
+    fn the_page_opens_on_the_question_with_no_photograph_above_it() {
         let out = html();
         assert_eq!(out.matches("<h1").count(), 1, "one h1: {out}");
         assert!(
             out.contains(r#"<h1 class="home-statement__heading""#),
-            "the h1 is the statement: {out}"
+            "the h1 is the question: {out}"
         );
-        for gone in ["home-hero__wordmark", "home-hero__scrim"] {
+        for gone in ["<picture", "<img", "home-hero"] {
             assert!(!out.contains(gone), "{gone} is gone: {out}");
         }
-        let hero = out.find("home-hero__picture").expect("the photograph");
-        let statement = out.find("home-statement").expect("the statement");
-        assert!(hero < statement, "the photograph leads the page: {out}");
-    }
-
-    #[test]
-    fn the_hero_photograph_renders_responsively_with_a_real_description() {
-        let out = html();
-        // A `<picture>`, not a bare `<img>`: the hero is the page's largest
-        // paint, and a phone must not download the 1200px variant.
+        let main = out.find("<main").expect("the shell's main");
+        let statement = out
+            .find(r#"<section class="home-statement""#)
+            .expect("the statement");
+        let between = &out[main..statement];
         assert!(
-            out.contains("<picture"),
-            "the hero negotiates formats: {out}"
-        );
-        assert!(
-            out.contains(r#"type="image/avif""#),
-            "AVIF is offered first: {out}"
-        );
-        assert!(
-            out.contains("berkeley-bay-400w.avif 400w"),
-            "the candidates are keyed by width: {out}"
-        );
-        assert!(
-            out.contains(r#"src="/public/img/berkeley-bay/berkeley-bay-1200w.jpg""#),
-            "the <img> fallback is the JPEG every browser reads: {out}"
-        );
-        assert!(
-            out.contains(r#"alt="The San Francisco Bay seen from the Berkeley hills.""#),
-            "the photograph is described, not hidden behind an empty alt: {out}"
-        );
-    }
-
-    #[test]
-    fn a_deployment_with_no_published_hero_opens_on_the_statement() {
-        // The bytes live in a bucket, not in git, so an unpublished hero is a
-        // real state rather than a bug — and it must degrade to the statement on
-        // the brand surface, never to a broken image.
-        let out = statement_only_html();
-        assert!(!out.contains("<picture"), "no empty picture: {out}");
-        assert!(!out.contains("home-hero__scrim"), "no scrim: {out}");
-        assert!(
-            out.contains("home-statement__heading"),
-            "the statement still leads: {out}"
+            !between.contains("<section") && !between.contains("<div"),
+            "nothing renders between the shell and the question: {between}"
         );
     }
 
@@ -1193,7 +1075,7 @@ mod tests {
         dioxus_ssr::render(&dom)
     }
 
-    /// The page with nothing but its defaults: no hero, no service section.
+    /// The page with nothing but its defaults: no service section, no boxes.
     fn statement_only_html() -> String {
         fn app() -> Element {
             rsx! {

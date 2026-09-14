@@ -46,10 +46,10 @@ pub struct PostQuestionnaireError(pub String);
 #[async_trait]
 pub trait PostQuestionnaireDrive: Send + Sync {
     /// `acting` attributes every transition this fires to a Person, so the
-    /// `notation_events` journal records who acted; `None` where the door
-    /// has no authenticated individual behind it (Navigator MCP answers as the
-    /// firm's agent), which the journal flags rather than silently
-    /// attributing to the notation's client.
+    /// `notation_events` journal records who acted; `None` only for a host
+    /// helper that truly has no authenticated individual, which the journal
+    /// flags rather than silently attributing the action to the notation's
+    /// client. Navigator MCP always resolves and supplies its caller.
     async fn begin(
         &self,
         notation_id: Uuid,

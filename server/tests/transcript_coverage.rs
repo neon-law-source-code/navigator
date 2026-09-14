@@ -118,6 +118,15 @@ async fn build_with(body: &[u8]) -> (axum::Router, store::surreal::SurrealDb, uu
     )
     .await
     .unwrap();
+    // The auth-bypass bearer resolves to the canonical firm principal. Model
+    // its required firm-side participation before exercising answer writes.
+    let lawyer = store::persons::default_firm_dri(&surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(&surreal, project.id, lawyer, "lawyer")
+        .await
+        .unwrap();
     let notation_id = store::notations::create(
         &surreal,
         &store::notations::NewNotation::new(template.id, client.id, project.id, "BEGIN"),

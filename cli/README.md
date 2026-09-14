@@ -91,6 +91,9 @@ every question and the graph, and the command says so rather than leaving a dead
 runs anywhere, including inside a Project repository that has no `server/public` of its own — the stylesheets it needs
 are compiled into this binary.
 
+The preview binds only to `127.0.0.1`, uses an OS-assigned ephemeral port unless `--port` is given, opens no store,
+holds no session, and persists nothing when its process stops.
+
 You do not need a site to work locally. Use `navigator validate`, the `navigator notations` authoring commands, and the
 KIND-backed `navigator dev` loop, and `navigator erd` to introspect the schema; seed a local catalog with `navigator
 site seed` when that command's local store and storage environment are available, or import deployment data with

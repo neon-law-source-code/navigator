@@ -165,6 +165,9 @@ Creating or answering a Notation is a supervised act, so that walk runs over A2A
 and refuse one named anyway: neither can collect an approval, and simulating one is worse than declining. See
 [`docs/mcp-a2a-interaction.md`](mcp-a2a-interaction.md) for the authorization round trip.
 
+`navigator notations preview` is intentionally a local reading surface: it binds only to `127.0.0.1`, takes an
+OS-assigned ephemeral port unless `--port` supplies one, opens no store, and holds no session or persistent state.
+
 ## Question
 
 One prompt presented to a respondent during Template traversal. Identified by a stable `code` (e.g. `client_name`,

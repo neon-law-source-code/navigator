@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 use workflows::{notation_session, NextStep, NotationSessionError, StateMachineRuntime};
 
-use super::ToolError;
+use super::{Identity, ToolError};
 
 #[must_use]
 pub fn descriptor() -> Value {
@@ -72,11 +72,12 @@ struct Args {
     value: String,
 }
 
-pub async fn call(
+pub(super) async fn call(
     surreal: &store::surreal::SurrealDb,
     runtime: &dyn StateMachineRuntime,
     storage: Option<&std::sync::Arc<dyn cloud::StorageService>>,
     post_questionnaire: Option<&dyn workflows::PostQuestionnaireDrive>,
+    identity: Identity,
     arguments: &Value,
 ) -> Result<Value, ToolError> {
     let args: Args = super::decode_args(arguments)?;
@@ -88,8 +89,22 @@ pub async fn call(
         ));
     }
 
-    // Navigator MCP answers as the firm's agent, not a Person row, so the answer
-    // is lawyer-sourced with no individual typist.
+    let notation = store::notations::find_by_id(surreal, args.notation_id)
+        .await
+        .map_err(|error| ToolError::Database(error.to_string()))?
+        .ok_or_else(|| ToolError::NotFound("notation".into()))?;
+    let in_scope = store::access::can_see_project_as_lawyer(
+        surreal,
+        Some(identity.person_id),
+        identity.role,
+        notation.project_id,
+    )
+    .await
+    .map_err(ToolError::Database)?;
+    if !in_scope {
+        return Err(ToolError::NotFound("notation".into()));
+    }
+
     let next = notation_session::answer_step(
         surreal,
         runtime,
@@ -97,7 +112,7 @@ pub async fn call(
         args.notation_id,
         question_code,
         args.value.as_str(),
-        notation_session::AnswerAuthor::lawyer(None),
+        notation_session::AnswerAuthor::lawyer(Some(identity.person_id)),
     )
     .await
     .map_err(map_notation_err)?;
@@ -125,11 +140,8 @@ pub async fn call(
         // shared drive (`workflows::post_questionnaire`).
         NextStep::QuestionnaireComplete => match post_questionnaire {
             Some(drive) => {
-                // Navigator MCP answers as the firm's agent rather than as a
-                // Person row, so the transitions carry no individual actor —
-                // the same attribution the answer above was written with.
                 let state = drive
-                    .begin(args.notation_id, None)
+                    .begin(args.notation_id, Some(identity.person_id))
                     .await
                     .map_err(|e| ToolError::Internal(e.to_string()))?;
                 (
@@ -232,16 +244,40 @@ fn map_notation_err(err: NotationSessionError) -> ToolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{call, descriptor};
-    use crate::tools::{create_notation, ToolError};
+    use super::{call as call_as, descriptor};
+    use crate::tools::{create_notation, Identity, ToolError};
     use serde_json::{json, Value};
     use uuid::Uuid;
-    use workflows::InMemoryRuntime;
+    use workflows::{InMemoryRuntime, StateMachineRuntime};
 
     use store::test_support::mem_surreal;
     async fn db() -> store::surreal::SurrealDb {
         let surreal = mem_surreal().await;
         surreal
+    }
+
+    async fn call(
+        surreal: &store::surreal::SurrealDb,
+        runtime: &dyn StateMachineRuntime,
+        storage: Option<&std::sync::Arc<dyn cloud::StorageService>>,
+        post_questionnaire: Option<&dyn workflows::PostQuestionnaireDrive>,
+        arguments: &Value,
+    ) -> Result<Value, ToolError> {
+        let person = store::persons::find_by_email_ci(surreal, "principal@example.com")
+            .await?
+            .ok_or_else(|| ToolError::Internal("missing seeded lawyer".into()))?;
+        call_as(
+            surreal,
+            runtime,
+            storage,
+            post_questionnaire,
+            Identity {
+                person_id: person.id,
+                role: person.role,
+            },
+            arguments,
+        )
+        .await
     }
 
     async fn seed(surreal: &store::surreal::SurrealDb) {
@@ -516,7 +552,7 @@ mod tests {
     /// `portal::retainer_walk::PostQuestionnaire`.
     #[derive(Default)]
     struct StubDrive {
-        began: std::sync::Mutex<Vec<Uuid>>,
+        began: std::sync::Mutex<Vec<(Uuid, Option<Uuid>)>>,
     }
 
     #[async_trait::async_trait]
@@ -524,9 +560,9 @@ mod tests {
         async fn begin(
             &self,
             notation_id: Uuid,
-            _acting: Option<Uuid>,
+            acting: Option<Uuid>,
         ) -> Result<String, workflows::PostQuestionnaireError> {
-            self.began.lock().unwrap().push(notation_id);
+            self.began.lock().unwrap().push((notation_id, acting));
             Ok("lawyer_review".to_string())
         }
     }
@@ -582,11 +618,55 @@ mod tests {
             last["structuredContent"]["workflow_state"], "lawyer_review",
             "the tool reports where the workflow it began now sits"
         );
+        let principal = store::persons::find_by_email_ci(&surreal, "principal@example.com")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             *drive.began.lock().unwrap(),
-            vec![id],
-            "the drive is called exactly once, on the answer that ended the questionnaire"
+            vec![(id, Some(principal.id))],
+            "the drive is called once and keeps the resolved caller"
         );
+    }
+
+    #[tokio::test]
+    async fn an_out_of_scope_lawyer_cannot_answer_or_start_a_workflow() {
+        let surreal = db().await;
+        seed(&surreal).await;
+        let runtime = InMemoryRuntime::new();
+        let (id, code) = start_retainer(&surreal, &runtime).await;
+        let outsider = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Outside Lawyer",
+                "outside-lawyer@example.com",
+                store::persons::Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap();
+        let drive = StubDrive::default();
+
+        let error = call_as(
+            &surreal,
+            &runtime,
+            None,
+            Some(&drive),
+            Identity {
+                person_id: outsider.id,
+                role: outsider.role,
+            },
+            &json!({ "notation_id": id, "question_code": code, "value": "Nope" }),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(error, ToolError::NotFound(_)));
+        assert!(store::answers::for_notation(&surreal, id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(drive.began.lock().unwrap().is_empty());
     }
 
     /// ENG-459: the agent surface never reaches

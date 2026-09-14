@@ -1,5 +1,5 @@
-//! Lawyer contract-negotiation playbooks as Dioxus components (#956 Phase 4) —
-//! the list, the create form, and the edit-positions form.
+//! Lawyer contract-negotiation playbooks as Dioxus components — the list, the
+//! create form, and the edit-positions form.
 //!
 //! A **playbook** is the set of negotiating positions a client Entity has
 //! decided it wants — the yardstick the inbound-contract review measures a
@@ -8,14 +8,14 @@
 //! whole position set in one textarea (one position per line, pipe-delimited)
 //! so an attorney edits the playbook as a block.
 //!
-//! The successor to the `views::pages::admin::playbooks`. The three `GET`
-//! renders live here; `POST /app/admin/playbooks` (create) and `POST
-//! /app/admin/playbooks/{id}` (update) stay on `portal::admin_playbooks`, which axum
-//! merges onto the same paths. Those handlers follow post/redirect/get: a
-//! refusal redirects back to the form carrying its message as `?error=` **and
-//! the rejected positions text**, which these loaders overlay onto the stored
-//! row. A position set is dozens of hand-authored lines, so reloading the stored
-//! row after a typo'd severity would silently discard the whole block.
+//! The three `GET` renders live here; `POST /app/admin/playbooks` (create) and
+//! `POST /app/admin/playbooks/{id}` (update) stay on `portal::admin_playbooks`,
+//! which axum merges onto the same paths. Those handlers follow
+//! post/redirect/get: a refusal redirects back to the form carrying its message
+//! as `?error=` **and the rejected positions text**, which these loaders overlay
+//! onto the stored row. A position set is dozens of hand-authored lines, so
+//! reloading the stored row after a typo'd severity would silently discard the
+//! whole block.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -99,7 +99,7 @@ pub async fn get_playbook_list() -> Result<PlaybookListView, ServerFnError> {
     let names = company_names(&surreal).await?;
     let mut rows: Vec<PlaybookRow> = store::playbooks::all(&surreal)
         .await
-        .map_err(|e| server_error(&e))?
+        .map_err(server_error)?
         .into_iter()
         .map(|p| PlaybookRow {
             entity_name: names
@@ -113,10 +113,24 @@ pub async fn get_playbook_list() -> Result<PlaybookListView, ServerFnError> {
         })
         .collect();
 
-    // Company then name is the default reading order — the page always
-    // applied it. A `?sort=` the headers advertise now actually reorders the
-    // table rather than only re-rendering the header arrow.
-    let parsed = parse_sort(&sort);
+    sort_rows(&mut rows, &sort);
+
+    Ok(PlaybookListView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
+        firm_name: crate::app_chrome::firm_name_from_context().await,
+        rows,
+        sort,
+        role,
+    })
+}
+
+/// Order the rows by the requested `?sort=`, first field primary.
+///
+/// Company then name is the default reading order. A `?sort=` the headers
+/// advertise reorders the table; unrequested fields stay as the tie-break.
+#[cfg(feature = "server")]
+fn sort_rows(rows: &mut [PlaybookRow], sort: &str) {
+    let parsed = crate::admin_listing::parse_sort(sort);
     rows.sort_by(|a, b| {
         let requested = parsed
             .iter()
@@ -138,27 +152,6 @@ pub async fn get_playbook_list() -> Result<PlaybookListView, ServerFnError> {
             .then_with(|| a.entity_name.cmp(&b.entity_name))
             .then_with(|| a.name.cmp(&b.name))
     });
-
-    Ok(PlaybookListView {
-        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
-        firm_name: crate::app_chrome::firm_name_from_context().await,
-        rows,
-        sort,
-        role,
-    })
-}
-
-/// Parse a JSON:API `sort` value into `(key, descending)` pairs. Server-only.
-#[cfg(feature = "server")]
-fn parse_sort(raw: &str) -> Vec<(String, bool)> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty() && *segment != "-")
-        .map(|segment| match segment.strip_prefix('-') {
-            Some(key) => (key.to_string(), true),
-            None => (segment.to_string(), false),
-        })
-        .collect()
 }
 
 /// The lawyer playbooks list. Server-side rendered with the sorted rows already
@@ -450,7 +443,7 @@ pub async fn get_playbook_edit_form() -> Result<PlaybookEditView, ServerFnError>
     let surreal = consume_context::<store::surreal::SurrealDb>();
     let row = store::playbooks::by_id(&surreal, id)
         .await
-        .map_err(|e| server_error(&e))?;
+        .map_err(server_error)?;
 
     let fields = match row {
         Some(row) => {
@@ -471,9 +464,8 @@ pub async fn get_playbook_edit_form() -> Result<PlaybookEditView, ServerFnError>
         None => None,
     };
 
-    // A valid UUID that resolves to no row is a missing resource: commit the
-    // same 404 the retired handler returned, so a `#[server]` fallback
-    // does not quietly serve it as a successful page.
+    // A valid UUID that resolves to no row is a missing resource: commit 404
+    // so a `#[server]` fallback does not serve it as a successful page.
     if fields.is_none() {
         dioxus_fullstack_core::FullstackContext::commit_http_status(
             axum::http::StatusCode::NOT_FOUND,
@@ -609,7 +601,7 @@ async fn company_names(
 ) -> Result<std::collections::HashMap<uuid::Uuid, String>, ServerFnError> {
     Ok(store::entities::all(surreal)
         .await
-        .map_err(|e| server_error(&e))?
+        .map_err(server_error)?
         .into_iter()
         .map(|e| (e.id, e.name))
         .collect())
@@ -622,7 +614,7 @@ async fn company_choices(
 ) -> Result<Vec<CompanyChoice>, ServerFnError> {
     Ok(store::entities::all(surreal)
         .await
-        .map_err(|e| server_error(&e))?
+        .map_err(server_error)?
         .into_iter()
         .map(|e| CompanyChoice {
             id: e.id.to_string(),
@@ -636,7 +628,7 @@ async fn company_choices(
 /// never answered. An attorney reading that emptiness as "this Company has no
 /// playbook on file" would be acting on a lie.
 #[cfg(feature = "server")]
-fn server_error(e: &dyn std::fmt::Display) -> ServerFnError {
+fn server_error(e: impl std::fmt::Display) -> ServerFnError {
     tracing::error!(error = %e, "lawyer: playbook query failed");
     dioxus_fullstack_core::FullstackContext::commit_http_status(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -785,5 +777,43 @@ mod tests {
         }));
         assert!(html.contains("Playbook not found"), "{html}");
         assert!(!html.contains("<form"), "{html}");
+    }
+
+    #[cfg(feature = "server")]
+    fn labels(rows: &[PlaybookRow]) -> Vec<String> {
+        rows.iter()
+            .map(|r| format!("{} / {}", r.entity_name, r.name))
+            .collect()
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn the_default_sort_is_company_then_name() {
+        let mut rows = vec![
+            row("Beta Co", "Zebra", 1, true),
+            row("Acme Inc", "Vendor MSA", 1, true),
+            row("Acme Inc", "NDA", 1, true),
+        ];
+        sort_rows(&mut rows, "");
+        assert_eq!(
+            labels(&rows),
+            ["Acme Inc / NDA", "Acme Inc / Vendor MSA", "Beta Co / Zebra"]
+        );
+    }
+
+    /// The first requested field is primary; company then name only break ties.
+    #[cfg(feature = "server")]
+    #[test]
+    fn the_first_sort_field_is_primary() {
+        let mut rows = vec![
+            row("Beta Co", "Alpha", 1, true),
+            row("Acme Inc", "Zebra", 1, true),
+            row("Acme Inc", "NDA", 1, true),
+        ];
+        sort_rows(&mut rows, "name");
+        assert_eq!(
+            labels(&rows),
+            ["Beta Co / Alpha", "Acme Inc / NDA", "Acme Inc / Zebra"]
+        );
     }
 }

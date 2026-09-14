@@ -179,7 +179,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         body.contains("fm-hero__title"),
         "the page states its offering in an h1: {body}"
     );
-    for figure in ["$365", "/year", "About $1 a day"] {
+    for figure in ["$365", "/year", "$1 a day"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     assert!(
@@ -552,7 +552,7 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
         "the statement: {body}"
     );
     assert!(body.contains("One annual price"), "the structure: {body}");
-    for figure in ["$3,650", "/year", "About $10 a day", "$5 per contract"] {
+    for figure in ["$3,650", "/year", "$10 a day", "$5 per contract"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     for removed in [

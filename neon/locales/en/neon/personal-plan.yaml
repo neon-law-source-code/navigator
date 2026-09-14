@@ -41,7 +41,7 @@ bands:
     overline: Personal Legal Plan
     heading: One annual price
     description: >-
-      The Personal plan is $365 per year, about $1 a day. Work outside the
+      The Personal plan is $365 per year, $1 a day. Work outside the
       plan and government fees cost extra. We will explain the cost before we
       begin additional work.
     pricing_style: true
@@ -51,7 +51,7 @@ bands:
           - "{shared:personal_plan.price}"
         cadence: /year
         body:
-          - - text: "About $1 a day for help with taxes and personal information."
+          - - text: "$1 a day for help with taxes and personal information."
         features:
           - Help with federal and state tax filings
           - "{shared:personal_plan.included.data_removal}"

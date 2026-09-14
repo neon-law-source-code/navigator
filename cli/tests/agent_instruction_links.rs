@@ -157,12 +157,21 @@ fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
         "Workshops",
         "RUST_IN_PEACE.md",
         "similar patterns",
+        "api-guidelines",
+        "microsoft.github.io/rust-guidelines",
     ] {
         assert!(
             skill.contains(required),
             "random-refactor skill must contain {required:?}"
         );
     }
+
+    const MAX_LINES: usize = 92;
+    let lines = skill.lines().count();
+    assert!(
+        lines <= MAX_LINES,
+        "random-refactor skill must not grow (was {MAX_LINES} lines, now {lines})"
+    );
 }
 
 /// The guard itself must reject the regular-file form Git writes when it cannot

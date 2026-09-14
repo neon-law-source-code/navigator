@@ -182,6 +182,19 @@ pub enum SchemaError {
     ProjectBrandBackfillMissingDefault(String),
     #[error("project brand backfill dangling brand: {0}")]
     ProjectBrandBackfillDangling(String),
+    /// A matter recorded under a prior schema version already holds a code
+    /// [`cloud::workspace::RESERVED_PROJECT_CODES`] has since reserved. The
+    /// `ASSERT` on `project.code` only guards future writes — SurrealDB does
+    /// not retroactively validate stored data — so a historical row like this
+    /// would otherwise keep an immutable code that now collides with a
+    /// literal Navigator route, with nothing to say so. There is no
+    /// automatic remediation: a Project code is immutable and meaningful, so
+    /// renaming it is a deliberate, one-off human decision, not a retry.
+    #[error(
+        "Project code {0:?} is reserved but already recorded on an existing matter — apply \
+         refuses to converge the schema until that matter's code is deliberately resolved"
+    )]
+    ReservedProjectCode(String),
     #[error("record the applied schema version")]
     RecordVersion(#[source] SurrealQueryError),
     #[error("read the applied schema version")]
@@ -213,6 +226,26 @@ async fn live_brand_key(db: &SurrealDb, brand_key: &str) -> Result<bool, SchemaE
         .map_err(SchemaError::Apply)?;
     let rows: Vec<RecordId> = response.take(0).map_err(SchemaError::Apply)?;
     Ok(!rows.is_empty())
+}
+
+/// Refuse to converge the schema while an existing matter holds a code that
+/// [`cloud::workspace::RESERVED_PROJECT_CODES`] reserves. A preflight, not a
+/// backfill: unlike the brand backfill below, there is nothing safe to write
+/// on the matter's behalf, so a collision is a hard failure rather than a
+/// row this apply corrects.
+async fn guard_no_reserved_project_codes(db: &SurrealDb) -> Result<(), SchemaError> {
+    let mut response = db
+        .query("SELECT VALUE code FROM project")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    let codes: Vec<String> = response.take(0).map_err(SchemaError::Apply)?;
+    for code in codes {
+        if cloud::workspace::RESERVED_PROJECT_CODES.contains(&code.as_str()) {
+            return Err(SchemaError::ReservedProjectCode(code));
+        }
+    }
+    Ok(())
 }
 
 async fn backfill_project_brand(db: &SurrealDb) -> Result<(), SchemaError> {
@@ -256,6 +289,13 @@ pub async fn apply(db: &SurrealDb) -> Result<(), SchemaError> {
         .await
         .and_then(surrealdb::IndexedResults::check)
         .map_err(classify_apply)?;
+
+    // Checked right after `DEFINE TABLE IF NOT EXISTS project` has run (so a
+    // never-touched table reads as empty rather than "does not exist") and
+    // before anything treats this apply as having converged: a reserved-code
+    // collision is a fact about existing data the new `ASSERT` cannot see
+    // retroactively, so it must fail the boot rather than pass silently.
+    guard_no_reserved_project_codes(db).await?;
 
     backfill_project_brand(db).await?;
 
@@ -357,8 +397,8 @@ pub async fn state(db: &SurrealDb) -> Result<SchemaState, SchemaError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply, installed_version, introspect, state, table_names, SchemaState, DEFINITIONS,
-        SCHEMA_VERSION, VERSION_RECORD,
+        apply, installed_version, introspect, state, table_names, SchemaError, SchemaState,
+        DEFINITIONS, SCHEMA_VERSION, VERSION_RECORD,
     };
     use crate::surreal::test_support::unmigrated;
 
@@ -453,6 +493,38 @@ mod tests {
             .unwrap();
         assert_eq!(records, vec![i64::from(SCHEMA_VERSION)]);
         assert_eq!(state(&db).await.unwrap(), SchemaState::InSync);
+    }
+
+    /// A row coded `closed` written before that code was reserved (simulated
+    /// here by writing it into a database with no schema applied at all, so
+    /// nothing validates the write) must not be silently outlived by the new
+    /// `ASSERT` on `project.code` — SurrealDB does not retroactively enforce
+    /// a `DEFINE FIELD` against rows already on disk. `apply` must refuse
+    /// rather than converge and leave that matter's own detail page shadowed
+    /// by the new `/app/projects/closed` route with no warning.
+    #[tokio::test]
+    async fn apply_refuses_a_historical_row_already_holding_a_reserved_code() {
+        let db = unmigrated().await;
+        db.query(
+            "CREATE project SET code = 'closed', name = 'Historical', status = 'open', \
+             entity_id = rand::uuid(), inserted_at = '2020-01-01T00:00:00Z', \
+             updated_at = '2020-01-01T00:00:00Z'",
+        )
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("write the historical row before any schema exists");
+
+        let error = apply(&db)
+            .await
+            .expect_err("a reserved historical code must refuse to apply");
+        assert!(
+            matches!(error, SchemaError::ReservedProjectCode(ref code) if code == "closed"),
+            "{error}"
+        );
+
+        // The guard runs before `DEFINE` installs the new schema, so a
+        // refused apply must not have left the database half-migrated.
+        assert_eq!(installed_version(&db).await.unwrap(), None);
     }
 
     /// ENG-119: a participation is one person's current scope on one

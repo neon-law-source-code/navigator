@@ -8346,6 +8346,68 @@ async fn lawyer_projects_list_hides_closed_by_default_and_the_closed_tab_shows_t
     assert!(closed_body.contains("nav-tab is-active"), "{closed_body}");
 }
 
+/// `archived` is the lifecycle's second terminal state
+/// (`store::projects::Transition::Archive`), reached from `closed` rather
+/// than from `open` — as inactive as a closed matter, so it must land on the
+/// Closed tab too rather than sitting invisibly in neither tab.
+#[tokio::test]
+async fn lawyer_projects_list_treats_an_archived_matter_as_closed() {
+    let (state, surreal) = state_with_engines().await;
+    let (_open_id, lawyer, cookie, _csrf) = lawyer_project_fixture(&surreal).await;
+    let archived_project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("archived-fixture-{}", uuid::Uuid::now_v7()),
+            name: "Wound-Down Matter".into(),
+            status: "archived".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, archived_project.id, lawyer.id, "lawyer")
+        .await
+        .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let open_tab = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header(header::COOKIE, cookie.clone())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(open_tab.status(), StatusCode::OK);
+    let open_body = body_string(open_tab).await;
+    assert!(
+        !open_body.contains("Wound-Down Matter"),
+        "an archived matter must not render on the Open tab: {open_body}"
+    );
+
+    let closed_tab = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects/closed")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(closed_tab.status(), StatusCode::OK);
+    let closed_body = body_string(closed_tab).await;
+    assert!(
+        closed_body.contains("Wound-Down Matter"),
+        "an archived matter must render on the Closed tab: {closed_body}"
+    );
+}
+
 /// The `Created` and `Last commit` columns render on both tabs — `created_at`
 /// always has a value; `last_committed_at` degrades to an em dash when no
 /// GitHub forge is configured (the case in every test process).

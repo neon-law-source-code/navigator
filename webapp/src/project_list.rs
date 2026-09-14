@@ -337,17 +337,20 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
             .map_err(loader_error)?
     };
 
-    // The tab is the filter: Open hides `closed` matters (the common case —
-    // a firm tier working the docket does not want every closed matter of
-    // the deployment's history in the way), Closed shows only them. There is
-    // no third tab for "archived" — that lifecycle step exists only in
-    // documentation so far ([`store::projects`] module doc), not as a status
-    // any matter actually carries.
+    // The tab is the filter: Open hides every terminal matter (the common
+    // case — a firm tier working the docket does not want every inactive
+    // matter of the deployment's history in the way), Closed shows only
+    // them. "Terminal" is both lifecycle end states `store::projects`
+    // documents (`open` → `closed` → `archived`, reachable via
+    // `store::projects::Transition`), not just `closed` — an archived
+    // matter is exactly as inactive as a closed one, so it belongs on the
+    // same tab rather than being invisible from both.
     matters.retain(|m| {
-        let is_closed = m.status.eq_ignore_ascii_case("closed");
+        let is_terminal =
+            m.status.eq_ignore_ascii_case("closed") || m.status.eq_ignore_ascii_case("archived");
         match scope {
-            ProjectListScope::Open => !is_closed,
-            ProjectListScope::Closed => is_closed,
+            ProjectListScope::Open => !is_terminal,
+            ProjectListScope::Closed => is_terminal,
         }
     });
 

@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -37,6 +38,13 @@ pub const GITHUB_API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
 pub const DEFAULT_API_BASE: &str = "https://api.github.com";
 const API_VERSION: &str = "2022-11-28";
 const USER_AGENT: &str = concat!("neon-law-navigator/", env!("CARGO_PKG_VERSION"));
+/// Bound on each request. `head_commit_committed_at` now runs on every
+/// `/app/projects` render (once per matching row, concurrently), not only
+/// from an infrequent, deliberate admin action — so a socket GitHub never
+/// answers must not hang a page render indefinitely. Mirrors
+/// `webapp::source_repository::REQUEST_TIMEOUT`'s value and reasoning: a
+/// hang costs one degraded column, not the request.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A Project's source repository as the forge reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -371,6 +379,7 @@ impl GitHubForge {
             .header(reqwest::header::USER_AGENT, USER_AGENT)
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .header("X-GitHub-Api-Version", API_VERSION)
+            .timeout(REQUEST_TIMEOUT)
             .send()
             .await;
         let response = match response {
@@ -390,6 +399,7 @@ impl GitHubForge {
             .header(reqwest::header::USER_AGENT, USER_AGENT)
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .header("X-GitHub-Api-Version", API_VERSION)
+            .timeout(REQUEST_TIMEOUT)
             .json(&CreateRepository {
                 name: project_code,
                 private: true,
@@ -435,6 +445,7 @@ impl GitHubForge {
             .header(reqwest::header::USER_AGENT, USER_AGENT)
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .header("X-GitHub-Api-Version", API_VERSION)
+            .timeout(REQUEST_TIMEOUT)
             .send()
             .await;
         let response = match response {
@@ -461,6 +472,7 @@ impl GitHubForge {
             .header(reqwest::header::USER_AGENT, USER_AGENT)
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .header("X-GitHub-Api-Version", API_VERSION)
+            .timeout(REQUEST_TIMEOUT)
             .send()
             .await;
         let response = Self::checked(response, action)?;
@@ -584,6 +596,7 @@ impl ForgeService for GitHubForge {
             .header(reqwest::header::USER_AGENT, USER_AGENT)
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .header("X-GitHub-Api-Version", API_VERSION)
+            .timeout(REQUEST_TIMEOUT)
             .send()
             .await;
         Self::checked(response, "deleting repository")?;

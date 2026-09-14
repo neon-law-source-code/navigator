@@ -24,6 +24,7 @@ mod lsp_publish;
 mod mcp_bridge;
 mod narrate;
 mod notations_preview;
+mod notations_run;
 mod notices;
 mod palette;
 mod projects;
@@ -717,6 +718,11 @@ enum NotationsCmd {
         /// printed either way.
         #[arg(long, default_value_t = 0)]
         port: u16,
+    },
+    /// Run a notation in Navigator's isolated, embedded local runtime.
+    Run {
+        /// Template file to validate, persist, and walk in an ephemeral store.
+        file: PathBuf,
     },
     /// Render a single notation template to a PDF, framed by an output
     /// format (a plain document, a firm `letter` on Neon Law letterhead
@@ -2154,6 +2160,9 @@ fn main() -> ExitCode {
             NotationsCmd::Narrate { file, out } => narrate::run(&file, &out),
             NotationsCmd::Preview { file, port } => {
                 devx_result(runtime().block_on(notations_preview::run(&file, port)))
+            }
+            NotationsCmd::Run { file } => {
+                devx_result(runtime().block_on(notations_run::run(&file)))
             }
             NotationsCmd::Render {
                 file,

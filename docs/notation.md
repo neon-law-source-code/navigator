@@ -168,6 +168,13 @@ and refuse one named anyway: neither can collect an approval, and simulating one
 `navigator notations preview` is intentionally a local reading surface: it binds only to `127.0.0.1`, takes an
 OS-assigned ephemeral port unless `--port` supplies one, opens no store, and holds no session or persistent state.
 
+`navigator notations run <FILE>` is the complementary terminal walkthrough. It validates one template and runs it in a
+new embedded store with a temporary object directory and synthetic identities. It first completes the client-visible
+subset (which does not advance the firm's questionnaire), then completes the firm's questionnaire, invokes the shared
+post-questionnaire drive at `END`, and reports the persisted answers, transitions, and workflow state. The store and
+objects exist only for that process: the command neither selects a deployment from ambient configuration nor calls live
+providers.
+
 ## Question
 
 One prompt presented to a respondent during Template traversal. Identified by a stable `code` (e.g. `client_name`,

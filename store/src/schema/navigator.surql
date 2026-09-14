@@ -39,8 +39,9 @@ DEFINE FIELD OVERWRITE applied_at ON schema_version TYPE datetime DEFAULT time::
 -- exists.
 DEFINE TABLE IF NOT EXISTS project SCHEMAFULL PERMISSIONS NONE;
 -- A Project code is a route segment and a repository name.
--- `/app/projects/new` is the matter-open form, so a Project whose code is
--- `new` would collide with it; refusing the code in
+-- `/app/projects/new` is the matter-open form and `/app/projects/closed` is
+-- the closed-matters tab, so a Project whose code is `new` or `closed` would
+-- collide with one of them; refusing the code in
 -- `store::projects::is_valid_code` alone would leave a direct write able to
 -- create the colliding row. The slug *shape* stays enforced in Rust, at every
 -- write path, rather than being restated here as a second regex to keep in
@@ -54,7 +55,7 @@ DEFINE TABLE IF NOT EXISTS project SCHEMAFULL PERMISSIONS NONE;
 -- engine itself, not only by the absence of a handler that offers to.
 DEFINE FIELD OVERWRITE code ON project TYPE string
     READONLY
-    ASSERT $value != 'new';
+    ASSERT $value != 'new' AND $value != 'closed';
 DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;
 -- Which house brand's storefront this matter was opened through, written by

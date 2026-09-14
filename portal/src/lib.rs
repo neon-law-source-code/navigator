@@ -1471,6 +1471,14 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
     );
+    // The closed-matters tab of the same list, at `/app/projects/closed`; the
+    // firm-tier lens filters to `status == "closed"` instead of hiding it.
+    let dioxus_projects_closed = dioxus_app::projects_closed_router(
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
     // #956 Phase 4 (app cluster): the blank government-forms index renders
     // through Dioxus at /app/forms. The download route stays on Axum.
     let dioxus_app_forms = dioxus_app::app_forms_router(
@@ -1772,6 +1780,7 @@ pub fn bootstrap(
         // Dioxus mount, at `/app/projects` and `/app/projects/{code}`. The lens
         // comes from the caller's role.
         dioxus_projects,
+        dioxus_projects_closed,
         dioxus_project_detail,
         // The lawyer project forms (#956 Phase 4) render through Dioxus —
         // matter-open, the descriptive edit, and the participation add/edit.

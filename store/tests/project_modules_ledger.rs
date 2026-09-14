@@ -138,7 +138,7 @@ async fn every_effective_toggle_writes_one_audit_entry() {
 #[tokio::test]
 async fn the_schema_refuses_an_unrecognized_module() {
     let surreal = mem_surreal().await;
-    let project_id = open_matter(&surreal, "closed").await;
+    let project_id = open_matter(&surreal, "unrecognized-module").await;
 
     let error = surreal
         .query(

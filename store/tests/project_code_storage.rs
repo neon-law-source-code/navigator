@@ -156,7 +156,7 @@ async fn a_malformed_or_reserved_code_is_still_refused() {
     let surreal = mem_surreal().await;
     let (client_id, acting_person_id, entity_id) = references(&surreal).await;
 
-    for bad_code in ["Not Kebab Case", "new", "navigator", ""] {
+    for bad_code in ["Not Kebab Case", "new", "navigator", "closed", ""] {
         let result = projects::open_matter(
             &surreal,
             &command("A Matter", bad_code, client_id, entity_id, acting_person_id),

@@ -55,18 +55,18 @@ to two codes; one separator keeps the mapping an equality check rather than a no
 Drive folder — per-matter Drive folders are being retired (see [the glossary](glossary.md#project)) — and
 `project.repository_url` itself remains a stored URL Navigator never composes from the code (above).
 
-`new` is refused as a Project code. `/app/projects/new` is Navigator's matter-open form, so a Project coded `new` would
-collide with a literal route. Which side of a genuine collision wins depends on route registration order, so the code is
-refused rather than the precedence reasoned about — in `store::projects::is_valid_code` and in an `ASSERT` on
-`project.code`, because a Rust check only guards the write paths that call it.
+`new` and `closed` are refused as Project codes. `/app/projects/new` is Navigator's matter-open form and
+`/app/projects/closed` is the closed-matters tab, so a Project coded `new` or `closed` would collide with one of those
+literal routes. Which side of a genuine collision wins depends on route registration order, so the code is refused
+rather than the precedence reasoned about — in `store::projects::is_valid_code` and in an `ASSERT` on `project.code`,
+because a Rust check only guards the write paths that call it.
 
 `navigator` is refused too, for a different reason: not a route collision but a repository one. Because the repository
 name *is* the code, a matter coded `navigator` in the Firm's own organization would name Navigator's own source rather
 than a matter's, and every rule that treats a Project repository as client-adjacent would then be pointed at the
 product. `cloud::workspace::NAVIGATOR_REPOSITORY_URL` names that one repository — one host, one organization, the same
 on every deployment forever, which is exactly what a Project's repository never is — and
-`cloud::workspace::RESERVED_PROJECT_CODES` carries both refusals. The shared gate action refuses the same two names, and
-`cli/tests/project_gate.rs` holds the two lists identical in both directions.
+`cloud::workspace::RESERVED_PROJECT_CODES` carries all three refusals.
 
 ## The repository name is the Project code
 

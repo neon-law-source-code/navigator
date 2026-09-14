@@ -334,6 +334,12 @@ and Blacksmith serves the Actions cache protocol from its own store, so `/action
 both report zero while every gate run restores a full match. Grep the job for `Cache hit`, `No cache found`, and `full
 match` instead — that is the only authoritative signal.
 
+`ci.yml`'s `validate content` job also runs `navigator ops github check-signatures` over `base.sha..head.sha`.
+`production` already requires verified signatures on `main`, but squash-merge writes a new GitHub-signed commit there,
+so that rule does not prove the pull-request head was signed. Cloud Agents attach an HSM Ed25519 `gpgsig`; disabling
+`commit.gpgsign` does not. The check reads the commit object, not GitHub's verification API, and inspects the PR head
+rather than the workflow merge commit.
+
 | Workflow | Trigger | Job |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | `pull_request` → `main` | Rust quality gate |

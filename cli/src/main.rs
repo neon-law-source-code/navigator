@@ -1495,6 +1495,21 @@ enum GithubCmd {
         #[arg(long, default_value = published_cli_version())]
         action_version: String,
     },
+    /// Refuse a revision range that contains an unsigned commit. Cloud Agent
+    /// pull-request heads carry an HSM `gpgsig`; a session that turned
+    /// `commit.gpgsign` off does not. Squash-merge still writes a GitHub-signed
+    /// commit on `main`, so this is the check that the PR head itself is signed.
+    CheckSignatures {
+        /// Exclusive start of the range (`base..head`).
+        #[arg(long)]
+        base: String,
+        /// Inclusive end of the range.
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        /// Git directory to inspect.
+        #[arg(long, default_value = ".")]
+        git_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]

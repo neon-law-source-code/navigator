@@ -3140,6 +3140,21 @@ mod tests {
             jobs.contains_key(serde_yaml::Value::String("validate".into())),
             "ci.yml must keep a validate job so a copy-only PR still runs navigator validate"
         );
+        let validate = serde_yaml::to_string(&parsed["jobs"]["validate"])
+            .expect("the validate job re-serialises");
+        assert!(
+            validate.contains("ops github check-signatures"),
+            "validate must refuse unsigned commits on the pull-request head so a Cloud Agent \
+             session that disabled commit.gpgsign cannot merge"
+        );
+        assert!(
+            validate.contains("github.event.pull_request.head.sha"),
+            "the signature check must inspect the pull-request head, not the workflow merge commit"
+        );
+        assert!(
+            validate.contains("fetch-depth: 0"),
+            "the signature check needs the PR range in the clone, so validate cannot stay at depth 1"
+        );
         assert_eq!(
             parsed["jobs"]["rust"]["if"].as_str(),
             Some("needs.changes.outputs.rust == 'true'"),

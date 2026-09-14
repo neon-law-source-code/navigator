@@ -278,6 +278,10 @@ async fn gallery_renders_pricing_testimonial_and_disclaimer_sections() {
     );
     assert!(html.contains("$3,500, once"), "band label: {html}");
     assert!(
+        !html.contains("pricing-card__day-rate"),
+        "one-time gallery cards must not claim a per-day rate: {html}"
+    );
+    assert!(
         html.contains("nav-btn nav-btn--primary"),
         "solid CTA: {html}"
     );

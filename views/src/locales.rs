@@ -89,8 +89,6 @@ pub struct HomeCopy {
     pub lead: String,
     pub contact_label: String,
     #[serde(default)]
-    pub hero: Option<HomeHeroCopy>,
-    #[serde(default)]
     pub service: Option<ServiceSectionCopy>,
     #[serde(default)]
     pub practices_heading: String,
@@ -163,13 +161,6 @@ pub struct ProvenanceStepCopy {
 pub struct ProvenanceLedgerRowCopy {
     pub label: String,
     pub status: String,
-}
-
-/// The home hero photograph.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HomeHeroCopy {
-    pub alt: String,
-    pub asset: String,
 }
 
 /// The home page's one service section.
@@ -580,9 +571,6 @@ meta_description: Everyone deserves to be seen.
 heading: Everyone deserves to be seen.
 lead: We fight for people.
 contact_label: Contact us
-hero:
-  alt: A skyline.
-  asset: img/new-york/new-york.png
 service:
   heading: We are by your side.
   body:

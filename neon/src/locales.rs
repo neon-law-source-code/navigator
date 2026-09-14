@@ -5,7 +5,7 @@
 //! This module is the only Rust that reads either: pick the directory for the
 //! request's `BrandKey`, resolve `{shared:<key>}` against the shared catalog,
 //! interpolate the brand placeholders, deserialize, and fill the few runtime
-//! fields a YAML file cannot know (the hero asset URL, the CLI release
+//! fields a YAML file cannot know (the day-rate photo URL, the CLI release
 //! archives). Editing published copy is a YAML change.
 
 use views::brand::BrandKey;
@@ -560,12 +560,6 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     webapp::home::HomeContent {
         head_title: copy.head_title,
         meta_description: copy.meta_description,
-        hero: copy.hero.map(|hero| webapp::home::HeroPicture {
-            sources: Vec::new(),
-            fallback_src: views::assets::asset_url(&hero.asset),
-            alt: hero.alt,
-            sizes: "100vw".to_string(),
-        }),
         heading: copy.heading,
         lead: copy.lead,
         contact_href: format!("mailto:{}", branding.firm_email),

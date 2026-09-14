@@ -74,18 +74,17 @@ one-off that duplicates a helper two crates over is a finding; a one-off that is
 
 Write the answers in the report, each with `path:line` citations. "Seems fine" is not an answer.
 
-- **Is this actually needed?** Does the type, helper, comment, flag, or re-export still have a
-  caller or a live invariant? Delete the unused path rather than documenting why it remains.
-- **Are we documenting only the present tense?** Comments, module docs, and tests must state the
-  current contract. Remove "used to", "no longer", "legacy", and compatibility narration. Git history holds the past;
-  see [Comments describe the present](../../../docs/rust-programming.md#comments-describe-the-present).
-- **Are we skipping the other decisions we got to here?** Rejected alternatives are saved in git.
-  They do not need a comment, a `TODO` that records the debate, or a paragraph that retells how the file arrived. Keep
-  only the why behind a live invariant.
-- **Is it tested?** Name the covering test, or name the missing behavior. A compile is not a
-  test. Prefer a test beside the code or under `<crate>/tests/` in the crate's existing style.
-- **Is it documented?** Module docs and `docs/` must describe the present system. Do not add a
-  doc for a private helper whose name is already the contract.
+- **Is this actually needed?** Does the type, helper, comment, flag, or re-export still have a caller or a live
+  invariant? Delete the unused path rather than documenting why it remains, and take its whole seam with it: the
+  [[rust]] removal rule, plus the sweep that proves nothing is left behind.
+- **Does it describe only the present?** No "used to", "no longer", "legacy", or compatibility narration, no `TODO` that
+  records a settled debate, and no paragraph retelling how the file arrived. Git holds the rejected alternatives. Keep
+  the why behind a live invariant; see [Comments describe the
+  present](../../../docs/rust-programming.md#comments-describe-the-present).
+- **Is it tested?** Name the covering test, or name the missing behavior. A compile is not a test. Prefer a test beside
+  the code or under `<crate>/tests/` in the crate's existing style.
+- **Is it documented?** Module docs and `docs/` describe the present system. Do not document a private helper whose name
+  is already the contract.
 - **If applicable, is it featured in our Presentations or Workshops?** Search
   `server/content/workshops/` (workshops and presentations share that tree; `RUST_IN_PEACE.md` is the presentations
   catalog entry). A file cited on a code slide is copied verbatim:
@@ -93,8 +92,8 @@ Write the answers in the report, each with `path:line` citations. "Seems fine" i
   alone unless the author approves a copy change; see [`authoring-slides`](../authoring-slides/SKILL.md). If the random
   file is on a code slide, the slide updates with the source in the same change, because the slide *is* the source.
 
-Also apply the Rust skill's sharp guards: no `unwrap` / `expect` / `panic!` outside `main()` and tests, no `unsafe`,
-Axum body extractors last, comments that describe today.
+Also apply [[rust]]'s guards: no `unwrap` / `expect` / `panic!` outside `main()` and tests, no `unsafe`, Axum body
+extractors last.
 
 ## 5. Write the report, then maybe edit
 

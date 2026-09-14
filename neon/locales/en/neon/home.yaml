@@ -8,9 +8,6 @@ lead: >-
   or a dispute. If you are not sure where to start, contact us and we will help
   you find the next step.
 contact_label: Contact us
-hero:
-  alt: New York City skyline at sunset, viewed from above Lower Manhattan.
-  asset: img/new-york/new-york.png
 service:
   heading: "{shared:home.mission_heading}"
   body:

@@ -15,8 +15,8 @@ use crate::components::{BillMarkGlyph, Icon, IconName};
 
 /// A flat fee's published day rate: the whole-dollar amount it comes out to,
 /// and the photo of that denomination's bill. `image_src` is resolved
-/// server-side (`neon::locales`, the same seam `webapp::home::HeroPicture`
-/// uses) rather than built here — this crate also compiles for the browser
+/// server-side (`neon::locales`) rather than built here — this crate also
+/// compiles for the browser
 /// (`web` feature), where the server-only `views` asset resolver is not
 /// available.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

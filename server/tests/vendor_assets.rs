@@ -395,36 +395,27 @@ fn a_blog_post_picture_is_capped_to_the_post_measure() {
     );
 }
 
-/// The firm home page's `<h1>` is white type laid over the hero photograph, and
-/// axe resolves the colour behind it from the boxes it can read — the scrim's
-/// gradient and then the page background, never the photograph's own pixels. So
-/// the band has to carry its own opaque shade: without it the light theme
-/// resolves a near-white background under white type, which is the
-/// `[serious] color-contrast … at h1` the public accessibility gate reports on
-/// the firm's `/` (`server/tests/accessibility_e2e.rs`). That gate needs a live
-/// KIND cluster and a browser; this reads the rule itself, so the regression is
-/// caught in the ordinary workspace run.
+/// The firm home page opens on its question, not on a photograph. The
+/// stylesheet therefore carries no hero band at all: a hero rule left behind
+/// would be dead CSS today and a temptation to put type over pixels tomorrow,
+/// which is the contrast defect the public accessibility gate
+/// (`server/tests/accessibility_e2e.rs`) exists to catch.
 #[test]
-fn the_home_hero_carries_its_own_opaque_shade_under_the_wordmark() {
+fn the_home_stylesheet_carries_no_hero_band() {
     let home = std::fs::read_to_string(public_dir().join("css/home.css"))
         .expect("read the firm home stylesheet");
-
-    let rule = home
-        .split_once(".home-hero {")
+    assert!(
+        !home.contains(".home-hero"),
+        "home.css must not carry a hero rule: {home}"
+    );
+    let heading = home
+        .split_once(".home-statement__heading {")
         .and_then(|(_, rest)| rest.split_once('}'))
         .map(|(declarations, _)| declarations)
-        .expect("home.css must carry a hero rule");
+        .expect("home.css must size the question");
     assert!(
-        rule.contains("background-color: rgb(var(--home-hero-shade));"),
-        "the hero must paint an opaque shade under the wordmark, not inherit \
-         the page background: {rule}"
-    );
-    // Opaque, and in the same channels the scrim darkens the photograph with:
-    // an alpha here would let the light page background back through and put
-    // the contrast failure back.
-    assert!(
-        !rule.contains("background-color: rgb(var(--home-hero-shade) /"),
-        "the shade may not be translucent: {rule}"
+        heading.contains("font-size: clamp(2.75rem, 8vw, 5rem);"),
+        "the question is the page, so it is set large: {heading}"
     );
 }
 

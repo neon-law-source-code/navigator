@@ -1,92 +1,26 @@
-/* Home page (`/`) layout: the statement, the litigation practice in prose, and
-   the four practice boxes. The brand layer (`brand-firm.css`) owns the palette,
-   the serif, the card, and the motion; this file only places them.
+/* Home page (`/`) layout: the question, the mission in prose, and the four
+   practice boxes. The brand layer (`brand-firm.css`) owns the palette, the
+   serif, the card, and the motion; this file only places them.
 
-   The page publishes no services catalog and no price. It leads with the
-   litigation practice in the statement, then shows the whole firm as four
-   equal doors so counsel, technology, and one-time filings are not a leftover
-   row. */
+   The page publishes no services catalog and no price. It opens on one
+   question — "What is your legal need?" — with nothing above it, then shows
+   the whole firm as four equal doors so plans, individual services, and
+   disputes are not a leftover row. */
 
-/* ---- The hero ---------------------------------------------------------- */
+/* ---- The question --------------------------------------------------- */
 
-/* The shell centres a 72rem column and pads it by 1rem; the hero cancels that
-   padding and the column's top padding so the photograph meets the header and
-   both side edges. It deliberately does not bleed to `100vw`: that overflows
-   the page by the scrollbar's width on every desktop browser that reserves
-   one, and the header nav is already measured to the same 72rem. */
-.home-hero {
-  /* The scrim's channels. Deliberately a literal rather than a `--nav-*`
-     token: it darkens a photograph so white type stays legible on it, which
-     has to hold in the light theme too. A theme colour here would invert with
-     the page and put white type on a light wash. */
-  --home-hero-shade: 6 12 24;
-
-  position: relative;
-  display: grid;
-  place-items: end start;
-  /* The band's own opaque floor, in the scrim's channels. The photograph and
-     the scrim both paint above it (a negative `z-index` child paints over its
-     parent's background), so a loaded hero looks exactly the same — but the
-     white wordmark now sits on this shade rather than on whatever the page
-     background happens to be. Without it the light theme puts white type on a
-     near-white page for as long as the photograph is missing or still
-     loading, which is the WCAG contrast failure `server/tests/
-     accessibility_e2e.rs` reports at `h1` on the firm's `/`. */
-  background-color: rgb(var(--home-hero-shade));
-  margin: -2rem -1rem 0;
-  /* The photograph is 3:2. A phone-width box taller than about 17rem stops
-     being a crop of the horizon and becomes a crop of the *sides* — which is
-     where the Golden Gate is. Keep the small band close to the photo's own
-     ratio; the wide band below is where the letterbox is affordable. */
-  min-height: clamp(15rem, 62vw, 20rem);
-  overflow: hidden;
-  border-radius: 0 0 1rem 1rem;
-  isolation: isolate;
-}
-
-/* A deployment that has not published the hero to its assets bucket renders
-   the wordmark alone. Without this the page would open on a tall empty band. */
-.home-hero:not(:has(.home-hero__picture)) {
-  min-height: 0;
-  margin-top: 0;
-}
-
-/* `<picture>` is an inline wrapper with no box of its own; the `<img>` inside
-   it is what fills the hero, so the wrapper only has to stop generating a
-   line box of its own. */
-.home-hero__picture {
-  display: contents;
-}
-
-.home-hero__image {
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  width: 100%;
-  height: 100%;
-  /* The subject — the bay, the bridge, the campanile — sits below the middle
-     of the frame, so a cover crop holds the lower two thirds. */
-  object-fit: cover;
-  object-position: 50% 62%;
-}
-
-@media (min-width: 56rem) {
-  .home-hero {
-    place-items: center;
-    /* Tall enough to read as a horizon rather than a strip, and capped so the
-       picture does not push the statement below the fold on a laptop. */
-    min-height: clamp(20rem, 52vh, 34rem);
-  }
-}
-
+/* The question is the page. With no photograph above it, it is the first
+   thing under the header, so it takes the room a hero used to: a wider column
+   than the lead, a larger serif, and generous space above. The lead keeps its
+   own reading measure below. */
 .home-statement {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 1.25rem;
-  max-width: 44rem;
-  padding: clamp(3rem, 8vw, 6rem) 0 clamp(2rem, 5vw, 3rem);
+  gap: 1.5rem;
+  max-width: 60rem;
+  padding: clamp(3rem, 10vw, 7rem) 0 clamp(2rem, 5vw, 3rem);
 }
 
 .home-statement__heading,
@@ -99,15 +33,17 @@
 .home-statement__heading {
   margin: 0;
   font-family: var(--firm-serif);
-  font-size: clamp(2rem, 5.5vw, 3.25rem);
+  font-size: clamp(2.75rem, 8vw, 5rem);
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
   text-wrap: balance;
 }
 
 .home-statement__lead {
   margin: 0;
-  font-size: 1.125rem;
+  max-width: 44rem;
+  font-size: 1.25rem;
   line-height: 1.6;
   color: var(--nav-color-text-muted);
 }

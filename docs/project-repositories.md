@@ -355,11 +355,11 @@ What the gate proves:
   instead. Navigator's own namespaces, `/app/` and `/auth/`, are the deliberate exception: a portal links back to
   `/app/projects` and out through `/auth/logout`, and those are outside the mount on purpose.
 
-Pin both callers to an exact immutable release tag (`YY.M.D`, or `YY.M.D-hotfix.N`), never `main` or `latest`.
-Publishing a rolling pointer is allowed; consuming one is not. The tag must also be one this repository actually
-published: a `uses:` at a ref that does not exist fails the run outright with "unable to resolve action", and unlike a
-renamed repository — which GitHub redirects, so the old spelling keeps working — a missing ref has nothing to redirect
-to. The shape rule is machine-checkable and `validate` enforces it; whether the tag exists is not, which is why
+Pin both callers to an exact immutable release tag (`YY.M.D`, `YY.M.D-rc.N`, or `YY.M.D-hotfix.N`), never `main` or
+`latest`. Publishing a rolling pointer is allowed; consuming one is not. The tag must also be one this repository
+actually published: a `uses:` at a ref that does not exist fails the run outright with "unable to resolve action", and
+unlike a renamed repository — which GitHub redirects, so the old spelling keeps working — a missing ref has nothing to
+redirect to. The shape rule is machine-checkable and `validate` enforces it; whether the tag exists is not, which is why
 `scaffold` derives the pin from a release rather than accepting a version someone typed from memory.
 
 ## Publishing the built bundle

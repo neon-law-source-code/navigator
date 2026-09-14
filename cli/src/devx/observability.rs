@@ -49,6 +49,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use k8s_openapi::api::core::v1::Endpoints;
 use kube::{api::Api, Client as KubernetesClient, Config as KubernetesConfig};
 use serde::Deserialize;
+use serde_json::Value;
 
 use super::gcp::{
     auth::adc_token_provider,
@@ -193,57 +194,189 @@ pub fn run_observability(opts: &ObservabilityOpts) -> Result<()> {
 /// (`describe` probe), and the IAM bindings are no-ops when already present.
 fn ensure_gsa_iam(cfg: &ShipConfig, dry_run: bool) -> Result<()> {
     let gsa = gsa_email(&cfg.project_id);
-    if gsa_exists(cfg, &gsa)? {
-        eprintln!("==> GSA {gsa} already exists");
-    } else {
-        eprintln!("==> creating GSA {gsa}");
-        exec(
-            dry_run,
-            Command::new("gcloud")
-                .args(["iam", "service-accounts", "create", OTEL_GSA])
-                .arg(format!("--project={}", cfg.project_id))
-                .args(["--display-name", "Neon Law Navigator `OTel` Collector"]),
-        )?;
-    }
-    // Bind the telemetry-write roles one at a time. `add-iam-policy-binding`
-    // is read-modify-write on the project policy, so a tight loop can lose
-    // an etag race; running them sequentially (each its own gcloud call)
-    // avoids that, and a repeat binding is a documented no-op.
-    for role in OTEL_ROLES {
-        eprintln!("==> binding {role} → {gsa}");
-        exec_with_control_plane_retry(
-            "IAM binding",
-            dry_run,
-            CONTROL_PLANE_PROPAGATION_ATTEMPTS,
-            || {
-                let mut command = Command::new("gcloud");
-                command
-                    .args(["projects", "add-iam-policy-binding", &cfg.project_id])
-                    .arg(format!("--member=serviceAccount:{gsa}"))
-                    .arg(format!("--role={role}"))
-                    .args(["--condition", "None"]);
-                command
-            },
-        )?;
-    }
-    eprintln!("==> binding Workload Identity {OTEL_KSA} KSA → {gsa}");
-    exec_with_control_plane_retry(
-        "Workload Identity binding",
-        dry_run,
-        CONTROL_PLANE_PROPAGATION_ATTEMPTS,
+    let workload_identity_member = format!(
+        "serviceAccount:{}.svc.id.goog[{}/{OTEL_KSA}]",
+        cfg.project_id, cfg.namespace
+    );
+    ensure_gsa_iam_with(
+        GsaIam {
+            gsa: &gsa,
+            workload_identity_member: &workload_identity_member,
+        },
+        || read_iam_policy(project_iam_policy_command(cfg)),
+        || gsa_exists(cfg, &gsa),
         || {
-            let mut command = Command::new("gcloud");
-            command
-                .args(["iam", "service-accounts", "add-iam-policy-binding", &gsa])
-                .arg(format!("--project={}", cfg.project_id))
-                .args(["--role", "roles/iam.workloadIdentityUser"])
-                .arg(format!(
-                    "--member=serviceAccount:{}.svc.id.goog[{}/{OTEL_KSA}]",
-                    cfg.project_id, cfg.namespace
-                ));
-            command
+            exec(
+                dry_run,
+                Command::new("gcloud")
+                    .args(["iam", "service-accounts", "create", OTEL_GSA])
+                    .arg(format!("--project={}", cfg.project_id))
+                    .args(["--display-name", "Neon Law Navigator `OTel` Collector"]),
+            )
+        },
+        || read_iam_policy(service_account_iam_policy_command(cfg, &gsa)),
+        |role| {
+            exec_with_control_plane_retry(
+                "IAM binding",
+                dry_run,
+                CONTROL_PLANE_PROPAGATION_ATTEMPTS,
+                || project_binding_command(cfg, &gsa, role),
+            )
+        },
+        || {
+            exec_with_control_plane_retry(
+                "Workload Identity binding",
+                dry_run,
+                CONTROL_PLANE_PROPAGATION_ATTEMPTS,
+                || workload_identity_binding_command(cfg, &gsa),
+            )
         },
     )
+}
+
+#[derive(Clone, Copy)]
+struct GsaIam<'a> {
+    gsa: &'a str,
+    workload_identity_member: &'a str,
+}
+
+/// Read the existing policies before adding a binding. A service account that
+/// does not exist must be created before its policy can be read; every later
+/// binding write is still preceded by both policy reads. A read failure is not
+/// evidence that a binding exists: it remains an error so a permission failure
+/// cannot turn into a false converged result.
+fn ensure_gsa_iam_with(
+    iam: GsaIam<'_>,
+    read_project_policy: impl FnOnce() -> Result<Value>,
+    gsa_exists: impl FnOnce() -> Result<bool>,
+    create_gsa: impl FnOnce() -> Result<()>,
+    read_service_account_policy: impl FnOnce() -> Result<Value>,
+    mut bind_project_role: impl FnMut(&str) -> Result<()>,
+    bind_workload_identity: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let project_policy = read_project_policy()?;
+    if gsa_exists()? {
+        eprintln!("==> GSA {} already exists", iam.gsa);
+    } else {
+        eprintln!("==> creating GSA {}", iam.gsa);
+        create_gsa()?;
+    }
+    let service_account_policy = read_service_account_policy()?;
+    let project_member = format!("serviceAccount:{}", iam.gsa);
+
+    // Bind the telemetry-write roles one at a time. `add-iam-policy-binding`
+    // is read-modify-write on the project policy, so a tight loop can lose an
+    // etag race. Each role is distinct, and an already-converged unconditional
+    // binding is skipped instead of requiring write permission for a no-op.
+    for role in OTEL_ROLES {
+        if policy_grants_unconditional(&project_policy, role, &project_member) {
+            eprintln!("==> {role} → {} already bound", iam.gsa);
+        } else {
+            eprintln!("==> binding {role} → {}", iam.gsa);
+            bind_project_role(role)?;
+        }
+    }
+    if policy_grants_unconditional(
+        &service_account_policy,
+        "roles/iam.workloadIdentityUser",
+        iam.workload_identity_member,
+    ) {
+        eprintln!(
+            "==> Workload Identity {OTEL_KSA} KSA → {} already bound",
+            iam.gsa
+        );
+    } else {
+        eprintln!("==> binding Workload Identity {OTEL_KSA} KSA → {}", iam.gsa);
+        bind_workload_identity()?;
+    }
+    Ok(())
+}
+
+fn project_iam_policy_command(cfg: &ShipConfig) -> Command {
+    let mut command = Command::new("gcloud");
+    command
+        .args(["projects", "get-iam-policy", &cfg.project_id])
+        .arg("--format=json");
+    command
+}
+
+fn service_account_iam_policy_command(cfg: &ShipConfig, gsa: &str) -> Command {
+    let mut command = Command::new("gcloud");
+    command
+        .args(["iam", "service-accounts", "get-iam-policy", gsa])
+        .arg(format!("--project={}", cfg.project_id))
+        .arg("--format=json");
+    command
+}
+
+fn project_binding_command(cfg: &ShipConfig, gsa: &str, role: &str) -> Command {
+    let mut command = Command::new("gcloud");
+    command
+        .args(["projects", "add-iam-policy-binding", &cfg.project_id])
+        .arg(format!("--member=serviceAccount:{gsa}"))
+        .arg(format!("--role={role}"))
+        .args(["--condition", "None"]);
+    command
+}
+
+fn workload_identity_binding_command(cfg: &ShipConfig, gsa: &str) -> Command {
+    let mut command = Command::new("gcloud");
+    command
+        .args(["iam", "service-accounts", "add-iam-policy-binding", gsa])
+        .arg(format!("--project={}", cfg.project_id))
+        .args(["--role", "roles/iam.workloadIdentityUser"])
+        .arg(format!(
+            "--member=serviceAccount:{}.svc.id.goog[{}/{OTEL_KSA}]",
+            cfg.project_id, cfg.namespace
+        ));
+    command
+}
+
+fn read_iam_policy(mut command: Command) -> Result<Value> {
+    let rendered = render_command(&command);
+    let output = command
+        .output()
+        .with_context(|| format!("run {rendered}"))?;
+    if !output.status.success() {
+        bail!(
+            "read IAM policy failed ({}) for {rendered}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim(),
+        );
+    }
+    serde_json::from_slice(&output.stdout)
+        .with_context(|| format!("parse IAM policy returned by {rendered}"))
+}
+
+fn policy_grants_unconditional(policy: &Value, role: &str, member: &str) -> bool {
+    policy
+        .get("bindings")
+        .and_then(Value::as_array)
+        .is_some_and(|bindings| {
+            bindings.iter().any(|binding| {
+                binding.get("role").and_then(Value::as_str) == Some(role)
+                    && binding
+                        .get("members")
+                        .and_then(Value::as_array)
+                        .is_some_and(|members| {
+                            members
+                                .iter()
+                                .any(|candidate| candidate.as_str() == Some(member))
+                        })
+                    && binding.get("condition").is_none_or(Value::is_null)
+            })
+        })
+}
+
+fn render_command(command: &Command) -> String {
+    std::iter::once(command.get_program().to_string_lossy().into_owned())
+        .chain(
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned()),
+        )
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Retry an idempotent control-plane operation while a just-created GSA or
@@ -652,6 +785,214 @@ fn exec(dry_run: bool, cmd: &mut Command) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture_config() -> ShipConfig {
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/deployment-tree");
+        let deployment = super::super::deployments::Deployment::load(&root, "example-deployment")
+            .expect("synthetic deployment fixture loads");
+        ShipConfig::from_deployment(&deployment).expect("synthetic deployment config resolves")
+    }
+
+    fn unconditional_policy(role: &str, member: &str) -> Value {
+        serde_json::json!({
+            "bindings": [{ "role": role, "members": [member] }],
+        })
+    }
+
+    /// A converged deployment must reach its manifest work without asking for
+    /// an IAM write. The binding closures are command fixtures: any write is
+    /// an immediate failure, while the final sentinel stands for the next
+    /// orchestration stage (`apply_manifests`).
+    #[test]
+    fn converged_iam_policies_reach_manifest_application_without_writes() {
+        use std::cell::Cell;
+
+        let cfg = fixture_config();
+        let gsa = gsa_email(&cfg.project_id);
+        let project_member = format!("serviceAccount:{gsa}");
+        let project_policy = serde_json::json!({
+            "bindings": OTEL_ROLES.iter().map(|role| serde_json::json!({
+                "role": role,
+                "members": [project_member],
+            })).collect::<Vec<_>>(),
+        });
+        let workload_member = format!(
+            "serviceAccount:{}.svc.id.goog[{}/{OTEL_KSA}]",
+            cfg.project_id, cfg.namespace
+        );
+        let service_account_policy =
+            unconditional_policy("roles/iam.workloadIdentityUser", &workload_member);
+        let manifests_applied = Cell::new(false);
+
+        ensure_gsa_iam_with(
+            GsaIam {
+                gsa: &gsa,
+                workload_identity_member: &workload_member,
+            },
+            || Ok(project_policy),
+            || Ok(true),
+            || panic!("a converged GSA must not be created"),
+            || Ok(service_account_policy),
+            |_| panic!("a converged project policy must not be written"),
+            || panic!("a converged service-account policy must not be written"),
+        )
+        .expect("converged IAM policies succeed");
+        manifests_applied.set(true);
+
+        assert!(
+            manifests_applied.get(),
+            "a converged IAM stage must allow manifest application to follow"
+        );
+    }
+
+    #[test]
+    fn missing_iam_bindings_emit_only_the_required_gcloud_commands() {
+        use std::cell::RefCell;
+
+        let cfg = fixture_config();
+        let gsa = gsa_email(&cfg.project_id);
+        let workload_member = format!(
+            "serviceAccount:{}.svc.id.goog[{}/{OTEL_KSA}]",
+            cfg.project_id, cfg.namespace
+        );
+        let commands = RefCell::new(Vec::new());
+
+        ensure_gsa_iam_with(
+            GsaIam {
+                gsa: &gsa,
+                workload_identity_member: &workload_member,
+            },
+            || Ok(serde_json::json!({ "bindings": [] })),
+            || Ok(true),
+            || panic!("the fixture GSA exists"),
+            || Ok(serde_json::json!({ "bindings": [] })),
+            |role| {
+                commands
+                    .borrow_mut()
+                    .push(render_command(&project_binding_command(&cfg, &gsa, role)));
+                Ok(())
+            },
+            || {
+                commands
+                    .borrow_mut()
+                    .push(render_command(&workload_identity_binding_command(
+                        &cfg, &gsa,
+                    )));
+                Ok(())
+            },
+        )
+        .expect("missing bindings are added");
+        let commands = commands.into_inner();
+
+        assert_eq!(commands.len(), OTEL_ROLES.len() + 1, "{commands:?}");
+        for role in OTEL_ROLES {
+            assert!(
+                commands.iter().any(|command| command.contains(&format!(
+                    "projects add-iam-policy-binding {} --member=serviceAccount:{gsa} --role={role} --condition None",
+                    cfg.project_id,
+                ))),
+                "missing {role} binding must invoke gcloud: {commands:?}",
+            );
+        }
+        assert!(
+            commands.iter().any(|command| command.contains(&format!(
+                "service-accounts add-iam-policy-binding {gsa} --project={} --role roles/iam.workloadIdentityUser",
+                cfg.project_id,
+            ))),
+            "missing Workload Identity binding must invoke gcloud: {commands:?}",
+        );
+    }
+
+    #[test]
+    fn a_missing_gsa_is_created_before_its_policy_is_read() {
+        use std::cell::RefCell;
+
+        let cfg = fixture_config();
+        let gsa = gsa_email(&cfg.project_id);
+        let workload_member = format!(
+            "serviceAccount:{}.svc.id.goog[{}/{OTEL_KSA}]",
+            cfg.project_id, cfg.namespace
+        );
+        let project_member = format!("serviceAccount:{gsa}");
+        let events = RefCell::new(Vec::new());
+        let project_policy = serde_json::json!({
+            "bindings": OTEL_ROLES.iter().map(|role| serde_json::json!({
+                "role": role,
+                "members": [project_member],
+            })).collect::<Vec<_>>(),
+        });
+        let service_account_policy =
+            unconditional_policy("roles/iam.workloadIdentityUser", &workload_member);
+
+        ensure_gsa_iam_with(
+            GsaIam {
+                gsa: &gsa,
+                workload_identity_member: &workload_member,
+            },
+            || {
+                events.borrow_mut().push("read project policy");
+                Ok(project_policy)
+            },
+            || {
+                events.borrow_mut().push("check GSA");
+                Ok(false)
+            },
+            || {
+                events.borrow_mut().push("create GSA");
+                Ok(())
+            },
+            || {
+                events.borrow_mut().push("read service-account policy");
+                Ok(service_account_policy)
+            },
+            |_| panic!("the fixture policies already satisfy project bindings"),
+            || panic!("the fixture policy already satisfies Workload Identity"),
+        )
+        .expect("a missing GSA is created and its policy is then checked");
+
+        assert_eq!(
+            events.into_inner(),
+            [
+                "read project policy",
+                "check GSA",
+                "create GSA",
+                "read service-account policy",
+            ],
+        );
+    }
+
+    #[test]
+    fn an_iam_policy_read_failure_is_not_treated_as_convergence() {
+        let cfg = fixture_config();
+        let gsa = gsa_email(&cfg.project_id);
+        let workload_member = format!(
+            "serviceAccount:{}.svc.id.goog[{}/{OTEL_KSA}]",
+            cfg.project_id, cfg.namespace
+        );
+        let error = ensure_gsa_iam_with(
+            GsaIam {
+                gsa: &gsa,
+                workload_identity_member: &workload_member,
+            },
+            || {
+                Err(anyhow::anyhow!(
+                    "permission denied reading project IAM policy"
+                ))
+            },
+            || panic!("the failed project-policy read stops before other calls"),
+            || panic!("a policy read failure must not create a GSA"),
+            || panic!("a policy read failure must not read the service-account policy"),
+            |_| panic!("a policy read failure must not write a project binding"),
+            || panic!("a policy read failure must not write a service-account binding"),
+        )
+        .expect_err("an unreadable IAM policy remains a failure");
+
+        assert!(
+            error.to_string().contains("permission denied"),
+            "the underlying policy-read error must remain visible: {error}",
+        );
+    }
 
     #[test]
     fn render_substitutes_every_project_placeholder() {

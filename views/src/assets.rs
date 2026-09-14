@@ -63,7 +63,7 @@ pub fn gorp_font_face_css(regular_url: &str, bold_url: &str) -> String {
 
 /// Width variants emitted for every photo, in ascending order. The
 /// `<img>` fallback `src` uses [`FALLBACK_WIDTH`]. 1200 is the cap:
-/// the source photos are ~2048px on the long edge, a full-width hero
+/// the source photos are ~2048px on the long edge, a full-width banner
 /// reads crisp at 1200, and a 400px tile at 3× retina is exactly
 /// 1200 — anything larger is bytes phones download but never show.
 pub const WIDTHS: [u32; 3] = [400, 800, 1200];
@@ -242,7 +242,7 @@ fn join_site(base: &str, rel: &str) -> String {
     )
 }
 
-/// Which of the four brand stories a photo tells. Drives nothing in
+/// Which of the three brand stories a photo tells. Drives nothing in
 /// the markup — it is the editorial axis the page authors curate by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
@@ -252,15 +252,12 @@ pub enum Theme {
     Global,
     /// The beautiful things in life: blossoms, birds, gardens.
     Beauty,
-    /// The firm's own surface — the photography `www.neonlaw.com`
-    /// leads with, curated for the law firm host.
-    Firm,
 }
 
 /// Editorial aspect classification for a curated photo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Aspect {
-    /// 21:9 cinematic letterbox — the home hero.
+    /// 21:9 cinematic letterbox — full-bleed banners.
     Hero,
     /// 16:9 — gallery tiles, section banners.
     Wide,
@@ -382,17 +379,6 @@ pub static GALLERY: &[GalleryImage] = &[
         aspect: Aspect::Portrait,
         alt: "The Washington State Capitol dome framed by pink cherry blossoms at golden hour",
         source: "photo_14.jpg",
-    },
-    // ── The firm's own surface ────────────────────────────────────
-    GalleryImage {
-        slug: "berkeley-bay",
-        theme: Theme::Firm,
-        aspect: Aspect::Hero,
-        // The firm's own words for its own front page. Short, and a description
-        // rather than an inventory: a reader who cannot see the photo learns
-        // where the firm is from, which is what the picture is doing there.
-        alt: "Berkeley, CA; Go Bears!",
-        source: "berkeley-bay.jpg",
     },
 ];
 
@@ -652,7 +638,7 @@ mod tests {
 
     #[test]
     fn gallery_covers_every_theme() {
-        for theme in [Theme::Nevada, Theme::Global, Theme::Beauty, Theme::Firm] {
+        for theme in [Theme::Nevada, Theme::Global, Theme::Beauty] {
             assert!(
                 GALLERY.iter().any(|i| i.theme == theme),
                 "every brand theme needs at least one photo: {theme:?}"
@@ -685,21 +671,9 @@ mod tests {
     }
 
     #[test]
-    fn the_firms_hero_is_a_hero_aspect_photo_on_the_firm_theme() {
-        let hero = find("berkeley-bay").expect("berkeley-bay in manifest");
-        assert_eq!(hero.theme, Theme::Firm);
-        assert_eq!(hero.aspect, Aspect::Hero);
-        assert!(
-            hero.alt.len() > 20,
-            "the firm's front-page photo carries a real description: {}",
-            hero.alt
-        );
-    }
-
-    #[test]
     fn responsive_picture_negotiates_avif_then_webp_then_jpeg() {
         use super::{responsive_picture, FALLBACK_WIDTH, WIDTHS};
-        let picture = responsive_picture("berkeley-bay", "100vw").expect("a manifest photo");
+        let picture = responsive_picture("lake-tahoe", "100vw").expect("a manifest photo");
 
         // Smallest format first: the browser takes the first `type` it
         // supports, so this order is the preference, not decoration.
@@ -728,7 +702,7 @@ mod tests {
         assert!(
             picture
                 .fallback_src
-                .ends_with(&format!("berkeley-bay-{FALLBACK_WIDTH}w.jpg")),
+                .ends_with(&format!("lake-tahoe-{FALLBACK_WIDTH}w.jpg")),
             "the <img> fallback is the JPEG every browser reads: {}",
             picture.fallback_src
         );
@@ -736,7 +710,7 @@ mod tests {
         // Carried through from the manifest rather than invented by the
         // resolver — the assertion is that the alt survives the trip, not what
         // the firm chose to say.
-        assert_eq!(picture.alt, find("berkeley-bay").expect("in manifest").alt);
+        assert_eq!(picture.alt, find("lake-tahoe").expect("in manifest").alt);
         assert!(!picture.alt.is_empty(), "the photo is described");
     }
 

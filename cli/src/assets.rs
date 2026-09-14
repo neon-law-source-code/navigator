@@ -3493,20 +3493,20 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
     fn only_narrows_the_build_to_the_named_slugs() {
         // Adding one photo must not require every other photo's source
         // JPEG on disk, which is what the unfiltered walk demands.
-        let selected = select(&["berkeley-bay".to_string()]).unwrap();
+        let selected = select(&["lake-tahoe".to_string()]).unwrap();
         assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].slug, "berkeley-bay");
+        assert_eq!(selected[0].slug, "lake-tahoe");
     }
 
     #[test]
     fn an_unknown_only_slug_fails_and_lists_the_manifest() {
         // A typo that silently built nothing would be indistinguishable
         // from a successful build until the page 404s in production.
-        let err = select(&["berkley-bay".to_string()]).unwrap_err();
+        let err = select(&["lake-taho".to_string()]).unwrap_err();
         let message = format!("{err:#}");
-        assert!(message.contains("berkley-bay"), "{message}");
+        assert!(message.contains("lake-taho"), "{message}");
         assert!(
-            message.contains("berkeley-bay"),
+            message.contains("lake-tahoe"),
             "names the real slug: {message}"
         );
     }

@@ -489,6 +489,11 @@ and never reads the body: a `?email=` filter or a `POST` body on this surface is
 not belong in telemetry. Record identifiers in the path are kept deliberately, because an access log that cannot say
 *which* row was read answers nothing.
 
+Successful Project page renders emit one `target: "audit"` `project visited` event after authorization. It carries the
+acting `person_id`, internal `project_id`, matched route template, and system `role`; it never carries a Project code,
+title, client name, document identifier, or resolved path. The internal ids protect client privacy while keeping the
+event useful for access analysis.
+
 Repository access is delegated to the selected forge. Navigator renders the lawyer-only repository browser link only
 after the lawyer-lens Project check; the client portal receives neither that link nor forge credentials. The forge
 collaborator reconciliation is a separate grant, not a substitute for Navigator's route-level authorization.

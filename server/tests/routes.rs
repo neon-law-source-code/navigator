@@ -13,8 +13,11 @@ use portal::workshops::{WorkshopChapter, WorkshopSection};
 use portal::{AppState, AuthConfig, CanonicalHost, SessionStore, WorkshopIndex, WorkshopMaterial};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
+use std::io::Write;
+use std::sync::{Arc, Mutex, Once};
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
+use tracing_subscriber::prelude::*;
 
 /// An `AppState` over a fresh pair of stores.
 async fn state_with_engines() -> (AppState, store::surreal::SurrealDb) {
@@ -44,6 +47,47 @@ fn catalog_router(state: AppState) -> axum::Router {
 
 fn test_sessions() -> SessionStore {
     SessionStore::new("test-session-key-not-for-production")
+}
+
+fn ensure_callsite_interest() {
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let _ = tracing::subscriber::set_global_default(
+            tracing_subscriber::registry().with(tracing_subscriber::filter::LevelFilter::INFO),
+        );
+    });
+}
+
+#[derive(Clone)]
+struct VisitLogWriter(Arc<Mutex<Vec<u8>>>);
+
+impl Write for VisitLogWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for VisitLogWriter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+fn capture_visit_logs(buffer: Arc<Mutex<Vec<u8>>>) -> tracing::subscriber::DefaultGuard {
+    ensure_callsite_interest();
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(VisitLogWriter(buffer))
+        .finish();
+    tracing::subscriber::set_default(subscriber)
 }
 
 /// A signed session cookie for an `admin` caller. Admin bypasses
@@ -18995,6 +19039,102 @@ async fn every_firm_tier_reaches_a_matter_it_participates_on() {
             resp.status(),
             StatusCode::OK,
             "{role:?} participates as `{kind}` and must reach the matter"
+        );
+    }
+}
+
+#[tokio::test]
+async fn project_page_visit_logs_identifiers_only_after_authorization() {
+    let surreal = mem_surreal().await;
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Visit Client",
+            "visit-client@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("visit-fixture-{}", uuid::Uuid::now_v7()),
+            name: "Visit Matter".into(),
+            status: "open".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    participate(&surreal, client.id, project.id, "client").await;
+    let (client_cookie, _) = session_cookie_and_csrf_for_person(&client);
+
+    let outsider = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Visit Outsider",
+            "visit-outsider@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let (outsider_cookie, _) = session_cookie_and_csrf_for_person(&outsider);
+
+    let state = portal::test_support::app_state(surreal.clone()).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let output = Arc::new(Mutex::new(Vec::new()));
+    {
+        let _guard = capture_visit_logs(output.clone());
+        let detail = get_with_cookie(
+            app.clone(),
+            &format!("/app/projects/{}", project.code),
+            &client_cookie,
+        )
+        .await;
+        assert_eq!(detail.status(), StatusCode::OK);
+
+        let api = get_with_cookie(
+            app.clone(),
+            &format!("/app/api/projects/{}", project.id),
+            &client_cookie,
+        )
+        .await;
+        assert_eq!(api.status(), StatusCode::OK);
+
+        let refused = get_with_cookie(
+            app,
+            &format!("/app/projects/{}", project.code),
+            &outsider_cookie,
+        )
+        .await;
+        assert_eq!(refused.status(), StatusCode::NOT_FOUND);
+    }
+
+    let logged = String::from_utf8(output.lock().unwrap().clone()).unwrap();
+    let visits: Vec<&str> = logged
+        .lines()
+        .filter(|line| line.contains("\"message\":\"project visited\""))
+        .collect();
+    assert_eq!(visits.len(), 1, "one authorized page render only: {logged}");
+    let visit = visits[0];
+    for field in [
+        format!("\"person_id\":\"{}\"", client.id),
+        format!("\"project_id\":\"{}\"", project.id),
+        "\"route\":\"/app/projects/{project_code}\"".to_string(),
+        "\"role\":\"client\"".to_string(),
+    ] {
+        assert!(
+            visit.contains(&field),
+            "visit field {field} missing: {visit}"
+        );
+    }
+    for forbidden in [project.code.as_str(), "Visit Matter", "Visit Client"] {
+        assert!(
+            !visit.contains(forbidden),
+            "Project content must not reach the visit event: {visit}"
         );
     }
 }

@@ -64,6 +64,7 @@ use std::sync::Arc;
 
 use axum::extract::{Extension, Path, State};
 use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware::from_fn_with_state;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
@@ -139,7 +140,13 @@ pub fn router(
 ) -> Router {
     Router::new()
         .route(PROJECT_PORTAL_PATH, get(redirect_to_slash))
-        .route(PROJECT_PORTAL_ROOT, get(serve_index))
+        .route(
+            PROJECT_PORTAL_ROOT,
+            get(serve_index).layer(from_fn_with_state(
+                surreal.clone(),
+                crate::project_visit::log_project_visit,
+            )),
+        )
         .route(PROJECT_PORTAL_ASSET, get(serve_asset))
         .with_state(PortalState {
             surreal,

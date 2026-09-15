@@ -22,7 +22,7 @@ entries:
   home.mission_promise: You deserve a lawyer who listens, explains your options, and tells you what help will cost.
 
   # `/services`
-  services.eyebrow: Plans & services
+  services.eyebrow: One-time services
   services.title: Find the help you need.
   services.lede: Choose a plan for regular help, or ask us about a single service.
   services.subscriptions_heading: A lawyer you can turn to.
@@ -35,8 +35,7 @@ entries:
   fractional_gc.price: $3,650
   fractional_gc.included.records: Help keeping your company records up to date
   fractional_gc.included.hiring_forms: Forms for hiring employees and contractors
-  fractional_gc.included.response_window: Answers from a lawyer within three business days
-  fractional_gc.included.ownership: Help keeping track of who owns your company
+  fractional_gc.included.ownership: Cap table management, so you know who owns your company
   fractional_gc.included.privacy_forms: Forms for keeping business information private and working with customers
   fractional_gc.included.tax_and_state: Help with business taxes and state paperwork
 

@@ -2835,7 +2835,6 @@ async fn every_firm_page_renders_the_shared_catalog_it_references() {
                 "fractional_gc.price",
                 "fractional_gc.included.records",
                 "fractional_gc.included.hiring_forms",
-                "fractional_gc.included.response_window",
                 "fractional_gc.included.ownership",
                 "fractional_gc.included.privacy_forms",
                 "fractional_gc.included.tax_and_state",

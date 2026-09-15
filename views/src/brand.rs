@@ -154,8 +154,8 @@ impl NavLink {
 /// Everything a reader looks for second — the Blog, Navigator, how to reach
 /// the firm — stays in [`FIRM_FOOTER_NAV`].
 const FIRM_NAV: &[NavLink] = &[
-    NavLink::leaf("Fractional GC", "/business"),
-    NavLink::leaf("Personal Plan", "/personal"),
+    NavLink::leaf("Business", "/business"),
+    NavLink::leaf("Personal", "/personal"),
     NavLink::leaf("Services", "/services"),
     NavLink::leaf("Disputes", "/disputes"),
 ];
@@ -1491,10 +1491,7 @@ mod tests {
     #[test]
     fn the_firm_nav_matches_the_home_page_card_order() {
         let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
-        assert_eq!(
-            labels,
-            ["Fractional GC", "Personal Plan", "Services", "Disputes"]
-        );
+        assert_eq!(labels, ["Business", "Personal", "Services", "Disputes"]);
         assert_eq!(
             FIRM_BRAND.nav.first().map(|link| link.href),
             Some("/business"),

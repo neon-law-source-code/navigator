@@ -117,8 +117,7 @@ pub mod walker_step;
 /// hydrates in the browser.
 ///
 /// The markup is fully server-rendered — readable before any JavaScript runs —
-/// while the counter is inert until the WebAssembly bundle hydrates it, which
-/// is exactly the property Phase 0 exists to demonstrate.
+/// and the same markup is what the WebAssembly bundle hydrates in the browser.
 #[allow(non_snake_case)]
 pub fn App() -> Element {
     let notation_preview = use_server_future(notation_preview::notation_preview_view)?;
@@ -134,29 +133,7 @@ pub fn App() -> Element {
         }
     }
 
-    let mut clicks = use_signal(|| 0_u32);
-
     rsx! {
-        main { id: "dioxus-demo",
-            h1 { "Dioxus is mounted" }
-            p {
-                "This page is server-side rendered by the Navigator "
-                code { "web" }
-                " process and hydrated by a same-origin WebAssembly bundle — no \
-                 CDN, no inline script. Every other route (the JSON API, MCP, \
-                 A2A, git smart-HTTP, OIDC, and the marketing pages) is served \
-                 by the same axum router, unchanged."
-            }
-            p {
-                "The counter below is inert in the server-rendered HTML and \
-                 becomes interactive only once the client bundle has hydrated \
-                 this markup, which is how you can tell hydration ran:"
-            }
-            button {
-                r#type: "button",
-                onclick: move |_| clicks += 1,
-                "Clicked {clicks} times"
-            }
-        }
+        main { id: "dioxus-demo" }
     }
 }

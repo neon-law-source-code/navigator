@@ -85,8 +85,8 @@ async fn dioxus_demo_is_server_rendered_and_absent_without_a_bundle() {
         .to_bytes();
     let html = String::from_utf8(body.to_vec()).expect("utf-8 body");
     assert!(
-        html.contains("Dioxus is mounted"),
-        "server-rendered HTML must carry the component content before hydration; got: {html}",
+        html.contains(r#"id="dioxus-demo""#),
+        "server-rendered HTML must carry the component's mount point before hydration; got: {html}",
     );
     assert!(
         html.contains("<script nonce=\""),

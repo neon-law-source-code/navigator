@@ -95,6 +95,16 @@ async fn seed_notation(world: &mut RetainerWorld, name: String, email: String) {
         store::test_support::ensure_person(&surreal, &store::persons::NewPerson::new(name, email))
             .await;
     let proj = store::test_support::seed_project(&surreal, "retainer matter").await;
+    // The auth-bypass bearer resolves to the seeded firm principal. Make that
+    // principal an explicit firm participant, just as a real lawyer session
+    // must be before `step_post`'s `can_see_project_as_lawyer` gate admits it.
+    let lawyer = store::persons::default_firm_dri(&surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(&surreal, proj.id, lawyer, "lawyer")
+        .await
+        .unwrap();
     let notation_id = store::notations::create(
         &surreal,
         &store::notations::NewNotation::new(tmpl.id, person.id, proj.id, "BEGIN"),

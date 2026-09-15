@@ -136,16 +136,18 @@ pub struct HomeContent {
     /// that keeps no such record says nothing about one.
     #[serde(default)]
     pub provenance: Option<ProvenanceSection>,
-    /// When set, the page renders nothing but this statement — no header,
-    /// footer, CTA, or practice boxes. A house brand that is a bare
-    /// holding notice rather than an active marketing site (Lawyer Shook).
+    /// When set, the page renders nothing but this statement over the shared
+    /// footer — no header, CTA, or practice boxes. A house brand that is a
+    /// bare holding notice rather than an active marketing site (Lawyer
+    /// Shook).
     #[serde(default)]
     pub bare: Option<BareStatement>,
 }
 
 /// A brand's entire home page, collapsed to a title and one paragraph. Used
 /// when [`HomeContent::bare`] is set: [`HomePage`] then renders none of its
-/// usual header, footer, CTA, or practice boxes.
+/// usual header, CTA, or practice boxes — only the statement and the one
+/// shared footer under it.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct BareStatement {
     pub heading: String,
@@ -214,22 +216,36 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
             document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
             document::Stylesheet { href: HOME_STYLESHEET_HREF }
             document::Stylesheet { href: "{chrome.tokens_href}" }
-            main { class: "holding-page",
-                h1 { class: "holding-page__heading", "{bare.heading}" }
-                p { class: "holding-page__paragraph", "{bare.paragraph}" }
-                if !bare.sign_in.is_empty() {
-                    p { class: "holding-page__paragraph",
-                        for run in bare.sign_in.iter() {
-                            if let Some(href) = run.href.as_ref() {
-                                a { class: "holding-page__link", href: "{href}", "{run.text}" }
-                            } else if run.emphasis {
-                                strong { "{run.text}" }
-                            } else {
-                                "{run.text}"
+            // The theme root without `PublicShell`'s own marker: the holding
+            // page is deliberately not a public marketing page (no header,
+            // no support-chat widget), but the one shared footer under it
+            // needs the theme's anchor and chip rules, which hang off this
+            // class.
+            div { class: "nav-theme",
+                main { class: "holding-page",
+                    h1 { class: "holding-page__heading", "{bare.heading}" }
+                    p { class: "holding-page__paragraph", "{bare.paragraph}" }
+                    if !bare.sign_in.is_empty() {
+                        p { class: "holding-page__paragraph",
+                            for run in bare.sign_in.iter() {
+                                if let Some(href) = run.href.as_ref() {
+                                    a { class: "holding-page__link", href: "{href}", "{run.text}" }
+                                } else if run.emphasis {
+                                    strong { "{run.text}" }
+                                } else {
+                                    "{run.text}"
+                                }
                             }
                         }
                     }
                 }
+                // The same footer every other page of the firm's sites
+                // carries — its office, its family of brands, its membership,
+                // and the legal strip — so a reader on the holding host finds
+                // the firm's address and the way to its other sites, and the
+                // footer is one thing everywhere rather than everywhere but
+                // here.
+                PublicFooter { chrome: chrome.clone() }
             }
         };
     }
@@ -777,6 +793,51 @@ mod tests {
         assert!(
             out.contains("<strong>Existing client</strong>"),
             "a bare emphasised run is strong: {out}"
+        );
+    }
+
+    /// A bare holding page carries the one shared footer under its statement
+    /// — with the firm's identity and legal strip — and no header, so a
+    /// reader on the holding host finds the firm's address and its other
+    /// sites the same way they would on any other page.
+    #[test]
+    fn a_bare_page_carries_the_shared_footer_and_no_header() {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome {
+                        legal_entity: "Shook Law PLLC".to_string(),
+                        disclaimer: "Attorney advertisement.".to_string(),
+                        copyright_year: 2026,
+                        ..PublicChrome::default()
+                    },
+                    content: HomeContent {
+                        head_title: "Holding page".to_string(),
+                        meta_description: "A holding page.".to_string(),
+                        bare: Some(BareStatement {
+                            heading: "Holding page".to_string(),
+                            paragraph: "A statement.".to_string(),
+                            sign_in: Vec::new(),
+                        }),
+                        ..HomeContent::default()
+                    },
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+
+        let statement = out.find(r#"class="holding-page""#).expect("the statement");
+        let footer = out
+            .find(r#"role="contentinfo""#)
+            .expect("the shared footer");
+        assert!(statement < footer, "statement, then footer: {out}");
+        assert!(out.contains("© 2026 Shook Law PLLC"), "{out}");
+        assert!(!out.contains(r#"class="site-header""#), "no header: {out}");
+        assert!(
+            !out.contains(crate::components::PUBLIC_SHELL_MARKER),
+            "not a public shell page (no chat widget): {out}"
         );
     }
 

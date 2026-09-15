@@ -1,9 +1,12 @@
 //! The site footer, as a Dioxus component (issue #641, Phase 2).
 //!
-//! Two bands. The contact band reaches the firm: the email CTA, the published
-//! voice line, and every office it keeps. Below it the legal strip carries the
-//! load-bearing, brand-driven lines every public page owes — the copyright that
-//! names the legal person behind the site, which attorney holds which bar
+//! Three bands. The contact band reaches the firm: the email CTA, the published
+//! voice line, and every office it keeps. The affiliations row under it names
+//! the firm's family — every house brand it trades under, the current one
+//! unlinked — and the associations it belongs to, each a "Proud member of …"
+//! line linking the association's own site. Below both the legal strip carries
+//! the load-bearing, brand-driven lines every public page owes — the copyright
+//! that names the legal person behind the site, which attorney holds which bar
 //! licence, and the attorney-advertising disclaimer.
 //!
 //! It is prop-driven like [`crate::components::PricingSection`]: the process
@@ -115,13 +118,28 @@ pub struct FooterNavLink {
     pub href: String,
 }
 
-/// One brand the current firm wears. The current brand is shown but not
-/// linked; every other entry links that brand's home host.
+/// One brand the current firm wears — an entry in the footer's "Our Family"
+/// row. The current brand is shown but not linked; every other entry links
+/// that brand's home host. An entry with no `href` (a runtime-created brand
+/// with no host yet) is shown unlinked too, never as an empty anchor.
 #[derive(Clone, PartialEq, Eq)]
 pub struct FooterBrandLink {
     pub label: String,
     pub href: String,
     pub current: bool,
+}
+
+/// One association the firm belongs to — the footer's "Proud member of the
+/// {label}" line, linking the association's own site. Mirrors
+/// `views::brand::FirmMembership`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct FooterMembership {
+    pub label: String,
+    pub href: String,
+    /// The association's mark, already resolved to this deployment's asset
+    /// origin by `crate::public_chrome`. Rendered decoratively beside the
+    /// line; empty renders the award glyph instead.
+    pub logo_href: String,
 }
 
 /// One bar license an attorney holds. Mirrors `views::brand::BarLicense`.
@@ -252,10 +270,18 @@ pub fn SiteFooterLegal(
     #[props(default)] brand_name: String,
     #[props(default)] home_href: String,
     #[props(default)] nav: Vec<FooterNavLink>,
-    /// Brands this firm's footer names. One entry is no row: a single-brand
-    /// firm stays byte-identical to a footer that never learned the list.
+    /// The house brands this firm trades under — the "Our Family" row, in
+    /// registry order, the current one unlinked. One entry is no row: a
+    /// single-brand firm has no family to name, and stays byte-identical to
+    /// a footer that never learned the list.
     #[props(default)]
     brands: Vec<FooterBrandLink>,
+    /// The associations the firm belongs to, one "Proud member of the …" line
+    /// each, linking the association's own site. Empty renders no line — a
+    /// white-label deploy claims no membership this repository cannot vouch
+    /// for.
+    #[props(default)]
+    memberships: Vec<FooterMembership>,
     /// The registered word mark the site trades under, spelled the way the
     /// register spells it, and the registration that proves it. Renders one
     /// notice under the copyright line — the site's two ownership facts read
@@ -401,25 +427,6 @@ pub fn SiteFooterLegal(
                         }
                     }
                 }
-                if brands.len() > 1 {
-                    nav { class: "site-footer__brands", "aria-label": "Brands",
-                        ul { class: "site-footer__brands-list",
-                            for brand in brands.iter() {
-                                li { class: "site-footer__brands-item", key: "{brand.href}",
-                                    if brand.current {
-                                        span { class: "site-footer__brands-current", "{brand.label}" }
-                                    } else {
-                                        a {
-                                            class: "site-footer__brands-link",
-                                            href: "{brand.href}",
-                                            "{brand.label}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
                 if has_contact {
                     div { class: "site-footer__contact",
                         // The email and phone channels are tiles in the same
@@ -497,6 +504,98 @@ pub fn SiteFooterLegal(
                             }
                         }
                     }
+                // The firm's affiliations, in one row between the contact
+                // band and the legal strip: the house brands it trades under
+                // on the left, the associations it belongs to on the right.
+                // Both are facts about the firm rather than about a brand —
+                // the same family and the same membership on every host — so
+                // they sit with the firm's contact detail above and its legal
+                // strip below, not beside a brand's header.
+                if brands.len() > 1 || !memberships.is_empty() {
+                    div { class: "site-footer__affiliations",
+                        // "Our Family": every house brand the firm wears, the
+                        // current one shown but not linked, the rest linking
+                        // their own homes. A `<nav>`, because it is a set of
+                        // destinations, named by the same words the visible
+                        // heading carries so a landmark list reads what a
+                        // sighted reader sees. `aria-label` rather than
+                        // `aria-labelledby`: a page that renders this footer
+                        // twice (the `/design` gallery does) would otherwise
+                        // duplicate the heading's id.
+                        if brands.len() > 1 {
+                            nav { class: "site-footer__family", "aria-label": "Our family",
+                                h2 { class: "site-footer__family-heading", "Our Family" }
+                                ul { class: "site-footer__family-list",
+                                    for brand in brands.iter() {
+                                        li { class: "site-footer__family-item", key: "{brand.label}",
+                                            // The brand a reader is already on is
+                                            // text, not a link to the page they are
+                                            // reading, and `aria-current` says so
+                                            // the way the header marks the current
+                                            // page. A brand with no host yet is text
+                                            // too, rather than an `<a href="">` that
+                                            // reloads whatever page it sits on.
+                                            if brand.current {
+                                                span {
+                                                    class: "site-footer__family-current",
+                                                    "aria-current": "true",
+                                                    "{brand.label}"
+                                                }
+                                            } else if brand.href.is_empty() {
+                                                span { class: "site-footer__family-current", "{brand.label}" }
+                                            } else {
+                                                a {
+                                                    class: "site-footer__family-link",
+                                                    href: "{brand.href}",
+                                                    "{brand.label}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // "Proud member of …": one line per association the
+                        // firm belongs to, linking the association's own site
+                        // so a reader checks the claim where the association
+                        // publishes its members. Off-site, so it wears the
+                        // same new-tab treatment every outbound link on the
+                        // page does. The award glyph is decorative: the
+                        // sentence beside it is the whole meaning.
+                        if !memberships.is_empty() {
+                            ul { class: "site-footer__memberships",
+                                for membership in memberships.iter() {
+                                    li { class: "site-footer__membership", key: "{membership.href}",
+                                        // The association's own mark on a
+                                        // dark tile — the artwork is light
+                                        // lettering on a transparent ground,
+                                        // so the tile is what keeps it
+                                        // legible on the light scheme.
+                                        // Decorative (`alt=""`): the sentence
+                                        // beside it names the association.
+                                        if membership.logo_href.is_empty() {
+                                            Icon { name: IconName::AwardFill }
+                                        } else {
+                                            span { class: "site-footer__membership-badge",
+                                                img {
+                                                    class: "site-footer__membership-logo",
+                                                    src: "{membership.logo_href}",
+                                                    alt: "",
+                                                    loading: "lazy",
+                                                }
+                                            }
+                                        }
+                                        ExternalLink {
+                                            class: "site-footer__membership-link".to_string(),
+                                            href: membership.href.clone(),
+                                            "Proud member of the {membership.label}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 div { class: "site-footer__legal",
                     div { class: "site-footer__legal-practice",
                         p { class: "site-footer__copyright",
@@ -1610,8 +1709,17 @@ mod tests {
         ]
     }
 
-    #[test]
-    fn a_firm_with_three_brands_renders_them_in_order_with_the_current_one_unlinked() {
+    fn one_membership() -> Vec<FooterMembership> {
+        vec![FooterMembership {
+            label: "Justice Technology Association".to_string(),
+            href: "https://justicetechassociation.org/".to_string(),
+            logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
+        }]
+    }
+
+    /// The legal strip plus the firm's affiliations: the three-brand family
+    /// and the one association membership.
+    fn affiliated_html() -> String {
         fn app() -> Element {
             rsx! {
                 SiteFooterLegal {
@@ -1619,34 +1727,99 @@ mod tests {
                     disclaimer: "This is an attorney advertisement.".to_string(),
                     copyright_year: 2026,
                     brands: three_firm_brands(),
+                    memberships: one_membership(),
+                }
+            }
+        }
+        ssr(app)
+    }
+
+    /// "Our Family" lists every brand in registry order under a visible
+    /// heading, as a navigation landmark named by the same words, with the
+    /// current brand as text marked `aria-current` and every other brand a
+    /// link to its own home.
+    #[test]
+    fn a_firm_with_three_brands_renders_its_family_in_order_with_the_current_one_unlinked() {
+        let out = affiliated_html();
+        let family = out
+            .split_once(r#"<nav class="site-footer__family" aria-label="Our family">"#)
+            .and_then(|(_, rest)| rest.split_once("</nav>"))
+            .map(|(row, _)| row)
+            .expect("the family renders as a labelled landmark");
+        assert!(
+            family.contains(r#"<h2 class="site-footer__family-heading">Our Family</h2>"#),
+            "the row is headed by the words its landmark is named with: {family}"
+        );
+        let neon = family.find("Neon Law").expect("neon");
+        let dyd = family.find("DeleteYourData.com").expect("dyd");
+        let shook = family.find("Lawyer Shook").expect("lawyer shook");
+        assert!(neon < dyd && dyd < shook, "registry order: {family}");
+        assert!(
+            family.contains(
+                r#"<span class="site-footer__family-current" aria-current="true">Neon Law</span>"#
+            ),
+            "the current brand is text, marked current: {family}"
+        );
+        assert!(
+            !family.contains(r#"href="https://www.neonlaw.com""#),
+            "the current brand is unlinked: {family}"
+        );
+        assert!(
+            family.contains(
+                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com">DeleteYourData.com</a>"#
+            ),
+            "other brands link their home host: {family}"
+        );
+        assert!(
+            family.contains(r#"href="https://www.lawyershook.com""#),
+            "{family}"
+        );
+        assert_eq!(
+            family
+                .matches(r#"<li class="site-footer__family-item""#)
+                .count(),
+            3,
+            "one item per brand: {family}"
+        );
+    }
+
+    /// A brand with no host yet (a runtime-created one) is shown as text,
+    /// never as an anchor with an empty `href` that reloads the page.
+    #[test]
+    fn a_brand_with_no_host_renders_unlinked_not_as_an_empty_anchor() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    brands: vec![
+                        FooterBrandLink {
+                            label: "Neon Law".to_string(),
+                            href: "https://www.neonlaw.com".to_string(),
+                            current: true,
+                        },
+                        FooterBrandLink {
+                            label: "Acme Runtime Brand".to_string(),
+                            href: String::new(),
+                            current: false,
+                        },
+                    ],
                 }
             }
         }
         let out = ssr(app);
-        let neon = out.find("Neon Law").expect("neon");
-        let dyd = out.find("DeleteYourData.com").expect("dyd");
-        let shook = out.find("Lawyer Shook").expect("lawyer shook");
-        assert!(neon < dyd && dyd < shook, "registry order: {out}");
-        assert!(
-            out.contains(r#"class="site-footer__brands-current""#),
-            "current brand is not a link: {out}"
-        );
-        assert!(
-            !out.contains(r#"href="https://www.neonlaw.com""#),
-            "current brand is unlinked: {out}"
-        );
-        assert!(
-            out.contains(r#"href="https://www.deleteyourdata.com""#),
-            "other brands link their home host: {out}"
-        );
-        assert!(
-            out.contains(r#"href="https://www.lawyershook.com""#),
-            "{out}"
+        assert!(out.contains("Acme Runtime Brand"), "{out}");
+        assert!(!out.contains(r#"href="""#), "no empty anchor: {out}");
+        assert_eq!(
+            out.matches(r#"aria-current="true""#).count(),
+            1,
+            "only the current brand is marked current: {out}"
         );
     }
 
     #[test]
-    fn a_firm_with_one_brand_renders_no_brands_row() {
+    fn a_firm_with_one_brand_renders_no_family_row() {
         fn app() -> Element {
             rsx! {
                 SiteFooterLegal {
@@ -1663,13 +1836,146 @@ mod tests {
         }
         let out = ssr(app);
         assert!(
-            !out.contains("site-footer__brands"),
+            !out.contains("site-footer__family"),
             "one brand is no row: {out}"
+        );
+        assert!(
+            !out.contains("site-footer__affiliations"),
+            "and with no membership either, no affiliations row at all: {out}"
         );
         let bare = legal_html();
         assert!(
-            !bare.contains("site-footer__brands"),
+            !bare.contains("site-footer__family"),
             "an unset list is no row: {bare}"
         );
+        assert!(!bare.contains("Proud member"), "no membership line: {bare}");
+    }
+
+    /// The membership line names the association and links its own site,
+    /// wearing the off-site treatment every outbound link on the page does —
+    /// a new tab, the OWASP `rel` pair, and the arrow that says so — after
+    /// the family row and before the legal strip.
+    #[test]
+    fn publishes_each_membership_as_a_proud_member_line_linking_off_site() {
+        let out = affiliated_html();
+        let line = out
+            .split_once(r#"<ul class="site-footer__memberships">"#)
+            .and_then(|(_, rest)| rest.split_once("</ul>"))
+            .map(|(line, _)| line)
+            .expect("the memberships render as a list");
+        assert!(
+            line.contains("Proud member of the Justice Technology Association"),
+            "the line names the association in full: {line}"
+        );
+        assert!(
+            line.contains(
+                r#"href="https://justicetechassociation.org/" class="site-footer__membership-link""#
+            ),
+            "and links its own site: {line}"
+        );
+        assert!(
+            line.contains(r#"target="_blank""#) && line.contains(r#"rel="noopener noreferrer""#),
+            "off-site, with the OWASP rel pair: {line}"
+        );
+        assert!(
+            line.contains("<title>opens in a new tab</title>"),
+            "the arrow names what the link text cannot: {line}"
+        );
+        assert!(
+            line.contains(
+                r#"<span class="site-footer__membership-badge"><img class="site-footer__membership-logo" src="/public/img/justice-technology-association/logo.png" alt="" loading="lazy"/>"#
+            ),
+            "the association's mark is decorative — the sentence is the meaning: {line}"
+        );
+        assert!(
+            !line.contains("award-fill") && !line.contains(r#"aria-hidden="true""#),
+            "with a mark there is no award glyph: {line}"
+        );
+        let family = out.find("Our Family").expect("family");
+        let member = out.find("Proud member").expect("membership");
+        let legal = out
+            .find(r#"class="site-footer__legal""#)
+            .expect("legal strip");
+        assert!(
+            family < member && member < legal,
+            "family, then membership, then the legal strip: {out}"
+        );
+    }
+
+    /// A membership alone — a firm with one brand — still renders the
+    /// affiliations row, with the line and no family beside it. One with no
+    /// mark of its own wears the decorative award glyph in the badge's place.
+    #[test]
+    fn a_membership_without_a_family_renders_the_line_alone() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    memberships: vec![FooterMembership {
+                        logo_href: String::new(),
+                        ..one_membership().remove(0)
+                    }],
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(out.contains("site-footer__affiliations"), "{out}");
+        assert!(out.contains("Proud member of the"), "{out}");
+        assert!(!out.contains("site-footer__family"), "{out}");
+        assert!(
+            !out.contains("site-footer__membership-badge") && out.contains(r#"aria-hidden="true""#),
+            "no mark, so the decorative glyph stands in: {out}"
+        );
+    }
+
+    /// Every class the affiliations row emits is styled by the theme it
+    /// ships with. Mirrors `firm_footer`'s guard: a renamed class with no
+    /// matching rule renders as unstyled text and nothing else catches it.
+    ///
+    /// Scoped to the row's own classes: the legal strip's `__copyright`,
+    /// `__disclaimer`, and the like are semantic hooks the strip's grid
+    /// styles through their parent, and have never had rules of their own.
+    #[test]
+    fn every_class_the_affiliations_row_emits_is_styled_by_the_theme() {
+        let theme =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../server/public/css/theme.css");
+        let css = std::fs::read_to_string(&theme)
+            .unwrap_or_else(|e| panic!("the theme stylesheet must be readable: {e}"));
+
+        let mut classes = std::collections::BTreeSet::new();
+        for out in [contactable_html(), affiliated_html()] {
+            let mut rest = out.as_str();
+            while let Some(at) = rest.find("class=\"") {
+                rest = &rest[at + 7..];
+                let Some(end) = rest.find('"') else { break };
+                classes.extend(rest[..end].split_whitespace().map(str::to_string));
+                rest = &rest[end..];
+            }
+        }
+        let row_classes: Vec<&String> = classes
+            .iter()
+            .filter(|class| {
+                [
+                    "site-footer__affiliations",
+                    "site-footer__family",
+                    "site-footer__membership",
+                ]
+                .iter()
+                .any(|prefix| class.starts_with(prefix))
+            })
+            .collect();
+        assert!(
+            row_classes.len() >= 8,
+            "the row emits its own classes: {row_classes:?}"
+        );
+        for class in row_classes {
+            assert!(
+                css.contains(&format!(".{class}")),
+                "`{class}` is emitted by the footer but has no rule in \
+                 server/public/css/theme.css"
+            );
+        }
     }
 }

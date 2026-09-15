@@ -676,8 +676,9 @@ pub(crate) fn resolve_firm_home_content(
 /// Lawyer Shook's home page (`/`): a bare holding notice for Shook Law PLLC,
 /// not a marketing page. The mark holds the LAWYER SHOOK registration; the
 /// screen carries only the firm's name, one statement of what it is, and a
-/// sign-in line for an existing client — no header, footer, hero, CTA, or
-/// practice boxes. [`webapp::home::HomePage`] renders nothing else once
+/// sign-in line for an existing client — no header, hero, CTA, or practice
+/// boxes — over the one shared footer every page of the firm's sites carries.
+/// [`webapp::home::HomePage`] renders nothing else once
 /// [`webapp::home::HomeContent::bare`] is set, which is why this is a
 /// hardcoded statement rather than a `locales::home` YAML catalog page: there
 /// is no marketing copy here to edit.

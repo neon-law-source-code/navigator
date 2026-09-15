@@ -382,7 +382,10 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::NOTATIONS_INDEX_PATH,
         notations_index_content(),
     ));
-    routers.push(dioxus_app::notation_preview_router(notation_preview_docs()));
+    routers.push(dioxus_app::notation_preview_router(
+        notation_preview_docs(),
+        webapp::notation_preview::NotationPreviewMode::Published,
+    ));
     let contact_copy = branded_map(branding, |resolved| {
         webapp::contact_page::InjectedContact(resolve_firm_contact_content(resolved))
     });

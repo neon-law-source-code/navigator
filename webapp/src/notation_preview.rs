@@ -100,31 +100,45 @@ pub struct NotationPreviewContent {
     pub demo_workflow: Vec<WorkflowStateView>,
 }
 
-/// The [`NotationPreviewContent`] injected into the render context by the
-/// portal router.
+/// Whether a notation is shown in the published catalog or a local author
+/// preview.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NotationPreviewMode {
+    #[default]
+    Published,
+    Local,
+}
+
+/// The notation content and rendering mode injected into the render context by
+/// the portal router.
 #[derive(Clone, Default)]
-pub struct InjectedNotationPreview(pub NotationPreviewContent);
+pub struct InjectedNotationPreview {
+    pub content: NotationPreviewContent,
+    pub mode: NotationPreviewMode,
+}
 
 /// Everything the page renders, chrome included.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct NotationPreviewView {
     pub chrome: PublicChrome,
     pub content: NotationPreviewContent,
+    pub mode: NotationPreviewMode,
 }
 
 /// Read back the resolved content and the public chrome.
 #[server]
 pub async fn notation_preview_view() -> Result<NotationPreviewView, ServerFnError> {
-    let content = dioxus_fullstack_core::FullstackContext::extract::<
+    let injected = dioxus_fullstack_core::FullstackContext::extract::<
         axum::Extension<InjectedNotationPreview>,
         _,
     >()
     .await
-    .map(|axum::Extension(c)| c.0)
+    .map(|axum::Extension(injected)| injected)
     .unwrap_or_default();
     Ok(NotationPreviewView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
-        content,
+        content: injected.content,
+        mode: injected.mode,
     })
 }
 
@@ -137,7 +151,7 @@ pub fn NotationPreviewEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        NotationPreviewPage { chrome: view.chrome, content: view.content }
+        NotationPreviewPage { chrome: view.chrome, content: view.content, mode: view.mode }
     }
 }
 
@@ -145,31 +159,47 @@ pub fn NotationPreviewEntry() -> Element {
 /// with an optional link to a form's blank government original. Prop-driven,
 /// so it server-renders and unit-tests without a server future.
 #[component]
-pub fn NotationPreviewPage(chrome: PublicChrome, content: NotationPreviewContent) -> Element {
-    let header = rsx! {
-        SiteHeader {
-            brand_name: chrome.brand_name.clone(),
-            home_href: chrome.home_href.clone(),
-            logo_href: chrome.logo_href.clone(),
-            destinations: chrome
-                .destinations
-                .iter()
-                .map(|link| SiteNavLink::new(link.label.clone(), link.href.clone()))
-                .collect(),
-            utility: chrome
-                .utility
-                .iter()
-                .map(|link| SiteNavLink::new(link.label.clone(), link.href.clone()))
-                .collect(),
-        }
-    };
-    let footer = rsx! {
-        PublicFooter { chrome: chrome.clone() }
+pub fn NotationPreviewPage(
+    chrome: PublicChrome,
+    content: NotationPreviewContent,
+    #[props(default)] mode: NotationPreviewMode,
+) -> Element {
+    let (header, footer) = if mode == NotationPreviewMode::Published {
+        (
+            rsx! {
+                SiteHeader {
+                    brand_name: chrome.brand_name.clone(),
+                    home_href: chrome.home_href.clone(),
+                    logo_href: chrome.logo_href.clone(),
+                    destinations: chrome
+                        .destinations
+                        .iter()
+                        .map(|link| SiteNavLink::new(link.label.clone(), link.href.clone()))
+                        .collect(),
+                    utility: chrome
+                        .utility
+                        .iter()
+                        .map(|link| SiteNavLink::new(link.label.clone(), link.href.clone()))
+                        .collect(),
+                }
+            },
+            rsx! { PublicFooter { chrome: chrome.clone() } },
+        )
+    } else {
+        (rsx! {}, rsx! {})
     };
     let head_title = format!("{} | Notations | {}", chrome.brand_name, content.title);
+    // The SSR response has already emitted this title. Dioxus's web document
+    // title setter evaluates a dynamically-generated script, which the
+    // preview's nonce CSP correctly rejects after hydration. The page is not
+    // client-routed, so the browser does not need to set it again.
+    #[cfg(not(target_arch = "wasm32"))]
+    let title = rsx! { document::Title { "{head_title}" } };
+    #[cfg(target_arch = "wasm32")]
+    let title = rsx! {};
     let description = format!("A preview of the Firm's {}.", content.title);
-    rsx! {
-        document::Title { "{head_title}" }
+    let document = rsx! {
+        {title}
         document::Meta { name: "description", content: "{description}" }
         SocialMeta {
             title: head_title.clone(),
@@ -180,8 +210,7 @@ pub fn NotationPreviewPage(chrome: PublicChrome, content: NotationPreviewContent
         document::Stylesheet { href: CATALOG_STYLESHEET_HREF }
         document::Stylesheet { href: HARVARD_OUTLINE_STYLESHEET_HREF }
         document::Script { src: HARVARD_OUTLINE_SCRIPT_HREF, defer: true }
-        PublicShell { header, footer,
-            article { class: "notation-preview",
+        article { class: "notation-preview",
                 BackBreadcrumb { href: "/notations".to_string(), label: "Notations".to_string() }
                 header { class: "notation-preview-header",
                     h1 { "{content.title}" }
@@ -214,9 +243,9 @@ pub fn NotationPreviewPage(chrome: PublicChrome, content: NotationPreviewContent
                         WorkflowDiagram { states: content.demo_workflow.clone() }
                     }
                 }
-            }
         }
-    }
+    };
+    rsx! { PublicShell { header, footer, {document} } }
 }
 
 #[cfg(test)]
@@ -342,6 +371,43 @@ mod tests {
         let out = html();
         assert!(out.contains("site-header"), "header chrome: {out}");
         assert!(out.contains("site-footer__legal"), "footer chrome: {out}");
+    }
+
+    #[test]
+    fn a_local_preview_omits_global_chrome_without_losing_notation_surfaces() {
+        fn app() -> Element {
+            let chrome = PublicChrome {
+                brand_name: "Neon Law".to_string(),
+                ..PublicChrome::default()
+            };
+            let content = NotationPreviewContent {
+                demo_questions: vec![DemoQuestion {
+                    code: "custom_text__client_name".to_string(),
+                    answer_type: "custom_text".to_string(),
+                    prompt: "What is your name?".to_string(),
+                    choices: Vec::new(),
+                    interactive: true,
+                }],
+                demo_workflow: vec![
+                    WorkflowStateView {
+                        name: "BEGIN".to_string(),
+                        transitions: vec![("submit".to_string(), "review".to_string())],
+                    },
+                    WorkflowStateView {
+                        name: "review".to_string(),
+                        transitions: Vec::new(),
+                    },
+                ],
+                ..letter_content()
+            };
+            rsx! { NotationPreviewPage { chrome, content, mode: NotationPreviewMode::Local } }
+        }
+        let out = ssr(app);
+        assert!(!out.contains("site-header"), "header chrome: {out}");
+        assert!(!out.contains("site-footer__legal"), "footer chrome: {out}");
+        assert!(out.contains("Scope of the engagement"), "body: {out}");
+        assert!(out.contains("Try answering this"), "questionnaire: {out}");
+        assert!(out.contains("notation-workflow"), "workflow: {out}");
     }
 
     #[test]

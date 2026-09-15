@@ -2885,19 +2885,19 @@ pub const NOTATION_PREVIEW_PATH: &str = "/notations/{slug}";
 /// synchronous axum middleware, mirroring [`inject_catalog_material`] —
 /// rather than an awaited extractor inside the render, matching how
 /// [`webapp::contact_page`] reads its content.
-pub fn notation_preview_router(docs: Vec<webapp::notation_preview::PreviewDoc>) -> Router {
+pub fn notation_preview_router(
+    docs: Vec<webapp::notation_preview::PreviewDoc>,
+    mode: webapp::notation_preview::NotationPreviewMode,
+) -> Router {
     Router::<FullstackState>::new()
         .route(
             NOTATION_PREVIEW_PATH,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(inject_public_utility))
-                .layer(from_fn_with_state(docs, inject_notation_preview)),
+                .layer(from_fn_with_state((docs, mode), inject_notation_preview)),
         )
-        .with_state(FullstackState::new(
-            ServeConfig::new(),
-            webapp::notation_preview::NotationPreviewEntry,
-        ))
+        .with_state(FullstackState::new(ServeConfig::new(), webapp::App))
 }
 
 /// Resolve the requested bundled document from the `{slug}` path segment and
@@ -2905,7 +2905,10 @@ pub fn notation_preview_router(docs: Vec<webapp::notation_preview::PreviewDoc>) 
 /// as [`inject_catalog_material`] refuses an unknown workshop or
 /// presentation material.
 async fn inject_notation_preview(
-    axum::extract::State(docs): axum::extract::State<Vec<webapp::notation_preview::PreviewDoc>>,
+    axum::extract::State((docs, mode)): axum::extract::State<(
+        Vec<webapp::notation_preview::PreviewDoc>,
+        webapp::notation_preview::NotationPreviewMode,
+    )>,
     mut req: Request,
     next: Next,
 ) -> Response {
@@ -2929,7 +2932,7 @@ async fn inject_notation_preview(
         demo_workflow: found.demo_workflow.clone(),
     };
     req.extensions_mut()
-        .insert(webapp::notation_preview::InjectedNotationPreview(content));
+        .insert(webapp::notation_preview::InjectedNotationPreview { content, mode });
     next.run(req).await
 }
 

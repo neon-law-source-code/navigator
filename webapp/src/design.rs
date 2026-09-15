@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use crate::components::{
     wire_runs, Accordion, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb, Card,
     CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
-    CodeBlock, Column, ConfirmDelete, DataTable, DayRateBadge, ExternalLink, Field, FooterAttorney,
+    CodeBlock, Column, ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney,
     FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign,
     HeroLevel, Icon, IconName, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
     NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
@@ -836,10 +836,7 @@ fn PricingShowcase() -> Element {
             cta_label: "Book a call".to_string(),
             cta_href: "https://cal.example/book".to_string(),
             featured_label: Some("$3,500, once".to_string()),
-            day_rate: Some(DayRateBadge {
-                amount: 10,
-                image_src: "/public/img/ten-dollar-bill/ten-dollar-bill.jpg".to_string(),
-            }),
+            day_rate: None,
         },
     ];
     rsx! {

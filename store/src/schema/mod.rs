@@ -495,6 +495,31 @@ mod tests {
         assert_eq!(state(&db).await.unwrap(), SchemaState::InSync);
     }
 
+    #[tokio::test]
+    async fn applying_leaves_email_confirmation_absent_on_a_historical_person() {
+        let db = unmigrated().await;
+        db.query(
+            "CREATE person:historical SET name = 'Historical Person', \
+             email = 'historical@example.com', role = 'client', is_admitted = true, \
+             inserted_at = type::datetime('2020-01-01T00:00:00Z'), \
+             updated_at = type::datetime('2020-01-01T00:00:00Z')",
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        apply(&db).await.unwrap();
+
+        let confirmed: Option<bool> = db
+            .query("SELECT VALUE email_confirmed FROM person:historical")
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        assert_eq!(confirmed, None);
+    }
+
     /// A row coded `closed` written before that code was reserved (simulated
     /// here by writing it into a database with no schema applied at all, so
     /// nothing validates the write) must not be silently outlived by the new

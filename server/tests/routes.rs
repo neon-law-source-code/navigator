@@ -16353,6 +16353,172 @@ async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_strea
     assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
 }
 
+/// A person written before `email_confirmed` existed still accepts an admin
+/// avatar upload after schema apply because the avatar writer materializes the
+/// missing default for that row before updating the avatar.
+#[tokio::test]
+async fn admin_person_avatar_upload_handles_a_historical_person_row() {
+    let surreal = store::surreal::test_support::unmigrated().await;
+    let id = uuid::Uuid::now_v7();
+    surreal
+        .query(
+            "CREATE $id SET name = 'Historical Person', \
+             email = 'historical-avatar@example.com', role = 'client', is_admitted = true, \
+             inserted_at = type::datetime('2020-01-01T00:00:00Z'), \
+             updated_at = type::datetime('2020-01-01T00:00:00Z')",
+        )
+        .bind(("id", store::surreal::record_id("person", id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+    store::schema::apply(&surreal).await.unwrap();
+    let state = portal::test_support::app_state(surreal.clone()).await;
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = admin_session_cookie_and_csrf();
+    let boundary = "----navigator-test-historical-avatar-boundary";
+    let body = avatar_multipart_body(
+        boundary,
+        &csrf,
+        "historical.png",
+        "image/png",
+        ONE_PIXEL_PNG,
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/people/{id}/avatar"))
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok()),
+        Some(format!("/app/admin/people/{id}").as_str()),
+    );
+
+    let row = store::persons::find_by_id(&surreal, id)
+        .await
+        .unwrap()
+        .expect("historical row still present");
+    assert!(!row.email_confirmed);
+    let email_confirmed: Option<bool> = surreal
+        .query("SELECT VALUE email_confirmed FROM ONLY $id")
+        .bind(("id", store::surreal::record_id("person", id)))
+        .await
+        .unwrap()
+        .take(0)
+        .unwrap();
+    assert_eq!(email_confirmed, Some(false));
+    assert_eq!(
+        row.profile_image_url.as_deref(),
+        Some(format!("people/{id}/avatars/{id}.png").as_str()),
+    );
+}
+
+/// Another person's avatar is readable by the person, Owner/Admin, or a
+/// viewer who shares a Project participation with the target. An unrelated
+/// lawyer receives the same non-disclosing 404 as a missing avatar.
+#[tokio::test]
+async fn person_avatar_view_is_participation_scoped() {
+    let (state, surreal) = state_with_engines().await;
+    let target = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Target Person",
+            "target-avatar@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let shared = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Shared Lawyer",
+            "shared-avatar@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let unrelated = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Unrelated Lawyer",
+            "unrelated-avatar@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let admin = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Avatar Admin",
+            "avatar-admin@example.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let project = test_project(&surreal, "Avatar Matter", "open").await;
+    participate(&surreal, target.id, project.id, "client").await;
+    participate(&surreal, shared.id, project.id, "lawyer").await;
+
+    let key = format!("people/{}/avatars/{}.png", target.id, target.id);
+    state
+        .storage
+        .put(&key, ONE_PIXEL_PNG, "image/png")
+        .await
+        .unwrap();
+    assert!(
+        store::persons::set_profile_image_url(&surreal, target.id, Some(key))
+            .await
+            .unwrap()
+    );
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    for person in [&target, &shared, &admin] {
+        let (cookie, _) = session_cookie_and_csrf_for_person(person);
+        let response = get_with_cookie(
+            app.clone(),
+            &format!("/app/people/{}/avatar", target.id),
+            &cookie,
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "{} must see the avatar",
+            person.email
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
+    }
+
+    let (cookie, _) = session_cookie_and_csrf_for_person(&unrelated);
+    let denied = get_with_cookie(app, &format!("/app/people/{}/avatar", target.id), &cookie).await;
+    assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+}
+
 /// A non-admin (lawyer) session is refused on the download route, matching
 /// the upload's own gate.
 #[tokio::test]

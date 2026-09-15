@@ -73,7 +73,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use surrealdb::types::{AlreadyExistsError, ErrorDetails, SurrealValue};
+use surrealdb::types::{AlreadyExistsError, ErrorDetails, RecordId, SurrealValue};
 use uuid::Uuid;
 
 use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
@@ -226,9 +226,9 @@ pub struct Person {
     pub xero_contact_id: Option<String>,
     /// This person's avatar. Never a public surface — `/team` stopped being a
     /// per-person roster — but visible to more than the admin Person page
-    /// now: the caller's own `/app/profile` always shows it, every firm tier
-    /// may see any avatar, and a client may see a fellow client's avatar when
-    /// the two share a Project (`store::access::avatar_visible_to`). Two
+    /// now: the caller's own `/app/profile` always shows it, Owner/Admin may
+    /// see any avatar, and any viewer may see a target when they share a
+    /// Project (`store::access::avatar_visible_to`). Two
     /// shapes: a bare private documents-bucket key
     /// (`people/{id}/avatars/…`, written by the admin or self-service
     /// avatar-upload route), or a directly-fetchable URL (an old-style
@@ -1171,6 +1171,39 @@ pub async fn set_email_confirmed(
         vec![bind("confirmed", confirmed)],
     )
     .await
+}
+
+/// Set a person's avatar key, returning whether the row existed.
+///
+/// Surreal validates the full row for every update. Before writing the avatar,
+/// this materializes the historical default for `email_confirmed` on this
+/// person only when it is absent; a deployment-wide backfill stays an explicit
+/// operator action.
+pub async fn set_profile_image_url(
+    db: &SurrealDb,
+    id: Uuid,
+    profile_image_url: Option<String>,
+) -> Result<bool, PersonError> {
+    writing(|| {
+        db.query(
+            "UPDATE person SET email_confirmed = false \
+             WHERE id = $id AND email_confirmed IS NONE",
+        )
+        .bind(("id", record_id(TABLE, id)))
+    })
+    .await?;
+
+    let mut response = writing(|| {
+        db.query(
+            "UPDATE $id SET profile_image_url = $profile_image_url, \
+             updated_at = time::now() RETURN id",
+        )
+        .bind(("id", record_id(TABLE, id)))
+        .bind(("profile_image_url", profile_image_url.clone()))
+    })
+    .await?;
+    let row: Option<RecordId> = response.take(0)?;
+    Ok(row.is_some())
 }
 
 /// Read the explicit admission decision for a person.

@@ -132,15 +132,26 @@ fn preview_doc(slug: &str, source_path: &str, src: &str) -> webapp::notation_pre
     )
 }
 
-/// Every bundled notation's show-page content — the two sample letters and
-/// every government form — the content
+/// Every bundled notation's show-page content — the sample letters, fixture
+/// filings, and every government form — the content
 /// [`portal::dioxus_app::notation_preview_router`] serves at
 /// `/notations/{slug}`.
+#[allow(clippy::too_many_lines)] // The literal source-to-preview inventory is reviewed as one catalog.
 fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
     const ONBOARDING: &str =
         include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
     const OFFBOARDING: &str =
         include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+    const RESCISSION_NOTICE: &str =
+        include_str!("../../templates/notations/neon_law/shared/rescission_notice_nevada.md");
+    const WITNESS_AFFIDAVIT: &str =
+        include_str!("../../templates/notations/neon_law/shared/witness_affidavit_nevada.md");
+    const ANSWER_TO_COUNTERCLAIM: &str =
+        include_str!("../../templates/notations/neon_law/shared/answer_to_counterclaim_nevada.md");
+    const ENGAGEMENT_LETTER: &str =
+        include_str!("../../templates/notations/neon_law/shared/engagement_letter_nevada.md");
+    const SUMMONS: &str =
+        include_str!("../../templates/notations/neon_law/shared/summons_nevada.md");
     const FORM_990: &str =
         include_str!("../../templates/notations/forms/united_states/federal/irs/us__form_990.md");
     const NATURALIZATION: &str = include_str!(
@@ -181,6 +192,31 @@ fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
             "offboarding-letter",
             "notations/neon_law/shared/offboarding_letter.md",
             OFFBOARDING,
+        ),
+        preview_doc(
+            "nevada-rescission-notice",
+            "notations/neon_law/shared/rescission_notice_nevada.md",
+            RESCISSION_NOTICE,
+        ),
+        preview_doc(
+            "nevada-witness-affidavit",
+            "notations/neon_law/shared/witness_affidavit_nevada.md",
+            WITNESS_AFFIDAVIT,
+        ),
+        preview_doc(
+            "nevada-answer-to-counterclaim",
+            "notations/neon_law/shared/answer_to_counterclaim_nevada.md",
+            ANSWER_TO_COUNTERCLAIM,
+        ),
+        preview_doc(
+            "nevada-engagement-letter",
+            "notations/neon_law/shared/engagement_letter_nevada.md",
+            ENGAGEMENT_LETTER,
+        ),
+        preview_doc(
+            "nevada-summons",
+            "notations/neon_law/shared/summons_nevada.md",
+            SUMMONS,
         ),
         preview_doc(
             "irs-form-990",
@@ -235,8 +271,9 @@ fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
     ]
 }
 
-/// The public `/notations` catalog: the sample engagement letters and every
-/// government form in `templates/notations/forms/`.
+/// The public `/notations` catalog: the bundled letters and filings, plus
+/// every government form in `templates/notations/forms/`.
+#[allow(clippy::too_many_lines)] // The literal public inventory stays aligned with the preview catalog above.
 fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
     webapp::catalog_index::CatalogIndexContent {
         title: NOTATIONS_INDEX_TITLE.to_string(),
@@ -253,6 +290,36 @@ fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
                 "Closing Letter",
                 "offboarding-letter",
                 "The sample letter that closes a matter (`offboarding__letter`).",
+            ),
+            notation_card(
+                "Filing · Nevada",
+                "Notice of Rescission",
+                "nevada-rescission-notice",
+                "Fixture notice of rescission for a Nevada matter.",
+            ),
+            notation_card(
+                "Filing · Nevada",
+                "Affidavit of Percipient Witness",
+                "nevada-witness-affidavit",
+                "Fixture affidavit of a percipient witness for a Nevada matter.",
+            ),
+            notation_card(
+                "Filing · Nevada",
+                "Answer to Counterclaim",
+                "nevada-answer-to-counterclaim",
+                "Fixture answer to a counterclaim in Nevada.",
+            ),
+            notation_card(
+                "Letter · Nevada",
+                "Engagement Letter — Arbitration",
+                "nevada-engagement-letter",
+                "Fixture arbitration engagement letter for a Nevada matter.",
+            ),
+            notation_card(
+                "Filing · Nevada",
+                "Summons",
+                "nevada-summons",
+                "Fixture civil summons for a Nevada matter.",
             ),
             notation_card(
                 "Form · Federal",

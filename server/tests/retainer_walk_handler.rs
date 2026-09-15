@@ -18,7 +18,8 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use portal::AppState;
+use portal::{AppState, SessionData, SessionStore};
+use store::persons::Role;
 use store::seed;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
@@ -75,6 +76,16 @@ async fn build_app_and_notation() -> (
     )
     .await
     .unwrap();
+    // The auth-bypass bearer resolves to the seeded firm principal. Make that
+    // principal an explicit firm participant, just as a real lawyer session
+    // must be before it can answer this matter's questionnaire.
+    let lawyer = store::persons::default_firm_dri(&surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(&surreal, proj.id, lawyer, "lawyer")
+        .await
+        .unwrap();
 
     let notation_id = store::notations::create(
         &surreal,
@@ -119,6 +130,15 @@ async fn build_app_and_notation() -> (
 async fn body_string(resp: axum::http::Response<Body>) -> String {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     String::from_utf8(bytes.to_vec()).unwrap()
+}
+
+fn lawyer_bearer(person_id: uuid::Uuid) -> String {
+    let mut session = SessionData::fresh("scoped-lawyer", Role::Lawyer);
+    session.person_id = Some(person_id);
+    format!(
+        "Bearer {}",
+        SessionStore::new(portal::test_support::TEST_SESSION_KEY).encode(&session)
+    )
 }
 
 #[tokio::test]
@@ -281,6 +301,55 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
     let html = body_string(resp).await;
     assert!(html.contains("address__principal_office"));
     assert!(html.contains("Step 2 of 8"));
+}
+
+#[tokio::test]
+async fn step_post_refuses_a_lawyer_outside_the_notations_project_without_mutating() {
+    let (app, surreal, notation_id, runtime) = build_app_and_notation().await;
+    let outsider = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Outside Lawyer",
+            "outside-lawyer@example.com",
+            Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/lawyer/notations/{notation_id}/step"))
+                .header("authorization", lawyer_bearer(outsider.id))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("value=Unauthorised"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert!(
+        store::answers::for_notation(&surreal, notation_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "an out-of-scope lawyer must not write an answer"
+    );
+    assert!(
+        StateMachineRuntime::events(runtime.as_ref(), MachineKind::Questionnaire, notation_id)
+            .await
+            .is_empty(),
+        "an out-of-scope lawyer must not advance the questionnaire"
+    );
+    assert!(
+        StateMachineRuntime::events(runtime.as_ref(), MachineKind::Workflow, notation_id)
+            .await
+            .is_empty(),
+        "an out-of-scope lawyer must not start the workflow"
+    );
 }
 
 #[tokio::test]
@@ -969,6 +1038,13 @@ async fn close_walk_renders_firm_signed_letter_and_closes_the_matter() {
     .await
     .unwrap();
     store::projects::add_participation(&surreal, project.id, libra.id, "client")
+        .await
+        .unwrap();
+    let lawyer = store::persons::default_firm_dri(&surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(&surreal, project.id, lawyer, "lawyer")
         .await
         .unwrap();
 

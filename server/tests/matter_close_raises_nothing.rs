@@ -91,6 +91,15 @@ async fn seed_matter(surreal: &SurrealDb, matter: &Matter) -> (Uuid, String, Uui
     store::projects::add_participation(surreal, project.id, client.id, "client")
         .await
         .unwrap();
+    // `walk_the_close` uses the local auth-bypass bearer, whose actor resolves
+    // to the canonical firm principal. Keep that fixture participant explicit.
+    let lawyer = store::persons::default_firm_dri(surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(surreal, project.id, lawyer, "lawyer")
+        .await
+        .unwrap();
 
     if let Some(code) = matter.originating_template {
         let template = store::templates::resolve(surreal, None, code)

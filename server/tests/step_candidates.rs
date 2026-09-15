@@ -127,6 +127,16 @@ async fn build() -> (
     )
     .await
     .unwrap();
+    // The auth-bypass bearer resolves to the canonical firm principal. Give
+    // that actor the same firm-side participation a real lawyer session needs
+    // before posting a questionnaire answer.
+    let lawyer = store::persons::default_firm_dri(&surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(&surreal, project.id, lawyer, "lawyer")
+        .await
+        .unwrap();
     // Put the DRI Fixture on the matter's participation ledger — the collapsed
     // form of the retired lawyer/client DRI columns. The person picker is
     // scoped to matter people, so this is what makes the DRI a candidate.

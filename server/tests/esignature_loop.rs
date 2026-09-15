@@ -122,6 +122,16 @@ async fn full_signature_loop_reaches_end_through_real_provider_and_webhook() {
     )
     .await
     .unwrap();
+    // The test bearer takes the documented auth-bypass fallback to the
+    // canonical firm principal, which still needs a firm-side participation
+    // before it may submit questionnaire answers.
+    let lawyer = store::persons::default_firm_dri(&surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(&surreal, proj.id, lawyer, "lawyer")
+        .await
+        .unwrap();
     let nid = store::notations::create(
         &surreal,
         &store::notations::NewNotation::new(tmpl.id, libra.id, proj.id, "BEGIN"),

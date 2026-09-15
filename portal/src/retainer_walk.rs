@@ -1096,11 +1096,31 @@ pub async fn step_post(
 ) -> Response {
     let body: std::collections::BTreeMap<String, String> = pairs.iter().cloned().collect();
     tracing::info!(%notation_id, field_count = body.len(), "step_post: enter");
+    // Resolve the matter and its firm-side lens before asking the runtime or
+    // accepting any form value. A notation outside the caller's scope is
+    // indistinguishable from a missing one so this door does not disclose it.
+    let Some(notation) = store::notations::find_by_id(&state.surreal, notation_id)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return (StatusCode::NOT_FOUND, "notation not found").into_response();
+    };
+    let acting = resolve_lawyer_actor(&state.surreal, session.as_deref()).await;
+    let role = session
+        .as_deref()
+        .map_or(store::persons::Role::Lawyer, |session| session.role);
+    let in_scope =
+        store::access::can_see_project_as_lawyer(&state.surreal, acting, role, notation.project_id)
+            .await
+            .unwrap_or(false);
+    if !in_scope {
+        return (StatusCode::NOT_FOUND, "notation not found").into_response();
+    }
     // The admin walker is lawyer entering the answer on the client's
     // behalf: the typist is the logged-in lawyer/admin person, the source
     // is `lawyer`. The respondent stays the notation's bound client.
-    let author =
-        notation_session::AnswerAuthor::lawyer(session.as_deref().and_then(|s| s.person_id));
+    let author = notation_session::AnswerAuthor::lawyer(acting);
     // The HTML form submits `value` (or the `people_list` widget's
     // `p{row}_{part}` inputs); ask the service which question the
     // runtime is currently expecting so we can pass the right code —
@@ -1175,7 +1195,6 @@ pub async fn step_post(
             // The lawyer completing the walk owns every workflow
             // transition it fires (intake, render, approve, close) — attribute
             // them to that session Person, not the notation's client (#252).
-            let acting = resolve_lawyer_actor(&state.surreal, session.as_deref()).await;
             // Which workflow, and how far it runs, is the bound template's
             // business and not this handler's: every door hands a completed
             // questionnaire to the same drive.

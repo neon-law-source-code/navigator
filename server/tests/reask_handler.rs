@@ -62,6 +62,16 @@ async fn build_app_and_notation() -> (axum::Router, store::surreal::SurrealDb, u
     )
     .await
     .unwrap();
+    // The test bearer is the local auth-bypass path, which resolves to the
+    // seeded firm principal. The answer door requires that principal's firm
+    // participation just as it does for a linked lawyer session.
+    let lawyer = store::persons::default_firm_dri(&surreal)
+        .await
+        .unwrap()
+        .expect("canonical seed has a firm principal");
+    store::projects::add_participation(&surreal, proj.id, lawyer, "lawyer")
+        .await
+        .unwrap();
 
     let notation_id = store::notations::create(
         &surreal,

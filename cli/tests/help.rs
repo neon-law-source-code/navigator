@@ -131,6 +131,7 @@ fn notations_help_lists_the_notation_authoring_workbench() {
             "narrate",
             "preview",
             "render",
+            "run",
             "scaffold",
             "transcribe",
             "help",

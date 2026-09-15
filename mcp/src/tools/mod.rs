@@ -246,11 +246,13 @@ pub async fn call_tool(
             .await
         }
         "answer_notation" => {
+            let identity = caller.answer_identity()?;
             answer_notation::call(
                 surreal,
                 runtime,
                 state.storage.as_ref(),
                 state.post_questionnaire.as_deref(),
+                identity,
                 arguments,
             )
             .await
@@ -277,9 +279,9 @@ pub async fn call_tool(
 /// which tier. The only two facts a dispatch reads off the row, so the
 /// row itself is not carried around.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Identity {
-    person_id: uuid::Uuid,
-    role: Role,
+pub(super) struct Identity {
+    pub(super) person_id: uuid::Uuid,
+    pub(super) role: Role,
 }
 
 /// The acting [`Principal`], resolved once per dispatch.
@@ -328,6 +330,25 @@ async fn resolve_caller(
 }
 
 impl Caller {
+    /// Resolve the person whose authorization and attribution an answer
+    /// requires. Unlike ordinary local-development tool calls, an answer
+    /// mutates a matter and starts its workflow, so an absent identity is not
+    /// a safe actor to substitute.
+    fn answer_identity(&self) -> Result<Identity, ToolError> {
+        match self {
+            Self::Authenticated {
+                identity: Some(identity),
+                ..
+            } => Ok(*identity),
+            Self::Authenticated { email, .. } => Err(ToolError::Forbidden(format!(
+                "{email} is not linked to a Navigator person"
+            ))),
+            Self::Anonymous => Err(ToolError::Forbidden(
+                "answer_notation requires an authenticated Navigator person".into(),
+            )),
+        }
+    }
+
     /// Defense-in-depth tier check for side-effecting tools. An
     /// *authenticated* caller must resolve to a lawyer/admin `persons`
     /// row to run one. An anonymous caller is allowed through: that is
@@ -887,6 +908,23 @@ mod tests {
         let ghost = Principal::new("ghost@example.com");
         assert!(matches!(
             authz(&s.surreal, Some(&ghost), "create_project").await,
+            Err(ToolError::Forbidden(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn answer_notation_requires_a_resolved_person() {
+        let s = state().await;
+        let anonymous = resolve_caller(&s.surreal, None).await.unwrap();
+        assert!(matches!(
+            anonymous.answer_identity(),
+            Err(ToolError::Forbidden(_))
+        ));
+
+        let unlinked = Principal::new("unlinked@example.com");
+        let unlinked = resolve_caller(&s.surreal, Some(&unlinked)).await.unwrap();
+        assert!(matches!(
+            unlinked.answer_identity(),
             Err(ToolError::Forbidden(_))
         ));
     }

@@ -91,6 +91,24 @@ every question and the graph, and the command says so rather than leaving a dead
 runs anywhere, including inside a Project repository that has no `server/public` of its own — the stylesheets it needs
 are compiled into this binary.
 
+The preview binds only to `127.0.0.1`, uses an OS-assigned ephemeral port unless `--port` is given, opens no store,
+holds no session, and persists nothing when its process stops.
+
+## Walk a template through the local runtime
+
+```bash
+navigator notations run templates/notations/neon_law/shared/onboarding_letter.md
+```
+
+`notations run` validates the file, creates a fresh embedded store and temporary object directory, then creates only
+synthetic client, lawyer, entity, and Project records. It walks the client-visible subset first, reports that boundary,
+then completes the firm's full questionnaire and invokes the shared post-questionnaire drive. Because this workbench
+never starts the `workflows-service` Restate worker that journals production transitions, it writes each embedded
+transition to `notation_events` itself before printing, so its terminal output — the persisted answers, journaled
+transitions, and resulting workflow state — reflects the same journal a real run leaves behind. Every invocation starts
+empty and is discarded on exit. It reads no deployment selection or ambient Navigator configuration and never calls a
+live provider.
+
 You do not need a site to work locally. Use `navigator validate`, the `navigator notations` authoring commands, and the
 KIND-backed `navigator dev` loop, and `navigator erd` to introspect the schema; seed a local catalog with `navigator
 site seed` when that command's local store and storage environment are available, or import deployment data with

@@ -203,8 +203,8 @@ textarea {
 }
 
 /* The footer every `/app` page carries — copyright naming the resolved
-   Firm's legal entity, that Firm's brands row, then the shared platform
-   line, no navigation. Distinct from `.navigator-footer`, which lays out a
+   Firm's legal entity, that Firm's "Our Family" row, its membership lines,
+   then the shared platform line, no navigation. Distinct from `.navigator-footer`, which lays out a
    legal attribution, a link row, and a release stamp for the not yet
    widely adopted `NavigatorShell`. */
 .app-footer {
@@ -219,31 +219,57 @@ textarea {
   margin: 0;
 }
 
-.app-footer__brands {
-  margin: 0.5rem 0 0;
-}
-
-.app-footer__brands-list {
+/* "Our Family", centered like the lines around it: the small uppercase
+   heading inline with the row of brands, the current one bold and unlinked. */
+.app-footer__family {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.5rem 1rem;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.75rem 0 0;
+}
+
+.app-footer__family-heading {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.app-footer__family-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 0.75rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.app-footer__brands-item {
+.app-footer__family-item {
   margin: 0;
 }
 
-.app-footer__brands-link,
-.app-footer__brands-current {
+.app-footer__family-link,
+.app-footer__family-current {
   font-size: 0.875rem;
 }
 
-.app-footer__brands-current {
+.app-footer__family-current {
   font-weight: 600;
+  color: var(--nav-color-text);
+}
+
+/* "Proud member of …", one line per association, linking off-site. */
+.app-footer__membership {
+  margin: 0.5rem 0 0;
+}
+
+.app-footer__membership-link {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
 }
 
 .app-footer__platform {
@@ -1170,32 +1196,178 @@ a.nav-pagination__link:hover {
   color: var(--nav-color-text);
 }
 
-.site-footer__brands {
-  margin: 0 0 1rem;
+/* The affiliations row: the firm's family on the left, its association
+   memberships on the right, between the contact band and the legal strip.
+   Inset to the band's tiles like the masthead above, so the family's first
+   chip starts where the first address tile does. Every colour here is a
+   `--nav-*` token, so on a house brand's own host the chips and the
+   membership underline take that brand's primary and face — the row is the
+   same markup on every host and wears whichever palette the host resolved. */
+.site-footer__affiliations {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem 2rem;
+  padding-inline: calc(var(--footer-band-inset) + 1px);
 }
 
-.site-footer__brands-list {
+/* "Our Family": a small uppercase heading and a row of chips, one per house
+   brand. The heading is the landmark's accessible name too, so it stays a
+   real heading rather than a styled span. */
+.site-footer__family {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1rem;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  margin: 0;
+  padding: 0;
+}
+
+.site-footer__family-heading {
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nav-color-text-muted);
+}
+
+.site-footer__family-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.site-footer__brands-item {
+.site-footer__family-item {
   margin: 0;
 }
 
-.site-footer__brands-link,
-.site-footer__brands-current {
+/* A chip per brand, grounded like the contact band's tiles. The 2rem minimum
+   height keeps each a comfortable target for a finger or a pointer. */
+.site-footer__family-link,
+.site-footer__family-current {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.25rem 0.85rem;
+  border: 1px solid color-mix(in oklab, var(--nav-color-border) 78%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--nav-color-surface) 74%, transparent);
+  color: var(--nav-color-text);
+  font-size: 0.875rem;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    border-color 240ms ease,
+    background-color 240ms ease,
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* `.nav-theme a` is more specific than the chip class, so the link colour and
+   hover underline are re-asserted away at matching specificity: a chip is a
+   tile, and answers a pointer the way the contact tiles do — brand border,
+   brand wash, a lift — rather than as a phrase in a sentence. Focus gets the
+   same treatment as hover so the two states agree; the browser's own ring
+   still marks it for a keyboard reader. */
+.nav-theme a.site-footer__family-link {
+  color: var(--nav-color-text);
+  text-decoration: none;
+}
+
+.nav-theme a.site-footer__family-link:hover,
+.nav-theme a.site-footer__family-link:focus-visible {
+  border-color: var(--nav-color-primary);
+  background: color-mix(in oklab, var(--nav-color-primary) 12%, transparent);
+  color: var(--nav-color-text);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+/* The brand a reader is already on: filled in the host's primary, bold, and
+   not a link — `aria-current` says so to a screen reader. */
+.site-footer__family-current {
+  border-color: color-mix(in oklab, var(--nav-color-primary) 60%, transparent);
+  background: color-mix(in oklab, var(--nav-color-primary) 14%, transparent);
+  font-weight: 600;
+}
+
+/* "Proud member of …": one quiet line per association, right-aligned against
+   the family. The award glyph takes the host's primary; the sentence is the
+   footer's muted fine print with the link underlined in the same primary, so
+   a reader sees it is a link without it shouting. */
+.site-footer__memberships {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  justify-self: end;
+}
+
+.site-footer__membership {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--nav-color-text-muted);
   font-size: 0.875rem;
 }
 
-.site-footer__brands-current {
-  font-weight: 600;
+.site-footer__membership > .nav-icon {
+  flex: none;
+  font-size: 1.1em;
+  color: var(--nav-color-primary);
 }
+
+/* The association's own mark, on a dark tile in both schemes: the artwork is
+   light lettering on a transparent ground, published that way by the
+   association, so the tile — not the page — is what it was drawn for. The
+   image is decorative and sized by height, so the wide lockup stays legible
+   without dominating the line beside it. */
+.site-footer__membership-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid color-mix(in oklab, var(--nav-color-border) 78%, transparent);
+  border-radius: 0.6rem;
+  background: #0b1220;
+}
+
+.site-footer__membership-logo {
+  display: block;
+  height: 1.5rem;
+  width: auto;
+}
+
+.nav-theme a.site-footer__membership-link {
+  color: inherit;
   text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--nav-color-primary) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.nav-theme a.site-footer__membership-link:hover,
+.nav-theme a.site-footer__membership-link:focus-visible {
+  color: var(--nav-color-text);
+  text-decoration-color: var(--nav-color-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-footer__family-link {
+    transition: none;
+  }
+
+  .nav-theme a.site-footer__family-link:hover,
+  .nav-theme a.site-footer__family-link:focus-visible {
+    transform: none;
+  }
 }
 
 /* The contact band: one bordered surface wrapping the tile grid (the email
@@ -1530,6 +1702,16 @@ a.nav-pagination__link:hover {
     grid-column: 1;
   }
 
+  /* Family over membership, both from the left edge, once there is no band
+     inset to line up with. */
+  .site-footer__affiliations {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 0;
+  }
+
+  .site-footer__memberships {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 34rem) {

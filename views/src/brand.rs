@@ -324,6 +324,48 @@ const FIRM_OFFICES: &[FirmOffice] = &[FirmOffice {
     note: None,
 }];
 
+/// One professional association the firm belongs to, published in the footer
+/// of every page: the association's name as it writes it, its own site, and
+/// its mark.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FirmMembership {
+    pub name: &'static str,
+    pub href: &'static str,
+    /// The association's own mark, as a repo-relative key in the deployment's
+    /// public assets bucket (`img/<slug>/<file>`) — never a root-relative
+    /// path. It resolves through [`crate::assets::asset_url`], so a cloud
+    /// deployment serves it from its own `<project>-assets` bucket while
+    /// dev, tests, and a fork with no bucket configured fall back to the
+    /// crate-bundled `/public` mount. That is the seam every other photo
+    /// rides, and it is why these bytes are not in git.
+    ///
+    /// Rendered decoratively (`alt=""`) beside the line that names the
+    /// association, because the text is the label. Empty renders no badge.
+    pub logo_key: &'static str,
+}
+
+/// The associations the firm is a member of. The footer renders each as one
+/// line — "Proud member of the …" — linking the association's own site, so
+/// a reader checks the claim where the association publishes its members
+/// rather than trusting the page's word for it.
+///
+/// A membership belongs to the firm, not to a brand: Shook Law PLLC is the
+/// member, so every house brand it trades under carries the same line. A
+/// bundle that renames the firm publishes none — see
+/// [`Branding::firm_memberships`].
+///
+/// The name is the association's own — the Justice Technology Association
+/// spells it out in full on its mark — rather than the short form it is
+/// known by in conversation.
+const FIRM_MEMBERSHIPS: &[FirmMembership] = &[FirmMembership {
+    name: "Justice Technology Association",
+    href: "https://justicetechassociation.org/",
+    // The association's own mark, as it publishes it: light lettering on a
+    // transparent ground, so the footer sets it on a dark tile. A bucket
+    // key, resolved through the asset seam per deployment.
+    logo_key: "img/justice-technology-association/logo.png",
+}];
+
 /// All identity consumed by rendering. The web router scopes one immutable
 /// instance to a request; direct view tests receive [`DEFAULT_BRANDING`].
 #[derive(Debug, Clone, Copy)]
@@ -350,6 +392,20 @@ pub struct Branding {
     /// footer. See [`FIRM_ATTORNEYS`]: this is the footer's only bar
     /// disclosure, and it names who holds each licence.
     pub firm_attorneys: &'static [FirmAttorney],
+    /// The associations the firm belongs to, rendered as the footer's
+    /// membership line on every page. See [`FIRM_MEMBERSHIPS`]. Empty on a
+    /// bundle that renames the firm, for the same reason the trademark
+    /// notice is: the membership is Shook Law PLLC's, and a renamed firm is a
+    /// different firm whose affiliations this repository cannot vouch for.
+    pub firm_memberships: &'static [FirmMembership],
+    /// The house brands the firm trades under — the footer's "Our Family"
+    /// row, in registry order. [`BrandKey::ALL`] on every house brand, so a
+    /// reader on any one of them sees the other two; empty on a bundle that
+    /// renames the firm, whose footer must not list another firm's brands.
+    /// The live `firm_brand` rows override this when a Firm wears the
+    /// request's key (`webapp::firm_footer`); this is what renders before
+    /// any Firm is seeded, so the row is on every page from first boot.
+    pub firm_family: &'static [BrandKey],
     /// The firm's registered word mark, spelled the way the register spells it
     /// — `NEON LAW`, not the title-case wordmark the header wears. The footer's
     /// trademark notice opens on it, followed by `®`.
@@ -436,6 +492,8 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     firm_phone: "+1 510 800 2080",
     firm_offices: FIRM_OFFICES,
     firm_attorneys: FIRM_ATTORNEYS,
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
     // The mark as registered: the register carries the word mark in capitals,
     // and a notice that cites a registration should spell the mark the way the
     // registration does. `site_name` above is the same mark set the way the
@@ -477,8 +535,15 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     firm_email: "contact@deleteyourdata.com",
     support_domain: "deleteyourdata.com",
     firm_phone: "+1 510 800 2080",
-    firm_offices: &[],
+    // The firm's one office, on this practice's pages as on the firm's own:
+    // the address is Shook Law PLLC's, and a reader on any house brand is
+    // reading the same firm.
+    firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
+    // The member is Shook Law PLLC and the family is its brands, on this
+    // practice's pages as on the firm's own.
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
     firm_trademark: "",
     firm_trademark_registration: "",
     firm_trademark_record_url: "",
@@ -517,8 +582,10 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     firm_email: "contact@lawyershook.com",
     support_domain: "lawyershook.com",
     firm_phone: "+1 510 800 2080",
-    firm_offices: &[],
+    firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
     firm_trademark: "LAWYER SHOOK",
     firm_trademark_registration: "",
     firm_trademark_record_url: "",
@@ -779,6 +846,20 @@ impl Branding {
                     DEFAULT_BRANDING.firm_trademark_record_url,
                 )
             };
+        // The same rule for the firm's affiliations: the association
+        // membership and the house-brand family are Shook Law PLLC's, so a
+        // bundle that renames the firm publishes neither — a footer claiming
+        // another firm's membership, or listing its brands as "Our Family",
+        // is the wrong claim under the wrong name.
+        let (firm_memberships, firm_family): (&'static [FirmMembership], &'static [BrandKey]) =
+            if brand.firm.is_some() {
+                (&[], &[])
+            } else {
+                (
+                    DEFAULT_BRANDING.firm_memberships,
+                    DEFAULT_BRANDING.firm_family,
+                )
+            };
         Box::leak(Box::new(Self {
             firm: SiteBrand {
                 site_name: firm_name,
@@ -858,6 +939,8 @@ impl Branding {
                     .collect();
                 Box::leak(leaked.into_boxed_slice())
             },
+            firm_memberships,
+            firm_family,
             firm_trademark,
             firm_trademark_registration,
             firm_trademark_record_url,
@@ -991,6 +1074,21 @@ pub fn firm_offices() -> &'static [FirmOffice] {
 #[must_use]
 pub fn firm_attorneys() -> &'static [FirmAttorney] {
     current().firm_attorneys
+}
+
+/// The associations the firm belongs to, from request-scoped branding — the
+/// footer's membership line. Empty on a bundle that renamed the firm.
+#[must_use]
+pub fn firm_memberships() -> &'static [FirmMembership] {
+    current().firm_memberships
+}
+
+/// The house brands the firm trades under, from request-scoped branding —
+/// the footer's "Our Family" row before any Firm row overrides it. Empty on
+/// a bundle that renamed the firm.
+#[must_use]
+pub fn firm_family() -> &'static [BrandKey] {
+    current().firm_family
 }
 
 /// The firm's registered word mark, its U.S. registration number, and the
@@ -1268,6 +1366,67 @@ mod tests {
         .await;
     }
 
+    /// The firm's affiliations follow the trademark rule: a bundle that
+    /// renames the firm publishes no association membership and lists no
+    /// house-brand family, because both are Shook Law PLLC's; a bundle that
+    /// changes anything else keeps them. Every house brand carries the same
+    /// two, since the member and the family are the firm, not the brand.
+    #[tokio::test]
+    async fn a_renamed_firm_claims_no_membership_and_lists_no_family() {
+        let renamed: BrandManifest =
+            serde_yaml::from_str("version: 1\nbrand:\n  firm: Cascade Law\n").unwrap();
+        scope(Branding::from_manifest(&renamed), async {
+            assert!(super::firm_memberships().is_empty());
+            assert!(super::firm_family().is_empty());
+        })
+        .await;
+        let untouched: BrandManifest =
+            serde_yaml::from_str("version: 1\nbrand:\n  firm_phone: '+1 555 000 0000'\n").unwrap();
+        scope(Branding::from_manifest(&untouched), async {
+            assert_eq!(super::firm_memberships(), DEFAULT_BRANDING.firm_memberships);
+            assert_eq!(super::firm_family(), BrandKey::ALL);
+        })
+        .await;
+        for branding in [&DELETE_YOUR_DATA_BRANDING, &LAWYER_SHOOK_BRANDING] {
+            assert_eq!(branding.firm_memberships, DEFAULT_BRANDING.firm_memberships);
+            assert_eq!(branding.firm_family, BrandKey::ALL);
+            // And the firm's one office, so every house brand's footer lists
+            // the same Nevada address.
+            assert_eq!(branding.firm_offices, DEFAULT_BRANDING.firm_offices);
+        }
+    }
+
+    /// The one membership the firm publishes names the association in full,
+    /// the way its own mark spells it, and links the association's site over
+    /// HTTPS — a reader verifies the claim there, not on this page.
+    #[test]
+    fn the_membership_names_the_association_and_links_its_own_site() {
+        let [membership] = DEFAULT_BRANDING.firm_memberships else {
+            panic!("the firm publishes exactly one membership");
+        };
+        assert_eq!(membership.name, "Justice Technology Association");
+        assert_eq!(membership.href, "https://justicetechassociation.org/");
+        // A bucket key, not a root-relative path: `rewrite_image_src` passes
+        // anything starting with `/` straight through, so a leading slash
+        // would pin every deployment to the container's own copy and never
+        // reach that deployment's assets bucket.
+        assert_eq!(
+            membership.logo_key,
+            "img/justice-technology-association/logo.png"
+        );
+        assert!(
+            !membership.logo_key.starts_with('/'),
+            "a bucket key routes through the asset seam: {}",
+            membership.logo_key
+        );
+        // With no `NAVIGATOR_ASSET_BASE_URL` — dev, tests, a fork — it falls
+        // back to the crate-bundled mount rather than breaking.
+        assert_eq!(
+            crate::assets::asset_url(membership.logo_key),
+            "/public/img/justice-technology-association/logo.png"
+        );
+    }
+
     /// The mark and the legal person behind it are two different strings, and
     /// the site publishes both.
     ///
@@ -1350,6 +1509,8 @@ mod tests {
         assert_eq!(super::support_domain(), DEFAULT_BRANDING.support_domain);
         assert_eq!(super::portal_only(), DEFAULT_BRANDING.portal_only);
         assert_eq!(super::firm_phone(), DEFAULT_BRANDING.firm_phone);
+        assert_eq!(super::firm_memberships(), DEFAULT_BRANDING.firm_memberships);
+        assert_eq!(super::firm_family(), DEFAULT_BRANDING.firm_family);
         assert_eq!(super::terms_url(), DEFAULT_BRANDING.terms_url);
         assert_eq!(super::privacy_url(), DEFAULT_BRANDING.privacy_url);
     }

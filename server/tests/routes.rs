@@ -1813,8 +1813,12 @@ async fn the_app_and_public_footers_name_the_seeded_firm_and_its_brands() {
     );
     assert!(team_html.contains("Shook Law PLLC"), "{team_html}");
     assert!(
-        team_html.contains(r#"class="app-footer__brands""#),
-        "the seeded practice wears three brands, so the row renders: {team_html}"
+        team_html.contains(r#"class="app-footer__family""#),
+        "the seeded practice wears three brands, so the family row renders: {team_html}"
+    );
+    assert!(
+        team_html.contains("Proud member of the Justice Technology Association"),
+        "the firm's membership line renders on /app too: {team_html}"
     );
 
     let home = app
@@ -9561,6 +9565,27 @@ async fn assert_unregistered_host_redirects(
 /// above (an authenticated request, since the anonymous redirect renders no
 /// chrome to check) — this matrix asserts the status/redirect shape that
 /// holds on every host regardless of session.
+/// The holding host's chrome: no header and no public shell (so no
+/// support-chat widget) — but the one shared footer, with the firm's office,
+/// its family of brands, and its membership, is under the notice like on
+/// every other page.
+fn assert_holding_host_chrome(body: &str) {
+    for (marker, present) in [
+        (r#"class="site-header""#, false),
+        ("nav-theme public-shell", false),
+        (r#"class="site-footer""#, true),
+        ("Ste 405-9002", true),
+        (r#"aria-label="Our family""#, true),
+        ("Proud member of the Justice Technology Association", true),
+    ] {
+        assert_eq!(
+            body.contains(marker),
+            present,
+            "the holding host's chrome marker {marker:?}: {body}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn host_brand_path_matrix_resolves_every_combination() {
     let default_host = "www.neonlaw.com";
@@ -9599,16 +9624,7 @@ async fn host_brand_path_matrix_resolves_every_combination() {
                     && body.contains(r#"class="holding-page__heading""#),
                 "the holding host renders its bare notice: {body}"
             );
-            for shared_marker in [
-                r#"class="site-header""#,
-                r#"class="site-footer""#,
-                "nav-theme public-shell",
-            ] {
-                assert!(
-                    !body.contains(shared_marker),
-                    "the holding host must omit shared chrome marker {shared_marker:?}: {body}"
-                );
-            }
+            assert_holding_host_chrome(&body);
         }
     }
     let followed =

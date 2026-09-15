@@ -227,11 +227,12 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     };
 
     // The `/app` footer — copyright naming the resolved Firm's legal entity,
-    // its brands row, and the shared platform line (ENG-589). Gated on the
-    // request path rather than on the rendered shell: unlike the
-    // public/authenticated split above, the eight real `/app` pages render
-    // their navbar directly rather than through a shared `NavigatorShell`, so
-    // there is no shell marker to key off. See `webapp::firm_footer`.
+    // its "Our Family" row, its membership line, and the shared platform
+    // line (ENG-589). Gated on the request path rather than on the rendered
+    // shell: unlike the public/authenticated split above, the eight real
+    // `/app` pages render their navbar directly rather than through a shared
+    // `NavigatorShell`, so there is no shell marker to key off. See
+    // `webapp::firm_footer`.
     let html = if renders_app_footer(&path) {
         let model = footer_model.unwrap_or_else(|| {
             webapp::firm_footer::compiled_firm_footer_model(

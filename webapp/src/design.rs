@@ -33,14 +33,14 @@ use crate::components::{
     wire_runs, Accordion, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb, Card,
     CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
     CodeBlock, Column, ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney,
-    FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign,
-    HeroLevel, Icon, IconName, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
-    NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
-    Pagination, PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection,
-    Progress, PublicShell, QuestionStage, RowActions, RunParagraph, SampleMattersBanner,
-    SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage, StageWidth, StepMeta,
-    Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast, ToastTone,
-    THEME_STYLESHEET_HREF,
+    FooterBarLicense, FooterBrandLink, FooterMembership, FooterNavLink, FooterOffice, FormCard,
+    GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName, LawyerPortalBreadcrumb,
+    LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter, NavigatorFooterLink,
+    NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs, PersonChoice, PersonPicker,
+    PricingCard, PricingSection, Progress, PublicShell, QuestionStage, RowActions, RunParagraph,
+    SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage,
+    StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast,
+    ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -571,9 +571,9 @@ fn AppProfileMenuShowcase() -> Element {
 /// `portal::dioxus_app::dioxus_document_head` rather than rendered by each of
 /// the eight real `/app` pages — see the component's own module docs for why.
 /// It carries the copyright line naming the resolved Firm's legal entity, the
-/// brands that Firm wears (a synthetic two-brand model here, matching
-/// ENG-589's gallery requirement), and the shared platform line, with no
-/// navigation.
+/// "Our Family" row of brands that Firm wears (a synthetic two-brand model
+/// here, matching ENG-589's gallery requirement), the firm's membership line,
+/// and the shared platform line, with no navigation.
 #[component]
 fn FirmFooterShowcase() -> Element {
     rsx! {
@@ -581,8 +581,8 @@ fn FirmFooterShowcase() -> Element {
             h2 { "Application footer" }
             p {
                 "The one footer every authenticated /app page carries: a centered copyright "
-                "line naming the resolved Firm's legal entity, that Firm's brands, then the "
-                "platform line, and no navigation."
+                "line naming the resolved Firm's legal entity, that Firm's family of brands, "
+                "the association it is a member of, then the platform line, and no navigation."
             }
             FirmFooter {
                 model: crate::firm_footer::FirmFooterModel {
@@ -599,12 +599,53 @@ fn FirmFooterShowcase() -> Element {
                             current: false,
                         },
                     ],
+                    memberships: demo_memberships()
+                        .into_iter()
+                        .map(|membership| crate::firm_footer::FirmFooterMembership {
+                            label: membership.label,
+                            href: membership.href,
+                        })
+                        .collect(),
                     copyright_year: 2026,
                     navigator_version: String::new(),
                 },
             }
         }
     }
+}
+
+/// The firm's one association membership, as the deployed footer publishes
+/// it. Real rather than synthetic for the same reason the trademark below is:
+/// the line is a public claim about the firm, and a made-up association
+/// beside a real-looking link is the one thing it must never show.
+fn demo_memberships() -> Vec<FooterMembership> {
+    vec![FooterMembership {
+        label: "Justice Technology Association".to_string(),
+        href: "https://justicetechassociation.org/".to_string(),
+        logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
+    }]
+}
+
+/// The three house brands, as the deployed footer's "Our Family" row lists
+/// them on the firm's own host: the firm current and unlinked, the other two
+/// linking their production homes.
+fn demo_family() -> Vec<FooterBrandLink> {
+    [
+        ("Neon Law", "https://www.neonlaw.com", true),
+        (
+            "DeleteYourData.com",
+            "https://www.deleteyourdata.com",
+            false,
+        ),
+        ("Lawyer Shook", "https://www.lawyershook.com", false),
+    ]
+    .into_iter()
+    .map(|(label, href, current)| FooterBrandLink {
+        label: label.to_string(),
+        href: href.to_string(),
+        current,
+    })
+    .collect()
 }
 
 /// The unified Navigator shell — prepared, but not yet adopted by any real
@@ -1198,6 +1239,12 @@ fn SiteFooterShowcase() -> Element {
                 trademark_registration: "6,325,650".to_string(),
                 trademark_record_url:
                     "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
+                // The affiliations row: the three-brand family and the one
+                // membership, so the gallery shows the row every deployed
+                // page renders — and so the accessibility audit of `/design`
+                // covers its landmark, heading, and off-site link.
+                brands: demo_family(),
+                memberships: demo_memberships(),
                 // The open-source line, driven with a count so the gallery
                 // shows the shape the deployed footer renders. The
                 // count-less variant is shown beside the standalone

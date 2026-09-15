@@ -12,17 +12,20 @@
 //! attorney-advertising disclaimer, none of which this minimal model has any
 //! business carrying. One resolver, not one piece of markup.
 //!
-//! A brand key no Firm wears (the pre-seed database, or a compiled key with
-//! no `firm_brand` row yet) falls back to the compiled `Branding` the public
-//! chrome already falls back to, so a fresh deployment renders the same
-//! footer it always has.
+//! Both footers carry the same two affiliation rows: "Our Family", every
+//! house brand the Firm wears with the current one unlinked, and a "Proud
+//! member of …" line per association the firm belongs to. A brand key no
+//! Firm wears (the pre-seed database, or a compiled key with no `firm_brand`
+//! row yet) falls back to the compiled `Branding`'s family
+//! ([`compiled_family_brands`]), so the row is on every page from first boot
+//! rather than only once a Firm is seeded.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::POWERED_BY_NEON_LAW_NAVIGATOR;
+use crate::components::{ExternalLink, POWERED_BY_NEON_LAW_NAVIGATOR};
 
-/// One brand the resolved Firm wears, for the footer's brands row.
+/// One brand the resolved Firm wears, for the footer's "Our Family" row.
 ///
 /// `href` is empty for a runtime-created brand with no dedicated host to
 /// link to yet (a later issue gives one) — rendered as plain text, the same
@@ -34,43 +37,76 @@ pub struct FirmFooterBrand {
     pub current: bool,
 }
 
+/// One association the firm belongs to, for the footer's "Proud member of
+/// the {label}" line. Mirrors `views::brand::FirmMembership`.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct FirmFooterMembership {
+    pub label: String,
+    pub href: String,
+}
+
 /// The data every Navigator footer needs, resolved once per request from the
 /// Firm that wears the current brand — never a process-wide constant.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct FirmFooterModel {
     pub legal_entity: String,
-    /// Every brand the Firm wears, current brand first. Empty or a single
-    /// entry renders no brands row.
+    /// Every brand the Firm wears, in registry order with the current one
+    /// flagged. Empty or a single entry renders no "Our Family" row.
     pub brands: Vec<FirmFooterBrand>,
+    /// The associations the firm belongs to. Empty renders no line.
+    #[serde(default)]
+    pub memberships: Vec<FirmFooterMembership>,
     pub copyright_year: i32,
     /// The published release this deployment runs. Empty under `cargo run`.
     pub navigator_version: String,
 }
 
 /// The `/app` footer: the copyright naming the resolved Firm's legal entity,
-/// the brands row (a runtime-created brand listed exactly like a compiled
-/// one), and the shared platform line.
+/// the "Our Family" row (a runtime-created brand listed exactly like a
+/// compiled one), the firm's membership lines, and the shared platform line.
 #[component]
 pub fn FirmFooter(model: FirmFooterModel) -> Element {
     rsx! {
         footer { class: "app-footer",
             p { class: "app-footer__copyright", "© {model.copyright_year} {model.legal_entity}" }
+            // The same row the public footer renders, in the `/app` footer's
+            // own quieter dress: a landmark named by its visible heading, the
+            // current brand as text marked `aria-current`, a brand with no
+            // host yet as text rather than an empty anchor.
             if model.brands.len() > 1 {
-                nav { class: "app-footer__brands", "aria-label": "Brands",
-                    ul { class: "app-footer__brands-list",
+                nav { class: "app-footer__family", "aria-label": "Our family",
+                    h2 { class: "app-footer__family-heading", "Our Family" }
+                    ul { class: "app-footer__family-list",
                         for brand in model.brands.iter() {
-                            li { class: "app-footer__brands-item", key: "{brand.label}",
-                                if brand.current || brand.href.is_empty() {
-                                    span { class: "app-footer__brands-current", "{brand.label}" }
+                            li { class: "app-footer__family-item", key: "{brand.label}",
+                                if brand.current {
+                                    span {
+                                        class: "app-footer__family-current",
+                                        "aria-current": "true",
+                                        "{brand.label}"
+                                    }
+                                } else if brand.href.is_empty() {
+                                    span { class: "app-footer__family-current", "{brand.label}" }
                                 } else {
                                     a {
-                                        class: "app-footer__brands-link",
+                                        class: "app-footer__family-link",
                                         href: "{brand.href}",
                                         "{brand.label}"
                                     }
                                 }
                             }
                         }
+                    }
+                }
+            }
+            // "Proud member of …", linking the association's own site with
+            // the off-site treatment every outbound link carries.
+            for membership in model.memberships.iter() {
+                p { class: "app-footer__membership", key: "{membership.href}",
+                    ExternalLink {
+                        class: "app-footer__membership-link".to_string(),
+                        href: membership.href.clone(),
+                        "Proud member of the {membership.label}"
                     }
                 }
             }
@@ -94,10 +130,49 @@ pub fn render_firm_footer(model: FirmFooterModel) -> String {
     dioxus_ssr::render(&dom)
 }
 
-/// The no-store fallback: the compiled `Branding` for `current`, as its own
-/// one-entry brands row. What a fresh deployment (no `firm` rows yet) or a
-/// brand key no Firm wears renders — unchanged from the footer every
-/// deployment has always shown.
+/// The compiled "Our Family" row for a request on `current`: every house
+/// brand the request-scoped firm trades under (`views::brand::firm_family`),
+/// in registry order, each named by its compiled wordmark and linking its
+/// production home, with `current` flagged. Empty under a bundle that renamed
+/// the firm, whose footer must not list another firm's brands.
+///
+/// Shared by the `/app` footer's compiled fallback and the public chrome, so
+/// the two cannot disagree about who is in the family before a Firm row
+/// overrides both.
+#[cfg(feature = "server")]
+#[must_use]
+pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooterBrand> {
+    views::brand::firm_family()
+        .iter()
+        .map(|key| FirmFooterBrand {
+            label: key
+                .resolve_branding(&views::brand::DEFAULT_BRANDING)
+                .firm
+                .site_name
+                .to_string(),
+            href: key.public_home_href(),
+            current: *key == current,
+        })
+        .collect()
+}
+
+/// The firm's association memberships, from request-scoped branding, in the
+/// footer's own shape.
+#[cfg(feature = "server")]
+#[must_use]
+fn firm_memberships() -> Vec<FirmFooterMembership> {
+    views::brand::firm_memberships()
+        .iter()
+        .map(|membership| FirmFooterMembership {
+            label: membership.name.to_string(),
+            href: membership.href.to_string(),
+        })
+        .collect()
+}
+
+/// The no-store fallback: the compiled `Branding` for `current`, with the
+/// compiled family as its "Our Family" row and the firm's memberships. What a
+/// fresh deployment (no `firm` rows yet) or a brand key no Firm wears renders.
 #[cfg(feature = "server")]
 #[must_use]
 pub fn compiled_firm_footer_model(
@@ -106,13 +181,20 @@ pub fn compiled_firm_footer_model(
     navigator_version: String,
 ) -> FirmFooterModel {
     let branding = current.resolve_branding(&views::brand::DEFAULT_BRANDING);
-    FirmFooterModel {
-        legal_entity: branding.firm.legal_entity.to_string(),
-        brands: vec![FirmFooterBrand {
+    let mut brands = compiled_family_brands(current);
+    // A firm with no compiled family (a renamed white-label bundle) still
+    // names its one brand, so the model is never empty of identity.
+    if brands.is_empty() {
+        brands.push(FirmFooterBrand {
             label: branding.firm.site_name.to_string(),
             href: String::new(),
             current: true,
-        }],
+        });
+    }
+    FirmFooterModel {
+        legal_entity: branding.firm.legal_entity.to_string(),
+        brands,
+        memberships: firm_memberships(),
         copyright_year,
         navigator_version,
     }
@@ -182,6 +264,7 @@ pub async fn resolve_firm_footer_model(
     FirmFooterModel {
         legal_entity: entity.name,
         brands,
+        memberships: firm_memberships(),
         copyright_year,
         navigator_version,
     }
@@ -201,9 +284,17 @@ mod tests {
         FirmFooterModel {
             legal_entity: "Shook Law PLLC".to_string(),
             brands,
+            memberships: Vec::new(),
             copyright_year: 2026,
             navigator_version: String::new(),
         }
+    }
+
+    fn one_membership() -> Vec<FirmFooterMembership> {
+        vec![FirmFooterMembership {
+            label: "Justice Technology Association".to_string(),
+            href: "https://justicetechassociation.org/".to_string(),
+        }]
     }
 
     #[test]
@@ -253,11 +344,10 @@ mod tests {
         assert!(html.contains("#26.8.20"), "{html}");
     }
 
-    /// A single brand — the ordinary case for most deployments — renders no
-    /// brands row, matching the pre-ENG-589 footer that never learned the
-    /// list.
+    /// A single brand — a firm with no family to name — renders no "Our
+    /// Family" row.
     #[test]
-    fn a_single_brand_renders_no_brands_row() {
+    fn a_single_brand_renders_no_family_row() {
         fn app() -> Element {
             rsx! {
                 FirmFooter {
@@ -270,7 +360,11 @@ mod tests {
             }
         }
         let html = ssr(app);
-        assert!(!html.contains("app-footer__brands"), "{html}");
+        assert!(!html.contains("app-footer__family"), "{html}");
+        assert!(
+            !html.contains("Proud member"),
+            "no membership given: {html}"
+        );
     }
 
     /// A Firm wearing several brands lists every one, in the given order,
@@ -296,12 +390,19 @@ mod tests {
             }
         }
         let html = ssr(app);
+        assert!(
+            html.contains(r#"<nav class="app-footer__family" aria-label="Our family">"#)
+                && html.contains(r#"<h2 class="app-footer__family-heading">Our Family</h2>"#),
+            "a landmark named by its visible heading: {html}"
+        );
         let neon = html.find("Neon Law").expect("neon");
         let dyd = html.find("DeleteYourData.com").expect("dyd");
         assert!(neon < dyd, "registry order: {html}");
         assert!(
-            html.contains(r#"class="app-footer__brands-current""#),
-            "current brand is not a link: {html}"
+            html.contains(
+                r#"<span class="app-footer__family-current" aria-current="true">Neon Law</span>"#
+            ),
+            "current brand is text, marked current: {html}"
         );
         assert!(
             !html.contains(r#"href="https://www.neonlaw.com""#),
@@ -350,6 +451,7 @@ mod tests {
                 FirmFooter {
                     model: FirmFooterModel {
                         navigator_version: "26.8.20".to_string(),
+                        memberships: one_membership(),
                         ..model(vec![
                             FirmFooterBrand {
                                 label: "Neon Law".to_string(),
@@ -383,13 +485,76 @@ mod tests {
         }
         assert!(!classes.is_empty(), "the footer emits classes: {out}");
 
-        for class in classes {
+        for class in classes
+            .iter()
+            .filter(|class| class.starts_with("app-footer"))
+        {
             assert!(
                 css.contains(&format!(".{class}")),
                 "`{class}` is emitted by the footer but has no rule in \
                  server/public/css/theme.css"
             );
         }
+    }
+
+    /// The membership line names the association, links its own site, and
+    /// wears the off-site treatment — a new tab, the OWASP `rel` pair, the
+    /// arrow — between the family row and the platform line.
+    #[test]
+    fn a_membership_renders_as_a_proud_member_line_linking_off_site() {
+        fn app() -> Element {
+            rsx! {
+                FirmFooter {
+                    model: FirmFooterModel {
+                        memberships: one_membership(),
+                        ..model(vec![])
+                    },
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(
+            html.contains(
+                r#"<p class="app-footer__membership"><a href="https://justicetechassociation.org/" class="app-footer__membership-link""#
+            ),
+            "{html}"
+        );
+        assert!(
+            html.contains("Proud member of the Justice Technology Association"),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"target="_blank""#)
+                && html.contains(r#"rel="noopener noreferrer""#)
+                && html.contains("<title>opens in a new tab</title>"),
+            "off-site treatment: {html}"
+        );
+        let member = html.find("Proud member").expect("membership");
+        let platform = html.find(POWERED_BY_NEON_LAW_NAVIGATOR).expect("platform");
+        assert!(
+            member < platform,
+            "membership before the platform line: {html}"
+        );
+    }
+
+    /// The compiled fallback lists the whole compiled family — every house
+    /// brand, in registry order, the request's key current and every other
+    /// linking its production home — and the firm's membership, so the rows
+    /// render before any Firm row exists.
+    #[cfg(feature = "server")]
+    #[test]
+    fn the_compiled_fallback_lists_the_whole_family_and_the_membership() {
+        let model =
+            compiled_firm_footer_model(views::brand::BrandKey::DeleteYourData, 2026, String::new());
+        let labels: Vec<&str> = model.brands.iter().map(|b| b.label.as_str()).collect();
+        assert_eq!(labels, ["Neon Law", "DeleteYourData.com", "Lawyer Shook"]);
+        let current: Vec<bool> = model.brands.iter().map(|b| b.current).collect();
+        assert_eq!(current, [false, true, false]);
+        assert_eq!(model.brands[0].href, "https://www.neonlaw.com");
+        assert_eq!(model.brands[2].href, "https://www.lawyershook.com");
+        assert_eq!(model.legal_entity, "Shook Law PLLC");
+        assert_eq!(model.memberships.len(), 1);
+        assert_eq!(model.memberships[0].label, "Justice Technology Association");
     }
 
     /// ENG-589: the resolver reads the live Firm/Entity/brand rows, not a
@@ -585,7 +750,8 @@ mod tests {
             model.legal_entity,
             views::brand::DEFAULT_BRANDING.firm.legal_entity
         );
-        assert_eq!(model.brands.len(), 1);
+        assert_eq!(model.brands.len(), views::brand::BrandKey::ALL.len());
         assert!(model.brands[0].current);
+        assert_eq!(model.memberships.len(), 1);
     }
 }

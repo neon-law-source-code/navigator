@@ -11,7 +11,8 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    FooterAttorney, FooterBarLicense, FooterBrandLink, FooterNavLink, FooterOffice, SiteFooterLegal,
+    FooterAttorney, FooterBarLicense, FooterBrandLink, FooterMembership, FooterNavLink,
+    FooterOffice, SiteFooterLegal,
 };
 
 /// One nav destination, resolved from the brand for the header.
@@ -56,12 +57,27 @@ pub struct ChromeAttorney {
     pub licenses: Vec<ChromeBarLicense>,
 }
 
-/// One brand the current firm wears, for the public footer's brands row.
+/// One brand the current firm wears, for the public footer's "Our Family" row.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ChromeBrand {
     pub label: String,
     pub href: String,
     pub current: bool,
+}
+
+/// One association the firm belongs to, for the public footer's "Proud
+/// member of …" line. Resolved from the firm brand — the firm is the member,
+/// whichever house brand's host serves the page.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ChromeMembership {
+    pub label: String,
+    pub href: String,
+    /// The association's mark, already resolved through the asset seam
+    /// (`views::assets::asset_url`) to this deployment's own origin — its
+    /// assets bucket in a cloud deployment, the `/public` mount in dev and
+    /// tests. Empty for an association publishing no mark.
+    #[serde(default)]
+    pub logo_href: String,
 }
 
 /// The public-page chrome: everything the [`crate::components::SiteHeader`] and
@@ -128,10 +144,14 @@ pub struct PublicChrome {
     /// registry key that produced the rest of this chrome, so the palette
     /// always matches the identity the header and footer already carry.
     pub tokens_href: String,
-    /// Brands the current firm wears, in registry order. Empty or a single
-    /// entry renders no footer row.
+    /// Brands the current firm wears, in registry order — the footer's "Our
+    /// Family" row. Empty or a single entry renders no row.
     #[serde(default)]
     pub brands: Vec<ChromeBrand>,
+    /// The associations the firm belongs to — the footer's membership lines.
+    /// Empty renders none.
+    #[serde(default)]
+    pub memberships: Vec<ChromeMembership>,
     /// How many people have starred that repository, or `None` when the
     /// process has not fetched it yet.
     ///
@@ -234,6 +254,15 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
                     label: brand.label.clone(),
                     href: brand.href.clone(),
                     current: brand.current,
+                })
+                .collect(),
+            memberships: chrome
+                .memberships
+                .iter()
+                .map(|membership| FooterMembership {
+                    label: membership.label.clone(),
+                    href: membership.href.clone(),
+                    logo_href: membership.logo_href.clone(),
                 })
                 .collect(),
         }
@@ -349,15 +378,39 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
             .to_string(),
         navigator_href: "/navigator".to_string(),
         tokens_href: crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str()),
-        // One compiled brand until the request overlay
+        // The compiled family — every house brand the firm trades under, the
+        // request's own key marked current — so the "Our Family" row is on
+        // every page from first boot. The request overlay
         // (`inject_public_utility`, reading `webapp::firm_footer`'s resolved
-        // model) reads `firm_brand`. A single entry renders no row, so a
-        // `cargo run` without seeds stays byte-identical to today's footer.
-        brands: vec![ChromeBrand {
-            label: brand.site_name.to_string(),
-            href: String::new(),
-            current: true,
-        }],
+        // model) replaces it with the live `firm_brand` rows once a Firm
+        // wears the key. Empty under a bundle that renamed the firm, which
+        // renders no row.
+        brands: crate::firm_footer::compiled_family_brands(views::brand::brand_key())
+            .into_iter()
+            .map(|brand| ChromeBrand {
+                label: brand.label,
+                href: brand.href,
+                current: brand.current,
+            })
+            .collect(),
+        // The firm's association memberships. A firm fact like the offices
+        // above it: the same line on every host the firm serves.
+        memberships: views::brand::firm_memberships()
+            .iter()
+            .map(|membership| ChromeMembership {
+                label: membership.name.to_string(),
+                href: membership.href.to_string(),
+                // Resolved here, beside `social_image` above, because this is
+                // where the request already knows the deployment's asset
+                // origin. An association publishing no mark stays empty
+                // rather than resolving to a bare base URL.
+                logo_href: if membership.logo_key.is_empty() {
+                    String::new()
+                } else {
+                    views::assets::asset_url(membership.logo_key)
+                },
+            })
+            .collect(),
     }
 }
 
@@ -436,6 +489,23 @@ mod tests {
                     number: "100001".to_string(),
                     license_url: "https://example.com/bar/100001".to_string(),
                 }],
+            }],
+            brands: vec![
+                ChromeBrand {
+                    label: "Neon Law".to_string(),
+                    href: "https://www.neonlaw.com".to_string(),
+                    current: true,
+                },
+                ChromeBrand {
+                    label: "DeleteYourData.com".to_string(),
+                    href: "https://www.deleteyourdata.com".to_string(),
+                    current: false,
+                },
+            ],
+            memberships: vec![ChromeMembership {
+                label: "Justice Technology Association".to_string(),
+                href: "https://justicetechassociation.org/".to_string(),
+                logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
             }],
             ..PublicChrome::default()
         }
@@ -629,6 +699,48 @@ mod tests {
         assert!(
             tenant_out.contains("mailto:support@neonlaw.com"),
             "the contact band carries over: {tenant_out}"
+        );
+        assert!(
+            tenant_out.contains(r#"aria-label="Our family""#)
+                && tenant_out.contains(r#"href="https://www.deleteyourdata.com""#),
+            "the family row carries over: {tenant_out}"
+        );
+        assert!(
+            tenant_out.contains("Proud member of the Justice Technology Association")
+                && tenant_out.contains(r#"href="https://justicetechassociation.org/""#),
+            "the membership line carries over: {tenant_out}"
+        );
+    }
+
+    /// The chrome the server resolves carries the firm's compiled family with
+    /// the request's own brand current, and the firm's membership — so the
+    /// rows render from first boot, before any Firm row exists to override
+    /// them.
+    #[cfg(feature = "server")]
+    #[test]
+    fn the_resolved_chrome_carries_the_compiled_family_and_the_membership() {
+        let chrome = firm_public_chrome(Vec::new());
+        let labels: Vec<&str> = chrome.brands.iter().map(|b| b.label.as_str()).collect();
+        assert_eq!(labels, ["Neon Law", "DeleteYourData.com", "Lawyer Shook"]);
+        assert!(chrome.brands[0].current, "the default brand is current");
+        assert!(
+            chrome.brands[1..]
+                .iter()
+                .all(|b| !b.current && b.href.starts_with("https://")),
+            "every other brand links its production home: {labels:?}"
+        );
+        assert_eq!(chrome.memberships.len(), 1);
+        assert_eq!(
+            chrome.memberships[0].label,
+            "Justice Technology Association"
+        );
+        assert_eq!(
+            chrome.memberships[0].href,
+            "https://justicetechassociation.org/"
+        );
+        assert_eq!(
+            chrome.memberships[0].logo_href, "/public/img/justice-technology-association/logo.png",
+            "with no asset base configured it falls back to the bundled mount"
         );
     }
 

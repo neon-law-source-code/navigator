@@ -118,8 +118,14 @@ async fn a_project_with_no_recorded_repository_has_no_repository_section() {
         "a matter recording no repository URL must show no repository pointer"
     );
     // Nothing invents one. A derivation would have produced a link here.
+    // Measured over the matter page above the `/app` footer: the footer's
+    // own off-site links — the firm's other brands and its association
+    // membership — are the firm's, not a pointer composed for this matter.
+    let page = html
+        .split_once(r#"<footer class="app-footer""#)
+        .map_or(html.as_str(), |(page, _)| page);
     assert!(
-        !html.contains("https://"),
+        !page.contains("https://"),
         "no URL may be composed to stand in for the absent one"
     );
 }

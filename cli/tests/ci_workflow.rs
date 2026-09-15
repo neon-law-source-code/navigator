@@ -36,7 +36,7 @@ fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
             .any(|step| step["id"].as_str() == Some("pnpm-manifest"));
         for (index, step) in steps.iter().enumerate() {
             if step["uses"].as_str()
-                != Some("pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86")
+                != Some("pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413")
             {
                 continue;
             }

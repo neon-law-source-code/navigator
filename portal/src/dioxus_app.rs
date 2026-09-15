@@ -1187,6 +1187,7 @@ pub fn project_detail_router(
     auth: crate::auth::AuthConfig,
 ) -> Router {
     let repository_surreal = surreal.clone();
+    let project_visit_surreal = surreal.clone();
     let pending_intake_state = (surreal.clone(), storage.clone());
     // Both lenses render from this one mount, so it provides the union of what
     // either needs. `storage` is the client view's; the firm view ignores it.
@@ -1216,6 +1217,10 @@ pub fn project_detail_router(
                 .layer(from_fn_with_state(
                     repository_surreal,
                     inject_project_repository_pointer,
+                ))
+                .layer(from_fn_with_state(
+                    project_visit_surreal,
+                    crate::project_visit::log_project_visit,
                 ))
                 .layer(from_fn(dioxus_document_head)),
         )
@@ -1390,6 +1395,7 @@ where
     C: dioxus_core::ComponentFunction<(), M> + Send + Sync + 'static,
     M: 'static,
 {
+    let project_visit_surreal = surreal.clone();
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         // A server fn can only reach what this list provides — a route
         // that renders a person and forgets it 500s at `consume_context`,
@@ -1405,6 +1411,10 @@ where
                 .layer(from_fn(inject_viewer_role))
                 .layer(from_fn(inject_app_brand_mark))
                 .layer(from_fn(inject_person_id))
+                .layer(from_fn_with_state(
+                    project_visit_surreal,
+                    crate::project_visit::log_project_visit,
+                ))
                 .layer(from_fn(dioxus_document_head)),
         )
         .with_state(FullstackState::new(cfg, component))
@@ -1448,6 +1458,7 @@ pub fn conversation_router(
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
 ) -> Router {
+    let project_visit_surreal = surreal.clone();
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         // A server fn can only reach what this list provides — a route
         // that renders a person and forgets it 500s at `consume_context`,
@@ -1462,6 +1473,10 @@ pub fn conversation_router(
             .layer(from_fn(inject_app_brand_mark))
             .layer(from_fn(inject_person_id))
             .layer(from_fn(inject_csrf_token))
+            .layer(from_fn_with_state(
+                project_visit_surreal.clone(),
+                crate::project_visit::log_project_visit,
+            ))
             .layer(from_fn(dioxus_document_head))
     };
 
@@ -1542,6 +1557,7 @@ pub fn client_intake_router(
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
 ) -> Router {
+    let project_visit_surreal = state.surreal.clone();
     let surreal = state.surreal.clone();
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         // A server fn can only reach what this list provides — a route
@@ -1559,6 +1575,10 @@ pub fn client_intake_router(
                 .layer(from_fn(inject_app_brand_mark))
                 .layer(from_fn(inject_csrf_token))
                 .layer(from_fn_with_state(state, inject_client_intake))
+                .layer(from_fn_with_state(
+                    project_visit_surreal,
+                    crate::project_visit::log_project_visit,
+                ))
                 .layer(from_fn(dioxus_document_head)),
         )
         .with_state(FullstackState::new(
@@ -1942,6 +1962,7 @@ pub fn review_router(
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
 ) -> Router {
+    let project_visit_surreal = surreal.clone();
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         // A server fn can only reach what this list provides — a route
         // that renders a person and forgets it 500s at `consume_context`,
@@ -1956,6 +1977,10 @@ pub fn review_router(
             get(render_handler)
                 .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_csrf_token))
+                .layer(from_fn_with_state(
+                    project_visit_surreal,
+                    crate::project_visit::log_project_visit,
+                ))
                 .layer(from_fn(dioxus_document_head)),
         )
         .with_state(FullstackState::new(cfg, webapp::review::Review))
@@ -2164,6 +2189,7 @@ where
     C: dioxus_core::ComponentFunction<(), M> + Send + Sync + 'static,
     M: 'static,
 {
+    let project_visit_surreal = surreal.clone();
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         // A server fn can only reach what this list provides — a route
         // that renders a person and forgets it 500s at `consume_context`,
@@ -2184,6 +2210,10 @@ where
                 // that gate a scope check rather than a blanket 404.
                 .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_csrf_token))
+                .layer(from_fn_with_state(
+                    project_visit_surreal,
+                    crate::project_visit::log_project_visit,
+                ))
                 .layer(from_fn(dioxus_document_head)),
         )
         .with_state(FullstackState::new(cfg, component))

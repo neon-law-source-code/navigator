@@ -141,6 +141,7 @@ pub mod project_documents;
 pub mod project_export;
 pub mod project_notation;
 pub mod project_portal;
+pub mod project_visit;
 pub mod rate_limit;
 pub mod retainer_walk;
 pub mod review;

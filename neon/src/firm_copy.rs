@@ -82,7 +82,7 @@ mod firm_copy_tests {
             .join(" ");
         let description = services.description.clone().unwrap_or_default();
         format!(
-            "{} {} {description} {} {} {} {} {} {} {} {} {entries}",
+            "{} {} {description} {} {} {} {} {} {} {} {entries}",
             services.overline,
             services.heading,
             services.search_label,
@@ -90,7 +90,6 @@ mod firm_copy_tests {
             services.submit_label,
             services.fee_label,
             services.includes_label,
-            services.related_label,
             services.empty,
             services.empty_help,
         )

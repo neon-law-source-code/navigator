@@ -401,15 +401,6 @@
   gap: 0.625rem;
 }
 
-.fm-services__item {
-  margin: 0;
-  color: var(--nav-color-text-muted);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .fm-services__category {
   margin: 0;
   color: var(--nav-color-text-muted);
@@ -446,8 +437,7 @@
   font-size: 0.875rem;
 }
 
-.fm-services__includes-label,
-.fm-services__related-label {
+.fm-services__includes-label {
   margin: 0.5rem 0 0;
   color: var(--nav-color-text-muted);
   font-size: 0.6875rem;
@@ -455,22 +445,12 @@
   text-transform: uppercase;
 }
 
-.fm-services__includes,
-.fm-services__related {
+.fm-services__includes {
   margin: 0;
   padding-inline-start: 1.125rem;
   color: var(--nav-color-text-muted);
   font-size: 0.9375rem;
   line-height: 1.6;
-}
-
-.fm-services__related {
-  list-style: none;
-  padding-inline-start: 0;
-}
-
-.fm-services__related a {
-  font-weight: 600;
 }
 
 /* ---- Connected Project -------------------------------------------------- */

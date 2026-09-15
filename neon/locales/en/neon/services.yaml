@@ -60,7 +60,6 @@ bands:
         query: dispute
     fee_label: Legal fee
     includes_label: What this includes
-    related_label: Other ways we can help
     members_badge: Plan required
     state_fee_badge: Government fees cost extra
     empty: We could not find a match.

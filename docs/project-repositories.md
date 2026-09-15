@@ -599,30 +599,20 @@ is checked by the same rules.
 than failing it. A Project may legitimately open before either half exists.
 
 The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
-Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds that catalog to
-those shelves. When the tree carries a `navigator.yaml` with `project:`, the same rule accepts a direct
-`templates/<code>.md` and refuses a subdirectory — the same demand the layout gate already makes. Navigator reads the
-file at `main`, validates its notation contract, persists its bytes as a content-addressed Asset, and records the
-imported commit SHA as provenance.
+Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds the shared catalog
+to those shelves. When the tree carries a `navigator.yaml` with `project:`, the same rule accepts a direct
+`templates/<code>.md` and refuses a subdirectory. Navigator reads a local file at `main`, validates its notation
+contract, persists its bytes as a content-addressed Asset, and records the imported commit SHA as provenance.
 
-From 26.9.6 the catalog prefix N110 expects is `notations/neon_law/` (and `notations/forms/`) rather than a bare
-`templates/neon_law/` or `templates/forms/`. A Navigator-catalog checkout still sitting on the old shelf moves in one
-rename:
+A Project references a shared catalog template by its existing `code`, without carrying a local copy. When no matching
+`templates/<code>.md` exists in the Project repository, notation creation resolves the workspace-shared catalog row and
+pins that exact template version on the Notation. A local file intentionally overrides the catalog for that Project; use
+one only for a genuinely Project-specific blueprint. Do not recode, rename, or copy a catalog template into a Project
+repository merely to reference it.
 
-```bash
-git mv templates/neon_law templates/notations/neon_law
-git mv templates/forms templates/notations/forms
-```
-
-A Project repository does not take that path. Flatten instead:
-
-```bash
-git mv templates/neon_law/<file>.md templates/<file>.md
-```
-
-The filename stem is the Project code with hyphens replaced by underscores, then `__` and a short name. Frontmatter
-`code:` equals that stem. The layout gate refuses either mismatch and names the expected prefix (`acme__` for Project
-`acme`). Non-conforming files in other repositories are renamed in those repositories; this tree does not rewrite them.
+The filename stem of a Project-local template is the Project code with hyphens replaced by underscores, then `__` and a
+short name. Frontmatter `code:` equals that stem. The layout gate refuses either mismatch and names the expected prefix
+(`acme__` for Project `acme`).
 
 ## An individual client's entity
 

@@ -132,6 +132,11 @@ async fn catalog_seed_creates_only_shared_templates_and_question_catalog_rows() 
     assert!(codes.contains(&"us__form_990"));
     assert!(codes.contains(&"nv__charitable_solicitation_registration"));
     assert!(codes.contains(&"offboarding__letter"));
+    assert!(codes.contains(&"rescission_notice__nevada"));
+    assert!(codes.contains(&"witness_affidavit__nevada"));
+    assert!(codes.contains(&"answer_to_counterclaim__nevada"));
+    assert!(codes.contains(&"engagement_letter__nevada"));
+    assert!(codes.contains(&"summons__nevada"));
 
     let questions = store::questions::list_all(&surreal).await.unwrap();
     let q_codes: Vec<&str> = questions.iter().map(|q| q.code.as_str()).collect();

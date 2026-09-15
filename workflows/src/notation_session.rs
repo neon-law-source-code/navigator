@@ -1706,6 +1706,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_notation_from_repo_uses_and_pins_the_shared_catalog_template() {
+        use super::create_notation_from_repo;
+
+        let surreal = db().await;
+        let storage: Arc<dyn StorageService> = Arc::new(
+            cloud::FsStorage::new(std::env::temp_dir().join("navigator-create-from-catalog-test"))
+                .await
+                .unwrap(),
+        );
+        let person_id = seed_person(&surreal, "libra@example.com").await;
+        let project_id = seed_project(&surreal).await;
+        let project = store::projects::find_by_id(&surreal, project_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let runtime = InMemoryRuntime::new();
+
+        // The Project repository has a history but no local template. Its
+        // notation reference must fall through to the shared catalog rather
+        // than create a matter-scoped copy.
+        let shared = store::templates::save_version(
+            &surreal,
+            None,
+            "onboarding__letter",
+            store::templates::Version {
+                title: "Onboarding Letter".into(),
+                respondent_type: "person_and_entity".into(),
+                asset_id: None,
+                form_code: None,
+                kind: Some("onboarding".into()),
+                source_commit_sha: None,
+            },
+        )
+        .await
+        .unwrap()
+        .into_model();
+        seed_retainer_questions(&surreal).await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let repo = repos::RepoStore::new(dir.path());
+        repo.ensure_code(&project.code).unwrap();
+        repo.commit_as_code(
+            &project.code,
+            repos::Author {
+                name: "Lawyer",
+                email: "lawyer@example.com",
+            },
+            "initialize project",
+            &[("README.md", b"# Project\n".as_slice())],
+        )
+        .unwrap();
+
+        let outcome = create_notation_from_repo(
+            &surreal,
+            &runtime,
+            &storage,
+            &repo,
+            "onboarding__letter",
+            person_id,
+            project_id,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let notation = store::notations::find_by_id(&surreal, outcome.notation_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(notation.template_id, shared.id, "pins the catalog version");
+        let pinned = store::templates::find_by_id(&surreal, notation.template_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(pinned.project_id, None, "the catalog row is not copied");
+        assert_eq!(
+            pinned.source_commit_sha, None,
+            "catalog provenance stays bundled"
+        );
+        assert!(
+            store::templates::resolve_exact(&surreal, Some(project_id), "onboarding__letter")
+                .await
+                .unwrap()
+                .is_none(),
+            "a catalog reference does not create a Project-scoped template version"
+        );
+    }
+
+    #[tokio::test]
     async fn start_notation_freezes_the_questionnaire_snapshot() {
         let surreal = db().await;
         seed_retainer_template(&surreal).await;

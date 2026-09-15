@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 43;
+pub const SCHEMA_VERSION: u32 = 42;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -47,8 +47,6 @@ const DEFINITIONS: &str = include_str!("navigator.surql");
 const PROJECT_BRAND_BACKFILL: &str = "\
     UPDATE project SET brand = 'neon' WHERE brand IS NONE;\
     DEFINE FIELD OVERWRITE brand ON project TYPE string;";
-const PERSON_EMAIL_CONFIRMED_BACKFILL: &str = "\
-    UPDATE person SET email_confirmed = false WHERE email_confirmed IS NONE;";
 
 /// Every table declared in the shipped Surreal schema, in stable order.
 ///
@@ -281,14 +279,6 @@ async fn backfill_project_brand(db: &SurrealDb) -> Result<(), SchemaError> {
     Ok(())
 }
 
-async fn backfill_person_email_confirmed(db: &SurrealDb) -> Result<(), SchemaError> {
-    db.query(PERSON_EMAIL_CONFIRMED_BACKFILL)
-        .await
-        .and_then(surrealdb::IndexedResults::check)
-        .map_err(SchemaError::Apply)?;
-    Ok(())
-}
-
 /// Apply the schema, guard historical Project brands, and record [`SCHEMA_VERSION`].
 ///
 /// Idempotent: running it against an already-prepared database
@@ -299,8 +289,6 @@ pub async fn apply(db: &SurrealDb) -> Result<(), SchemaError> {
         .await
         .and_then(surrealdb::IndexedResults::check)
         .map_err(classify_apply)?;
-
-    backfill_person_email_confirmed(db).await?;
 
     // Checked right after `DEFINE TABLE IF NOT EXISTS project` has run (so a
     // never-touched table reads as empty rather than "does not exist") and
@@ -508,7 +496,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn applying_backfills_email_confirmation_on_a_historical_person() {
+    async fn applying_leaves_email_confirmation_absent_on_a_historical_person() {
         let db = unmigrated().await;
         db.query(
             "CREATE person:historical SET name = 'Historical Person', \
@@ -529,7 +517,7 @@ mod tests {
             .unwrap()
             .take(0)
             .unwrap();
-        assert_eq!(confirmed, Some(false));
+        assert_eq!(confirmed, None);
     }
 
     /// A row coded `closed` written before that code was reserved (simulated

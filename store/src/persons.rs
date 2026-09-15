@@ -1173,16 +1173,26 @@ pub async fn set_email_confirmed(
     .await
 }
 
-/// Set only the person's avatar key, returning whether the row existed.
+/// Set a person's avatar key, returning whether the row existed.
 ///
-/// This deliberately does not use [`edit`]: avatar uploads must not read back
-/// or validate unrelated fields on a historical row, such as
-/// `email_confirmed` before that field was added to the schema.
+/// Surreal validates the full row for every update. Before writing the avatar,
+/// this materializes the historical default for `email_confirmed` on this
+/// person only when it is absent; a deployment-wide backfill stays an explicit
+/// operator action.
 pub async fn set_profile_image_url(
     db: &SurrealDb,
     id: Uuid,
     profile_image_url: Option<String>,
 ) -> Result<bool, PersonError> {
+    writing(|| {
+        db.query(
+            "UPDATE person SET email_confirmed = false \
+             WHERE id = $id AND email_confirmed IS NONE",
+        )
+        .bind(("id", record_id(TABLE, id)))
+    })
+    .await?;
+
     let mut response = writing(|| {
         db.query(
             "UPDATE $id SET profile_image_url = $profile_image_url, \

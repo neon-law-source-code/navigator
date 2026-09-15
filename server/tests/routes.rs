@@ -16310,8 +16310,8 @@ async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_strea
 }
 
 /// A person written before `email_confirmed` existed still accepts an admin
-/// avatar upload after schema apply: the backfill repairs the historical row,
-/// and the avatar writer does not re-submit the general person edit.
+/// avatar upload after schema apply because the avatar writer materializes the
+/// missing default for that row before updating the avatar.
 #[tokio::test]
 async fn admin_person_avatar_upload_handles_a_historical_person_row() {
     let surreal = store::surreal::test_support::unmigrated().await;
@@ -16373,6 +16373,14 @@ async fn admin_person_avatar_upload_handles_a_historical_person_row() {
         .unwrap()
         .expect("historical row still present");
     assert!(!row.email_confirmed);
+    let email_confirmed: Option<bool> = surreal
+        .query("SELECT VALUE email_confirmed FROM ONLY $id")
+        .bind(("id", store::surreal::record_id("person", id)))
+        .await
+        .unwrap()
+        .take(0)
+        .unwrap();
+    assert_eq!(email_confirmed, Some(false));
     assert_eq!(
         row.profile_image_url.as_deref(),
         Some(format!("people/{id}/avatars/{id}.png").as_str()),

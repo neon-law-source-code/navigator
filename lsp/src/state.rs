@@ -792,7 +792,15 @@ custom_questions:
     prompt: Describe the web change.
 ---
 
-Body.
+## What changed
+
+{{custom_text__change_summary}}
+
+Change surface: **{{custom_single_choice__change_surface}}**
+
+## Engineering Council
+
+Reviewed by the council: {{custom_yes_no__engineering_council}}
 ";
 
     const GITHUB_URI: &str = "file:///templates/github/create_issue.md";

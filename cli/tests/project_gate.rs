@@ -174,3 +174,56 @@ fn the_action_is_deployment_agnostic() {
         );
     }
 }
+
+/// The gate the composite runs is `navigator validate`, so a rule added to
+/// the `rules` crate reaches all 23 Project repositories on their next CLI
+/// version bump — no per-repo check, no second verb, no rollout.
+///
+/// `N122` is the proof: a Project's flat `templates/<code>.md` declaring a
+/// questionnaire state its body never reads must fail the gate. The whole
+/// path is exercised — the compiled binary, the argv the action passes, and
+/// a tree that declares `navigator.yaml` — because the claim is about
+/// propagation, not about the rule in isolation.
+#[test]
+fn the_gate_the_action_runs_fails_a_project_template_with_an_unread_state() {
+    use assert_cmd::Command;
+    use predicates::str;
+    use tempfile::TempDir;
+
+    assert!(
+        action_source().contains("navigator validate \"${DIR}\""),
+        "this test drives the command the action runs; keep the two in step",
+    );
+
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("navigator.yaml"),
+        "host: staging.neonlaw.com\nproject: acme\n",
+    )
+    .unwrap();
+    let templates = dir.path().join("templates");
+    fs::create_dir_all(&templates).unwrap();
+    let source = fs::read_to_string(
+        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
+    )
+    .unwrap();
+    fs::write(
+        templates.join("onboarding__letter.md"),
+        source.replace(
+            "> {{custom_text__engagement_scope}}",
+            "> Agreed in writing.",
+        ),
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("navigator").unwrap();
+    command.env_remove("GITHUB_REPOSITORY");
+    command
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("N122"))
+        .stdout(str::contains("custom_text__engagement_scope"));
+}

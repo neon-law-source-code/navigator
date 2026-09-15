@@ -14,7 +14,24 @@ The fixture seeds two more matters beside it — `sample-transactional` and `sam
 project list has something in it. The exercises stay on one matter on purpose; the other two are there to be seen from
 `/app/projects`, not worked.
 
-## Intro
+## Why do this
+
+Today, a matter often lives across a practice-management suite, email, a document store, and a signature tool. The
+client sees none of that coordination and calls for an update. The firm pays per seat for the glue between systems.
+
+Navigator changes the work in four ways:
+
+- **Same-day engagement**: a services page leads to a questionnaire, a drafted document, lawyer review, and a send in
+  one system.
+- **A bill the firm owns**: the firm runs the software with a repository per matter, rather than a per-seat licence.
+- **Security by assignment**: participation gates every door, refusals are logged, and a lawyer approves before
+  anything leaves.
+- **A client surface per matter**: the matter's repository publishes its client portal.
+
+You leave with a litigation matter walkthrough and a three-minute demo you can run at your firm. You can also identify
+which outcome your firm would buy first and what it would need to see.
+
+Navigator does not yet provide a client-facing case dashboard or timeline.
 
 ### Learning objectives
 
@@ -22,7 +39,7 @@ project list has something in it. The exercises stay on one matter on purpose; t
 - **Understand** — connect each noun to the database row that makes the workflow durable and inspectable.
 - **Apply** — open the litigation matter, bind the shared retainer template, and view the client portal application.
 - **Analyze** — inspect the notation state and the matter's participation-scoped views.
-- **Evaluate** — review the client-facing portal and identify one useful improvement.
+- **Evaluate**: identify which outcome your firm would buy first and what it would need to see.
 - **Create** — make a small, testable change in the sample project and refresh the local portal.
 
 ---

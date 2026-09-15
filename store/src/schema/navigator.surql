@@ -1183,6 +1183,21 @@ DEFINE FIELD OVERWRITE inserted_at ON notation_meter_entry TYPE datetime DEFAULT
 DEFINE FIELD OVERWRITE updated_at ON notation_meter_entry TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE notation_meter_entry_project ON notation_meter_entry FIELDS project_id, inserted_at;
 
+-- `notation_sources` ties the lawyer-reviewed Notation to the privileged
+-- inputs that informed it. It references a communication when one was
+-- ingested from email, SMS, or a conversation; questionnaire facts remain
+-- a source without duplicating the answer body here.
+DEFINE TABLE IF NOT EXISTS notation_source SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE notation_id ON notation_source TYPE record<notation>;
+DEFINE FIELD OVERWRITE kind ON notation_source TYPE string;
+DEFINE FIELD OVERWRITE communication_id ON notation_source TYPE option<record<communication>>;
+DEFINE FIELD OVERWRITE source_ref ON notation_source TYPE option<string>;
+DEFINE FIELD OVERWRITE position ON notation_source TYPE int;
+DEFINE FIELD OVERWRITE inserted_at ON notation_source TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_source TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_source_order ON notation_source FIELDS notation_id, position UNIQUE;
+DEFINE INDEX OVERWRITE notation_source_communication ON notation_source FIELDS communication_id;
+
 -- ---------------------------------------------------------------------
 -- The notation group
 --

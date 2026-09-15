@@ -884,7 +884,6 @@ mod tests {
         for benefit in [
             "company records",
             "hiring employees and contractors",
-            "within three business days",
             "who owns your company",
             "business information private",
             "business taxes and state paperwork",

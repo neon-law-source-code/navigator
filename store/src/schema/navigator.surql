@@ -1155,6 +1155,34 @@ DEFINE FIELD OVERWRITE updated_at ON notation_package_template TYPE datetime DEF
 DEFINE INDEX OVERWRITE notation_package_template_member ON notation_package_template FIELDS package_id, template_id UNIQUE;
 DEFINE INDEX OVERWRITE notation_package_template_position ON notation_package_template FIELDS package_id, position UNIQUE;
 
+-- `notation_rates` and `notation_meter_entries` make the work priceable and
+-- attributable without turning Navigator into an accounts-receivable ledger.
+-- A lawyer agrees the quoted scope; Xero is still the invoice system of record.
+DEFINE TABLE IF NOT EXISTS notation_rate SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE code ON notation_rate TYPE string;
+DEFINE FIELD OVERWRITE label ON notation_rate TYPE string;
+DEFINE FIELD OVERWRITE unit ON notation_rate TYPE string;
+DEFINE FIELD OVERWRITE unit_amount_cents ON notation_rate TYPE int;
+DEFINE FIELD OVERWRITE currency ON notation_rate TYPE string DEFAULT 'USD';
+DEFINE FIELD OVERWRITE active ON notation_rate TYPE bool DEFAULT true;
+DEFINE FIELD OVERWRITE inserted_at ON notation_rate TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_rate TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_rate_code ON notation_rate FIELDS code UNIQUE;
+
+DEFINE TABLE IF NOT EXISTS notation_meter_entry SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE project_id ON notation_meter_entry TYPE record<project>;
+DEFINE FIELD OVERWRITE notation_id ON notation_meter_entry TYPE option<record<notation>>;
+DEFINE FIELD OVERWRITE package_id ON notation_meter_entry TYPE option<record<notation_package>>;
+DEFINE FIELD OVERWRITE rate_id ON notation_meter_entry TYPE record<notation_rate>;
+DEFINE FIELD OVERWRITE quantity ON notation_meter_entry TYPE int;
+-- Snapshot the rate that was quoted, so later catalog edits never reprice work.
+DEFINE FIELD OVERWRITE unit_amount_cents ON notation_meter_entry TYPE int;
+DEFINE FIELD OVERWRITE currency ON notation_meter_entry TYPE string;
+DEFINE FIELD OVERWRITE state ON notation_meter_entry TYPE string DEFAULT 'quoted';
+DEFINE FIELD OVERWRITE inserted_at ON notation_meter_entry TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_meter_entry TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_meter_entry_project ON notation_meter_entry FIELDS project_id, inserted_at;
+
 -- ---------------------------------------------------------------------
 -- The notation group
 --

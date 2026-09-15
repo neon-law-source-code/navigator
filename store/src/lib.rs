@@ -14,13 +14,11 @@
 //!
 //! # What is deliberately absent
 //!
-//! Billing and cap tables have no module here and never will. The Firm
-//! bills through Xero and keeps cap tables in Carta, so Navigator models
-//! neither: there is no `entity_billing_profiles`, `invoices`,
-//! `invoice_line_items`, `share_issuances`, or `subscriptions` to look
-//! for. [`xero_invoices`] is a *mirror* — it backs the matter page's
-//! Xero button and is a link out to the system of record, not a ledger
-//! of its own.
+//! Navigator stores a rate catalog and quoted usage provenance for Notations,
+//! but it has no invoice, receivable, subscription, or cap-table ledger. The
+//! Firm bills through Xero and keeps cap tables in Carta. [`xero_invoices`] is
+//! a *mirror* — it backs the matter page's Xero button and is a link out to the
+//! system of record, not a ledger of its own.
 
 #[cfg(test)]
 pub(crate) mod test_tracing {
@@ -117,6 +115,7 @@ pub mod notarizations;
 pub mod notation_clauses;
 pub mod notation_events;
 pub mod notation_packages;
+pub mod notation_pricing;
 pub mod notations;
 pub mod participation;
 pub mod people_commands;

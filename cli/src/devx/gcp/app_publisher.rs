@@ -64,9 +64,8 @@
 //!
 //! The consumer half — the composite Action a Project repository runs — is
 //! `.github/actions/application-publish`; the provider resource and the service
-//! account email are set on each Project repository as repository *secrets*
-//! (public identifiers, but they name the deployment's GCP project in a public
-//! log; the trust lives in the binding here). See
+//! account email are set on each Project repository as repository *variables*.
+//! The bindings here, rather than the variables, establish the trust. See
 //! `docs/project-repositories.md`.
 //!
 //! Everything is idempotent on the pipeline convention: creates POST

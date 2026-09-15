@@ -198,11 +198,15 @@ mod tests {
 
     #[test]
     fn rejects_streams_that_cannot_be_decompressed() {
+        // lopdf's FlateDecode path recovers corrupt streams leniently (falling
+        // back to raw deflate, then to an empty payload) rather than erroring,
+        // so this exercises ASCIIHexDecode, which still hard-fails on content
+        // that isn't valid hex.
         let pdf = b"%PDF-1.7
 1 0 obj
-<< /Length 7 /Filter /FlateDecode >>
+<< /Length 4 /Filter /ASCIIHexDecode >>
 stream
-notzip!
+zzzz
 endstream
 endobj
 trailer

@@ -1128,6 +1128,33 @@ DEFINE INDEX OVERWRITE template_current_key ON template FIELDS current_key UNIQU
 -- The resolve path reads by code and narrows by scope.
 DEFINE INDEX OVERWRITE template_code ON template FIELDS code;
 
+-- `notation_packages`: a client-facing legal deliverable such as an estate
+-- package or employee onboarding. It groups the templates that become its
+-- individual Notations and carries the quoted starting price.
+DEFINE TABLE IF NOT EXISTS notation_package SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE code ON notation_package TYPE string;
+DEFINE FIELD OVERWRITE title ON notation_package TYPE string;
+DEFINE FIELD OVERWRITE description ON notation_package TYPE option<string>;
+DEFINE FIELD OVERWRITE complexity ON notation_package TYPE string;
+DEFINE FIELD OVERWRITE starting_price_cents ON notation_package TYPE int;
+DEFINE FIELD OVERWRITE currency ON notation_package TYPE string DEFAULT 'USD';
+DEFINE FIELD OVERWRITE active ON notation_package TYPE bool DEFAULT true;
+DEFINE FIELD OVERWRITE inserted_at ON notation_package TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_package TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_package_code ON notation_package FIELDS code UNIQUE;
+
+-- The ordered templates within a package. Package assembly reads this table
+-- in `position` order; a template and a position each appear once per package.
+DEFINE TABLE IF NOT EXISTS notation_package_template SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE package_id ON notation_package_template TYPE record<notation_package>;
+DEFINE FIELD OVERWRITE template_id ON notation_package_template TYPE record<template>;
+DEFINE FIELD OVERWRITE position ON notation_package_template TYPE int;
+DEFINE FIELD OVERWRITE required ON notation_package_template TYPE bool DEFAULT true;
+DEFINE FIELD OVERWRITE inserted_at ON notation_package_template TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_package_template TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_package_template_member ON notation_package_template FIELDS package_id, template_id UNIQUE;
+DEFINE INDEX OVERWRITE notation_package_template_position ON notation_package_template FIELDS package_id, position UNIQUE;
+
 -- ---------------------------------------------------------------------
 -- The notation group
 --
@@ -1163,6 +1190,8 @@ DEFINE INDEX OVERWRITE template_code ON template FIELDS code;
 -- `project_id` is the glossary's load-bearing matter-audit-trail rule.
 DEFINE TABLE IF NOT EXISTS notation SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE template_id ON notation TYPE record<template>;
+-- Absent on Notations opened before packages existed. Those stand alone.
+DEFINE FIELD OVERWRITE package_id ON notation TYPE option<record<notation_package>>;
 DEFINE FIELD OVERWRITE person_id ON notation TYPE record<person>;
 DEFINE FIELD OVERWRITE entity_id ON notation TYPE option<record<entity>>;
 DEFINE FIELD OVERWRITE project_id ON notation TYPE record<project>;

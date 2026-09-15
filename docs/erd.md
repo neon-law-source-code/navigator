@@ -507,6 +507,7 @@ erDiagram
         option_record_entity entity_id FK
         option_string git_commit_sha
         datetime inserted_at
+        option_record_notation_package package_id FK
         record_person person_id FK
         record_project project_id FK
         any questionnaire_snapshot
@@ -535,6 +536,61 @@ erDiagram
         string recorded_at
         record_template template_version_id FK
         string to_state
+        datetime updated_at
+    }
+    notation_meter_entry {
+        record id PK
+        string currency
+        datetime inserted_at
+        option_record_notation notation_id FK
+        option_record_notation_package package_id FK
+        record_project project_id FK
+        int quantity
+        record_notation_rate rate_id FK
+        string state
+        int unit_amount_cents
+        datetime updated_at
+    }
+    notation_package {
+        record id PK
+        bool active
+        string code
+        string complexity
+        string currency
+        option_string description
+        datetime inserted_at
+        int starting_price_cents
+        string title
+        datetime updated_at
+    }
+    notation_package_template {
+        record id PK
+        datetime inserted_at
+        record_notation_package package_id FK
+        int position
+        bool required
+        record_template template_id FK
+        datetime updated_at
+    }
+    notation_rate {
+        record id PK
+        bool active
+        string code
+        string currency
+        datetime inserted_at
+        string label
+        string unit
+        int unit_amount_cents
+        datetime updated_at
+    }
+    notation_source {
+        record id PK
+        option_record_communication communication_id FK
+        datetime inserted_at
+        string kind
+        record_notation notation_id FK
+        int position
+        option_string source_ref
         datetime updated_at
     }
     person {
@@ -855,6 +911,7 @@ erDiagram
     person ||--o{ notarization : "notary_person_id"
     notation ||--o{ notarization : "notation_id"
     entity ||--o{ notation : "entity_id"
+    notation_package ||--o{ notation : "package_id"
     person ||--o{ notation : "person_id"
     project ||--o{ notation : "project_id"
     template ||--o{ notation : "template_id"
@@ -863,6 +920,14 @@ erDiagram
     person ||--o{ notation_event : "acting_person_id"
     notation ||--o{ notation_event : "notation_id"
     template ||--o{ notation_event : "template_version_id"
+    notation ||--o{ notation_meter_entry : "notation_id"
+    notation_package ||--o{ notation_meter_entry : "package_id"
+    project ||--o{ notation_meter_entry : "project_id"
+    notation_rate ||--o{ notation_meter_entry : "rate_id"
+    notation_package ||--o{ notation_package_template : "package_id"
+    template ||--o{ notation_package_template : "template_id"
+    communication ||--o{ notation_source : "communication_id"
+    notation ||--o{ notation_source : "notation_id"
     person ||--o{ person_delegate : "delegate_person_id"
     person ||--o{ person_delegate : "granted_by_person_id"
     person ||--o{ person_delegate : "revoked_by_person_id"
@@ -897,4 +962,5 @@ erDiagram
     citation ||--o{ verification : "citation_id"
     person ||--o{ verification : "verifier_person_id"
     project ||--o{ xero_invoice : "project_id"
+
 ```

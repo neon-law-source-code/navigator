@@ -116,6 +116,7 @@ pub mod mailrooms;
 pub mod notarizations;
 pub mod notation_clauses;
 pub mod notation_events;
+pub mod notation_packages;
 pub mod notations;
 pub mod participation;
 pub mod people_commands;

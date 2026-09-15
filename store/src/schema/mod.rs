@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 42;
+pub const SCHEMA_VERSION: u32 = 43;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -437,6 +437,20 @@ mod tests {
         let notation_id = &fields["answer"].fields["notation_id"];
         assert!(notation_id.contains("record<notation>"), "{notation_id}");
         assert!(!notation_id.contains("uuid"), "{notation_id}");
+    }
+
+    #[tokio::test]
+    async fn notation_package_id_is_a_nullable_package_link() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+
+        let fields = introspect(&db).await.unwrap();
+        let package_id = &fields["notation"].fields["package_id"];
+        assert!(
+            package_id.contains("record<notation_package>"),
+            "{package_id}"
+        );
+        assert!(!package_id.contains("uuid"), "{package_id}");
     }
 
     #[tokio::test]

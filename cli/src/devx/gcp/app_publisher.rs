@@ -64,9 +64,8 @@
 //!
 //! The consumer half — the composite Action a Project repository runs — is
 //! `.github/actions/application-publish`; the provider resource and the service
-//! account email are set on each Project repository as repository *secrets*
-//! (public identifiers, but they name the deployment's GCP project in a public
-//! log; the trust lives in the binding here). See
+//! account email are set on each Project repository as repository *variables*.
+//! The bindings here, rather than the variables, establish the trust. See
 //! `docs/project-repositories.md`.
 //!
 //! Everything is idempotent on the pipeline convention: creates POST
@@ -365,29 +364,35 @@ pub async fn ensure(
     ensure_wif_provider(client, project_id, org).await?;
     let number = project_number(client, project_id).await?;
 
-    // The coordinates each Project repository sets as repository *secrets*.
+    // The coordinates each Project repository sets as repository variables.
     // Printed so an operator can copy them straight into each repository's
-    // Actions secrets. They are public identifiers and the trust is enforced by
-    // the bindings below, so neither is key material — but both name the
-    // deployment's GCP project, and a Project repository's Actions log is
-    // public, so they are secrets to keep them out of it rather than because
-    // they are sensitive. See docs/project-repositories.md and
-    // `.github/actions/application-publish/action.yml`.
+    // Actions variables. They are deployment identifiers, while the bindings
+    // below enforce trust. See docs/project-repositories.md and
+    // `.github/workflows/project-publish.yml`.
     //
     // The provider resource is one per deployment, so it is printed once even
-    // though every Project repository sets it as its own secret. The service
+    // though every Project repository sets it as its own variable. The service
     // account differs per Project and is printed inside the loop.
     eprintln!(
-        "gcp setup [{project_id}] set repository secret \
-         NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER={}",
-        wif_provider_resource(&number)
+        "{}",
+        repository_variable_instruction(
+            project_id,
+            None,
+            "NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER",
+            &wif_provider_resource(&number),
+        )
     );
     // `project-publish.yml` reads this bucket directly rather than deriving
     // it from `host`: a host string carries no GCP project id, and the
     // publisher's IAM grant below is conditioned on this exact bucket name.
     eprintln!(
-        "gcp setup [{project_id}] set repository variable \
-         NAVIGATOR_APP_PUBLISHER_BUCKET={applications_bucket}"
+        "{}",
+        repository_variable_instruction(
+            project_id,
+            None,
+            "NAVIGATOR_APP_PUBLISHER_BUCKET",
+            applications_bucket,
+        )
     );
 
     for publisher in &publishers {
@@ -402,11 +407,28 @@ pub async fn ensure(
         )
         .await?;
         eprintln!(
-            "gcp setup [{project_id}] set repository secret on {org}/{code} \
-             NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT={email}"
+            "{}",
+            repository_variable_instruction(
+                project_id,
+                Some(&format!("{org}/{code}")),
+                "NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT",
+                email,
+            )
         );
     }
     Ok(())
+}
+
+fn repository_variable_instruction(
+    project_id: &str,
+    repository: Option<&str>,
+    variable: &str,
+    value: &str,
+) -> String {
+    let repository = repository
+        .map(|repository| format!(" on {repository}"))
+        .unwrap_or_default();
+    format!("gcp setup [{project_id}] set repository variable{repository} {variable}={value}")
 }
 
 /// Idempotently create one Project's publisher service account.
@@ -1077,6 +1099,52 @@ mod tests {
             wif_provider_resource("123456789012"),
             "projects/123456789012/locations/global/workloadIdentityPools/app-publisher/providers/ghe-oidc"
         );
+    }
+
+    #[test]
+    fn setup_instructions_name_the_repository_variables_the_workflow_reads() {
+        let workflow = include_str!("../../../../.github/workflows/project-publish.yml");
+        let instructions = [
+            repository_variable_instruction(
+                "proj",
+                None,
+                "NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER",
+                "projects/123/locations/global/workloadIdentityPools/app-publisher/providers/ghe-oidc",
+            ),
+            repository_variable_instruction(
+                "proj",
+                None,
+                "NAVIGATOR_APP_PUBLISHER_BUCKET",
+                "proj-applications",
+            ),
+            repository_variable_instruction(
+                "proj",
+                Some("example/acme"),
+                "NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT",
+                "nav-pub-acme@proj.iam.gserviceaccount.com",
+            ),
+        ];
+
+        for instruction in instructions {
+            let variable = instruction
+                .split_whitespace()
+                .last()
+                .and_then(|assignment| assignment.split_once('='))
+                .map(|(variable, _)| variable)
+                .expect("the setup instruction has a variable assignment");
+            assert!(
+                instruction.contains("set repository variable"),
+                "the setup instruction must name a repository variable: {instruction}",
+            );
+            assert!(
+                !instruction.contains("repository secret"),
+                "the setup instruction must not contradict the workflow: {instruction}",
+            );
+            assert!(
+                workflow.contains(&format!("vars.{variable}")),
+                "the reusable workflow must read the variable setup instructs an operator to set: {variable}",
+            );
+        }
     }
 
     fn joined_calls(client: &GcpClient) -> String {

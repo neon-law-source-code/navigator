@@ -31,7 +31,7 @@ Navigator changes the work in four ways:
 You leave with a litigation matter walkthrough and a three-minute demo you can run at your firm. You can also identify
 which outcome your firm would buy first and what it would need to see.
 
-Navigator does not yet complete e-signature inside the flow or provide a client-facing case dashboard or timeline.
+Navigator does not yet provide a client-facing case dashboard or timeline.
 
 ### Learning objectives
 

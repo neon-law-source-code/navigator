@@ -195,6 +195,11 @@ pub enum Band {
         overline: String,
         heading: String,
         description: Option<String>,
+        center_eyebrow: String,
+        center_heading: String,
+        center_detail: String,
+        left_lane_label: String,
+        right_lane_label: String,
         left: Vec<ProjectNetworkNode>,
         right: Vec<ProjectNetworkNode>,
         mcp_tools: Vec<String>,
@@ -695,6 +700,11 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                     overline,
                     heading,
                     description,
+                    center_eyebrow,
+                    center_heading,
+                    center_detail,
+                    left_lane_label,
+                    right_lane_label,
                     left,
                     right,
                     mcp_tools,
@@ -711,7 +721,7 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                             figure { class: "fm-project-network",
                                 div { class: "fm-project-network__map",
                                     ul { class: "fm-project-network__lane fm-project-network__lane--left",
-                                        "aria-label": "Project resources to the left of Navigator",
+                                        "aria-label": "{left_lane_label}",
                                         for node in left.iter() {
                                             li { class: "fm-project-network__node fm-project-network__node--left",
                                                 h3 { "{node.label}" }
@@ -725,12 +735,12 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                                             src: "/public/navigator-wheel.svg",
                                             alt: "Neon Law Navigator wheel",
                                         }
-                                        p { class: "fm-project-network__eyebrow", "The Project center" }
-                                        h3 { "Navigator" }
-                                        p { "Web API MCP CLI" }
+                                        p { class: "fm-project-network__eyebrow", "{center_eyebrow}" }
+                                        h3 { "{center_heading}" }
+                                        p { "{center_detail}" }
                                     }
                                     ul { class: "fm-project-network__lane fm-project-network__lane--right",
-                                        "aria-label": "Project resources to the right of Navigator",
+                                        "aria-label": "{right_lane_label}",
                                         for node in right.iter() {
                                             li { class: "fm-project-network__node fm-project-network__node--right",
                                                 h3 { "{node.label}" }
@@ -739,8 +749,10 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                                         }
                                     }
                                 }
-                                div { class: "fm-project-network__tool-panels",
-                                    div { class: "fm-project-network__external",
+                                if !mcp_tools.is_empty() || !agentic_coding_tools.is_empty() || !saas_tools.is_empty() {
+                                    div { class: "fm-project-network__tool-panels",
+                                    if !mcp_tools.is_empty() {
+                                        div { class: "fm-project-network__external",
                                         p { class: "fm-project-network__external-label", "MCPs" }
                                         ul { class: "fm-project-network__tools", "aria-label": "MCPs",
                                             for tool in mcp_tools.iter() {
@@ -748,7 +760,9 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                                             }
                                         }
                                     }
-                                    div { class: "fm-project-network__external",
+                                    }
+                                    if !agentic_coding_tools.is_empty() {
+                                        div { class: "fm-project-network__external",
                                         p { class: "fm-project-network__external-label", "Agentic Legal Coding" }
                                         ul { class: "fm-project-network__tools", "aria-label": "Agentic legal coding tools",
                                             for tool in agentic_coding_tools.iter() {
@@ -756,7 +770,9 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                                             }
                                         }
                                     }
-                                    div { class: "fm-project-network__external fm-project-network__external--saas",
+                                    }
+                                    if !saas_tools.is_empty() {
+                                        div { class: "fm-project-network__external fm-project-network__external--saas",
                                         p { class: "fm-project-network__external-label", "SaaS" }
                                         ul { class: "fm-project-network__tools", "aria-label": "SaaS tools",
                                             for tool in saas_tools.iter() {
@@ -764,6 +780,8 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                                             }
                                         }
                                     }
+                                    }
+                                }
                                 }
                             }
                         }
@@ -1219,6 +1237,11 @@ mod tests {
                     overline: "The map".to_string(),
                     heading: "One Project".to_string(),
                     description: Some("The work, in one view.".to_string()),
+                    center_eyebrow: "The Project center".to_string(),
+                    center_heading: "Navigator".to_string(),
+                    center_detail: "Web API MCP CLI".to_string(),
+                    left_lane_label: "Project resources to the left of Navigator".to_string(),
+                    right_lane_label: "Project resources to the right of Navigator".to_string(),
                     left: vec![ProjectNetworkNode {
                         label: "Internal Slack".to_string(),
                         detail: "Firm conversation.".to_string(),
@@ -1370,6 +1393,65 @@ mod tests {
             "Xero",
         ] {
             assert!(out.contains(label), "missing diagram label {label}: {out}");
+        }
+    }
+
+    #[test]
+    fn a_project_network_uses_its_own_labels_and_skips_empty_tool_panels() {
+        fn app() -> Element {
+            rsx! {
+                Bands {
+                    items: vec![Band::ProjectNetwork {
+                        anchor: "notation-flow".to_string(),
+                        overline: "From sources to a Notation".to_string(),
+                        heading: "Many conversations. One Notation.".to_string(),
+                        description: None,
+                        center_eyebrow: "Navigator".to_string(),
+                        center_heading: "One Notation".to_string(),
+                        center_detail: "Confirmed facts · selected templates · lawyer review".to_string(),
+                        left_lane_label: "Information entering a Notation".to_string(),
+                        right_lane_label: "Documents within a Notation".to_string(),
+                        left: vec![ProjectNetworkNode {
+                            label: "Email".to_string(),
+                            detail: "Messages filed to the work.".to_string(),
+                        }],
+                        right: vec![ProjectNetworkNode {
+                            label: "Estate package".to_string(),
+                            detail: "Several documents in one Notation.".to_string(),
+                        }],
+                        mcp_tools: Vec::new(),
+                        agentic_coding_tools: Vec::new(),
+                        saas_tools: Vec::new(),
+                    }]
+                }
+            }
+        }
+
+        let out = render(app);
+        for label in [
+            "Information entering a Notation",
+            "Documents within a Notation",
+            "Navigator",
+            "One Notation",
+            "Confirmed facts · selected templates · lawyer review",
+            "Email",
+            "Estate package",
+        ] {
+            assert!(
+                out.contains(label),
+                "missing notation-flow label {label}: {out}"
+            );
+        }
+        for absent in [
+            "fm-project-network__tool-panels",
+            "MCPs",
+            "Agentic Legal Coding",
+            "SaaS",
+        ] {
+            assert!(
+                !out.contains(absent),
+                "a source-to-Notation map has no tool panel {absent}: {out}"
+            );
         }
     }
 

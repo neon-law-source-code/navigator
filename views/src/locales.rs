@@ -374,6 +374,16 @@ pub enum BandCopy {
         #[serde(default)]
         description: Option<String>,
         #[serde(default)]
+        center_eyebrow: String,
+        #[serde(default)]
+        center_heading: String,
+        #[serde(default)]
+        center_detail: String,
+        #[serde(default)]
+        left_lane_label: String,
+        #[serde(default)]
+        right_lane_label: String,
+        #[serde(default)]
         left: Vec<ProjectNetworkNodeCopy>,
         #[serde(default)]
         right: Vec<ProjectNetworkNodeCopy>,

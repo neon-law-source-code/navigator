@@ -1,6 +1,7 @@
-head_title: "{site_name} | One-time services"
+head_title: "Plans & services — {site_name}"
 meta_description: >-
-  Each service is billed once. Some require a Business or Personal plan.
+  Choose a plan for regular legal help, ask about an individual service, or
+  start a free consultation for a dispute.
 title: "{shared:services.eyebrow}"
 hero_mark: gavel
 tagline: "{shared:services.title}"
@@ -27,12 +28,11 @@ bands:
         - text: Personal plan
           href: /personal
         - text: >-
-            . Forms are free with a plan or $50 each otherwise. Legal work
-            outside your plan and government fees cost extra.
+            . Business-plan access is $10 a day. An unchanged template can be
+            sent for signature for $5. A Notation we prepare or revise begins
+            at $100. Government fees are separate.
       - - text: >-
-            Custom contract reviews and trademarks require a plan and cost
-            extra; the listed prices apply once you have one. A contract we
-            write from scratch is quoted before we begin.
+            Each Notation has an agreed scope and price before work begins.
       - - text: "Have a dispute? Start with a "
         - text: free consultation
           href: /disputes
@@ -42,10 +42,9 @@ bands:
     overline: Individual services
     heading: "{shared:services.catalog_heading}"
     description: >-
-      Choose the help you need. We explain what it includes and what it costs
-      before work starts. Government filing fees are separate. Contract reviews
-      require a plan and run $100 to $500, depending on the contract. A
-      contract we write from scratch is quoted before we begin.
+      Choose the help you need. We will explain what it includes and what it
+      costs before work starts. Government fees are separate. A Notation we
+      prepare or revise begins at $100.
     search_label: Search individual services
     search_placeholder: A contract, my business, a will, a dispute
     submit_label: Search

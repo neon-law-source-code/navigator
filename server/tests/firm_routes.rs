@@ -264,8 +264,9 @@ async fn site_host_serves_the_legal_services_page() {
     );
     for promise in [
         "A lawyer you can turn to.",
-        "Forms are free with a plan or $50 each otherwise.",
-        "Custom contract reviews and trademarks require a plan",
+        "Business-plan access is $10 a day.",
+        "An unchanged template can be sent for signature for $5.",
+        "A Notation we prepare or revise begins at $100.",
         "free consultation",
         "You do not need a subscription for that first conversation.",
         "Tell us what you need.",
@@ -539,20 +540,22 @@ async fn litigation_carries_the_regulated_copy_and_no_results_promise() {
 
 #[tokio::test]
 async fn transactional_publishes_its_flat_fee_pricing_cards() {
-    // Fractional GC now publishes its base-package pricing on the page — one
-    // flat annual figure, framed per-day in the card body, plus the DocuSign
-    // per-contract line — rather than quoting it through `/contact`.
+    // The Business plan publishes its access price and the separately-scoped
+    // Notation floor rather than treating routine work as included in a retainer.
     let app = site_app().await;
     let resp = anon_get(&app, "/business").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("<title>Neon Law | Business</title>"));
     assert!(
-        body.contains("Clear") && body.contains("Practical") && body.contains("Responsive"),
+        body.contains("Clear") && body.contains("Practical") && body.contains("Accountable"),
         "the statement: {body}"
     );
-    assert!(body.contains("One annual price"), "the structure: {body}");
-    for figure in ["$3,650", "/year", "$10 a day", "$5 per contract"] {
+    assert!(
+        body.contains("Access and work, priced separately"),
+        "the structure: {body}"
+    );
+    for figure in ["$10", "/day", "$5", "$100"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     for removed in [
@@ -577,8 +580,8 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
         );
     }
     for added in [
-        "Ready for ongoing legal help?",
-        "Ask us whether the Business plan fits your company.",
+        "Ready to start a Notation?",
+        "Ask whether the Business plan and your next Notation fit your work.",
         "contact@neonlaw.com",
     ] {
         assert!(
@@ -637,14 +640,17 @@ async fn both_practice_pages_hoist_their_own_stylesheet() {
 #[tokio::test]
 async fn recurring_offer_pages_share_the_commitment_treatment() {
     let app = site_app().await;
-    for path in ["/business", "/personal"] {
+    for (path, rate) in [
+        ("/business", "$10 a day"),
+        ("/personal", "One annual price"),
+    ] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in [
             "/public/css/commitment.css",
             "commitment-hero",
             "commitment-benefit-grid",
             "pricing-card",
-            "One annual price",
+            rate,
         ] {
             assert!(
                 body.contains(part),
@@ -978,11 +984,9 @@ async fn plans_and_services_publish_real_fees() {
         // cannot act on.
         (
             "/services",
-            vec![
-                "$50", "$350", "per year", "$100", "$250", "$500", "$750", "$5",
-            ],
+            vec!["$100", "$350", "per year", "$250", "$500", "$750", "$5"],
         ),
-        ("/business", vec!["$3,650", "$10"]),
+        ("/business", vec!["$10", "$100", "$5"]),
         ("/personal", vec!["$365", "$1"]),
     ] {
         let body = body_string(anon_get(&app, priced).await).await;
@@ -1098,13 +1102,9 @@ async fn an_odd_query_string_renders_a_page_rather_than_an_error() {
     assert!(body.contains("Showing all"), "{body}");
 }
 
-/// `/llms.txt` publishes no fee either.
-///
-/// The machine-readable index is the other place the firm could leak a
-/// number. It lists the Legal Services page by title and link only — never
-/// with a figure, even though the page itself now carries one.
+/// `/llms.txt` carries the published pricing summary.
 #[tokio::test]
-async fn the_llms_index_publishes_no_fee() {
+async fn the_llms_index_publishes_the_notation_pricing_summary() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/llms.txt").await).await;
 
@@ -1113,11 +1113,12 @@ async fn the_llms_index_publishes_no_fee() {
         "the index lists the Legal Services page: {body}"
     );
 
-    // No figure a machine reads here, exactly as on the pages.
     let amounts = currency_amounts(&body);
     assert!(
-        amounts.is_empty(),
-        "the index publishes no figure: {amounts:?}"
+        amounts.iter().any(|amount| amount.starts_with("$5"))
+            && amounts.iter().any(|amount| amount.starts_with("$10"))
+            && amounts.iter().any(|amount| amount.starts_with("$100")),
+        "the index carries the published $5, $10/day, and $100 pricing summary: {amounts:?}"
     );
 }
 
@@ -2833,11 +2834,6 @@ async fn every_firm_page_renders_the_shared_catalog_it_references() {
                 "fractional_gc.title",
                 "fractional_gc.lede",
                 "fractional_gc.price",
-                "fractional_gc.included.records",
-                "fractional_gc.included.hiring_forms",
-                "fractional_gc.included.ownership",
-                "fractional_gc.included.privacy_forms",
-                "fractional_gc.included.tax_and_state",
             ][..],
         ),
         (

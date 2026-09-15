@@ -30,15 +30,9 @@ entries:
 
   # `/business` — the Business plan.
   fractional_gc.eyebrow: Business plan
-  fractional_gc.title: A lawyer for your business.
-  fractional_gc.lede: Get help with contracts, hiring, and the paperwork that comes with running a business.
-  fractional_gc.price: $3,650
-  fractional_gc.included.records: Help keeping your company records up to date
-  fractional_gc.included.hiring_forms: Forms for hiring employees and contractors
-  fractional_gc.included.ownership: Cap table management, so you know who owns your company
-  fractional_gc.included.privacy_forms: Forms for keeping business information private and working with customers
-  fractional_gc.included.tax_and_state: Help with business taxes and state paperwork
-
+  fractional_gc.title: The legal library for your business.
+  fractional_gc.lede: Use our contract library and name Neon Law as your counsel for work we agree to handle.
+  fractional_gc.price: $10
   # `/personal`
   personal_plan.eyebrow: Personal plan
   personal_plan.title: Help with the things you need to take care of.

@@ -144,10 +144,8 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
 ///
 /// `/services` is named as the fee schedule it is. The firm charges a fixed fee
 /// per matter, which is the thing that page exists to say — an index describing
-/// it as generic "legal services" would understate it. What it does not say is
-/// a dollar figure: the site publishes no fee amounts, and `/services` names
-/// its schedule's matters and scope without one. An index that told a crawler
-/// otherwise would send it looking for numbers the page does not carry.
+/// it as generic "legal services" would understate it. The index carries the
+/// same $5, $10/day, and $100-starting pricing summary the public pages publish.
 #[must_use]
 pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
     match key {
@@ -261,9 +259,9 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             "The flat-fee schedule: wills, trusts, name changes, formations, trademarks, \
                  tenant defense, demand letters, contract and form review, and a Nevada \
                  business address, each a fixed fee agreed before work begins and reviewed \
-                 by a licensed attorney. Requires an active Fractional GC or Personal \
-                 Protection plan. Some fees are published on the page; email the firm for \
-                 the rest.",
+                 by a licensed attorney. An unchanged template can be sent for signature \
+                 for $5; a prepared or revised Notation begins at $100. Some fees are \
+                 published on the page; email the firm for the rest.",
         ),
         page(
             "Litigation",
@@ -272,10 +270,11 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
                  cases for the people on the receiving end. Quoted per engagement.",
         ),
         page(
-            "Fractional General Counsel",
+            "Business plan",
             "/business",
-            "Company counsel on a flat annual or daily fee — cap table, employee agreements, \
-                 and state tax filings, with a one-business-day redline turnaround.",
+            "Contract-library access and a counsel relationship for work the firm agrees to \
+                 handle, at $10 a day. Each prepared or revised Notation is separately \
+                 scoped and priced before work begins.",
         ),
         page(
             "Neon Law Navigator",

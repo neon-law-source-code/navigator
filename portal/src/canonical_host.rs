@@ -15,6 +15,11 @@
 //! resolves to its registered brand (or the default brand for an
 //! unregistered one) — useful for local development and integration tests.
 //!
+//! When browser OAuth is configured, `/app` and sign-in entry points first
+//! redirect to the callback origin, before any authentication cookie is issued.
+//! That configured origin is also admitted so canonical-host enforcement cannot
+//! bounce it back to a different public host. Health probes remain exempt.
+//!
 //! Locally there is no DNS standing in for a second brand's real hostname, so
 //! [`CanonicalHost`] also carries a *local port map*: a `BrandKey` a
 //! developer reached by binding one of its own local ports (see
@@ -37,6 +42,7 @@ use views::brand::{registered_brand_key, BrandKey};
 pub struct CanonicalHost {
     canonical: Option<String>,
     local_ports: BTreeMap<u16, BrandKey>,
+    sign_in_origin: Option<url::Url>,
 }
 
 impl CanonicalHost {
@@ -58,6 +64,7 @@ impl CanonicalHost {
         Self {
             canonical: host.filter(|s| !s.is_empty()),
             local_ports: BTreeMap::new(),
+            sign_in_origin: None,
         }
     }
 
@@ -68,6 +75,31 @@ impl CanonicalHost {
     pub fn with_local_ports(mut self, local_ports: BTreeMap<u16, BrandKey>) -> Self {
         self.local_ports = local_ports;
         self
+    }
+
+    /// Browser sessions belong to the configured callback origin. Resolve it
+    /// once when composing the router, independently of public brand hosts.
+    #[must_use]
+    pub(crate) fn with_sign_in_origin(mut self, callback: Option<&str>) -> Self {
+        self.sign_in_origin = callback.and_then(|value| url::Url::parse(value).ok());
+        self
+    }
+
+    fn is_sign_in_host(&self, host: &str) -> bool {
+        let Some(origin) = &self.sign_in_origin else {
+            return false;
+        };
+        let Ok(authority) = host.parse::<axum::http::uri::Authority>() else {
+            return false;
+        };
+        origin
+            .host_str()
+            .is_some_and(|primary| primary.eq_ignore_ascii_case(authority.host()))
+            && authority.port_u16().or(match origin.scheme() {
+                "https" => Some(443),
+                "http" => Some(80),
+                _ => None,
+            }) == origin.port_or_known_default()
     }
 
     #[must_use]
@@ -141,6 +173,23 @@ pub async fn resolve_brand_and_enforce_host(
         .headers()
         .get(header::HOST)
         .and_then(|v| v.to_str().ok());
+    let path = req.uri().path();
+    let sign_in_entry = path == "/app"
+        || path.starts_with("/app/")
+        || path == "/auth/login"
+        || path.starts_with("/auth/login/");
+    if sign_in_entry && raw_host.is_some_and(|host| !cfg.is_sign_in_host(host)) {
+        if let Some(origin) = &cfg.sign_in_origin {
+            let path_and_query = req
+                .uri()
+                .path_and_query()
+                .map_or("/", axum::http::uri::PathAndQuery::as_str);
+            // Concatenate an origin with the existing absolute path. URL joining
+            // would interpret a leading `//` as a new, untrusted authority.
+            let target = format!("{}{path_and_query}", origin.origin().ascii_serialization());
+            return Redirect::to(&target).into_response();
+        }
+    }
     // The local port map takes the full authority — a bound local port
     // forces its brand regardless of hostname, since `localhost` (or any
     // other host a developer's resolver happens to answer for) claims no
@@ -150,8 +199,10 @@ pub async fn resolve_brand_and_enforce_host(
     let resolved = raw_host.and_then(|host| {
         cfg.resolve_local_port(host).or_else(|| {
             let stripped = strip_port(host);
-            registered_brand_key(stripped)
-                .or_else(|| (cfg.canonical() == Some(stripped)).then_some(BrandKey::default()))
+            registered_brand_key(stripped).or_else(|| {
+                (cfg.canonical() == Some(stripped) || cfg.is_sign_in_host(host))
+                    .then_some(BrandKey::default())
+            })
         })
     });
     match (resolved, cfg.canonical()) {

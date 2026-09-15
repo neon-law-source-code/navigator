@@ -837,10 +837,15 @@ pub fn authorize_url(cfg: &OAuthConfig, pre: &PreAuth) -> String {
 /// person already knows does not reorder underneath them when a second
 /// provider is switched on.
 fn provider_buttons(s: &AuthState, return_to: &str) -> Vec<webapp::auth_pages::SignInProvider> {
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("return_to", safe_return_to(return_to))
+        .finish()
+        // Slashes are safe in a query value and keep deep links readable.
+        .replace("%2F", "/");
     s.configured_providers()
         .into_iter()
         .map(|provider| webapp::auth_pages::SignInProvider {
-            href: format!("/auth/login/{}?return_to={return_to}", provider.slug()),
+            href: format!("/auth/login/{}?{query}", provider.slug()),
             label: provider.button_label().to_string(),
         })
         .collect()
@@ -1170,11 +1175,23 @@ fn default_return_to() -> String {
     String::new()
 }
 
+/// A return destination is a local absolute path, never another authority.
+/// Backslashes and control characters can change how a browser interprets it.
+fn safe_return_to(value: &str) -> &str {
+    if value.starts_with('/')
+        && !value.starts_with("//")
+        && !value.chars().any(|c| c == '\\' || c.is_control())
+    {
+        value
+    } else {
+        ""
+    }
+}
+
 /// Where a freshly authenticated person lands. A firm tier (owner/admin/lawyer/
-/// clerk) goes to the team home; a client goes to their matter list. Only the
-/// neutral default and the retired `/portal` fall through to the tier landing —
-/// any other `return_to` is an explicit deep link (an anonymous bounce recorded
-/// the page the visitor was reaching for) and is returned unchanged.
+/// clerk) goes to the team home; a client goes to their matter list. The neutral
+/// default, retired `/portal`, and unsafe destinations use that tier landing.
+/// Safe local `return_to` paths preserve the page and query the visitor sought.
 ///
 /// Public because it is the landing contract the Using workshop teaches in
 /// print, and `workshop_claims_grounding` asserts the deck against this
@@ -1182,6 +1199,7 @@ fn default_return_to() -> String {
 /// fork would agree with itself while the deck went stale.
 #[must_use]
 pub fn post_login_landing(role: Role, return_to: &str) -> String {
+    let return_to = safe_return_to(return_to);
     if !return_to.is_empty() && return_to != "/portal" {
         return return_to.to_string();
     }
@@ -1209,13 +1227,13 @@ async fn login(
         return login_chooser_response(
             &s,
             &cookies,
-            &q.return_to,
+            safe_return_to(&q.return_to),
             None,
             notice.as_ref().map(NoticeText::as_login_notice),
             StatusCode::OK,
         );
     }
-    start_provider(&s, &cookies, ProviderId::Primary, q.return_to)
+    start_provider(&s, &cookies, ProviderId::Primary, &q.return_to)
 }
 
 /// The per-provider redirect handler behind `/auth/login/{provider}`, so each
@@ -1235,7 +1253,7 @@ async fn start_provider_redirect(
     if s.provider_config(provider).is_none() {
         return (StatusCode::NOT_FOUND, "sign-in provider not configured").into_response();
     }
-    start_provider(&s, &cookies, provider, q.return_to)
+    start_provider(&s, &cookies, provider, &q.return_to)
 }
 
 /// Set the pre-auth cookie and 302 to `provider`'s IdP.
@@ -1243,12 +1261,12 @@ fn start_provider(
     s: &AuthState,
     cookies: &Cookies,
     provider: ProviderId,
-    return_to: String,
+    return_to: &str,
 ) -> Response {
     let Some(cfg) = s.provider_config(provider) else {
         return (StatusCode::NOT_FOUND, "sign-in provider not configured").into_response();
     };
-    let pre = PreAuth::for_provider(provider, return_to);
+    let pre = PreAuth::for_provider(provider, safe_return_to(return_to).to_owned());
     let cookie_value = s
         .sessions
         .encode_signed_bytes(&serde_json::to_vec(&pre).expect("pre-auth is always serializable"));
@@ -2032,6 +2050,17 @@ async fn complete_callback(s: AuthState, cookies: Cookies, q: CallbackQuery) -> 
     let render = |e: (StatusCode, &'static str)| e.into_response();
     let pre = match consume_pre_auth(&s, &cookies, &returned_state) {
         Ok(pre) => pre,
+        Err((status, "missing pre-auth cookie")) => {
+            let login = url::Url::parse(s.oauth.redirect_uri()).map_or_else(
+                |_| "/auth/login".to_owned(),
+                |callback| format!("{}/auth/login", callback.origin().ascii_serialization()),
+            );
+            return (
+                status,
+                format!("This sign-in could not be resumed. Start again at {login}."),
+            )
+                .into_response();
+        }
         Err(e) => return render(e),
     };
     // Which provider this code belongs to comes from the signed pre-auth

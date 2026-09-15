@@ -63,6 +63,15 @@ fn run_walks_a_bundled_template_without_deployment_configuration_and_isolated_ru
             output.contains("persisted 9 answer(s); workflow state lawyer_review"),
             "{output}"
         );
+        // `InMemoryRuntime` keeps its transition history process-local; the
+        // runner journals that same history through `store::notation_events`
+        // (the table a real `notations run` leaves rows in) and reports the
+        // count, so a broken journal write fails this run rather than
+        // silently keeping the transcript in memory only.
+        assert!(
+            output.contains("journaled 11 notation_events row(s)"),
+            "{output}"
+        );
         assert!(
             output.contains("questionnaire custom_single_choice__governing_law --_--> END"),
             "{output}"

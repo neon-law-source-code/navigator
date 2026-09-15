@@ -223,32 +223,53 @@ pub async fn run(file: &Path) -> Result<()> {
         "persisted {} answer(s); workflow state {final_state}",
         answers.len()
     );
-    for event in StateMachineRuntime::events(
-        runtime.as_ref(),
+
+    // `InMemoryRuntime` keeps its transition history in a process-local
+    // `Vec` only — production's `notation_events` journal is written by the
+    // `workflows-service` Restate worker, which this ephemeral, broker-free
+    // runner never starts (see the module docs). Journal the same embedded
+    // history through the shared `store::notation_events` writer so this
+    // workbench satisfies the same "every transition produces a
+    // `notation_events` row" contract, then print from that journal rather
+    // than the in-memory `Vec` so the transcript reflects what a real
+    // `notations run` leaves behind.
+    for kind in [
         workflows::MachineKind::Questionnaire,
-        notation_id,
-    )
-    .await
-    {
-        println!(
-            "questionnaire {} --{}--> {}",
-            event.from.as_str(),
-            event.condition,
-            event.to.as_str()
-        );
-    }
-    for event in StateMachineRuntime::events(
-        runtime.as_ref(),
         workflows::MachineKind::Workflow,
-        notation_id,
-    )
-    .await
-    {
+    ] {
+        for event in StateMachineRuntime::events(runtime.as_ref(), kind, notation_id).await {
+            let recorded_at = chrono::Utc::now().to_rfc3339();
+            store::notation_events::append_event(
+                &surreal,
+                store::notation_events::TransitionRecord {
+                    notation_id,
+                    acting_person_id: event.acting_person_id,
+                    machine_kind: kind.as_str(),
+                    from_state: event.from.as_str(),
+                    to_state: event.to.as_str(),
+                    condition: &event.condition,
+                    payload_json: None,
+                    recorded_at: &recorded_at,
+                },
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "journaling the {} transition {} --{}--> {}",
+                    kind.as_str(),
+                    event.from.as_str(),
+                    event.condition,
+                    event.to.as_str()
+                )
+            })?;
+        }
+    }
+    let journal = store::notation_events::for_notation(&surreal, notation_id).await?;
+    println!("journaled {} notation_events row(s)", journal.len());
+    for row in &journal {
         println!(
-            "workflow {} --{}--> {}",
-            event.from.as_str(),
-            event.condition,
-            event.to.as_str()
+            "{} {} --{}--> {}",
+            row.machine_kind, row.from_state, row.condition, row.to_state
         );
     }
     Ok(())

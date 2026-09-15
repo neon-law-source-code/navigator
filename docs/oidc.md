@@ -21,6 +21,32 @@ This document is the canonical narrative for the system. The Rust modules link b
 
 ## Login sequence
 
+### One sign-in origin across brand hosts
+
+Browser authentication lives on the origin of `OAUTH_REDIRECT_URI`. Public pages retain their brand host, but a request
+to `/app`, `/app/*`, `/auth/login`, or `/auth/login/{provider}` on another host receives a 303 to the same path and
+query on that origin. This happens before session renewal, the sign-in chooser's CSRF cookie, or the provider's
+state/PKCE cookie can be issued. A 303 starts a new GET; it does not replay a submitted request body across hosts. The
+`/app/health` and `/app/readyz` probes remain exempt.
+
+The callback origin comes from configuration, never a forwarded host header. Host matching ignores letter case and
+normalizes the scheme's default port; local listener ports remain distinct. The configured callback host is admitted
+even when `CANONICAL_HOST` names a different public host, preventing a redirect loop. Without browser OAuth configured,
+ordinary brand-host routing applies.
+
+All providers use the primary origin's callback. The selected provider stays in the direct sign-in route and then in the
+signed pre-auth cookie. A safe local `return_to` path keeps its query string through the chooser and callback; external
+URLs, network-path URLs, backslashes, and control characters fall back to the person's role landing. Provider links
+encode that destination as one query value. State, nonce, PKCE, and token validation remain mandatory. A callback
+missing its pre-auth cookie is refused with a message pointing to the configured primary sign-in URL.
+
+[`server/tests/oauth_host.rs`](../server/tests/oauth_host.rs) exercises these boundaries through the composed router.
+Its live browser case uses the worktree's secondary listener at `127.0.0.1` and the primary callback at `localhost`, so
+the browser must enforce host-only cookie isolation. Run that case with the generated `.devx/env` and the browser
+harness, alongside the required browser and accessibility suites.
+
+### Authorization Code flow
+
 The full Authorization Code + PKCE flow, end to end, with the upsert step that links the IdP to a local `persons` row
 and the embedded Rego decision that gates the requested route.
 

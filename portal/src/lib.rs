@@ -1208,7 +1208,10 @@ pub fn bootstrap(
         crate::rate_limit::enforce,
     ));
     let host_layer = axum::middleware::from_fn_with_state(
-        state.canonical_host.clone(),
+        state
+            .canonical_host
+            .clone()
+            .with_sign_in_origin(state.oauth.as_ref().map(oauth::OAuthConfig::redirect_uri)),
         canonical_host::resolve_brand_and_enforce_host,
     );
     // Browser-flow login routes only mount when OAUTH_* is configured;

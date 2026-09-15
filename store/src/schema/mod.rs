@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 42;
+pub const SCHEMA_VERSION: u32 = 43;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -47,6 +47,8 @@ const DEFINITIONS: &str = include_str!("navigator.surql");
 const PROJECT_BRAND_BACKFILL: &str = "\
     UPDATE project SET brand = 'neon' WHERE brand IS NONE;\
     DEFINE FIELD OVERWRITE brand ON project TYPE string;";
+const PERSON_EMAIL_CONFIRMED_BACKFILL: &str = "\
+    UPDATE person SET email_confirmed = false WHERE email_confirmed IS NONE;";
 
 /// Every table declared in the shipped Surreal schema, in stable order.
 ///
@@ -279,6 +281,14 @@ async fn backfill_project_brand(db: &SurrealDb) -> Result<(), SchemaError> {
     Ok(())
 }
 
+async fn backfill_person_email_confirmed(db: &SurrealDb) -> Result<(), SchemaError> {
+    db.query(PERSON_EMAIL_CONFIRMED_BACKFILL)
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    Ok(())
+}
+
 /// Apply the schema, guard historical Project brands, and record [`SCHEMA_VERSION`].
 ///
 /// Idempotent: running it against an already-prepared database
@@ -289,6 +299,8 @@ pub async fn apply(db: &SurrealDb) -> Result<(), SchemaError> {
         .await
         .and_then(surrealdb::IndexedResults::check)
         .map_err(classify_apply)?;
+
+    backfill_person_email_confirmed(db).await?;
 
     // Checked right after `DEFINE TABLE IF NOT EXISTS project` has run (so a
     // never-touched table reads as empty rather than "does not exist") and
@@ -493,6 +505,31 @@ mod tests {
             .unwrap();
         assert_eq!(records, vec![i64::from(SCHEMA_VERSION)]);
         assert_eq!(state(&db).await.unwrap(), SchemaState::InSync);
+    }
+
+    #[tokio::test]
+    async fn applying_backfills_email_confirmation_on_a_historical_person() {
+        let db = unmigrated().await;
+        db.query(
+            "CREATE person:historical SET name = 'Historical Person', \
+             email = 'historical@example.com', role = 'client', is_admitted = true, \
+             inserted_at = type::datetime('2020-01-01T00:00:00Z'), \
+             updated_at = type::datetime('2020-01-01T00:00:00Z')",
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        apply(&db).await.unwrap();
+
+        let confirmed: Option<bool> = db
+            .query("SELECT VALUE email_confirmed FROM person:historical")
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        assert_eq!(confirmed, Some(false));
     }
 
     /// A row coded `closed` written before that code was reserved (simulated

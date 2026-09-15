@@ -227,9 +227,8 @@ pub fn routes(
         .route(
             "/app/people/{id}/avatar",
             // Another person's avatar, gated by `store::access::
-            // avatar_visible_to` rather than the admin tier: every firm tier
-            // sees any avatar, and a client sees a fellow client's only when
-            // they share a Project.
+            // avatar_visible_to`: self, Owner/Admin, or a viewer sharing a
+            // Project participation with the target.
             get(person_avatar_view),
         )
         .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
@@ -982,18 +981,9 @@ async fn admin_person_avatar_upload(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
-    match store::persons::edit(
-        &s.surreal,
-        id,
-        &store::persons::PersonEdit {
-            profile_image_url: Some(Some(key)),
-            ..Default::default()
-        },
-    )
-    .await
-    {
-        Ok(Some(_)) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+    match store::persons::set_profile_image_url(&s.surreal, id, Some(key)).await {
+        Ok(true) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::error!(error = %e, person_id = %id, "avatar upload: person edit failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -1115,18 +1105,9 @@ async fn profile_avatar_upload(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
-    match store::persons::edit(
-        &s.surreal,
-        id,
-        &store::persons::PersonEdit {
-            profile_image_url: Some(Some(key)),
-            ..Default::default()
-        },
-    )
-    .await
-    {
-        Ok(Some(_)) => profile_avatar_upload_accepted(&headers),
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+    match store::persons::set_profile_image_url(&s.surreal, id, Some(key)).await {
+        Ok(true) => profile_avatar_upload_accepted(&headers),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::error!(error = %e, person_id = %id, "profile avatar upload: person edit failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -1149,8 +1130,8 @@ fn profile_avatar_upload_accepted(headers: &HeaderMap) -> Response {
 }
 
 /// `GET /app/people/{id}/avatar` — stream another person's avatar, gated by
-/// [`store::access::avatar_visible_to`]: every firm tier sees any avatar, and
-/// a client sees a fellow client's avatar only when the two share a Project.
+/// [`store::access::avatar_visible_to`]: self, Owner/Admin, or any viewer
+/// sharing a Project participation with the target.
 /// embedded Rego policy admits any authenticated caller on this path
 /// (`portal/policy/navigator.rego`) because it has no participation data to
 /// narrow further; this handler carries the actual, participation-aware rule
@@ -1186,7 +1167,6 @@ async fn person_avatar_view(
         viewer_id,
         session.role,
         target.id,
-        target.role,
     )
     .await
     {

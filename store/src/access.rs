@@ -413,32 +413,23 @@ pub async fn can_see_project_as_clerk(
 }
 
 /// `true` iff `viewer_id` (holding `viewer_role`) may see `target_id`'s
-/// avatar (holding `target_role`).
+/// avatar.
 ///
-/// Every firm tier sees any avatar — the same boundary [`ProjectLens`] draws
-/// between the two sides of a matter. A client always sees their own avatar,
-/// and a fellow client's avatar only when the two hold a client-side
-/// participation row on the same Project; no shared Project means no
-/// visibility, the matter surface's own no-bypass rule (ENG-81). A client
-/// viewer with no target match (a firm-side person, or a client on no shared
-/// Project) sees nothing through this predicate — `stream_avatar`'s caller
-/// treats that identically to a missing avatar, so neither discloses which it
-/// was.
+/// A viewer sees their own avatar, Owner/Admin sees any avatar, and every
+/// other authenticated viewer must share at least one Project participation
+/// row with the target. A denial is intentionally indistinguishable from a
+/// missing avatar at the route layer.
 pub async fn avatar_visible_to(
     surreal: &SurrealDb,
     viewer_id: Uuid,
     viewer_role: Role,
     target_id: Uuid,
-    target_role: Role,
 ) -> Result<bool, String> {
     if viewer_id == target_id {
         return Ok(true);
     }
-    if viewer_role.is_lawyer_tier() || viewer_role.is_clerk() {
+    if matches!(viewer_role, Role::Owner | Role::Admin) {
         return Ok(true);
-    }
-    if viewer_role != Role::Client || target_role != Role::Client {
-        return Ok(false);
     }
 
     let viewer_projects: std::collections::HashSet<Uuid> =
@@ -446,7 +437,6 @@ pub async fn avatar_visible_to(
             .await
             .map_err(|error| project_lookup_failed(&error))?
             .into_iter()
-            .filter(is_client_participation)
             .map(|row| row.project_id)
             .collect();
     if viewer_projects.is_empty() {
@@ -456,7 +446,6 @@ pub async fn avatar_visible_to(
         .await
         .map_err(|error| project_lookup_failed(&error))?
         .into_iter()
-        .filter(is_client_participation)
         .any(|row| viewer_projects.contains(&row.project_id)))
 }
 
@@ -1217,26 +1206,29 @@ mod tests {
     async fn avatar_is_always_visible_to_self() {
         let surreal = mem_surreal().await;
         let libra = seed_person(&surreal, "libra@example.com").await;
-        assert!(
-            avatar_visible_to(&surreal, libra, Role::Client, libra, Role::Client)
-                .await
-                .unwrap()
-        );
+        assert!(avatar_visible_to(&surreal, libra, Role::Client, libra)
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
-    async fn every_firm_tier_sees_any_avatar() {
+    async fn owner_and_admin_see_any_avatar_without_participation() {
         let surreal = mem_surreal().await;
         let target = seed_person(&surreal, "target@example.com").await;
-        for role in [Role::Owner, Role::Admin, Role::Lawyer, Role::Clerk] {
+        for role in [Role::Owner, Role::Admin] {
             let viewer = Uuid::now_v7();
             assert!(
-                avatar_visible_to(&surreal, viewer, role, target, Role::Client)
+                avatar_visible_to(&surreal, viewer, role, target)
                     .await
                     .unwrap(),
                 "{role:?} must see any avatar"
             );
         }
+        assert!(
+            !avatar_visible_to(&surreal, Uuid::now_v7(), Role::Lawyer, target)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -1248,16 +1240,12 @@ mod tests {
         link(&surreal, libra, shared, "client").await;
         link(&surreal, cancer, shared, "client").await;
 
-        assert!(
-            avatar_visible_to(&surreal, libra, Role::Client, cancer, Role::Client)
-                .await
-                .unwrap()
-        );
-        assert!(
-            avatar_visible_to(&surreal, cancer, Role::Client, libra, Role::Client)
-                .await
-                .unwrap()
-        );
+        assert!(avatar_visible_to(&surreal, libra, Role::Client, cancer)
+            .await
+            .unwrap());
+        assert!(avatar_visible_to(&surreal, cancer, Role::Client, libra)
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
@@ -1270,11 +1258,9 @@ mod tests {
         link(&surreal, libra, libra_project, "client").await;
         link(&surreal, cancer, cancer_project, "client").await;
 
-        assert!(
-            !avatar_visible_to(&surreal, libra, Role::Client, cancer, Role::Client)
-                .await
-                .unwrap()
-        );
+        assert!(!avatar_visible_to(&surreal, libra, Role::Client, cancer)
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
@@ -1283,15 +1269,13 @@ mod tests {
         let libra = seed_person(&surreal, "libra@example.com").await;
         let cancer = seed_person(&surreal, "cancer@example.com").await;
 
-        assert!(
-            !avatar_visible_to(&surreal, libra, Role::Client, cancer, Role::Client)
-                .await
-                .unwrap()
-        );
+        assert!(!avatar_visible_to(&surreal, libra, Role::Client, cancer)
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
-    async fn a_client_never_sees_a_firm_side_persons_avatar() {
+    async fn a_viewer_with_shared_project_sees_a_firm_side_persons_avatar() {
         let surreal = mem_surreal().await;
         let libra = seed_person(&surreal, "libra@example.com").await;
         let scorpio = seed_person(&surreal, "scorpio@example.com").await;
@@ -1302,10 +1286,8 @@ mod tests {
         link(&surreal, libra, shared, "client").await;
         link(&surreal, scorpio, shared, "lawyer").await;
 
-        assert!(
-            !avatar_visible_to(&surreal, libra, Role::Client, scorpio, Role::Lawyer)
-                .await
-                .unwrap()
-        );
+        assert!(avatar_visible_to(&surreal, libra, Role::Client, scorpio)
+            .await
+            .unwrap());
     }
 }

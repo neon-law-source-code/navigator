@@ -2158,9 +2158,8 @@ async fn a_client_sees_profile_but_never_the_owner_only_firm_link() {
 
 // ---------- avatar visibility ----------
 //
-// Every firm tier sees any avatar; a client sees their own and a fellow
-// client's only when the two share a Project; a client never sees a
-// firm-side person's avatar (`store::access::avatar_visible_to`).
+// A person sees their own avatar, Owner/Admin sees any avatar, and every other
+// viewer needs a shared Project participation (`store::access::avatar_visible_to`).
 
 #[tokio::test]
 async fn clients_sharing_a_project_can_see_each_others_avatar() {
@@ -2282,7 +2281,7 @@ async fn clients_on_different_projects_cannot_see_each_others_avatar() {
 }
 
 #[tokio::test]
-async fn firm_tier_sees_any_avatar_but_a_client_cannot_see_a_firm_members() {
+async fn an_unassigned_firm_tier_and_client_cannot_see_an_avatar() {
     let Some(admin_browser) = new_client_or_skip().await else {
         return;
     };
@@ -2325,7 +2324,10 @@ async fn firm_tier_sees_any_avatar_but_a_client_cannot_see_a_firm_members() {
         &format!("{}/app/people/{}/avatar", base_url(), synthetic_client.id),
     )
     .await;
-    assert_eq!(status, 200, "a firm tier must see any avatar");
+    assert_eq!(
+        status, 404,
+        "a firm tier without shared participation must not see the avatar"
+    );
     lawyer_browser.close().await.unwrap();
 
     let Some(client_browser) = new_client_or_skip().await else {
@@ -2337,9 +2339,6 @@ async fn firm_tier_sees_any_avatar_but_a_client_cannot_see_a_firm_members() {
         &format!("{}/app/people/{}/avatar", base_url(), synthetic_lawyer.id),
     )
     .await;
-    assert_eq!(
-        status, 404,
-        "a client must never see a firm-side person's avatar"
-    );
+    assert_eq!(status, 404, "an unrelated client must not see the avatar");
     client_browser.close().await.unwrap();
 }

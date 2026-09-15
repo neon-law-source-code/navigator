@@ -265,8 +265,9 @@ place and refreshes `/app/me/avatar` without leaving the page; a navigation with
 `/app/profile`. Admin uploads use `/app/admin/people/{id}/avatar`, or `/app/admin/entities/{id}/avatar` into the
 **private documents** bucket (`people/{id}/avatars/…`, `entities/{id}/avatars/…`), so it has no manifest entry to pull
 in the first place, is not public HTTPS content at all, and falls back to an initials circle until someone uploads one.
-Until `fetch-referenced` learns the manifest, fetch a manifest photo's variants directly; the widths and formats are the
-ones `views::assets` generates:
+Person avatar reads are limited to the person, Owner/Admin, or a viewer who shares a Project participation with that
+person. Until `fetch-referenced` learns the manifest, fetch a manifest photo's variants directly; the widths and formats
+are the ones `views::assets` generates:
 
 ```bash
 mkdir -p server/public/img/lake-tahoe

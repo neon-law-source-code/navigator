@@ -70,6 +70,12 @@ The `workflow:` block is a state machine whose state-name **prefix** selects the
 | `firm_signature__*` | `FirmSignature` | the firm signs — on the closing letter, this closes the matter |
 | `mailroom_send` / `certified_mail__*` / `e_filing__*` / `filing__*` | submission kinds | record a `filings` row |
 
+Entering `lawyer_review` sends the lawyer DRI, or every firm-side lawyer participant when no DRI is set, a durable email
+with a link to the notation review page. An approval transition sends the client participant a durable email with a link
+to the Project page; a `reask__*` or refused transition sends neither client notice. Recipient selection and each send
+are separate Restate-journaled steps, so replay cannot duplicate mail, and audit records carry only opaque ids plus
+bounded role, hop, and outcome fields.
+
 The suffix after `__` identifies this template's instance. Prefer a suffixed existing prefix; a new prefix means a new
 engine capability, not a legal product.
 

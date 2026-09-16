@@ -84,6 +84,12 @@ pub struct Entity {
     /// none. Set only by [`set_avatar_url`], never by [`create`] or
     /// [`update`].
     pub avatar_url: Option<String>,
+    /// The Xero `ContactID` for this entity, when linked — an external
+    /// identity, not a credential, mirroring `person.xero_contact_id`. Unlike
+    /// that column, this one is editable straight from the admin form: an
+    /// entity's Xero contact is entered directly rather than synced by the
+    /// billing workflow.
+    pub xero_id: Option<String>,
     pub inserted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// The lowercased name when this row is the firm anchor, `None`
@@ -112,6 +118,7 @@ struct EntityRow {
     phone: Option<String>,
     url: Option<String>,
     avatar_url: Option<String>,
+    xero_id: Option<String>,
     firm_anchor_key: Option<String>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
@@ -130,6 +137,7 @@ impl EntityRow {
             phone: self.phone,
             url: self.url,
             avatar_url: self.avatar_url,
+            xero_id: self.xero_id,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
             firm_anchor_key: self.firm_anchor_key,
@@ -140,7 +148,7 @@ impl EntityRow {
 /// The projection every read shares, so one field list describes the
 /// row and a new column cannot reach [`EntityRow`] from only one query.
 const SELECT: &str = "id, name, entity_type_id, jurisdiction_id, phone, url, avatar_url, \
-                      firm_anchor_key, inserted_at, updated_at";
+                      xero_id, firm_anchor_key, inserted_at, updated_at";
 
 /// What a write stores. `firm_anchor_key` is computed by
 /// `entity_commands`, never supplied by a request body.
@@ -151,6 +159,7 @@ pub struct NewEntity {
     pub jurisdiction_id: Uuid,
     pub phone: Option<String>,
     pub url: Option<String>,
+    pub xero_id: Option<String>,
     pub firm_anchor_key: Option<String>,
 }
 
@@ -648,6 +657,7 @@ pub async fn all(db: &SurrealDb) -> Result<Vec<Entity>, EntityError> {
 /// stored by only one of them.
 const WRITE_FIELDS: &str = "name = $name, entity_type_id = $entity_type_id, \
                             jurisdiction_id = $jurisdiction_id, phone = $phone, url = $url, \
+                            xero_id = $xero_id, \
                             firm_anchor_key = $firm_anchor_key, updated_at = time::now()";
 
 /// Write a new entity row under a fresh v7 id.
@@ -704,6 +714,7 @@ async fn upsert_row(db: &SurrealDb, id: Uuid, input: &NewEntity) -> Result<Entit
         ))
         .bind(("phone", input.phone.clone()))
         .bind(("url", input.url.clone()))
+        .bind(("xero_id", input.xero_id.clone()))
         .bind(("firm_anchor_key", input.firm_anchor_key.clone()))
     })
     .await?;
@@ -772,6 +783,7 @@ async fn update_row(
         ))
         .bind(("phone", input.phone.clone()))
         .bind(("url", input.url.clone()))
+        .bind(("xero_id", input.xero_id.clone()))
         .bind(("firm_anchor_key", input.firm_anchor_key.clone()))
     })
     .await?;
@@ -908,6 +920,7 @@ mod tests {
             jurisdiction_id: Uuid::now_v7(),
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         }
     }
@@ -977,6 +990,22 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn reads_an_entity_row_written_before_xero_id_was_defined() {
+        let db = mem().await;
+        db.query("REMOVE FIELD xero_id ON entity").await.unwrap();
+        let created = create(&db, &input("Zeta Holdings LLC")).await.unwrap();
+        db.query("DEFINE FIELD OVERWRITE xero_id ON entity TYPE option<string>")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            find_by_id(&db, created.id).await.unwrap().unwrap().xero_id,
+            None,
+            "an absent value reads as no Xero contact, not a deserialization failure"
+        );
+    }
+
     /// The reference ids are `record<>` links in the engine but plain
     /// UUIDs to a caller, and the round trip is the only thing proving
     /// the two spellings agree — `entity_type:u'…'` and `entity_type:⟨…⟩`
@@ -1042,9 +1071,11 @@ mod tests {
     async fn update_replaces_every_field_and_reports_a_missing_row() {
         let db = mem().await;
         let row = create(&db, &input("Beta LLC")).await.unwrap();
+        assert_eq!(row.xero_id, None, "a fresh entity has no Xero contact yet");
         let mut edit = input("Beta Holdings LLC");
         edit.phone = Some("+1 702 555 0100".into());
         edit.url = Some("https://example.com".into());
+        edit.xero_id = Some("contact-123".into());
 
         let updated = update(&db, row.id, &edit).await.unwrap().unwrap();
         assert_eq!(updated.id, row.id);
@@ -1052,6 +1083,7 @@ mod tests {
         assert_eq!(updated.entity_type_id, edit.entity_type_id);
         assert_eq!(updated.phone.as_deref(), Some("+1 702 555 0100"));
         assert_eq!(updated.url.as_deref(), Some("https://example.com"));
+        assert_eq!(updated.xero_id.as_deref(), Some("contact-123"));
 
         assert_eq!(update(&db, Uuid::now_v7(), &edit).await.unwrap(), None);
     }
@@ -1282,6 +1314,7 @@ mod tests {
             ))
             .bind(("phone", None::<String>))
             .bind(("url", None::<String>))
+            .bind(("xero_id", None::<String>))
             .bind(("firm_anchor_key", Some("neon law".to_string())))
             .await
             .and_then(surrealdb::IndexedResults::check)

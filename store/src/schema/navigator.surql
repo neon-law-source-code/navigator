@@ -563,6 +563,13 @@ DEFINE FIELD OVERWRITE url ON entity TYPE option<string>;
 -- backfill is needed: an absent avatar reads as `NONE`, exactly what an
 -- entity that has never had one should report.
 DEFINE FIELD OVERWRITE avatar_url ON entity TYPE option<string>;
+-- The Xero `ContactID`, entered directly from the admin edit form rather
+-- than synced by the billing workflow — unlike `person.xero_contact_id`,
+-- which the billing sandbox writes. `option<string>` so a row written
+-- before this field existed still deserializes with no backfill: an
+-- absent value reads as `NONE`, exactly what an entity never linked to
+-- Xero should report.
+DEFINE FIELD OVERWRITE xero_id ON entity TYPE option<string>;
 DEFINE FIELD OVERWRITE firm_anchor_key ON entity TYPE option<string>;
 DEFINE FIELD OVERWRITE inserted_at ON entity TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON entity TYPE datetime DEFAULT time::now();

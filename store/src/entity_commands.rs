@@ -66,6 +66,10 @@ pub struct UpdateEntityCommand {
     pub entity_type_id: Option<Uuid>,
     #[serde(default)]
     pub jurisdiction_id: Option<Uuid>,
+    /// The Xero `ContactID` for this entity. Omit to leave it unchanged;
+    /// send an empty string to clear it.
+    #[serde(default)]
+    pub xero_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -246,6 +250,7 @@ pub async fn create_entity(
             jurisdiction_id: input.jurisdiction_id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: anchor_key,
         },
     )
@@ -322,6 +327,15 @@ pub async fn update_entity(
     require_entity_type(surreal, entity_type_id).await?;
     require_jurisdiction(surreal, jurisdiction_id).await?;
 
+    // Absent leaves the Xero contact alone; a blank submission clears it —
+    // the same blank-clears convention `UpdateProjectCommand`'s optional text
+    // columns document.
+    let xero_id = match input.xero_id.as_deref() {
+        None => existing.xero_id.clone(),
+        Some(value) if value.trim().is_empty() => None,
+        Some(value) => Some(value.trim().to_string()),
+    };
+
     // Compared byte for byte against the stored name, deliberately: a firm
     // anchor's name is immutable down to case and spacing. `store::seed` looks
     // the row up by exact name, so even a whitespace variant forks the anchor
@@ -355,6 +369,7 @@ pub async fn update_entity(
             // a partial update must not blank them.
             phone: existing.phone,
             url: existing.url,
+            xero_id,
             firm_anchor_key: anchor_key,
         },
     )
@@ -493,6 +508,7 @@ mod tests {
             name: Some(name.into()),
             entity_type_id: Some(type_id),
             jurisdiction_id: Some(jur_id),
+            xero_id: None,
         }
     }
 
@@ -752,6 +768,7 @@ mod tests {
                 jurisdiction_id: jur_id,
                 phone: Some("+1 702 555 0100".into()),
                 url: Some("https://example.com".into()),
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -769,6 +786,50 @@ mod tests {
 
         assert_eq!(updated.phone.as_deref(), Some("+1 702 555 0100"));
         assert_eq!(updated.url.as_deref(), Some("https://example.com"));
+    }
+
+    /// `xero_id` round trips through the same absent/blank/value contract
+    /// `UpdateProjectCommand`'s optional text columns document: an omitted
+    /// submission leaves it alone, a blank one clears it, and a value sets it.
+    #[tokio::test]
+    async fn xero_id_round_trips_through_edit_set_clear_and_leave_alone() {
+        let (surreal, type_id, jur_id) = fixture().await;
+        let row = create_entity(
+            &surreal,
+            "Acme Anchor",
+            &command("Beta LLC", type_id, jur_id),
+        )
+        .await
+        .unwrap();
+        assert_eq!(row.xero_id, None);
+
+        let mut set = edit("Beta LLC", type_id, jur_id);
+        set.xero_id = Some("contact-1".into());
+        let set = update_entity(&surreal, row.id, "Acme Anchor", &set)
+            .await
+            .unwrap();
+        assert_eq!(set.xero_id.as_deref(), Some("contact-1"));
+
+        let untouched = update_entity(
+            &surreal,
+            row.id,
+            "Acme Anchor",
+            &edit("Beta LLC", type_id, jur_id),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            untouched.xero_id.as_deref(),
+            Some("contact-1"),
+            "an omitted xero_id leaves the stored contact alone"
+        );
+
+        let mut cleared = edit("Beta LLC", type_id, jur_id);
+        cleared.xero_id = Some(String::new());
+        let cleared = update_entity(&surreal, row.id, "Acme Anchor", &cleared)
+            .await
+            .unwrap();
+        assert_eq!(cleared.xero_id, None, "a blank submission clears it");
     }
 
     #[tokio::test]
@@ -1018,6 +1079,7 @@ mod tests {
                 name: None,
                 entity_type_id: None,
                 jurisdiction_id: Some(other_jurisdiction),
+                xero_id: None,
             },
         )
         .await

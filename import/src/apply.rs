@@ -289,6 +289,9 @@ async fn upsert_entity(
                 jurisdiction_id: row.jurisdiction_id,
                 phone: next_phone,
                 url: next_url,
+                // The bulk-contact payload carries no Xero id; an admin
+                // enters that by hand, and an import must not blank it out.
+                xero_id: row.xero_id.clone(),
                 // Carried, not recomputed: whether this row is the firm
                 // anchor was decided when it was created, and an import
                 // must not be able to promote or demote it.
@@ -307,6 +310,7 @@ async fn upsert_entity(
                 jurisdiction_id: jurisdiction.id,
                 phone,
                 url,
+                xero_id: None,
                 // An import must not be able to fork the firm's own row.
                 // The shipped default stands in for the configured
                 // anchor because this path has no configuration; a

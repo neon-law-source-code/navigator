@@ -447,6 +447,7 @@ async fn create_human_entity(
             jurisdiction_id,
             phone: None,
             url: None,
+            xero_id: None,
             // A solo client's `Human` entity is never the firm anchor.
             firm_anchor_key: None,
         },

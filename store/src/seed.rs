@@ -960,6 +960,7 @@ async fn update_entity_from_seed(
             name: Some(name),
             entity_type_id: Some(entity_type_id),
             jurisdiction_id: Some(jurisdiction_id),
+            xero_id: None,
         },
     )
     .await
@@ -2078,6 +2079,7 @@ fn new_entity(
         jurisdiction_id,
         phone: None,
         url: None,
+        xero_id: None,
         firm_anchor_key: crate::entity_commands::firm_anchor_key(FIRM_ENTITY_NAME, name),
     }
 }
@@ -3518,6 +3520,7 @@ records:
                 jurisdiction_id: original_jurisdiction.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -3830,6 +3833,7 @@ records:
                 jurisdiction_id: jurisdiction.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -3876,6 +3880,7 @@ records:
                 jurisdiction_id: jurisdiction.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -3889,6 +3894,7 @@ records:
                 jurisdiction_id: jurisdiction.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -4396,6 +4402,7 @@ records:
                 jurisdiction_id: uuid::Uuid::now_v7(),
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: Some(super::FIRM_ENTITY_NAME.to_lowercase()),
             },
         )

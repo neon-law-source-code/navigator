@@ -4116,6 +4116,7 @@ async fn seeded_entity_to_edit(
             jurisdiction_id: jur_id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7658,6 +7659,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_conflict() {
             jurisdiction_id: firm.jurisdiction_id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7751,6 +7753,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_blank_name() {
             jurisdiction_id: jurisdiction.id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7835,6 +7838,7 @@ async fn lawyer_entity_edit_form_includes_csrf() {
             jurisdiction_id: jurisdiction.id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7932,6 +7936,7 @@ async fn admin_entities_list_hides_delete_for_the_bootstrap_company() {
                 jurisdiction_id: jur.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -7987,6 +7992,7 @@ async fn admin_entities_list_multi_field_sort_keeps_first_field_primary() {
                 jurisdiction_id: jur.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -16980,6 +16986,7 @@ async fn entities_avatar_upload_writes_the_private_bucket_and_download_streams_i
             jurisdiction_id: jur.id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -18497,6 +18504,7 @@ async fn a_delete_racing_a_rename_into_the_firm_name_never_removes_the_anchor() 
                 jurisdiction_id: jur_id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -18606,6 +18614,7 @@ async fn a_rename_racing_a_rename_into_the_firm_name_never_loses_the_anchor() {
                 jurisdiction_id: jur_id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -18708,6 +18717,7 @@ async fn seed_playbook(
             jurisdiction_id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -19849,6 +19859,7 @@ async fn seed_firm_with_one_invoice(
         jurisdiction_id,
         phone: None,
         url: None,
+        xero_id: None,
         firm_anchor_key: None,
     };
     let firm_entity = store::entities::create(surreal, &new_entity("Rollup Practice LLC"))

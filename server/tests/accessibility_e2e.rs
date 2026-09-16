@@ -185,6 +185,17 @@ fn plan(path: &str) -> AuditPlan {
     if path.ends_with("/certificate") {
         return AuditPlan::Skip("the POST-only certificate request handler");
     }
+    // Anonymous lead capture (`portal::lead_capture::routes`) is a `POST`-only
+    // write, and the form a visitor actually fills in is rendered *on* the
+    // marketing pages this gate already audits. A `GET /leads` is a 405, which
+    // renders no `main` at all — so auditing it does not report a contrast
+    // defect, it hangs until `assert_route_passes_axe_at`'s ten-second wait
+    // gives up. That is the shape every POST-only route takes here, and it is
+    // why a write handler has to be skipped by name rather than left to fall
+    // through into `Audit`.
+    if path == "/leads" {
+        return AuditPlan::Skip("the POST-only lead-capture write handler");
+    }
     if let Some((_, urls)) = PARAMETERISED.iter().find(|(declared, _)| *declared == path) {
         return AuditPlan::Audit(urls.iter().map(|u| (*u).to_string()).collect());
     }
@@ -590,6 +601,48 @@ fn every_declared_public_path_is_classified() {
         "the derived surface collapsed — {} URLs is far below what the site \
          declares, so something is classifying real pages as skips",
         audited.len(),
+    );
+}
+
+/// A declared path whose only method is `POST` is skipped, not audited.
+///
+/// `neon::PUBLIC_PATHS` is a list of paths with no methods attached, so a
+/// write-only route looks exactly like a page to the classifier and falls
+/// through into `Audit` unless something names it. What follows is not a
+/// readable failure: the browser lands on a 405, no `main` ever renders, and
+/// the route's audit spends the full ten-second wait before panicking about a
+/// missing selector — a message that says nothing about the method.
+///
+/// `every_declared_public_path_is_classified` cannot catch this; it only
+/// rejects a *parameterised* path with no fixture. So the two write handlers
+/// the public surface declares are pinned here by name, in the cheap workspace
+/// pass, rather than discovered in a KIND job on the next deploy.
+#[test]
+fn a_post_only_declared_path_is_skipped_rather_than_audited() {
+    for (path, expected) in [
+        ("/leads", "the POST-only lead-capture write handler"),
+        (
+            "/workshops/use-the-navigator/certificate",
+            "the POST-only certificate request handler",
+        ),
+    ] {
+        assert_eq!(
+            plan(path),
+            AuditPlan::Skip(expected),
+            "`{path}` has no GET handler, so auditing it waits out the selector \
+             timeout instead of reporting anything"
+        );
+    }
+
+    // And the skip is real at the declaration it comes from, not just for a
+    // literal this test typed.
+    assert!(
+        neon::PUBLIC_PATHS.contains(&"/leads"),
+        "`/leads` left the declared public surface — drop its arm in `plan` too"
+    );
+    assert!(
+        !audit_urls(neon::PUBLIC_PATHS).contains(&"/leads".to_string()),
+        "`/leads` is back in the audited set"
     );
 }
 

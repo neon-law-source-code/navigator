@@ -83,6 +83,6 @@ fn every_shipped_code_has_an_entry_in_validate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_ninety_eight() {
-    assert_eq!(all_shipped_codes().len(), 98);
+fn the_shipped_code_count_is_ninety_nine() {
+    assert_eq!(all_shipped_codes().len(), 99);
 }

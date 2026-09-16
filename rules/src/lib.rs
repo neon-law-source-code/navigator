@@ -35,6 +35,7 @@ pub mod f119;
 pub mod f120;
 pub mod f121;
 pub mod f122;
+pub mod f123;
 pub mod frontmatter;
 pub mod kind;
 pub mod links;
@@ -131,6 +132,7 @@ pub use f119::{
 pub use f120::F120BodyStateGrounding;
 pub use f121::F121GeneratePdfPrecedesSignature;
 pub use f122::F122QuestionnaireStateIsRead;
+pub use f123::F123HarvardOutlineRequired;
 pub use kind::Kind;
 pub use m001::M001HeadingIncrement;
 pub use m003::M003HeadingStyle;
@@ -331,6 +333,9 @@ pub fn description_for_code(code: &str) -> &'static str {
         "N120" => "Template body placeholder must name a declared questionnaire state",
         "N121" => "A `sent_for_signature` state must be preceded by a `generate_pdf` state",
         "N122" => "Every declared questionnaire state must be read by the template body",
+        "N123" => {
+            "Agreement, pleading, and engagement-letter bodies must carry a Harvard outline"
+        }
         "E001" => "Event must declare both a `starts_at` timestamp and a `timezone`",
         "E002" => "A file is either an event or a notation template, never both",
         "E004" => "Event must declare a `luma_url` to check it out on Luma",

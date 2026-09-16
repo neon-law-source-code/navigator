@@ -276,7 +276,7 @@ workflow:
   END: {}
 ---
 
-Body v1.
+Body v1. Prepared for {{person__client.name}}.
 ";
     std::fs::write(&path, body_v1).unwrap();
 

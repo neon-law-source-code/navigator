@@ -1928,3 +1928,78 @@ fn validate_fix_preserves_a_standalone_raw_text_closing_tag() {
         "a closing raw-text tag was folded into prose"
     );
 }
+
+/// `N122` — the converse of `N115`/`N120`: a declared questionnaire state
+/// that the body never reads.
+///
+/// Driven through the real binary on the shipped onboarding letter, because
+/// the defect this rule exists for is a rewrite that drops a reference and
+/// leaves the state machine alone. The unmodified letter is clean; deleting
+/// its one `{{custom_text__engagement_scope}}` leaves a question the
+/// respondent is still asked whose answer now reaches no document, and
+/// `validate` must fail on it rather than report zero errors.
+#[test]
+fn validate_flags_a_questionnaire_state_the_body_stopped_reading() {
+    let source = fs::read_to_string(
+        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
+    )
+    .unwrap();
+    assert!(
+        source.contains("{{custom_text__engagement_scope}}"),
+        "the letter must read the state this test removes",
+    );
+
+    let clean = TempDir::new().unwrap();
+    write(
+        clean.path(),
+        "templates/notations/neon_law/shared/onboarding_letter.md",
+        &source,
+    );
+    navigator()
+        .arg("validate")
+        .arg(clean.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+
+    let rewritten = TempDir::new().unwrap();
+    write(
+        rewritten.path(),
+        "templates/notations/neon_law/shared/onboarding_letter.md",
+        &source.replace(
+            "> {{custom_text__engagement_scope}}",
+            "> The scope is agreed in writing.",
+        ),
+    );
+    navigator()
+        .arg("validate")
+        .arg(rewritten.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("N122"))
+        .stdout(str::contains("custom_text__engagement_scope"));
+}
+
+/// A `output: form` notation is exempt: its answers fill a named `AcroForm`'s
+/// fields, a map the `rules` crate cannot see. The shipped N-400 asks a
+/// good-moral-character question that reaches a lawyer rather than the
+/// intake summary beside it, and that is not a defect.
+#[test]
+fn validate_exempts_a_form_notation_from_the_unread_state_check() {
+    let dir = TempDir::new().unwrap();
+    let rel = "templates/notations/forms/united_states/federal/uscis/us__naturalization.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    assert!(
+        source.contains("output: form")
+            && !source.contains("{{custom_yes_no__good_moral_character"),
+        "the fixture must be a form notation with a state its body does not read",
+    );
+    write(dir.path(), rel, &source);
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+}

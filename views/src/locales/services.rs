@@ -159,6 +159,12 @@ pub struct ServiceCopy {
     #[serde(default)]
     pub members_only: bool,
     pub name: String,
+    /// When set, this service is a Notation package: several pieces of work
+    /// sold together for less than buying each included Notation on its own.
+    /// The package fee is this service's own fee; the à la carte total is
+    /// derived from [`ServicePackage::of`] and [`ServicePackage::extras`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<ServicePackage>,
     /// What the fee is charged per — `per form`, `per contract`, `per year`.
     pub period: String,
     /// Other services in this catalog worth reading next.
@@ -186,7 +192,50 @@ impl ServiceCopy {
         .chain(self.amount.as_deref().map(|amount| ("amount", amount)))
         .chain(self.includes.iter().map(|line| ("includes", line.as_str())))
         .chain(self.keywords.iter().map(|word| ("keywords", word.as_str())))
+        .chain(self.package.iter().flat_map(|package| {
+            package
+                .extras
+                .iter()
+                .map(|extra| ("package.extras.name", extra.name.as_str()))
+        }))
     }
+}
+
+/// One named piece of work a package includes that is not sold as its own
+/// catalog service. Its amount is the à la carte starting fee used to
+/// compute the package comparison.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageExtra {
+    pub amount: String,
+    pub name: String,
+}
+
+/// The members of a Notation package.
+///
+/// [`Self::of`] names other services in this catalog; [`Self::extras`] names
+/// work the package includes that has no row of its own. Together they are
+/// the à la carte comparison. A page never authors a "discount" figure —
+/// it is derived from these fees and the package's own fee, so the two
+/// cannot drift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ServicePackage {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extras: Vec<PackageExtra>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub of: Vec<String>,
+}
+
+/// The resolved à la carte comparison a package publishes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageQuote {
+    /// The names of the included Notations, in publication order: catalog
+    /// members first, then extras.
+    pub members: Vec<String>,
+    /// How much less the package is than buying each included Notation on
+    /// its own, as a dollar figure such as `$6,000`.
+    pub save: String,
+    /// The sum of the included starting fees, as a dollar figure.
+    pub separate_fee: String,
 }
 
 /// The services catalog document.
@@ -239,6 +288,9 @@ impl ServicesCatalog {
                         service.id
                     ));
                 }
+            }
+            if service.package.is_some() {
+                self.validate_package(service, &ids)?;
             }
         }
         Ok(())
@@ -346,6 +398,130 @@ impl ServicesCatalog {
     #[must_use]
     pub fn fee<'a>(&'a self, service: &'a ServiceCopy) -> &'a str {
         service.amount.as_deref().unwrap_or(self.flat_fee.as_str())
+    }
+
+    /// The à la carte comparison for a Notation package, if `service` is one.
+    ///
+    /// Infallible for a catalog that has passed [`Self::parse`]: validation
+    /// has already proved every member exists, every fee is a payable
+    /// figure, and the package costs less than buying the members one at a
+    /// time.
+    #[must_use]
+    pub fn package_quote(&self, service: &ServiceCopy) -> Option<PackageQuote> {
+        let package = service.package.as_ref()?;
+        let mut members = Vec::new();
+        let mut separate_cents: i64 = 0;
+        for id in &package.of {
+            let member = self.get(id)?;
+            members.push(member.name.clone());
+            separate_cents = separate_cents.saturating_add(fee_cents(self.fee(member))?);
+        }
+        for extra in &package.extras {
+            members.push(extra.name.clone());
+            separate_cents = separate_cents.saturating_add(fee_cents(&extra.amount)?);
+        }
+        let package_cents = fee_cents(self.fee(service))?;
+        let save_cents = separate_cents.saturating_sub(package_cents);
+        Some(PackageQuote {
+            members,
+            save: format_fee_cents(save_cents),
+            separate_fee: format_fee_cents(separate_cents),
+        })
+    }
+
+    fn validate_package(&self, service: &ServiceCopy, ids: &BTreeSet<&str>) -> Result<(), String> {
+        let Some(package) = service.package.as_ref() else {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` has no package to validate",
+                service.id
+            ));
+        };
+        if package.of.is_empty() && package.extras.is_empty() {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` is a package with no members; set `package.of` or \
+                 `package.extras`",
+                service.id
+            ));
+        }
+        if package.of.len() + package.extras.len() < 2 {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` is a package of one Notation; a package compares \
+                 at least two",
+                service.id
+            ));
+        }
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        let mut separate_cents: i64 = 0;
+        for id in &package.of {
+            if id == &service.id {
+                return Err(format!(
+                    "{SERVICES_CATALOG_STEM}: `{}` lists itself as a package member",
+                    service.id
+                ));
+            }
+            if !ids.contains(id.as_str()) {
+                return Err(format!(
+                    "{SERVICES_CATALOG_STEM}: `{}` is a package of `{id}`, which this catalog \
+                     does not define",
+                    service.id
+                ));
+            }
+            if !seen.insert(id.as_str()) {
+                return Err(format!(
+                    "{SERVICES_CATALOG_STEM}: `{}` lists `{id}` twice as a package member",
+                    service.id
+                ));
+            }
+            let Some(member) = self.get(id) else {
+                return Err(format!(
+                    "{SERVICES_CATALOG_STEM}: `{}` is a package of `{id}`, which this catalog \
+                     does not define",
+                    service.id
+                ));
+            };
+            if member.package.is_some() {
+                return Err(format!(
+                    "{SERVICES_CATALOG_STEM}: `{}` is a package of `{id}`, which is itself a \
+                     package",
+                    service.id
+                ));
+            }
+            let Some(member_cents) = fee_cents(self.fee(member)) else {
+                return Err(format!(
+                    "{SERVICES_CATALOG_STEM}: `{}.package.of` member `{id}` has no payable fee",
+                    service.id
+                ));
+            };
+            separate_cents = separate_cents.saturating_add(member_cents);
+        }
+        for (index, extra) in package.extras.iter().enumerate() {
+            check_fee(
+                &format!("{}.package.extras[{index}].amount", service.id),
+                &extra.amount,
+            )?;
+            let Some(extra_cents) = fee_cents(&extra.amount) else {
+                return Err(format!(
+                    "{SERVICES_CATALOG_STEM}: `{}.package.extras[{index}].amount` has no payable \
+                     fee",
+                    service.id
+                ));
+            };
+            separate_cents = separate_cents.saturating_add(extra_cents);
+        }
+        let Some(package_cents) = fee_cents(self.fee(service)) else {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` has no payable package fee",
+                service.id
+            ));
+        };
+        if separate_cents <= package_cents {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` does not cost less than buying each included \
+                 Notation on its own",
+                service.id
+            ));
+        }
+        Ok(())
     }
 
     /// The bytes an integrity digest covers: compact JSON with every object
@@ -457,6 +633,58 @@ fn check_fee(key: &str, value: &str) -> Result<(), String> {
         return refuse("is not a fee a reader can pay; a published fee is greater than zero");
     }
     Ok(())
+}
+
+/// Integer minor units for a fee that has already passed [`check_fee`].
+///
+/// Commas are grouping, not a decimal. Cents, when present, are exactly two
+/// digits. The return is `None` only for a string [`check_fee`] would already
+/// have refused.
+fn fee_cents(value: &str) -> Option<i64> {
+    let amount = value.strip_prefix('$')?;
+    let compact: String = amount
+        .chars()
+        .filter(|character| *character != ',')
+        .collect();
+    let (whole, frac) = match compact.split_once('.') {
+        Some((whole, frac)) => (whole, frac),
+        None => (compact.as_str(), "00"),
+    };
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || frac.len() != 2
+        || !frac.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let dollars: i64 = whole.parse().ok()?;
+    let cents: i64 = frac.parse().ok()?;
+    Some(dollars.saturating_mul(100).saturating_add(cents))
+}
+
+/// A dollar figure with comma grouping, matching the catalog's published
+/// form: `$6,000`, `$100`, `$12.50`.
+fn format_fee_cents(cents: i64) -> String {
+    let sign = if cents < 0 { "-" } else { "" };
+    let cents = cents.unsigned_abs();
+    let dollars = cents / 100;
+    let frac = cents % 100;
+    let grouped = {
+        let digits = dollars.to_string();
+        let mut out = String::new();
+        for (index, character) in digits.chars().rev().enumerate() {
+            if index > 0 && index % 3 == 0 {
+                out.push(',');
+            }
+            out.push(character);
+        }
+        out.chars().rev().collect::<String>()
+    };
+    if frac == 0 {
+        format!("{sign}${grouped}")
+    } else {
+        format!("{sign}${grouped}.{frac:02}")
+    }
 }
 
 #[cfg(test)]
@@ -760,5 +988,92 @@ services:
                 serde_yaml::from_str(category.as_str()).expect("category round-trips");
             assert_eq!(round_trip, *category);
         }
+    }
+
+    fn packaged_fixture() -> String {
+        fixture().replace(
+            "    keywords:\n      - LLC\n",
+            "    keywords:\n      - LLC\n    package:\n      of:\n        - nv-address\n      extras:\n        - name: An agreement between the owners\n          amount: $50\n",
+        )
+    }
+
+    /// A package's advertised save is derived from published fees, never
+    /// authored, so a $50 package of a $350 service plus a $50 extra is
+    /// $350 less — `$400` bought separately, `$50` as the package.
+    #[test]
+    fn a_package_quote_is_derived_from_member_fees() {
+        let catalog = ServicesCatalog::parse(&packaged_fixture()).expect("packaged fixture");
+        let llc = catalog.get("llc-file").expect("llc-file");
+        let quote = catalog.package_quote(llc).expect("llc-file is a package");
+        assert_eq!(quote.separate_fee, "$400");
+        assert_eq!(quote.save, "$350");
+        assert_eq!(
+            quote.members,
+            vec![
+                "Nevada business address".to_string(),
+                "An agreement between the owners".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_package_of_an_unknown_service_is_refused() {
+        let err = ServicesCatalog::parse(
+            &packaged_fixture().replace("        - nv-address\n", "        - trust\n"),
+        )
+        .expect_err("dangling package member");
+        assert!(
+            err.contains("is a package of `trust`, which this catalog does not define"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_package_of_itself_is_refused() {
+        let err = ServicesCatalog::parse(
+            &packaged_fixture().replace("        - nv-address\n", "        - llc-file\n"),
+        )
+        .expect_err("self package");
+        assert!(err.contains("lists itself as a package member"), "{err}");
+    }
+
+    #[test]
+    fn a_package_priced_at_or_above_its_members_is_refused() {
+        // llc-file is $50. Drop nv-address to $25 and add a $25 extra: $50
+        // bought separately against a $50 package, which is not less.
+        let err = ServicesCatalog::parse(
+            &fixture()
+                .replace(
+                    "    keywords:\n      - LLC\n",
+                    "    keywords:\n      - LLC\n    package:\n      of:\n        - nv-address\n      extras:\n        - name: A second address\n          amount: $25\n",
+                )
+                .replace("    amount: $350\n", "    amount: $25\n"),
+        )
+        .expect_err("package not cheaper");
+        assert!(
+            err.contains("does not cost less than buying each included Notation on its own"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_package_of_one_notation_is_refused() {
+        let err = ServicesCatalog::parse(&fixture().replace(
+            "    keywords:\n      - LLC\n",
+            "    keywords:\n      - LLC\n    package:\n      of:\n        - nv-address\n",
+        ))
+        .expect_err("one member");
+        assert!(err.contains("is a package of one Notation"), "{err}");
+    }
+
+    #[test]
+    fn grouped_whole_dollar_fees_round_trip_as_cents() {
+        assert_eq!(fee_cents("$3,000"), Some(300_000));
+        assert_eq!(fee_cents("$100"), Some(10_000));
+        assert_eq!(fee_cents("$12.50"), Some(1_250));
+        assert_eq!(format_fee_cents(300_000), "$3,000");
+        assert_eq!(format_fee_cents(10_000), "$100");
+        assert_eq!(format_fee_cents(1_250), "$12.50");
+        assert_eq!(format_fee_cents(600_000), "$6,000");
     }
 }

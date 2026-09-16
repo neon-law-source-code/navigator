@@ -179,7 +179,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         body.contains("fm-hero__title"),
         "the page states its offering in an h1: {body}"
     );
-    for figure in ["$365", "/year", "$1 a day"] {
+    for figure in ["$365", "/year", "$1 a day", "$200"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     assert!(
@@ -209,6 +209,8 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         "Warm, clear help.",
         "We cannot promise that every company will remove every record.",
         "Choose whether to opt in.",
+        "$200 retainer",
+        "60 days before your daily credits run out",
     ] {
         assert!(body.contains(promise), "missing {promise}: {body}");
     }
@@ -267,6 +269,8 @@ async fn site_host_serves_the_legal_services_page() {
         "Business-plan access is $10 a day.",
         "An unchanged template can be sent for signature for $5.",
         "A Notation we prepare or revise begins at $100.",
+        "Estate planning starts at $3,000.",
+        "A Notation package costs less than buying each included Notation on its own.",
         "free consultation",
         "You do not need a subscription for that first conversation.",
         "Tell us what you need.",
@@ -555,9 +559,13 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
         body.contains("Access and work, priced separately"),
         "the structure: {body}"
     );
-    for figure in ["$10", "/day", "$5", "$100"] {
+    for figure in ["$10", "/day", "$5", "$100", "$5,000"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
+    assert!(
+        body.contains("60 days before your daily credits run out"),
+        "the Business plan states the re-up notice: {body}"
+    );
     for removed in [
         "Priced separately",
         "Contracts with revisions",
@@ -984,10 +992,12 @@ async fn plans_and_services_publish_real_fees() {
         // cannot act on.
         (
             "/services",
-            vec!["$100", "$350", "per year", "$250", "$500", "$750", "$5"],
+            vec![
+                "$100", "$350", "per year", "$250", "$500", "$750", "$5", "$3,000",
+            ],
         ),
-        ("/business", vec!["$10", "$100", "$5"]),
-        ("/personal", vec!["$365", "$1"]),
+        ("/business", vec!["$10", "$100", "$5", "$5,000"]),
+        ("/personal", vec!["$365", "$1", "$200"]),
     ] {
         let body = body_string(anon_get(&app, priced).await).await;
         assert!(

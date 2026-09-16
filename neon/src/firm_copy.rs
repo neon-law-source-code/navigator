@@ -67,8 +67,19 @@ mod firm_copy_tests {
                 if service.state_fee {
                     badges.push_str(&services.state_fee_badge);
                 }
+                let package = service.package.as_ref().map_or_else(String::new, |quote| {
+                    format!(
+                        "{} {} {} {} {} {}",
+                        services.package_badge,
+                        services.package_separate_label,
+                        quote.separate_fee,
+                        quote.save,
+                        services.package_save_suffix,
+                        quote.members.join(" "),
+                    )
+                });
                 format!(
-                    "{} {} {} {} {} {} {} {badges}",
+                    "{} {} {} {} {} {} {} {badges} {package}",
                     service.item,
                     service.name,
                     service.category,
@@ -82,7 +93,7 @@ mod firm_copy_tests {
             .join(" ");
         let description = services.description.clone().unwrap_or_default();
         format!(
-            "{} {} {description} {} {} {} {} {} {} {} {entries}",
+            "{} {} {description} {} {} {} {} {} {} {} {} {} {} {entries}",
             services.overline,
             services.heading,
             services.search_label,
@@ -90,6 +101,9 @@ mod firm_copy_tests {
             services.submit_label,
             services.fee_label,
             services.includes_label,
+            services.package_badge,
+            services.package_separate_label,
+            services.package_save_suffix,
             services.empty,
             services.empty_help,
         )
@@ -474,6 +488,8 @@ mod firm_copy_tests {
         assert!(text.contains("business-plan access is $10 a day"));
         assert!(text.contains("unchanged template can be sent for signature for $5"));
         assert!(text.contains("notation we prepare or revise begins at $100"));
+        assert!(text.contains("estate planning starts at $3,000"));
+        assert!(text.contains("notation package costs less than buying each included notation"));
         assert!(text.contains("government fees are separate"));
         assert!(text.contains("free consultation"));
         let schedule = schedule(&content);
@@ -488,6 +504,41 @@ mod firm_copy_tests {
             !trademark.members_only,
             "a trademark Notation is available a la carte"
         );
+        for estate in ["will", "estate-package", "trust"] {
+            let service = schedule
+                .services
+                .iter()
+                .find(|service| service.id == estate)
+                .unwrap_or_else(|| panic!("{estate} is on the schedule"));
+            assert_eq!(
+                service.fee, "$3,000",
+                "{estate} starts at $3,000: {}",
+                service.fee
+            );
+            assert_eq!(service.period, "starting fee");
+        }
+        let family_plan = schedule
+            .services
+            .iter()
+            .find(|service| service.id == "estate-package")
+            .expect("the family plan is a Notation package");
+        let quote = family_plan
+            .package
+            .as_ref()
+            .expect("estate-package publishes its à la carte comparison");
+        assert_eq!(quote.separate_fee, "$9,000");
+        assert_eq!(quote.save, "$6,000");
+        let setup = schedule
+            .services
+            .iter()
+            .find(|service| service.id == "llc-launch")
+            .expect("company setup is a Notation package");
+        let setup_quote = setup
+            .package
+            .as_ref()
+            .expect("llc-launch publishes its à la carte comparison");
+        assert_eq!(setup_quote.separate_fee, "$300");
+        assert_eq!(setup_quote.save, "$200");
     }
 
     /// Litigation and fractional GC stay off the one-time-matter schedule.

@@ -18,7 +18,10 @@
 # rest: contractions are expanded to match the register the firm already
 # publishes in `services.yaml`, and the trademark `period` reads `fees` rather
 # than the specimen's singular `fee`, because `fees` is the wording already
-# live on `/services`.
+# live on `/services`. Estate planning starting fees and Notation-package
+# membership are attorney-set: a will, family plan, or living trust starts at
+# $3,000, and a package's advertised save is derived from those published
+# figures rather than authored as a separate number.
 catalog_version: 1
 
 # What a `flat_fee` service costs. Both flat-fee kinds resolve to this one
@@ -76,6 +79,14 @@ services:
     flat_fee: form
     period: per form
     state_fee: true
+    package:
+      of:
+        - llc-file
+      extras:
+        - name: An agreement between the owners
+          amount: "$100"
+        - name: A federal tax ID for your business
+          amount: "$100"
     includes:
       - Set up your limited liability company
       - An agreement between the owners
@@ -198,8 +209,8 @@ services:
       Tell us who you want to leave things to. A lawyer prepares and reviews
       your will.
     category: estate
-    flat_fee: form
-    period: per form
+    amount: "$3,000"
+    period: starting fee
     state_fee: false
     includes:
       - Questions about your wishes
@@ -219,9 +230,17 @@ services:
       Make a will and choose who can handle your money and healthcare decisions
       if you can't.
     category: estate
-    flat_fee: form
-    period: per form
+    amount: "$3,000"
+    period: starting fee
     state_fee: false
+    package:
+      of:
+        - will
+      extras:
+        - name: A document naming someone to handle your finances
+          amount: "$3,000"
+        - name: Your wishes for medical care and who can make decisions for you
+          amount: "$3,000"
     includes:
       - A will
       - A document naming someone to handle your finances
@@ -240,8 +259,8 @@ services:
       Create a trust you can change during your lifetime, plus a will and the
       paperwork to put one Nevada property into the trust.
     category: estate
-    flat_fee: form
-    period: per form
+    amount: "$3,000"
+    period: starting fee
     state_fee: false
     includes:
       - A living trust you can change

@@ -30,7 +30,9 @@ bands:
         - text: >-
             . Business-plan access is $10 a day. An unchanged template can be
             sent for signature for $5. A Notation we prepare or revise begins
-            at $100. Government fees are separate.
+            at $100. Estate planning starts at $3,000. A Notation package
+            costs less than buying each included Notation on its own.
+            Government fees are separate.
       - - text: >-
             Each Notation has an agreed scope and price before work begins.
       - - text: "Have a dispute? Start with a "
@@ -44,7 +46,9 @@ bands:
     description: >-
       Choose the help you need. We will explain what it includes and what it
       costs before work starts. Government fees are separate. A Notation we
-      prepare or revise begins at $100.
+      prepare or revise begins at $100. Estate planning starts at $3,000.
+      A Notation package costs less than buying each included Notation on
+      its own.
     search_label: Search individual services
     search_placeholder: A contract, my business, a will, a dispute
     submit_label: Search
@@ -59,6 +63,9 @@ bands:
         query: dispute
     fee_label: Legal fee
     includes_label: What this includes
+    package_badge: Notation package
+    package_separate_label: Bought separately
+    package_save_suffix: less than buying each Notation on its own
     members_badge: Plan required
     state_fee_badge: Government fees cost extra
     empty: We could not find a match.

@@ -453,6 +453,43 @@
   line-height: 1.6;
 }
 
+.fm-services__package {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0;
+  padding: 0.75rem 0.875rem;
+  background: color-mix(in srgb, var(--nav-color-primary) 8%, var(--nav-color-surface));
+  border-radius: 0.5rem;
+}
+
+.fm-services__package-badge,
+.fm-services__package-separate,
+.fm-services__package-save {
+  margin: 0;
+}
+
+.fm-services__package-badge {
+  color: var(--nav-color-primary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fm-services__package-save {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.fm-services__package-members {
+  margin: 0.15rem 0 0;
+  padding-inline-start: 1.125rem;
+  color: var(--nav-color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 /* ---- Connected Project -------------------------------------------------- */
 
 .fm-band--project-network {

@@ -357,6 +357,13 @@ pub enum BandCopy {
         examples: Vec<SearchExampleCopy>,
         fee_label: String,
         includes_label: String,
+        /// The chip a Notation package carries.
+        package_badge: String,
+        /// How much less the package is than buying each included Notation
+        /// on its own, as a suffix after the saved figure.
+        package_save_suffix: String,
+        /// The label in front of the à la carte total on a package card.
+        package_separate_label: String,
         /// The chip a service requiring a plan carries.
         members_badge: String,
         /// The chip a service carrying a government charge carries. A

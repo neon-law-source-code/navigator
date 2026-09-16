@@ -41,9 +41,10 @@ bands:
     overline: Personal Legal Plan
     heading: One annual price
     description: >-
-      The Personal plan is $365 per year, $1 a day. Work outside the
-      plan and government fees cost extra. We will explain the cost before we
-      begin additional work.
+      The Personal plan is $365 per year, $1 a day. It requires a $200
+      retainer. We will ask you to add funds 60 days before your daily
+      credits run out. Work outside the plan and government fees cost extra.
+      We will explain the cost before we begin additional work.
     pricing_style: true
     items:
       - title: Personal plan
@@ -56,6 +57,8 @@ bands:
           - Help with federal and state tax filings
           - "{shared:personal_plan.included.data_removal}"
           - "{shared:personal_plan.included.credit_monitoring}"
+          - $200 retainer to start
+          - We ask you to add funds 60 days before daily credits run out
         href: "mailto:{firm_email}"
         href_label: Contact us
         day_rate_bill: 1

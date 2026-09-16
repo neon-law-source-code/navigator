@@ -109,6 +109,18 @@ pub struct Service {
     pub members_only: bool,
     /// Whether a government body charges its own fee on top.
     pub state_fee: bool,
+    /// When set, this service is a Notation package and these figures are
+    /// the à la carte comparison already resolved from the catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<ServicePackageQuote>,
+}
+
+/// The resolved à la carte comparison a Notation package publishes.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ServicePackageQuote {
+    pub members: Vec<String>,
+    pub save: String,
+    pub separate_fee: String,
 }
 
 impl Service {
@@ -179,6 +191,13 @@ pub struct ServicesBand {
     pub examples: Vec<SearchExample>,
     pub fee_label: String,
     pub includes_label: String,
+    /// The chip a Notation package carries.
+    pub package_badge: String,
+    /// How much less the package is than buying each included Notation on
+    /// its own, as a suffix after the saved figure.
+    pub package_save_suffix: String,
+    /// The label in front of the à la carte total on a package card.
+    pub package_separate_label: String,
     /// The chip a service requiring a plan carries.
     pub members_badge: String,
     /// The chip a service with a government charge carries. This is a
@@ -315,6 +334,27 @@ pub fn ServicesSearch(band: ServicesBand, query: String) -> Element {
                                     strong { class: "fm-services__fee-amount", "{service.fee}" }
                                     span { class: "fm-services__fee-period", "{service.period}" }
                                 }
+                                if let Some(package) = service.package.as_ref() {
+                                    div { class: "fm-services__package",
+                                        p { class: "fm-services__package-badge", "{band.package_badge}" }
+                                        p { class: "fm-services__package-separate",
+                                            span { class: "fm-services__fee-label", "{band.package_separate_label}" }
+                                            strong { "{package.separate_fee}" }
+                                        }
+                                        p { class: "fm-services__package-save",
+                                            strong { "{package.save}" }
+                                            " "
+                                            "{band.package_save_suffix}"
+                                        }
+                                        if !package.members.is_empty() {
+                                            ul { class: "fm-services__package-members",
+                                                for member in package.members.iter() {
+                                                    li { "{member}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 if service.members_only || service.state_fee {
                                     ul { class: "fm-chips",
                                         if service.members_only {
@@ -363,6 +403,7 @@ mod tests {
             period: "per form".to_string(),
             members_only: false,
             state_fee: false,
+            package: None,
         }
     }
 
@@ -507,6 +548,16 @@ mod tests {
         trademark.members_only = true;
         trademark.state_fee = true;
         trademark.period = "+ government filing fees".to_string();
+        let mut setup = llc();
+        setup.package = Some(ServicePackageQuote {
+            members: vec![
+                "Start a company".to_string(),
+                "An agreement between the owners".to_string(),
+                "A federal tax ID for your business".to_string(),
+            ],
+            save: "$200".to_string(),
+            separate_fee: "$300".to_string(),
+        });
         ServicesBand {
             anchor: "fees".to_string(),
             overline: "Individual services".to_string(),
@@ -521,12 +572,15 @@ mod tests {
             }],
             fee_label: "Legal fee".to_string(),
             includes_label: "What this includes".to_string(),
+            package_badge: "Notation package".to_string(),
+            package_separate_label: "Bought separately".to_string(),
+            package_save_suffix: "less than buying each Notation on its own".to_string(),
             members_badge: "Plan required".to_string(),
             state_fee_badge: "Government fees cost extra".to_string(),
             empty: "We could not find a match.".to_string(),
             empty_help: "Tell us what you need.".to_string(),
             clear_label: "Show all services".to_string(),
-            services: vec![llc(), trademark],
+            services: vec![setup, trademark],
         }
     }
 
@@ -636,6 +690,28 @@ mod tests {
             !unflagged.contains("Government fees cost extra"),
             "{unflagged}"
         );
+    }
+
+    /// A Notation package prints the à la carte total and the derived save,
+    /// and a service that is not a package does not.
+    #[test]
+    fn a_package_card_prints_the_derived_save() {
+        let packaged = render_with("llc");
+        assert!(packaged.contains("Notation package"), "{packaged}");
+        assert!(packaged.contains("Bought separately"), "{packaged}");
+        assert!(packaged.contains("$300"), "{packaged}");
+        assert!(packaged.contains("$200"), "{packaged}");
+        assert!(
+            packaged.contains("less than buying each Notation on its own"),
+            "{packaged}"
+        );
+        assert!(
+            packaged.contains("An agreement between the owners"),
+            "{packaged}"
+        );
+        let unflagged = render_with("trademark");
+        assert!(!unflagged.contains("Notation package"), "{unflagged}");
+        assert!(!unflagged.contains("Bought separately"), "{unflagged}");
     }
 
     /// The result count is announced, so a filter that shortens the list says

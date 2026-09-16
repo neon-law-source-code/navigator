@@ -367,6 +367,13 @@ fn service(
         period: record.period.clone(),
         members_only: record.members_only,
         state_fee: record.state_fee,
+        package: catalog.package_quote(record).map(|quote| {
+            webapp::services_search::ServicePackageQuote {
+                members: quote.members,
+                save: quote.save,
+                separate_fee: quote.separate_fee,
+            }
+        }),
     }
 }
 
@@ -387,6 +394,9 @@ fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCat
         examples,
         fee_label,
         includes_label,
+        package_badge,
+        package_save_suffix,
+        package_separate_label,
         members_badge,
         state_fee_badge,
         empty,
@@ -413,6 +423,9 @@ fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCat
             .collect(),
         fee_label,
         includes_label,
+        package_badge,
+        package_save_suffix,
+        package_separate_label,
         members_badge,
         state_fee_badge,
         empty,
@@ -860,6 +873,18 @@ mod tests {
             will.matches("family"),
             "estate work is findable by `family`"
         );
+        assert_eq!(will.fee, "$3,000");
+        let family_plan = band
+            .services
+            .iter()
+            .find(|service| service.id == "estate-package")
+            .expect("estate-package renders");
+        let quote = family_plan
+            .package
+            .as_ref()
+            .expect("estate-package is a Notation package");
+        assert_eq!(quote.separate_fee, "$9,000");
+        assert_eq!(quote.save, "$6,000");
     }
 
     /// The search finds services by the words a reader would actually type,
@@ -940,6 +965,8 @@ mod tests {
         for benefit in [
             "Contract-library access",
             "Name Neon Law as your counsel",
+            "$5,000 retainer to start",
+            "60 days before daily credits run out",
             "unchanged template for signature at $5",
             "Notations for prepared or revised documents start at $100",
             "One agreed scope and price for each Notation",
@@ -1006,6 +1033,14 @@ mod tests {
         assert!(plan
             .features
             .contains(&"Optional credit monitoring".to_string()));
+        assert!(plan
+            .features
+            .iter()
+            .any(|feature| feature.contains("$200 retainer")));
+        assert!(plan
+            .features
+            .iter()
+            .any(|feature| feature.contains("60 days before daily credits run out")));
         let day_rate = content.bands.iter().find_map(|band| match band {
             webapp::marketing_page::Band::Cards { items, .. } => {
                 items.first().and_then(|card| card.day_rate.clone())

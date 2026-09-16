@@ -57,7 +57,6 @@ const LISTING_PAGES: &[(&str, &str)] = &[
     ("/app/admin/templates", "Templates"),
     ("/app/admin/questions", "Questions"),
     ("/app/lawyer/notations", "Notations"),
-    ("/app/outline", "Outline stage"),
     ("/app/lawyer/answers", "Answers"),
     ("/app/admin/addresses", "Addresses"),
     ("/app/admin/mailrooms", "Mailrooms"),

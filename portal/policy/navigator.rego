@@ -135,15 +135,6 @@ allow if {
     is_authenticated(input.session)
 }
 
-# /app/outline is the bundled Harvard-outline recording stage. Lawyer-tier
-# only. A notation the firm has given a client is a different page
-# (`/app/projects/{code}/{notation_id}/outline`) and rides the matter-surface
-# rule above; this catalog is firm teaching material, not a client's letter.
-allow if {
-    input.path == ["app", "outline"]
-    is_lawyer(input.session)
-}
-
 # Brand presentation writes (ENG-586), named explicitly rather than resting
 # on the Owner/Admin route bypass — the same convention every other
 # `/app/api` write follows. `store::brands`' own `authorize` is what actually

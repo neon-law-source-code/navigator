@@ -245,9 +245,18 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   their own here: both ride rules this file already asserts by shape,
     //   not by resource name.
     // 451 + 11 = 462.
+    //
+    // − 4 for deprecating the bundled Harvard-outline catalog at `/app/outline`.
+    //   It read no store and served no matter — narrating a notation now lives
+    //   only bound to a real matter, at `/app/projects/{code}/{id}/outline`,
+    //   which rides the existing matter-surface rule and needs no rule of its
+    //   own. The four `/app/outline` admission cases (Lawyer admitted; Clerk,
+    //   client, and anonymous denied) no longer describe anything this policy
+    //   decides.
+    // 462 − 4 = 458.
     assert_eq!(
         test_names.len(),
-        462,
+        458,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

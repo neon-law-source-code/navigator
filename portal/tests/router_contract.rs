@@ -60,7 +60,6 @@ const CONTRACT: &[(&str, Access)] = &[
     // `portal/tests/project_portal_route.rs`.
     ("/app/projects/some-code/portal", Access::ProtectedHuman),
     ("/app/lawyer", Access::ProtectedHuman),
-    ("/app/outline", Access::ProtectedHuman),
     ("/app/admin", Access::ProtectedHuman),
     // The Owner/Admin matter directory (ENG-221). Listed beside the desk root
     // rather than inferred from it: which authenticated tiers reach it is the
@@ -304,6 +303,21 @@ async fn the_retired_lawyer_prefix_is_not_served() {
     assert!(
         !portal::RESERVED_PATH_PREFIXES.contains(&"/lawyer"),
         "a retired prefix must not stay reserved against a host"
+    );
+}
+
+/// The bundled Harvard-outline recording stage is deprecated. It read no
+/// store and served no matter — narrating a notation now lives only bound to
+/// a real matter, at `/app/projects/{code}/{id}/outline`
+/// ([`portal::dioxus_app::NOTATION_OUTLINE_PATH`]).
+#[tokio::test]
+async fn the_bundled_outline_stage_is_not_routed() {
+    let app = portal::router(contract_state().await);
+
+    assert_eq!(
+        anonymous_get(&app, "/app/outline").await.status(),
+        StatusCode::NOT_FOUND,
+        "/app/outline was deprecated; the portal must not serve it"
     );
 }
 

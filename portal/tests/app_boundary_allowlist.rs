@@ -59,7 +59,6 @@ fn dioxus_app_pages() -> Vec<String> {
         pages::LAWYER_ENTITY_TYPES_PATH,
         pages::PROJECTS_PATH,
         pages::LAWYER_DASHBOARD_PATH,
-        pages::APP_OUTLINE_PATH,
         pages::NOTATION_OUTLINE_PATH,
         pages::APP_FORMS_PATH,
         pages::PROJECT_DETAIL_PATH,

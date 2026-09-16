@@ -1404,11 +1404,6 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
     );
-    let dioxus_harvard_outline = dioxus_app::harvard_outline_router(
-        state.sessions.clone(),
-        state.policy.clone(),
-        state.auth.clone(),
-    );
     let dioxus_notation_outline = dioxus_app::notation_outline_router(
         state.surreal.clone(),
         state.storage.clone(),
@@ -1779,7 +1774,6 @@ pub fn bootstrap(
         // The lawyer workbench (#956 Phase 4) renders through Dioxus at `/app/lawyer`,
         // replacing the dashboard.
         dioxus_lawyer_dashboard,
-        dioxus_harvard_outline,
         dioxus_notation_outline,
         dioxus_playbooks,
         dioxus_playbook_new,

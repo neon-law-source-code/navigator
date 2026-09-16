@@ -50,6 +50,7 @@ pub(crate) const TABLE: &str = "notation";
 const PERSON_TABLE: &str = "person";
 const ENTITY_TABLE: &str = "entity";
 const TEMPLATE_TABLE: &str = "template";
+const NOTATION_PACKAGE_TABLE: &str = "notation_package";
 
 /// Captive client recipient: signs embedded inside Neon Law Navigator (no
 /// email). The historical retainer-walk default.
@@ -70,6 +71,9 @@ pub const DELIVERY_EMAILED: &str = "emailed";
 pub struct Notation {
     pub id: Uuid,
     pub template_id: Uuid,
+    /// The package this notation belongs to. A package groups several
+    /// templates into one client-facing legal deliverable.
+    pub package_id: Option<Uuid>,
     pub person_id: Uuid,
     pub entity_id: Option<Uuid>,
     /// Every Notation belongs to exactly one Project — the glossary's
@@ -97,6 +101,7 @@ pub struct Notation {
 struct NotationRow {
     id: surrealdb::types::RecordId,
     template_id: surrealdb::types::RecordId,
+    package_id: Option<surrealdb::types::RecordId>,
     person_id: surrealdb::types::RecordId,
     entity_id: Option<surrealdb::types::RecordId>,
     project_id: surrealdb::types::RecordId,
@@ -115,6 +120,7 @@ impl NotationRow {
         Some(Notation {
             id: record_uuid(&self.id)?,
             template_id: record_uuid(&self.template_id)?,
+            package_id: self.package_id.as_ref().and_then(record_uuid),
             person_id: record_uuid(&self.person_id)?,
             entity_id: self.entity_id.as_ref().and_then(record_uuid),
             project_id: record_uuid(&self.project_id)?,
@@ -130,13 +136,15 @@ impl NotationRow {
 
 /// The projection every read shares, so one field list describes the row
 /// and a new column cannot reach [`NotationRow`] from only one query.
-const SELECT: &str = "id, template_id, person_id, entity_id, project_id, state, delivery, \
+const SELECT: &str =
+    "id, template_id, package_id, person_id, entity_id, project_id, state, delivery, \
      questionnaire_snapshot, git_commit_sha, inserted_at, updated_at";
 
 /// Everything [`create`] needs to open a Notation.
 #[derive(Debug, Clone)]
 pub struct NewNotation {
     pub template_id: Uuid,
+    pub package_id: Option<Uuid>,
     pub person_id: Uuid,
     pub entity_id: Option<Uuid>,
     pub project_id: Uuid,
@@ -157,6 +165,7 @@ impl NewNotation {
     ) -> Self {
         Self {
             template_id,
+            package_id: None,
             person_id,
             entity_id: None,
             project_id,
@@ -169,6 +178,13 @@ impl NewNotation {
     #[must_use]
     pub fn with_entity(mut self, entity_id: Uuid) -> Self {
         self.entity_id = Some(entity_id);
+        self
+    }
+
+    /// Associate this template instance with the package that assembled it.
+    #[must_use]
+    pub fn with_package(mut self, package_id: Uuid) -> Self {
+        self.package_id = Some(package_id);
         self
     }
 
@@ -240,6 +256,7 @@ pub async fn create(db: &SurrealDb, new: &NewNotation) -> Result<Notation, Notat
         .query(format!(
             "CREATE $id SET \
              template_id = $template_id, \
+             package_id = $package_id, \
              person_id = $person_id, \
              entity_id = $entity_id, \
              project_id = $project_id, \
@@ -250,6 +267,11 @@ pub async fn create(db: &SurrealDb, new: &NewNotation) -> Result<Notation, Notat
         ))
         .bind(("id", record_id(TABLE, id)))
         .bind(("template_id", record_id(TEMPLATE_TABLE, new.template_id)))
+        .bind((
+            "package_id",
+            new.package_id
+                .map(|id| record_id(NOTATION_PACKAGE_TABLE, id)),
+        ))
         .bind(("person_id", record_id(PERSON_TABLE, new.person_id)))
         .bind((
             "entity_id",
@@ -596,9 +618,38 @@ mod tests {
         .unwrap();
         assert_eq!(created.delivery, DELIVERY_EMBEDDED);
         assert_eq!(created.state, "BEGIN");
+        assert_eq!(created.package_id, None);
 
         let found = find_by_id(&surreal, created.id).await.unwrap().unwrap();
         assert_eq!(found, created);
+    }
+
+    #[tokio::test]
+    async fn a_notation_can_keep_the_package_that_assembled_it() {
+        let surreal = mem().await;
+        let project = crate::test_support::seed_project_surreal(&surreal, "matter").await;
+        let template_id = a_template(&surreal).await;
+        let person_id = a_person(&surreal, "libra@example.com").await;
+        let package_id = crate::notation_packages::create(
+            &surreal,
+            &crate::notation_packages::NewNotationPackage::new(
+                "estate-package",
+                "Estate package",
+                "complex",
+                10_000,
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
+
+        let created = create(
+            &surreal,
+            &NewNotation::new(template_id, person_id, project, "BEGIN").with_package(package_id),
+        )
+        .await
+        .unwrap();
+        assert_eq!(created.package_id, Some(package_id));
     }
 
     #[tokio::test]

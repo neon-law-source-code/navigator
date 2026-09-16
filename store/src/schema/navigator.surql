@@ -1128,6 +1128,76 @@ DEFINE INDEX OVERWRITE template_current_key ON template FIELDS current_key UNIQU
 -- The resolve path reads by code and narrows by scope.
 DEFINE INDEX OVERWRITE template_code ON template FIELDS code;
 
+-- `notation_packages`: a client-facing legal deliverable such as an estate
+-- package or employee onboarding. It groups the templates that become its
+-- individual Notations and carries the quoted starting price.
+DEFINE TABLE IF NOT EXISTS notation_package SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE code ON notation_package TYPE string;
+DEFINE FIELD OVERWRITE title ON notation_package TYPE string;
+DEFINE FIELD OVERWRITE description ON notation_package TYPE option<string>;
+DEFINE FIELD OVERWRITE complexity ON notation_package TYPE string;
+DEFINE FIELD OVERWRITE starting_price_cents ON notation_package TYPE int;
+DEFINE FIELD OVERWRITE currency ON notation_package TYPE string DEFAULT 'USD';
+DEFINE FIELD OVERWRITE active ON notation_package TYPE bool DEFAULT true;
+DEFINE FIELD OVERWRITE inserted_at ON notation_package TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_package TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_package_code ON notation_package FIELDS code UNIQUE;
+
+-- The ordered templates within a package. Package assembly reads this table
+-- in `position` order; a template and a position each appear once per package.
+DEFINE TABLE IF NOT EXISTS notation_package_template SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE package_id ON notation_package_template TYPE record<notation_package>;
+DEFINE FIELD OVERWRITE template_id ON notation_package_template TYPE record<template>;
+DEFINE FIELD OVERWRITE position ON notation_package_template TYPE int;
+DEFINE FIELD OVERWRITE required ON notation_package_template TYPE bool DEFAULT true;
+DEFINE FIELD OVERWRITE inserted_at ON notation_package_template TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_package_template TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_package_template_member ON notation_package_template FIELDS package_id, template_id UNIQUE;
+DEFINE INDEX OVERWRITE notation_package_template_position ON notation_package_template FIELDS package_id, position UNIQUE;
+
+-- `notation_rates` and `notation_meter_entries` make the work priceable and
+-- attributable without turning Navigator into an accounts-receivable ledger.
+-- A lawyer agrees the quoted scope; Xero is still the invoice system of record.
+DEFINE TABLE IF NOT EXISTS notation_rate SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE code ON notation_rate TYPE string;
+DEFINE FIELD OVERWRITE label ON notation_rate TYPE string;
+DEFINE FIELD OVERWRITE unit ON notation_rate TYPE string;
+DEFINE FIELD OVERWRITE unit_amount_cents ON notation_rate TYPE int;
+DEFINE FIELD OVERWRITE currency ON notation_rate TYPE string DEFAULT 'USD';
+DEFINE FIELD OVERWRITE active ON notation_rate TYPE bool DEFAULT true;
+DEFINE FIELD OVERWRITE inserted_at ON notation_rate TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_rate TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_rate_code ON notation_rate FIELDS code UNIQUE;
+
+DEFINE TABLE IF NOT EXISTS notation_meter_entry SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE project_id ON notation_meter_entry TYPE record<project>;
+DEFINE FIELD OVERWRITE notation_id ON notation_meter_entry TYPE option<record<notation>>;
+DEFINE FIELD OVERWRITE package_id ON notation_meter_entry TYPE option<record<notation_package>>;
+DEFINE FIELD OVERWRITE rate_id ON notation_meter_entry TYPE record<notation_rate>;
+DEFINE FIELD OVERWRITE quantity ON notation_meter_entry TYPE int;
+-- Snapshot the rate that was quoted, so later catalog edits never reprice work.
+DEFINE FIELD OVERWRITE unit_amount_cents ON notation_meter_entry TYPE int;
+DEFINE FIELD OVERWRITE currency ON notation_meter_entry TYPE string;
+DEFINE FIELD OVERWRITE state ON notation_meter_entry TYPE string DEFAULT 'quoted';
+DEFINE FIELD OVERWRITE inserted_at ON notation_meter_entry TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_meter_entry TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_meter_entry_project ON notation_meter_entry FIELDS project_id, inserted_at;
+
+-- `notation_sources` ties the lawyer-reviewed Notation to the privileged
+-- inputs that informed it. It references a communication when one was
+-- ingested from email, SMS, or a conversation; questionnaire facts remain
+-- a source without duplicating the answer body here.
+DEFINE TABLE IF NOT EXISTS notation_source SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE notation_id ON notation_source TYPE record<notation>;
+DEFINE FIELD OVERWRITE kind ON notation_source TYPE string;
+DEFINE FIELD OVERWRITE communication_id ON notation_source TYPE option<record<communication>>;
+DEFINE FIELD OVERWRITE source_ref ON notation_source TYPE option<string>;
+DEFINE FIELD OVERWRITE position ON notation_source TYPE int;
+DEFINE FIELD OVERWRITE inserted_at ON notation_source TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_source TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE notation_source_order ON notation_source FIELDS notation_id, position UNIQUE;
+DEFINE INDEX OVERWRITE notation_source_communication ON notation_source FIELDS communication_id;
+
 -- ---------------------------------------------------------------------
 -- The notation group
 --
@@ -1163,6 +1233,8 @@ DEFINE INDEX OVERWRITE template_code ON template FIELDS code;
 -- `project_id` is the glossary's load-bearing matter-audit-trail rule.
 DEFINE TABLE IF NOT EXISTS notation SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE template_id ON notation TYPE record<template>;
+-- Absent on Notations opened before packages existed. Those stand alone.
+DEFINE FIELD OVERWRITE package_id ON notation TYPE option<record<notation_package>>;
 DEFINE FIELD OVERWRITE person_id ON notation TYPE record<person>;
 DEFINE FIELD OVERWRITE entity_id ON notation TYPE option<record<entity>>;
 DEFINE FIELD OVERWRITE project_id ON notation TYPE record<project>;

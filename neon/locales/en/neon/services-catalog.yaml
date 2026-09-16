@@ -23,7 +23,7 @@ catalog_version: 1
 
 # What a `flat_fee` service costs. Both flat-fee kinds resolve to this one
 # figure, so the page cannot print two different "flat fees".
-flat_fee: "$50"
+flat_fee: "$100"
 
 # The closed category vocabulary, and the words a reader sees for each. A
 # service naming anything outside this list is refused.
@@ -159,7 +159,6 @@ services:
       We check for similar names or logos and file your application for one
       group of goods or services.
     category: identity
-    members_only: true
     flat_fee: trademark
     period: + government filing fees
     state_fee: true
@@ -263,7 +262,6 @@ services:
       We will read your contract, suggest changes, and explain them. Covers one
       agreement where both sides promise to keep information private.
     category: contracts
-    members_only: true
     amount: "$100"
     period: per contract
     state_fee: false
@@ -286,7 +284,6 @@ services:
     blurb: >-
       We will read your contract and suggest changes to protect your interests.
     category: contracts
-    members_only: true
     amount: "$250"
     period: per contract
     state_fee: false
@@ -309,7 +306,6 @@ services:
       We will check your offer, including any company shares you are offered and
       limits on where you can work next.
     category: contracts
-    members_only: true
     amount: "$350"
     period: per contract
     state_fee: false
@@ -333,7 +329,6 @@ services:
       We review the main contract for ongoing work between your business and a
       customer or supplier.
     category: contracts
-    members_only: true
     amount: "$500"
     period: per contract
     state_fee: false
@@ -368,14 +363,14 @@ services:
     item: "1506"
     name: Send a contract to be signed
     blurb: >-
-      Send one of our contracts for someone to sign online, and see when they
-      have signed.
+      Send an unchanged contract template for someone to sign online, and see
+      when they have signed.
     category: contracts
     amount: "$5"
-    period: per send, plus any form fee
+    period: per send
     state_fee: false
     includes:
-      - Send the contract to be signed online
+      - Send the unchanged contract template for signature online
       - See whether it has been signed
     related:
       - nda

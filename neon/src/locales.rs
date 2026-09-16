@@ -299,6 +299,14 @@ fn network_node(copy: ProjectNetworkNodeCopy) -> ProjectNetworkNode {
     }
 }
 
+fn network_label(value: String, fallback: &str) -> String {
+    if value.is_empty() {
+        fallback.to_string()
+    } else {
+        value
+    }
+}
+
 fn package_install(copy: PackageInstallCopy) -> PackageInstall {
     PackageInstall {
         heading: copy.heading,
@@ -456,27 +464,7 @@ fn band(copy: BandCopy, catalog: Option<&views::locales::services::ServicesCatal
             description,
             items: items.into_iter().map(step).collect(),
         },
-        BandCopy::ProjectNetwork {
-            anchor,
-            overline,
-            heading,
-            description,
-            left,
-            right,
-            mcp_tools,
-            agentic_coding_tools,
-            saas_tools,
-        } => Band::ProjectNetwork {
-            anchor,
-            overline,
-            heading,
-            description,
-            left: left.into_iter().map(network_node).collect(),
-            right: right.into_iter().map(network_node).collect(),
-            mcp_tools,
-            agentic_coding_tools,
-            saas_tools,
-        },
+        copy @ BandCopy::ProjectNetwork { .. } => project_network_band(copy),
         BandCopy::Downloads {
             anchor,
             overline,
@@ -510,6 +498,51 @@ fn band(copy: BandCopy, catalog: Option<&views::locales::services::ServicesCatal
             email,
             email_subject,
         },
+    }
+}
+
+fn project_network_band(copy: BandCopy) -> Band {
+    let BandCopy::ProjectNetwork {
+        anchor,
+        overline,
+        heading,
+        description,
+        center_eyebrow,
+        center_heading,
+        center_detail,
+        left_lane_label,
+        right_lane_label,
+        left,
+        right,
+        mcp_tools,
+        agentic_coding_tools,
+        saas_tools,
+    } = copy
+    else {
+        unreachable!("project network helper receives only project network copy")
+    };
+
+    Band::ProjectNetwork {
+        anchor,
+        overline,
+        heading,
+        description,
+        center_eyebrow: network_label(center_eyebrow, "The Project center"),
+        center_heading: network_label(center_heading, "Navigator"),
+        center_detail: network_label(center_detail, "Web API MCP CLI"),
+        left_lane_label: network_label(
+            left_lane_label,
+            "Project resources to the left of Navigator",
+        ),
+        right_lane_label: network_label(
+            right_lane_label,
+            "Project resources to the right of Navigator",
+        ),
+        left: left.into_iter().map(network_node).collect(),
+        right: right.into_iter().map(network_node).collect(),
+        mcp_tools,
+        agentic_coding_tools,
+        saas_tools,
     }
 }
 
@@ -879,14 +912,14 @@ mod tests {
     fn fractional_gc_publishes_its_ten_dollar_day_rate() {
         let content = fractional_gc(&views::brand::DEFAULT_BRANDING);
         let offer = content.pricing.first().expect("the Business plan offer");
-        assert_eq!(offer.price, "$3,650");
-        assert_eq!(offer.cadence.as_deref(), Some("/year"));
+        assert_eq!(offer.price, "$10");
+        assert_eq!(offer.cadence.as_deref(), Some("/day"));
         for benefit in [
-            "company records",
-            "hiring employees and contractors",
-            "who owns your company",
-            "business information private",
-            "business taxes and state paperwork",
+            "Contract-library access",
+            "Name Neon Law as your counsel",
+            "unchanged template for signature at $5",
+            "Notations for prepared or revised documents start at $100",
+            "One agreed scope and price for each Notation",
         ] {
             assert!(
                 offer
@@ -1250,7 +1283,9 @@ mod tests {
             "the services page names the Personal Plan alternative: {services_text}"
         );
         assert!(
-            !services_text.to_lowercase().contains("fees are quoted before work begins"),
+            !services_text
+                .to_lowercase()
+                .contains("fees are quoted before work begins"),
             "the blanket quoted-only claim is gone now that a flat fee is published: {services_text}"
         );
 

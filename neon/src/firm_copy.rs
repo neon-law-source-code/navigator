@@ -468,12 +468,13 @@ mod firm_copy_tests {
     }
 
     #[test]
-    fn the_services_page_explains_plan_requirements_and_separate_fees() {
+    fn the_services_page_explains_notation_pricing_and_separate_fees() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         let text = page_text(&content.bands).to_lowercase();
-        assert!(text.contains("forms are free with a plan or $50 each otherwise"));
-        assert!(text.contains("legal work outside your plan and government fees cost extra"));
-        assert!(text.contains("custom contract reviews and trademarks require a plan"));
+        assert!(text.contains("business-plan access is $10 a day"));
+        assert!(text.contains("unchanged template can be sent for signature for $5"));
+        assert!(text.contains("notation we prepare or revise begins at $100"));
+        assert!(text.contains("government fees are separate"));
         assert!(text.contains("free consultation"));
         let schedule = schedule(&content);
         let trademark = schedule
@@ -481,17 +482,11 @@ mod firm_copy_tests {
             .iter()
             .find(|service| service.id == "trademark")
             .expect("the trademark service remains available");
-        assert_eq!(trademark.fee, "$50");
+        assert_eq!(trademark.fee, "$100");
         assert_eq!(trademark.period, "+ government filing fees");
-        // The page says a plan is required for it, and says so where the fee
-        // is — not only in the statement band above the schedule.
         assert!(
-            trademark.members_only,
-            "the trademark filing requires a plan"
-        );
-        assert!(
-            !schedule.members_badge.trim().is_empty(),
-            "a plan-only matter must carry a badge saying so"
+            !trademark.members_only,
+            "a trademark Notation is available a la carte"
         );
     }
 
@@ -629,6 +624,54 @@ mod firm_copy_tests {
                 "Xero"
             ]
         );
+    }
+
+    #[test]
+    fn the_navigator_page_maps_sources_into_a_notation() {
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
+        let diagram = content
+            .bands
+            .iter()
+            .find_map(|band| match band {
+                Band::ProjectNetwork {
+                    anchor,
+                    center_heading,
+                    left,
+                    right,
+                    mcp_tools,
+                    agentic_coding_tools,
+                    saas_tools,
+                    ..
+                } if anchor == "notation-flow" => Some((
+                    center_heading,
+                    left,
+                    right,
+                    mcp_tools,
+                    agentic_coding_tools,
+                    saas_tools,
+                )),
+                _ => None,
+            })
+            .expect("the Navigator page renders the source-to-Notation diagram");
+
+        assert_eq!(diagram.0, "One Notation");
+        assert_eq!(
+            diagram
+                .1
+                .iter()
+                .map(|node| node.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Email", "Text messages", "Conversations", "Questionnaire"]
+        );
+        assert_eq!(
+            diagram
+                .2
+                .iter()
+                .map(|node| node.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Estate package", "Employee onboarding", "Contract revision"]
+        );
+        assert!(diagram.3.is_empty() && diagram.4.is_empty() && diagram.5.is_empty());
     }
 
     /// The vibe-coding case is argued without a claim the firm cannot

@@ -23,8 +23,8 @@ service:
       - text: individual services
         href: /services
       - text: >-
-          . Forms are free with a plan or $50 each otherwise; other legal work
-          and government fees may cost extra.
+          . An unchanged template can be sent for signature for $5; a Notation
+          we prepare or revise begins at $100. Government fees may be separate.
     - - text: "If you have a dispute, start with a "
       - text: free consultation
         href: /disputes
@@ -34,8 +34,8 @@ practices:
   - mark: handshake
     heading: Business plan
     body: >-
-      Ongoing legal help for your business: contracts, hiring, company records,
-      and paperwork.
+      Contract-library access at $10 a day, then a la carte Notations for the
+      documents you need.
     href: /business
   - mark: technology
     heading: Personal plan

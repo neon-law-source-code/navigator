@@ -123,12 +123,9 @@ async fn the_firm_llms_txt_advertises_only_documents_the_firm_host_serves() {
 
 /// The `/services` entry claims no dollar figure the page does not carry.
 ///
-/// The firm publishes no fee amounts on its public pages: a matter's card on
-/// `/services` renders a price chip only once its fee is set, and every entry
-/// is unset today. An index that told a crawler the page named its fees "in
-/// dollars" would send it looking for numbers `/services` does not have, so
-/// this checks the promise against the page rather than restating the
-/// contract as a string match.
+/// The firm indexes its published fees only when `/services` renders them.
+/// This keeps the crawler summary aligned with the public schedule instead of
+/// promising amounts the page does not carry.
 #[tokio::test]
 async fn the_services_entry_does_not_overclaim_published_prices() {
     let app = app().await;

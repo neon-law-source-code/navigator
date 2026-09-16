@@ -105,6 +105,136 @@ pub enum StepKind {
     OnChainRecord,
 }
 
+/// The person or group a client should understand as responsible for the
+/// current workflow state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientActor {
+    You,
+    Firm,
+    ThirdParty,
+    YouOrFirm,
+    NoOne,
+}
+
+impl ClientActor {
+    /// The client-facing form of this actor.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::You => "you",
+            Self::Firm => "the firm",
+            Self::ThirdParty => "a third party",
+            Self::YouOrFirm => "you or the firm",
+            Self::NoOne => "no one",
+        }
+    }
+}
+
+/// Plain-language status and next step for a client-facing workflow state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientPhrase {
+    pub where_this_is: &'static str,
+    pub whats_next: &'static str,
+    pub actor: ClientActor,
+}
+
+const WAITING_ON_ANSWERS: ClientPhrase = ClientPhrase {
+    where_this_is: "Waiting on your answers",
+    whats_next: "Answer the questions when you're ready.",
+    actor: ClientActor::You,
+};
+const ANSWERS_ARE_IN: ClientPhrase = ClientPhrase {
+    where_this_is: "Your answers are in",
+    whats_next: "The firm reviews them next. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const FIRM_IS_REVIEWING: ClientPhrase = ClientPhrase {
+    where_this_is: "The firm is reviewing",
+    whats_next: "The firm approves it or asks you for changes. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const ANSWERS_NEED_UPDATING: ClientPhrase = ClientPhrase {
+    where_this_is: "A few answers need updating",
+    whats_next: "Update the flagged answers and resubmit.",
+    actor: ClientActor::You,
+};
+const YOUR_TURN_TO_REVIEW: ClientPhrase = ClientPhrase {
+    where_this_is: "Your turn to review the drafts",
+    whats_next: "Read them, then approve or tell the firm what to change.",
+    actor: ClientActor::You,
+};
+const PREPARING_YOUR_DOCUMENT: ClientPhrase = ClientPhrase {
+    where_this_is: "Preparing your document",
+    whats_next: "It appears here when it's ready. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const WAITING_FOR_DOCUMENT: ClientPhrase = ClientPhrase {
+    where_this_is: "Waiting for a document",
+    whats_next: "If the firm asked you for it, add it here. Otherwise the firm adds it.",
+    actor: ClientActor::Firm,
+};
+const FIRM_IS_WORKING_ON_IT: ClientPhrase = ClientPhrase {
+    where_this_is: "The firm is working on it",
+    whats_next:
+        "The firm reviews the results and updates this page. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const AWAITING_YOUR_SIGNATURE: ClientPhrase = ClientPhrase {
+    where_this_is: "Awaiting your signature",
+    whats_next: "Review and sign when you're ready.",
+    actor: ClientActor::You,
+};
+const SIGNATURES_NEEDED: ClientPhrase = ClientPhrase {
+    where_this_is: "Signatures needed",
+    whats_next: "The people named in the document sign it.",
+    actor: ClientActor::You,
+};
+const SIGNING_BEFORE_A_NOTARY: ClientPhrase = ClientPhrase {
+    where_this_is: "Signing before a notary",
+    whats_next: "Sign in front of the notary at your appointment.",
+    actor: ClientActor::You,
+};
+const AWAITING_FIRM_SIGNATURE: ClientPhrase = ClientPhrase {
+    where_this_is: "Awaiting the firm's signature",
+    whats_next: "The firm signs it and a copy appears here. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const FIRM_IS_MAILING: ClientPhrase = ClientPhrase {
+    where_this_is: "The firm is mailing it",
+    whats_next: "The firm records when it went out. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const WAITING_ON_GOVERNMENT_NOTICE: ClientPhrase = ClientPhrase {
+    where_this_is: "Waiting on a notice from the government office",
+    whats_next: "The firm logs the notice when it arrives.",
+    actor: ClientActor::Firm,
+};
+const BEING_FILED: ClientPhrase = ClientPhrase {
+    where_this_is: "Being filed",
+    whats_next: "The firm submits it. The office responds on its own schedule. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const SENDING_YOU_AN_EMAIL: ClientPhrase = ClientPhrase {
+    where_this_is: "Sending you an email",
+    whats_next: "Check your inbox.",
+    actor: ClientActor::Firm,
+};
+const RECORDING_THE_ATTESTATION: ClientPhrase = ClientPhrase {
+    where_this_is: "Recording the attestation",
+    whats_next: "The record appears here when complete. Nothing needed from you right now.",
+    actor: ClientActor::Firm,
+};
+const CLOSED: ClientPhrase = ClientPhrase {
+    where_this_is: "Closed",
+    whats_next: "Nothing further is scheduled here. Contact the firm to continue.",
+    actor: ClientActor::NoOne,
+};
+const IN_PROGRESS: ClientPhrase = ClientPhrase {
+    where_this_is: "In progress",
+    whats_next: "This page updates as the matter moves. Contact the firm with questions.",
+    actor: ClientActor::Firm,
+};
+
 impl StepKind {
     /// Actor class that drives transitions out of this step.
     #[must_use]
@@ -126,6 +256,53 @@ impl StepKind {
                 ActorClass::Respondent
             }
         }
+    }
+
+    /// The client-facing phrase for this kind's canonical workflow family.
+    #[must_use]
+    pub const fn client_phrase(&self) -> ClientPhrase {
+        match self {
+            Self::System | Self::GeneratePdf => PREPARING_YOUR_DOCUMENT,
+            Self::DocumentIntake => WAITING_FOR_DOCUMENT,
+            Self::LawyerReview => FIRM_IS_REVIEWING,
+            Self::ClientReview => YOUR_TURN_TO_REVIEW,
+            Self::Notarization => SIGNING_BEFORE_A_NOTARY,
+            Self::Reask => ANSWERS_NEED_UPDATING,
+            Self::Signature => SIGNATURES_NEEDED,
+            Self::FirmSignature => AWAITING_FIRM_SIGNATURE,
+            Self::MailroomSend | Self::CertifiedMail => FIRM_IS_MAILING,
+            Self::MailroomReceive => WAITING_ON_GOVERNMENT_NOTICE,
+            Self::EmailSend => SENDING_YOU_AN_EMAIL,
+            Self::EFiling | Self::Filing => BEING_FILED,
+            Self::OnChainRecord => RECORDING_THE_ATTESTATION,
+        }
+    }
+}
+
+/// Resolve a workflow state to its plain-language client phrase.
+#[must_use]
+pub fn client_phrase_for(state: &str) -> ClientPhrase {
+    let state_name = StateName::from(state);
+    match state_name.as_str() {
+        StateName::BEGIN => WAITING_ON_ANSWERS,
+        StateName::END => CLOSED,
+        _ => match state_name.prefix() {
+            "intake_persisted" => ANSWERS_ARE_IN,
+            "generate_pdf" | "document_drafts" => PREPARING_YOUR_DOCUMENT,
+            "extract" | "analysis" => FIRM_IS_WORKING_ON_IT,
+            "sent_for_signature" => AWAITING_YOUR_SIGNATURE,
+            "document_intake" => ClientPhrase {
+                actor: ClientActor::YouOrFirm,
+                ..StepKind::DocumentIntake.client_phrase()
+            },
+            "mailroom_receive" => ClientPhrase {
+                actor: ClientActor::ThirdParty,
+                ..StepKind::MailroomReceive.client_phrase()
+            },
+            "email_send" => SENDING_YOU_AN_EMAIL,
+            "onchain" => RECORDING_THE_ATTESTATION,
+            _ => step_kind_for(&state_name).map_or(IN_PROGRESS, |kind| kind.client_phrase()),
+        },
     }
 }
 
@@ -230,8 +407,12 @@ pub fn step_kind_for(state: &StateName) -> Option<StepKind> {
 
 #[cfg(test)]
 mod tests {
-    use super::{step_kind_for, ActorClass, StepKind};
+    use super::{client_phrase_for, step_kind_for, ActorClass, ClientActor, StepKind};
     use crate::spec::StateName;
+    use crate::specs::{
+        workflow_spec_from_yaml, BUNDLED_SPEC_YAML, WELCOME_SPEC_YAML,
+        WORKSHOP_CERTIFICATE_SPEC_YAML,
+    };
 
     #[test]
     fn begin_and_end_resolve_to_system_step() {
@@ -491,6 +672,97 @@ mod tests {
                  docs/notation-authoring.md — document it in the status table so the doc can't \
                  silently rot"
             );
+        }
+    }
+
+    #[test]
+    fn every_bundled_workflow_state_has_client_phrase() {
+        let specs = BUNDLED_SPEC_YAML
+            .iter()
+            .map(|(code, yaml)| (*code, *yaml))
+            .chain([
+                ("onboarding__welcome", WELCOME_SPEC_YAML),
+                ("workshop__certificate", WORKSHOP_CERTIFICATE_SPEC_YAML),
+            ]);
+
+        for (code, yaml) in specs {
+            let spec = workflow_spec_from_yaml(yaml)
+                .unwrap_or_else(|error| panic!("bundled spec {code:?} must parse: {error}"));
+            for (state, transitions) in &spec.states {
+                for state in std::iter::once(state).chain(transitions.0.values()) {
+                    let phrase = client_phrase_for(state.as_str());
+                    assert!(
+                        !phrase.where_this_is.is_empty(),
+                        "state {state:?} in {code:?} has no client location"
+                    );
+                    assert!(
+                        !phrase.whats_next.is_empty(),
+                        "state {state:?} in {code:?} has no client next step"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn client_phrase_actor_overrides_follow_the_state_family() {
+        assert_eq!(
+            client_phrase_for("document_intake__transcript").actor,
+            ClientActor::YouOrFirm
+        );
+        assert_eq!(
+            client_phrase_for("mailroom_receive__notice").actor,
+            ClientActor::ThirdParty
+        );
+    }
+
+    #[test]
+    fn client_phrases_have_the_approved_shape() {
+        let states = [
+            "BEGIN",
+            "intake_persisted__client",
+            "lawyer_review__for_trustee",
+            "reask__client",
+            "client_review__trust",
+            "generate_pdf__retainer_pdf",
+            "document_drafts__will",
+            "document_intake__transcript",
+            "extract__inputs",
+            "analysis__contract_deviations",
+            "sent_for_signature__pending",
+            "testator_signature",
+            "notarization__appointment",
+            "firm_signature__closing_letter",
+            "mailroom_send",
+            "certified_mail",
+            "mailroom_receive__notice",
+            "e_filing__nv_sos",
+            "filing__nv_sos",
+            "email_send__welcome",
+            "onchain__record_attestation",
+            "witnesses",
+            "END",
+            "unknown__state",
+        ];
+
+        for state in states {
+            let phrase = client_phrase_for(state);
+            for text in [phrase.where_this_is, phrase.whats_next] {
+                let words = text
+                    .split(|character: char| !character.is_ascii_alphabetic())
+                    .filter(|word| !word.is_empty())
+                    .map(str::to_ascii_lowercase)
+                    .collect::<Vec<_>>();
+                assert!(!words.iter().any(|word| word == "attorney"));
+                assert!(!words.iter().any(|word| word == "lawyer"));
+                assert!(!text.chars().any(|character| character.is_ascii_digit()));
+            }
+            let next_words = phrase
+                .whats_next
+                .split(|character: char| !character.is_ascii_alphabetic());
+            assert!(!next_words
+                .filter(|word| !word.is_empty())
+                .any(|word| word.eq_ignore_ascii_case("filed")));
         }
     }
 }

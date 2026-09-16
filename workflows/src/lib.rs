@@ -86,5 +86,5 @@ pub use specs::{
     workflow_spec_from_yaml, CustomQuestion, BUNDLED_SPEC_YAML, RETAINER_INTAKE_SPEC_YAML,
     RETAINER_INTAKE_TEMPLATE,
 };
-pub use step::{step_kind_for, StepKind};
+pub use step::{client_phrase_for, step_kind_for, ClientActor, ClientPhrase, StepKind};
 pub use trigger::{start_workflow, TriggerError};

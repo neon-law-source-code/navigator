@@ -230,26 +230,29 @@ Once the questionnaire reaches `END`, the workflow machine takes over. Steps are
 `StepKind` and an actor class (System / Lawyer / Respondent) in `workflows/src/step.rs`. Honest status of what is wired
 today:
 
-| Step | Status | Notes |
-| --- | --- | --- |
-| `email_send__<slug>` | Implemented | Durable SendGrid send via two `ctx.run` journals; only `welcome` renders today. |
-| `intake_persisted__*` | Implemented | Pass-through wait state recorded on the journal. |
-| `lawyer_review` | State-only | Mandatory gate; dev auto-approves. No prod review UI wired to the worker. |
-| `client_review` | State-only | Respondent approves attorney-reviewed drafts on the Phase A review surface. |
-| `reask__*` | State-only | Re-collects flagged answers after `changes_requested`, then loops back to `lawyer_review`. |
-| `document_intake__<slug>` | Implemented | Worker files a provided artifact (text/file/link) via `ingest_bytes`. |
-| `extract__*` | Seam | Estate inputs mined from the transcript by Navigator MCP/Gemini; advanced on completion. |
-| `analysis__*` | Seam | Contract review: web (Vertex Gemini) flags playbook deviations; System wait state. |
-| `document_drafts__*` | Implemented | Web renders drafts into review_documents rows (System wait state). |
-| `generate_pdf__retainer_pdf` | Implemented | Worker-dispatched: render + storage persist wrapped in `ctx.run`. |
-| `sent_for_signature__pending` | Implemented | Wait state; e-signature webhook signals `signature_received` → END. |
-| `notarization`, `_signature` | State-only | Trust/will signing states; a human act, no worker side effect. |
-| `firm_signature` | State-only | Firm (lawyer) signs the closing letter ending a matter; a human act, no side effect. |
-| `mailroom_send` | Implemented | Worker records a `filings` row in `ctx.run`; reached only after `lawyer_review`. |
-| `certified_mail`, `e_filing`, `filing__*` | Implemented | Worker submission steps; record `filings` post-review. |
-| `onchain__*` | Scaffolded | Node attestation → durable `attestations` row; `null` attestor keeps it `pending`. |
-| `mailroom_receive` | State-only | Inbound mail logged by the SendGrid webhook, not a workflow step. |
-| `witnesses` | State-only | Respondent's witnesses sign (will); resolves to the Signature step kind. |
+| Step | Status | Notes | Client reads |
+| --- | --- | --- | --- |
+| `email_send__<slug>` | Implemented | Durable SendGrid send; only `welcome` renders. | Sending you an email |
+| `intake_persisted__*` | Implemented | Pass-through wait state recorded on the journal. | Your answers are in |
+| `lawyer_review` | State-only | Mandatory gate; dev auto-approves. | The firm is reviewing |
+| `client_review` | State-only | Respondent approves reviewed drafts on Phase A. | Your turn to review the drafts |
+| `reask__*` | State-only | Re-collects flagged answers; loops back to review. | A few answers need updating |
+| `document_intake__<slug>` | Implemented | Worker files a provided artifact. | Waiting for a document |
+| `extract__*` | Seam | Estate inputs mined from transcript; advanced on completion. | The firm is working on it |
+| `analysis__*` | Seam | Contract review flags playbook deviations; wait state. | The firm is working on it |
+| `document_drafts__*` | Implemented | Web renders drafts into review rows. | Preparing your document |
+| `generate_pdf__retainer_pdf` | Implemented | Worker renders and stores it in `ctx.run`. | Preparing your document |
+| `sent_for_signature__pending` | Implemented | Waits for signature_received. | Awaiting your signature |
+| `notarization` | State-only | Trust/will signing state; human act. | Signing before a notary |
+| `_signature` | State-only | Trust/will signing state; a human act, no worker side effect. | Signatures needed |
+| `firm_signature` | State-only | Firm signs closing letter; human act. | Awaiting the firm's signature |
+| `mailroom_send` | Implemented | Worker records a `filings` row in `ctx.run`. | The firm is mailing it |
+| `certified_mail` | Implemented | Worker submission step; records `filings` post-review. | The firm is mailing it |
+| `e_filing` | Implemented | Worker submission step; records `filings` post-review. | Being filed |
+| `filing__*` | Implemented | Worker submission step; records `filings` post-review. | Being filed |
+| `onchain__*` | Scaffolded | Node attestation; null attestor keeps it pending. | Recording the attestation |
+| `mailroom_receive` | State-only | Inbound notice logged by webhook. | Waiting on a notice from the government office |
+| `witnesses` | State-only | Respondent witnesses sign; resolves to Signature. | Signatures needed |
 
 Durability is Restate's: each side effect is wrapped in `ctx.run`, so a replay reuses the cached result instead of
 re-emailing or double-inserting. In prod the worker dials Restate Cloud; in KIND it dials the in-cluster Operator. The

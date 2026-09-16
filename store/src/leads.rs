@@ -1,16 +1,17 @@
 //! Public lead capture records.
 //!
-//! A lead is a request for contact, not an identity. The write path therefore
-//! never creates or links a `person` row. Repeated requests for one mailbox on
-//! one brand update the same row and increment `submissions`; the email index
-//! is intentionally non-unique because it is a lookup aid, not an identity
-//! constraint.
+//! A lead is a request for contact, not an identity. Capture never creates a
+//! `person` row. Conversion and linking write through [`crate::persons`] and
+//! set `lead.person_id`, so the Person table stays the human directory.
+//! Repeated requests for one mailbox on one brand update the same row and
+//! increment `submissions`; the email index is intentionally non-unique
+//! because it is a lookup aid, not an identity constraint.
 
 use chrono::{DateTime, Utc};
 use surrealdb::types::{RecordId, SurrealValue};
 use uuid::Uuid;
 
-use crate::persons::{self, NewPerson, PersonError};
+use crate::persons::{self, ContactUpdate, NewPerson, PersonError};
 use crate::surreal::{record_id, record_uuid, SurrealDb};
 
 const TABLE: &str = "lead";
@@ -280,11 +281,29 @@ pub async fn convert(db: &SurrealDb, id: Uuid) -> Result<Lead, LeadError> {
 
 /// Point the lead at the Person who already holds its mailbox and mark it
 /// converted.
+///
+/// When that Person has no phone and the lead recorded one, the phone is
+/// copied onto the Person row so later contact reads the directory, not the
+/// queue.
 pub async fn link_person(db: &SurrealDb, id: Uuid) -> Result<Lead, LeadError> {
     let existing = find(db, id).await?.ok_or(LeadError::NotFound)?;
     let Some(person) = persons::find_by_email_ci(db, &existing.email).await? else {
         return Err(LeadError::NoMatchingPerson);
     };
+    if person.phone.is_none() {
+        if let Some(phone) = existing.phone.clone() {
+            persons::update_contact(
+                db,
+                person.id,
+                &ContactUpdate {
+                    name: person.name.clone(),
+                    title: person.title.clone(),
+                    phone: Some(phone),
+                },
+            )
+            .await?;
+        }
+    }
     link_converted(db, existing.id, person.id).await
 }
 
@@ -486,6 +505,34 @@ mod tests {
         let linked = link_person(&db, duplicate.id).await.unwrap();
         assert_eq!(linked.status, "converted");
         assert_eq!(linked.person_id, Some(person_id));
+    }
+
+    #[tokio::test]
+    async fn link_copies_a_missing_phone_onto_the_person_and_leaves_an_existing_number() {
+        let db = mem_surreal().await;
+        let without_phone = persons::create(&db, &NewPerson::new("Existing", "link@example.com"))
+            .await
+            .unwrap();
+        let mut incoming = lead("link@example.com", "neon");
+        incoming.phone = Some("+1 (555) 010-1111".to_string());
+        let written = record(&db, &incoming).await.unwrap();
+
+        link_person(&db, written.id).await.unwrap();
+        let person = persons::find_by_id(&db, without_phone.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(person.phone.as_deref(), Some("+1 (555) 010-1111"));
+
+        let mut other = NewPerson::new("Kept", "kept@example.com");
+        other.phone = Some("+1 (555) 010-2222".to_string());
+        let kept = persons::create(&db, &other).await.unwrap();
+        let mut second = lead("kept@example.com", "neon");
+        second.phone = Some("+1 (555) 010-3333".to_string());
+        let second_lead = record(&db, &second).await.unwrap();
+        link_person(&db, second_lead.id).await.unwrap();
+        let person = persons::find_by_id(&db, kept.id).await.unwrap().unwrap();
+        assert_eq!(person.phone.as_deref(), Some("+1 (555) 010-2222"));
     }
 
     #[tokio::test]

@@ -229,6 +229,10 @@ subject against the table (`portal::oauth::resolve_person_from_claims`):
   fresh deploy from locking its Owner out), and role-healed back to `owner` on every subsequent login;
 - **every other unknown email is refused with a `403`** — onboarding is operator-mediated by default.
 
+Owner and Admin can also create a Client from a [Lead](glossary.md#lead) at `/app/admin/leads/{id}`:
+`store::leads::convert` calls `store::persons::create` with the submitted mailbox and phone. A mailbox that already
+belongs to a Person is refused and the queue offers a link to that row instead.
+
 ### Self-signup (global toggle, default off)
 
 `NAVIGATOR_SELF_SIGNUP_ENABLED` is a deployment-wide capability that is **off unless explicitly set** (affirmative
@@ -359,8 +363,11 @@ which is precisely the disclosure the participation ledger exists to prevent; th
 The public lead queue is the same shape at `/app/admin/leads` and `/app/admin/leads/{id}`: Owner and Admin reach it
 through the `/app/admin` route bypass, and Lawyer, Clerk, and client are refused by omission. The list masks a recorded
 phone to its last four digits; the row page shows the full number, accepts a status among `new`, `contacted`,
-`converted`, `declined`, and `unsubscribed`, and can create a Person from the mailbox or link an existing one. Handler
-logs name `lead_id`, `outcome`, and the actor's person id, never the address.
+`converted`, `declined`, and `unsubscribed`, and creates or links a [Person](glossary.md#person) for the mailbox
+(`store::persons::create`, never a second identity table). After conversion, the queue reads name, email, and phone
+from that Person row. Handler logs name `lead_id`, `outcome`, and the actor's person id, never the address. Contacting
+a lead is attorney work under professional ethics (advertising and solicitation), not a sales sequence. See
+[glossary](glossary.md#lead).
 
 ## What `participation` is NOT
 

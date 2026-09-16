@@ -32,6 +32,10 @@ pub struct LeadListRow {
     pub sms_consented_at: String,
     pub status: String,
     pub submissions: String,
+    #[serde(default)]
+    pub person_id: Option<String>,
+    #[serde(default)]
+    pub person_name: Option<String>,
 }
 
 /// Everything the list renders.
@@ -63,6 +67,8 @@ pub struct LeadDetail {
     pub submissions: String,
     pub unsubscribed_at: String,
     pub person_id: String,
+    /// Display name from the Person directory when this lead is linked.
+    pub person_name: Option<String>,
     /// Set when a Person already holds this mailbox, so the page can offer a
     /// link instead of create.
     pub existing_person_id: Option<String>,
@@ -112,21 +118,46 @@ fn format_optional_time(value: Option<chrono::DateTime<chrono::Utc>>) -> String 
 pub async fn leads_list_view() -> Result<LeadsListView, ServerFnError> {
     let role = crate::admin_listing::require_admin().await?;
     let surreal = consume_context::<store::surreal::SurrealDb>();
-    let rows = store::leads::list(&surreal)
+    let leads = store::leads::list(&surreal)
         .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+    let people = store::persons::find_by_ids(
+        &surreal,
+        &leads
+            .iter()
+            .filter_map(|lead| lead.person_id)
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(|error| ServerFnError::new(error.to_string()))?;
+    let people: std::collections::HashMap<_, _> = people
         .into_iter()
-        .map(|lead| LeadListRow {
-            id: lead.id.to_string(),
-            email: lead.email,
-            phone_masked: store::leads::mask_phone(lead.phone.as_deref()),
-            brand_key: lead.brand_key,
-            source_path: lead.source_path,
-            consent_version: lead.consent_version,
-            consented_at: format_time(lead.consented_at),
-            sms_consented_at: format_optional_time(lead.sms_consented_at),
-            status: lead.status,
-            submissions: lead.submissions.to_string(),
+        .map(|person| (person.id, person))
+        .collect();
+    let rows = leads
+        .into_iter()
+        .map(|lead| {
+            let person = lead.person_id.and_then(|id| people.get(&id));
+            LeadListRow {
+                id: lead.id.to_string(),
+                email: person
+                    .map(|person| person.email.clone())
+                    .unwrap_or(lead.email),
+                phone_masked: store::leads::mask_phone(
+                    person
+                        .and_then(|person| person.phone.as_deref())
+                        .or(lead.phone.as_deref()),
+                ),
+                brand_key: lead.brand_key,
+                source_path: lead.source_path,
+                consent_version: lead.consent_version,
+                consented_at: format_time(lead.consented_at),
+                sms_consented_at: format_optional_time(lead.sms_consented_at),
+                status: lead.status,
+                submissions: lead.submissions.to_string(),
+                person_id: person.map(|person| person.id.to_string()),
+                person_name: person.map(|person| person.name.clone()),
+            }
         })
         .collect();
     Ok(LeadsListView {
@@ -180,6 +211,13 @@ pub async fn lead_show_view() -> Result<LeadShowView, ServerFnError> {
         });
     };
 
+    let linked_person = if let Some(person_id) = lead.person_id {
+        store::persons::find_by_id(&surreal, person_id)
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?
+    } else {
+        None
+    };
     let existing_person_id = if lead.person_id.is_none() {
         store::persons::find_by_email_ci(&surreal, &lead.email)
             .await
@@ -199,8 +237,14 @@ pub async fn lead_show_view() -> Result<LeadShowView, ServerFnError> {
         error: query.error,
         lead: Some(LeadDetail {
             id: lead.id.to_string(),
-            email: lead.email,
-            phone: lead.phone.unwrap_or_else(|| "—".to_string()),
+            email: linked_person
+                .as_ref()
+                .map_or_else(|| lead.email.clone(), |person| person.email.clone()),
+            phone: linked_person
+                .as_ref()
+                .and_then(|person| person.phone.clone())
+                .or(lead.phone)
+                .unwrap_or_else(|| "—".to_string()),
             brand_key: lead.brand_key,
             source_path: lead.source_path,
             consent_version: lead.consent_version,
@@ -212,6 +256,7 @@ pub async fn lead_show_view() -> Result<LeadShowView, ServerFnError> {
             person_id: lead
                 .person_id
                 .map_or_else(|| "—".to_string(), |id| id.to_string()),
+            person_name: linked_person.map(|person| person.name),
             existing_person_id,
         }),
     })
@@ -273,7 +318,7 @@ pub fn leads_list_body(view: &LeadsListView) -> Element {
             header { class: "page-header",
                 h1 { "Leads" }
                 p { class: "nav-muted",
-                    "Public contact requests. Phone numbers on this list show only the last four digits."
+                    "Public contact requests. Phone numbers on this list show only the last four digits. The firm talks to a lead under professional ethics, not as a sales queue."
                 }
             }
             if is_empty {
@@ -282,6 +327,7 @@ pub fn leads_list_body(view: &LeadsListView) -> Element {
                 DataTable {
                     columns: vec![
                         Column::fixed("email", "Email"),
+                        Column::fixed("person", "Person"),
                         Column::fixed("phone", "Phone"),
                         Column::fixed("brand", "Brand"),
                         Column::fixed("source", "Source"),
@@ -297,6 +343,15 @@ pub fn leads_list_body(view: &LeadsListView) -> Element {
                         tr {
                             td {
                                 a { href: "/app/admin/leads/{row.id}", "{row.email}" }
+                            }
+                            td {
+                                if let (Some(person_id), Some(person_name)) =
+                                    (row.person_id.as_ref(), row.person_name.as_ref())
+                                {
+                                    a { href: "/app/admin/people/{person_id}", "{person_name}" }
+                                } else {
+                                    "—"
+                                }
                             }
                             td { "{row.phone_masked}" }
                             td { "{row.brand_key}" }
@@ -356,6 +411,9 @@ pub fn lead_show_body(view: &LeadShowView) -> Element {
             p { a { href: LEADS_PATH, "Back to leads" } }
             header { class: "page-header",
                 h1 { "Lead" }
+                p { class: "nav-muted",
+                    "The firm talks to a lead under professional ethics, not as a sales queue. A converted lead is a Person."
+                }
             }
             if let Some(notice) = view.notice.as_ref() {
                 p { class: "nav-notice", role: "status", "{notice}" }
@@ -385,7 +443,15 @@ pub fn lead_show_body(view: &LeadShowView) -> Element {
                 dt { "Unsubscribed" }
                 dd { "{lead.unsubscribed_at}" }
                 dt { "Person" }
-                dd { "{lead.person_id}" }
+                dd {
+                    if lead.person_id == "—" {
+                        "—"
+                    } else if let Some(name) = lead.person_name.as_ref() {
+                        a { href: "/app/admin/people/{lead.person_id}", "{name}" }
+                    } else {
+                        a { href: "/app/admin/people/{lead.person_id}", "{lead.person_id}" }
+                    }
+                }
             }
             FormCard {
                 title: "Change status".to_string(),
@@ -458,6 +524,8 @@ mod tests {
             sms_consented_at: "—".to_string(),
             status: "new".to_string(),
             submissions: "1".to_string(),
+            person_id: None,
+            person_name: None,
         }
     }
 
@@ -497,10 +565,12 @@ mod tests {
                 submissions: "1".to_string(),
                 unsubscribed_at: "—".to_string(),
                 person_id: "—".to_string(),
+                person_name: None,
                 existing_person_id: None,
             }),
         }));
         assert!(html.contains("+1 (555) 010-9876"), "{html}");
+        assert!(html.contains("professional ethics"), "{html}");
         assert!(html.contains("Create Person"), "{html}");
         assert!(
             html.contains(
@@ -534,6 +604,7 @@ mod tests {
                 submissions: "1".to_string(),
                 unsubscribed_at: "—".to_string(),
                 person_id: "—".to_string(),
+                person_name: None,
                 existing_person_id: Some("22222222-2222-2222-2222-222222222222".to_string()),
             }),
         }));
@@ -543,5 +614,46 @@ mod tests {
             html.contains(r#"action="/app/admin/leads/11111111-1111-1111-1111-111111111111/link""#),
             "{html}"
         );
+    }
+
+    #[test]
+    fn a_converted_lead_links_the_person_directory() {
+        let html = dioxus_ssr::render_element(lead_show_body(&LeadShowView {
+            tokens_href: String::new(),
+            firm_name: "Neon Law".to_string(),
+            role: ViewerRole::Admin,
+            logo: None,
+            csrf_token: "TOK".to_string(),
+            notice: None,
+            error: None,
+            lead: Some(LeadDetail {
+                id: "11111111-1111-1111-1111-111111111111".to_string(),
+                email: "visitor@example.com".to_string(),
+                phone: "+1 (555) 010-9876".to_string(),
+                brand_key: "neon".to_string(),
+                source_path: "/contact".to_string(),
+                consent_version: "By sending this, you agree.".to_string(),
+                consented_at: "2026-01-01T00:00:00Z".to_string(),
+                sms_consented_at: "—".to_string(),
+                status: "converted".to_string(),
+                submissions: "1".to_string(),
+                unsubscribed_at: "—".to_string(),
+                person_id: "22222222-2222-2222-2222-222222222222".to_string(),
+                person_name: Some("Visitor Example".to_string()),
+                existing_person_id: None,
+            }),
+        }));
+        assert!(
+            html.contains(r#"href="/app/admin/people/22222222-2222-2222-2222-222222222222""#),
+            "{html}"
+        );
+        assert!(html.contains("Visitor Example"), "{html}");
+        assert!(!html.contains("Create Person"), "{html}");
+    }
+
+    #[test]
+    fn the_list_names_professional_ethics() {
+        let html = dioxus_ssr::render_element(leads_list_body(&list_view(vec![sample_row()])));
+        assert!(html.contains("professional ethics"), "{html}");
     }
 }

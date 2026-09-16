@@ -37,7 +37,8 @@ Index
 - **H** — [Harvard Outline](#harvard-outline)
 - **I** — [Ingestion](#ingestion) · [Inquiry](#inquiry) · [Intake Persisted](#intake-persisted)
 - **J** — [Jurisdiction](#jurisdiction)
-- **L** — [Lawyer Review](#lawyer-review) · [Letter](#letter) · [Live Inquiry Session](#live-inquiry-session)
+- **L** — [Lawyer Review](#lawyer-review) · [Lead](#lead) · [Letter](#letter) · [Live Inquiry
+  Session](#live-inquiry-session)
 - **M** — [Mailroom](#mailroom) · [Mailroom Receive](#mailroom-receive) · [Mailroom Send](#mailroom-send) ·
   [Matter](#matter) · [Module](#module)
 - **N** — [Navigator MCP](#navigator-mcp) · [Neon Law Navigator](#neon-law-navigator) · [Notarization](#notarization) ·
@@ -1055,6 +1056,38 @@ signature, certified mail, e-filing, or another outbound submission. A rejected 
 [`workflows::guardrail`](../workflows/src/guardrail.rs), and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
+## Lead
+
+A public request for contact. Capture writes a `lead` row (mailbox, optional phone, brand, source path, consent,
+status, submission count). That row is not an identity. The human directory is [Person](#person):
+`store::leads::convert` creates a Client through `store::persons::create` and sets `lead.person_id`; when the mailbox
+already belongs to a Person, the queue links that row instead of forking a second one.
+
+Talking to a lead is attorney work under professional ethics (advertising and solicitation), not a sales sequence.
+
+- Schema: [`lead` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
+  [`store::leads`](../store/src/leads.rs)
+
+```text
+┌─ lead ──────────────────────────────┐
+│ id                 record           │
+│ brand_key          string           │
+│ consent_version    string           │
+│ consented_at       datetime         │
+│ email              string           │
+│ email_lower        string           │
+│ inserted_at        datetime         │
+│ person_id          option<record>   │
+│ phone              option<string>   │
+│ sms_consented_at   option<datetime> │
+│ source_path        string           │
+│ status             string           │
+│ submissions        int              │
+│ unsubscribed_at    option<datetime> │
+│ updated_at         datetime         │
+└─────────────────────────────────────┘
+```
+
 ## Letter
 
 One physical piece of mail, incoming or outgoing, scoped to a Mailroom.
@@ -1285,7 +1318,9 @@ practice law authorized for Navigator legal work, not a firm email or source-for
 [`docs/access-model`](access-model.md) and [`docs/oidc`](oidc.md).
 
 This is a SurrealDB table and [`store::persons`](../store/src/persons.rs) is the only module that reads or writes it.
-Every `person_id` on another table is therefore an unenforced cross-engine id, resolved in Rust.
+Every `person_id` on another table is therefore an unenforced cross-engine id, resolved in Rust. A [Lead](#lead) is a
+public contact request, not a second directory: conversion and linking write this table and point `lead.person_id` at
+the row.
 
 One Person per mailbox is protected from forking by a claim in the `person_mailbox` table, whose record id is the
 lowercased email, rather than by the UNIQUE `person_email_lower` index alone. The index is the backstop behind it — it

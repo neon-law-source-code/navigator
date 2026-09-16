@@ -183,9 +183,9 @@ mod tests {
 
     #[test]
     fn skips_images_and_anchors() {
-        let body = "![erd](../images/erd.svg) and [top](#intro)\n";
+        let body = "![diagram](../images/diagram.svg) and [top](#intro)\n";
         assert!(M061WebPortableLink
-            .lint(&source("docs/erd.md", body))
+            .lint(&source("docs/notes.md", body))
             .is_empty());
     }
 }

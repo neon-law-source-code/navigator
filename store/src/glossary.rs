@@ -318,7 +318,7 @@ pub fn table_for_term(title: &str) -> Option<String> {
 /// [`with_rendered_tables`] looks for inside a `text` fence.
 const BOX_CORNER: char = '\u{250c}';
 
-/// Render one table as an ERD-style box.
+/// Render one table as a box of columns.
 ///
 /// Columns come from [`crate::schema::table_columns`], so the box is
 /// the shipped schema rather than a description of it: name column and

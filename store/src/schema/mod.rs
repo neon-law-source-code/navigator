@@ -77,10 +77,9 @@ pub fn table_names() -> Vec<String> {
 /// Every field a table declares in the shipped schema, as
 /// `(name, Surreal type)` pairs.
 ///
-/// Ordered the way `navigator erd` orders a box: the implicit `id`
-/// primary key first — every Surreal record has one, and it never
-/// appears in a `DEFINE FIELD` — then the declared fields
-/// alphabetically. Reading [`DEFINITIONS`] rather than introspecting a
+/// Ordered the implicit `id` primary key first — every Surreal record
+/// has one, and it never appears in a `DEFINE FIELD` — then the
+/// declared fields alphabetically. Reading [`DEFINITIONS`] rather than introspecting a
 /// live engine keeps this pure, so a renderer or a drift test can call
 /// it without a database.
 ///
@@ -165,8 +164,7 @@ pub struct TableDefinition {
 }
 
 /// Every table in the database, keyed by name. Ordered, so a consumer
-/// that renders it (`navigator erd`) is deterministic by
-/// construction.
+/// that renders it is deterministic by construction.
 pub type Introspection = BTreeMap<String, TableDefinition>;
 
 #[derive(Debug, Error)]

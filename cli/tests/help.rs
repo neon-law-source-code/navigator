@@ -77,7 +77,6 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
             "dev",
-            "erd",
             "forms",
             "notations",
             "ops",
@@ -128,7 +127,6 @@ fn notations_help_lists_the_notation_authoring_workbench() {
         command_names(&output),
         vec![
             "format",
-            "narrate",
             "preview",
             "render",
             "run",
@@ -285,8 +283,8 @@ fn glossary_index_offers_no_path_to_point_somewhere_else() {
     );
 }
 
-/// `docs` becomes a `dev` member once `erd` moves to `db`: what is left are
-/// the developer/agent reference helpers, needing no cluster and no database.
+/// `docs` is a `dev` member: what is left are the developer/agent reference
+/// helpers, needing no cluster and no database.
 /// The three glossary helpers qualify on the same terms — two rewrite
 /// `docs/glossary.md`'s own derived blocks (its index and its per-term schema
 /// boxes), the third prints the page a Notion push sends. None reaches an

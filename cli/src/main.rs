@@ -11,7 +11,6 @@ mod devx;
 mod docs;
 mod document_read;
 mod document_sync;
-mod erd;
 mod firms_doctor;
 mod format;
 mod forms_sync;
@@ -22,7 +21,6 @@ mod intake;
 mod login;
 mod lsp_publish;
 mod mcp_bridge;
-mod narrate;
 mod notations_preview;
 mod notations_run;
 mod notices;
@@ -343,22 +341,6 @@ enum Command {
     Forms {
         #[command(subcommand)]
         action: FormsAction,
-    },
-    // ─────────────── Local store ───────────────
-    // Open and write the local store directly — no live site required.
-    /// Print an ERD describing every table in the schema. Default format is a Mermaid
-    /// `erDiagram` block; `--format svg` emits a deterministic, hand-written SVG (suitable for
-    /// piping into `docs/erd.svg`). Introspects `INFO FOR DB` / `INFO FOR TABLE` over the
-    /// `NAVIGATOR_SURREAL_*` connection, applying the schema first: a diagram of a database no
-    /// one has prepared is an empty diagram, not an error worth guessing at.
-    ///
-    /// It sits at the top level rather than under `docs`: it prepares and introspects a
-    /// database, and only its output happens to be documentation.
-    Erd {
-        /// Output format. `mermaid` (default) → GitHub-renderable `erDiagram` block. `svg` → a
-        /// deterministic standalone SVG.
-        #[arg(long, value_enum, default_value_t = erd::OutputFormat::Mermaid)]
-        format: erd::OutputFormat,
     },
     /// Drive a running deployment with the bearer token `navigator site login` stores.
     Site {
@@ -683,19 +665,6 @@ enum NotationsCmd {
     Format {
         /// File to format in place.
         file: PathBuf,
-    },
-    /// Write a Harvard-outline narration stage from Markdown.
-    ///
-    /// Depth-1 headings numbered `I.` (contracts) or `1.` (motion practice),
-    /// plus `> **A.**` block-quote subsections, become highlightable units.
-    /// Open the HTML in a browser and step with Arrow keys or Space while
-    /// recording. `H` hides the hint for a clean frame.
-    Narrate {
-        /// Markdown file to parse (a notation template, or a plain draft).
-        file: PathBuf,
-        /// Where to write the self-contained HTML stage.
-        #[arg(long)]
-        out: PathBuf,
     },
     /// Serve one template's `/notations/{slug}` show page on a local
     /// bind — the same page the firm's public site publishes, fed by the
@@ -1766,8 +1735,8 @@ enum FormsAction {
 
 #[derive(Subcommand)]
 enum DocsAction {
-    /// List every published docs page, including the ERD page and each
-    /// glossary term anchor.
+    /// List every published docs page, including each glossary term
+    /// anchor.
     List,
     /// Print canonical Neon Law Navigator vocabulary from
     /// `docs/glossary.md`. With no argument prints every term; with one
@@ -1793,7 +1762,7 @@ enum DocsAction {
     /// Check the per-term schema boxes in `docs/glossary.md` against the
     /// shipped `navigator.surql`, or rewrite them with `--write`. A term
     /// naming a `SurrealDB` table carries that table's columns and types as
-    /// ERD-style art; the boxes are derived data, like the index.
+    /// rendered art; the boxes are derived data, like the index.
     GlossaryTables {
         /// Rewrite the boxes in place instead of only reporting drift.
         #[arg(long)]
@@ -2081,7 +2050,6 @@ fn main() -> ExitCode {
             DocsAction::GlossaryTables { write } => docs::glossary_tables(write),
             DocsAction::GlossaryNotion => docs::glossary_notion(),
         },
-        Command::Erd { format } => runtime().block_on(run_erd(format)),
         Command::Forms { action } => match action {
             FormsAction::Sync { bucket } => forms_sync::run_sync(bucket.as_deref()),
             FormsAction::Fields { code, bucket } => {
@@ -2157,7 +2125,6 @@ fn main() -> ExitCode {
         },
         Command::Notations { action } => match action {
             NotationsCmd::Format { file } => format::run(&file),
-            NotationsCmd::Narrate { file, out } => narrate::run(&file, &out),
             NotationsCmd::Preview { file, port } => {
                 devx_result(runtime().block_on(notations_preview::run(&file, port)))
             }
@@ -2307,27 +2274,6 @@ async fn run_transcribe(args: transcribe::CoverArgs) -> ExitCode {
             ExitCode::from(2)
         }
     }
-}
-
-/// Apply the schema before introspecting: a diagram of a database no one
-/// has prepared is an empty diagram, not an error worth guessing at.
-async fn run_erd(format: erd::OutputFormat) -> ExitCode {
-    let db = match store::surreal::connect_from_env().await {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("navigator: surreal: {e}");
-            return ExitCode::from(2);
-        }
-    };
-    if let Err(e) = store::schema::apply(&db).await {
-        eprintln!("navigator: schema: {e}");
-        return ExitCode::from(2);
-    }
-    if let Err(e) = erd::run_surreal(&db, format).await {
-        eprintln!("navigator: erd: {e}");
-        return ExitCode::from(2);
-    }
-    ExitCode::SUCCESS
 }
 
 /// The person store the CLI reads and writes. `persons` moved to

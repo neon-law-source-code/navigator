@@ -278,22 +278,6 @@ pub fn unit_html(unit: &Unit) -> String {
     out
 }
 
-/// A complete HTML document for offline recording (CLI `--out`).
-#[must_use]
-pub fn standalone_html(doc: &OutlineDocument, css: &str, javascript: &str) -> String {
-    format!(
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
-         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-         <title>{title}</title>\n<style>\n{css}\n</style>\n</head>\n\
-         <body class=\"harvard-standalone nav-theme\">\n{stage}\
-         <script>\n{javascript}\n</script>\n</body>\n</html>\n",
-        title = escape_text(&doc.title),
-        css = css,
-        stage = stage_html(doc),
-        javascript = javascript,
-    )
-}
-
 fn push_unit(
     units: &mut Vec<Unit>,
     depth: u8,

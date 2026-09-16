@@ -4,8 +4,7 @@
 //! Harvard form, rendered as highlightable units. `?doc=` selects among them
 //! (onboarding letter, offboarding letter). Keyboard and click handling
 //! live in `harvard-outline-narrate.js`, so the page works without the wasm
-//! hydration bundle. Arbitrary drafts stay on the operator's machine via
-//! `navigator notations narrate`.
+//! hydration bundle.
 //!
 //! A notation the firm has given a client lives at
 //! [`crate::notation_outline`] (`/app/projects/{code}/{notation_id}/outline`).
@@ -153,9 +152,7 @@ fn outline_stage_body(view: &OutlineStageView) -> Element {
         main { id: "harvard-outline", class: "nav-theme",
             p { class: "harvard-stage-intro nav-muted",
                 "Press H to hide this chrome for a recording. "
-                "Offline drafts: "
-                code { "navigator notations narrate" }
-                "."
+                "Arrow keys, N/P, or Space step through the document."
             }
             nav { class: "harvard-doc-switcher", aria_label: "Bundled outlines",
                 for link in library {
@@ -211,8 +208,11 @@ mod tests {
         assert!(html.contains("data-harvard-outline"), "{html}");
         assert!(html.contains("data-harvard-path=\"I\""), "{html}");
         assert!(html.contains("Scope of the engagement"), "{html}");
-        assert!(html.contains("navigator notations narrate"), "{html}");
         assert!(html.contains("Press H to hide"), "{html}");
+        assert!(
+            !html.contains("navigator notations narrate"),
+            "the stage must not advertise a CLI writer that no longer exists: {html}"
+        );
         assert!(html.contains("/app/outline?doc=onboarding"), "{html}");
         assert!(html.contains("/app/outline?doc=offboarding"), "{html}");
         assert!(html.contains("aria-label=\"Bundled outlines\""), "{html}");

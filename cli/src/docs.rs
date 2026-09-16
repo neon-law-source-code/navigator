@@ -420,7 +420,7 @@ mod tests {
             "an in-page anchor cannot resolve from Notion"
         );
         assert!(
-            !rendered.contains("](erd.md"),
+            !rendered.contains("](notation.md"),
             "a sibling doc link cannot resolve from Notion"
         );
         assert!(rendered.contains(&format!(
@@ -429,7 +429,7 @@ mod tests {
         )));
         assert!(rendered.contains(&format!("({repo}/tree/main/store)", repo = super::REPO)));
         assert!(rendered.contains(&format!(
-            "({repo}/blob/main/docs/erd.md#schema)",
+            "({repo}/blob/main/docs/notation.md)",
             repo = super::REPO
         )));
     }

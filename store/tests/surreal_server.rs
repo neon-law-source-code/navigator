@@ -142,8 +142,8 @@ async fn applying_the_schema_remotely_is_idempotent_and_reports_in_sync() {
     );
 }
 
-/// Introspection — what `navigator erd` reads — against a real server
-/// rather than an in-process engine.
+/// Introspection against a real server rather than an in-process
+/// engine.
 #[tokio::test]
 async fn the_applied_schema_introspects_back_over_the_wire() {
     let Some(config) = config("test_server_introspect") else {
@@ -168,7 +168,7 @@ async fn the_applied_schema_introspects_back_over_the_wire() {
         relationship.definition
     );
     // The edge ends are the implicit link fields Surreal maintains, and
-    // the ERD reads its foreign keys straight out of their types.
+    // a reader recovers the foreign keys straight out of their types.
     for end in ["in", "out"] {
         assert!(
             relationship.fields[end].contains("record<person | entity>"),

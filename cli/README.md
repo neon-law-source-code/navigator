@@ -110,6 +110,5 @@ empty and is discarded on exit. It reads no deployment selection or ambient Navi
 live provider.
 
 You do not need a site to work locally. Use `navigator validate`, the `navigator notations` authoring commands, and the
-KIND-backed `navigator dev` loop, and `navigator erd` to introspect the schema; seed a local catalog with `navigator
-site seed` when that command's local store and storage environment are available, or import deployment data with
-`navigator site import` after logging in.
+KIND-backed `navigator dev` loop; seed a local catalog with `navigator site seed` when that command's local store and
+storage environment are available, or import deployment data with `navigator site import` after logging in.

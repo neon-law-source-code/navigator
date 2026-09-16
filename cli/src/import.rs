@@ -82,16 +82,10 @@ pub async fn import_directory(
     // and a top-level `CLAUDE.md` outside the catalog. Files with template
     // structure still reach the rules, which report a missing `kind:`.
     let filter = DefaultFileFilter {
-        excluded_names: [
-            "README.md",
-            "CLAUDE.md",
-            "CODE_OF_CONDUCT.md",
-            "LICENSE.md",
-            "ERD.md",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect(),
+        excluded_names: ["README.md", "CLAUDE.md", "CODE_OF_CONDUCT.md", "LICENSE.md"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
         // `github` is the engineering intake shelf (`kind: github`): a
         // questionnaire that renders a GitHub issue or pull request body.
         // It is not a legal template — it has no `code`, jurisdiction, or

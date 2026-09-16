@@ -128,20 +128,20 @@ impl ReviewNotificationHop {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct ReviewNotificationRecipient {
-    person_id: uuid::Uuid,
-    email: String,
-}
-
 /// Recipient selection is journaled separately from each send. That freezes
 /// the DRI/fallback decision for a transition, while a fallback list can still
 /// be sent one recipient at a time with one journal entry per email.
+///
+/// Opaque ids only. `ctx.run` persists this value in the Restate journal so a
+/// replay reuses it, and the journal is an operator debugging surface: a
+/// mailbox names a client (`portal::retainer_walk::send_intake`) and a Project
+/// code names who retained the firm. Ids freeze the decision just as well, and
+/// the address and the code are resolved inside the send step, whose own
+/// journaled value is `()`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct ReviewNotificationPlan {
     project_id: uuid::Uuid,
-    project_code: String,
-    recipients: Vec<ReviewNotificationRecipient>,
+    recipient_ids: Vec<uuid::Uuid>,
 }
 
 struct ReviewCopy {
@@ -396,19 +396,25 @@ impl NotationService {
                         .await?
                         .into_inner();
 
-                    for recipient in plan.recipients {
+                    for recipient_id in plan.recipient_ids {
                         let email = Arc::clone(&self.email);
-                        let project_code = plan.project_code.clone();
+                        let surreal = self.surreal.clone();
                         let project_id = plan.project_id;
-                        let recipient_id = recipient.person_id;
+                        // The mailbox and the Project code are read inside the
+                        // send step, never carried across it: this run's
+                        // journaled value is `()`, so neither reaches the
+                        // journal.
                         ctx.run(move || async move {
+                            let target =
+                                review_notification_target(&surreal, project_id, recipient_id)
+                                    .await?;
                             send_review_notification(
                                 email,
                                 notation_id,
                                 project_id,
-                                &project_code,
+                                &target.project_code,
                                 recipient_id,
-                                &recipient.email,
+                                &target.address,
                                 hop,
                             )
                             .await
@@ -594,27 +600,21 @@ async fn resolve_review_notification_plan(
             candidates.push(person);
         }
     }
-    let recipients = match hop {
+    let recipient_ids: Vec<uuid::Uuid> = match hop {
         ReviewNotificationHop::Lawyer => candidates
             .into_iter()
             .filter(|person| person.role.is_lawyer_tier())
-            .map(|person| ReviewNotificationRecipient {
-                person_id: person.id,
-                email: person.email,
-            })
+            .map(|person| person.id)
             .collect(),
         ReviewNotificationHop::Client => candidates
             .into_iter()
             .next()
-            .map(|person| {
-                vec![ReviewNotificationRecipient {
-                    person_id: person.id,
-                    email: person.email,
-                }]
-            })
-            .unwrap_or_default(),
+            .map(|person| person.id)
+            .into_iter()
+            .collect(),
     };
-    let recipients = if matches!(hop, ReviewNotificationHop::Lawyer) && recipients.is_empty() {
+    let recipient_ids = if matches!(hop, ReviewNotificationHop::Lawyer) && recipient_ids.is_empty()
+    {
         let mut fallback = Vec::new();
         for person_id in review_fallback_ids(&rows) {
             if let Some(person) = store::persons::find_by_id(surreal, person_id)
@@ -626,19 +626,16 @@ async fn resolve_review_notification_plan(
                 })?
             {
                 if person.role.is_lawyer_tier() {
-                    fallback.push(ReviewNotificationRecipient {
-                        person_id: person.id,
-                        email: person.email,
-                    });
+                    fallback.push(person.id);
                 }
             }
         }
         fallback
     } else {
-        recipients
+        recipient_ids
     };
 
-    if recipients.is_empty() {
+    if recipient_ids.is_empty() {
         tracing::warn!(
             target: "audit",
             audit = true,
@@ -653,8 +650,45 @@ async fn resolve_review_notification_plan(
 
     Ok(ReviewNotificationPlan {
         project_id: project.id,
+        recipient_ids,
+    })
+}
+
+/// What one send needs that the journaled plan deliberately does not carry.
+struct ReviewNotificationTarget {
+    address: String,
+    project_code: String,
+}
+
+/// Read the recipient's mailbox and the matter's code at send time.
+///
+/// Both are client identifiers, so they are resolved here rather than frozen
+/// into [`ReviewNotificationPlan`]: this runs inside the send step, whose
+/// journaled value is `()`.
+async fn review_notification_target(
+    surreal: &store::surreal::SurrealDb,
+    project_id: uuid::Uuid,
+    recipient_id: uuid::Uuid,
+) -> Result<ReviewNotificationTarget, HandlerError> {
+    let person = store::persons::find_by_id(surreal, recipient_id)
+        .await
+        .map_err(|e| {
+            HandlerError::from(TerminalError::new(format!(
+                "review notification recipient: {e}"
+            )))
+        })?
+        .ok_or_else(|| TerminalError::new("review notification recipient not found"))?;
+    let project = store::projects::find_by_id(surreal, project_id)
+        .await
+        .map_err(|e| {
+            HandlerError::from(TerminalError::new(format!(
+                "review notification project: {e}"
+            )))
+        })?
+        .ok_or_else(|| TerminalError::new("review notification project not found"))?;
+    Ok(ReviewNotificationTarget {
+        address: person.email,
         project_code: project.code,
-        recipients,
     })
 }
 
@@ -901,7 +935,10 @@ END: {}
     }
 
     #[tokio::test]
-    async fn no_lawyer_participant_skips_email() {
+    async fn no_lawyer_tier_participant_yields_no_recipient() {
+        // The fixture designates a lawyer DRI, but `dri_person` is seeded at
+        // the default `Role::Client` tier, so its participation is client-side
+        // and the DRI marker resolves to nobody the firm may notify.
         let surreal = store::test_support::mem_surreal().await;
         let notation_id = store::test_support::seed_notation(&surreal).await;
         let plan = super::resolve_review_notification_plan(
@@ -912,9 +949,39 @@ END: {}
         .await
         .expect("resolve review recipients");
 
-        assert!(plan.recipients.is_empty());
-        let email = CapturingEmail::new();
-        assert!(email.captured().is_empty());
+        assert!(plan.recipient_ids.is_empty());
+    }
+
+    /// `ctx.run` persists this value in the Restate journal, which is an
+    /// operator debugging surface. A mailbox names a client and a Project code
+    /// names who retained the firm, so neither may be frozen into the plan —
+    /// both are read inside the send step instead.
+    #[tokio::test]
+    async fn the_journaled_plan_carries_opaque_ids_only() {
+        let surreal = store::test_support::mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let plan = super::resolve_review_notification_plan(
+            &surreal,
+            notation_id,
+            ReviewNotificationHop::Client,
+        )
+        .await
+        .expect("resolve review recipients");
+
+        assert_eq!(
+            plan.recipient_ids.len(),
+            1,
+            "the client DRI is the recipient"
+        );
+        let journaled = serde_json::to_string(&plan).expect("the plan is journaled as JSON");
+        assert!(
+            !journaled.contains('@'),
+            "a mailbox reached the journal: {journaled}"
+        );
+        assert!(
+            !journaled.contains("libra-estate"),
+            "a Project code reached the journal: {journaled}"
+        );
     }
 
     #[test]

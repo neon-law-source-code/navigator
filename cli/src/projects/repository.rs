@@ -319,7 +319,7 @@ pub fn scaffold(
 
     let manifest =
         format!("version: {action_version}\nproject:\n  host: {host}\n  name: {project_code}\n");
-    let template_stem = placeholder_template_stem(project_code);
+    let template_stem = placeholder_template_stem();
     let files = [
         (root.join(".gitattributes"), GITATTRIBUTES.to_string()),
         (root.join("README.md"), readme(project_code)),
@@ -337,7 +337,7 @@ pub fn scaffold(
         (
             root.join(TEMPLATE_DIRECTORY)
                 .join(format!("{template_stem}.md")),
-            placeholder_template(&template_stem),
+            placeholder_template(template_stem),
         ),
     ];
 
@@ -493,7 +493,7 @@ fn validate_inner(root: &Path, repository: Option<&str>, gate_files: bool) -> Ex
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
     let applications = application_workspaces(root, &mut errors);
     let templates = if has_templates && manifest_valid {
-        validate_templates(root, &code, &mut errors, &mut warnings)
+        validate_templates(root, &mut errors, &mut warnings)
     } else {
         0
     };
@@ -1151,7 +1151,6 @@ pub(crate) const RELEASE_TAG_SHAPE: &str =
 
 fn validate_templates(
     root: &Path,
-    project_code: &str,
     errors: &mut Vec<Finding>,
     warnings: &mut Vec<Finding>,
 ) -> usize {
@@ -1200,10 +1199,9 @@ fn validate_templates(
     }
 
     let rules = rules::navigator_default_rules_with_codes(&rules::canonical_question_codes());
-    let prefix = template_code_prefix(project_code);
     let mut declared_codes = BTreeMap::new();
     for path in &paths {
-        lint_project_template(path, &prefix, &rules, &mut declared_codes, errors, warnings);
+        lint_project_template(path, &rules, &mut declared_codes, errors, warnings);
     }
     paths.len()
 }
@@ -1300,7 +1298,6 @@ fn entity_suffix(rest: &str) -> Option<String> {
 
 fn lint_project_template(
     path: &Path,
-    prefix: &str,
     rules: &[Box<dyn rules::Rule>],
     declared_codes: &mut BTreeMap<String, PathBuf>,
     errors: &mut Vec<Finding>,
@@ -1341,22 +1338,13 @@ fn lint_project_template(
         .file_stem()
         .and_then(|stem| stem.to_str())
         .unwrap_or_default();
-    if !stem.starts_with(prefix) {
-        errors.push(Finding::at(
-            path,
-            format!("template filename stem `{stem}` must start with `{prefix}`"),
-        ));
-    }
     if let Some(code) = rules::frontmatter::extract(&contents)
         .and_then(|frontmatter| rules::frontmatter::field(frontmatter, "code"))
     {
         if code != stem {
             errors.push(Finding::at(
                 path,
-                format!(
-                    "template `code` `{code}` must equal filename stem `{stem}` \
-                     (expected prefix `{prefix}`)"
-                ),
+                format!("template `code` `{code}` must equal filename stem `{stem}`"),
             ));
         }
         if let Some(first) = declared_codes.insert(code.clone(), path.to_path_buf()) {
@@ -1371,23 +1359,20 @@ fn lint_project_template(
     }
 }
 
-/// Filename prefix for a Project template: hyphens in the Project code
-/// become underscores, then `__`. Every `templates/<stem>.md` stem starts
-/// with this, and frontmatter `code:` equals the stem.
-fn template_code_prefix(project_code: &str) -> String {
-    format!("{}__", project_code.replace('-', "_"))
-}
-
-/// Filename stem for the scaffolded placeholder.
-fn placeholder_template_stem(project_code: &str) -> String {
-    format!("{}engagement", template_code_prefix(project_code))
+/// Filename stem for the scaffolded placeholder. A Project template's code is
+/// already scoped to that Project by `template.project_id` (ENG-693), so the
+/// stem carries no Project-code prefix — it only has to be unique within this
+/// one repository, which `lint_project_template`'s `declared_codes` map
+/// enforces.
+fn placeholder_template_stem() -> &'static str {
+    "onboarding"
 }
 
 fn placeholder_template(stem: &str) -> String {
     [
         "---\n",
         "kind: letter\n",
-        "title: Engagement letter\n",
+        "title: Onboarding letter\n",
         "respondent_type: entity\n",
         "code: ",
         stem,
@@ -1435,7 +1420,8 @@ fn agents(project_code: &str) -> String {
          This is one Project's repository. It holds two kinds of source and nothing else.\n\n\
          * `templates/` — notation blueprints, one `templates/<code>.md` per notation.\n\
          * `apps/<app>/` — React + Vite applications, each discovered from its direct `package.json`.\n\n\
-         Filename stems use the Project code (hyphens become `_`) then `__name`; `code:` matches.\n\n\
+         A filename stem carries no required Project-code prefix; `template.project_id` already scopes it here.\n\n\
+         The stem only has to be unique in this repository, and `code:` matches the stem.\n\n\
          Navigator imports each template and records the commit SHA as provenance.\n\n\
          Build each app for `/app/projects/{project_code}/<app>/`; the `apps/` source grouping is not a URL segment.\n\n\
          Derive every in-app path from `import.meta.env.BASE_URL` rather than writing an absolute path by hand.\n\n\
@@ -2404,8 +2390,8 @@ jobs:
     #[test]
     fn lint_project_template_reports_y010_with_the_line_and_the_spelling() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("acme__engagement.md");
-        let template = placeholder_template("acme__engagement").replace(
+        let path = dir.path().join("onboarding.md");
+        let template = placeholder_template("onboarding").replace(
             "Replace this placeholder with the notation this Project actually uses.",
             "This letter engages Neon Law, Inc. (the \"Firm\").",
         );
@@ -2419,14 +2405,7 @@ jobs:
         let mut errors: Vec<Finding> = Vec::new();
         let mut warnings: Vec<Finding> = Vec::new();
         let mut declared = std::collections::BTreeMap::new();
-        lint_project_template(
-            &path,
-            "acme__",
-            &[],
-            &mut declared,
-            &mut errors,
-            &mut warnings,
-        );
+        lint_project_template(&path, &[], &mut declared, &mut errors, &mut warnings);
         let messages: Vec<String> = errors.into_iter().map(|error| error.message).collect();
         assert!(
             messages.iter().any(|message| {
@@ -2444,20 +2423,13 @@ jobs:
     #[test]
     fn the_scaffolded_placeholder_template_carries_no_y010() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("acme__engagement.md");
-        std::fs::write(&path, placeholder_template("acme__engagement")).unwrap();
+        let path = dir.path().join("onboarding.md");
+        std::fs::write(&path, placeholder_template("onboarding")).unwrap();
 
         let mut errors: Vec<Finding> = Vec::new();
         let mut warnings: Vec<Finding> = Vec::new();
         let mut declared = std::collections::BTreeMap::new();
-        lint_project_template(
-            &path,
-            "acme__",
-            &[],
-            &mut declared,
-            &mut errors,
-            &mut warnings,
-        );
+        lint_project_template(&path, &[], &mut declared, &mut errors, &mut warnings);
         assert!(
             errors
                 .iter()

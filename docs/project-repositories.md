@@ -581,7 +581,7 @@ navigator validate .
 checkout text files to LF, a versioned nested `navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml`
 caller guarded by the reusable publisher's deployment configuration, `README.md`, and `AGENTS.md`. It also writes a
 `CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder
-`templates/<code>__engagement.md` uses the Project code stem, with hyphens replaced by underscores. Existing hand-copied
+`templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing hand-copied
 `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator validate` requires that
 pair: `AGENTS.md` must exist, `CLAUDE.md` must deliver the same bytes (the nine-byte stub form is refused), and the
 contract must name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the
@@ -616,11 +616,17 @@ A Project references a shared catalog template by its existing `code`, without c
 `templates/<code>.md` exists in the Project repository, notation creation resolves the workspace-shared catalog row and
 pins that exact template version on the Notation. A local file intentionally overrides the catalog for that Project; use
 one only for a genuinely Project-specific blueprint. Do not recode, rename, or copy a catalog template into a Project
-repository merely to reference it.
+repository merely to reference it. `scaffold`'s generated `templates/onboarding.md` placeholder leans on exactly this:
+it is a stub, and a lawyer who wants the firm's real onboarding letter deletes it and runs the notation against the
+shared catalog's `onboarding__letter` instead of authoring a local copy.
 
-The filename stem of a Project-local template is the Project code with hyphens replaced by underscores, then `__` and a
-short name. Frontmatter `code:` equals that stem. The layout gate refuses either mismatch and names the expected prefix
-(`acme__` for Project `acme`).
+The filename stem of a Project-local template carries no required Project-code prefix (ENG-693). A `template` row is
+already scoped to its Project by `template.project_id`, so `code` only has to be unique *within* that one repository —
+the layout gate enforces that with its own `declared_codes` check — not qualified by the Project's own code, which the
+repository's `navigator.yaml` already declares. Frontmatter `code:` must still equal the filename stem exactly; the
+layout gate refuses a mismatch. A repository that adopted the old `<project-code-with-underscores>__<name>.md`
+convention (ENG-341) keeps it: dropping the requirement is not a rename, and no existing `code` — some of which are
+already recorded as provenance against executed instruments — moves or changes.
 
 ## An individual client's entity
 

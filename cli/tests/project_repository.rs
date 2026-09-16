@@ -9,11 +9,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-#[cfg(unix)]
-use std::process::Command as ProcessCommand;
-
 use assert_cmd::Command;
 use predicates::{prelude::PredicateBooleanExt, str};
 use tempfile::TempDir;
@@ -85,7 +80,7 @@ fn the_reusable_gate_keeps_live_work_out_of_the_required_check() {
     let source = project_gate_source();
     assert!(source.contains("navigator site projects gate --ci"));
     assert!(!source.contains("enable-automerge:"));
-    assert!(source.contains("needs: [read-manifest, lint, verify, notation, documents, manifest]"));
+    assert!(source.contains("needs: [read-manifest, verify, notation, documents, manifest]"));
 }
 
 #[test]
@@ -136,9 +131,10 @@ fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
     ));
     assert!(source.contains(r#"navigator site import --ci --host "${HOST}" --dir seeds"#));
     assert!(source.contains("needs: read-manifest"));
-    assert!(source.contains("needs: [read-manifest, lint, verify, notation, documents, manifest]"));
-    assert!(!source
-        .contains("needs: [read-manifest, lint, verify, notation, documents, manifest, seeds]"));
+    assert!(source.contains("needs: [read-manifest, verify, notation, documents, manifest]"));
+    assert!(
+        !source.contains("needs: [read-manifest, verify, notation, documents, manifest, seeds]")
+    );
 }
 
 fn validate(dir: &Path) -> assert_cmd::assert::Assert {
@@ -219,24 +215,6 @@ fn write_vite_workspace(dir: &Path, relative: &str) {
 
 fn write_portal(dir: &Path) {
     write_vite_workspace(dir, "portal");
-}
-
-#[cfg(unix)]
-fn generated_step_script(step_name: &str) -> String {
-    let source = project_gate_source();
-    let workflow: serde_yaml::Value = serde_yaml::from_str(&source).unwrap();
-    workflow
-        .get("jobs")
-        .and_then(|jobs| jobs.get("verify"))
-        .and_then(|job| job.get("steps"))
-        .and_then(serde_yaml::Value::as_sequence)
-        .unwrap()
-        .iter()
-        .find(|step| step.get("name").and_then(serde_yaml::Value::as_str) == Some(step_name))
-        .and_then(|step| step.get("run"))
-        .and_then(serde_yaml::Value::as_str)
-        .unwrap()
-        .to_string()
 }
 
 #[test]
@@ -532,59 +510,31 @@ fn the_scaffold_links_claude_md_to_an_existing_agents_md() {
     assert_eq!(claude, hand_written);
 }
 
-/// Execute the generated build step rather than only looking for a glob in
-/// its source: every direct app and the compatibility root portal must reach
-/// pnpm exactly once.
-#[cfg(unix)]
+/// ENG-674: `verify` no longer generates a per-application bash loop — it
+/// calls `navigator site projects build`, which discovers and builds every
+/// application itself. That call's own per-application, per-verb behavior
+/// (order, `pnpm` arguments, stopping at the first failure) is covered
+/// directly in `cli/src/projects/build.rs`'s unit tests; this just pins that
+/// `verify` invokes it rather than a shell loop.
 #[test]
-fn the_generated_build_step_runs_every_discovered_application() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    write_vite_workspace(dir.path(), "apps/intake");
-    write_vite_workspace(dir.path(), "apps/exchange");
-    write_portal(dir.path());
-
-    let bin = dir.path().join("bin");
-    fs::create_dir_all(&bin).unwrap();
-    let log = dir.path().join("pnpm.log");
-    let pnpm = bin.join("pnpm");
-    fs::write(
-        &pnpm,
-        format!(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"{}\"\n",
-            log.display()
-        ),
-    )
-    .unwrap();
-    fs::set_permissions(&pnpm, fs::Permissions::from_mode(0o755)).unwrap();
-
-    let script = dir.path().join("build.sh");
-    fs::write(&script, generated_step_script("Build applications")).unwrap();
-    let path = format!(
-        "{}:{}",
-        bin.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let output = ProcessCommand::new("bash")
-        .arg(script)
-        .current_dir(dir.path())
-        .env("PATH", path)
-        .output()
-        .unwrap();
+fn the_verify_job_installs_lints_typechecks_tests_and_builds_through_the_cli() {
+    let source = project_gate_source();
     assert!(
-        output.status.success(),
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        source.contains("navigator site projects build --dir ."),
+        "verify must call the CLI's build verb"
     );
-    assert_eq!(
-        fs::read_to_string(log).unwrap().lines().collect::<Vec<_>>(),
-        [
-            "--dir apps/exchange build",
-            "--dir apps/intake build",
-            "--dir portal build",
-        ]
-    );
+    for retired in [
+        "Install application dependencies",
+        "Lint applications",
+        "Typecheck applications",
+        "Test applications",
+        "Build applications",
+    ] {
+        assert!(
+            !source.contains(retired),
+            "the per-verb application shell step {retired:?} must be retired"
+        );
+    }
 }
 
 #[test]

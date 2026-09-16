@@ -2038,18 +2038,27 @@ jobs:
         );
     }
 
+    /// ENG-674 folded `lint`'s duplicate application-linting into `verify`
+    /// (both used to hand-detect applications independently; `navigator site
+    /// projects build` does it once), leaving four feeder jobs rather than
+    /// five.
     #[test]
-    fn the_reusable_workflow_fans_five_jobs_into_the_required_check() {
+    fn the_reusable_workflow_fans_four_jobs_into_the_required_check() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
-        for job in ["lint:", "verify:", "notation:", "documents:", "manifest:"] {
+        for job in ["verify:", "notation:", "documents:", "manifest:"] {
             assert!(
                 generated.contains(&format!("\n  {job}\n")),
                 "missing job `{job}`:\n{generated}"
             );
         }
         assert!(
-            generated
-                .contains("\n  ci:\n    needs: [read-manifest, lint, verify, notation, documents, manifest]\n"),
+            !generated.contains("\n  lint:\n"),
+            "lint's ground now belongs to verify:\n{generated}"
+        );
+        assert!(
+            generated.contains(
+                "\n  ci:\n    needs: [read-manifest, verify, notation, documents, manifest]\n"
+            ),
             "{generated}"
         );
     }
@@ -2060,7 +2069,6 @@ jobs:
         assert!(generated.contains("if: always()"), "{generated}");
         for job in [
             "read-manifest",
-            "lint",
             "verify",
             "notation",
             "documents",
@@ -2071,6 +2079,10 @@ jobs:
                 "the required check does not check `{job}`'s result:\n{generated}"
             );
         }
+        assert!(
+            !generated.contains("needs.lint.result"),
+            "lint is retired, so nothing should still check its result:\n{generated}"
+        );
     }
 
     /// The origin pass reads a built `dist/`, so the job that builds is the
@@ -2090,7 +2102,7 @@ jobs:
             .expect("verify is not followed by notation")
             .0;
         let build = verify
-            .find(r#"pnpm --dir "${app_dir}" build"#)
+            .find("navigator site projects build --dir .")
             .expect("verify does not build:\n{verify}");
         let validate = verify
             .find("navigator validate . --ci")
@@ -2100,21 +2112,32 @@ jobs:
             "verify validates before it builds, so `Y009` reads a source tree:\n{verify}"
         );
         assert!(
-            verify.contains("navigator-bin"),
+            verify.contains("/.github/actions/navigator-install@"),
             "verify validates without installing the pinned CLI:\n{verify}"
         );
     }
 
+    /// ENG-674: application discovery is a CLI call now (`navigator site
+    /// projects applications --manifest`, then `navigator site projects
+    /// build`), not a `hashFiles(...)`/glob guard reimplemented in the
+    /// workflow. The CLI's own discovery (`application_workspaces`, above)
+    /// is what wakes the JS steps for a root Vite workspace or any other
+    /// layout, at run time rather than at whatever the workflow's own
+    /// bash happened to check for.
     #[test]
     fn the_application_steps_discover_every_workspace_at_run_time() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(
-            generated.contains("package_manifests=(apps/*/package.json)"),
+            generated.contains("navigator site projects applications --manifest"),
             "{generated}"
         );
         assert!(
-            generated.contains("vite.config.ts"),
-            "root-layout portals must wake the JS jobs:\n{generated}"
+            generated.contains("navigator site projects build --dir ."),
+            "{generated}"
+        );
+        assert!(
+            !generated.contains("package_manifests=(apps/*/package.json)"),
+            "application discovery must not be reimplemented in bash:\n{generated}"
         );
     }
 

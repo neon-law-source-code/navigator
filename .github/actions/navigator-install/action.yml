@@ -1,0 +1,164 @@
+name: navigator install
+description: >-
+  Download, checksum-verify, and install a published navigator CLI release
+  binary onto PATH.
+
+# ENG-671: `project-gate.yml@26.9.15` carried this exact download-and-install
+# block five times — once per job (`verify`, `notation`, `documents`,
+# `manifest`, `seeds`) — because there was nowhere else for it to live. Every
+# asset-name change or new safeguard was a five-place edit. This action is
+# that one place.
+#
+# Consuming workflow, in full:
+#
+#     - uses: actions/checkout@<sha>  # v7
+#     - uses: neon-law-source-code/navigator/.github/actions/navigator-install@YY.M.D
+#       with:
+#         version: "YY.M.D"  # optional — defaults to navigator.yaml's version:
+#
+# `version` is optional: a Project repository's checkout already carries the
+# tag it is pinned to in `navigator.yaml`, so a caller that omits the input
+# gets that tag rather than a second copy of it. Passed or resolved, the tag
+# must still be exact — never `latest`, `main`, `HEAD`, or empty. That is the
+# house rule from docs/gitops.md ("Pin every consumed image, binary, and
+# action"): publishing `latest` is allowed, consuming it is not.
+
+inputs:
+  version:
+    description: >-
+      Exact immutable release tag to install, shaped `YY.M.D` or
+      `YY.M.D-hotfix.N`. Optional — when omitted, read from this checkout's
+      `navigator.yaml` `version:` field. Never `latest`, whichever source
+      supplies it.
+    required: false
+    default: ""
+  token:
+    description: >-
+      Token used to download the release asset. The default `github.token` is
+      enough when the Navigator repository is public or the caller lives in
+      the same organization; a cross-organization private caller must pass a
+      PAT with `contents: read` on Navigator.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The exact tag that was installed, resolved from `version` or `navigator.yaml`.
+    value: ${{ steps.resolve.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # Resolved here, once, rather than inline in every consuming job: the
+    # input wins when given, and an empty input falls back to the checkout's
+    # own `navigator.yaml`. A caller with neither — no input and no manifest —
+    # gets one clear error instead of a download 404.
+    - name: resolve the version to install
+      id: resolve
+      shell: bash
+      env:
+        VERSION_INPUT: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        version="${VERSION_INPUT}"
+        if [ -z "${version}" ]; then
+            if [ ! -f navigator.yaml ]; then
+                echo "::error::no 'version' input was given and this checkout has no navigator.yaml to read one from."
+                exit 1
+            fi
+            version="$(ruby -e 'require "yaml"; m = YAML.safe_load(File.read("navigator.yaml"), aliases: false) || {}; v = m["version"]; puts (v.is_a?(String) ? v.strip : "")')"
+        fi
+        # Rolling pointers are rejected rather than resolved: a job that
+        # cannot name the binary it ran cannot be reproduced.
+        case "${version}" in
+            latest|main|HEAD|"")
+                echo "::error::version must be an exact release tag, not '${version}'."
+                exit 1
+                ;;
+        esac
+        echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+    - name: resolve the runner platform
+      id: platform
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${RUNNER_OS}" in
+            Linux)  echo "platform=linux" >> "${GITHUB_OUTPUT}" ;;
+            macOS)  echo "platform=macos" >> "${GITHUB_OUTPUT}" ;;
+            *)
+                echo "::error::unsupported runner OS '${RUNNER_OS}' — use a Linux or macOS runner."
+                exit 1
+                ;;
+        esac
+
+    # Keyed on the exact tag: a cache hit is always correct, because a
+    # release tag is immutable. Every job in a workflow run downloads the
+    # same ~few-MB tarball without this; keying by tag makes every job after
+    # the first a cache hit instead of a repeat fetch.
+    - name: cache the installed CLI
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/navigator-bin
+        key: navigator-install-${{ steps.platform.outputs.platform }}-${{ steps.resolve.outputs.version }}
+
+    - name: download, verify, and install the navigator CLI
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ steps.resolve.outputs.version }}
+        PLATFORM: ${{ steps.platform.outputs.platform }}
+        GH_TOKEN: ${{ inputs.token }}
+        ACTION_REPO: ${{ github.action_repository }}
+      run: |
+        set -euo pipefail
+        repo="${ACTION_REPO:-neon-law-source-code/navigator}"
+        asset="navigator-${VERSION}-${PLATFORM}.tar.gz"
+        checksum="${asset}.sha256"
+        tmp="$(mktemp -d)"
+
+        echo "Downloading ${asset} from ${repo}@${VERSION}"
+        if ! gh release download "${VERSION}" \
+            --repo "${repo}" \
+            --pattern "${asset}" \
+            --dir "${tmp}" \
+            --clobber; then
+            echo "::error::could not download ${asset} from ${repo}. If ${repo} is private and this workflow lives in another organization, pass a PAT with contents:read as the 'token' input."
+            exit 1
+        fi
+
+        # The checksum sidecar is a newer addition than some already-published
+        # releases, so its absence is a warning, not a failure — a caller
+        # pinned to one of those releases must not lose the ability to
+        # install it. A sidecar that downloads but does not match the archive
+        # is a real integrity failure and still fails the job.
+        if gh release download "${VERSION}" \
+            --repo "${repo}" \
+            --pattern "${checksum}" \
+            --dir "${tmp}" \
+            --clobber 2>/dev/null; then
+            # macOS runners have no `sha256sum`; `shasum -a 256` reads the
+            # same "<hash>  <filename>" sidecar format.
+            if [ "${PLATFORM}" = "macos" ]; then
+                verify=(shasum -a 256 -c "${checksum}")
+            else
+                verify=(sha256sum -c "${checksum}")
+            fi
+            if ! (cd "${tmp}" && "${verify[@]}"); then
+                echo "::error::${asset} failed its published sha256 checksum."
+                exit 1
+            fi
+        else
+            echo "::warning::${repo}@${VERSION} publishes no ${checksum} — skipping checksum verification."
+        fi
+
+        # Unpack only the executable; the archive also carries LICENSE and
+        # NOTICE.
+        tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
+        install -d "${RUNNER_TEMP}/navigator-bin"
+        install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
+
+    - name: add the navigator CLI to PATH
+      shell: bash
+      run: echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"

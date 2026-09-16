@@ -65,222 +65,55 @@ jobs:
               echo "project=${project}"
           } >> "${GITHUB_OUTPUT}"
 
-  lint:
-    needs: read-manifest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        with:
-          node-version: "22"
-      - name: Locate the pnpm manifest
-        id: pnpm-manifest
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          # `package_json_file` takes one concrete path, so name the manifest pnpm
-          # reads `packageManager` from. The order mirrors `application_workspaces`
-          # in cli/src/projects/repository.rs: the legacy `portal/`, then
-          # `apps/portal/`, then any other declared application, then a root Vite
-          # workspace. Hard-coding one of those breaks the other layouts.
-          candidates=(portal/package.json apps/portal/package.json)
-          candidates+=(apps/*/package.json)
-          candidates+=(package.json)
-          for candidate in "${candidates[@]}"; do
-              if [ -f "${candidate}" ]; then
-                  echo "Using ${candidate}"
-                  echo "manifest=${candidate}" >> "${GITHUB_OUTPUT}"
-                  exit 0
-              fi
-          done
-          echo "::error::the application guard matched but no package.json was found."
-          exit 1
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        with:
-          package_json_file: ${{ steps.pnpm-manifest.outputs.manifest }}
-      - name: Install application dependencies
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${package_manifests[@]}"; do
-              app_dir="${package_json%/package.json}"
-              pnpm --dir "${app_dir}" install --frozen-lockfile
-          done
-      - name: Lint applications
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${package_manifests[@]}"; do
-              app_dir="${package_json%/package.json}"
-              pnpm --dir "${app_dir}" lint
-          done
-
+  # ENG-674: `lint` used to be a whole job holding only the install+lint half
+  # of what `verify` does with the rest — a split that existed because the
+  # bash re-detected applications independently in each place. `navigator
+  # site projects build` runs install, lint, typecheck, test, and build for
+  # every application in one call, so the split has nothing left to justify
+  # it; `verify` below now covers lint's ground too.
   verify:
     needs: read-manifest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Installed first: `applications --manifest` below needs the CLI, and
+      # so does the origin gate at the end of this job.
+      #
+      # BUMP THIS TAG once a release publishes `.github/actions/navigator-install`
+      # (ENG-671 introduced it after 26.9.16). Self-referencing composite
+      # actions in this file necessarily lag by one release — see
+      # `application-publish@26.9.14` in project-publish.yml for the same
+      # pattern — and this one starts out already behind, since no published
+      # tag carries it yet.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
+      # Application discovery lives in the CLI (`cli/src/projects/repository.rs`)
+      # now, not in this workflow. This prints the one manifest path
+      # `pnpm/action-setup` reads its version pin from, or nothing when the
+      # repository declares no application.
+      - name: locate the application manifest
+        id: application
+        run: echo "manifest=$(navigator site projects applications --manifest)" >> "${GITHUB_OUTPUT}"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        if: steps.application.outputs.manifest != ''
         with:
           node-version: "22"
-      - name: Locate the pnpm manifest
-        id: pnpm-manifest
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          # `package_json_file` takes one concrete path, so name the manifest pnpm
-          # reads `packageManager` from. The order mirrors `application_workspaces`
-          # in cli/src/projects/repository.rs: the legacy `portal/`, then
-          # `apps/portal/`, then any other declared application, then a root Vite
-          # workspace. Hard-coding one of those breaks the other layouts.
-          candidates=(portal/package.json apps/portal/package.json)
-          candidates+=(apps/*/package.json)
-          candidates+=(package.json)
-          for candidate in "${candidates[@]}"; do
-              if [ -f "${candidate}" ]; then
-                  echo "Using ${candidate}"
-                  echo "manifest=${candidate}" >> "${GITHUB_OUTPUT}"
-                  exit 0
-              fi
-          done
-          echo "::error::the application guard matched but no package.json was found."
-          exit 1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        if: steps.application.outputs.manifest != ''
         with:
-          package_json_file: ${{ steps.pnpm-manifest.outputs.manifest }}
-      - name: Install application dependencies
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${package_manifests[@]}"; do
-              app_dir="${package_json%/package.json}"
-              pnpm --dir "${app_dir}" install --frozen-lockfile
-          done
-      - name: Typecheck applications
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${package_manifests[@]}"; do
-              app_dir="${package_json%/package.json}"
-              pnpm --dir "${app_dir}" typecheck
-          done
-      - name: Test applications
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${package_manifests[@]}"; do
-              app_dir="${package_json%/package.json}"
-              pnpm --dir "${app_dir}" test
-          done
-      - name: Build applications
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${package_manifests[@]}"; do
-              app_dir="${package_json%/package.json}"
-              pnpm --dir "${app_dir}" build
-          done
+          package_json_file: ${{ steps.application.outputs.manifest }}
+      # Installs, lints, typechecks, tests, and builds every discovered
+      # application, one at a time, stopping at the first failure. A
+      # repository with none prints a notice and succeeds — the gate still
+      # passes, it simply has nothing to build.
+      - name: navigator site projects build
+        run: navigator site projects build --dir .
       # The origin gate (`Y009`) reads each application's built `dist/`, so it
       # can only run in the job that produced one. `notation` validates a bare
       # checkout on its own runner and never sees a build.
-      - name: download and install the navigator CLI
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
       - name: navigator validate --ci
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        if: steps.application.outputs.manifest != ''
         run: navigator validate . --ci
 
   notation:
@@ -288,27 +121,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator validate
         run: navigator validate .
 
@@ -320,27 +137,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site document verify
         env:
           HOST: ${{ inputs.host }}
@@ -366,27 +167,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: live status
         env:
           HOST: ${{ inputs.host }}
@@ -420,27 +205,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site import
         env:
           HOST: ${{ inputs.host }}
@@ -459,14 +228,13 @@ jobs:
           fi
 
   ci:
-    needs: [read-manifest, lint, verify, notation, documents, manifest]
+    needs: [read-manifest, verify, notation, documents, manifest]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every job to have succeeded
         run: |
           test "${{ needs.read-manifest.result }}" = "success"
-          test "${{ needs.lint.result }}" = "success"
           test "${{ needs.verify.result }}" = "success"
           test "${{ needs.notation.result }}" = "success"
           test "${{ needs.documents.result }}" = "success"

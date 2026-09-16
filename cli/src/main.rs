@@ -516,6 +516,27 @@ enum ProjectsCmd {
         #[command(flatten)]
         host: HostOpt,
     },
+    /// Install, lint, typecheck, test, and build every application this
+    /// Project repository declares, one application at a time, stopping at
+    /// the first failure. A repository with none still passes.
+    Build {
+        /// Repository root holding the application(s). Defaults to the
+        /// current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+    },
+    /// List the application(s) this Project repository declares, in the
+    /// same discovery order `build` runs them in.
+    Applications {
+        /// Repository root holding the application(s). Defaults to the
+        /// current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        /// Print only the one concrete `package.json` path pnpm's own
+        /// version pin needs, instead of every discovered application.
+        #[arg(long)]
+        manifest: bool,
+    },
     /// Create or adopt the three handles a Project opens with.
     ///
     /// The documents-bucket prefix `projects/<code>/documents`, the Drive
@@ -2356,6 +2377,8 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         ProjectsCmd::Gate { dir, ci, host } => {
             projects::gate::run(&dir, ci, host.host.as_deref()).await
         }
+        ProjectsCmd::Build { dir } => projects::build::run(&dir),
+        ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
         ProjectsCmd::Surfaces { action } => match action {
             SurfacesAction::Reconcile { project } => projects::surfaces::reconcile(&project).await,
         },

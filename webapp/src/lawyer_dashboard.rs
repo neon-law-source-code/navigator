@@ -78,12 +78,21 @@ const API_ENDPOINTS: &[(&str, &str)] = &[
     ("/app/api/entity-types", "JSON: /app/api/entity-types"),
 ];
 
-/// One matter in the KPI list — the stable public code and its name.
+/// One matter in the KPI list — the stable public code, its name, and where
+/// it stands. `state` and `next` come from `workflows::client_phrase_for`,
+/// resolved against whichever of the matter's Notations
+/// `store::notations::furthest_along_state` picks as furthest along; both are
+/// empty when the matter carries no notation to report on (never a generic
+/// placeholder phrase).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ProjectLink {
     pub id: String,
     pub code: String,
     pub name: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub next: String,
 }
 
 /// One conflict finding, in a wasm-safe shape (ENG-307). `severity` is
@@ -238,13 +247,11 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         .min(total_pages);
     let first = page.saturating_sub(1).saturating_mul(PROJECTS_PER_PAGE);
     let last = first.saturating_add(PROJECTS_PER_PAGE).min(filtered.len());
-    let rows = filtered[first..last]
+    let page_of_projects = &filtered[first..last];
+    let current_state_by_project = current_states_for_projects(&surreal, page_of_projects).await?;
+    let rows = page_of_projects
         .iter()
-        .map(|p| ProjectLink {
-            id: p.id.to_string(),
-            code: p.code.clone(),
-            name: p.name.clone(),
-        })
+        .map(|p| project_link(p, &current_state_by_project))
         .collect();
 
     let calendar_events = calendar_events_for_projects(&surreal, &projects).await?;
@@ -305,6 +312,73 @@ async fn conflict_findings_for_projects(
             counterparty: finding.counterparty,
             explanation: finding.explanation,
             confidence_pct: finding.confidence_pct,
+        })
+        .collect())
+}
+
+/// One matter's KPI-list row: name and code straight from the Project,
+/// State/Next resolved through `workflows::client_phrase_for` against
+/// whichever state `current_state_by_project` names for it — empty when the
+/// map names none, rather than a generic placeholder phrase.
+#[cfg(feature = "server")]
+fn project_link(
+    project: &store::projects::Project,
+    current_state_by_project: &std::collections::HashMap<uuid::Uuid, String>,
+) -> ProjectLink {
+    let (state, next) = current_state_by_project
+        .get(&project.id)
+        .map(|state| {
+            let phrase = workflows::client_phrase_for(state);
+            (
+                phrase.where_this_is.to_string(),
+                phrase.whats_next.to_string(),
+            )
+        })
+        .unwrap_or_default();
+    ProjectLink {
+        id: project.id.to_string(),
+        code: project.code.clone(),
+        name: project.name.clone(),
+        state,
+        next,
+    }
+}
+
+/// The current workflow state for each of `projects` that carries at least
+/// one Notation, keyed by project id — the page's rendered State/Next
+/// columns read `workflows::client_phrase_for` against this state. A project
+/// absent from the map has no Notation to report on, so its row renders both
+/// columns empty rather than a generic placeholder phrase. A query failure is
+/// a 500, the same line every other dashboard lookup on this page draws.
+#[cfg(feature = "server")]
+async fn current_states_for_projects(
+    surreal: &store::surreal::SurrealDb,
+    projects: &[&store::projects::Project],
+) -> Result<std::collections::HashMap<uuid::Uuid, String>, ServerFnError> {
+    let project_ids: Vec<uuid::Uuid> = projects.iter().map(|project| project.id).collect();
+    let notations = store::notations::list_by_projects(surreal, &project_ids)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "dashboard: list_by_projects failed");
+            dioxus_fullstack_core::FullstackContext::commit_http_status(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                None,
+            );
+            ServerFnError::new(e.to_string())
+        })?;
+    let mut states_by_project: std::collections::HashMap<uuid::Uuid, Vec<&str>> =
+        std::collections::HashMap::new();
+    for notation in &notations {
+        states_by_project
+            .entry(notation.project_id)
+            .or_default()
+            .push(notation.state.as_str());
+    }
+    Ok(states_by_project
+        .into_iter()
+        .filter_map(|(project_id, states)| {
+            store::notations::furthest_along_state(states)
+                .map(|state| (project_id, state.to_string()))
         })
         .collect())
 }
@@ -577,9 +651,24 @@ fn ProjectKpiList(view: DashboardView) -> Element {
                 if rows.is_empty() {
                     p { class: "nav-muted project-kpi-empty", "{empty_message}" }
                 } else {
-                    ul { class: "project-kpi-rows",
-                        for row in rows.iter() {
-                            li { a { href: "/app/projects/{row.code}", "{row.name}" } }
+                    div { class: "nav-table-wrap",
+                        table { class: "nav-table",
+                            thead {
+                                tr {
+                                    th { scope: "col", "Name" }
+                                    th { scope: "col", "State" }
+                                    th { scope: "col", "Next" }
+                                }
+                            }
+                            tbody {
+                                for row in rows.iter() {
+                                    tr {
+                                        td { a { href: "/app/projects/{row.code}", "{row.name}" } }
+                                        td { "{row.state}" }
+                                        td { "{row.next}" }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -720,6 +809,8 @@ mod tests {
                 id: "00000000-0000-0000-0000-000000000001".to_string(),
                 code: "acme-contract-review".to_string(),
                 name: "Acme contract review".to_string(),
+                state: String::new(),
+                next: String::new(),
             }],
             status: "open".to_string(),
             page: 1,
@@ -811,6 +902,51 @@ mod tests {
     fn a_single_page_offers_no_pagination() {
         let html = dioxus_ssr::render_element(lawyer_dashboard_body(&view()));
         assert!(!html.contains("nav-pagination"), "{html}");
+    }
+
+    /// ENG-720: the KPI list carries State and Next columns read from
+    /// whichever Notation `store::notations::furthest_along_state` picked
+    /// for the row — a matter with no such Notation renders both cells
+    /// empty rather than a placeholder phrase.
+    #[test]
+    fn the_kpi_list_renders_state_and_next_columns() {
+        let html = dioxus_ssr::render_element(lawyer_dashboard_body(&DashboardView {
+            rows: vec![
+                ProjectLink {
+                    id: "00000000-0000-0000-0000-000000000001".to_string(),
+                    code: "acme-contract-review".to_string(),
+                    name: "Acme contract review".to_string(),
+                    state: "The firm is reviewing".to_string(),
+                    next: "The firm approves it or asks you for changes. Nothing needed from you right now.".to_string(),
+                },
+                ProjectLink {
+                    id: "00000000-0000-0000-0000-000000000002".to_string(),
+                    code: "no-notation-yet".to_string(),
+                    name: "No notation yet".to_string(),
+                    state: String::new(),
+                    next: String::new(),
+                },
+            ],
+            ..view()
+        }));
+        assert!(html.contains("<th scope=\"col\">State</th>"), "{html}");
+        assert!(html.contains("<th scope=\"col\">Next</th>"), "{html}");
+        assert!(html.contains("The firm is reviewing"), "{html}");
+        assert!(
+            html.contains(
+                "The firm approves it or asks you for changes. Nothing needed from you right now."
+            ),
+            "{html}"
+        );
+        assert!(html.contains("No notation yet"), "{html}");
+        // The empty-state row renders no generic placeholder — the two
+        // trailing cells are simply empty.
+        assert!(
+            html.contains(
+                r#"<a href="/app/projects/no-notation-yet">No notation yet</a></td><td></td><td></td></tr>"#
+            ),
+            "{html}"
+        );
     }
 
     #[test]

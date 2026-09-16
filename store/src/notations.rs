@@ -374,6 +374,64 @@ pub async fn list_by_projects(
     many(response)
 }
 
+/// How far a state has progressed through its workflow — used only to pick
+/// which of a matter's several Notations decides its row on the lawyer
+/// Projects list.
+///
+/// This is a deliberately separate table from
+/// `workflows::client_phrase_for`'s phrase catalog: that one answers "what do
+/// we tell the client" from a state name, this one answers "how far along is
+/// it" from the same name, and conflating them would make a phrasing change
+/// accidentally reorder the fold. `store` does not depend on `workflows` (the
+/// dependency runs the other way — `workflows` depends on `store`), so this
+/// table is its own, keyed on the same state-name prefixes.
+///
+/// `BEGIN` ranks lowest — nothing has happened yet. `END` ranks highest, but
+/// [`furthest_along_state`] excludes it from candidacy before comparing: a
+/// closed Notation is never what a matter is currently waiting on.
+fn progress_rank(state: &str) -> u8 {
+    let prefix = state.split_once("__").map_or(state, |(p, _)| p);
+    match prefix {
+        "BEGIN" => 0,
+        "intake_persisted" => 1,
+        "lawyer_review" => 2,
+        "reask" => 3,
+        "client_review" => 4,
+        "generate_pdf" | "document_drafts" => 5,
+        "document_intake" => 6,
+        "extract" | "analysis" => 7,
+        "sent_for_signature" => 8,
+        "notarization" => 10,
+        "firm_signature" => 11,
+        "mailroom_send" | "certified_mail" => 12,
+        "mailroom_receive" => 13,
+        "email_send" => 14,
+        "e_filing" | "filing" => 15,
+        "onchain" => 16,
+        "END" => u8::MAX,
+        p if p == "witnesses" || p.ends_with("_signature") || p.ends_with("_signatures") => 9,
+        // An unrecognized prefix ranks just past intake — further along than
+        // "nothing has happened" without asserting an ordering the table
+        // cannot back up.
+        _ => 1,
+    }
+}
+
+/// The state of whichever of one matter's Notations has progressed furthest
+/// through its workflow, ignoring any Notation parked at the terminal `END`
+/// state — a closed Notation is never what the matter is currently waiting
+/// on. `None` for an empty set, or when every state given is `END`.
+#[must_use]
+pub fn furthest_along_state<'a, I>(states: I) -> Option<&'a str>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    states
+        .into_iter()
+        .filter(|state| *state != "END")
+        .max_by_key(|state| progress_rank(state))
+}
+
 /// Every notation a Person is the respondent on, newest first.
 ///
 /// # Errors
@@ -540,9 +598,9 @@ pub fn certificate_of_completion_storage_key(notation_id: Uuid) -> String {
 mod tests {
     use super::{
         certificate_of_completion_storage_key, create, document_pdf_storage_key, find_by_id,
-        find_by_project_template_person, list_all, list_by_person, list_by_project,
-        list_by_projects, signed_document_storage_key, update_questionnaire_snapshot, update_state,
-        NewNotation, NotationError, DELIVERY_EMBEDDED,
+        find_by_project_template_person, furthest_along_state, list_all, list_by_person,
+        list_by_project, list_by_projects, signed_document_storage_key,
+        update_questionnaire_snapshot, update_state, NewNotation, NotationError, DELIVERY_EMBEDDED,
     };
     use crate::surreal::test_support::mem;
     use uuid::Uuid;
@@ -826,5 +884,46 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(updated.questionnaire_snapshot, Some(alt));
+    }
+
+    #[test]
+    fn furthest_along_state_is_none_for_no_notations() {
+        assert_eq!(furthest_along_state(Vec::<&str>::new()), None);
+    }
+
+    #[test]
+    fn furthest_along_state_is_the_one_notation_given() {
+        assert_eq!(
+            furthest_along_state(["lawyer_review"]),
+            Some("lawyer_review")
+        );
+    }
+
+    #[test]
+    fn furthest_along_state_picks_the_deeper_of_two_notations() {
+        // `lawyer_review` (review) sits well behind `firm_signature`
+        // (signing) in the matter lifecycle.
+        assert_eq!(
+            furthest_along_state(["lawyer_review", "firm_signature__closing_letter"]),
+            Some("firm_signature__closing_letter")
+        );
+        // Order in the input must not matter.
+        assert_eq!(
+            furthest_along_state(["firm_signature__closing_letter", "lawyer_review"]),
+            Some("firm_signature__closing_letter")
+        );
+    }
+
+    #[test]
+    fn furthest_along_state_ignores_a_closed_notation_beside_a_live_one() {
+        assert_eq!(
+            furthest_along_state(["END", "lawyer_review"]),
+            Some("lawyer_review")
+        );
+    }
+
+    #[test]
+    fn furthest_along_state_is_none_when_every_notation_is_closed() {
+        assert_eq!(furthest_along_state(["END", "END"]), None);
     }
 }

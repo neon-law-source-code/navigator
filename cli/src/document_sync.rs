@@ -193,7 +193,23 @@ enum PublicationFailure {
     AfterCommit(anyhow::Error),
 }
 
+/// A failure that left every document target as it found it.
+///
+/// It used to add "(documents/.gitignore may have been created)" to every
+/// such failure, which was false for most of them: `pull` writes that
+/// guard file only *after* the `--dry-run` early return, so the entire dry
+/// run, the manifest read, and the pointer scan all reported a side effect
+/// that path cannot perform (LAW-12). Use
+/// [`document_targets_unchanged_after_guard`] for the failures that really
+/// do come after the guard is written.
 fn document_targets_unchanged(error: impl std::fmt::Display) -> anyhow::Error {
+    anyhow!("{error:#}; document targets are unchanged")
+}
+
+/// The same refusal, for a failure reached *after* the `documents/`
+/// directory and its `.gitignore` guard have been written — the one case
+/// where a new untracked file really may have appeared in the checkout.
+fn document_targets_unchanged_after_guard(error: impl std::fmt::Display) -> anyhow::Error {
     anyhow!(
         "{error:#}; document targets are unchanged (documents/.gitignore may have been created)"
     )
@@ -549,7 +565,7 @@ async fn stage_pull_downloads(
                 let staged_path = downloads.join(staged.len().to_string());
                 std::fs::write(&staged_path, &bytes)
                     .with_context(|| format!("stage {}", target.display()))
-                    .map_err(document_targets_unchanged)?;
+                    .map_err(document_targets_unchanged_after_guard)?;
                 staged.push(StagedPull {
                     target,
                     staged: staged_path,
@@ -567,7 +583,7 @@ async fn stage_pull_downloads(
                 "{failure} (document targets are unchanged; documents/.gitignore may have been created)"
             );
         }
-        return Err(document_targets_unchanged(anyhow!(
+        return Err(document_targets_unchanged_after_guard(anyhow!(
             "{} of {} pointer(s) failed to pull",
             failures.len(),
             pointers.len()
@@ -610,9 +626,9 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
 
     let client = DocumentClient::connect(host.as_deref(), &project)
         .await
-        .map_err(document_targets_unchanged)?;
+        .map_err(document_targets_unchanged_after_guard)?;
     let staging = tempfile::tempdir().map_err(|error| {
-        document_targets_unchanged(anyhow!(
+        document_targets_unchanged_after_guard(anyhow!(
             "create pull staging area outside checkout: {error}"
         ))
     })?;

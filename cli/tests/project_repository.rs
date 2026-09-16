@@ -648,10 +648,23 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
         .success()
         .stdout(str::contains("0 error(s)"));
 
+    // A raw byte staged behind the `documents/.gitignore` is the supported
+    // workflow's own output — `site pull` puts it there — so it is not a
+    // committed legal document and `validate` leaves it alone (LAW-12).
     let binary = dir
         .path()
         .join("documents/exhibits/2026-09-05/screenshot.png");
     fs::write(&binary, b"synthetic image bytes").unwrap();
+    validate(dir.path())
+        .success()
+        .stdout(str::contains("0 error(s)"));
+
+    // Forcing it past the guard and into the index is the thing the rule
+    // names, and that is still refused.
+    run_git(
+        dir.path(),
+        &["add", "-f", "documents/exhibits/2026-09-05/screenshot.png"],
+    );
     validate(dir.path())
         .failure()
         .code(1)
@@ -682,6 +695,59 @@ fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
         .stdout(str::contains("0 error(s)"))
         .stderr(predicates::str::is_empty())
         .stderr(predicates::str::contains(raw.display().to_string()).not());
+}
+
+#[test]
+fn validate_ignores_raw_document_bytes_materialised_by_a_pull() {
+    // LAW-12: `site sync` and `site pull` exist to put bytes under
+    // `documents/`, and the `documents/.gitignore` they write keeps those
+    // bytes untracked. `gate` enumerates git-tracked and stageable files
+    // and reported 0 errors on exactly this tree; `validate` walked the
+    // directory with no notion of `.gitignore` and called the same bytes a
+    // committed legal document. The two disagreed about one directory,
+    // which made the supported workflow self-contradictory: the only way
+    // to get `validate` green locally was to delete the staged bytes.
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join("documents/pleadings")).unwrap();
+    fs::write(
+        dir.path().join("documents/.gitignore"),
+        "*\n!*/\n!*.yml\n!.gitignore\n",
+    )
+    .unwrap();
+    let raw = dir.path().join("documents/pleadings/motion.pdf");
+    fs::write(&raw, b"synthetic pulled bytes").unwrap();
+
+    validate(dir.path())
+        .success()
+        .stdout(str::contains("0 error(s)"))
+        .stderr(predicates::str::contains(raw.display().to_string()).not());
+}
+
+#[test]
+fn validate_still_reports_a_tracked_raw_document_byte() {
+    // The other side of it: honouring `.gitignore` must not blunt the
+    // rule. A byte that is actually *committed* is what the rule exists
+    // to catch, and `git add -f` is how one gets there past the guard.
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join("documents/pleadings")).unwrap();
+    fs::write(
+        dir.path().join("documents/.gitignore"),
+        "*\n!*/\n!*.yml\n!.gitignore\n",
+    )
+    .unwrap();
+    let raw = dir.path().join("documents/pleadings/motion.pdf");
+    fs::write(&raw, b"synthetic committed bytes").unwrap();
+    run_git(dir.path(), &["add", "-f", "documents/pleadings/motion.pdf"]);
+
+    validate(dir.path())
+        .failure()
+        .code(1)
+        .stderr(str::contains(raw.display().to_string()))
+        .stderr(str::contains(
+            "legal documents and raw document bytes must not be committed",
+        ));
 }
 
 #[test]

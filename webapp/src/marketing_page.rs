@@ -21,6 +21,7 @@ use crate::components::{
     BillMarkGlyph, PlatformMark, PlatformMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell,
     SiteHeader, SiteNavLink, SocialMeta,
 };
+use crate::lead_capture::{LeadCaptureContext, LeadCaptureCopy, LeadCaptureForm};
 use crate::litigation_page::HeroWord;
 use crate::public_chrome::{PublicChrome, PublicFooter};
 use crate::services_search::{ServicesBand, ServicesSearch};
@@ -300,6 +301,8 @@ pub struct PageContent {
     /// [`Band::Cta`] is still where a page's address lives.
     pub hero_cta: Option<HeroCta>,
     pub bands: Vec<Band>,
+    #[serde(default)]
+    pub lead_capture: LeadCaptureCopy,
     /// Which visual language the page wears.
     pub skin: PageSkin,
 }
@@ -347,6 +350,7 @@ pub struct InjectedMarketingPage(pub PageContent);
 pub struct MarketingPageView {
     pub chrome: PublicChrome,
     pub content: PageContent,
+    pub lead_capture: LeadCaptureContext,
     /// The `?q=` the request carried, for the searchable services band. Empty
     /// on every page that has no such band, and on an absent or unreadable
     /// query string.
@@ -372,6 +376,10 @@ pub async fn marketing_page_view() -> Result<MarketingPageView, ServerFnError> {
     Ok(MarketingPageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
+        lead_capture: crate::public_chrome::copy_from_request_or_context(
+            consume_context::<LeadCaptureContext>,
+        )
+        .await,
         query: search_query().await,
     })
 }
@@ -400,7 +408,12 @@ pub fn MarketingPageEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        MarketingPage { chrome: view.chrome, content: view.content, query: view.query }
+        MarketingPage {
+            chrome: view.chrome,
+            content: view.content,
+            lead_capture: view.lead_capture,
+            query: view.query,
+        }
     }
 }
 
@@ -483,7 +496,12 @@ fn MarketingShell(
 /// One marketing page. Prop-driven, so it server-renders and unit-tests
 /// without a server future.
 #[component]
-pub fn MarketingPage(chrome: PublicChrome, content: PageContent, query: String) -> Element {
+pub fn MarketingPage(
+    chrome: PublicChrome,
+    content: PageContent,
+    lead_capture: LeadCaptureContext,
+    query: String,
+) -> Element {
     let hero_day_rate = content.bands.iter().find_map(|band| match band {
         Band::Cards {
             items,
@@ -574,7 +592,12 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent, query: String) 
                         }
                     }
                 }
-                Bands { items: content.bands.clone(), query }
+                Bands {
+                    items: content.bands.clone(),
+                    query,
+                    lead_copy: content.lead_capture.clone(),
+                    lead_context: lead_capture.clone(),
+                }
             }
         }
     }
@@ -582,7 +605,12 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent, query: String) 
 
 /// Render a page's bands in order.
 #[component]
-fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
+fn Bands(
+    items: Vec<Band>,
+    #[props(default)] query: String,
+    #[props(default)] lead_copy: LeadCaptureCopy,
+    #[props(default)] lead_context: LeadCaptureContext,
+) -> Element {
     rsx! {
         for band in items.iter() {
             match band {
@@ -892,6 +920,10 @@ fn Bands(items: Vec<Band>, #[props(default)] query: String) -> Element {
                                 p { class: "fm-cta__body", "{body}" }
                             }
                             MailAction { email: email.clone(), subject: email_subject.clone() }
+                            LeadCaptureForm {
+                                copy: lead_copy.clone(),
+                                context: lead_context.clone(),
+                            }
                         }
                     }
                 },
@@ -977,6 +1009,7 @@ mod tests {
     fn chrome() -> PublicChrome {
         PublicChrome {
             brand_name: "Neon Law".to_string(),
+            disclaimer: "Attorney advertisement.".to_string(),
             home_href: "/".to_string(),
             logo_href: "/public/logo.svg".to_string(),
             social_image: "https://example.test/og.png".to_string(),
@@ -1196,6 +1229,10 @@ mod tests {
             hero_mark: None,
             tagline: "The technology function, run by the firm.".to_string(),
             skin: PageSkin::Marketing,
+            lead_capture: LeadCaptureCopy {
+                consent_sentence: "By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.".to_string(),
+                phone_helper: "Optional. If you add a mobile number and check the box, Neon Law may text you about this inquiry. Message and data rates may apply. Reply STOP to stop, HELP for help. See the text-messaging terms.".to_string(),
+            },
             bands: vec![
                 Band::Statement {
                     heading: "Our mission".to_string(),
@@ -1285,7 +1322,14 @@ mod tests {
 
     fn page_html() -> String {
         fn app() -> Element {
-            rsx! { MarketingPage { chrome: chrome(), content: sample_page(), query: String::new() } }
+            rsx! {
+                MarketingPage {
+                    chrome: chrome(),
+                    content: sample_page(),
+                    lead_capture: LeadCaptureContext::default(),
+                    query: String::new(),
+                }
+            }
         }
         render(app)
     }
@@ -1351,6 +1395,20 @@ mod tests {
         assert!(
             statement < cards && cards < steps && steps < network && network < cta,
             "bands render in the order the content lists them: {out}"
+        );
+    }
+
+    #[test]
+    fn renders_the_lead_form_after_the_mail_action() {
+        let out = page_html();
+        let mail = out.find("mailto:support@neonlaw.com").expect("mail action");
+        let form = out.find(r#"action="/leads""#).expect("lead form");
+        assert!(mail < form, "mail action stays beside the form: {out}");
+        assert!(out.contains(r#"href="/privacy""#), "privacy link: {out}");
+        assert!(out.contains(r#"href="/terms""#), "terms link: {out}");
+        assert!(
+            out.contains("Attorney advertisement"),
+            "advertising notice: {out}"
         );
     }
 
@@ -1534,12 +1592,14 @@ mod tests {
                 tagline: "We run the technology function for law firms.".to_string(),
                 bands: vec![],
                 skin,
+                lead_capture: LeadCaptureCopy::default(),
             };
             let mut dom = VirtualDom::new_with_props(
                 MarketingPage,
                 MarketingPageProps {
                     chrome: chrome(),
                     content,
+                    lead_capture: LeadCaptureContext::default(),
                     query: String::new(),
                 },
             );
@@ -1611,8 +1671,16 @@ mod tests {
                     email_subject: None,
                 }],
                 skin: PageSkin::Marketing,
+                lead_capture: LeadCaptureCopy::default(),
             };
-            rsx! { MarketingPage { chrome: chrome(), content, query: String::new() } }
+            rsx! {
+                MarketingPage {
+                    chrome: chrome(),
+                    content,
+                    lead_capture: LeadCaptureContext::default(),
+                    query: String::new(),
+                }
+            }
         }
         let out = render(app);
         assert!(out.contains("Fractional General Counsel"), "title: {out}");

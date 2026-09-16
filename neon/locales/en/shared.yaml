@@ -46,3 +46,7 @@ entries:
   litigation.lede: Start with a free consultation. Tell us what happened, what you need, and whether you have a deadline.
   litigation.cta: Request a free consultation
   litigation.cases_help_others: We care about cases that can make life better for you and for others facing the same problem.
+
+  # Lead capture
+  lead.consent: By sending this, you agree that {site_name} may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.
+  lead.phone_helper: Optional. If you add a mobile number and check the box, {site_name} may text you about this inquiry. Message and data rates may apply. Reply STOP to stop, HELP for help. See the text-messaging terms.

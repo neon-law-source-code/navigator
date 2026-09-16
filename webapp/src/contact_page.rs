@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{PublicShell, SiteHeader, SiteNavLink, SocialMeta};
+use crate::lead_capture::{LeadCaptureContext, LeadCaptureCopy, LeadCaptureForm};
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// The resolved contact content — the portal router builds it from the brand
@@ -29,6 +30,8 @@ pub struct ContactContent {
     /// The firm's published voice line, rendered as written and dialled from
     /// the `tel:` link beside it.
     pub firm_phone: String,
+    #[serde(default)]
+    pub lead_capture: LeadCaptureCopy,
 }
 
 /// The [`ContactContent`] injected into the render context by the portal router.
@@ -40,6 +43,7 @@ pub struct InjectedContact(pub ContactContent);
 pub struct ContactPageView {
     pub chrome: PublicChrome,
     pub content: ContactContent,
+    pub lead_capture: LeadCaptureContext,
 }
 
 /// Resolve the chrome from the process brand and the contact content from the
@@ -53,6 +57,10 @@ pub async fn contact_page_view() -> Result<ContactPageView, ServerFnError> {
     Ok(ContactPageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
+        lead_capture: crate::public_chrome::copy_from_request_or_context(
+            consume_context::<LeadCaptureContext>,
+        )
+        .await,
     })
 }
 
@@ -65,14 +73,22 @@ pub fn ContactPageEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        ContactPage { chrome: view.chrome, content: view.content }
+        ContactPage {
+            chrome: view.chrome,
+            content: view.content,
+            lead_capture: view.lead_capture,
+        }
     }
 }
 
 /// The pure contact page: the firm's contact section inside the public shell.
 /// Prop-driven, so it server-renders and unit-tests without a server future.
 #[component]
-pub fn ContactPage(chrome: PublicChrome, content: ContactContent) -> Element {
+pub fn ContactPage(
+    chrome: PublicChrome,
+    content: ContactContent,
+    lead_capture: LeadCaptureContext,
+) -> Element {
     let header = rsx! {
         SiteHeader {
             brand_name: chrome.brand_name.clone(),
@@ -128,6 +144,92 @@ pub fn ContactPage(chrome: PublicChrome, content: ContactContent) -> Element {
                         }
                     }
                 }
+                LeadCaptureForm {
+                    copy: content.lead_capture.clone(),
+                    context: lead_capture,
+                }
+            }
+        }
+    }
+}
+
+/// The neutral destination for both accepted and silently rejected lead
+/// submissions. It never tells a stranger whether a row was written.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ContactSentPageView {
+    pub chrome: PublicChrome,
+    pub firm_phone: String,
+}
+
+/// Resolve the public chrome and the firm's published phone for the neutral
+/// lead-submission destination.
+#[server]
+pub async fn contact_sent_page_view() -> Result<ContactSentPageView, ServerFnError> {
+    let content =
+        crate::public_chrome::copy_from_request_or_context(consume_context::<InjectedContact>)
+            .await
+            .0;
+    Ok(ContactSentPageView {
+        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
+        firm_phone: content.firm_phone,
+    })
+}
+
+/// The route entry for the neutral lead-submission destination.
+#[component]
+pub fn ContactSentPageEntry() -> Element {
+    let resource = use_server_future(contact_sent_page_view)?;
+    let view = match &*resource.read() {
+        Some(Ok(view)) => view.clone(),
+        _ => return rsx! {},
+    };
+    rsx! {
+        ContactSentPage {
+            chrome: view.chrome,
+            firm_phone: view.firm_phone,
+        }
+    }
+}
+
+/// The page shown after a lead form submission, regardless of whether the
+/// submission was accepted or silently rejected.
+#[component]
+pub fn ContactSentPage(chrome: PublicChrome, firm_phone: String) -> Element {
+    let firm_tel = format!(
+        "tel:{}",
+        firm_phone
+            .chars()
+            .filter(|c| c.is_ascii_digit() || *c == '+')
+            .collect::<String>()
+    );
+    let header = rsx! {
+        SiteHeader {
+            brand_name: chrome.brand_name.clone(),
+            home_href: chrome.home_href.clone(),
+            logo_href: chrome.logo_href.clone(),
+            destinations: chrome
+                .destinations
+                .iter()
+                .map(|link| SiteNavLink::new(link.label.clone(), link.href.clone()))
+                .collect(),
+            utility: chrome
+                .utility
+                .iter()
+                .map(|link| SiteNavLink::new(link.label.clone(), link.href.clone()))
+                .collect(),
+        }
+    };
+    let footer = rsx! { PublicFooter { chrome: chrome.clone() } };
+    rsx! {
+        document::Title { "{chrome.brand_name} | Contact sent" }
+        PublicShell { header, footer,
+            article { class: "contact-sent-page",
+                h1 { "Thank you" }
+                p {
+                    "We received your note. Someone from the firm will reply by email. This does not make you a client yet, and nothing here is legal advice. If it is urgent, call "
+                    a { href: "{firm_tel}", "{firm_phone}" }
+                    "."
+                }
             }
         }
     }
@@ -147,6 +249,7 @@ mod tests {
         fn app() -> Element {
             let chrome = PublicChrome {
                 brand_name: "Neon Law".to_string(),
+                disclaimer: "Attorney advertisement.".to_string(),
                 ..PublicChrome::default()
             };
             let content = ContactContent {
@@ -157,8 +260,12 @@ mod tests {
                 phone_label: "Phone".to_string(),
                 firm_email: "support@example.com".to_string(),
                 firm_phone: "+1 555 010 0100".to_string(),
+                lead_capture: LeadCaptureCopy {
+                    consent_sentence: "By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.".to_string(),
+                    phone_helper: "Optional. If you add a mobile number and check the box, Neon Law may text you about this inquiry. Message and data rates may apply. Reply STOP to stop, HELP for help. See the text-messaging terms.".to_string(),
+                },
             };
-            rsx! { ContactPage { chrome, content } }
+            rsx! { ContactPage { chrome, content, lead_capture: LeadCaptureContext::default() } }
         }
         ssr(app)
     }
@@ -232,5 +339,43 @@ mod tests {
             out.contains(r#"class="contact-page""#),
             "contact article class"
         );
+    }
+
+    #[test]
+    fn renders_the_lead_form_beside_the_mailto_channel() {
+        let out = html();
+        assert!(out.contains(r#"action="/leads""#), "lead form: {out}");
+        assert!(out.contains(r#"href="/privacy""#), "privacy link: {out}");
+        assert!(out.contains(r#"href="/terms""#), "terms link: {out}");
+        assert!(
+            out.contains("You may text me about this inquiry"),
+            "sms copy: {out}"
+        );
+        assert!(
+            out.contains("Attorney advertisement"),
+            "advertising notice: {out}"
+        );
+    }
+
+    #[test]
+    fn renders_the_neutral_contact_sent_message() {
+        fn app() -> Element {
+            rsx! {
+                ContactSentPage {
+                    chrome: PublicChrome {
+                        brand_name: "Neon Law".to_string(),
+                        ..PublicChrome::default()
+                    },
+                    firm_phone: "+ ()".to_string(),
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(out.contains("We received your note."), "thanks: {out}");
+        assert!(
+            out.contains("does not make you a client yet"),
+            "thanks: {out}"
+        );
+        assert!(out.contains(r#"href="tel:+""#), "phone: {out}");
     }
 }

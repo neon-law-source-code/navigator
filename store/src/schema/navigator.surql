@@ -258,6 +258,28 @@ DEFINE FIELD OVERWRITE inserted_at ON testimonial TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON testimonial TYPE string;
 DEFINE INDEX OVERWRITE testimonial_replay ON testimonial FIELDS project_id, person_id, quote UNIQUE;
 
+-- `lead` is a request for contact, not a Person identity. The mailbox index
+-- is deliberately non-unique: one mailbox may submit separately on multiple
+-- brands, while `store::leads` coalesces repeats for one brand and increments
+-- `submissions`.
+DEFINE TABLE IF NOT EXISTS lead SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE email ON lead TYPE string;
+DEFINE FIELD OVERWRITE email_lower ON lead TYPE string VALUE string::lowercase(email);
+DEFINE FIELD OVERWRITE phone ON lead TYPE option<string>;
+DEFINE FIELD OVERWRITE brand_key ON lead TYPE string;
+DEFINE FIELD OVERWRITE source_path ON lead TYPE string;
+DEFINE FIELD OVERWRITE consent_version ON lead TYPE string;
+DEFINE FIELD OVERWRITE consented_at ON lead TYPE datetime;
+DEFINE FIELD OVERWRITE sms_consented_at ON lead TYPE option<datetime>;
+DEFINE FIELD OVERWRITE status ON lead TYPE string ASSERT $value IN
+    ['new', 'contacted', 'converted', 'declined', 'unsubscribed'] DEFAULT 'new';
+DEFINE FIELD OVERWRITE unsubscribed_at ON lead TYPE option<datetime>;
+DEFINE FIELD OVERWRITE person_id ON lead TYPE option<record<person>>;
+DEFINE FIELD OVERWRITE submissions ON lead TYPE int DEFAULT 1 ASSERT $value >= 1;
+DEFINE FIELD OVERWRITE inserted_at ON lead TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON lead TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE lead_email_lower ON lead FIELDS email_lower;
+
 -- `persons`: the directory of human contacts. Record ids are UUIDs, so
 -- references preserve the ids used throughout the application.
 --

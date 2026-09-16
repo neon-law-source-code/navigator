@@ -58,6 +58,9 @@ sensitive query parameters are ignored, invalid allowed values collapse to `inva
 `direct`, same-site referrers to `internal`, and unrecognized external hosts to `other`. The operational view is
 admin-only at `/app/admin/analytics`.
 
+Public lead capture stores the submitted inquiry in the `lead` table through `POST /leads`; its audit event carries only
+the lead id, brand, source path, and outcome, never an email address, phone number, or form content.
+
 ## Where it lands: direct OpenObserve
 
 Traces, metrics, and logs speak OTLP/gRPC directly to the OpenObserve organization and stream named in their

@@ -47,7 +47,21 @@ it:
   stopped — the exact failure that hid for days;
 - a structured event on each outcome (`status`, `service`) so a 401 / 404 / timeout is one log line, not a guess.
 
-The worker and web emit their own spans through the same subscriber, so new handlers inherit tracing for free.
+The worker and web emit their own spans through the same subscriber, so new handlers inherit tracing for free. Every
+`web` request span additionally carries the HTTP semconv trio through the outermost `TraceLayer` in `portal/src/lib.rs`:
+`http.request.method`, `http.route` (the matched route *template* from axum's `MatchedPath` — never the resolved path,
+so a Project code or person id in the URL never rides a span attribute), and `http.response.status_code` (recorded once
+the handler answers). All three are on the collector's allow-list already, so a Dash0 span query grouped by
+`http.response.status_code` works without a collector change.
+
+`store::surreal::ping` — the readiness probe's one query — runs on its own `tokio::spawn`ed task rather than inline
+(ENG-709). `readyz`'s caller is a kubelet HTTP probe with a short timeout; when it fires before the query answers,
+kubelet drops the connection and axum drops the handler future that was awaiting `ping`. Awaited inline, that drop would
+drop the receiver half of the remote WS engine's internal response channel while the query was still in flight, and the
+`surrealdb` client's own router task would log `Failed to send query results to channel: SendError(..)` at ERROR when it
+tried to deliver a response nobody was waiting for — this was roughly 85% of staging's log volume. Spawning decouples
+the two lifetimes: the caller giving up only stops it from *waiting*, not the query from *running*, so the engine always
+finds its receiver.
 
 Web also records first-party public website visits as aggregate analytics. The durable table and OTel counter
 (`navigator.web.visit.count`) use bounded dimensions only: UTC day, Axum matched route pattern, trusted edge
@@ -85,6 +99,13 @@ refuse a missing value by name, so a half-configured row cannot be silently rend
 three values present, the renderer substitutes the endpoint and dataset and includes `otlp/dash0` alongside
 `googlecloud` in all three pipelines. The token remains a `secretKeyRef` and never enters application arguments or
 committed plaintext.
+
+The collector's own metrics (`otelcol_exporter_sent_*`, `otelcol_exporter_send_failed_*`, `otelcol_processor_dropped_*`,
+…) reach the same fan-out as every other signal: a `prometheus/self` receiver scrapes the collector's own `:8888`
+`telemetry.metrics` endpoint into the `metrics` pipeline, so exporter health redacts, batches, and exports to
+`googlecloud` and `otlp/dash0` exactly like application metrics, instead of reaching Cloud Monitoring (via Google
+Managed Prometheus's separate external scrape of the same port) only. `exporter` is on the allow-list for this reason —
+it names a collector component (e.g. `otlp/dash0`), never client data.
 
 The collector exporter uses OTLP/gRPC with `Authorization: Bearer …` and a `Dash0-Dataset` header. The transport and
 header names are inferred from the repository's OTLP/gRPC seam and the implementation brief; confirm the account's exact

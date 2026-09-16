@@ -241,6 +241,37 @@ fn the_export_contract_matches_what_the_records_emit() {
     );
 }
 
+/// ENG-710: the OIDC/API/CI/rate-limit `target: "audit"` sites outside
+/// `a2a.rs` (`portal/src/oauth.rs`, `portal/src/api_audit.rs`,
+/// `portal/src/rate_limit.rs`, `portal/src/ci_auth.rs`) are deliberately NOT
+/// pinned by [`every_agent_authorization_field_survives_the_export_boundary`]
+/// — that gate is scoped to the content-free a2a.rs records alone (see the
+/// module docs on "Why this covers `a2a.rs` alone"). But the *safe* fields
+/// those other sites emit still need to survive redaction for a Dash0 log
+/// query grouped by `event` to return the OIDC/API/CI/rate-limit events at
+/// all, and nothing else guards that. A plain membership check against the
+/// allow-list, not a source scan: the fields these sites deliberately do NOT
+/// export (`path`, `project_code`, `ip`, `subject`, `repository`, `kid`,
+/// `user_id`, `method`, `status`) are excluded on purpose, so asserting
+/// equality against everything a scan finds would fight that design instead
+/// of guarding it.
+#[test]
+fn oidc_api_ci_and_rate_limit_events_still_survive_redaction() {
+    let root = workspace_root();
+    let collector = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    let allowed = allowed_keys(&collector);
+
+    for key in ["event", "role", "person_id"] {
+        assert!(
+            allowed.contains(key),
+            "`{key}` must stay on the collector's allow-list: portal/src/oauth.rs, \
+             portal/src/api_audit.rs, portal/src/rate_limit.rs, and portal/src/ci_auth.rs \
+             all emit `target: \"audit\"` records carrying it, and losing it here silently \
+             empties a Dash0 log query grouped by that key."
+        );
+    }
+}
+
 #[test]
 fn dash0_is_an_additive_exporter_after_redaction_for_every_signal() {
     let root = workspace_root();

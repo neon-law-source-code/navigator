@@ -57,6 +57,20 @@ data:
         protocols:
           grpc:
             endpoint: 0.0.0.0:4317
+      # The collector's OWN metrics (otelcol_exporter_sent_*,
+      # otelcol_exporter_send_failed_*, otelcol_processor_dropped_*, …),
+      # self-scraped from the `telemetry.metrics` endpoint below (ENG-710).
+      # Google Managed Prometheus already scrapes :8888 directly into Cloud
+      # Monitoring; this receiver feeds the SAME metrics into this collector's
+      # own metrics pipeline so they redact and fan out to Dash0 exactly like
+      # every other signal, instead of reaching Cloud Monitoring only.
+      prometheus/self:
+        config:
+          scrape_configs:
+            - job_name: otel-collector-self
+              scrape_interval: 30s
+              static_configs:
+                - targets: ["0.0.0.0:8888"]
     processors:
       # Guard the collector's own memory before anything else in the chain.
       memory_limiter:
@@ -112,6 +126,11 @@ data:
           - k8s.deployment.name
           - k8s.node.name
           - container.name
+          # --- the collector's own self-telemetry (prometheus/self, ENG-710) ---
+          # `otelcol_exporter_sent_*` / `otelcol_exporter_send_failed_*` carry
+          # this label so a panel can chart exporter health per exporter name;
+          # it names a collector component, never client data.
+          - exporter
           # --- Neon Law Navigator operational (what telemetry/workflows emit) ---
           - service
           - outcome
@@ -255,7 +274,7 @@ data:
           processors: [memory_limiter, resourcedetection, redaction, tail_sampling, batch]
           exporters: [googlecloud, otlp/dash0]
         metrics:
-          receivers: [otlp]
+          receivers: [otlp, prometheus/self]
           processors: [memory_limiter, resourcedetection, redaction, batch]
           exporters: [googlecloud, otlp/dash0]
         logs:

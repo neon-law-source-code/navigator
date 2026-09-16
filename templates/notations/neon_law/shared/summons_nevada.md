@@ -1,5 +1,5 @@
 ---
-kind: filing
+kind: pleading
 title: Summons (Nevada)
 jurisdiction: NV
 respondent_type: person

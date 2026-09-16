@@ -1,5 +1,5 @@
 ---
-kind: filing
+kind: pleading
 title: Affidavit of Percipient Witness (Nevada)
 jurisdiction: NV
 respondent_type: person

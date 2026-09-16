@@ -1,5 +1,5 @@
 ---
-kind: filing
+kind: pleading
 title: Answer to Counterclaim (Nevada)
 jurisdiction: NV
 respondent_type: person

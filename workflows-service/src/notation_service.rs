@@ -464,6 +464,7 @@ impl NotationService {
                     }
                 }
             }
+
             // The firm signing the closing letter (`firm_signature__*`)
             // closes the matter: flip the bound Project `open` → `closed`.
             // The symmetric bookend to the client-signed retainer that
@@ -769,30 +770,44 @@ async fn send_review_notification(
         .with_html(html)
         .with_template(format!("notation-review-{}", hop.as_str()))
         .with_person(recipient_id.to_string());
-    if email.send(outbound).await.is_ok() {
-        tracing::info!(
-            target: "audit",
-            audit = true,
-            notation_id = %notation_id,
-            project_id = %project_id,
-            recipient_role = hop.as_str(),
-            hop = hop.as_str(),
-            outcome = "sent",
-            "review notification sent"
-        );
-        Ok(())
-    } else {
-        tracing::info!(
-            target: "audit",
-            audit = true,
-            notation_id = %notation_id,
-            project_id = %project_id,
-            recipient_role = hop.as_str(),
-            hop = hop.as_str(),
-            outcome = "failed",
-            "review notification failed"
-        );
-        Err(TerminalError::new("review notification send failed").into())
+    match email.send(outbound).await {
+        Ok(_) => {
+            tracing::info!(
+                target: "audit",
+                audit = true,
+                notation_id = %notation_id,
+                project_id = %project_id,
+                recipient_role = hop.as_str(),
+                hop = hop.as_str(),
+                outcome = "sent",
+                "review notification sent"
+            );
+            Ok(())
+        }
+        Err(error) => {
+            // The variant, never the message: `EmailError::InvalidRecipient`
+            // carries the address it refused, and telemetry leaves the firm's
+            // trust boundary. The two words still separate a bad mailbox from
+            // a provider outage, which is the whole diagnostic question, and
+            // they ride the handler error rather than a new audit field — the
+            // collector's allow-list is fail-closed, so a key added here would
+            // export as a blank until it is allow-listed too.
+            let reason = match error {
+                workflows::email::EmailError::InvalidRecipient(_) => "invalid recipient",
+                workflows::email::EmailError::Transport(_) => "transport",
+            };
+            tracing::info!(
+                target: "audit",
+                audit = true,
+                notation_id = %notation_id,
+                project_id = %project_id,
+                recipient_role = hop.as_str(),
+                hop = hop.as_str(),
+                outcome = "failed",
+                "review notification failed"
+            );
+            Err(TerminalError::new(format!("review notification send failed: {reason}")).into())
+        }
     }
 }
 

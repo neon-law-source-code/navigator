@@ -38,9 +38,24 @@ const SELECT: &str = "id, name, brand_key, firm_id, primary_color, accent_color,
 /// bad value ever reaches the database.
 pub const FONT_LICENCES: &[&str] = &["OFL-1.1", "Apache-2.0", "UFL-1.0"];
 
+const WHITE: [u8; 3] = [0xff, 0xff, 0xff];
+const BLACK: [u8; 3] = [0x00, 0x00, 0x00];
+
+/// The light-mode page surface every brand's primary colour actually
+/// renders against — `--nav-color-bg: #ffffff` in
+/// `server/public/css/tokens.css`, the same default
+/// `views::brand_presentation::scheme_bg` falls back to for a scheme with no
+/// explicit `bg`. Duplicated as a literal for the reason [`parse_hex`]'s doc
+/// comment gives: `store` does not depend on `views` or the CSS.
+const LIGHT_PAGE_SURFACE: [u8; 3] = WHITE;
+
 /// WCAG AA contrast floor for a brand's primary colour against its
-/// best-contrasting on-primary (white or black).
-const MIN_CONTRAST: f64 = 4.5;
+/// deterministically-chosen on-primary text colour (ENG-629).
+const MIN_ON_PRIMARY_CONTRAST: f64 = 4.5;
+
+/// WCAG UI-component contrast floor (1.4.11) for a brand's primary colour
+/// against the light page surface it renders on (ENG-629).
+const MIN_SURFACE_CONTRAST: f64 = 3.0;
 
 /// Parse `#rrggbb` into sRGB bytes. A self-contained copy of
 /// `views::brand_presentation::parse_hex` — `store` does not depend on
@@ -75,35 +90,53 @@ fn contrast_ratio(a: [u8; 3], b: [u8; 3]) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
-/// Validate a brand's proposed primary hex: well-formed `#rrggbb`, and its
-/// best on-primary contrast (white or black, whichever is higher) clears
-/// WCAG AA 4.5:1 (ENG-586). Refuses before any write, naming the ratio so the
-/// caller can state it.
+/// Validate a brand's proposed primary hex against the two fixed
+/// backgrounds it actually renders on (ENG-629): well-formed `#rrggbb`
+/// first, then its deterministically-chosen on-primary text colour — white
+/// or black, whichever contrasts more, never "the best of both" as a single
+/// opaque ratio — must clear WCAG AA 4.5:1, and the primary itself must
+/// clear 3:1 against [`LIGHT_PAGE_SURFACE`]. Refuses before any write,
+/// naming which background failed and the ratio so the caller can state it.
 ///
-/// In practice [`BrandError::InsufficientContrast`] is unreachable for a
-/// well-formed hex: `max(contrast(hex, white), contrast(hex, black))` has a
-/// mathematical floor of `sqrt(1.05 * 0.05) / 0.05 ≈ 4.58`, reached only at
-/// the exact luminance where the two are equal — every other value clears it
-/// by more. `create_accepts_every_well_formed_hex_because_the_contrast_floor_always_clears`
-/// proves this against several deliberately "unreadable-looking" hexes. The
-/// check stays in place because it costs nothing, matches what ENG-586
-/// specified, and is the correct shape if the threshold or formula ever
-/// changes — but it is not, today, a gate that can refuse an ill-considered
-/// brand colour. A gate that can actually reject a pale or low-saturation
-/// primary would need to check contrast against a fixed background (the
-/// page's own light-mode surface) rather than against the best of two
-/// self-selected extremes.
+/// The on-primary check alone cannot reject a well-formed hex:
+/// `max(contrast(hex, white), contrast(hex, black))` has a mathematical
+/// floor of `sqrt(1.05 * 0.05) / 0.05 ≈ 4.58`, reached only at the exact
+/// luminance where the two are equal — every other value clears 4.5:1 by
+/// more. The page-surface check is what can actually refuse an
+/// ill-considered brand colour: a pale or low-saturation primary can read
+/// fine against whichever on-primary text it picks while all but
+/// disappearing against the white page around it.
+/// `create_and_update_refuse_a_pale_primary_that_would_clear_the_old_best_of_gate`
+/// proves this failure mode; the former (ENG-586) test proved only that the
+/// old best-of check could never reject anything.
 fn validate_primary_hex(value: &str) -> Result<(), BrandError> {
     let rgb = parse_hex(value).ok_or_else(|| BrandError::InvalidHex(value.to_string()))?;
-    let white = contrast_ratio(rgb, [0xff, 0xff, 0xff]);
-    let black = contrast_ratio(rgb, [0x00, 0x00, 0x00]);
-    let best = white.max(black);
-    if best < MIN_CONTRAST {
+
+    let (on_primary, against) = if contrast_ratio(rgb, WHITE) >= contrast_ratio(rgb, BLACK) {
+        (WHITE, "white on-primary text")
+    } else {
+        (BLACK, "black on-primary text")
+    };
+    let text_ratio = contrast_ratio(rgb, on_primary);
+    if text_ratio < MIN_ON_PRIMARY_CONTRAST {
         return Err(BrandError::InsufficientContrast {
             hex: value.to_string(),
-            ratio: best,
+            against,
+            ratio: text_ratio,
+            required: MIN_ON_PRIMARY_CONTRAST,
         });
     }
+
+    let surface_ratio = contrast_ratio(rgb, LIGHT_PAGE_SURFACE);
+    if surface_ratio < MIN_SURFACE_CONTRAST {
+        return Err(BrandError::InsufficientContrast {
+            hex: value.to_string(),
+            against: "the light page surface",
+            ratio: surface_ratio,
+            required: MIN_SURFACE_CONTRAST,
+        });
+    }
+
     Ok(())
 }
 
@@ -245,10 +278,17 @@ pub enum BrandError {
     /// The proposed `primary_color` is not a well-formed `#rrggbb` hex.
     #[error("{0} is not a valid #rrggbb hex colour")]
     InvalidHex(String),
-    /// The proposed `primary_color`'s best on-primary contrast (white or
-    /// black) falls short of WCAG AA 4.5:1 (ENG-586).
-    #[error("{hex}'s best on-primary contrast is {ratio:.1}:1; it must be at least 4.5:1")]
-    InsufficientContrast { hex: String, ratio: f64 },
+    /// The proposed `primary_color` fails one of the two fixed-background
+    /// contrast checks (ENG-629): its deterministically-chosen on-primary
+    /// text colour, or the light page surface it renders on. `against`
+    /// names which one.
+    #[error("{hex} is {ratio:.1}:1 against {against}; it must be at least {required:.1}:1")]
+    InsufficientContrast {
+        hex: String,
+        against: &'static str,
+        ratio: f64,
+        required: f64,
+    },
     /// The proposed font licence is not one of [`FONT_LICENCES`].
     #[error("font licence must be one of {}", FONT_LICENCES.join(", "))]
     InvalidFontLicence(String),
@@ -267,8 +307,13 @@ impl BrandError {
     pub fn user_message(&self) -> String {
         match self {
             Self::InvalidHex(hex) => format!("{hex} is not a valid #rrggbb hex colour."),
-            Self::InsufficientContrast { hex, ratio } => format!(
-                "{hex}'s best on-primary contrast is {ratio:.1}:1; it must be at least 4.5:1."
+            Self::InsufficientContrast {
+                hex,
+                against,
+                ratio,
+                required,
+            } => format!(
+                "{hex} is {ratio:.1}:1 against {against}; it must be at least {required:.1}:1."
             ),
             Self::InvalidFontLicence(_) => {
                 format!("Pick a font licence: {}.", FONT_LICENCES.join(", "))
@@ -1138,26 +1183,20 @@ mod tests {
         assert!(matches!(err, BrandError::InvalidHex(_)));
     }
 
-    /// ENG-586: the "best of white or black" contrast the gate checks has a
-    /// mathematical floor of `sqrt(1.05 * 0.05) / 0.05 ≈ 4.58` — every
-    /// well-formed hex, however pale or saturated, clears WCAG AA 4.5:1
-    /// against *some* choice of on-primary, so [`BrandError::InsufficientContrast`]
-    /// is unreachable for a well-formed value. A pale yellow that reads as
-    /// "low contrast" against white still clears the gate against black.
-    /// This is the reachability proof for that floor, so a future change to
-    /// the formula or the threshold surfaces here rather than silently
-    /// making the gate meaningless (or, if the threshold is ever lowered
-    /// below the floor, silently making it unreachable in the other
-    /// direction).
+    /// ENG-629: the old "best of white or black" gate had a mathematical
+    /// floor of `sqrt(1.05 * 0.05) / 0.05 ≈ 4.58` for every well-formed hex,
+    /// so it could never reject one — a pale yellow or near-white primary
+    /// read as "low contrast" against the white page around it while still
+    /// clearing the gate against black text. Checking the primary against
+    /// [`LIGHT_PAGE_SURFACE`] (what the page actually renders it on) instead
+    /// of the best of two self-selected extremes is what makes those two
+    /// colours refusable, while a genuinely darker or more saturated primary
+    /// — which does contrast against the real white page — still clears
+    /// both checks exactly as before.
     #[tokio::test]
-    async fn create_accepts_every_well_formed_hex_because_the_contrast_floor_always_clears() {
+    async fn create_and_update_refuse_a_pale_primary_that_would_clear_the_old_best_of_gate() {
         let db = mem_surreal().await;
-        for (key, hex) in [
-            ("pale-yellow", "#f5f5a0"),
-            ("near-white", "#fefefe"),
-            ("near-black", "#010101"),
-            ("mid-gray", "#808080"),
-        ] {
+        for (key, hex) in [("near-black", "#010101"), ("mid-gray", "#808080")] {
             let brand = create(
                 &db,
                 Role::Owner,
@@ -1170,9 +1209,61 @@ mod tests {
                 },
             )
             .await
-            .unwrap_or_else(|error| panic!("{hex} must clear the contrast floor: {error}"));
+            .unwrap_or_else(|error| {
+                panic!("{hex} must still clear the fixed-background gate: {error}")
+            });
             assert_eq!(brand.primary_color.as_deref(), Some(hex));
         }
+
+        for (key, hex) in [("pale-yellow", "#f5f5a0"), ("near-white", "#fefefe")] {
+            let err = create(
+                &db,
+                Role::Owner,
+                None,
+                &NewBrand {
+                    name: key.to_string(),
+                    key: key.to_string(),
+                    primary_color: Some(hex.to_string()),
+                    ..NewBrand::default()
+                },
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(
+                    &err,
+                    BrandError::InsufficientContrast { against, .. } if *against == "the light page surface"
+                ),
+                "{hex}: {err}"
+            );
+        }
+
+        // `update` refuses the same pale primary on an already-created brand.
+        let brand = create(
+            &db,
+            Role::Owner,
+            None,
+            &NewBrand {
+                name: "Editable".to_string(),
+                key: "editable-pale".to_string(),
+                ..NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
+        let err = update(
+            &db,
+            Role::Owner,
+            None,
+            brand.id,
+            &BrandEdit {
+                primary_color: Some(Some("#fefefe".to_string())),
+                ..BrandEdit::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, BrandError::InsufficientContrast { .. }));
     }
 
     /// ENG-586: `set_font` refuses a licence outside the closed list before

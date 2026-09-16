@@ -3034,7 +3034,7 @@ pub fn document_with_base(base: &str) -> Value {
                             "description": "A closed catalog id, or \"uploaded\" to use font_family with a font uploaded via the native multipart door.",
                             "enum": ["gorp-serif", "plus-jakarta-sans", "tinos", "system-serif", "system-sans", "uploaded"] },
               "primary_color": { "type": "string",
-                            "description": "A #rrggbb hex, refused unless its best on-primary contrast (white or black) clears WCAG AA 4.5:1." },
+                            "description": "A #rrggbb hex, refused unless its on-primary text (white or black, whichever contrasts more) clears WCAG AA 4.5:1 and it clears 3:1 against the light page surface." },
               "font_family": { "type": "string",
                             "description": "The CSS font-family name for an uploaded font. Blank clears it." }
             },

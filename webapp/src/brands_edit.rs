@@ -209,8 +209,9 @@ fn presentation_form(view: &BrandsEditView, fields: &BrandPresentationFields) ->
         .required()
         .placeholder("#007c91")
         .help(
-            "A #rrggbb hex. Its best on-primary contrast (white or black) must clear WCAG AA \
-                 4.5:1, or the save is refused with the ratio.",
+            "A #rrggbb hex. Its on-primary text (white or black, whichever contrasts more) must \
+             clear WCAG AA 4.5:1, and it must clear 3:1 against the light page surface, or the \
+             save is refused naming the ratio.",
         ),
         Field::text("Font family", "font_family", fields.font_family.clone()).help(
             "The CSS font-family name for an uploaded font. Only used when Typeface is \
@@ -418,10 +419,11 @@ mod tests {
     fn a_refusal_names_the_rule() {
         let mut view = view(Some(fields()));
         view.error = Some(
-            "#f5f5a0's best on-primary contrast is 1.2:1; it must be at least 4.5:1.".to_string(),
+            "#f5f5a0 is 1.1:1 against the light page surface; it must be at least 3.0:1."
+                .to_string(),
         );
         let html = dioxus_ssr::render_element(brands_edit_body(&view));
-        assert!(html.contains("must be at least 4.5:1"), "{html}");
+        assert!(html.contains("must be at least 3.0:1"), "{html}");
     }
 
     #[test]

@@ -175,7 +175,10 @@ fn new_body(view: &BrandNewView) -> Element {
         )
         .required()
         .placeholder("#007c91")
-        .help("A #rrggbb hex whose best on-primary contrast clears WCAG AA 4.5:1."),
+        .help(
+            "A #rrggbb hex. Its on-primary text (white or black, whichever contrasts more) must \
+             clear WCAG AA 4.5:1, and it must clear 3:1 against the light page surface.",
+        ),
     ];
 
     rsx! {

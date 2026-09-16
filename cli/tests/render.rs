@@ -162,28 +162,33 @@ fn renders_a_letter_pdf_from_a_valid_template() {
 }
 
 #[test]
-fn cli_format_overrides_frontmatter_and_letter_is_larger_than_plain() {
+fn frontmatter_output_selects_the_frame_and_letterhead_is_larger_than_plain() {
+    // `output:` is the template's own deliberate override, and the only
+    // one: a `kind: will` template that declares none renders plain, an
+    // `output: letter` one renders on letterhead, and the frame is read
+    // from the document either way.
     let work = TempDir::new().unwrap();
-    let src = write(&work, "demand.md", VALID);
 
+    let letter_src = write(&work, "demand.md", VALID);
     let letter_out = work.path().join("letter.pdf");
-    // `output: letter` from frontmatter — no flag.
-    let letter = render(&[src.as_os_str(), "--out".as_ref(), letter_out.as_ref()]);
-    assert!(letter.status.success());
-
-    let plain_out = work.path().join("plain.pdf");
-    // `--format plain` overrides the `output: letter` frontmatter.
-    let plain = render(&[
-        src.as_os_str(),
+    let letter = render(&[
+        letter_src.as_os_str(),
         "--out".as_ref(),
-        plain_out.as_ref(),
-        "--format".as_ref(),
-        "plain".as_ref(),
+        letter_out.as_ref(),
     ]);
+    assert!(
+        letter.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&letter.stderr)
+    );
+
+    let plain_src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
+    let plain_out = work.path().join("plain.pdf");
+    let plain = render(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
     assert!(plain.status.success());
     assert!(
         String::from_utf8_lossy(&plain.stdout).contains("Plain"),
-        "override should report Plain, got: {}",
+        "a `kind: will` template should report Plain, got: {}",
         String::from_utf8_lossy(&plain.stdout)
     );
 
@@ -211,14 +216,11 @@ fn a_letter_kind_renders_on_letterhead_with_no_output_declared() {
         String::from_utf8_lossy(&derived.stderr)
     );
 
+    // The contrast case is a different `kind:`, not a flag: `will`
+    // derives plain, so the two derivations are what differ.
+    let plain_src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
     let plain_out = work.path().join("plain.pdf");
-    let plain = render(&[
-        src.as_os_str(),
-        "--out".as_ref(),
-        plain_out.as_ref(),
-        "--format".as_ref(),
-        "plain".as_ref(),
-    ]);
+    let plain = render(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
     assert!(plain.status.success());
 
     let derived_len = fs::read(&derived_out).unwrap().len();
@@ -228,12 +230,10 @@ fn a_letter_kind_renders_on_letterhead_with_no_output_declared() {
         "a `kind: letter` template with no `output:` should default to \
          letterhead ({derived_len}) rather than plain ({plain_len}) — logo missing?"
     );
-
-    // An explicit `--format` still overrides the derived default.
     let stdout = String::from_utf8_lossy(&plain.stdout);
     assert!(
         stdout.contains("Plain"),
-        "override should report Plain, got: {stdout}"
+        "a `kind: will` template should report Plain, got: {stdout}"
     );
 }
 
@@ -353,23 +353,33 @@ fn refuses_a_template_that_fails_validation() {
 }
 
 #[test]
-fn rejects_an_unknown_format() {
+fn the_format_flag_is_retired_and_cannot_reframe_an_instrument() {
+    // LAW-15: `--format` chose the frame a second time, from outside the
+    // document, and won over a correct header. A `kind: will` template
+    // renders the unadorned instrument; `--format letter`, passed out of
+    // habit, silently put the firm's letterhead on it. The flag is gone,
+    // so the mistake is now a refusal at the argument parser rather than
+    // a wrongly-framed PDF nobody was warned about.
     let work = TempDir::new().unwrap();
-    let src = write(&work, "demand.md", VALID);
-    let out = work.path().join("demand.pdf");
+    let src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
+    let out = work.path().join("will.pdf");
     let result = render(&[
         src.as_os_str(),
         "--out".as_ref(),
         out.as_ref(),
         "--format".as_ref(),
-        "demand_letter".as_ref(),
+        "letter".as_ref(),
     ]);
-    assert!(!result.status.success(), "unknown format should fail");
+    assert!(
+        !result.status.success(),
+        "--format must no longer be accepted"
+    );
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
-        stderr.contains("unknown --format"),
-        "expected unknown-format error, got: {stderr}"
+        stderr.contains("unexpected argument") && stderr.contains("--format"),
+        "expected clap to refuse the retired flag, got: {stderr}"
     );
+    assert!(!out.exists(), "no PDF should be written");
 }
 
 /// A choice question whose options carry the prose the body reads.

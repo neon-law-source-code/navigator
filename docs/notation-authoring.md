@@ -402,12 +402,16 @@ continuation page, seven-level Harvard outline numbering (`pdf::outline` — eac
 marker, while a cross-reference resolves the full ancestor path through Typst's own reference machinery, independent of
 that marker), and every table held unbreakable so a signature block never splits across a page break); or `pleading`
 (court paper, no firm letterhead at all, calibrated instead by the template's `jurisdiction:` through `pdf::pleading`).
-The default comes from the template's `kind:` (`Kind::default_output` in `rules`); an optional `output:` frontmatter
-field overrides it (validated by rule `N109`), and `--format` overrides per render on top of that. A further form — a
-fax cover, say — is a new `OutputFormat` variant plus its Typst chrome preamble; the conversion, embedded logo, and font
-stack are shared. Fill `{{placeholder}}` tokens with repeated `--answer code=value` flags; unfilled tokens render
-verbatim. The full command, letterhead, and font reference is [`pdf/README.md`](../pdf/README.md) — including how the
-licensed GORP Serif faces reach the renderer without their bytes entering the repository.
+The frame comes from the template's `kind:` (`Kind::default_output` in `rules`): a notation already declares what it is,
+and that is enough to pick one. An optional `output:` frontmatter field is the deliberate override for a kind that
+legitimately renders two ways (validated by rule `N109`), and omitting `output:` is how a template selects `plain` —
+there is no declarable `plain` value. There is no `--format` flag: it chose the frame a second time from outside the
+document and won over a correct header, so `--format letter` passed out of habit put the firm's letterhead on a will
+with nothing to warn the author. A further form — a fax cover, say — is a new `OutputFormat` variant plus its Typst
+chrome preamble; the conversion, embedded logo, and font stack are shared. Fill `{{placeholder}}` tokens with repeated
+`--answer code=value` flags; unfilled tokens render verbatim. The full command, letterhead, and font reference is
+[`pdf/README.md`](../pdf/README.md) — including how the licensed GORP Serif faces reach the renderer without their bytes
+entering the repository.
 
 **Filling fillable government PDFs — done.** `pdf::fill_acroform(blank_pdf, fields)` opens an existing fillable PDF (a
 Nevada SoS articles form, an IRS Form 990) via `lopdf`, walks its AcroForm `/Fields`, sets each `/V`, and sets

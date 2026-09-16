@@ -281,12 +281,33 @@ fn validate_default_rule_set_flags_missing_frontmatter() {
 }
 
 #[test]
-fn validate_treats_templates_path_without_machine_as_markdown() {
+fn validate_requires_a_kind_from_every_file_in_the_templates_lane() {
+    // LAW-15: this used to pass clean. Classification is still
+    // frontmatter-driven — a file with no `kind:` is *linted* as plain
+    // Markdown — but a file under `templates/` with no `kind:` is not a
+    // plain Markdown file, it is a template that forgot to say what it is,
+    // and passing clean is the worst possible report. An instrument that
+    // is pure body prose (a will, a directive) carries no questionnaire
+    // and no workflow, so the structural trigger never caught it; the lane
+    // does.
     let dir = TempDir::new().unwrap();
-    // Classification is frontmatter-driven: a `templates/` file with no
-    // notation machine is plain Markdown, not a half-declared template, so
-    // it trips no N-family rules.
     write(dir.path(), "templates/notes.md", "Just a body line.\n");
+    navigator()
+        .args(["validate"])
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("S104"))
+        .stdout(str::contains("under `templates/` but declares no `kind:`"));
+}
+
+#[test]
+fn validate_exempts_templates_lane_repository_furniture_from_the_kind_rule() {
+    // A templates tree carries its own README and agent contract. Neither
+    // is a notation, so neither is asked for a kind.
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "templates/README.md", "# Templates\n");
     navigator()
         .args(["validate"])
         .arg(dir.path())

@@ -18,8 +18,8 @@ The command is `navigator notations render`, and it takes the template markdown,
 
 1. **Validates first.** The file runs through the same rule set as `navigator validate`. Any `Error`-severity violation
    stops the render, so a broken template never becomes a PDF someone could send. Yellow advisories print and pass.
-2. **Resolves the format** — `--format` on the command line, else the template's `output:` frontmatter field, else
-   `plain`. See [Output formats](#output-formats) below.
+2. **Resolves the frame from the document** — the template's `output:` frontmatter field, else the default its declared
+   `kind:` derives, else `plain`. There is no `--format` flag. See [Output formats](#output-formats) below.
 3. **Fills placeholders.** `--answer code=value`, repeatable, runs through the same notation evaluator as portal preview
    and final document generation. A token with no answer renders verbatim, which is what you want for a blank to fill in
    by hand:
@@ -40,8 +40,9 @@ This is the offline path — a draft for review, a letter to send by hand. The d
 
 ## Output formats
 
-`OutputFormat` (in `pdf::format`) is the page chrome wrapped around the body. A template declares its default in the
-optional `output:` frontmatter key, validated by rule `N109`; `--format` overrides per render.
+`OutputFormat` (in `pdf::format`) is the page chrome wrapped around the body. The frame is derived from the template's
+declared `kind:` (`rules::Kind::default_output`); the optional `output:` frontmatter key, validated by rule `N109`, is
+the deliberate override for a kind that legitimately renders two ways. Nothing outside the document chooses it.
 
 - **`plain`** (the default, declared by omitting the key) — page geometry and the firm typeface, one-inch margins, no
   letterhead.

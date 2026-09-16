@@ -719,32 +719,32 @@ enum NotationsCmd {
         /// Template file to validate, persist, and walk in an ephemeral store.
         file: PathBuf,
     },
-    /// Render a single notation template to a PDF, framed by an output
-    /// format (a plain document, a firm `letter` on Neon Law letterhead
-    /// with the logo, or an `agreement` — the same letterhead typeset
-    /// curtly for a contract).
+    /// Render a single notation template to a PDF, framed by the render
+    /// profile its declared `kind:` selects.
     ///
     /// The file is validated against the same notation rule set as
-    /// `validate` first — a template with any violation is refused. The
-    /// output format is taken from the template's `output:` frontmatter
-    /// field, overridable with `--format`; absent an explicit value
-    /// either way, it falls back to the default `Kind::default_output`
-    /// derives from the template's declared `kind:` (a `letter` renders
-    /// on letterhead by default, for instance), and to plain when even
-    /// that has no Typst counterpart or no `kind:` is declared. Markdown
-    /// is converted to Typst and compiled in pure Rust (no shell-out).
-    /// `{{placeholder}}` tokens render verbatim unless filled with
-    /// `--answer code=value`.
+    /// `validate` first — a template with any violation is refused.
+    ///
+    /// A notation already declares what it is, and that is enough to pick
+    /// the frame: `Kind::default_output` derives it from `kind:`, so a
+    /// `letter` gets letterhead and a `will` gets the unadorned
+    /// instrument. A template's own `output:` frontmatter field remains
+    /// the deliberate override for the kinds that legitimately render two
+    /// ways, and omitting `output:` is how a template selects the plain
+    /// frame. There is no `--format` flag: it chose the frame a second
+    /// time, from outside the document, and `--format letter` passed out
+    /// of habit put the firm's letterhead on an executed instrument with
+    /// no warning (LAW-15).
+    ///
+    /// Markdown is converted to Typst and compiled in pure Rust (no
+    /// shell-out). `{{placeholder}}` tokens render verbatim unless filled
+    /// with `--answer code=value`.
     Render {
         /// Path to the notation template (`.md`).
         file: PathBuf,
         /// Where to write the rendered PDF.
         #[arg(long)]
         out: PathBuf,
-        /// Output format (`plain`, `letter`, or `agreement`). Overrides
-        /// the template's `output:` frontmatter field when set.
-        #[arg(long)]
-        format: Option<String>,
         /// Fill a `{{code}}` placeholder with `value`. Repeatable:
         /// `--answer counterparty_legal_name="NEON GmbH"`.
         #[arg(long = "answer", value_parser = parse_answer)]
@@ -2233,12 +2233,7 @@ fn main() -> ExitCode {
             NotationsCmd::Run { file } => {
                 devx_result(runtime().block_on(notations_run::run(&file)))
             }
-            NotationsCmd::Render {
-                file,
-                out,
-                format,
-                answers,
-            } => run_render(&file, &out, format.as_deref(), &answers),
+            NotationsCmd::Render { file, out, answers } => run_render(&file, &out, &answers),
             NotationsCmd::Scaffold {
                 matter,
                 category,
@@ -3319,14 +3314,13 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
 const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, unclassified.";
 
 /// Render one notation template to a PDF. Validates the file against the
-/// notation rule set, resolves the output format (CLI override →
-/// `output:` frontmatter → the `kind:`-derived default → plain), fills
+/// notation rule set, resolves the render frame (`output:` frontmatter →
+/// the `kind:`-derived default → plain), fills
 /// any `{{code}}` placeholders from `answers`, and writes the compiled
 /// PDF to `out`.
 fn run_render(
     file: &std::path::Path,
     out: &std::path::Path,
-    format_override: Option<&str>,
     answers: &[(String, String)],
 ) -> ExitCode {
     let contents = match std::fs::read_to_string(file) {
@@ -3362,39 +3356,32 @@ fn run_render(
         return ExitCode::from(1);
     }
 
-    // Resolve the output format: explicit flag wins, else the template's
-    // `output:` field, else the default `Kind::default_output` derives
-    // from its declared `kind:`, else plain.
-    let declared = rules::frontmatter::extract(&contents)
+    // Resolve the render frame from the document itself: the template's
+    // own `output:` override first, else the default `Kind::default_output`
+    // derives from its declared `kind:`, else plain.
+    //
+    // There is no third input. `--format` used to win over both, which
+    // meant the frame was chosen twice and the outside choice silently
+    // beat a correct header — `--format letter` on a will put the firm's
+    // letterhead on an executed instrument with nothing to warn the
+    // author (LAW-15). `output:` is now the only override, and it lives
+    // in the document it frames.
+    //
+    // An `output:` value with no Typst counterpart (`form`, the AcroForm
+    // mode this preview never renders) falls back to plain, as does a
+    // template that declares no `kind:` at all. A *misspelled* `output:`
+    // never reaches here: N109 refuses it at the validation gate above.
+    let format = rules::frontmatter::extract(&contents)
         .and_then(|fm| rules::frontmatter::field(fm, "output"))
-        .filter(|s| !s.is_empty());
-    let format_name = format_override.map(str::to_string).or(declared);
-    let format = match format_name.as_deref().map(pdf::OutputFormat::parse) {
-        // No explicit format anywhere: derive a default from the
-        // template's declared `kind:`. A kind whose default is
-        // unrecognized here (`filing` → `form`, the AcroForm mode this
-        // Typst-only preview never renders) falls back to plain, the
-        // same as a template that declares no `kind:` at all.
-        None => rules::frontmatter::extract(&contents)
-            .and_then(|fm| rules::frontmatter::field(fm, "kind"))
-            .and_then(|k| rules::Kind::parse(&k))
-            .and_then(|k| pdf::OutputFormat::parse(k.default_output()))
-            .unwrap_or_default(),
-        Some(Some(f)) => f,
-        Some(None) => {
-            let name = format_name.unwrap_or_default();
-            // Derive the accepted list from the format enum so a new
-            // variant shows up in the hint without a manual edit here.
-            // `plain` is the implicit default and absent from
-            // `FRONTMATTER_VALUES`, so prepend it.
-            let known = std::iter::once("plain")
-                .chain(pdf::OutputFormat::FRONTMATTER_VALUES.iter().copied())
-                .collect::<Vec<_>>()
-                .join(", ");
-            eprintln!("navigator: unknown --format `{name}` (expected one of: {known})");
-            return ExitCode::from(2);
-        }
-    };
+        .filter(|value| !value.is_empty())
+        .and_then(|value| pdf::OutputFormat::parse(&value))
+        .or_else(|| {
+            rules::frontmatter::extract(&contents)
+                .and_then(|fm| rules::frontmatter::field(fm, "kind"))
+                .and_then(|k| rules::Kind::parse(&k))
+                .and_then(|k| pdf::OutputFormat::parse(k.default_output()))
+        })
+        .unwrap_or_default();
 
     // Body is everything after the frontmatter block; fill placeholders
     // through the same evaluator as preview and final document generation.

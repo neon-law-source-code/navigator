@@ -24,6 +24,15 @@
 
 use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
 
+/// The tail every `output:` diagnostic carries. [`F109OutputFormat::VALID`]
+/// reads as though one of its members were required, which is how an author
+/// ends up declaring `output: letter` on an instrument rather than leaving
+/// the key off. `plain` is deliberately not declarable — *omitting* the key
+/// is how a template selects it — and a message that lists four values
+/// without saying so is the whole of that trap (LAW-15).
+const PLAIN_HINT: &str =
+    "; `plain` is not one of them — omitting `output:` entirely is how a template selects it";
+
 pub struct F109OutputFormat;
 
 impl F109OutputFormat {
@@ -81,12 +90,12 @@ impl Rule for F109OutputFormat {
         if !Self::VALID.contains(&value.as_str()) {
             let message = if value.is_empty() {
                 format!(
-                    "Frontmatter `output:` is empty (expected one of: {})",
+                    "Frontmatter `output:` is empty (expected one of: {}{PLAIN_HINT})",
                     Self::VALID.join(", ")
                 )
             } else {
                 format!(
-                    "Invalid `output:` value `{value}` (expected one of: {})",
+                    "Invalid `output:` value `{value}` (expected one of: {}{PLAIN_HINT})",
                     Self::VALID.join(", ")
                 )
             };
@@ -320,5 +329,29 @@ mod tests {
         let v = F109OutputFormat.lint(&f);
         assert_eq!(v.len(), 1);
         assert!(v[0].message.contains("requires `output: form`"), "{v:?}");
+    }
+
+    #[test]
+    fn the_output_diagnostic_says_how_to_select_plain() {
+        // LAW-15: the message listed four values as though one were
+        // required, so an author reading it declares `output: letter` on
+        // an instrument instead of leaving the key off. `plain` has no
+        // declarable spelling; omission is the spelling.
+        for body in [
+            "---\nkind: will\noutput: leter\n---\n",
+            "---\nkind: will\noutput:\n---\n",
+        ] {
+            let violations = F109OutputFormat.lint(&file(body));
+            assert_eq!(violations.len(), 1, "got {violations:?}");
+            assert!(
+                violations[0].message.contains("omitting `output:`"),
+                "the diagnostic must say how to select plain, got: {}",
+                violations[0].message
+            );
+            assert!(
+                !F109OutputFormat::VALID.contains(&"plain"),
+                "`plain` must stay undeclarable"
+            );
+        }
     }
 }

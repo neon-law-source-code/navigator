@@ -19,6 +19,18 @@
 //!    mismatch. (`event` is exempt: it declares its own `starts_at`
 //!    machine, and an event that also declares a questionnaire is
 //!    [`crate::E002EventTemplateExclusive`]'s job, not this one.)
+//! 3. **A template that declares no machine at all.** The first two
+//!    triggers both read *structure*, which only closes the gap for a file
+//!    that happens to carry a questionnaire or a workflow. An instrument
+//!    that is pure body prose — a will, a directive — carries neither, so
+//!    dropping its `kind:` left it classifying as plain Markdown with
+//!    nothing to report: N105, N107, N115 and N122 all went quiet, an
+//!    unrelated set of prose findings appeared in their place, and the
+//!    file *looked* like it passed. Being under a `templates/` tree is
+//!    what makes a file a template, so that is what requires the field,
+//!    rather than a shape the file may or may not have. A templates tree
+//!    carries its own README and agent contract; those are
+//!    [`TEMPLATE_LANE_FURNITURE`] and stay exempt.
 //!
 //! For a present-but-*invalid* `kind:` value, S104 stays silent and lets
 //! [`crate::S103KindEnum`] own the line, so the two never double-flag it.
@@ -44,8 +56,17 @@ impl Rule for S104MissingKind {
     }
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {
+        let template_lane = in_template_lane(&file.path);
         let Some(fm) = frontmatter::extract(&file.contents) else {
-            return Vec::new();
+            // A template with no frontmatter has no `kind:` either, and
+            // the N-family rules that would have demanded frontmatter
+            // never run on an unclassified file — so the lane check has
+            // to precede this lookup rather than sit behind it.
+            return if template_lane {
+                vec![missing_kind_in_template_lane(file)]
+            } else {
+                Vec::new()
+            };
         };
         let notation_machine =
             frontmatter_has_key(fm, "questionnaire") || frontmatter_has_key(fm, "workflow");
@@ -79,6 +100,8 @@ impl Rule for S104MissingKind {
                  notation kind (classification no longer infers the family — one of: {})",
                 kind::VALID.join(", ")
             )
+        } else if template_lane {
+            return vec![missing_kind_in_template_lane(file)];
         } else {
             return Vec::new();
         };
@@ -89,6 +112,46 @@ impl Rule for S104MissingKind {
             range: line_byte_range(&file.contents, 1),
             message,
         }]
+    }
+}
+
+/// The files a `templates/` tree carries that are not templates: its own
+/// README and the agent contract. Neither is a notation and neither has a
+/// kind to declare.
+const TEMPLATE_LANE_FURNITURE: &[&str] = &["README.md", "AGENTS.md", "CLAUDE.md"];
+
+/// Whether `path` sits inside a templates tree — Navigator's own
+/// `templates/` catalog or a Project repository's `templates/` root, which
+/// are the same directory name by design. Mirrors the component walk
+/// [`crate::F110JurisdictionPath`] uses to find the legal shelves.
+fn in_template_lane(path: &std::path::Path) -> bool {
+    if path.extension().and_then(|e| e.to_str()) != Some("md") {
+        return false;
+    }
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| TEMPLATE_LANE_FURNITURE.contains(&name))
+    {
+        return false;
+    }
+    path.components()
+        .any(|c| matches!(c, std::path::Component::Normal(seg) if seg == "templates"))
+}
+
+/// The finding for a template-lane file that declares no `kind:`.
+fn missing_kind_in_template_lane(file: &SourceFile) -> Violation {
+    Violation {
+        code: S104MissingKind::CODE,
+        path: file.path.clone(),
+        line: 1,
+        range: line_byte_range(&file.contents, 1),
+        message: format!(
+            "This file is under `templates/` but declares no `kind:`; every template \
+             declares what it is, and without the field it is linted as plain prose \
+             rather than as a notation (one of: {})",
+            kind::VALID.join(", ")
+        ),
     }
 }
 
@@ -115,6 +178,13 @@ mod tests {
     fn file(body: &str) -> SourceFile {
         SourceFile {
             path: PathBuf::from("test.md"),
+            contents: body.to_string(),
+        }
+    }
+
+    fn file_at(path: &str, body: &str) -> SourceFile {
+        SourceFile {
+            path: PathBuf::from(path),
             contents: body.to_string(),
         }
     }
@@ -216,5 +286,88 @@ mod tests {
             v.is_empty(),
             "S104 must defer to E002 for events, got {v:?}"
         );
+    }
+
+    #[test]
+    fn a_template_lane_file_without_kind_is_flagged() {
+        // LAW-15: `kind:` was only required by *inference* — a file that
+        // declared the notation machine. A template carrying neither a
+        // questionnaire nor a workflow (an instrument that is pure body
+        // prose) could drop its `kind:` and validate clean, while quietly
+        // losing every N-family check. Living under `templates/` is what
+        // makes a file a template, so that is what requires the field.
+        for path in [
+            "templates/notations/neon_law/shared/will.md",
+            "templates/notations/forms/united_states/nevada/state/nv__llc_formation.md",
+        ] {
+            let v = S104MissingKind.lint(&file_at(
+                path,
+                "---\ntitle: Last Will\ncode: test__will\nconfidential: true\n---\n",
+            ));
+            assert_eq!(v.len(), 1, "`{path}` should be flagged, got {v:?}");
+            assert_eq!(v[0].code, "S104");
+            assert!(
+                v[0].message.contains("under `templates/`"),
+                "the message must name the lane, got {}",
+                v[0].message
+            );
+        }
+    }
+
+    #[test]
+    fn a_template_lane_file_with_no_frontmatter_at_all_is_flagged() {
+        // No frontmatter means no `kind:` either, and the N-family rules
+        // that would have demanded frontmatter never run on an
+        // unclassified file. The lane check therefore precedes the
+        // frontmatter lookup rather than returning early behind it.
+        let v = S104MissingKind.lint(&file_at(
+            "templates/notations/neon_law/shared/will.md",
+            "# Last Will and Testament\n",
+        ));
+        assert_eq!(v.len(), 1, "got {v:?}");
+        assert_eq!(v[0].code, "S104");
+    }
+
+    #[test]
+    fn template_lane_repository_furniture_is_exempt() {
+        // A templates tree carries its own README and agent contract.
+        // Neither is a notation, and neither has a kind to declare.
+        for name in ["README.md", "AGENTS.md", "CLAUDE.md"] {
+            assert!(
+                S104MissingKind
+                    .lint(&file_at(&format!("templates/{name}"), "# Templates\n"))
+                    .is_empty(),
+                "`{name}` must stay exempt"
+            );
+        }
+    }
+
+    #[test]
+    fn a_template_lane_file_that_declares_its_kind_passes() {
+        assert!(S104MissingKind
+            .lint(&file_at(
+                "templates/notations/neon_law/shared/will.md",
+                "---\nkind: will\ntitle: Last Will\n---\n",
+            ))
+            .is_empty());
+    }
+
+    #[test]
+    fn a_kindless_file_outside_the_template_lane_is_untouched() {
+        // `docs/`, `server/content/`, and a bare prose file are not
+        // templates; the lane check must not turn every Markdown file in
+        // the workspace into a notation.
+        for path in [
+            "docs/glossary.md",
+            "README.md",
+            "server/content/blog/post.md",
+        ] {
+            assert!(
+                S104MissingKind
+                    .lint(&file_at(path, "---\ntitle: T\n---\n\n# T\n"))
+                    .is_empty(),
+                "`{path}` must not be held to the template lane"
+            );
+        }
     }
 }

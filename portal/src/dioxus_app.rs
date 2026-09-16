@@ -4848,7 +4848,8 @@ mod tests {
             services_page(),
             crate::SessionStore::new("test-marketing-csrf"),
             false,
-        );
+        )
+        .layer(tower_cookies::CookieManagerLayer::new());
 
         let resp = router
             .oneshot(

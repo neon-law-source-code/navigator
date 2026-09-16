@@ -472,6 +472,23 @@ erDiagram
         string name
         datetime updated_at
     }
+    lead {
+        record id PK
+        string brand_key
+        string consent_version
+        datetime consented_at
+        string email
+        string email_lower
+        datetime inserted_at
+        option_record_person person_id FK
+        option_string phone
+        option_datetime sms_consented_at
+        string source_path
+        string status
+        int submissions
+        option_datetime unsubscribed_at
+        datetime updated_at
+    }
     letter {
         record id PK
         string direction
@@ -904,6 +921,7 @@ erDiagram
     firm ||--o{ firm_integration_secret : "firm_id"
     person ||--o{ git_access_token : "person_id"
     project ||--o{ git_access_token : "project_id"
+    person ||--o{ lead : "person_id"
     mailroom ||--o{ letter : "mailroom_id"
     project ||--o{ letter : "project_id"
     address ||--o{ mailroom : "address_id"

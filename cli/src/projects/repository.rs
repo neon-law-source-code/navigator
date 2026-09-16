@@ -1019,7 +1019,11 @@ fn validate_application(application: &Path, errors: &mut Vec<Finding>) {
 }
 
 /// The reusable workflow a Project repository's thin `ci.yml` must call.
-const PROJECT_GATE_WORKFLOW: &str =
+///
+/// `pub(crate)` so [`super::super::devx::github_setup::assert_required_check_job`]
+/// recognizes the exact same caller shape this validator does — two prefixes
+/// for one convention is a rename waiting to leave one of them stale.
+pub(crate) const PROJECT_GATE_WORKFLOW: &str =
     "neon-law-source-code/navigator/.github/workflows/project-gate.yml@";
 /// Just enough of a workflow to find one step and read its inputs.
 ///

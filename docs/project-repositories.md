@@ -314,7 +314,11 @@ jobs:
 The caller is pull-request-only and has no permissions or inherited secrets. A called workflow cannot widen the token
 the caller grants it, so fork PRs cannot mint OIDC credentials; the reusable gate's live jobs remain main-only, and
 `cd.yml`'s own `gate` job (below) is what re-invokes this same reusable workflow on a push to `main` so those live jobs
-actually run. The `ci` job is the required check and stays named exactly `ci`.
+actually run. The `ci` job is the required check, but because it *calls* a reusable workflow rather than running its own
+steps, GitHub posts no check run under its own name at all — it posts one per job inside the *called* workflow, named
+`<caller job id> / <called job id>`. `project-gate.yml`'s own terminal job is spelled `ci` too, so the required status
+check `ops github setup` binds a Project repository's ruleset to is the compound context `ci / ci`, not the bare `ci` a
+repository whose `ci.yml` runs its own steps (like Navigator's own) requires.
 
 The scaffold generates four feeder jobs — verify, notation, documents, and manifest — for the Project check. A malformed
 manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce misleading

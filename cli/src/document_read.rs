@@ -24,6 +24,9 @@ use store::document_pointers::DocumentPointer;
 use crate::document_sync::{read_manifest, read_pointer, slash_path};
 use crate::remote::{DocumentClient, RevisionSummary, RevisionsResponse};
 
+/// [`crate::remote::exit_code_for`] distinguishes a CI mint refusal (exit
+/// `3`, from `verify --ci`'s call into `resolve_ci_document`) from every
+/// other failure (the ordinary gate-failure exit `2`).
 async fn run<F>(fut: F) -> ExitCode
 where
     F: std::future::Future<Output = Result<()>>,
@@ -32,7 +35,7 @@ where
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("navigator: {error:#}");
-            ExitCode::from(2)
+            crate::remote::exit_code_for(&error)
         }
     }
 }
@@ -73,8 +76,7 @@ fn pointer_yaml_path(pointer: &Path) -> PathBuf {
 
 /// Resolve `(Project code, login host)` from `<root>/navigator.yaml`.
 fn manifest_at(root: &Path) -> Result<(String, Option<String>)> {
-    let manifest = read_manifest(root)?;
-    Ok((manifest.project, manifest.host))
+    read_manifest(root)
 }
 
 /// The check `log`, `get`, and `navigator site document verify`'s live mode
@@ -535,7 +537,7 @@ pub(crate) async fn verify(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode
 #[cfg(test)]
 mod tests {
     use super::{
-        check_pointer_drift, discover_pointers, extract_text, lexical, line_diff,
+        check_pointer_drift, discover_pointers, extract_text, lexical, line_diff, manifest_at,
         pointer_yaml_path, refuse_destination_in_documents, select_version, slug_from_pointer,
     };
     use crate::remote::{RevisionSummary, RevisionsResponse};
@@ -572,6 +574,21 @@ mod tests {
     fn slug_refuses_a_path_outside_documents() {
         let root = Path::new("/repo");
         assert!(slug_from_pointer(root, Path::new("templates/foo.md")).is_err());
+    }
+
+    #[test]
+    fn manifest_at_resolves_project_and_host_from_a_v2_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("navigator.yaml"),
+            "version: \"1.0.0\"\nproject:\n  host: staging.neonlaw.com\n  name: acme\n",
+        )
+        .unwrap();
+
+        let (project, host) = manifest_at(dir.path()).unwrap();
+
+        assert_eq!(project, "acme");
+        assert_eq!(host, Some("staging.neonlaw.com".to_string()));
     }
 
     #[test]

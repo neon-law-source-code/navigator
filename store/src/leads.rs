@@ -1,21 +1,61 @@
 //! Public lead capture records.
 //!
-//! A lead is a request for contact, not an identity. The write path therefore
-//! never creates or links a `person` row. Repeated requests for one mailbox on
-//! one brand update the same row and increment `submissions`; the email index
-//! is intentionally non-unique because it is a lookup aid, not an identity
-//! constraint.
+//! A lead is a request for contact, not an identity. Capture never creates a
+//! `person` row. Conversion and linking write through [`crate::persons`] and
+//! set `lead.person_id`, so the Person table stays the human directory.
+//! Repeated requests for one mailbox on one brand update the same row and
+//! increment `submissions`; the email index is intentionally non-unique
+//! because it is a lookup aid, not an identity constraint.
 
 use chrono::{DateTime, Utc};
 use surrealdb::types::{RecordId, SurrealValue};
 use uuid::Uuid;
 
+use crate::persons::{self, ContactUpdate, NewPerson, PersonError};
 use crate::surreal::{record_id, record_uuid, SurrealDb};
 
 const TABLE: &str = "lead";
+const PERSON_TABLE: &str = "person";
 const SELECT: &str = "id, email, email_lower, phone, brand_key, source_path, consent_version, \
                      consented_at, sms_consented_at, status, unsubscribed_at, person_id, \
                      submissions, inserted_at, updated_at";
+
+/// Closed status set stored on `lead.status`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LeadStatus {
+    New,
+    Contacted,
+    Converted,
+    Declined,
+    Unsubscribed,
+}
+
+impl LeadStatus {
+    /// Stored spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::New => "new",
+            Self::Contacted => "contacted",
+            Self::Converted => "converted",
+            Self::Declined => "declined",
+            Self::Unsubscribed => "unsubscribed",
+        }
+    }
+
+    /// Parse a stored or submitted status word.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "new" => Some(Self::New),
+            "contacted" => Some(Self::Contacted),
+            "converted" => Some(Self::Converted),
+            "declined" => Some(Self::Declined),
+            "unsubscribed" => Some(Self::Unsubscribed),
+            _ => None,
+        }
+    }
+}
 
 /// One captured public contact request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +137,31 @@ pub enum LeadError {
     Db(#[from] surrealdb::Error),
     #[error("writing a lead returned no usable row")]
     WriteReturnedNothing,
+    #[error("unknown lead")]
+    NotFound,
+    #[error("status is not one of new, contacted, converted, declined, unsubscribed")]
+    InvalidStatus,
+    #[error("a person already holds this mailbox")]
+    EmailTaken { person_id: Uuid },
+    #[error("no person holds this mailbox")]
+    NoMatchingPerson,
+    #[error(transparent)]
+    Person(#[from] PersonError),
+}
+
+/// Last four digits of a phone, or an em dash when none were recorded.
+#[must_use]
+pub fn mask_phone(phone: Option<&str>) -> String {
+    let digits: String = phone
+        .unwrap_or("")
+        .chars()
+        .filter(char::is_ascii_digit)
+        .collect();
+    match digits.len() {
+        0 => "—".to_string(),
+        n if n <= 4 => format!("…{digits}"),
+        n => format!("…{}", &digits[n - 4..]),
+    }
 }
 
 /// Insert a lead or update the existing `(email_lower, brand_key)` row.
@@ -179,6 +244,116 @@ pub async fn list(db: &SurrealDb) -> Result<Vec<Lead>, LeadError> {
     Ok(rows.into_iter().filter_map(LeadRow::into_lead).collect())
 }
 
+/// One lead by id.
+pub async fn find(db: &SurrealDb, id: Uuid) -> Result<Option<Lead>, LeadError> {
+    let mut response = db
+        .query(format!("SELECT {SELECT} FROM ONLY $id"))
+        .bind(("id", record_id(TABLE, id)))
+        .await?
+        .check()?;
+    let row: Option<LeadRow> = response.take(0)?;
+    Ok(row.and_then(LeadRow::into_lead))
+}
+
+/// Persist a status word. `unsubscribed_at` is written the first time the
+/// row becomes unsubscribed and left alone afterward.
+pub async fn set_status(db: &SurrealDb, id: Uuid, status: LeadStatus) -> Result<Lead, LeadError> {
+    let existing = find(db, id).await?.ok_or(LeadError::NotFound)?;
+    apply_status(db, existing, status).await
+}
+
+/// Create a Client Person from the lead mailbox and mark the row converted.
+///
+/// Refuses when that mailbox already belongs to a Person, naming the existing
+/// row so the admin surface can offer a link instead.
+pub async fn convert(db: &SurrealDb, id: Uuid) -> Result<Lead, LeadError> {
+    let existing = find(db, id).await?.ok_or(LeadError::NotFound)?;
+    if let Some(person) = persons::find_by_email_ci(db, &existing.email).await? {
+        return Err(LeadError::EmailTaken {
+            person_id: person.id,
+        });
+    }
+    let mut input = NewPerson::new(existing.email.clone(), existing.email.clone());
+    input.phone = existing.phone.clone();
+    let person = persons::create(db, &input).await?;
+    link_converted(db, existing.id, person.id).await
+}
+
+/// Point the lead at the Person who already holds its mailbox and mark it
+/// converted.
+///
+/// When that Person has no phone and the lead recorded one, the phone is
+/// copied onto the Person row so later contact reads the directory, not the
+/// queue.
+pub async fn link_person(db: &SurrealDb, id: Uuid) -> Result<Lead, LeadError> {
+    let existing = find(db, id).await?.ok_or(LeadError::NotFound)?;
+    let Some(person) = persons::find_by_email_ci(db, &existing.email).await? else {
+        return Err(LeadError::NoMatchingPerson);
+    };
+    if person.phone.is_none() {
+        if let Some(phone) = existing.phone.clone() {
+            persons::update_contact(
+                db,
+                person.id,
+                &ContactUpdate {
+                    name: person.name.clone(),
+                    title: person.title.clone(),
+                    phone: Some(phone),
+                },
+            )
+            .await?;
+        }
+    }
+    link_converted(db, existing.id, person.id).await
+}
+
+async fn apply_status(
+    db: &SurrealDb,
+    existing: Lead,
+    status: LeadStatus,
+) -> Result<Lead, LeadError> {
+    let now = Utc::now();
+    let unsubscribed_at = if status == LeadStatus::Unsubscribed {
+        Some(existing.unsubscribed_at.unwrap_or(now))
+    } else {
+        existing.unsubscribed_at
+    };
+    let mut response = db
+        .query(format!(
+            "UPDATE $id SET status = $status, unsubscribed_at = $unsubscribed_at, \
+             updated_at = $now RETURN {SELECT}"
+        ))
+        .bind(("id", record_id(TABLE, existing.id)))
+        .bind(("status", status.as_str().to_string()))
+        .bind((
+            "unsubscribed_at",
+            unsubscribed_at.map(surrealdb::types::Datetime::from),
+        ))
+        .bind(("now", surrealdb::types::Datetime::from(now)))
+        .await?
+        .check()?;
+    let row: Option<LeadRow> = response.take(0)?;
+    row.and_then(LeadRow::into_lead)
+        .ok_or(LeadError::WriteReturnedNothing)
+}
+
+async fn link_converted(db: &SurrealDb, lead_id: Uuid, person_id: Uuid) -> Result<Lead, LeadError> {
+    let now = Utc::now();
+    let mut response = db
+        .query(format!(
+            "UPDATE $id SET status = 'converted', person_id = $person_id, \
+             updated_at = $now RETURN {SELECT}"
+        ))
+        .bind(("id", record_id(TABLE, lead_id)))
+        .bind(("person_id", record_id(PERSON_TABLE, person_id)))
+        .bind(("now", surrealdb::types::Datetime::from(now)))
+        .await?
+        .check()?;
+    let row: Option<LeadRow> = response.take(0)?;
+    row.and_then(LeadRow::into_lead)
+        .ok_or(LeadError::WriteReturnedNothing)
+}
+
 async fn find_by_key(
     db: &SurrealDb,
     email_lower: &str,
@@ -200,7 +375,11 @@ async fn find_by_key(
 mod tests {
     use chrono::Utc;
 
-    use super::{list, record, NewLead};
+    use super::{
+        convert, find, link_person, list, mask_phone, record, set_status, LeadError, LeadStatus,
+        NewLead,
+    };
+    use crate::persons::{self, NewPerson, Role};
     use crate::test_support::mem_surreal;
 
     fn lead(email: &str, brand_key: &str) -> NewLead {
@@ -259,5 +438,122 @@ mod tests {
             .unwrap();
 
         assert_eq!(list(&db).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn status_transitions_persist_and_unsubscribe_stamps_once() {
+        let db = mem_surreal().await;
+        let lead = record(&db, &lead("visitor@example.com", "neon"))
+            .await
+            .unwrap();
+
+        let contacted = set_status(&db, lead.id, LeadStatus::Contacted)
+            .await
+            .unwrap();
+        assert_eq!(contacted.status, "contacted");
+        assert!(contacted.unsubscribed_at.is_none());
+
+        let first = set_status(&db, lead.id, LeadStatus::Unsubscribed)
+            .await
+            .unwrap();
+        assert_eq!(first.status, "unsubscribed");
+        let stamped = first.unsubscribed_at.expect("unsubscribe stamps the row");
+
+        let again = set_status(&db, lead.id, LeadStatus::Unsubscribed)
+            .await
+            .unwrap();
+        assert_eq!(again.unsubscribed_at, Some(stamped));
+
+        let declined = set_status(&db, lead.id, LeadStatus::Declined)
+            .await
+            .unwrap();
+        assert_eq!(declined.status, "declined");
+        assert_eq!(declined.unsubscribed_at, Some(stamped));
+        assert_eq!(
+            find(&db, lead.id).await.unwrap().unwrap().unsubscribed_at,
+            Some(stamped)
+        );
+    }
+
+    #[tokio::test]
+    async fn conversion_writes_person_id_and_refuses_a_duplicate_email() {
+        let db = mem_surreal().await;
+        let mut incoming = lead("visitor@example.com", "neon");
+        incoming.phone = Some("+1 (555) 010-9876".to_string());
+        let written = record(&db, &incoming).await.unwrap();
+
+        let converted = convert(&db, written.id).await.unwrap();
+        let person_id = converted.person_id.expect("conversion links a person");
+        assert_eq!(converted.status, "converted");
+        let person = persons::find_by_id(&db, person_id).await.unwrap().unwrap();
+        assert_eq!(person.email, "visitor@example.com");
+        assert_eq!(person.role, Role::Client);
+        assert_eq!(person.phone.as_deref(), Some("+1 (555) 010-9876"));
+
+        let duplicate = record(&db, &lead("visitor@example.com", "delete-your-data"))
+            .await
+            .unwrap();
+        match convert(&db, duplicate.id).await {
+            Err(LeadError::EmailTaken {
+                person_id: existing,
+            }) => {
+                assert_eq!(existing, person_id);
+            }
+            other => panic!("expected EmailTaken, got {other:?}"),
+        }
+
+        let linked = link_person(&db, duplicate.id).await.unwrap();
+        assert_eq!(linked.status, "converted");
+        assert_eq!(linked.person_id, Some(person_id));
+    }
+
+    #[tokio::test]
+    async fn link_copies_a_missing_phone_onto_the_person_and_leaves_an_existing_number() {
+        let db = mem_surreal().await;
+        let without_phone = persons::create(&db, &NewPerson::new("Existing", "link@example.com"))
+            .await
+            .unwrap();
+        let mut incoming = lead("link@example.com", "neon");
+        incoming.phone = Some("+1 (555) 010-1111".to_string());
+        let written = record(&db, &incoming).await.unwrap();
+
+        link_person(&db, written.id).await.unwrap();
+        let person = persons::find_by_id(&db, without_phone.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(person.phone.as_deref(), Some("+1 (555) 010-1111"));
+
+        let mut other = NewPerson::new("Kept", "kept@example.com");
+        other.phone = Some("+1 (555) 010-2222".to_string());
+        let kept = persons::create(&db, &other).await.unwrap();
+        let mut second = lead("kept@example.com", "neon");
+        second.phone = Some("+1 (555) 010-3333".to_string());
+        let second_lead = record(&db, &second).await.unwrap();
+        link_person(&db, second_lead.id).await.unwrap();
+        let person = persons::find_by_id(&db, kept.id).await.unwrap().unwrap();
+        assert_eq!(person.phone.as_deref(), Some("+1 (555) 010-2222"));
+    }
+
+    #[tokio::test]
+    async fn convert_refuses_an_already_seeded_mailbox() {
+        let db = mem_surreal().await;
+        persons::create(&db, &NewPerson::new("Existing", "already@example.com"))
+            .await
+            .unwrap();
+        let written = record(&db, &lead("already@example.com", "neon"))
+            .await
+            .unwrap();
+        assert!(matches!(
+            convert(&db, written.id).await,
+            Err(LeadError::EmailTaken { .. })
+        ));
+    }
+
+    #[test]
+    fn mask_phone_keeps_only_the_last_four_digits() {
+        assert_eq!(mask_phone(Some("+1 (555) 010-9876")), "…9876");
+        assert_eq!(mask_phone(None), "—");
+        assert_eq!(mask_phone(Some("12")), "…12");
     }
 }

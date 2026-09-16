@@ -258,10 +258,12 @@ DEFINE FIELD OVERWRITE inserted_at ON testimonial TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON testimonial TYPE string;
 DEFINE INDEX OVERWRITE testimonial_replay ON testimonial FIELDS project_id, person_id, quote UNIQUE;
 
--- `lead` is a request for contact, not a Person identity. The mailbox index
--- is deliberately non-unique: one mailbox may submit separately on multiple
--- brands, while `store::leads` coalesces repeats for one brand and increments
--- `submissions`.
+-- `lead` is a request for contact, not a Person identity. Email and phone on
+-- this row are the submitted capture values. Conversion writes `person` through
+-- `store::persons` and sets `person_id`; the queue then treats that Person as
+-- the identity. The mailbox index is deliberately non-unique: one mailbox may
+-- submit separately on multiple brands, while `store::leads` coalesces repeats
+-- for one brand and increments `submissions`.
 DEFINE TABLE IF NOT EXISTS lead SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE email ON lead TYPE string;
 DEFINE FIELD OVERWRITE email_lower ON lead TYPE string VALUE string::lowercase(email);

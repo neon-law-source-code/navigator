@@ -94,9 +94,9 @@ Owner — it lists every matter in the deployment, the same administrative-listi
 reads for its own deployment-wide question — which is what gives the detail page's participation-only carve-out
 somewhere to navigate from. `/app/owner` is Owner only: it lists every practice and the house brands each one wears.
 Admin is denied that inventory. `/app/admin/brands` is the house-of-brands home: Owner and Admin reach it through the
-same `/app/admin` route bypass as the people directory; Lawyer and Clerk stay denied. The listing is system-wide rows
-plus every Firm-scoped row for Owner, or only the Firms an Admin holds ManageBrand on. Owner edits a system-wide or
-existing Firm-scoped brand's typeface, palette, and assets at `/app/admin/brands/{key}/edit` and `PATCH
+same `/app/admin` route bypass as the people directory and the lead queue; Lawyer and Clerk stay denied. The listing is
+system-wide rows plus every Firm-scoped row for Owner, or only the Firms an Admin holds ManageBrand on. Owner edits a
+system-wide or existing Firm-scoped brand's typeface, palette, and assets at `/app/admin/brands/{key}/edit` and `PATCH
 /app/api/brands/{key}`; those two paths admit Admin at the route so a Firm's Admin DRI can edit that Firm's own brands,
 and the store refuses anyone else. Lawyer and Clerk are denied both the editor and the PATCH. Only an Owner may create,
 edit, or demote an Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only, so no
@@ -166,7 +166,7 @@ intended bypass — the two are otherwise indistinguishable from a response body
 Owner. `/app/owner` is not an Admin surface. `/app/admin/brands` is: Owner and Admin reach the registry. An Admin sees
 system-wide brands and their own Firm-scoped rows, never another Firm's, and an Admin DRI may change that Firm's
 typeface and palette from the closed catalogs, and replace its logo and uploaded font; a system-wide brand stays
-Owner's.
+Owner's. `/app/admin/leads` is the same Owner/Admin door: the public contact queue, not a matter surface.
 
 ### *anonymous*
 
@@ -228,6 +228,10 @@ subject against the table (`portal::oauth::resolve_person_from_claims`):
 - the configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` is JIT-created as `owner` on first login (the carve-out that keeps a
   fresh deploy from locking its Owner out), and role-healed back to `owner` on every subsequent login;
 - **every other unknown email is refused with a `403`** — onboarding is operator-mediated by default.
+
+Owner and Admin can also create a Client from a [Lead](glossary.md#lead) at `/app/admin/leads/{id}`:
+`store::leads::convert` calls `store::persons::create` with the submitted mailbox and phone. A mailbox that already
+belongs to a Person is refused and the queue offers a link to that row instead.
 
 ### Self-signup (global toggle, default off)
 
@@ -356,6 +360,15 @@ An `is_lawyer` rule written for this path would silently widen the firm's whole 
 which is precisely the disclosure the participation ledger exists to prevent; the deny is by omission, and
 `navigator_test.rego` pins it from the other side by asserting that Lawyer, Clerk, and Client are all refused.
 
+The public lead queue is the same shape at `/app/admin/leads` and `/app/admin/leads/{id}`: Owner and Admin reach it
+through the `/app/admin` route bypass, and Lawyer, Clerk, and client are refused by omission. The list masks a recorded
+phone to its last four digits; the row page shows the full number, accepts a status among `new`, `contacted`,
+`converted`, `declined`, and `unsubscribed`, and creates or links a [Person](glossary.md#person) for the mailbox
+(`store::persons::create`, never a second identity table). After conversion, the queue reads name, email, and phone from
+that Person row. Handler logs name `lead_id`, `outcome`, and the actor's person id, never the address. Contacting a lead
+is attorney work under professional ethics (advertising and solicitation), not a sales sequence. See
+[glossary](glossary.md#lead).
+
 ## What `participation` is NOT
 
 It is not the `disclosures` table. Disclosures are formal records the firm keeps about *conflicts of interest* and
@@ -423,8 +436,9 @@ Embedded Rego's allow rules in priority order:
    route-admission decision only: it says the request may reach a handler, not that the caller may see the row. On the
    matter surface the handler then applies the participation gate below, so an unassigned Owner passes embedded Rego and
    still gets a `404`. The trust call is that these tiers imply a fiduciary duty audited elsewhere (Drive activity, DB
-   write logs). Operational surfaces such as `/app/admin`, `/app/admin/analytics`, and `/app/admin/people` enforce the
-   Owner/Admin tier in their handlers, so the broader `/app/lawyer/*` lawyer-tier gate cannot expose them.
+   write logs). Operational surfaces such as `/app/admin`, `/app/admin/analytics`, `/app/admin/leads`, and
+   `/app/admin/people` enforce the Owner/Admin tier in their handlers, so the broader `/app/lawyer/*` lawyer-tier gate
+   cannot expose them.
 2. **Lawyer-tier surfaces** — `/app/admin/entity-types`, `/app/admin/templates`, and other firm-internal pages gate on
    `session.role` being `"owner"`, `"admin"`, or `"lawyer"`. `"clerk"` is intentionally absent. The people directory is
    **not** among them: its browser surface is `/app/admin/people`, Owner/Admin only, since ENG-304 deleted the

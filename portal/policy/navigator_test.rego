@@ -228,6 +228,24 @@ test_lawyer_denied_on_admin_people_and_analytics if {
 	not authz.allow with input as {"path": ["app", "admin", "people"], "method": "GET", "session": lawyer_session}
 	not authz.allow with input as {"path": ["app", "admin", "people", "new"], "method": "GET", "session": lawyer_session}
 	not authz.allow with input as {"path": ["app", "admin", "analytics"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "leads"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "leads", "x"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "leads", "x", "status"], "method": "POST", "session": lawyer_session}
+}
+
+test_the_admin_tiers_reach_the_lead_queue if {
+	authz.allow with input as {"path": ["app", "admin", "leads"], "method": "GET", "session": admin_session}
+	authz.allow with input as {"path": ["app", "admin", "leads"], "method": "GET", "session": owner_session}
+	authz.allow with input as {"path": ["app", "admin", "leads", "x"], "method": "GET", "session": admin_session}
+	authz.allow with input as {"path": ["app", "admin", "leads", "x", "convert"], "method": "POST", "session": owner_session}
+}
+
+test_clerk_denied_on_the_lead_queue if {
+	not authz.allow with input as {"path": ["app", "admin", "leads"], "method": "GET", "session": clerk_session}
+}
+
+test_client_denied_on_the_lead_queue if {
+	not authz.allow with input as {"path": ["app", "admin", "leads"], "method": "GET", "session": client_session}
 }
 
 test_clerk_denied_on_admin_reference_listings if {

@@ -1868,6 +1868,138 @@ async fn app_admin_brands_is_admin_tier() {
 }
 
 #[tokio::test]
+async fn app_admin_leads_is_admin_tier_and_masks_the_phone() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let lead = store::leads::record(
+        &surreal,
+        &store::leads::NewLead {
+            email: "visitor@example.com".to_string(),
+            phone: Some("+1 (555) 010-9876".to_string()),
+            brand_key: "neon".to_string(),
+            source_path: "/contact".to_string(),
+            consent_version: "By sending this, you agree.".to_string(),
+            consented_at: chrono::Utc::now(),
+            sms_consented_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for (label, role) in [
+        ("owner", store::persons::Role::Owner),
+        ("admin", store::persons::Role::Admin),
+    ] {
+        let list = get_with_role(app.clone(), "/app/admin/leads", role).await;
+        assert_eq!(list.status(), StatusCode::OK, "{label} list");
+        let html = body_string(list).await;
+        assert!(html.contains("visitor@example.com"), "{label}: {html}");
+        assert!(html.contains("…9876"), "{label}: {html}");
+        assert!(
+            !html.contains("+1 (555) 010-9876"),
+            "list must not carry the full phone: {html}"
+        );
+        assert!(
+            !html.contains("010-9876"),
+            "list must not carry the unmasked number: {html}"
+        );
+
+        let row = get_with_role(app.clone(), &format!("/app/admin/leads/{}", lead.id), role).await;
+        assert_eq!(row.status(), StatusCode::OK, "{label} row");
+        let row_html = body_string(row).await;
+        assert!(
+            row_html.contains("+1 (555) 010-9876"),
+            "{label} row shows the recorded phone: {row_html}"
+        );
+    }
+
+    for (label, role) in [
+        ("lawyer", store::persons::Role::Lawyer),
+        ("clerk", store::persons::Role::Clerk),
+        ("client", store::persons::Role::Client),
+    ] {
+        let list = get_with_role(app.clone(), "/app/admin/leads", role).await;
+        assert_eq!(
+            list.status(),
+            StatusCode::FORBIDDEN,
+            "{label} must not reach the lead queue"
+        );
+        let row = get_with_role(app.clone(), &format!("/app/admin/leads/{}", lead.id), role).await;
+        assert_eq!(
+            row.status(),
+            StatusCode::FORBIDDEN,
+            "{label} must not reach a lead row"
+        );
+    }
+}
+
+#[tokio::test]
+async fn app_admin_lead_status_logs_omit_the_mailbox() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let lead = store::leads::record(
+        &surreal,
+        &store::leads::NewLead {
+            email: "secret-mailbox@example.com".to_string(),
+            phone: None,
+            brand_key: "neon".to_string(),
+            source_path: "/contact".to_string(),
+            consent_version: "By sending this, you agree.".to_string(),
+            consented_at: chrono::Utc::now(),
+            sms_consented_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    let actor = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Queue Admin",
+            "queue-admin@neonlaw.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&actor);
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let resp = {
+        let _guard = capture_visit_logs(buffer.clone());
+        app.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/leads/{}/status", lead.id))
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(format!("_csrf={csrf}&status=contacted")))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+    };
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let logged = String::from_utf8(buffer.lock().unwrap().clone()).unwrap();
+    assert!(logged.contains(&lead.id.to_string()), "{logged}");
+    assert!(logged.contains("status_updated"), "{logged}");
+    assert!(logged.contains(&actor.id.to_string()), "{logged}");
+    assert!(
+        !logged.contains("secret-mailbox@example.com"),
+        "handler log must not carry the mailbox: {logged}"
+    );
+    let updated = store::leads::find(&surreal, lead.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.status, "contacted");
+}
+
+#[tokio::test]
 async fn app_admin_brands_hides_another_firms_brand_from_its_admin() {
     async fn practice(
         db: &store::surreal::SurrealDb,

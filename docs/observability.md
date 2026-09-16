@@ -73,7 +73,8 @@ sensitive query parameters are ignored, invalid allowed values collapse to `inva
 admin-only at `/app/admin/analytics`.
 
 Public lead capture stores the submitted inquiry in the `lead` table through `POST /leads`; its audit event carries only
-the lead id, brand, source path, and outcome, never an email address, phone number, or form content.
+the lead id, brand, source path, and outcome, never an email address, phone number, or form content. Conversion writes
+the Person directory (`store::persons::create`) and points `lead.person_id` at that row.
 
 ## Where it lands: direct OpenObserve
 

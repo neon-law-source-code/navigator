@@ -40,6 +40,12 @@ const ADMIN_LINKS: &[AdminLink] = &[
         cta: "Manage entities",
     },
     AdminLink {
+        title: "Leads",
+        blurb: "Public contact requests: email, masked phone, consent, and conversion.",
+        href: crate::admin_leads::LEADS_PATH,
+        cta: "Review leads",
+    },
+    AdminLink {
         title: "Visitor analytics",
         blurb: "Traffic to the public site — visits by day and month, top routes, \
                 countries, and referrers.",
@@ -186,8 +192,13 @@ mod tests {
             out.contains(&format!(r#"href="{}""#, crate::app_chrome::APP_BRANDS_HREF)),
             "brands tile: {out}"
         );
+        assert!(
+            out.contains(&format!(r#"href="{}""#, crate::admin_leads::LEADS_PATH)),
+            "leads tile: {out}"
+        );
         assert!(out.contains("Manage people"), "people call to action");
         assert!(out.contains("Manage entities"), "entities call to action");
+        assert!(out.contains("Review leads"), "leads call to action");
         assert!(out.contains("View analytics"), "analytics call to action");
         assert!(out.contains("Manage brands"), "brands call to action");
     }

@@ -2178,6 +2178,37 @@ pub const LAWYER_SCHEDULES_PATH: &str = webapp::schedules::SCHEDULES_PATH;
 /// aggregate dashboard. Admin-only; no form and no `POST`.
 pub const ADMIN_ANALYTICS_PATH: &str = webapp::analytics::ANALYTICS_PATH;
 
+/// The Owner/Admin lead queue. Admission is the `/app/admin` route bypass;
+/// the path gets no lawyer grant of its own.
+pub const ADMIN_LEADS_PATH: &str = webapp::admin_leads::LEADS_PATH;
+/// One lead's row page.
+pub const ADMIN_LEAD_PATH: &str = webapp::admin_leads::LEAD_PATH;
+
+/// Gated Dioxus routers for the lead queue list and row.
+pub fn admin_leads_router(
+    surreal: store::surreal::SurrealDb,
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+) -> Router {
+    csrf_page_router(
+        ADMIN_LEADS_PATH,
+        webapp::admin_leads::AdminLeads,
+        surreal.clone(),
+        sessions.clone(),
+        policy.clone(),
+        auth.clone(),
+    )
+    .merge(csrf_page_router(
+        ADMIN_LEAD_PATH,
+        webapp::admin_leads::AdminLeadShow,
+        surreal,
+        sessions,
+        policy,
+        auth,
+    ))
+}
+
 /// The Owner/Admin matter directory path (ENG-221) — every matter's code,
 /// name, status, and accountable lawyer, and nothing a matter contains.
 ///

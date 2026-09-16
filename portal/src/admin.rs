@@ -232,7 +232,10 @@ pub fn routes(
             get(person_avatar_view),
         )
         .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
-        .route("/app/admin/people/{id}/delete", post(admin_person_delete));
+        .route("/app/admin/people/{id}/delete", post(admin_person_delete))
+        .route("/app/admin/leads/{id}/status", post(admin_lead_status))
+        .route("/app/admin/leads/{id}/convert", post(admin_lead_convert))
+        .route("/app/admin/leads/{id}/link", post(admin_lead_link));
     // Owner opens a Firm (ENG-585): the create form renders through Dioxus at
     // `/app/owner/firms/new`; these native POSTs create the row and its two
     // inline related records. axum merges the Dioxus GET with the first.
@@ -321,6 +324,124 @@ fn admin_gate(session: Option<&SessionData>) -> Option<Response> {
                 .into_response(),
         ),
         Some(_) => None,
+    }
+}
+
+fn log_lead_admin(lead_id: Uuid, outcome: &str, session: Option<&SessionData>) {
+    let actor_person_id = session
+        .and_then(|s| s.person_id)
+        .map_or_else(|| "none".to_string(), |id| id.to_string());
+    tracing::info!(
+        target: "audit",
+        lead_id = %lead_id,
+        outcome,
+        actor_person_id = actor_person_id.as_str(),
+        "lead admin"
+    );
+}
+
+fn lead_row_redirect(id: Uuid, key: &str, message: &str) -> Response {
+    Redirect::to(&format!(
+        "/app/admin/leads/{id}?{key}={}",
+        encode_query_value(message)
+    ))
+    .into_response()
+}
+
+#[derive(Deserialize)]
+struct LeadStatusForm {
+    status: String,
+}
+
+/// `POST /app/admin/leads/{id}/status` — persist a closed status word.
+async fn admin_lead_status(
+    State(s): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Path(id): Path<Uuid>,
+    Form(form): Form<LeadStatusForm>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let Some(status) = store::leads::LeadStatus::parse(&form.status) else {
+        log_lead_admin(id, "invalid_status", session.as_deref());
+        return lead_row_redirect(id, "error", "Choose a listed status.");
+    };
+    match store::leads::set_status(&s.surreal, id, status).await {
+        Ok(_) => {
+            log_lead_admin(id, "status_updated", session.as_deref());
+            lead_row_redirect(id, "notice", "Status updated.")
+        }
+        Err(store::leads::LeadError::NotFound) => {
+            log_lead_admin(id, "not_found", session.as_deref());
+            not_found_response()
+        }
+        Err(_) => {
+            log_lead_admin(id, "status_failed", session.as_deref());
+            lead_row_redirect(id, "error", "Could not update that lead.")
+        }
+    }
+}
+
+/// `POST /app/admin/leads/{id}/convert` — create a Person from the lead.
+async fn admin_lead_convert(
+    State(s): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Path(id): Path<Uuid>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    match store::leads::convert(&s.surreal, id).await {
+        Ok(_) => {
+            log_lead_admin(id, "converted", session.as_deref());
+            lead_row_redirect(id, "notice", "Created a Person from this lead.")
+        }
+        Err(store::leads::LeadError::EmailTaken { .. }) => {
+            log_lead_admin(id, "email_taken", session.as_deref());
+            lead_row_redirect(
+                id,
+                "error",
+                "A Person already holds this mailbox. Link instead.",
+            )
+        }
+        Err(store::leads::LeadError::NotFound) => {
+            log_lead_admin(id, "not_found", session.as_deref());
+            not_found_response()
+        }
+        Err(_) => {
+            log_lead_admin(id, "convert_failed", session.as_deref());
+            lead_row_redirect(id, "error", "Could not create a Person from this lead.")
+        }
+    }
+}
+
+/// `POST /app/admin/leads/{id}/link` — attach the Person who already holds the mailbox.
+async fn admin_lead_link(
+    State(s): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Path(id): Path<Uuid>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    match store::leads::link_person(&s.surreal, id).await {
+        Ok(_) => {
+            log_lead_admin(id, "linked", session.as_deref());
+            lead_row_redirect(id, "notice", "Linked this lead to the existing Person.")
+        }
+        Err(store::leads::LeadError::NoMatchingPerson) => {
+            log_lead_admin(id, "no_matching_person", session.as_deref());
+            lead_row_redirect(id, "error", "No Person holds this mailbox yet.")
+        }
+        Err(store::leads::LeadError::NotFound) => {
+            log_lead_admin(id, "not_found", session.as_deref());
+            not_found_response()
+        }
+        Err(_) => {
+            log_lead_admin(id, "link_failed", session.as_deref());
+            lead_row_redirect(id, "error", "Could not link this lead.")
+        }
     }
 }
 

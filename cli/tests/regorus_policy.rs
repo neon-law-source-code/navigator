@@ -260,9 +260,15 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   denied; one case pins the rule at exactly the collection path and
     //   POST.
     // 458 + 6 = 464.
+    //
+    // + 3 for the lead queue (`/app/admin/leads` and `/app/admin/leads/{id}`):
+    //   Owner and Admin admitted; Clerk and client denied. Lawyer denial is
+    //   pinned on the existing people/analytics deny test rather than a fourth
+    //   named case. Deny-by-omission, same as `/app/admin/projects`.
+    // 464 + 3 = 467.
     assert_eq!(
         test_names.len(),
-        464,
+        467,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

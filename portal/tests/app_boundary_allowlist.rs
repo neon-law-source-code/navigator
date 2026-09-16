@@ -87,6 +87,8 @@ fn dioxus_app_pages() -> Vec<String> {
         pages::LAWYER_SCHEDULES_PATH,
         pages::ADMIN_ANALYTICS_PATH,
         pages::ADMIN_MATTER_DIRECTORY_PATH,
+        pages::ADMIN_LEADS_PATH,
+        pages::ADMIN_LEAD_PATH,
         pages::LAWYER_ENTITIES_PATH,
         pages::ADMIN_PEOPLE_PATH,
         pages::LAWYER_JURISDICTIONS_PATH,
@@ -159,6 +161,9 @@ fn admin_registration_sample() -> Vec<String> {
         "/app/view-as-client/stop",
         // register_firm_admin_routes (/app/admin).
         "/app/admin/people.csv",
+        "/app/admin/leads/x/status",
+        "/app/admin/leads/x/convert",
+        "/app/admin/leads/x/link",
         "/app/admin/entities.csv",
         "/app/admin/schedules/x/run",
         // register_project_routes (/app/projects).

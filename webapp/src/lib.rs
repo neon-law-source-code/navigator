@@ -14,6 +14,7 @@
 use dioxus::prelude::*;
 
 pub mod admin_landing;
+pub mod admin_leads;
 pub mod admin_listing;
 pub mod admin_listings;
 pub mod admin_people_new;

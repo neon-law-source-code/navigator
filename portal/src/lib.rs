@@ -1571,6 +1571,12 @@ pub fn bootstrap(
     // Dioxus at /app/admin/people — the sortable directory with a per-row
     // Edit/Delete action column. `POST /app/admin/people` (create) stays
     // on the router; axum merges the same-path methods.
+    let dioxus_admin_leads = dioxus_app::admin_leads_router(
+        state.surreal.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
     let dioxus_admin_people = dioxus_app::admin_people_router(
         state.bootstrap_owner_email.clone(),
         state.surreal.clone(),
@@ -1784,6 +1790,7 @@ pub fn bootstrap(
         // `/app/admin/analytics`; the manual-run `POST`s stay on `cron_schedules`.
         dioxus_schedules,
         dioxus_analytics,
+        dioxus_admin_leads,
         dioxus_admin_people,
         dioxus_app_forms,
         // ENG-81: the matter list and the single matter each render through one

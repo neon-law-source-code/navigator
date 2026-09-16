@@ -295,18 +295,20 @@ allow if {
 # who is not Owner (system-wide brands) or that Firm's Admin DRI.
 
 # /app/admin is Owner/Admin only at the hub, the matter directory
-# (`/app/admin/projects`), Person CRUD (`/app/admin/people`), and visitor
-# analytics. Those need no rule of their own: the route bypass at the top of
-# this policy is exactly that set. Spelled out here as a deny-by-omission note
-# rather than a rule, because a prefix `is_lawyer` grant for `/app/admin` would
-# silently widen the hub and the matter directory to Lawyer.
+# (`/app/admin/projects`), Person CRUD (`/app/admin/people`), the lead
+# queue (`/app/admin/leads`), and visitor analytics. Those need no rule
+# of their own: the route bypass at the top of this policy is exactly
+# that set. Spelled out here as a deny-by-omission note rather than a
+# rule, because a prefix `is_lawyer` grant for `/app/admin` would
+# silently widen the hub, the matter directory, and the lead queue to
+# Lawyer.
 #
 # Firm-administration listings that a Lawyer already reached under `/app/lawyer`
 # now live as named resources under `/app/admin`. The grant is the resource
-# segment, not the prefix, so `/app/admin/people` and `/app/admin/projects`
-# stay Owner/Admin. Letters and the email log are in the set so admission
-# matches the old `/app/lawyer` prefix; their handlers still require the admin
-# tier.
+# segment, not the prefix, so `/app/admin/people`, `/app/admin/leads`, and
+# `/app/admin/projects` stay Owner/Admin. Letters and the email log are in the
+# set so admission matches the old `/app/lawyer` prefix; their handlers still
+# require the admin tier.
 admin_lawyer_resources := {
 	"letters",
 	"email-log",

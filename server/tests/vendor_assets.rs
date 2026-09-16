@@ -668,3 +668,121 @@ fn the_filled_action_button_outranks_the_theme_link_rule() {
         );
     }
 }
+
+/// The declarations of one rule in a stylesheet, or a panic naming the selector.
+fn rule_body<'css>(css: &'css str, selector: &str) -> &'css str {
+    css.split_once(&format!("\n{selector} {{"))
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map_or_else(
+            || panic!("the stylesheet must carry a rule at `{selector}`"),
+            |(declarations, _)| declarations,
+        )
+}
+
+/// The `--nav-color-*` token a declaration reads, e.g. `primary-hover` from
+/// `color: var(--nav-color-primary-hover);`.
+fn token_in(declarations: &str, property: &str) -> String {
+    let value = declarations
+        .split(';')
+        .map(str::trim)
+        .find_map(|declaration| declaration.strip_prefix(&format!("{property}:")))
+        .unwrap_or_else(|| panic!("no `{property}` in `{declarations}`"));
+    let token = value
+        .split_once("var(--nav-color-")
+        .and_then(|(_, rest)| rest.split_once(')'))
+        .unwrap_or_else(|| panic!("`{property}` must read a `--nav-color-*` token: `{value}`"));
+    token.0.to_owned()
+}
+
+/// The `color-mix(in srgb, var(--nav-color-primary) N%, …)` share, as a percent.
+fn primary_mix_percent(declarations: &str, property: &str) -> u32 {
+    let value = declarations
+        .split(';')
+        .map(str::trim)
+        .find_map(|declaration| declaration.strip_prefix(&format!("{property}:")))
+        .unwrap_or_else(|| panic!("no `{property}` in `{declarations}`"));
+    let percent = value
+        .split_once("var(--nav-color-primary)")
+        .and_then(|(_, rest)| rest.trim_start().split_once('%'))
+        .unwrap_or_else(|| panic!("`{property}` must mix `--nav-color-primary`: `{value}`"));
+    percent
+        .0
+        .trim()
+        .parse::<u32>()
+        .unwrap_or_else(|error| panic!("unreadable mix share in `{value}`: {error}"))
+}
+
+/// `color-mix(in srgb, …)` interpolates the gamma-encoded channels, so a share
+/// of `fg` over `bg` is a plain per-channel blend of the two hex triples. Kept
+/// in integer arithmetic — the share is written as a whole percent in the
+/// stylesheet, and `+ 50` before the divide is the round-half-up a browser
+/// does, which is what reproduces the `#ebf5f6` axe measured.
+fn srgb_mix(fg: [u8; 3], bg: [u8; 3], percent: u32) -> [u8; 3] {
+    let channel = |index: usize| {
+        let blended =
+            (u32::from(fg[index]) * percent + u32::from(bg[index]) * (100 - percent) + 50) / 100;
+        u8::try_from(blended).expect("a blend of two bytes is a byte")
+    };
+    [channel(0), channel(1), channel(2)]
+}
+
+/// The surface a scheme paints a card on: explicit `surface`, else the
+/// `tokens.css` default for the scheme (white, or `#161b22` in dark).
+fn scheme_surface(scheme: &views::brand_presentation::PaletteScheme, dark: bool) -> [u8; 3] {
+    scheme
+        .surface
+        .and_then(views::brand_presentation::parse_hex)
+        .unwrap_or(if dark {
+            [0x16, 0x1b, 0x22]
+        } else {
+            [0xff, 0xff, 0xff]
+        })
+}
+
+/// `/services` prints each package's badge on a primary-tinted panel, and the
+/// tint is what decides whether the badge is readable.
+///
+/// A brand's 500 stop is sized to clear 4.5:1 against a *plain* surface, with
+/// little headroom — `tokens.css` says so, and says a surface that needs more
+/// should step to 600. `.fm-services__package` mixes 8% of that same primary
+/// into the surface, which lightens the ground under the ink without moving
+/// the ink: the firm's teal fell to 4.41:1 there, and axe failed the
+/// `26.9.17-rc.1` deploy on it at 11px.
+///
+/// The browser gate that caught it runs only in `deploy.yml`, behind a KIND
+/// cluster, so it reports after `main` already has the regression. This reads
+/// the two rules and does the arithmetic instead — every catalogued palette,
+/// both schemes — so the next one fails in the ordinary workspace run.
+#[test]
+fn the_services_package_badge_clears_wcag_aa_on_its_tinted_panel() {
+    let css = std::fs::read_to_string(public_dir().join("css/marketing-page.css"))
+        .expect("read the marketing-page stylesheet");
+
+    let percent = primary_mix_percent(rule_body(&css, ".fm-services__package"), "background");
+    let ink = token_in(rule_body(&css, ".fm-services__package-badge"), "color");
+
+    for palette in views::brand::PALETTE {
+        for (scheme, dark) in [(&palette.light, false), (&palette.dark, true)] {
+            let hex = match ink.as_str() {
+                "primary" => scheme.primary,
+                "primary-hover" => scheme.primary_hover,
+                "primary-active" => scheme.primary_active,
+                other => panic!("the badge reads `--nav-color-{other}`, which this gate cannot resolve to a palette stop"),
+            };
+            let ink_rgb = views::brand_presentation::parse_hex(hex)
+                .unwrap_or_else(|| panic!("{} {hex}", palette.id));
+            let primary = views::brand_presentation::parse_hex(scheme.primary)
+                .unwrap_or_else(|| panic!("{} primary", palette.id));
+            let panel = srgb_mix(primary, scheme_surface(scheme, dark), percent);
+            let ratio = views::brand_presentation::contrast_ratio(ink_rgb, panel);
+            assert!(
+                ratio >= 4.5,
+                "{} [{}]: the badge's `--nav-color-{ink}` is {ratio:.2}:1 on the \
+                 panel's {percent}% primary tint — under the 4.5:1 floor for 11px \
+                 text. Step the ink to the next stop rather than lightening the tint.",
+                palette.id,
+                if dark { "dark" } else { "light" },
+            );
+        }
+    }
+}

@@ -1175,10 +1175,14 @@ pub async fn set_email_confirmed(
 
 /// Set a person's avatar key, returning whether the row existed.
 ///
-/// Surreal validates the full row for every update. Before writing the avatar,
-/// this materializes the historical default for `email_confirmed` on this
-/// person only when it is absent; a deployment-wide backfill stays an explicit
-/// operator action.
+/// Surreal validates every field of the row on any update, including fields
+/// the query never mentions, so a row still missing either bool field added
+/// after person rows already existed — `email_confirmed` or `is_admitted` —
+/// fails coercion the moment anything touches it, not only when the write
+/// targets that field. Both historical defaults are materialized together in
+/// one update, before writing the avatar, so neither is left absent while the
+/// other is patched; a deployment-wide backfill stays an explicit operator
+/// action.
 pub async fn set_profile_image_url(
     db: &SurrealDb,
     id: Uuid,
@@ -1186,8 +1190,10 @@ pub async fn set_profile_image_url(
 ) -> Result<bool, PersonError> {
     writing(|| {
         db.query(
-            "UPDATE person SET email_confirmed = false \
-             WHERE id = $id AND email_confirmed IS NONE",
+            "UPDATE person SET \
+             email_confirmed = IF email_confirmed IS NONE THEN false ELSE email_confirmed END, \
+             is_admitted = IF is_admitted IS NONE THEN true ELSE is_admitted END \
+             WHERE id = $id AND (email_confirmed IS NONE OR is_admitted IS NONE)",
         )
         .bind(("id", record_id(TABLE, id)))
     })
@@ -1338,8 +1344,9 @@ mod tests {
     use super::{
         create, default_firm_dri, delete, edit, find_by_email_ci, find_by_id, find_by_ids,
         find_by_oidc_subject, find_or_create, is_admitted, link_oidc_subject, list_directory,
-        retry, search, set_admitted, set_email_confirmed, set_role, set_xero_contact_id,
-        update_contact, ContactUpdate, NewPerson, PersonEdit, PersonError, Role,
+        retry, search, set_admitted, set_email_confirmed, set_profile_image_url, set_role,
+        set_xero_contact_id, update_contact, ContactUpdate, NewPerson, PersonEdit, PersonError,
+        Role,
     };
     use crate::surreal::test_support::mem;
     use crate::surreal::{record_id, SurrealDb};
@@ -2401,6 +2408,43 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(confirmed.email_confirmed);
+    }
+
+    #[tokio::test]
+    async fn set_profile_image_url_backfills_a_row_written_before_email_confirmed_and_is_admitted_existed(
+    ) {
+        let db = mem().await;
+
+        // The faithful reproduction of the rows the avatar-upload path meets
+        // in a deployment that has run since before either field existed:
+        // both are absent, not merely defaulted, because `DEFAULT` only ever
+        // fires on a write the field definition can see.
+        db.query("REMOVE FIELD email_confirmed ON person")
+            .await
+            .unwrap();
+        db.query("REMOVE FIELD is_admitted ON person")
+            .await
+            .unwrap();
+        let row = person(&db, "Ada", "ada-avatar@example.com").await;
+        db.query("DEFINE FIELD OVERWRITE email_confirmed ON person TYPE bool DEFAULT false")
+            .await
+            .unwrap();
+        db.query("DEFINE FIELD OVERWRITE is_admitted ON person TYPE bool DEFAULT true")
+            .await
+            .unwrap();
+
+        let existed =
+            set_profile_image_url(&db, row.id, Some("people/legacy/avatars/a.png".into()))
+                .await
+                .unwrap();
+        assert!(existed);
+
+        let updated = find_by_id(&db, row.id).await.unwrap().unwrap();
+        assert_eq!(
+            updated.profile_image_url.as_deref(),
+            Some("people/legacy/avatars/a.png")
+        );
+        assert!(is_admitted(&db, row.id).await.unwrap());
     }
 
     #[tokio::test]

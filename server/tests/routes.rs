@@ -16369,9 +16369,10 @@ async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_strea
     assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
 }
 
-/// A person written before `email_confirmed` existed still accepts an admin
-/// avatar upload after schema apply because the avatar writer materializes the
-/// missing default for that row before updating the avatar.
+/// A person written before `email_confirmed` and `is_admitted` existed still
+/// accepts an admin avatar upload after schema apply because the avatar
+/// writer materializes the missing defaults for that row before updating the
+/// avatar.
 #[tokio::test]
 async fn admin_person_avatar_upload_handles_a_historical_person_row() {
     let surreal = store::surreal::test_support::unmigrated().await;
@@ -16379,7 +16380,7 @@ async fn admin_person_avatar_upload_handles_a_historical_person_row() {
     surreal
         .query(
             "CREATE $id SET name = 'Historical Person', \
-             email = 'historical-avatar@example.com', role = 'client', is_admitted = true, \
+             email = 'historical-avatar@example.com', role = 'client', \
              inserted_at = type::datetime('2020-01-01T00:00:00Z'), \
              updated_at = type::datetime('2020-01-01T00:00:00Z')",
         )

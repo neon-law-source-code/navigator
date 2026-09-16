@@ -383,6 +383,46 @@ impl NotationService {
                 None
             };
 
+            // Ephemeral workflows (e.g. `onboarding__welcome`) have no
+            // `notations` row, so `append_event`'s read-back of the
+            // notation (`notations` moved to SurrealDB with ENG-121) would
+            // fail. Skip the journal in that case; the durability for
+            // ephemeral steps lives downstream (the `sent_emails` audit row
+            // for `email_send__*` dispatch).
+            if !body.ephemeral {
+                let surreal = self.surreal.clone();
+                let from_str = from.clone();
+                let to_str = next.as_str().to_string();
+                let condition = body.condition.clone();
+                let acting_person_id = body.acting_person_id;
+                ctx.run(|| async move {
+                    let recorded_at = chrono::Utc::now().to_rfc3339();
+                    append_event(
+                        &surreal,
+                        TransitionRecord {
+                            notation_id,
+                            acting_person_id,
+                            machine_kind: MachineKind::Workflow.as_str(),
+                            from_state: &from_str,
+                            to_state: &to_str,
+                            condition: &condition,
+                            payload_json: dispatch_payload,
+                            recorded_at: &recorded_at,
+                        },
+                    )
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| HandlerError::from(TerminalError::new(format!("journal: {e}"))))
+                })
+                .name("append-workflow-event")
+                .await?;
+            }
+
+            // A notification follows the record of the transition it announces.
+            // The only reason anything precedes `append-workflow-event` is a
+            // step that produces a payload for that row, and a notification
+            // produces none — running it first meant a mail-provider failure
+            // left the transition unjournaled.
             if !body.ephemeral {
                 if let Some(hop) = review_notification_hop(&from_state, &body.condition, &next) {
                     let surreal = self.surreal.clone();
@@ -424,42 +464,6 @@ impl NotationService {
                     }
                 }
             }
-
-            // Ephemeral workflows (e.g. `onboarding__welcome`) have no
-            // `notations` row, so `append_event`'s read-back of the
-            // notation (`notations` moved to SurrealDB with ENG-121) would
-            // fail. Skip the journal in that case; the durability for
-            // ephemeral steps lives downstream (the `sent_emails` audit row
-            // for `email_send__*` dispatch).
-            if !body.ephemeral {
-                let surreal = self.surreal.clone();
-                let from_str = from.clone();
-                let to_str = next.as_str().to_string();
-                let condition = body.condition.clone();
-                let acting_person_id = body.acting_person_id;
-                ctx.run(|| async move {
-                    let recorded_at = chrono::Utc::now().to_rfc3339();
-                    append_event(
-                        &surreal,
-                        TransitionRecord {
-                            notation_id,
-                            acting_person_id,
-                            machine_kind: MachineKind::Workflow.as_str(),
-                            from_state: &from_str,
-                            to_state: &to_str,
-                            condition: &condition,
-                            payload_json: dispatch_payload,
-                            recorded_at: &recorded_at,
-                        },
-                    )
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| HandlerError::from(TerminalError::new(format!("journal: {e}"))))
-                })
-                .name("append-workflow-event")
-                .await?;
-            }
-
             // The firm signing the closing letter (`firm_signature__*`)
             // closes the matter: flip the bound Project `open` → `closed`.
             // The symmetric bookend to the client-signed retainer that

@@ -761,7 +761,12 @@ async fn send_review_notification(
         base_url.trim_end_matches('/'),
         path
     );
+    // Every person-addressed Navigator email carries the inline-styled firm
+    // layout as its `text/html` alternative beside the plain part, so a rich
+    // client shows the wordmark rather than a bare URL.
+    let html = workflows::email::render_email_html(&body, &base_url);
     let outbound = OutboundEmail::new(recipient_email, copy.subject, body)
+        .with_html(html)
         .with_template(format!("notation-review-{}", hop.as_str()))
         .with_person(recipient_id.to_string());
     if email.send(outbound).await.is_ok() {
@@ -907,6 +912,11 @@ END: {}
         let captured = email.captured();
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].subject, "A draft is ready for your review");
+        let html = captured[0]
+            .html_body
+            .as_deref()
+            .expect("the firm layout is the html alternative");
+        assert!(html.contains("/app/lawyer/notations/00000000-0000-0000-0000-00000000000b/review"));
         assert!(captured[0]
             .body
             .contains("/app/lawyer/notations/00000000-0000-0000-0000-00000000000b/review"));
@@ -933,6 +943,11 @@ END: {}
         let captured = email.captured();
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].subject, "Your reviewed draft is ready");
+        let html = captured[0]
+            .html_body
+            .as_deref()
+            .expect("the firm layout is the html alternative");
+        assert!(html.contains("/app/projects/sample-litigation"));
         assert!(captured[0]
             .body
             .ends_with("/app/projects/sample-litigation"));

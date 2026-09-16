@@ -54,6 +54,8 @@ pub struct NotationRow {
     pub title: String,
     /// Client-friendly status, e.g. "Signed" / "Awaiting your signature".
     pub status: String,
+    /// The client-facing explanation of what happens next.
+    pub whats_next: String,
     pub rendered_ready: bool,
     /// Whether a completed signature record — provider id and `signed_at`
     /// — backs this notation's document. Deliberately not "does an object
@@ -167,12 +169,14 @@ fn notation_status_label(
         "Signing was declined. Contact the firm to continue."
     } else if awaiting_countersignature {
         "You have signed. Awaiting the firm's countersignature."
+    } else if state == "END" {
+        "Closed"
     } else if state.starts_with("sent_for_signature") {
         "Awaiting your signature"
     } else if rendered_ready {
         "Ready for signature"
     } else {
-        "In preparation"
+        workflows::client_phrase_for(state).where_this_is
     }
 }
 
@@ -459,6 +463,9 @@ async fn notation_rows(
                 false,
             )
             .to_string(),
+            whats_next: workflows::client_phrase_for(&n.state)
+                .whats_next
+                .to_string(),
             rendered_ready,
             signed_ready,
             certificate_ready,
@@ -603,6 +610,7 @@ pub fn ClientProjectDetail() -> Element {
                                     "{n.title}"
                                     span { class: "status-chip", " {n.status}" }
                                 }
+                                p { class: "nav-muted", "{n.whats_next}" }
                                 span { class: "portal-agreement__links",
                                     if n.signable {
                                         a {
@@ -703,6 +711,26 @@ mod tests {
     use super::{notation_rows, notation_status_label};
     use cloud::StorageService;
     use store::signatures::SignatureState;
+
+    #[test]
+    fn workflow_states_use_client_facing_status_phrases() {
+        assert_eq!(
+            notation_status_label("lawyer_review", None, false, false, false),
+            "The firm is reviewing"
+        );
+        assert_eq!(
+            notation_status_label("END", None, false, true, false),
+            "Closed"
+        );
+        assert_eq!(
+            notation_status_label("lawyer_review__for_trustee", None, false, false, false,),
+            "The firm is reviewing"
+        );
+        assert_eq!(
+            notation_status_label("unknown__state", None, false, false, false),
+            "In progress"
+        );
+    }
 
     /// Signature evidence, not workflow state, decides the label — with
     /// `state` and `rendered_ready` held fixed, only flipping evidence flips

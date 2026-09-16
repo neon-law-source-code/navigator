@@ -229,6 +229,10 @@ async fn notation_pdfs_are_gated_by_project_participation_and_listed_on_the_proj
         "agreements section missing"
     );
     assert!(
+        html.contains("Nothing further is scheduled here. Contact the firm to continue."),
+        "agreement what's-next line missing from the client project page",
+    );
+    assert!(
         html.contains(&format!("/app/notations/{notation_id}/documents/signed")),
         "signed-copy download link missing from the project page",
     );

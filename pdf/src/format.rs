@@ -11,7 +11,7 @@
 //! [`OutputFormat::preamble`] that frames it. The body conversion
 //! ([`crate::markdown::to_typst`]) and the embedded logo are shared, so
 //! a new variant only describes its own page chrome.
-//! [`OutputFormat::Agreement`] is the worked example: it reuses the
+//! [`OutputFormat::Contract`] is the worked example: it reuses the
 //! shared `letterhead_block` verbatim and differs from
 //! [`OutputFormat::Letter`] in nothing but page geometry and spacing.
 //!
@@ -24,7 +24,7 @@ use crate::{render, PdfError, LOGO_PATH};
 /// The firm identity printed on a letterhead.
 ///
 /// Every letterhead-bearing format draws it from the same block, so
-/// [`OutputFormat::Letter`] and [`OutputFormat::Agreement`] carry
+/// [`OutputFormat::Letter`] and [`OutputFormat::Contract`] carry
 /// identical marks and differ only below it.
 ///
 /// The `pdf` crate is brand-agnostic: the caller supplies these lines.
@@ -148,15 +148,26 @@ pub enum OutputFormat {
     /// around headings. An engagement letter is read once, carefully, by
     /// someone deciding whether to sign it.
     Letter(LetterBlocks),
-    /// An executed contract on the firm's letterhead. Same chrome as
-    /// [`OutputFormat::Letter`], deliberately **curt** typesetting: a
-    /// contract between represented parties is a reference document,
-    /// navigated by section number, not a letter to be read through. It
-    /// wants density and a short page count, so the margins, leading,
-    /// paragraph spacing, and heading space all tighten, and headings
-    /// sit at body size so a section number reads as a label rather
-    /// than a title.
-    Agreement,
+    /// An executed contract. **No letterhead**: a contract between
+    /// represented parties is not firm correspondence, and an instrument
+    /// that gets signed must not go out over the drafter's branding
+    /// (LAW-14). Only a small running header on continuation pages names
+    /// the firm, so a page copied or faxed away from the rest still says
+    /// which document it came from.
+    ///
+    /// **The frame does not number anything.** `rules`' `N123` already
+    /// requires a contract body to carry its own Harvard markers — that
+    /// is what a reader cites (`I.A`) and what `views::harvard_outline`
+    /// steps — so a frame that numbered them again produced `A. I. Scope`
+    /// from a section written `## I. Scope`, with the document title
+    /// silently consuming depth 1. The markers live in the source, where
+    /// they can be read, cited, and diffed.
+    ///
+    /// Typeset for a reference document that is navigated rather than
+    /// read through: denser than [`OutputFormat::Letter`], but with
+    /// leading and a heading hierarchy that let a reader find a section
+    /// boundary while scanning.
+    Contract,
     /// Court paper — a complaint, motion, or brief — rendered through
     /// [`crate::pleading`]'s calibrated geometry rather than this module's
     /// own page-chrome constants. Carries the calibration a template's
@@ -183,7 +194,16 @@ impl OutputFormat {
     /// docs describe for `form` (a render *mode*, not a Typst format at
     /// all): the two lists name what each layer can accept, not one
     /// mirrored set.
-    pub const FRONTMATTER_VALUES: &'static [&'static str] = &["letter", "agreement"];
+    pub const FRONTMATTER_VALUES: &'static [&'static str] = &["letter", "contract"];
+
+    /// The retired spelling of [`OutputFormat::Contract`]. "Agreement"
+    /// reads as a term of art for a bilateral instrument; "contract" is
+    /// the plainer word and the one clients use. [`OutputFormat::parse`]
+    /// still accepts this for a release so a template that has not been
+    /// re-spelled keeps rendering, but it is absent from
+    /// [`OutputFormat::FRONTMATTER_VALUES`] — the name the frame is
+    /// offered and documented under is the new one.
+    pub const RETIRED_CONTRACT_ALIAS: &'static str = "agreement";
 
     /// Parse a format name as it appears in `output:` frontmatter or on
     /// the CLI `--format` flag. Accepts `plain`, `letter`, and
@@ -204,7 +224,11 @@ impl OutputFormat {
         match name.trim() {
             "plain" => Some(Self::Plain),
             "letter" => Some(Self::Letter(LetterBlocks::default())),
-            "agreement" => Some(Self::Agreement),
+            // The second arm is the retired spelling
+            // ([`OutputFormat::RETIRED_CONTRACT_ALIAS`]), still accepted
+            // for a release so a template that has not been re-spelled
+            // keeps rendering.
+            "contract" | Self::RETIRED_CONTRACT_ALIAS => Some(Self::Contract),
             _ => None,
         }
     }
@@ -215,7 +239,7 @@ impl OutputFormat {
     /// salutation) where present. Prepended to the body's Typst markup
     /// before [`render`]. The font family is set separately by [`render`].
     /// `letterhead` is used by [`OutputFormat::Letter`] and
-    /// [`OutputFormat::Agreement`]; [`OutputFormat::Plain`] ignores it.
+    /// [`OutputFormat::Contract`]; [`OutputFormat::Plain`] ignores it.
     #[must_use]
     pub fn preamble(&self, letterhead: &Letterhead) -> String {
         // Shared page sizing; the letterhead leaves extra top margin so
@@ -257,42 +281,51 @@ impl OutputFormat {
                 head = letterhead_block(letterhead, "1.6em"),
                 blocks = letter_header_blocks(blocks),
             ),
-            // The agreement is the mirror image of the letter: same
-            // chrome, tightened everywhere the letter is open. Narrower
-            // margins, closed-up leading, paragraph spacing barely wider
-            // than a line, and headings that sit tight to the clause they
-            // label. The point is a contract someone can hold in one hand.
-            Self::Agreement => format!(
+            // A contract is a reference document — navigated by section
+            // number rather than read through — so it is denser than the
+            // letter. It is not, however, firm correspondence: no
+            // letterhead, and no numbering of its own (see the variant's
+            // docs). What it needs instead is for a reader scanning for a
+            // clause to find where one section ends and the next begins,
+            // which the old 10pt/0.54em setting with run-in bold headings
+            // at body size actively defeated.
+            Self::Contract => format!(
                 concat!(
                     "#set page(\n",
                     "  paper: \"us-letter\",\n",
-                    "  margin: (x: 0.85in, top: 0.8in, bottom: 0.75in),\n",
+                    "  margin: (x: 1in, top: 1in, bottom: 0.9in),\n",
                     // A page split from the rest of the contract — copied,
-                    // faxed, or simply dropped — should say which contract it
-                    // belongs to. The letterhead already marks page one, so
-                    // the header stays silent there and only names the firm
-                    // on every continuation page.
+                    // faxed, or simply dropped — should say which document
+                    // it belongs to. This small grey line is all that names
+                    // the firm anywhere in the frame, and it is deliberately
+                    // not the letterhead: a provenance mark on a stray page,
+                    // not branding on an executed instrument.
                     "  header: context if counter(page).get().first() > 1 [",
                     "#align(right)[#text(size: 7.5pt, tracking: 0.1em, fill: luma(45%))[",
                     "#upper[{name}]]]],\n",
                     "  footer: context align(center)[#text(size: 7.5pt, fill: luma(45%))[",
                     "Page #counter(page).display() of #counter(page).final().first()]],\n",
                     ")\n",
-                    "#set text(size: 10pt, hyphenate: false)\n",
-                    "#set par(justify: true, leading: 0.54em, spacing: 0.72em)\n",
-                    "#show heading: set text(size: 10pt, weight: \"bold\")\n",
-                    "#show heading: set block(above: 0.95em, below: 0.4em)\n",
+                    "#set text(size: 11pt, hyphenate: false)\n",
+                    "#set par(justify: true, leading: 0.72em, spacing: 1.05em)\n",
+                    // A hierarchy a reader can see: the instrument's title,
+                    // then its sections, then anything nested under them.
+                    // The frame sizes and spaces the heading; the marker
+                    // itself is the body's, and the frame prints it as
+                    // written.
+                    "#show heading.where(level: 1): set text(size: 15pt, weight: \"bold\")\n",
+                    "#show heading.where(level: 1): set block(above: 0em, below: 1.4em)\n",
+                    "#show heading.where(level: 2): set text(size: 12pt, weight: \"bold\")\n",
+                    "#show heading.where(level: 2): set block(above: 1.9em, below: 0.85em)\n",
+                    "#show heading: set text(weight: \"bold\")\n",
+                    "#show heading: set block(above: 1.4em, below: 0.7em)\n",
                     // A signature block that splits across a page break is a
                     // defect on an executed instrument: a page of orphaned
                     // rows reads as a different document from the one the
                     // first signer saw. Keep every table whole.
-                    "#show table: set block(breakable: false)\n",
-                    "{head}",
-                    "{outline}",
+                    "#show table: set block(breakable: false)\n\n",
                 ),
                 name = esc(&letterhead.name),
-                head = letterhead_block(letterhead, "1.1em"),
-                outline = crate::outline::preamble(),
             ),
             // Court paper is a different geometry entirely — no letterhead,
             // no shared page-chrome constants, calibrated per jurisdiction.
@@ -312,7 +345,7 @@ impl OutputFormat {
     pub fn postamble(&self) -> String {
         match self {
             Self::Letter(blocks) => letter_footer_blocks(blocks),
-            Self::Plain | Self::Agreement | Self::Pleading(_) => String::new(),
+            Self::Plain | Self::Contract | Self::Pleading(_) => String::new(),
         }
     }
 }
@@ -489,7 +522,7 @@ fn esc(s: &str) -> String {
 /// it in the format's chrome ([`OutputFormat::preamble`] before,
 /// [`OutputFormat::postamble`] after), and compiles ([`render`]).
 /// `letterhead` supplies the firm identity for [`OutputFormat::Letter`]
-/// and [`OutputFormat::Agreement`] (ignored by [`OutputFormat::Plain`]).
+/// and [`OutputFormat::Contract`] (ignored by [`OutputFormat::Plain`]).
 /// Placeholder tokens are the caller's responsibility — substitute them
 /// in `body` first.
 ///
@@ -534,15 +567,24 @@ mod tests {
             Some(OutputFormat::Letter(LetterBlocks::default()))
         );
         assert_eq!(
+            OutputFormat::parse("contract"),
+            Some(OutputFormat::Contract)
+        );
+        assert_eq!(
+            OutputFormat::parse(" contract "),
+            Some(OutputFormat::Contract)
+        );
+        // `agreement` is the retired spelling of the same frame, kept
+        // parseable for a release (LAW-14).
+        assert_eq!(
             OutputFormat::parse("agreement"),
-            Some(OutputFormat::Agreement)
+            Some(OutputFormat::Contract)
         );
         assert_eq!(
             OutputFormat::parse(" agreement "),
-            Some(OutputFormat::Agreement)
+            Some(OutputFormat::Contract)
         );
         assert_eq!(OutputFormat::parse("demand_letter"), None);
-        assert_eq!(OutputFormat::parse("contract"), None);
         assert_eq!(OutputFormat::parse(""), None);
         // Pleading's calibration comes from a jurisdiction `parse` never
         // sees — it is never producible from a bare format name.
@@ -610,7 +652,7 @@ mod tests {
         for format in [
             OutputFormat::Plain,
             OutputFormat::Letter(LetterBlocks::default()),
-            OutputFormat::Agreement,
+            OutputFormat::Contract,
         ] {
             let preamble = format.preamble(&Letterhead::default());
             assert!(
@@ -634,7 +676,7 @@ mod tests {
         for format in [
             OutputFormat::Plain,
             OutputFormat::Letter(LetterBlocks::default()),
-            OutputFormat::Agreement,
+            OutputFormat::Contract,
         ] {
             let pdf = super::render_document(body, format.clone(), &Letterhead::default())
                 .expect("renders");
@@ -677,8 +719,19 @@ mod tests {
         // is worse than a name it may not write at all.
         assert_eq!(
             OutputFormat::FRONTMATTER_VALUES,
-            &["letter", "agreement"],
+            &["letter", "contract"],
             "the declarable set changed; N109's `VALID` must move with it"
+        );
+        // The retired spelling still parses, so a template carrying
+        // `output: agreement` keeps rendering, but it is not offered as
+        // a value to write.
+        assert_eq!(
+            OutputFormat::parse(OutputFormat::RETIRED_CONTRACT_ALIAS),
+            Some(OutputFormat::Contract)
+        );
+        assert!(
+            !OutputFormat::FRONTMATTER_VALUES.contains(&OutputFormat::RETIRED_CONTRACT_ALIAS),
+            "the retired spelling must not be offered"
         );
         let mut seen = Vec::new();
         for v in OutputFormat::FRONTMATTER_VALUES {
@@ -863,19 +916,20 @@ mod tests {
     }
 
     #[test]
-    fn agreement_header_names_the_firm_only_on_continuation_pages() {
+    fn contract_names_the_firm_only_on_continuation_pages() {
         // A page separated from the rest of a contract should say which
-        // contract it belongs to. The letterhead already marks page one,
-        // so a bare one-page document must carry the firm's name exactly
-        // once (the letterhead) — no redundant header repeats it there.
+        // document it belongs to. With the letterhead gone (LAW-14), a
+        // one-page contract names the firm nowhere at all — its title is
+        // what identifies it, and an executed instrument carries none of
+        // the drafter's branding.
         let lh = Letterhead::default();
         let one_page =
-            super::render_document("Short body.", OutputFormat::Agreement, &lh).expect("renders");
+            super::render_document("Short body.", OutputFormat::Contract, &lh).expect("renders");
         assert_eq!(crate::passage::page_count(&one_page).expect("count"), 1);
         assert_eq!(
             crate::passage::occurrence_count(&one_page, "NEON LAW").expect("counts"),
-            1,
-            "a single page carries only the letterhead's own wordmark"
+            0,
+            "a one-page contract must carry no firm mark at all"
         );
 
         // A document spanning several pages: the header repeats once per
@@ -890,148 +944,145 @@ mod tests {
             .expect("writing to a String never fails");
         }
         let many_pages =
-            super::render_document(&body, OutputFormat::Agreement, &lh).expect("renders");
+            super::render_document(&body, OutputFormat::Contract, &lh).expect("renders");
         let pages = crate::passage::page_count(&many_pages).expect("count");
         assert!(pages > 1, "fixture must actually span pages: {pages}");
         assert_eq!(
             crate::passage::occurrence_count(&many_pages, "NEON LAW").expect("counts"),
-            pages,
-            "the wordmark shows once on page one (letterhead) and once per continuation page \
-             (header) — {pages} pages total"
+            pages - 1,
+            "the provenance header shows once per continuation page and never on page one \
+             — {pages} pages total"
         );
     }
 
     #[test]
-    fn agreement_render_produces_a_pdf_on_the_letterhead() {
-        // The whole point of the variant is a contract that goes out
-        // under the firm's name, so the `#image(..)` must resolve and the
-        // document must actually compile — not merely produce a plausible
-        // preamble string.
+    fn contract_render_produces_a_pdf_carrying_no_embedded_logo() {
+        // The variant must actually compile, not merely produce a
+        // plausible preamble string — and it must do so without the
+        // embedded PNG. That mark is what made a contract 64,601 bytes
+        // against plain's 33,577, so the size gap is the observable proof
+        // the logo is gone rather than merely unreferenced.
         let lh = Letterhead::default();
-        let body = "# 1. Purchase\n\nBuyer shall purchase the Interest.\n\n\
-                    ## 1.1 Price\n\nThe price is stated in Schedule A.";
-        let pdf = super::render_document(body, OutputFormat::Agreement, &lh)
-            .expect("agreement renders with embedded logo");
+        let body = "# Purchase\n\nBuyer shall purchase the Interest.\n\n\
+                    ## I. Price\n\nThe price is stated in Schedule A.";
+        let pdf =
+            super::render_document(body, OutputFormat::Contract, &lh).expect("contract renders");
         assert_eq!(&pdf[..4], b"%PDF", "not a PDF");
-        // The embedded PNG makes the letterhead-bearing output materially
-        // larger than the same body rendered plain.
-        let plain = super::render_document(body, OutputFormat::Plain, &lh).expect("plain renders");
+        let letter =
+            super::render_document(body, OutputFormat::Letter(LetterBlocks::default()), &lh)
+                .expect("letter renders");
         assert!(
-            pdf.len() > plain.len(),
-            "agreement ({}) should be larger than plain ({}) — logo missing?",
+            pdf.len() < letter.len(),
+            "contract ({}) should be smaller than the letterhead-bearing letter ({}) \
+             — the logo is still riding along",
             pdf.len(),
-            plain.len()
+            letter.len()
         );
     }
 
     #[test]
-    fn agreement_carries_exactly_the_same_letterhead_as_a_letter() {
-        // Both letterhead-bearing formats draw the mark from
-        // `letterhead_block`, so a change that reached one and not the
-        // other would mean the firm had two identities on the wire. Pin
-        // every element of the mark, then pin that the two blocks are
-        // byte-identical apart from the trailing air beneath them.
+    fn the_contract_frame_carries_no_letterhead_at_all() {
+        // LAW-14. The frame used to draw the same `letterhead_block` as
+        // the letter — mark, wordmark, rule, contact line — so a contract
+        // between two other parties went out on the drafter's stationery.
+        // An instrument that gets executed carries none of it.
         let lh = Letterhead::default();
-        let agreement = OutputFormat::Agreement.preamble(&lh);
+        let contract = OutputFormat::Contract.preamble(&lh);
         let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&lh);
         for element in [
-            "logo-neon-law.png",         // the embedded mark
-            "width: 0.34in",             // at the agreed size
-            "#upper[Neon Law]",          // the wordmark
-            "tracking: 0.22em",          // letterspaced
-            "#line(length: 100%",        // the rule across the page
-            "stroke: 0.5pt + luma(35%)", // at the agreed weight
-            "+1 510 800 2080",           // the contact line, entire
+            "logo-neon-law.png",  // the embedded mark
+            "#block(below:",      // the letterhead block itself
+            "#line(length: 100%", // the rule across the page
+            "+1 510 800 2080",    // the contact line, entire
             "contact\\@neonlaw.com",
             "www.neonlaw.com",
-            "fill: luma(40%)",
         ] {
             assert!(
-                agreement.contains(element),
-                "agreement letterhead is missing `{element}`: {agreement}"
+                !contract.contains(element),
+                "the contract frame still carries `{element}`: {contract}"
             );
             assert!(
                 letter.contains(element),
-                "letter letterhead is missing `{element}`: {letter}"
+                "the letter must keep its letterhead — `{element}` is missing: {letter}"
             );
         }
-        // And the block *entire* — everything inside `#block(below: …)[…]`
-        // — is identical. Only the `below:` distance, the air each format
-        // wants beneath the mark, is allowed to differ, so it is excluded
-        // by starting the comparison at the block's opening bracket; the
-        // comparison ends at the block's own closing bracket (`]` on its
-        // own line) rather than at the end of the string, because
-        // `OutputFormat::Agreement`'s preamble carries more after the
-        // letterhead (the Harvard outline set-up) that `OutputFormat::
-        // Letter`'s never will.
-        let mark = |p: &str| {
-            let start = p.find("#block(below:").expect("letterhead block");
-            let open = start + p[start..].find(")[").expect("the block's content");
-            let close = open + p[open..].find("]\n\n").expect("the block's own close") + 1;
-            p[open..close].to_string()
-        };
-        assert_eq!(
-            mark(&agreement),
-            mark(&letter),
-            "the two letterheads have drifted apart"
-        );
-        // An agreement is signed and paginated like a letter.
-        assert!(agreement.contains("counter(page).display()"), "{agreement}");
+        // The one firm mark that remains is the continuation-page
+        // provenance header, which names the firm and nothing else.
         assert!(
-            agreement.contains("counter(page).final().first()"),
-            "{agreement}"
+            contract.contains("counter(page).get().first() > 1"),
+            "the provenance header must stay: {contract}"
+        );
+        // A contract is paginated like a letter.
+        assert!(
+            contract.contains("counter(page).final().first()"),
+            "{contract}"
         );
     }
 
     #[test]
-    fn agreement_is_denser_than_a_letter_in_every_dimension() {
-        // A contract between represented parties is navigated by section
-        // number, not read through, so it is typeset curtly. These are the
-        // exact values chosen against rendered output; each assertion
-        // fails if someone loosens that dimension back toward the letter.
+    fn the_contract_frame_numbers_no_heading_of_its_own() {
+        // `N123` requires a contract body to carry its own Harvard
+        // markers, and the frame used to number them again on top —
+        // `## I. Scope` reached the page as `A. I. Scope`, with the
+        // document title silently eating depth 1. The frame now sets no
+        // heading numbering at all; the markers are the source's.
+        let contract = OutputFormat::Contract.preamble(&Letterhead::default());
+        assert!(
+            !contract.contains("numbering"),
+            "the frame must set no heading numbering: {contract}"
+        );
+    }
+
+    #[test]
+    fn a_contract_is_denser_than_a_letter_but_stays_scannable() {
+        // A contract is navigated by section number rather than read
+        // through, so it is set tighter than the letter. It was set
+        // *too* tight: 10pt on 0.54em leading with every heading at body
+        // size gave a reader scanning for a clause no section boundary to
+        // find (LAW-14). Density is still the goal; illegibility was not.
         let lh = Letterhead::default();
-        let agreement = OutputFormat::Agreement.preamble(&lh);
+        let contract = OutputFormat::Contract.preamble(&lh);
         let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&lh);
 
-        // Margins: narrower on all three edges than the letter's 1.15in.
+        // Margins, leading, and paragraph spacing stay tighter than the
+        // letter's.
         assert!(
-            agreement.contains("margin: (x: 0.85in, top: 0.8in, bottom: 0.75in)"),
-            "agreement margins loosened: {agreement}"
+            contract.contains("margin: (x: 1in, top: 1in, bottom: 0.9in)"),
+            "contract margins moved: {contract}"
         );
         assert!(
             letter.contains("margin: (x: 1.15in, top: 1.15in, bottom: 1.15in)"),
             "letter margins moved; the density comparison is no longer meaningful"
         );
-        // Body size, leading, and paragraph spacing all tighter.
         assert!(
-            agreement.contains("#set text(size: 10pt, hyphenate: false)"),
-            "agreement body size grew: {agreement}"
-        );
-        assert!(
-            agreement.contains("leading: 0.54em, spacing: 0.72em"),
-            "agreement leading or paragraph spacing opened up: {agreement}"
+            contract.contains("leading: 0.72em, spacing: 1.05em"),
+            "contract leading or paragraph spacing moved: {contract}"
         );
         assert!(
             letter.contains("leading: 0.78em, spacing: 1.5em"),
             "letter leading moved; the density comparison is no longer meaningful"
         );
-        // Headings sit at body size so a section number reads as a label,
-        // and hug the clause they introduce.
+        // Body text is no longer shrunk below the letter's: the saving
+        // comes from the margins and the leading, not from small type.
         assert!(
-            agreement.contains("#show heading: set text(size: 10pt, weight: \"bold\")"),
-            "agreement headings are no longer at body size: {agreement}"
+            contract.contains("#set text(size: 11pt, hyphenate: false)"),
+            "contract body size moved: {contract}"
+        );
+        // A visible heading hierarchy — the title, then its sections,
+        // each larger than the body rather than run-in bold at body size.
+        assert!(
+            contract
+                .contains("#show heading.where(level: 1): set text(size: 15pt, weight: \"bold\")"),
+            "the contract's title heading is not sized: {contract}"
         );
         assert!(
-            agreement.contains("#show heading: set block(above: 0.95em, below: 0.4em)"),
-            "agreement heading space opened up: {agreement}"
-        );
-        assert!(
-            letter.contains("#show heading: set block(above: 2.1em, below: 1.1em)"),
-            "letter heading space moved; the density comparison is no longer meaningful"
+            contract
+                .contains("#show heading.where(level: 2): set text(size: 12pt, weight: \"bold\")"),
+            "the contract's section headings are not sized: {contract}"
         );
 
-        // The behavioural half: the very same body must come off the
-        // press in strictly fewer pages than the letter does. Every
+        // The behavioural half: the very same body must still come off
+        // the press in strictly fewer pages than the letter does. Every
         // assertion above is on a string; this one is on the artefact.
         let mut body = String::new();
         for n in 1..=40 {
@@ -1043,16 +1094,16 @@ mod tests {
             )
             .expect("writing to a String never fails");
         }
-        let agreement_pdf =
-            super::render_document(&body, OutputFormat::Agreement, &lh).expect("agreement renders");
+        let contract_pdf =
+            super::render_document(&body, OutputFormat::Contract, &lh).expect("contract renders");
         let letter_pdf =
             super::render_document(&body, OutputFormat::Letter(LetterBlocks::default()), &lh)
                 .expect("letter renders");
-        let dense = crate::passage::page_count(&agreement_pdf).expect("agreement page count");
+        let dense = crate::passage::page_count(&contract_pdf).expect("contract page count");
         let airy = crate::passage::page_count(&letter_pdf).expect("letter page count");
         assert!(
             dense < airy,
-            "the agreement ran {dense} pages against the letter's {airy}; \
+            "the contract ran {dense} pages against the letter's {airy}; \
              it is supposed to be the shorter document"
         );
     }
@@ -1066,7 +1117,7 @@ mod tests {
         // the page they signed was not this page. Keeping every table
         // unbreakable pushes the whole block to the next page instead.
         let lh = Letterhead::default();
-        let agreement = OutputFormat::Agreement.preamble(&lh);
+        let agreement = OutputFormat::Contract.preamble(&lh);
         assert!(
             agreement.contains("#show table: set block(breakable: false)"),
             "an agreement's signature block may now split across pages: {agreement}"
@@ -1088,7 +1139,7 @@ mod tests {
                 .repeat(lines);
             let pdf = super::render_document(
                 &format!("{filler}{signature_block}"),
-                OutputFormat::Agreement,
+                OutputFormat::Contract,
                 &lh,
             )
             .expect("agreement with a signature block renders");

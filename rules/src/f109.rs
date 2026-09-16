@@ -37,9 +37,11 @@ pub struct F109OutputFormat;
 
 impl F109OutputFormat {
     pub const CODE: &'static str = "N109";
-    /// Render profiles a template may declare. `letter` and `agreement`
-    /// are Typst letterhead styles — the same chrome, typeset airily for
-    /// a letter and curtly for a contract; `pleading` is court paper,
+    /// Render profiles a template may declare. `letter` is the firm
+    /// letterhead style; `contract` is the unadorned instrument frame,
+    /// which carries no letterhead at all (LAW-14) — `agreement` is its
+    /// retired spelling, still accepted for a release so a template that
+    /// has not been re-spelled keeps validating; `pleading` is court paper,
     /// calibrated by the template's `jurisdiction:`
     /// (`pdf::pleading::variant_for_jurisdiction`); `form` is the
     /// `AcroForm` fill **mode**, not a Typst format. `plain` is the
@@ -47,7 +49,8 @@ impl F109OutputFormat {
     /// decoupled from `pdf::OutputFormat::FRONTMATTER_VALUES` on purpose —
     /// `form` has no Typst format, `pleading` needs a jurisdiction `parse`
     /// never sees, and `rules` does not depend on `pdf`.
-    pub const VALID: &'static [&'static str] = &["letter", "agreement", "pleading", "form"];
+    pub const VALID: &'static [&'static str] =
+        &["letter", "contract", "agreement", "pleading", "form"];
     /// The render profile that selects the `AcroForm` fill mode and so
     /// requires the `form:` / `origin_url:` companion keys.
     const FORM: &'static str = "form";
@@ -190,17 +193,31 @@ mod tests {
     }
 
     #[test]
-    fn flags_a_junk_value_that_merely_looks_like_the_agreement_profile() {
-        // Widening the set for `agreement` must not widen it to anything
-        // agreement-shaped: the closed set is still closed.
-        for junk in ["agreements", "Agreement", "contract", "agreement_letter"] {
+    fn flags_a_junk_value_that_merely_looks_like_the_contract_profile() {
+        // Accepting both `contract` and its retired `agreement` spelling
+        // must not widen the set to anything contract-shaped: the closed
+        // set is still closed.
+        for junk in ["contracts", "Contract", "agreements", "agreement_letter"] {
             let f = file(&format!("---\ntitle: T\noutput: {junk}\n---\n"));
             let v = F109OutputFormat.lint(&f);
             assert_eq!(v.len(), 1, "`{junk}` was accepted: {v:?}");
             assert_eq!(v[0].code, "N109");
             assert!(v[0].message.contains(junk), "{v:?}");
             // The message lists what the author may write instead.
-            assert!(v[0].message.contains("agreement"), "{v:?}");
+            assert!(v[0].message.contains("contract"), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn both_contract_spellings_are_accepted() {
+        // LAW-14 renamed the frame; the old spelling keeps validating for
+        // a release so every template need not move in one commit.
+        for spelling in ["contract", "agreement"] {
+            let f = file(&format!("---\ntitle: T\noutput: {spelling}\n---\n"));
+            assert!(
+                F109OutputFormat.lint(&f).is_empty(),
+                "`{spelling}` must be accepted"
+            );
         }
     }
 

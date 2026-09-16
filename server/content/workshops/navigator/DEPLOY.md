@@ -1030,6 +1030,9 @@ roles. Complete the global Workspace attachment once:
 | Bearer JWKS | `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_ISSUER` | Deployed JWT verification |
 | Bearer HMAC | `OIDC_HS256_SECRET` | Local/test verifier path |
 | Dev bypass | `OIDC_DISABLED` | Off; the dev profile and production reject `true` / `1` |
+
+`web-env.yaml` uses `# NAVIGATOR_OPTIONAL_ENV OAUTH_APPLE_CLIENT_ID` to mark the optional Apple client ID; `ops ship`
+emits its entry only for a nonblank coordinate.
 | Bootstrap Owner | `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` (`config.toml`) | Missing: ship refused; unset: no JIT identity |
 | Protected firm Entity | `NAVIGATOR_BOOTSTRAP_COMPANY` | `Shook Law PLLC` is protected either way |
 | Self-signup | `NAVIGATOR_SELF_SIGNUP_ENABLED` | Off; an unknown email is refused (403) |

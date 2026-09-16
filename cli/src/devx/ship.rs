@@ -338,12 +338,33 @@ where
         // Apple stays off until a deployment owner enrolls the app; its three
         // signing values remain in the deployment Secret and are required
         // only when this public Services ID turns the provider on.
-        Substitution {
-            token: "YOUR_OAUTH_APPLE_CLIENT_ID",
-            env: "OAUTH_APPLE_CLIENT_ID",
-            value: non_empty_env("OAUTH_APPLE_CLIENT_ID", get).unwrap_or_default(),
-        },
+        optional_env_entry_substitution(
+            "            # NAVIGATOR_OPTIONAL_ENV OAUTH_APPLE_CLIENT_ID\n",
+            "OAUTH_APPLE_CLIENT_ID",
+            get,
+        ),
     ]
+}
+
+/// Render one optional inline environment entry. The marker owns the entire
+/// YAML entry, so an absent or blank coordinate removes both its name and
+/// value instead of leaving a present-but-empty variable for consumers to
+/// interpret. Future optional client IDs use another marker of this shape.
+fn optional_env_entry_substitution<F>(
+    token: &'static str,
+    env: &'static str,
+    get: &F,
+) -> Substitution
+where
+    F: Fn(&str) -> Option<String>,
+{
+    Substitution {
+        token,
+        env,
+        value: non_empty_env(env, get)
+            .map(|value| format!("            - name: {env}\n              value: {value}\n"))
+            .unwrap_or_default(),
+    }
 }
 
 /// Every host this deployment's environment serves for a brand other than
@@ -3701,6 +3722,73 @@ mod tests {
             "the Namespace object itself uses the deployment namespace"
         );
         assert!(!namespace_manifest.contains("name: navigator"));
+    }
+
+    fn rendered_web_env_entries<F>(get: F) -> Vec<serde_yaml::Value>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let subs = resolve_substitutions_for_deployment("synthetic-deployment", "26.9.16", get)
+            .expect("synthetic environment resolves");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
+        let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
+            .expect("rendered GKE manifests build");
+        let deployment = manifest_doc(&manifests, "Deployment", WEB_DEPLOYMENT);
+        let web = deployment
+            .get("spec")
+            .and_then(|spec| spec.get("template"))
+            .and_then(|template| template.get("spec"))
+            .and_then(|spec| spec.get("containers"))
+            .and_then(serde_yaml::Value::as_sequence)
+            .and_then(|containers| {
+                containers.iter().find(|container| {
+                    container.get("name").and_then(serde_yaml::Value::as_str) == Some("web")
+                })
+            })
+            .expect("navigator-web has its web container");
+        web.get("env")
+            .and_then(serde_yaml::Value::as_sequence)
+            .expect("web container has an env list")
+            .clone()
+    }
+
+    #[test]
+    fn optional_client_id_entries_are_absent_when_unset_or_blank() {
+        for (case, client_id, expected) in [
+            ("missing", None, None),
+            ("blank", Some("   "), None),
+            (
+                "configured",
+                Some("com.example.navigator.synthetic"),
+                Some("com.example.navigator.synthetic"),
+            ),
+        ] {
+            let entries = rendered_web_env_entries(|key| {
+                if key == "OAUTH_APPLE_CLIENT_ID" {
+                    client_id.map(str::to_owned)
+                } else {
+                    env_getter(FULL_ENV)(key)
+                }
+            });
+            let apple = entries.iter().find(|entry| {
+                entry.get("name").and_then(serde_yaml::Value::as_str)
+                    == Some("OAUTH_APPLE_CLIENT_ID")
+            });
+
+            match expected {
+                Some(expected) => assert_eq!(
+                    apple
+                        .and_then(|entry| entry.get("value"))
+                        .and_then(serde_yaml::Value::as_str),
+                    Some(expected),
+                    "a configured optional client ID must retain its value ({case})"
+                ),
+                None => assert!(
+                    apple.is_none(),
+                    "an {case} optional client ID must omit its whole env entry, not render it blank: {entries:?}"
+                ),
+            }
+        }
     }
 
     #[test]

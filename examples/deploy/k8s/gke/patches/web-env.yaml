@@ -173,8 +173,7 @@ spec:
             # and downloaded .p8 private key arrive through envFrom above.
             # No Apple value is present in KIND, and an unset client id keeps
             # the provider off until the deployment owner enrolls the app.
-            - name: OAUTH_APPLE_CLIENT_ID
-              value: YOUR_OAUTH_APPLE_CLIENT_ID
+            # NAVIGATOR_OPTIONAL_ENV OAUTH_APPLE_CLIENT_ID
             # Base URL surfaced in the OpenAPI `servers` block at
             # /app/api/openapi.json. Must include scheme and stop at the host —
             # the document tacks `/app/api/*` paths onto this value.

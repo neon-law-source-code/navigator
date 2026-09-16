@@ -75,6 +75,7 @@ pub mod html_escape;
 pub mod intake_review;
 pub mod lawyer_dashboard;
 pub mod lawyer_project_detail;
+pub mod lead_capture;
 pub mod legal_page;
 pub mod letter_detail;
 pub mod litigation_page;

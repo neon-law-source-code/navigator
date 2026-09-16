@@ -17,6 +17,7 @@ use views::locales::{
     TransactionalCopy, VirtueCopy,
 };
 use webapp::components::DayRateBadge;
+use webapp::lead_capture::LeadCaptureCopy;
 use webapp::marketing_page::{
     Band, Card, Download, HeroCta, PackageInstall, PageContent, ProjectNetworkNode, Run, Step,
 };
@@ -549,6 +550,7 @@ fn project_network_band(copy: BandCopy) -> Band {
 fn marketing_page(
     copy: MarketingPageCopy,
     catalog: Option<&views::locales::services::ServicesCatalog>,
+    branding: &views::brand::Branding,
 ) -> PageContent {
     PageContent {
         head_title: copy.head_title,
@@ -567,6 +569,23 @@ fn marketing_page(
             .into_iter()
             .map(|copy| band(copy, catalog))
             .collect(),
+        lead_capture: lead_capture(branding),
+    }
+}
+
+/// Resolve the shared consent language for the mounted brand. The marketing
+/// page constructors replace this default with the request's brand copy below;
+/// the helper is kept at the same catalog boundary as the page readers.
+pub fn lead_capture(branding: &views::brand::Branding) -> LeadCaptureCopy {
+    let copy = |key: &str| {
+        let raw = shared_catalog()
+            .lookup(branding.brand_key.as_str(), key)
+            .unwrap_or_else(|| panic!("invariant: shared lead key `{key}` is present"));
+        interpolate(raw, branding.firm.site_name, branding.firm_email)
+    };
+    LeadCaptureCopy {
+        consent_sentence: copy("lead.consent"),
+        phone_helper: copy("lead.phone_helper"),
     }
 }
 
@@ -676,12 +695,12 @@ pub fn fractional_gc(
 
 /// `/personal`, from this brand's `personal-plan.yaml`.
 pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "personal-plan"), None)
+    marketing_page(load_page(branding, "personal-plan"), None, branding)
 }
 
 /// `/navigator`, from this brand's `navigator.yaml`.
 pub fn navigator(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "navigator"), None)
+    marketing_page(load_page(branding, "navigator"), None, branding)
 }
 
 /// `/services`, from this brand's `services.yaml`.
@@ -689,6 +708,7 @@ pub fn legal_services(branding: &views::brand::Branding) -> PageContent {
     marketing_page(
         load_page(branding, "services"),
         services_catalog(branding).as_ref(),
+        branding,
     )
 }
 
@@ -743,7 +763,7 @@ mod tests {
     /// actually be the ones that carry the duplicated sentences.
     #[test]
     fn the_shared_catalog_is_the_source_the_neon_pages_read() {
-        let referenced: std::collections::BTreeSet<String> = BrandKey::ALL
+        let mut referenced: std::collections::BTreeSet<String> = BrandKey::ALL
             .iter()
             .flat_map(|key| {
                 key.catalog_pages()
@@ -752,6 +772,9 @@ mod tests {
                     .flat_map(views::locales::shared::referenced_keys)
             })
             .collect();
+        // Lead copy is consumed by the shared form component rather than a
+        // page YAML document, so account for that typed catalog reader here.
+        referenced.extend(["lead.consent".to_string(), "lead.phone_helper".to_string()]);
         for key in shared_catalog().keys() {
             assert!(
                 referenced.contains(key),

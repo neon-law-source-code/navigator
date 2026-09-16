@@ -457,8 +457,19 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         webapp::contact_page::InjectedContact(resolve_firm_contact_content(resolved))
     });
     routers.push(with_branded(
-        dioxus_app::contact_router("/contact", resolve_firm_contact_content(branding)),
+        dioxus_app::contact_router(
+            "/contact",
+            resolve_firm_contact_content(branding),
+            state.sessions.clone(),
+            portal::secure_cookies(state),
+        ),
         contact_copy,
+    ));
+    routers.push(with_branded(
+        dioxus_app::contact_sent_router("/contact/sent", resolve_firm_contact_content(branding)),
+        branded_map(branding, |resolved| {
+            webapp::contact_page::InjectedContact(resolve_firm_contact_content(resolved))
+        }),
     ));
     // The firm's `/team` page: one static statement, no roster and no store
     // read.
@@ -493,10 +504,14 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_PERSONAL_PLAN_PATH,
         firm_copy::personal_plan(branding),
+        state.sessions.clone(),
+        portal::secure_cookies(state),
     ));
     routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_NAVIGATOR_PATH,
         firm_copy::navigator(branding),
+        state.sessions.clone(),
+        portal::secure_cookies(state),
     ));
     let services_copy = branded_map(branding, |resolved| {
         webapp::marketing_page::InjectedMarketingPage(firm_copy::legal_services(resolved))
@@ -505,6 +520,8 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::marketing_page_router(
             dioxus_app::FIRM_SERVICES_PATH,
             firm_copy::legal_services(branding),
+            state.sessions.clone(),
+            portal::secure_cookies(state),
         ),
         services_copy,
     ));
@@ -634,6 +651,7 @@ fn resolve_firm_contact_content(
         phone_label: "Phone".to_string(),
         firm_email: branding.firm_email.to_string(),
         firm_phone: branding.firm_phone.to_string(),
+        lead_capture: locales::lead_capture(branding),
     }
 }
 

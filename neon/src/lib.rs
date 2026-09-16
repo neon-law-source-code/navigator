@@ -48,6 +48,8 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/notations",
     "/notations/{slug}",
     "/contact",
+    "/contact/sent",
+    "/leads",
     "/team",
     "/blog",
     "/blog/{slug}",

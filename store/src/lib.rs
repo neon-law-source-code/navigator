@@ -109,6 +109,7 @@ pub mod git_access_tokens;
 pub mod git_repositories;
 pub mod glossary;
 pub mod jurisdictions;
+pub mod leads;
 pub mod letters;
 pub mod mailrooms;
 pub mod notarizations;

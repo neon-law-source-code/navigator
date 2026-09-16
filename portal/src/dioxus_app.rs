@@ -2829,7 +2829,12 @@ pub fn template_card(
 ///
 /// One router serves them all: they differ only in the copy the caller
 /// resolves, which is what keeps a further page a data change.
-pub fn marketing_page_router(path: &str, content: webapp::marketing_page::PageContent) -> Router {
+pub fn marketing_page_router(
+    path: &str,
+    content: webapp::marketing_page::PageContent,
+    sessions: crate::SessionStore,
+    secure_cookies: bool,
+) -> Router {
     let injected = webapp::marketing_page::InjectedMarketingPage(content);
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
         Box::new(injected.clone()) as Box<dyn std::any::Any>
@@ -2841,7 +2846,11 @@ pub fn marketing_page_router(path: &str, content: webapp::marketing_page::PageCo
             path,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_public_utility)),
+                .layer(from_fn(inject_public_utility))
+                .layer(from_fn_with_state(
+                    (sessions, secure_cookies),
+                    crate::lead_capture::inject_page_context,
+                )),
         )
         .with_state(FullstackState::new(
             cfg,
@@ -3901,7 +3910,39 @@ pub fn transactional_router(
 /// the page mounts at. Public and firm-scoped.
 ///
 /// [`ContactContent`]: webapp::contact_page::ContactContent
-pub fn contact_router(path: &str, content: webapp::contact_page::ContactContent) -> Router {
+pub fn contact_router(
+    path: &str,
+    content: webapp::contact_page::ContactContent,
+    sessions: crate::SessionStore,
+    secure_cookies: bool,
+) -> Router {
+    let injected = webapp::contact_page::InjectedContact(content);
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(injected.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+
+    Router::<FullstackState>::new()
+        .route(
+            path,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_public_utility))
+                .layer(from_fn_with_state(
+                    (sessions, secure_cookies),
+                    crate::lead_capture::inject_page_context,
+                )),
+        )
+        .with_state(FullstackState::new(
+            cfg,
+            webapp::contact_page::ContactPageEntry,
+        ))
+}
+
+/// The neutral destination after an anonymous lead form submission. It shares
+/// the contact content's chrome and published phone, but carries no form or
+/// submission result that could reveal whether a row was written.
+pub fn contact_sent_router(path: &str, content: webapp::contact_page::ContactContent) -> Router {
     let injected = webapp::contact_page::InjectedContact(content);
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
         Box::new(injected.clone()) as Box<dyn std::any::Any>
@@ -3917,7 +3958,7 @@ pub fn contact_router(path: &str, content: webapp::contact_page::ContactContent)
         )
         .with_state(FullstackState::new(
             cfg,
-            webapp::contact_page::ContactPageEntry,
+            webapp::contact_page::ContactSentPageEntry,
         ))
 }
 
@@ -4802,7 +4843,12 @@ mod tests {
     /// stop being live, silently.
     #[tokio::test]
     async fn the_services_route_carries_the_hydration_nonce_policy() {
-        let router = marketing_page_router(FIRM_SERVICES_PATH, services_page());
+        let router = marketing_page_router(
+            FIRM_SERVICES_PATH,
+            services_page(),
+            crate::SessionStore::new("test-marketing-csrf"),
+            false,
+        );
 
         let resp = router
             .oneshot(

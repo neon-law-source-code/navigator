@@ -126,6 +126,7 @@ pub mod inbound_email;
 pub mod intake;
 pub mod integrations;
 pub(crate) mod integrations_api;
+pub mod lead_capture;
 pub mod marketing;
 pub mod matter_documents;
 pub mod mcp_principal;
@@ -1273,6 +1274,15 @@ pub fn bootstrap(
     // shared human surface behind the one session boundary. Composition 3 —
     // `host_public`, the brand host's own public pages, mounted outside the
     // boundary. Every other Navigator route joins composition 2 below.
+    // Anonymous lead capture is a host-owned public write. Mount it only for
+    // a host that explicitly declares `/leads`, beside (not behind) the
+    // authenticated session boundary that owns Navigator's human surface.
+    let lead_routes = if host_paths.contains(&"/leads") {
+        lead_capture::routes(state.rate_limit.clone())
+    } else {
+        Router::new()
+    };
+
     let router = public_ingress_routes()
         .merge(session_boundary(
             // The raw-template read is an `/app/api` endpoint, so it takes the
@@ -1292,7 +1302,8 @@ pub fn bootstrap(
             &state.sessions,
             &state.auth,
         ))
-        .merge(host_public);
+        .merge(host_public)
+        .merge(lead_routes);
 
     let visitor_analytics_state =
         visitor_analytics::VisitorAnalyticsState::new(state.surreal.clone());

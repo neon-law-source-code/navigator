@@ -542,8 +542,10 @@ enum ProjectsCmd {
     /// The documents-bucket prefix `projects/<code>/documents`, the Drive
     /// ingest folder named for the code, and one private source repository
     /// named for the code. Matter-open already runs this pass best-effort; this
-    /// command is the operator retry when Drive or the forge was down, or when
-    /// a legacy row never received one.
+    /// command is the operator retry when Drive or the forge is down, or when
+    /// a legacy row never received one. Talks to the logged-in deployment's
+    /// admin API, the same as every other `navigator site` command — never a
+    /// direct `SurrealDb` connection, even against a local deployment.
     Surfaces {
         #[command(subcommand)]
         action: SurfacesAction,
@@ -641,6 +643,8 @@ enum SurfacesAction {
         /// Project code, e.g. `acme`.
         #[arg(long)]
         project: String,
+        #[command(flatten)]
+        host: HostOpt,
     },
 }
 
@@ -2380,7 +2384,9 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         ProjectsCmd::Build { dir } => projects::build::run(&dir),
         ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
         ProjectsCmd::Surfaces { action } => match action {
-            SurfacesAction::Reconcile { project } => projects::surfaces::reconcile(&project).await,
+            SurfacesAction::Reconcile { project, host } => {
+                projects::surfaces::reconcile(host.host.as_deref(), &project).await
+            }
         },
         ProjectsCmd::ArchiveRepository {
             project_code,

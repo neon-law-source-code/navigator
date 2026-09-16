@@ -38,7 +38,7 @@ const PROJECT_TABLE: &str = "project";
 /// source repository) — distinct from merely reporting the resulting value,
 /// because a caller reading only the value cannot tell "this call did the
 /// work" from "nothing needed doing" from "nothing was attempted".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SurfaceStatus {
     /// This call is what recorded the value: the Project row's column was
@@ -132,7 +132,12 @@ pub fn source_state(project: &crate::projects::Project) -> SourceState {
 }
 
 /// What one reconcile pass recorded or confirmed.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+///
+/// Carries `serde::Deserialize` alongside `Serialize` so the CLI can parse
+/// `POST /app/api/project-surfaces/{id}`'s body straight into this type — the
+/// door and the client share one shape rather than two parsers agreeing by
+/// convention.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectSurfaces {
     pub code: String,
     /// Always `projects/<code>/documents`. Not stored as its own column: the

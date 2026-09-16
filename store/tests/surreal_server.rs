@@ -30,8 +30,13 @@
 //! engine, so one flag for all three would fail the suites whose fixture
 //! that job never brings up.
 
+use std::future::Future;
+use std::sync::{Arc, Mutex};
+
 use store::schema::{self, SchemaState};
-use store::surreal::{connect, SurrealConfig, SurrealConfigError};
+use store::surreal::{connect, ping, SurrealConfig, SurrealConfigError};
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::layer::SubscriberExt;
 
 /// The configured engine, or `None` when this lane is not wired up.
 ///
@@ -176,4 +181,101 @@ async fn the_applied_schema_introspects_back_over_the_wire() {
             relationship.fields[end]
         );
     }
+}
+
+/// A `MakeWriter` that appends every write to a shared buffer, for asserting
+/// on rendered log output. Mirrors the pattern `telemetry::tests` uses for
+/// the same reason: `tracing_subscriber::fmt` only writes to something
+/// implementing `Write`, and a test wants that output back as a string.
+#[derive(Clone, Default)]
+struct CapturedLogs(Arc<Mutex<String>>);
+
+struct CapturedLogsWriter(Arc<Mutex<String>>);
+
+impl<'a> MakeWriter<'a> for CapturedLogs {
+    type Writer = CapturedLogsWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        CapturedLogsWriter(self.0.clone())
+    }
+}
+
+impl std::io::Write for CapturedLogsWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("captured-log buffer is not poisoned")
+            .push_str(&String::from_utf8_lossy(bytes));
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// ENG-709: `readyz`'s kubelet probe has its own short timeout, and firing
+/// before `store::surreal::ping` answers drops the axum handler future that
+/// was awaiting it. Reproduce exactly that race — cancel the caller before
+/// the query returns — and prove the remote WS engine never logs "Failed to
+/// send query results to channel", the ERROR line that was ~85% of
+/// staging's log volume before `ping` started running its query on a task
+/// decoupled from the caller's lifetime.
+///
+/// `current_thread` matters here: it is what makes the spawned query task
+/// share this test's OS thread, so the thread-local subscriber this test
+/// installs sees every event the query emits, on whichever task it fires
+/// from.
+#[tokio::test(flavor = "current_thread")]
+async fn cancelling_the_caller_never_orphans_the_query_on_the_wire() {
+    let Some(config) = config("test_server_ping_cancellation") else {
+        return;
+    };
+    let db = connect(&config).await.expect("connect to the engine");
+
+    let logs = CapturedLogs::default();
+    let subscriber = tracing_subscriber::registry().with(
+        tracing_subscriber::fmt::layer()
+            .with_writer(logs.clone())
+            .with_ansi(false),
+    );
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    // Poll `ping` exactly once, with a no-op waker, then drop it without
+    // polling again — the readiness-probe race, made deterministic. A
+    // `tokio::time::timeout` racing a real clock against a loopback engine
+    // is not reliable for this: the query can complete before the timer is
+    // even checked, so the "cancel" never actually happens and the test
+    // proves nothing. Polling once and dropping cancels unconditionally,
+    // after the query has genuinely gone out over the wire (its first poll
+    // cannot resolve synchronously — the response has to come back from the
+    // engine's own router task) but before any response arrives.
+    let mut fut = Box::pin(ping(&db));
+    let waker = std::task::Waker::noop();
+    let mut cx = std::task::Context::from_waker(waker);
+    assert!(
+        fut.as_mut().poll(&mut cx).is_pending(),
+        "ping must not resolve on its very first poll for this test to prove anything"
+    );
+    drop(fut);
+
+    // Give the runtime a few turns to drive the detached query task (and the
+    // engine's own router task) to completion on this thread before reading
+    // the captured output.
+    for _ in 0..64 {
+        tokio::task::yield_now().await;
+    }
+
+    let rendered = logs
+        .0
+        .lock()
+        .expect("captured-log buffer is not poisoned")
+        .clone();
+    assert!(
+        !rendered.contains("Failed to send query results to channel"),
+        "cancelling the caller must not orphan the in-flight query: {rendered}"
+    );
+
+    // The connection itself must still be healthy for the next probe.
+    ping(&db).await.expect("a later ping still succeeds");
 }

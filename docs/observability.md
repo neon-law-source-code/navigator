@@ -49,6 +49,15 @@ it:
 
 The worker and web emit their own spans through the same subscriber, so new handlers inherit tracing for free.
 
+`store::surreal::ping` — the readiness probe's one query — runs on its own `tokio::spawn`ed task rather than inline
+(ENG-709). `readyz`'s caller is a kubelet HTTP probe with a short timeout; when it fires before the query answers,
+kubelet drops the connection and axum drops the handler future that was awaiting `ping`. Awaited inline, that drop would
+drop the receiver half of the remote WS engine's internal response channel while the query was still in flight, and the
+`surrealdb` client's own router task would log `Failed to send query results to channel: SendError(..)` at ERROR when it
+tried to deliver a response nobody was waiting for — this was roughly 85% of staging's log volume. Spawning decouples
+the two lifetimes: the caller giving up only stops it from *waiting*, not the query from *running*, so the engine always
+finds its receiver.
+
 Web also records first-party public website visits as aggregate analytics. The durable table and OTel counter
 (`navigator.web.visit.count`) use bounded dimensions only: UTC day, Axum matched route pattern, trusted edge
 country/region code, route-derived locale, coarse status class, and a source bucket derived from approved UTM/ref query

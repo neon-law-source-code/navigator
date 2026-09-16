@@ -153,14 +153,40 @@ pub fn install_tls_provider() {
 /// engine reachable and answering" without depending on any row existing
 /// or on the schema being applied.
 ///
+/// Runs the query on its own task rather than inline (ENG-709). `readyz`'s
+/// caller is a kubelet HTTP probe with its own short timeout; when it fires
+/// before the query answers, kubelet drops the connection and axum drops the
+/// handler future that was awaiting this call. Awaited inline, that drop
+/// would drop the receiver half of the remote WS engine's internal response
+/// channel while the query is still in flight on the wire, and the engine's
+/// router task logs "Failed to send query results to channel: SendError(..)"
+/// at ERROR when it tries to deliver a response nobody is waiting for
+/// anymore — 85% of staging's log volume before this fix, once per probe
+/// that missed its window. Spawning decouples the two lifetimes: dropping
+/// the join handle below only stops *this* function from waiting, the
+/// spawned task still runs the query to completion, so the engine always
+/// finds its receiver.
+///
 /// # Errors
 ///
 /// The engine's own error when the query does not complete.
+///
+/// # Panics
+///
+/// If the spawned query task itself panics, that panic is resumed here
+/// rather than swallowed.
 pub async fn ping(db: &SurrealDb) -> Result<(), surrealdb::Error> {
-    db.query("RETURN 1")
-        .await
-        .and_then(surrealdb::IndexedResults::check)?;
-    Ok(())
+    let db = db.clone();
+    match tokio::spawn(async move {
+        db.query("RETURN 1")
+            .await
+            .and_then(surrealdb::IndexedResults::check)
+    })
+    .await
+    {
+        Ok(result) => result.map(|_| ()),
+        Err(join_error) => std::panic::resume_unwind(join_error.into_panic()),
+    }
 }
 
 /// Connect to `config`'s endpoint, sign in when it carries credentials,

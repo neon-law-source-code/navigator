@@ -61,8 +61,13 @@ fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
     );
 }
 
+/// ENG-671: `notation` installs the CLI through the shared composite action
+/// (self-referenced with a pinned tag, since a step's `uses` key takes no
+/// expression) rather than an inline download block, and threads
+/// `read-manifest`'s resolved tag into it via `with: version:`, which `uses`
+/// cannot carry but a step's `with:` block can.
 #[test]
-fn the_project_gate_notation_job_runs_the_pinned_cli_directly() {
+fn the_project_gate_notation_job_installs_the_cli_through_the_composite_action() {
     let workflow = project_gate_workflow();
     let jobs = workflow["jobs"].as_mapping().expect("project gate jobs");
     let notation_steps = jobs[&serde_yaml::Value::String("notation".to_string())]["steps"]
@@ -75,18 +80,21 @@ fn the_project_gate_notation_job_runs_the_pinned_cli_directly() {
                 .as_str()
                 .is_some_and(|run| run.contains("navigator validate ."))
         }),
-        "notation must run the downloaded CLI directly"
+        "notation must run the installed CLI directly"
     );
-    // The composite action cannot be reached from here: a step's `uses` key
-    // takes no expression, so it could not carry `inputs.version`, and this
-    // shared workflow has no literal tag to pin that would track the caller's.
+    let install_step = notation_steps.iter().find(|step| {
+        step["uses"]
+            .as_str()
+            .is_some_and(|uses| uses.contains("/.github/actions/navigator-install@"))
+    });
     assert!(
-        notation_steps.iter().all(|step| {
-            !step["uses"]
-                .as_str()
-                .is_some_and(|uses| uses.contains("/.github/actions/validate@"))
-        }),
-        "notation must not reference the validate composite action"
+        install_step.is_some(),
+        "notation must install the CLI through the shared composite action"
+    );
+    assert_eq!(
+        install_step.unwrap()["with"]["version"].as_str(),
+        Some("${{ needs.read-manifest.outputs.version }}"),
+        "the composite action must receive the tag read-manifest already resolved and validated"
     );
 }
 
@@ -214,13 +222,12 @@ fn windows_cli_and_lsp_check_is_path_scoped_and_optional() {
     );
 }
 
-/// Every job that downloads the pinned CLI re-checks the version `read-manifest`
-/// already admitted, so the file carries the same guard six times. A job holding
-/// a narrower copy fails a tag the other five accept, and because `read-manifest`
-/// is the one that resolves the tag, the divergence only surfaces halfway through
-/// a Project's run.
+/// ENG-671 moved the version-format guard out of five repeated inline CLI
+/// downloads and into one composite action, so `read-manifest`'s own guard is
+/// the only one left in this file — the guard that used to need to match five
+/// other copies now has nothing to drift from.
 #[test]
-fn every_project_gate_version_guard_uses_the_same_shape() {
+fn read_manifest_is_the_only_remaining_version_guard() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join(".github")
@@ -241,30 +248,60 @@ fn every_project_gate_version_guard_uses_the_same_shape() {
 
     assert_eq!(
         guards.len(),
-        6,
-        "expected the manifest read plus the five CLI downloads to guard the version"
+        1,
+        "expected only read-manifest's guard now that the five CLI downloads install \
+         through the composite action instead"
     );
-    let (first_line, expected) = guards[0];
-    for (line, pattern) in &guards[1..] {
-        assert_eq!(
-            pattern, &expected,
-            "line {line} guards the version differently from line {first_line}"
-        );
-    }
 
     // A release candidate is the shape a Project migrating to the two thin
     // callers has to pin, because the input contract changed in one.
-    for (line, pattern) in &guards {
-        let matched = std::process::Command::new("bash")
-            .arg("-c")
-            .arg(format!(r#"[[ "$1" =~ {pattern} ]]"#))
-            .arg("bash")
-            .arg("26.9.15-rc.1")
-            .status()
-            .expect("run bash");
-        assert!(
-            matched.success(),
-            "line {line} refuses a release candidate the manifest read admits"
-        );
-    }
+    let (line, pattern) = guards[0];
+    let matched = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(format!(r#"[[ "$1" =~ {pattern} ]]"#))
+        .arg("bash")
+        .arg("26.9.15-rc.1")
+        .status()
+        .expect("run bash");
+    assert!(
+        matched.success(),
+        "line {line} refuses a release candidate the manifest read admits"
+    );
+}
+
+/// The five jobs that install the CLI all reference the same
+/// `navigator-install` tag. A job left pinned to a different tag than its
+/// siblings would install a different composite action's behavior mid-run,
+/// and because the five references are hand-maintained (a step's `uses` key
+/// takes no expression), nothing else would catch that drift.
+#[test]
+fn every_navigator_install_reference_pins_the_same_tag() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".github")
+        .join("workflows")
+        .join("project-gate.yml");
+    let source = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+
+    let refs: Vec<&str> = source
+        .lines()
+        .filter_map(|line| {
+            let (_, rest) = line.split_once(
+                "uses: neon-law-source-code/navigator/.github/actions/navigator-install@",
+            )?;
+            Some(rest.trim())
+        })
+        .collect();
+
+    assert_eq!(
+        refs.len(),
+        5,
+        "expected all five CLI-installing jobs (verify, notation, documents, manifest, seeds) \
+         to reference the composite action"
+    );
+    assert!(
+        refs.iter().all(|tag| *tag == refs[0]),
+        "every navigator-install reference must pin the same tag: {refs:?}"
+    );
 }

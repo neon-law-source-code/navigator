@@ -257,28 +257,17 @@ jobs:
       # The origin gate (`Y009`) reads each application's built `dist/`, so it
       # can only run in the job that produced one. `notation` validates a bare
       # checkout on its own runner and never sees a build.
-      - name: download and install the navigator CLI
+      #
+      # BUMP THIS TAG once a release publishes `.github/actions/navigator-install`
+      # (ENG-671 introduced it after 26.9.16). Self-referencing composite
+      # actions in this file necessarily lag by one release — see
+      # `application-publish@26.9.14` in project-publish.yml for the same
+      # pattern — and this one starts out already behind, since no published
+      # tag carries it yet.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
         if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator validate --ci
         if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
         run: navigator validate . --ci
@@ -288,27 +277,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator validate
         run: navigator validate .
 
@@ -320,27 +293,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site document verify
         env:
           HOST: ${{ inputs.host }}
@@ -366,27 +323,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: live status
         env:
           HOST: ${{ inputs.host }}
@@ -420,27 +361,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: download and install the navigator CLI
-        env:
-          VERSION: ${{ needs.read-manifest.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-              echo "::error::version must be an exact release tag, not '${VERSION}'."
-              exit 1
-          fi
-          asset="navigator-${VERSION}-linux.tar.gz"
-          tmp="$(mktemp -d)"
-          gh release download "${VERSION}" \
-            --repo neon-law-source-code/navigator \
-            --pattern "${asset}" \
-            --dir "${tmp}" \
-            --clobber
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
-          install -d "${RUNNER_TEMP}/navigator-bin"
-          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
-          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      # See the matching comment in the `verify` job: this pin lags until a
+      # release publishes the action.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+        with:
+          version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site import
         env:
           HOST: ${{ inputs.host }}

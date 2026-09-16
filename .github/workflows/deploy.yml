@@ -2236,6 +2236,13 @@ jobs:
           # if the binary carries a `dist/navigator-linux/` prefix.
           tar -czf "dist/navigator-${TAG}-linux.tar.gz" \
               -C dist/navigator-linux navigator LICENSE NOTICE
+          # `.github/actions/navigator-install` and `install.sh` verify this
+          # sidecar before extracting the archive it names — the integrity
+          # check ENG-671 added once the download moved to one place. The
+          # bare filename (no `dist/` prefix) is what `sha256sum -c` expects
+          # to find next to it after both are downloaded into the same
+          # directory.
+          (cd dist && sha256sum "navigator-${TAG}-linux.tar.gz" > "navigator-${TAG}-linux.tar.gz.sha256")
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2246,7 +2253,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-linux-cli
-          path: dist/navigator-${{ needs.release-version.outputs.tag }}-linux.tar.gz
+          path: |
+            dist/navigator-${{ needs.release-version.outputs.tag }}-linux.tar.gz
+            dist/navigator-${{ needs.release-version.outputs.tag }}-linux.tar.gz.sha256
           if-no-files-found: error
       - uses: ./.github/actions/slack-progress
         with:
@@ -2343,6 +2352,10 @@ jobs:
           # `dist/navigator-macos/` prefix.
           tar -czf "dist/navigator-${TAG}-macos.tar.gz" \
               -C dist/navigator-macos navigator LICENSE NOTICE
+          # See the matching Linux step: the sidecar
+          # `.github/actions/navigator-install` and `install.sh` verify
+          # before extracting.
+          (cd dist && shasum -a 256 "navigator-${TAG}-macos.tar.gz" > "navigator-${TAG}-macos.tar.gz.sha256")
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2353,7 +2366,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-macos-cli
-          path: dist/navigator-${{ needs.release-version.outputs.tag }}-macos.tar.gz
+          path: |
+            dist/navigator-${{ needs.release-version.outputs.tag }}-macos.tar.gz
+            dist/navigator-${{ needs.release-version.outputs.tag }}-macos.tar.gz.sha256
           if-no-files-found: error
       - uses: ./.github/actions/slack-progress
         with:
@@ -2419,9 +2434,14 @@ jobs:
       # tree of its own — the checkout is here only so the local
       # `slack-progress` action is on disk. Sparse, so it stays a metadata
       # fetch.
+      # Sparse: this job publishes artifacts built elsewhere, plus the one
+      # file below that is neither — `install.sh` ships from source, not from
+      # a build step, so it is checked out rather than downloaded.
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/actions/slack-progress
+          sparse-checkout: |
+            .github/actions/slack-progress
+            .github/actions/navigator-install/install.sh
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2540,6 +2560,19 @@ jobs:
           gh release upload "${TAG}" dist/navigator-lsp-${TAG}-linux.tar.gz \
               --repo "${GITHUB_REPOSITORY}" --clobber
           gh release upload "${TAG}" dist/navigator-lsp-${TAG}-macos.tar.gz \
+              --repo "${GITHUB_REPOSITORY}" --clobber
+          # The sha256 sidecars `.github/actions/navigator-install` and
+          # `install.sh` verify before extracting the archive each names.
+          gh release upload "${TAG}" dist/navigator-${TAG}-linux.tar.gz.sha256 \
+              --repo "${GITHUB_REPOSITORY}" --clobber
+          gh release upload "${TAG}" dist/navigator-${TAG}-macos.tar.gz.sha256 \
+              --repo "${GITHUB_REPOSITORY}" --clobber
+          # `install.sh` itself, tag-exact like every other asset here: the
+          # script's own logic can change between releases same as the
+          # binary can, so a reader pinned to one release gets the installer
+          # that shipped with it, not whatever main currently carries.
+          cp .github/actions/navigator-install/install.sh "navigator-${TAG}-install.sh"
+          gh release upload "${TAG}" "navigator-${TAG}-install.sh" \
               --repo "${GITHUB_REPOSITORY}" --clobber
 
   # ---------- Stage 3b: hand the release to the Homebrew tap ----------

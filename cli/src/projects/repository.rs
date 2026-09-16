@@ -2100,7 +2100,7 @@ jobs:
             "verify validates before it builds, so `Y009` reads a source tree:\n{verify}"
         );
         assert!(
-            verify.contains("navigator-bin"),
+            verify.contains("/.github/actions/navigator-install@"),
             "verify validates without installing the pinned CLI:\n{verify}"
         );
     }

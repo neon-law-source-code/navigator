@@ -513,8 +513,20 @@ fn site_help_lists_the_live_deployment_members() {
     assert_eq!(
         command_names(&output),
         vec![
-            "document", "import", "login", "logout", "mail", "mcp", "notation", "projects", "pull",
-            "seed", "sync", "whoami", "help",
+            "authorities",
+            "document",
+            "import",
+            "login",
+            "logout",
+            "mail",
+            "mcp",
+            "notation",
+            "projects",
+            "pull",
+            "seed",
+            "sync",
+            "whoami",
+            "help",
         ]
     );
 }

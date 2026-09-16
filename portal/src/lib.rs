@@ -80,6 +80,7 @@ pub mod api_audit;
 pub mod attachment_scanner;
 pub mod audit_fields;
 pub mod auth;
+pub(crate) mod authorities_api;
 pub mod blog;
 pub mod brand_assets;
 pub mod brand_edit;

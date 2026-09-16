@@ -6,6 +6,7 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
 
 mod assets;
+mod authorities;
 mod credentials;
 mod devx;
 mod docs;
@@ -857,6 +858,13 @@ enum SiteCmd {
     Document {
         #[command(subcommand)]
         action: DocumentAction,
+    },
+    /// File a global Authority — the citation apparatus' shared legal
+    /// reference data (#890) — with an archived artifact. Unlike `document`,
+    /// an Authority carries no `--project`.
+    Authorities {
+        #[command(subcommand)]
+        action: AuthoritiesAction,
     },
     /// File an inbound email's attachments on a live site.
     Mail {
@@ -1826,6 +1834,48 @@ struct HostOpt {
     host: Option<String>,
 }
 
+/// `navigator site authorities create` — the citation apparatus' write path
+/// (ENG-712): file a global Authority (no `--project`; it carries no
+/// `project_id`) with its archived artifact, through
+/// `POST /app/api/authorities`.
+#[derive(Subcommand)]
+enum AuthoritiesAction {
+    /// Create (or find) the global Authority for `--citation`, archiving
+    /// `--file` as its artifact. Repeating an already-recorded citation
+    /// returns the existing Authority untouched — its original archive and
+    /// metadata are never replaced.
+    Create {
+        #[command(flatten)]
+        host: HostOpt,
+        /// One of `case_law`, `statute`, `regulation`, `administrative`, `secondary`.
+        #[arg(long)]
+        class: String,
+        /// The citation — this is the Authority's identity: a second
+        /// `create` with the same citation returns the first row.
+        #[arg(long)]
+        citation: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        short_cite: Option<String>,
+        #[arg(long)]
+        publisher: Option<String>,
+        #[arg(long)]
+        issued_on: Option<String>,
+        #[arg(long)]
+        canonical_url: Option<String>,
+        #[arg(long)]
+        checked_on: Option<String>,
+        /// Path to the artifact to archive (the full text — a PDF or slip
+        /// opinion, never committed to a Project repository).
+        #[arg(long)]
+        file: PathBuf,
+        /// MIME type. Defaults to `application/octet-stream`.
+        #[arg(long)]
+        content_type: Option<String>,
+    },
+}
+
 /// A matter document is only ever reached through a Project on a site, so
 /// every verb here is either a write against a named `--project` on a
 /// `--host` brand deployment (`upload`), or a read that resolves both from
@@ -2147,6 +2197,33 @@ fn main() -> ExitCode {
             },
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
+            SiteCmd::Authorities { action } => match action {
+                AuthoritiesAction::Create {
+                    host,
+                    class,
+                    citation,
+                    title,
+                    short_cite,
+                    publisher,
+                    issued_on,
+                    canonical_url,
+                    checked_on,
+                    file,
+                    content_type,
+                } => runtime().block_on(authorities::create(
+                    host.host.as_deref(),
+                    &class,
+                    &citation,
+                    &title,
+                    short_cite.as_deref(),
+                    publisher.as_deref(),
+                    issued_on.as_deref(),
+                    canonical_url.as_deref(),
+                    checked_on.as_deref(),
+                    &file,
+                    content_type.as_deref(),
+                )),
+            },
         },
         Command::Notations { action } => match action {
             NotationsCmd::Format { file } => format::run(&file),

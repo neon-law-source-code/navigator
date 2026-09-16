@@ -151,6 +151,17 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("GET", "/app/api/entities", get(list_entities)),
         ("POST", "/app/api/entities", post(create_entity)),
         ("POST", "/app/api/seed", post(reconcile_seed)),
+        // The global citation apparatus's write door (ENG-712). Its own
+        // noun and module ([`crate::authorities_api`]) — an Authority
+        // carries no `project_id`, so it sits beside `people`/`entities`,
+        // not under `projects`.
+        (
+            "POST",
+            "/app/api/authorities",
+            post(crate::authorities_api::create_authority_door).layer(DefaultBodyLimit::max(
+                store::documents::MAX_DOCUMENT_UPLOAD_REQUEST_BYTES,
+            )),
+        ),
         ("GET", "/app/api/entities/{id}", get(get_entity)),
         ("PATCH", "/app/api/entities/{id}", patch(update_entity)),
         ("DELETE", "/app/api/entities/{id}", delete(delete_entity)),
@@ -649,7 +660,12 @@ async fn send_welcome(
 /// writes are never anonymous and never `client`; this is the explicit
 /// defense-in-depth check that holds even if the embedded Rego policy layer in front is
 /// ever misconfigured to allow more through.
-struct LawyerSession(SessionData);
+///
+/// `pub(crate)` (rather than private to this module) so a door that lives in
+/// its own module for a namespacing reason — [`crate::authorities_api`], the
+/// same way [`crate::integrations_api`] reaches [`AdminSession`] — can gate
+/// on the lawyer tier without duplicating this extractor.
+pub(crate) struct LawyerSession(pub(crate) SessionData);
 
 impl<S> FromRequestParts<S> for LawyerSession
 where

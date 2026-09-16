@@ -793,6 +793,35 @@ test_a_client_reaches_a_projects_subpath_but_not_project_lifecycle if {
 	not authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": client_session}
 }
 
+# ---------- POST /app/api/authorities (LAWYER tier — creates global citation-apparatus rows) ----------
+
+test_lawyer_can_create_an_authority if {
+	authz.allow with input as {"path": ["app", "api", "authorities"], "method": "POST", "session": lawyer_session}
+}
+
+test_admin_can_create_an_authority if {
+	authz.allow with input as {"path": ["app", "api", "authorities"], "method": "POST", "session": admin_session}
+}
+
+test_clerk_denied_create_authority if {
+	not authz.allow with input as {"path": ["app", "api", "authorities"], "method": "POST", "session": clerk_session}
+}
+
+test_client_denied_create_authority if {
+	not authz.allow with input as {"path": ["app", "api", "authorities"], "method": "POST", "session": client_session}
+}
+
+test_anonymous_denied_create_authority if {
+	not authz.allow with input as {"path": ["app", "api", "authorities"], "method": "POST", "session": null}
+}
+
+# The rule is exactly the collection path and POST — not a GET, and not a
+# nested item path.
+test_authorities_rule_is_exactly_the_collection_path_and_post if {
+	not authz.allow with input as {"path": ["app", "api", "authorities"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "api", "authorities", "extra"], "method": "POST", "session": lawyer_session}
+}
+
 # ---------- POST /app/api/integrations/{provider}/{verb} (ADMIN tier only — provisions Firm-private resources) ----------
 
 test_admin_can_ensure_a_firm_private_notion_page if {

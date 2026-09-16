@@ -603,6 +603,18 @@ allow if {
     is_lawyer(input.session)
 }
 
+# Create (or find) the global Authority for a citation, archiving its
+# artifact: POST /app/api/authorities. An Authority carries no `project_id`
+# (#890's global reference data), so this sits on its own noun rather than
+# under `projects` — the same reason `integrations` and `project-surfaces`
+# do. Lawyer-tier only, the same gate as every other `/app/api` authoring
+# door. Scoped to the collection path (three segments) and POST.
+allow if {
+    input.path == ["app", "api", "authorities"]
+    input.method == "POST"
+    is_lawyer(input.session)
+}
+
 # Upload a contract for playbook review: POST /app/api/projects/{id}/contract-review
 # ingests an inbound third-party contract (multipart) and runs the deviation
 # analysis. Client-writable like the review surface — a matter's client may

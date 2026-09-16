@@ -1104,14 +1104,13 @@ pub async fn slack_notify(
 
 /// `navigator site projects close <project-code>` — move a matter directly to
 /// `closed` through the REST lifecycle door
-/// (`POST /app/api/projects/{id}/lifecycle`), rather than the local-only
-/// `surfaces reconcile` style commands that require a
-/// `NAVIGATOR_SURREAL_ENDPOINT`. Resolves the human-facing code to the matter
-/// id the same way `document upload` does, through the visible-projects
-/// list, then posts the transition and optional effective time. The server
-/// derives `closed_at` from those command inputs; without an effective time,
-/// closing an already-`closed` matter reports it unchanged, while an
-/// `archived` matter refuses with a caller-readable error.
+/// (`POST /app/api/projects/{id}/lifecycle`). Resolves the human-facing code
+/// to the matter id the same way `document upload` and `projects surfaces
+/// reconcile` do, through the visible-projects list, then posts the
+/// transition and optional effective time. The server derives `closed_at`
+/// from those command inputs; without an effective time, closing an
+/// already-`closed` matter reports it unchanged, while an `archived` matter
+/// refuses with a caller-readable error.
 pub async fn matter_close(
     host: Option<&str>,
     project_code: &str,

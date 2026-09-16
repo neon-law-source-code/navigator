@@ -371,3 +371,104 @@ fn rejects_an_unknown_format() {
         "expected unknown-format error, got: {stderr}"
     );
 }
+
+/// A choice question whose options carry the prose the body reads.
+/// `custom_questions.<key>.choices` is a `value: label` map, and the body
+/// interpolates the state — so the rendered instrument must read the
+/// label ("Nevada"), never the stored key ("nevada").
+const VALID_CHOICE: &str = "\
+---
+kind: letter
+title: Governed Demand
+respondent_type: entity
+code: test__governed_demand
+confidential: true
+custom_questions:
+  governing_law:
+    prompt: Which state's law governs this engagement?
+    choices:
+      nevada: Nevada
+      california: California
+questionnaire:
+  BEGIN:
+    _: custom_single_choice__governing_law
+  custom_single_choice__governing_law:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    intake_submitted: lawyer_review
+  lawyer_review:
+    approved: END
+    rejected: END
+  END: {}
+---
+
+# Demand
+
+This letter is governed by the law of {{custom_single_choice__governing_law}}.
+";
+
+#[test]
+fn a_choice_answer_renders_its_label_not_its_stored_key() {
+    // LAW-13: a `{{custom_single_choice__*}}` placeholder filled with a
+    // declared choice *key* must reach the page as that choice's *label*.
+    // The key is an answer code, not prose; substituting it verbatim put
+    // "governed by the law of nevada" into the firm's own onboarding
+    // letter. The portal's document path already resolves the label
+    // (`retainer_walk::render_context_from_answers`); this proves the CLI
+    // preview agrees with it rather than rendering a different document.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "governed.md", VALID_CHOICE);
+    let out = work.path().join("governed.pdf");
+    let result = render(&[
+        src.as_os_str(),
+        "--out".as_ref(),
+        out.as_ref(),
+        "--answer".as_ref(),
+        "custom_single_choice__governing_law=nevada".as_ref(),
+    ]);
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let bytes = fs::read(&out).expect("pdf written");
+    assert_eq!(
+        pdf::occurrence_count(&bytes, "the law of Nevada").expect("scan the rendered pdf"),
+        1,
+        "the choice label must reach the page"
+    );
+    assert_eq!(
+        pdf::occurrence_count(&bytes, "the law of nevada").expect("scan the rendered pdf"),
+        0,
+        "the stored choice key must not reach the page"
+    );
+}
+
+#[test]
+fn a_free_text_answer_is_unaffected_by_choice_label_resolution() {
+    // The other side of LAW-13: a state with no declared `choices:` keeps
+    // its answer verbatim, so label resolution cannot swallow free text.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "demand.md", VALID);
+    let out = work.path().join("demand.pdf");
+    let result = render(&[
+        src.as_os_str(),
+        "--out".as_ref(),
+        out.as_ref(),
+        "--answer".as_ref(),
+        "amount=5000 USD".as_ref(),
+    ]);
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let bytes = fs::read(&out).expect("pdf written");
+    assert_eq!(
+        pdf::occurrence_count(&bytes, "5000 USD").expect("scan the rendered pdf"),
+        1,
+        "a free-text answer must render verbatim"
+    );
+}

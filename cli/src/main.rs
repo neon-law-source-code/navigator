@@ -3403,9 +3403,26 @@ fn run_render(
     // half of the same idea lives in `pdf::markdown`: a placeholder that no
     // answer filled gets a yellow wash instead, so an unfinished document
     // is unmistakably unfinished.
+    // A choice answer is *stored* as its declared key (`nevada`), but the
+    // body interpolates it as prose ("the law of Nevada"). Resolve the key
+    // back to its label through the template's own `choices:` /
+    // `custom_questions.<key>.choices` frontmatter — the same merged map
+    // `portal::retainer_walk::render_context_from_answers` resolves a
+    // generated document against, so a preview renders the document the
+    // matter will actually get rather than a second, differently-worded
+    // one. A state with no declared options, or a value that is not one of
+    // them, keeps its answer verbatim (`choice_label` returns `None`), so
+    // free text is untouched.
+    let choices = rules::frontmatter::extract(&contents)
+        .and_then(|fm| workflows::merged_choices_from_yaml(fm).ok())
+        .unwrap_or_default();
     let answer_context = answers
         .iter()
-        .map(|(code, value)| (code.clone(), pdf::markdown::bold_answer(value)))
+        .map(|(code, value)| {
+            let display =
+                workflows::choice_label(&choices, code, value).unwrap_or_else(|| value.clone());
+            (code.clone(), pdf::markdown::bold_answer(&display))
+        })
         .collect();
     let body = views::notation::fill(strip_frontmatter(&contents), &answer_context);
 

@@ -5,27 +5,14 @@ use std::process::Command;
 use assert_cmd::cargo::cargo_bin;
 
 #[test]
-fn docs_erd_and_glossary_share_physical_schema_names() {
+fn the_glossary_names_the_physical_schema() {
     let glossary = include_str!("../../docs/glossary.md");
-    let erd = include_str!("../../docs/erd.md");
-    let erd_svg = include_str!("../../docs/erd.svg");
     let schema = include_str!("../../store/src/schema/navigator.surql");
-
-    assert!(glossary.contains("[ERD](erd.md#schema)"));
-    assert!(erd.contains("[glossary](glossary.md)"));
 
     for table in ["person", "person_project_role", "project"] {
         assert!(
             schema.contains(&format!("DEFINE TABLE IF NOT EXISTS {table} ")),
             "schema must define `{table}`"
-        );
-        assert!(
-            erd.contains(&format!("    {table} {{")),
-            "ERD must render `{table}`"
-        );
-        assert!(
-            erd_svg.contains(&format!(">{table}</text>")),
-            "SVG ERD must render `{table}`"
         );
     }
 
@@ -76,7 +63,7 @@ fn docs_list_includes_opted_in_docs_and_glossary_term_pages() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("/docs/glossary\t"));
     assert!(
-        !stdout.contains("/docs/erd\t"),
+        !stdout.contains("/docs/gitops\t"),
         "unflagged docs must not appear in the published listing"
     );
     assert!(stdout.contains("/docs/glossary#lawyer-review\tGlossary: Lawyer Review"));

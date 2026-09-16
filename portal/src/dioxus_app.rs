@@ -1016,8 +1016,7 @@ pub fn lawyer_dashboard_router(
 }
 
 /// The bundled Harvard-outline catalog. Lawyer-tier recording surface for
-/// templates compiled in at boot; drafts on disk go through
-/// `navigator notations narrate`. Mounted under `/app` so the page wears the
+/// templates compiled in at boot. Mounted under `/app` so the page wears the
 /// authenticated navbar and footer.
 pub const APP_OUTLINE_PATH: &str = "/app/outline";
 

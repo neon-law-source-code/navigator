@@ -519,15 +519,7 @@ fn the_help_parser_still_reads_the_top_level_commands() {
     let mut cache = BTreeMap::new();
     let root = node_at(&mut cache, &[]);
 
-    for expected in [
-        "dev",
-        "erd",
-        "forms",
-        "notations",
-        "ops",
-        "site",
-        "validate",
-    ] {
+    for expected in ["dev", "forms", "notations", "ops", "site", "validate"] {
         assert!(
             root.children.iter().any(|name| name == expected),
             "the `Commands:` parser read {:?} at the top level and missed \

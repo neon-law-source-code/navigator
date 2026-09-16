@@ -20,7 +20,6 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 - [`rust-programming.md`](rust-programming.md) — the workspace's Rust conventions and error-handling rules.
 - [`observability.md`](observability.md) — how Navigator emits and reads telemetry.
 - [`test-database.md`](test-database.md) — the one-engine-per-test SurrealDB contract.
-- [`erd.md`](erd.md) — the entity-relationship diagram and how to regenerate it.
 - [`licensing.md`](licensing.md) — the BUSL-1.1 grant and what it means operationally.
 
 ## Local development and environments

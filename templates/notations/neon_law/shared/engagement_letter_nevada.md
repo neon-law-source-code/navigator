@@ -76,7 +76,7 @@ ourselves if one arose.
 
 If these terms are acceptable, please sign below and return a copy.
 
-## 1. Client and scope
+## I. Client and scope
 
 For this engagement the Firm's client is {{person__client}}, a natural person.
 No member of the client's household is a client of the Firm by virtue of this
@@ -96,7 +96,7 @@ Unless separately agreed in writing, this engagement does not include tax,
 accounting, insurance-coverage, or public-relations advice, and does not
 extend to any matter unrelated to the Matter described above.
 
-## 2. The Matter is heard in arbitration
+## II. The Matter is heard in arbitration
 
 The claims described above are resolved by binding arbitration rather than by a
 jury, because the recorded declaration of covenants for the parties' street
@@ -125,7 +125,7 @@ The Firm will advise you before any deadline that would waive a right, and will
 not agree to consolidate, bifurcate, or submit any claim on the papers without
 telling you first.
 
-## 3. Fees and costs
+## III. Fees and costs
 
 Fees for this engagement are set in a separate writing you and the Firm sign —
 a flat monthly fee, an hourly rate, a contingency, or a combination — and that
@@ -146,7 +146,7 @@ reusing instructions from an earlier invoice, and verify by telephone — at a
 number you already know to be genuine — any emailed change to them, including
 a message that appears to come from the Firm.
 
-## 4. Who answers for the Matter on each side
+## IV. Who answers for the Matter on each side
 
 Every matter the Firm opens names one person on each side who answers for it —
 one lawyer here, one person on the client's side. We call each of them the
@@ -161,7 +161,7 @@ name changes except in writing.
 * __The client's directly responsible individual is {{person__client}}__, the
   person the Firm takes instructions from and sends advice to.
 
-## 5. Conflicts
+## V. Conflicts
 
 The Firm treats a conflict for any one of its lawyers as a conflict for the
 whole firm. Before taking on a new matter we check it against our current and
@@ -173,7 +173,7 @@ You do not waive, and the Firm does not request, advance consent for the Firm
 to appear adverse to you in any litigation, arbitration, or other contested
 proceeding.
 
-## 6. What we each do
+## VI. What we each do
 
 You agree to provide accurate and complete information, to respond to
 reasonable requests, and to make the decisions the representation needs — which
@@ -184,7 +184,7 @@ information available to it when the advice is given.
 __The Firm has made no promise, assurance, or guarantee about the outcome__ of
 the arbitration, of any negotiation, or of any settlement.
 
-## 7. A disagreement between you and the Firm
+## VII. A disagreement between you and the Firm
 
 This letter is governed by the law of {{custom_single_choice__governing_law}}.
 If a dispute arises out of or relates to this engagement or this letter, you and
@@ -204,7 +204,7 @@ Because this is an agreement about how future disputes are handled, you have
 the right to consult independent counsel of your own choosing before you agree
 to it.
 
-## 8. Ending the engagement
+## VIII. Ending the engagement
 
 You may end this engagement at any time by telling us. The Firm may withdraw as
 the applicable professional rules permit or require — including for nonpayment,
@@ -212,7 +212,7 @@ a conflict, or a failure to cooperate — and subject to the rules governing
 withdrawal from a pending proceeding. Fees and authorized expenses incurred
 before that point remain due.
 
-## 9. Signatures
+## IX. Signatures
 
 Agreed and accepted:
 

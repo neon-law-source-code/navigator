@@ -1,5 +1,5 @@
 ---
-kind: filing
+kind: letter
 title: Notice of Rescission (Nevada)
 jurisdiction: NV
 respondent_type: person

@@ -147,9 +147,9 @@ anything this tree gates. Re-verify it rather than assuming it, and raise a chan
 
 ### Grouping changes into commits
 
-Keep one concern and its proof together: handler + view + test, migration + dependent entity, or generated artifact +
-source (`docs/erd.svg` + `docs/erd.md`). Split different blast radii, unrelated fixes, tooling from product code, and
-docs from code unless they describe that exact change. Remove superseded paths and history narration.
+Keep one concern and its proof together: handler + view + test, migration + dependent entity, or a generated artifact
+beside the source it derives from. Split different blast radii, unrelated fixes, tooling from product code, and docs
+from code unless they describe that exact change. Remove superseded paths and history narration.
 
 Write each subject as a Conventional Commit: `<type>(<scope>): <subject>`, imperative mood, lower-case start, no
 trailing period, ≤72 chars. `<scope>` is the crate or area (`web`, `store`, `cli`, `views`, `deps`, `mcp`). Append `!`
@@ -458,6 +458,5 @@ report anything left running or left on disk.
 
 - Dependency refresh: follow the Rust crate and web asset sections in [`rust-programming.md`](rust-programming.md) and
   the vendored asset rules in `server/public/VENDOR.toml`.
-- ERD refresh: regenerate [`erd.md`](erd.md) and `docs/erd.svg` together after schema changes. Government forms use
-  canonical issuing-authority sources and keep provenance in [`gov-forms.md`](gov-forms.md). For disk cleanup, measure
-  first and never delete Docker volumes without approval.
+- Government forms use canonical issuing-authority sources and keep provenance in
+  [`gov-forms.md`](gov-forms.md). For disk cleanup, measure first and never delete Docker volumes without approval.

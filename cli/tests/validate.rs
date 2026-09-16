@@ -1981,6 +1981,169 @@ fn validate_flags_a_questionnaire_state_the_body_stopped_reading() {
         .stdout(str::contains("custom_text__engagement_scope"));
 }
 
+/// `N123` — an instrument the firm drafts must carry a Harvard outline, in
+/// the scheme its kind uses.
+///
+/// Driven through the real binary on the shipped onboarding letter for the
+/// same reason `N122` is: the rule is worth nothing if it passes because it
+/// never bound a real file. The unmodified letter is a clean Roman outline;
+/// renumbering its first section `## 1.` is the motion-practice scheme on a
+/// contract, and `validate` must fail on it.
+#[test]
+fn validate_flags_a_contract_numbered_like_motion_practice() {
+    let source = fs::read_to_string(
+        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
+    )
+    .unwrap();
+    assert!(
+        source.contains("## I. Client and scope of the engagement"),
+        "the letter must carry the Roman heading this test renumbers",
+    );
+
+    let clean = TempDir::new().unwrap();
+    write(
+        clean.path(),
+        "templates/notations/neon_law/shared/onboarding_letter.md",
+        &source,
+    );
+    navigator()
+        .arg("validate")
+        .arg(clean.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+
+    let renumbered = TempDir::new().unwrap();
+    write(
+        renumbered.path(),
+        "templates/notations/neon_law/shared/onboarding_letter.md",
+        &source.replace(
+            "## I. Client and scope of the engagement",
+            "## 1. Client and scope of the engagement",
+        ),
+    );
+    navigator()
+        .arg("validate")
+        .arg(renumbered.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("N123"))
+        .stdout(str::contains(
+            "expected `## I. Client and scope of the engagement`",
+        ));
+}
+
+/// The Nevada litigation papers are `kind: pleading`, so `N123` binds them
+/// to the Arabic scheme.
+///
+/// Driven on the real affidavit, because the reclassification is only worth
+/// something if the rule actually reaches these files: renumbering its first
+/// section `## I.` is the contract scheme on court paper, and `validate`
+/// must fail on it.
+#[test]
+fn validate_flags_a_pleading_numbered_like_a_contract() {
+    let rel = "templates/notations/neon_law/shared/witness_affidavit_nevada.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    assert!(
+        source.contains("kind: pleading") && source.contains("## 1. Basis of knowledge"),
+        "the fixture must be the Arabic-numbered `pleading` this test renumbers",
+    );
+
+    let renumbered = TempDir::new().unwrap();
+    write(
+        renumbered.path(),
+        rel,
+        &source.replace("## 1. Basis of knowledge", "## I. Basis of knowledge"),
+    );
+    navigator()
+        .arg("validate")
+        .arg(renumbered.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("N123"))
+        .stdout(str::contains("expected `## 1. Basis of knowledge`"));
+}
+
+/// A pleading's caption carries its formal title line — `## SUMMONS — CIVIL`
+/// sits above `## 1.` — and that line is a caption element, not section one.
+/// `N123` treats it as preamble; this pins the real document that proves the
+/// allowance is not hypothetical.
+#[test]
+fn validate_accepts_a_pleading_whose_caption_title_precedes_the_outline() {
+    let rel = "templates/notations/neon_law/shared/summons_nevada.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    assert!(
+        source.contains("## SUMMONS — CIVIL") && source.contains("## 1. You must respond"),
+        "the fixture must carry an unnumbered caption title above its outline",
+    );
+
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), rel, &source);
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+}
+
+/// A `kind: letter` is exempt from `N123`: a demand or notice letter is
+/// often a single page of prose with no sections at all, which is not an
+/// outline the rule can hold to a scheme.
+///
+/// Proven on the real engagement letter by renumbering it into the scheme
+/// its kind would be wrong in. The identical edit on the `onboarding`
+/// letter fails the run above; here it must not, because the exemption —
+/// not the numbering — is what this pins.
+#[test]
+fn validate_exempts_a_letter_from_the_outline_check() {
+    let rel = "templates/notations/neon_law/shared/engagement_letter_nevada.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    assert!(
+        source.contains("kind: letter") && source.contains("## I. Client and scope"),
+        "the fixture must be the Roman-numbered `letter` this test renumbers",
+    );
+
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        rel,
+        &source.replace("## I. Client and scope", "## 1. Client and scope"),
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+}
+
+/// The shipped Nevada engagement letter carries a Roman outline like the
+/// other two engagement letters.
+///
+/// It is a `kind: letter`, so `N123` does not bind it — this pins the file
+/// itself rather than the rule, because the numbering is a drafting
+/// convention the firm keeps whether or not a lint enforces it.
+#[test]
+fn the_nevada_engagement_letter_is_a_roman_outline() {
+    let source = fs::read_to_string(
+        workspace_root().join("templates/notations/neon_law/shared/engagement_letter_nevada.md"),
+    )
+    .unwrap();
+    let markers: Vec<&str> = source
+        .lines()
+        .filter_map(|line| line.strip_prefix("## "))
+        .filter_map(|rest| rest.split_once('.').map(|(marker, _)| marker))
+        .collect();
+    assert_eq!(
+        markers,
+        ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"],
+        "the engagement letter must run I..IX in sequence",
+    );
+}
+
 /// A `output: form` notation is exempt: its answers fill a named `AcroForm`'s
 /// fields, a map the `rules` crate cannot see. The shipped N-400 asks a
 /// good-moral-character question that reaches a lawyer rather than the

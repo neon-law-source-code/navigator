@@ -1062,8 +1062,8 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           tag: "${{ needs.release-version.outputs.tag }}"
           stage: "integration"
-          step: "interop — cli erd / glossary"
-      - name: interop — cli erd / glossary
+          step: "interop — cli glossary"
+      - name: interop — cli glossary
         env:
           NAVIGATOR_SURREAL_ENDPOINT: ws://127.0.0.1:28000
           NAVIGATOR_SURREAL_NAMESPACE: navigator
@@ -1072,8 +1072,6 @@ jobs:
           NAVIGATOR_SURREAL_PASSWORD: root
         run: |
           set -euo pipefail
-          cargo run -p cli --quiet -- erd > /tmp/navigator-erd.mmd
-          sed -n '1,5p' /tmp/navigator-erd.mmd
           cargo run -p cli --quiet -- dev docs glossary jurisdiction
 
       - uses: ./.github/actions/slack-progress

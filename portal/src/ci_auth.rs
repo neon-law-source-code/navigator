@@ -132,7 +132,7 @@ async fn mint_inner(
         .spend_jti(&claims.jti, claims.exp)
         .map_err(|error| MintError::Unauthorized(error.to_string()))?;
     let project = resolve_project(&state.surreal, &claims).await?;
-    let actor = lawyer_dri_actor(&state.surreal, &project).await?;
+    let actor = lawyer_dri_actor(&state.surreal, &project, scoped).await?;
     let exp = now_unix_secs() + CI_SESSION_TTL_SECS;
     let session = SessionData {
         sub: actor
@@ -220,9 +220,14 @@ async fn resolve_project(
     Ok(project.clone())
 }
 
+/// `scoped` names the door this actor is being resolved for — `true` for
+/// `/auth/ci/seed-token`, which writes, `false` for
+/// `/auth/ci/document-token`, which only verifies — so a refusal names what
+/// the caller was actually trying to do rather than always naming the write.
 async fn lawyer_dri_actor(
     surreal: &store::surreal::SurrealDb,
     project: &store::projects::Project,
+    scoped: bool,
 ) -> Result<store::persons::Person, MintError> {
     let people = store::projects::lawyer_dri_people(surreal, project.id)
         .await
@@ -231,9 +236,14 @@ async fn lawyer_dri_actor(
         .into_iter()
         .find(|person| person.role.is_lawyer_tier())
     else {
-        return Err(MintError::Forbidden(
-            "the live project has no lawyer-tier lawyer DRI to attribute a CI seed write to".into(),
-        ));
+        let purpose = if scoped {
+            "attribute a CI seed write to"
+        } else {
+            "attribute CI document verification to"
+        };
+        return Err(MintError::Forbidden(format!(
+            "the live project has no lawyer-tier lawyer DRI to {purpose}"
+        )));
     };
     Ok(person)
 }
@@ -258,8 +268,13 @@ pub fn github_repository_from_url(url: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{authorize_github_run, github_repository_from_url};
-    use crate::github_oidc::GitHubActionsClaims;
+    use super::{authorize_github_run, github_repository_from_url, routes, CiAuthState};
+    use crate::github_oidc::{GitHubActionsClaims, GitHubOidc};
+    use crate::session::{now_unix_secs, SessionStore};
+    use crate::CanonicalHost;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
 
     #[test]
     fn github_https_and_ssh_remotes_yield_owner_name() {
@@ -293,5 +308,100 @@ mod tests {
             ..GitHubActionsClaims::default()
         };
         assert!(authorize_github_run(&claims).is_err());
+    }
+
+    /// A live Project bound to `claims.repository`, carrying no lawyer-tier
+    /// lawyer DRI — the shared refusal both doors below hit.
+    async fn project_with_no_lawyer_dri(
+        surreal: &store::surreal::SurrealDb,
+        code: &str,
+    ) -> store::projects::Project {
+        let entity_id = store::test_support::seed_entity(surreal).await;
+        let project = store::projects::create(
+            surreal,
+            &store::projects::NewProject {
+                code: code.to_string(),
+                name: code.to_string(),
+                status: "open".to_string(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        store::projects::set_repository_url(
+            surreal,
+            project.id,
+            Some(&format!("https://github.com/neon-law-staging/{code}")),
+        )
+        .await
+        .unwrap();
+        project
+    }
+
+    fn ci_state(surreal: store::surreal::SurrealDb, repository: &str, jti: &str) -> CiAuthState {
+        CiAuthState {
+            sessions: SessionStore::new("test-ci-auth-session-key"),
+            surreal,
+            github_oidc: GitHubOidc::fixed(GitHubActionsClaims {
+                repository: repository.to_string(),
+                repository_owner: "neon-law-staging".to_string(),
+                jti: jti.to_string(),
+                exp: now_unix_secs() + 60,
+                ..GitHubActionsClaims::default()
+            }),
+            canonical_host: CanonicalHost::new(Some("staging.neonlaw.com".to_string())),
+        }
+    }
+
+    async fn mint_request(state: CiAuthState, path: &str) -> (StatusCode, serde_json::Value) {
+        let response = routes(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"token":"anything"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn the_seed_door_names_a_ci_seed_write_when_no_lawyer_dri_exists() {
+        let surreal = store::test_support::mem_surreal().await;
+        project_with_no_lawyer_dri(&surreal, "no-dri-seed").await;
+        let state = ci_state(surreal, "neon-law-staging/no-dri-seed", "seed-door-jti");
+
+        let (status, body) = mint_request(state, "/auth/ci/seed-token").await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            body["message"],
+            "the live project has no lawyer-tier lawyer DRI to attribute a CI seed write to"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_document_door_names_verification_not_a_write_when_no_lawyer_dri_exists() {
+        let surreal = store::test_support::mem_surreal().await;
+        project_with_no_lawyer_dri(&surreal, "no-dri-document").await;
+        let state = ci_state(
+            surreal,
+            "neon-law-staging/no-dri-document",
+            "document-door-jti",
+        );
+
+        let (status, body) = mint_request(state, "/auth/ci/document-token").await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            body["message"],
+            "the live project has no lawyer-tier lawyer DRI to attribute CI document verification to"
+        );
     }
 }

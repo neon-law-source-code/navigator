@@ -253,6 +253,13 @@ async fn github_actions_oidc_token(client: &reqwest::Client, base: &str) -> Resu
 
 /// Exchange `github_token` for a Navigator session at one `/auth/ci/*` mint
 /// endpoint.
+///
+/// A non-success response here is the door itself saying no — unauthorized,
+/// forbidden, or unavailable — before any gate has run. That is a different
+/// kind of failure than a gate that ran and found a problem (exit code `2`),
+/// so this prints its own GitHub `::error::` annotation naming the door and
+/// the server's message, and marks the error with [`MintRefusal`] so the
+/// caller's `run` wrapper exits `3` instead. See cli/README.md.
 async fn mint_ci_token(
     client: &reqwest::Client,
     base: &str,
@@ -268,12 +275,67 @@ async fn mint_ci_token(
     let minted_status = minted.status();
     let minted_body = minted.text().await.unwrap_or_default();
     if !minted_status.is_success() {
-        return Err(anyhow!(
-            "CI token mint at {mint_path} failed: {minted_status}: {}",
-            first_line(&minted_body)
-        ));
+        let message = mint_refusal_message(&minted_body);
+        eprintln!(
+            "{}",
+            mint_refusal_annotation(mint_path, minted_status, &message)
+        );
+        return Err(anyhow::Error::new(MintRefusal).context(format!(
+            "CI token mint at {mint_path} failed: {minted_status}: {message}"
+        )));
     }
     serde_json::from_str(&minted_body).with_context(|| format!("parse {mint_path} response"))
+}
+
+/// The GitHub `::error::` workflow-command annotation `mint_ci_token` prints
+/// for a refused mint, naming the door (`mint_path`) and the server's own
+/// message — so a repository's Actions log shows *why* the run was refused
+/// rather than a generic HTTP status.
+fn mint_refusal_annotation(mint_path: &str, status: reqwest::StatusCode, message: &str) -> String {
+    format!("::error::CI token mint at {mint_path} was refused: {status}: {message}")
+}
+
+/// A CI token mint refused by `/auth/ci/seed-token` or `/auth/ci/document-token`
+/// itself. `mint_ci_token` has already printed the GitHub `::error::`
+/// annotation; this marker only carries which exit code the caller's `run`
+/// wrapper should choose — see [`exit_code_for`].
+#[derive(Debug)]
+pub(crate) struct MintRefusal;
+
+impl std::fmt::Display for MintRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CI token mint was refused")
+    }
+}
+
+impl std::error::Error for MintRefusal {}
+
+/// The exit code a `run` wrapper should return for `error`: `3` when the
+/// chain carries a [`MintRefusal`] (the CI door refused the mint itself),
+/// `2` for every other failure — the ordinary gate-failure code. Documented
+/// in cli/README.md.
+pub(crate) fn exit_code_for(error: &anyhow::Error) -> ExitCode {
+    if error
+        .chain()
+        .any(<dyn std::error::Error>::is::<MintRefusal>)
+    {
+        ExitCode::from(3)
+    } else {
+        ExitCode::from(2)
+    }
+}
+
+/// The door's own `message` field when the refusal body is the JSON
+/// `{"error", "message"}` shape `ci_auth::MintError` renders; the raw first
+/// line otherwise, so a refusal from something other than that door (a proxy,
+/// a timeout page) still surfaces as text rather than an empty annotation.
+fn mint_refusal_message(body: &str) -> String {
+    #[derive(Deserialize)]
+    struct RefusalBody {
+        message: String,
+    }
+    serde_json::from_str::<RefusalBody>(body)
+        .map_or_else(|_| first_line(body), |refusal| refusal.message)
 }
 
 #[derive(Debug, Deserialize)]
@@ -2633,6 +2695,8 @@ fn parse_csv(text: &str) -> Vec<Vec<String>> {
 }
 
 /// Drive an async fallible command to an `ExitCode`, printing any error.
+/// [`exit_code_for`] distinguishes a CI mint refusal (exit `3`) from every
+/// other failure (the ordinary gate-failure exit `2`).
 async fn run<F>(fut: F) -> ExitCode
 where
     F: std::future::Future<Output = Result<()>>,
@@ -2641,7 +2705,7 @@ where
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("navigator: {e:#}");
-            ExitCode::from(2)
+            exit_code_for(&e)
         }
     }
 }
@@ -2668,7 +2732,10 @@ mod tests {
         select_candidate, CoverageSummary, DocumentClient, SeedCredential, StepQuestion,
         StepResponse,
     };
-    use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
+    use super::{
+        exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, parse_csv,
+        server_error,
+    };
     use crate::credentials::{self, Credentials, HostCredential};
     use uuid::Uuid;
     use wiremock::matchers::{body_json, method, path, query_param};
@@ -2867,6 +2934,90 @@ mod tests {
         }
 
         assert_eq!(result, ExitCode::SUCCESS);
+    }
+
+    /// LAW-9: a mint refused by `/auth/ci/seed-token` itself — the door said
+    /// no before any gate ran — exits `3`, distinct from an ordinary
+    /// gate-failure `2`, and `mint_ci_token` prints a GitHub `::error::`
+    /// annotation naming the door and the door's own `message`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_refused_seed_mint_exits_3_not_the_gate_failure_2() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let github = MockServer::start().await;
+        let navigator = MockServer::start().await;
+        let navigator_uri = navigator.uri();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("Person.yaml");
+        std::fs::write(&file, "lookup_fields:\n  - email\nrecords: []\n").unwrap();
+
+        let previous_url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").ok();
+        let previous_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").ok();
+        std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", github.uri());
+        std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "github-oidc-request");
+
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .and(query_param("audience", navigator_uri.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": "github-jwt"
+            })))
+            .expect(1)
+            .mount(&github)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/auth/ci/seed-token"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "error": "forbidden",
+                "message": "the live project has no lawyer-tier lawyer DRI to attribute a CI seed write to",
+            })))
+            .expect(1)
+            .mount(&navigator)
+            .await;
+
+        let result = seed(
+            SeedCredential::Ci {
+                host: navigator_uri,
+            },
+            "person",
+            &file,
+            false,
+            false,
+        )
+        .await;
+
+        match previous_url {
+            Some(value) => std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", value),
+            None => std::env::remove_var("ACTIONS_ID_TOKEN_REQUEST_URL"),
+        }
+        match previous_token {
+            Some(value) => std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", value),
+            None => std::env::remove_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN"),
+        }
+
+        assert_eq!(result, ExitCode::from(3));
+    }
+
+    #[test]
+    fn mint_refusal_annotation_names_the_door_and_the_servers_message() {
+        assert_eq!(
+            mint_refusal_annotation(
+                "/auth/ci/document-token",
+                reqwest::StatusCode::FORBIDDEN,
+                "the live project has no lawyer-tier lawyer DRI to attribute CI document verification to",
+            ),
+            "::error::CI token mint at /auth/ci/document-token was refused: 403 Forbidden: \
+             the live project has no lawyer-tier lawyer DRI to attribute CI document verification to"
+        );
+    }
+
+    #[test]
+    fn exit_code_for_a_mint_refusal_is_3_and_every_other_error_is_2() {
+        let refusal = anyhow::Error::new(super::MintRefusal)
+            .context("CI token mint at /auth/ci/seed-token failed: 403 Forbidden: refused");
+        assert_eq!(exit_code_for(&refusal), ExitCode::from(3));
+
+        let gate_failure = anyhow::anyhow!("2 of 2 pointer(s) failed live verification");
+        assert_eq!(exit_code_for(&gate_failure), ExitCode::from(2));
     }
 
     #[tokio::test(flavor = "current_thread")]

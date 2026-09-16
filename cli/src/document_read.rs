@@ -24,6 +24,9 @@ use store::document_pointers::DocumentPointer;
 use crate::document_sync::{read_manifest, read_pointer, slash_path};
 use crate::remote::{DocumentClient, RevisionSummary, RevisionsResponse};
 
+/// [`crate::remote::exit_code_for`] distinguishes a CI mint refusal (exit
+/// `3`, from `verify --ci`'s call into `resolve_ci_document`) from every
+/// other failure (the ordinary gate-failure exit `2`).
 async fn run<F>(fut: F) -> ExitCode
 where
     F: std::future::Future<Output = Result<()>>,
@@ -32,7 +35,7 @@ where
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("navigator: {error:#}");
-            ExitCode::from(2)
+            crate::remote::exit_code_for(&error)
         }
     }
 }

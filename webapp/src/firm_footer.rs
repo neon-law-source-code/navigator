@@ -581,6 +581,7 @@ mod tests {
                 jurisdiction_id: store::test_support::SEED_ENTITY_JURISDICTION_ID,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -642,6 +643,7 @@ mod tests {
                 jurisdiction_id: store::test_support::SEED_ENTITY_JURISDICTION_ID,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -681,6 +683,7 @@ mod tests {
                 jurisdiction_id: store::test_support::SEED_ENTITY_JURISDICTION_ID,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )

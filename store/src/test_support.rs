@@ -119,6 +119,7 @@ pub async fn seed_entity(surreal: &crate::surreal::SurrealDb) -> Uuid {
             jurisdiction_id: SEED_ENTITY_JURISDICTION_ID,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )

@@ -27,6 +27,14 @@ pub struct EntityFields {
     /// The admin-only route for the current avatar's preview (`/app/admin/
     /// entities/{id}/avatar`), or `None` until one has been uploaded.
     pub avatar_url: Option<String>,
+    /// The Xero `ContactID` for this entity, entered directly rather than
+    /// synced by the billing workflow. Blank when unset.
+    #[serde(default)]
+    pub xero_id: String,
+    /// The entity's creation date, formatted `YY.MM.DD` for the read-only
+    /// "Created" line — not part of the submitted form.
+    #[serde(default)]
+    pub created_at: String,
 }
 
 /// The rendered "edit entity" form: the entity id (for the form action), its
@@ -70,6 +78,8 @@ pub struct EntityEditQuery {
     pub entity_type_id: Option<String>,
     #[serde(default)]
     pub jurisdiction_id: Option<String>,
+    #[serde(default)]
+    pub xero_id: Option<String>,
 }
 
 /// Load the "edit entity" form for the `{id}` in the request path: refuse
@@ -111,6 +121,8 @@ pub async fn get_entity_edit_form() -> Result<EntityEditView, ServerFnError> {
             .avatar_url
             .is_some()
             .then(|| format!("/app/admin/entities/{id}/avatar")),
+        xero_id: query.xero_id.or(e.xero_id).unwrap_or_default(),
+        created_at: e.inserted_at.format("%y.%m.%d").to_string(),
     });
 
     // A valid UUID that resolves to no row is a missing resource: set the SSR
@@ -270,7 +282,12 @@ fn entity_edit_body(view: &EntityEditView) -> Element {
                             Some(fields.selected_jurisdiction),
                         )
                         .required(),
+                        Field::text("Xero ID", "xero_id", fields.xero_id).help(
+                            "The Xero ContactID this entity bills through, if any. \
+                             Leave blank to clear it.",
+                        ),
                     ];
+                    let created_at = fields.created_at;
                     rsx! {
                         document::Title { "{view.firm_name} | Lawyer | Entities | Edit entity" }
                         FormCard {
@@ -280,6 +297,7 @@ fn entity_edit_body(view: &EntityEditView) -> Element {
                             csrf_token: Some(view.csrf_token.clone()),
                             fields: form_fields,
                         }
+                        p { class: "entity-created nav-muted", "Created {created_at}" }
                         {avatar_card}
                         p { a { href: "/app/admin/entities", "← Cancel" } }
                     }
@@ -332,6 +350,8 @@ mod tests {
             selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
             selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
             avatar_url: None,
+            xero_id: String::new(),
+            created_at: "26.09.16".to_string(),
         }))));
         assert_forms_accessible(&html, "entity_edit::LawyerEntityEdit");
         assert!(
@@ -353,6 +373,8 @@ mod tests {
                 selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
                 selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
                 avatar_url: None,
+                xero_id: String::new(),
+                created_at: "26.09.16".to_string(),
             }),
             error: Some("That name is reserved for the firm.".to_string()),
             ..view(None)
@@ -370,6 +392,24 @@ mod tests {
     }
 
     #[test]
+    fn the_form_carries_the_xero_id_field_and_the_created_line() {
+        let html = dioxus_ssr::render_element(entity_edit_body(&view(Some(EntityFields {
+            name: "Acme".to_string(),
+            selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
+            selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
+            avatar_url: None,
+            xero_id: "contact-42".to_string(),
+            created_at: "26.09.16".to_string(),
+        }))));
+        assert!(html.contains(r#"name="xero_id""#), "{html}");
+        assert!(html.contains(r#"value="contact-42""#), "{html}");
+        assert!(
+            html.contains("Created 26.09.16"),
+            "the read-only created line must show the YY.MM.DD date: {html}"
+        );
+    }
+
+    #[test]
     fn an_unresolvable_id_offers_no_form_to_submit() {
         let html = dioxus_ssr::render_element(entity_edit_body(&view(None)));
         assert!(html.contains("Entity not found"), "{html}");
@@ -383,6 +423,8 @@ mod tests {
             selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
             selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
             avatar_url: None,
+            xero_id: String::new(),
+            created_at: "26.09.16".to_string(),
         }))));
         assert!(
             html.contains(r#"enctype="multipart/form-data""#),
@@ -405,6 +447,8 @@ mod tests {
             selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
             selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
             avatar_url: Some(format!("/app/admin/entities/{ID}/avatar")),
+            xero_id: String::new(),
+            created_at: "26.09.16".to_string(),
         }))));
         assert!(
             html.contains(&format!(r#"src="/app/admin/entities/{ID}/avatar""#)),

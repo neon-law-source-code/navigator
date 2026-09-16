@@ -349,6 +349,7 @@ mod tests {
                 jurisdiction_id: Uuid::now_v7(),
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )

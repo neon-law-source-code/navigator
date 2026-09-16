@@ -1,13 +1,11 @@
 //! `/app/projects/{project_code}/{notation_id}/outline` — Harvard outline of
 //! one notation.
 //!
-//! The bundled catalog at [`crate::harvard_outline`] (`/app/outline`) stays
-//! the lawyer recording surface. This page is the same stage bound to a
-//! matter's notation so a client (or a lawyer on the matter) can read the
-//! letter they were given — an onboarding letter, a closing letter — without
-//! opening a PDF. The Harvard-stage header (title, counter, hint) stays on
-//! the article; the `/app` navbar and footer wrap it the way every other
-//! matter page does.
+//! The lawyer recording surface bound to a matter's notation, so a client
+//! (or a lawyer on the matter) can read the letter they were given — an
+//! onboarding letter, a closing letter — without opening a PDF. The
+//! Harvard-stage header (title, counter, hint) stays on the article; the
+//! `/app` navbar and footer wrap it the way every other matter page does.
 //!
 //! Clerk is refused the same way they are refused documents: they may know
 //! the matter exists, and they never receive the legal work.

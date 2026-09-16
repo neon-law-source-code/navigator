@@ -2654,6 +2654,7 @@ mod tests {
                 jurisdiction_id: crate::test_support::SEED_ENTITY_JURISDICTION_ID,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: Some(name.trim().to_lowercase()),
             },
         )

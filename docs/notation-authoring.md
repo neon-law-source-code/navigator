@@ -346,9 +346,8 @@ alone, the same preamble `views::harvard_outline` gives depth 0. Once numbering 
 heading after the first numbered section is a section that lost its marker. A body where numbering never starts has no
 outline at all, which is what the rule flags first.
 
-The stage is at `/app/outline`, which switches among the bundled onboarding letter and offboarding letter
-(`?doc=onboarding`, `offboarding`); step with Arrow keys, `N`/`P`, or Space, and press `H` to hide the hint. A notation
-on a matter — the letter given to a client — is `/app/projects/{code}/{notation_id}/outline`.
+A notation on a matter — the letter given to a client — narrates at `/app/projects/{code}/{notation_id}/outline`; step
+with Arrow keys, `N`/`P`, or Space, and press `H` to hide the hint.
 
 **Canonical Word import.** A DOCX import resolves OOXML numbering definitions and paragraph properties into the shared
 `word::CanonicalDocument` model before it becomes Notation Markdown. `word::MARKER_GROUPS` is the one marker vocabulary

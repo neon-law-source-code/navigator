@@ -129,6 +129,7 @@ mod tests {
                 jurisdiction_id: jur_id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )

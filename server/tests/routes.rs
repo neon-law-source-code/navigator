@@ -1699,7 +1699,6 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     for path in [
         "/app/projects",
         "/app/lawyer",
-        "/app/outline",
         "/app/admin",
         "/app/team",
         "/app/admin/brands",
@@ -4116,6 +4115,7 @@ async fn seeded_entity_to_edit(
             jurisdiction_id: jur_id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7658,6 +7658,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_conflict() {
             jurisdiction_id: firm.jurisdiction_id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7751,6 +7752,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_blank_name() {
             jurisdiction_id: jurisdiction.id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7835,6 +7837,7 @@ async fn lawyer_entity_edit_form_includes_csrf() {
             jurisdiction_id: jurisdiction.id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -7932,6 +7935,7 @@ async fn admin_entities_list_hides_delete_for_the_bootstrap_company() {
                 jurisdiction_id: jur.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -7987,6 +7991,7 @@ async fn admin_entities_list_multi_field_sort_keeps_first_field_primary() {
                 jurisdiction_id: jur.id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -16980,6 +16985,7 @@ async fn entities_avatar_upload_writes_the_private_bucket_and_download_streams_i
             jurisdiction_id: jur.id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -18497,6 +18503,7 @@ async fn a_delete_racing_a_rename_into_the_firm_name_never_removes_the_anchor() 
                 jurisdiction_id: jur_id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -18606,6 +18613,7 @@ async fn a_rename_racing_a_rename_into_the_firm_name_never_loses_the_anchor() {
                 jurisdiction_id: jur_id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )
@@ -18708,6 +18716,7 @@ async fn seed_playbook(
             jurisdiction_id,
             phone: None,
             url: None,
+            xero_id: None,
             firm_anchor_key: None,
         },
     )
@@ -19689,15 +19698,17 @@ async fn the_moved_admin_listings_are_not_served_at_the_old_paths() {
     }
 }
 
-/// The Harvard-outline teaching stage moved into the authenticated `/app`
-/// namespace without changing its lawyer-tier audience.
+/// The Harvard-outline teaching stage — once at `/app/outline`, moved there
+/// from `/app/lawyer/outline` — is deprecated. It read no store and served no
+/// matter; narrating a notation now lives only bound to a real matter, at
+/// `/app/projects/{code}/{id}/outline`.
 #[tokio::test]
-async fn the_outline_stage_uses_the_app_namespace() {
+async fn the_bundled_outline_stage_is_retired() {
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     let current = get_with_role(app.clone(), "/app/outline", store::persons::Role::Lawyer).await;
-    assert_eq!(current.status(), StatusCode::OK);
+    assert_eq!(current.status(), StatusCode::NOT_FOUND);
 
     let retired = get_with_role(app, "/app/lawyer/outline", store::persons::Role::Lawyer).await;
     assert_eq!(retired.status(), StatusCode::NOT_FOUND);
@@ -19849,6 +19860,7 @@ async fn seed_firm_with_one_invoice(
         jurisdiction_id,
         phone: None,
         url: None,
+        xero_id: None,
         firm_anchor_key: None,
     };
     let firm_entity = store::entities::create(surreal, &new_entity("Rollup Practice LLC"))

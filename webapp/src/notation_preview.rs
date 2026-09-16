@@ -1,8 +1,8 @@
 //! `/notations/{slug}` — the public show page for one bundled notation.
 //!
 //! Every notation — letter or form — reuses the same highlight rendering
-//! [`crate::harvard_outline`] built for the lawyer-tier recording stage at
-//! `/app/outline`: the body is Markdown either way, so it steps
+//! [`crate::harvard_outline`] built for [`crate::notation_outline`]'s
+//! matter-bound recording stage: the body is Markdown either way, so it steps
 //! paragraph-by-paragraph with the arrow keys whether or not it carries
 //! `I.`/`II.` headings. Wrapped in the public site chrome instead of the
 //! `/app` navbar, with no auth or policy gate: this is the same content

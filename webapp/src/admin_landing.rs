@@ -33,6 +33,13 @@ const ADMIN_LINKS: &[AdminLink] = &[
         cta: "Manage people",
     },
     AdminLink {
+        title: "Entities",
+        blurb: "Every legal organization the firm tracks — its type, jurisdiction, \
+                avatar, and Xero billing contact.",
+        href: "/app/admin/entities",
+        cta: "Manage entities",
+    },
+    AdminLink {
         title: "Visitor analytics",
         blurb: "Traffic to the public site — visits by day and month, top routes, \
                 countries, and referrers.",
@@ -161,6 +168,10 @@ mod tests {
             "people tile: {out}"
         );
         assert!(
+            out.contains(r#"href="/app/admin/entities""#),
+            "entities tile: {out}"
+        );
+        assert!(
             out.contains(r#"href="/app/admin/analytics""#),
             "analytics tile: {out}"
         );
@@ -176,6 +187,7 @@ mod tests {
             "brands tile: {out}"
         );
         assert!(out.contains("Manage people"), "people call to action");
+        assert!(out.contains("Manage entities"), "entities call to action");
         assert!(out.contains("View analytics"), "analytics call to action");
         assert!(out.contains("Manage brands"), "brands call to action");
     }

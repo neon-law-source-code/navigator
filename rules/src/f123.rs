@@ -2,9 +2,9 @@
 //!
 //! An agreement, a pleading, and the two engagement letters that open and
 //! close a matter are outline documents: a reader cites a provision by its
-//! path (`I.A`, `2.B`), a narrator steps them unit by unit on the stage at
-//! `/app/outline`, and `pdf::outline` numbers the rendered document from the
-//! same shape. A body whose sections are unnumbered prose has no path to
+//! path (`I.A`, `2.B`), a narrator steps them unit by unit on the notation's
+//! own outline stage, and `pdf::outline` numbers the rendered document from
+//! the same shape. A body whose sections are unnumbered prose has no path to
 //! cite and nothing to step, and the defect is invisible until someone
 //! needs the citation.
 //!

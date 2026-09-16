@@ -1399,6 +1399,19 @@ struct EntityInput {
     jurisdiction_id: Uuid,
 }
 
+/// The edit form's body — [`EntityInput`] plus the Xero contact id, which
+/// only the edit form (not "Add entity") offers. A blank submission clears
+/// the stored id; the field is always present because the native form
+/// always submits it.
+#[derive(Deserialize)]
+struct EntityUpdateInput {
+    name: String,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+    #[serde(default)]
+    xero_id: String,
+}
+
 async fn entities_create(State(s): State<AdminState>, Form(input): Form<EntityInput>) -> Response {
     let command = store::entity_commands::CreateEntityCommand {
         name: input.name,
@@ -1457,6 +1470,11 @@ fn back_to_entity_form(
                 .map(|id| id.to_string())
                 .unwrap_or_default(),
         );
+        push_query(
+            &mut query,
+            "xero_id",
+            values.xero_id.as_deref().unwrap_or(""),
+        );
     }
     if query.is_empty() {
         Redirect::to(path).into_response()
@@ -1468,16 +1486,18 @@ fn back_to_entity_form(
 async fn entities_update(
     State(s): State<AdminState>,
     Path(id): Path<Uuid>,
-    Form(input): Form<EntityInput>,
+    Form(input): Form<EntityUpdateInput>,
 ) -> Response {
     // The admin form always submits every field, so this door's own
-    // "partial" is always the full triple — the JSON command's genuine
+    // "partial" is always the full quartet — the JSON command's genuine
     // partial-update semantics (ENG-518) exist for the API caller, not for
-    // this browser form.
+    // this browser form. `xero_id` carries the blank-clears convention
+    // `update_entity` applies: an empty submission clears the stored contact.
     let command = store::entity_commands::UpdateEntityCommand {
         name: Some(input.name),
         entity_type_id: Some(input.entity_type_id),
         jurisdiction_id: Some(input.jurisdiction_id),
+        xero_id: Some(input.xero_id),
     };
     match store::entity_commands::update_entity(&s.surreal, id, &s.bootstrap_company, &command)
         .await

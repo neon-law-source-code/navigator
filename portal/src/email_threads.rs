@@ -1696,6 +1696,7 @@ mod tests {
                 jurisdiction_id,
                 phone: None,
                 url: None,
+                xero_id: None,
                 firm_anchor_key: None,
             },
         )

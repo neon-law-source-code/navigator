@@ -184,7 +184,7 @@ pub use workshops::{WorkshopIndex, WorkshopMaterial};
 use std::path::Path;
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, FromRef, Path as AxumPath, State};
+use axum::extract::{DefaultBodyLimit, FromRef, MatchedPath, Path as AxumPath, State};
 use axum::http::{header, HeaderName, HeaderValue, Method, Request, StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -1997,7 +1997,11 @@ pub fn bootstrap(
             HeaderName::from_static("strict-transport-security"),
             HSTS_VALUE,
         ))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(http_request_span)
+                .on_response(record_http_response_status),
+        )
         .layer(axum::middleware::from_fn_with_state(
             visitor_analytics_state,
             visitor_analytics::count_public_visit,
@@ -3233,6 +3237,38 @@ async fn version() -> impl IntoResponse {
     }))
 }
 
+/// Open the per-request trace span the collector's redaction allow-list
+/// expects (ENG-710): `http.request.method` and `http.route` — the matched
+/// route *template*, never the resolved path, which is why this reads
+/// [`MatchedPath`] rather than [`Request::uri`] — go on at open;
+/// `http.response.status_code` starts empty and [`record_http_response_status`]
+/// fills it in once the response is known. All three are on the standard
+/// HTTP semconv, so nothing here needs a collector change beyond what
+/// `event`/`role`/`outcome`/opaque ids already ride.
+fn http_request_span(req: &Request<axum::body::Body>) -> tracing::Span {
+    let route = req
+        .extensions()
+        .get::<MatchedPath>()
+        .map_or("unmatched", MatchedPath::as_str);
+    tracing::info_span!(
+        "http.request",
+        "http.request.method" = %req.method(),
+        "http.route" = %route,
+        "http.response.status_code" = tracing::field::Empty,
+    )
+}
+
+/// [`http_request_span`]'s other half: the status code is only known once
+/// the handler has answered, so it is recorded onto the span here rather
+/// than at open.
+fn record_http_response_status(
+    response: &Response,
+    _latency: std::time::Duration,
+    span: &tracing::Span,
+) {
+    span.record("http.response.status_code", response.status().as_u16());
+}
+
 /// Liveness probe: the process is up. Deliberately makes no database
 /// round-trip (ENG-84) — that is `readyz`'s job — so a dependency outage
 /// fails readiness without also failing liveness and getting the pod
@@ -3439,5 +3475,127 @@ mod csp_tests {
         assert!(csp.contains("script-src 'self'"), "got: {csp}");
         assert!(!csp.contains("script-src 'self' https"), "got: {csp}");
         std::env::remove_var("NAVIGATOR_ASSET_BASE_URL");
+    }
+}
+
+/// ENG-710: the HTTP semconv trio the outermost `TraceLayer` attaches to
+/// every request span, exercised at the route level — a real request through
+/// a real router, not a direct call to the two functions under test — so a
+/// change to axum's middleware/routing order that stopped `MatchedPath` from
+/// reaching `make_span_with` would fail this instead of compiling quietly.
+#[cfg(test)]
+mod http_semconv_span_tests {
+    use super::{http_request_span, record_http_response_status};
+    use axum::routing::post;
+    use axum::Router;
+    use std::collections::BTreeMap;
+    use std::sync::{Arc, Mutex};
+    use tower::ServiceExt;
+    use tower_http::trace::TraceLayer;
+    use tracing::field::{Field, Visit};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::Layer;
+
+    /// Collects every field this test's one span carries, across both its
+    /// opening (`http_request_span`'s fields) and any later `span.record`
+    /// call (`record_http_response_status`'s). One shared map is enough
+    /// because the test drives exactly one request through exactly one
+    /// named span.
+    #[derive(Clone, Default)]
+    struct CapturedFields(Arc<Mutex<BTreeMap<String, String>>>);
+
+    impl CapturedFields {
+        fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, String>> {
+            self.0
+                .lock()
+                .expect("captured-fields buffer is not poisoned")
+        }
+    }
+
+    struct FieldVisitor<'a>(&'a mut BTreeMap<String, String>);
+
+    impl Visit for FieldVisitor<'_> {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.0
+                .insert(field.name().to_string(), format!("{value:?}"));
+        }
+    }
+
+    struct CaptureLayer(CapturedFields);
+
+    impl<S> Layer<S> for CaptureLayer
+    where
+        S: tracing::Subscriber,
+    {
+        fn on_new_span(
+            &self,
+            attrs: &tracing::span::Attributes<'_>,
+            _id: &tracing::Id,
+            _ctx: Context<'_, S>,
+        ) {
+            if attrs.metadata().name() != "http.request" {
+                return;
+            }
+            attrs.record(&mut FieldVisitor(&mut self.0.lock()));
+        }
+
+        fn on_record(
+            &self,
+            _id: &tracing::Id,
+            values: &tracing::span::Record<'_>,
+            _ctx: Context<'_, S>,
+        ) {
+            values.record(&mut FieldVisitor(&mut self.0.lock()));
+        }
+    }
+
+    async fn widget(
+        axum::extract::Path(_id): axum::extract::Path<String>,
+    ) -> axum::http::StatusCode {
+        axum::http::StatusCode::CREATED
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_request_carries_method_route_template_and_status_on_its_span() {
+        let captured = CapturedFields::default();
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(captured.clone()));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let app = Router::new().route("/widgets/{id}", post(widget)).layer(
+            TraceLayer::new_for_http()
+                .make_span_with(http_request_span)
+                .on_response(record_http_response_status),
+        );
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/widgets/abc-123")
+                    .body(axum::body::Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router answers");
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+
+        let fields = captured
+            .0
+            .lock()
+            .expect("captured-fields buffer is not poisoned");
+        assert_eq!(
+            fields.get("http.request.method").map(String::as_str),
+            Some("POST")
+        );
+        // The matched TEMPLATE, never the resolved `/widgets/abc-123` — a
+        // Project code or person id in the path must never reach a span.
+        assert_eq!(
+            fields.get("http.route").map(String::as_str),
+            Some("/widgets/{id}")
+        );
+        assert_eq!(
+            fields.get("http.response.status_code").map(String::as_str),
+            Some("201")
+        );
     }
 }

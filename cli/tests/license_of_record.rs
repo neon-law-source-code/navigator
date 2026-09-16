@@ -1660,27 +1660,33 @@ fn license_txt_documents() -> Vec<PathBuf> {
 }
 
 fn walk_repo_files(keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>, keep: &impl Fn(&str) -> bool) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if path.is_dir() {
-                if !is_skipped_dir(name.as_ref()) {
-                    walk(&path, out, keep);
-                }
-            } else if keep(name.as_ref()) {
-                out.push(path);
-            }
-        }
-    }
     let mut out = Vec::new();
-    walk(&repo_root(), &mut out, &keep);
+    walk_files_under(&repo_root(), &mut out, &keep);
     out.sort();
     out
+}
+
+/// The walker every tree-wide guard in this file shares, including
+/// [`is_skipped_dir`]'s skip list. A free function rather than nested inside
+/// [`walk_repo_files`] so a test can point it at a fixture tree instead of the
+/// real repository root and prove the skip list is actually consulted while
+/// walking, not only correct in isolation.
+fn walk_files_under(dir: &Path, out: &mut Vec<PathBuf>, keep: &impl Fn(&str) -> bool) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if path.is_dir() {
+            if !is_skipped_dir(name.as_ref()) {
+                walk_files_under(&path, out, keep);
+            }
+        } else if keep(name.as_ref()) {
+            out.push(path);
+        }
+    }
 }
 
 /// No document reads § 13 as a duty owed to this project or to the public.
@@ -2012,4 +2018,53 @@ fn the_walk_skips_generated_local_state() {
             "`{owned}` is this workspace's own surface and must still be walked"
         );
     }
+}
+
+/// [`the_walk_skips_generated_local_state`] proves only that `is_skipped_dir`
+/// answers correctly for a name — it never walks anything, so a caller who
+/// stopped consulting the predicate would still pass it. This test runs the
+/// real walker, [`walk_files_under`], over a fixture tree carrying a matching
+/// file under a skipped directory and one under an owned directory, and
+/// asserts only the owned file is reported.
+#[test]
+fn the_walker_ignores_files_under_a_skipped_directory() {
+    let fixture = tempfile::tempdir().expect("create fixture tree");
+    let root = fixture.path();
+
+    let generated = root
+        .join(".devx")
+        .join("sample-projects")
+        .join("acme")
+        .join("dist")
+        .join("assets");
+    fs::create_dir_all(&generated).expect("create generated tree");
+    fs::write(
+        generated.join("index-abc123.css"),
+        "generated bundle output",
+    )
+    .expect("write generated file");
+
+    let owned = root.join("cli").join("tests");
+    fs::create_dir_all(&owned).expect("create owned tree");
+    fs::write(
+        owned.join("license_of_record.rs"),
+        "owned repository source",
+    )
+    .expect("write owned file");
+
+    let mut found = Vec::new();
+    walk_files_under(root, &mut found, &|_name: &str| true);
+    found.sort();
+
+    let names: Vec<String> = found
+        .iter()
+        .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+        .collect();
+
+    assert_eq!(
+        names,
+        vec!["license_of_record.rs".to_string()],
+        "the walker must skip every file under `.devx` while still reporting \
+         files under an owned directory; found {names:?}"
+    );
 }

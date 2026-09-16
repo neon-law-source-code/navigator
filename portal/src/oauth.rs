@@ -2121,9 +2121,12 @@ fn consume_pre_auth(
 ///
 /// The exchange posts the client secret and the authorization code, so the
 /// request must not cross a network in the clear. TLS guarantees that. So does
-/// a loopback host, whose traffic never reaches a network interface at all —
-/// the same property RFC 8252 §8.3 relies on when it permits plain-HTTP
-/// loopback redirects for native apps. Anything else is refused.
+/// a loopback host reached over plain HTTP, whose traffic never reaches a
+/// network interface at all — the same property RFC 8252 §8.3 relies on when
+/// it permits plain-HTTP loopback redirects for native apps. The carve-out is
+/// therefore gated on the `http` scheme itself: a different scheme naming a
+/// loopback host is not RFC 8252's property, so it is refused just as a
+/// non-loopback host is.
 ///
 /// The loopback carve-out is what lets the local development tier work: it
 /// serves its OIDC provider over plain HTTP on a loopback port, and every
@@ -2136,6 +2139,9 @@ fn consume_pre_auth(
 fn token_endpoint_is_confidential(endpoint: &url::Url) -> bool {
     if endpoint.scheme() == "https" {
         return endpoint.host().is_some();
+    }
+    if endpoint.scheme() != "http" {
+        return false;
     }
     match endpoint.host() {
         Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
@@ -4151,6 +4157,28 @@ mod tests {
         for endpoint in ["file:///tmp/token", "data:text/plain,token"] {
             let url = url::Url::parse(endpoint).expect("parses");
             assert!(!token_endpoint_is_confidential(&url), "{endpoint}");
+        }
+    }
+
+    /// RFC 8252 §8.3's loopback property belongs to plain HTTP: the request
+    /// never leaves the machine. A different scheme carried over the same
+    /// loopback host is not that property — it is an unrelated protocol that
+    /// happens to name `localhost` — so it must still be refused.
+    #[test]
+    fn a_non_http_scheme_on_the_loopback_is_refused() {
+        for endpoint in [
+            "ftp://localhost/token",
+            "ftp://127.0.0.1/token",
+            "ws://localhost/token",
+            "ws://[::1]/token",
+            "ssh://localhost/token",
+        ] {
+            let url = url::Url::parse(endpoint).expect("parses");
+            assert!(
+                !token_endpoint_is_confidential(&url),
+                "{endpoint} is neither HTTPS nor plain HTTP, so the loopback \
+                 carve-out must not apply even though the host is loopback"
+            );
         }
     }
 }

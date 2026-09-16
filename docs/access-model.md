@@ -364,9 +364,9 @@ The public lead queue is the same shape at `/app/admin/leads` and `/app/admin/le
 through the `/app/admin` route bypass, and Lawyer, Clerk, and client are refused by omission. The list masks a recorded
 phone to its last four digits; the row page shows the full number, accepts a status among `new`, `contacted`,
 `converted`, `declined`, and `unsubscribed`, and creates or links a [Person](glossary.md#person) for the mailbox
-(`store::persons::create`, never a second identity table). After conversion, the queue reads name, email, and phone
-from that Person row. Handler logs name `lead_id`, `outcome`, and the actor's person id, never the address. Contacting
-a lead is attorney work under professional ethics (advertising and solicitation), not a sales sequence. See
+(`store::persons::create`, never a second identity table). After conversion, the queue reads name, email, and phone from
+that Person row. Handler logs name `lead_id`, `outcome`, and the actor's person id, never the address. Contacting a lead
+is attorney work under professional ethics (advertising and solicitation), not a sales sequence. See
 [glossary](glossary.md#lead).
 
 ## What `participation` is NOT

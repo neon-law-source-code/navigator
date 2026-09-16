@@ -294,8 +294,8 @@ a deliberate visibility change, either of which needs a human rather than a sile
 sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.
 CLI: `navigator site projects surfaces reconcile --project <code>` — an HTTP client of this same door, like every other
 `navigator site` command. It resolves the given code to an id through `GET /app/api/projects` (the same lookup
-`navigator site projects close` uses) and never opens a database connection of its own, even against a local
-deployment. Project participation is never copied onto the forge.
+`navigator site projects close` uses) and never opens a database connection of its own, even against a local deployment.
+Project participation is never copied onto the forge.
 
 ## The CI gate
 
@@ -706,9 +706,9 @@ It resolves the active deployment from `NAVIGATOR_GCP_PROJECT_ID`, then reports 
 Shared Drive, and Projects root folder, an optional local Drive mount, the stored site login, and — with `--project` —
 that Project's Drive folder path, its one repository coordinate, and the path its portal mounts at.
 
-The command is strictly read-only and makes no network or database call at all: the diagnosis is a pure function
-of an environment lookup, a filesystem-existence probe, the stored credentials, and a clock. A Workspace, Drive, folder,
-or identity mismatch exits nonzero rather than warning. Configuration that is genuinely optional, such as an unset Drive
+The command is strictly read-only and makes no network or database call at all: the diagnosis is a pure function of an
+environment lookup, a filesystem-existence probe, the stored credentials, and a clock. A Workspace, Drive, folder, or
+identity mismatch exits nonzero rather than warning. Configuration that is genuinely optional, such as an unset Drive
 mount or an absent login, is reported as a warning and does not fail the run. A deployment that cannot be resolved stops
 the report immediately, because every later coordinate would otherwise describe some other Workspace.
 

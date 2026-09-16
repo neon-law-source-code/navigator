@@ -29,70 +29,35 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # See the matching comment in project-gate.yml's `verify` job: this pin
+      # lags until a release publishes the action. No `version:` input here —
+      # this workflow reads no manifest of its own, so it takes the default,
+      # navigator.yaml's own version.
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.16
+      # Application discovery lives in the CLI (`cli/src/projects/repository.rs`)
+      # now, not in this workflow. `dist_dir` is a plain path-suffix trim of
+      # the manifest the CLI already resolved, not a second detection pass.
+      - name: locate the application manifest
+        id: application
+        run: |
+          manifest="$(navigator site projects applications --manifest)"
+          echo "manifest=${manifest}" >> "${GITHUB_OUTPUT}"
+          if [ -n "${manifest}" ]; then
+              echo "dist_dir=${manifest%/package.json}/dist" >> "${GITHUB_OUTPUT}"
+          fi
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        if: steps.application.outputs.manifest != ''
         with:
           node-version: "22"
-      - name: Locate the pnpm manifest
-        id: pnpm-manifest
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          candidates=(portal/package.json apps/portal/package.json)
-          candidates+=(apps/*/package.json)
-          candidates+=(package.json)
-          for candidate in "${candidates[@]}"; do
-              if [ -f "${candidate}" ]; then
-                  echo "manifest=${candidate}" >> "${GITHUB_OUTPUT}"
-                  exit 0
-              fi
-          done
-          echo "::error::the application guard matched but no package.json was found."
-          exit 1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        if: steps.application.outputs.manifest != ''
         with:
-          package_json_file: ${{ steps.pnpm-manifest.outputs.manifest }}
-      - name: Build applications
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${package_manifests[@]}"; do
-              app_dir="${package_json%/package.json}"
-              pnpm --dir "${app_dir}" install --frozen-lockfile
-              pnpm --dir "${app_dir}" lint
-              pnpm --dir "${app_dir}" typecheck
-              pnpm --dir "${app_dir}" test
-              pnpm --dir "${app_dir}" build
-          done
-      - name: Resolve the built application
-        id: application
-        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f portal/package.json ]; then
-              echo "dist_dir=portal/dist" >> "${GITHUB_OUTPUT}"
-          elif [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
-              echo "dist_dir=dist" >> "${GITHUB_OUTPUT}"
-          else
-              app="$(find apps -mindepth 2 -maxdepth 2 -name package.json -print -quit)"
-              test -n "${app}"
-              echo "dist_dir=${app%/package.json}/dist" >> "${GITHUB_OUTPUT}"
-          fi
+          package_json_file: ${{ steps.application.outputs.manifest }}
+      # Installs, lints, typechecks, tests, and builds every discovered
+      # application, one at a time, stopping at the first failure. A
+      # repository with none prints a notice and succeeds.
+      - name: navigator site projects build
+        run: navigator site projects build --dir .
       # No validate step here. `project-gate.yml` has already validated this
       # commit — `cd.yml` makes the gate a `needs:` of the publish job — and a
       # second pass pinned to a fixed release validates the repository with a

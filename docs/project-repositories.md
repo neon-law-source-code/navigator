@@ -316,10 +316,12 @@ the caller grants it, so fork PRs cannot mint OIDC credentials; the reusable gat
 `cd.yml`'s own `gate` job (below) is what re-invokes this same reusable workflow on a push to `main` so those live jobs
 actually run. The `ci` job is the required check and stays named exactly `ci`.
 
-The scaffold generates five feeder jobs — lint, verify, notation, documents, and manifest — for the Project check. A
-malformed manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce
-misleading findings. Each feeder job runs unconditionally and no-ops over a half this repository does not carry.
-Application steps discover direct app manifests and include the root portal during the transition.
+The scaffold generates four feeder jobs — verify, notation, documents, and manifest — for the Project check. A malformed
+manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce misleading
+findings. Each feeder job runs unconditionally and no-ops over a half this repository does not carry. `verify` installs
+the CLI through `.github/actions/navigator-install`, then runs `navigator site projects build`, which discovers every
+application — the root portal during the transition, `apps/<app>/`, or a root Vite workspace — and installs, lints,
+typechecks, tests, and builds each one; a repository with none no-ops.
 
 The `documents` job validates every `documents/` pointer — offline on every event, and additionally against the live
 asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange

@@ -186,15 +186,20 @@ fn site_projects_close_accepts_an_effective_time() {
 /// working tree at its current commit and files it as a document — the
 /// separate, deliberate step that follows a close rather than gating it.
 ///
-/// The retired `projects application` verbs are asserted gone rather than
-/// merely absent from this list: a Project has one portal, so there is no
-/// application name for an operator to register.
+/// The retired `projects application` verb (singular, for registering one
+/// application name) is asserted gone rather than merely absent from this
+/// list: a Project has one portal, so there was no application name for an
+/// operator to register. `applications` (plural) is a different, later verb —
+/// ENG-674's read-only discovery query, listing what `build` finds rather
+/// than naming an application for the operator to create.
 #[test]
 fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["site", "projects", "--help"])),
         vec![
+            "applications",
             "archive-repository",
+            "build",
             "close",
             "create",
             "doctor",

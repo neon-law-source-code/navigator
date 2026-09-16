@@ -21,6 +21,11 @@ fn project_gate_workflow() -> serde_yaml::Value {
     serde_yaml::from_str(&source).expect("project-gate.yml parses as YAML")
 }
 
+/// ENG-674: `verify` (the only remaining job that sets up pnpm, now that
+/// `lint`'s duplicate application-linting has folded into it) reads the
+/// manifest path from `navigator site projects applications --manifest`
+/// rather than hard-coding one of the three layouts `application_workspaces`
+/// admits.
 #[test]
 fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
     let workflow = project_gate_workflow();
@@ -33,7 +38,7 @@ fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
         };
         let locates_manifest = steps
             .iter()
-            .any(|step| step["id"].as_str() == Some("pnpm-manifest"));
+            .any(|step| step["id"].as_str() == Some("application"));
         for (index, step) in steps.iter().enumerate() {
             if step["uses"].as_str()
                 != Some("pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413")
@@ -41,13 +46,10 @@ fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
                 continue;
             }
             pnpm_setup_steps += 1;
-            // `portal/` is only one of the three layouts `application_workspaces`
-            // admits; `apps/portal/` and a root Vite workspace are equally valid,
-            // so the path is resolved on the runner rather than written here.
             assert_eq!(
                 step["with"]["package_json_file"].as_str(),
-                Some("${{ steps.pnpm-manifest.outputs.manifest }}"),
-                "{job_name:?} step {index} must read the manifest the locator found"
+                Some("${{ steps.application.outputs.manifest }}"),
+                "{job_name:?} step {index} must read the manifest the CLI located"
             );
             assert!(
                 locates_manifest,
@@ -56,8 +58,8 @@ fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
         }
     }
     assert_eq!(
-        pnpm_setup_steps, 2,
-        "the gate must keep both pnpm setup steps pinned"
+        pnpm_setup_steps, 1,
+        "verify must keep its one pnpm setup step pinned, now that lint has folded into it"
     );
 }
 

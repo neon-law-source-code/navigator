@@ -89,6 +89,29 @@ fn validate_succeeds_on_clean_directory() {
 }
 
 #[test]
+fn validate_refuses_a_services_catalog_with_a_dangling_template() {
+    let dir = TempDir::new().unwrap();
+    let catalog =
+        fs::read_to_string(workspace_root().join("neon/locales/en/neon/services-catalog.yaml"))
+            .unwrap()
+            .replace("template: nv__llc_formation", "template: missing_template");
+    write(
+        dir.path(),
+        "locales/en/neon/services-catalog.yaml",
+        &catalog,
+    );
+
+    navigator()
+        .args(["validate"])
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("N124"))
+        .stdout(str::contains("missing_template"));
+}
+
+#[test]
 fn validate_exits_nonzero_on_violations_and_prints_each_one() {
     let dir = TempDir::new().unwrap();
     write(

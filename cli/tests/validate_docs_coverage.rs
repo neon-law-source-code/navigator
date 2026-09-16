@@ -43,9 +43,9 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
             codes.insert(rule.code());
         }
     }
-    // N111 is a cross-file check (`rules::code_uniqueness_violations`), not a `Rule` impl, so no
-    // rule-set above carries it.
+    // N111 and N124 are cross-file checks, not `Rule` impls, so no rule-set above carries them.
     codes.insert("N111");
+    codes.insert("N124");
     codes.insert(SEED_DOCUMENT_CODE);
     codes.insert(LOCALE_DOCUMENT_CODE);
     codes.insert(DOCUMENT_POINTER_CODE);
@@ -83,6 +83,6 @@ fn every_shipped_code_has_an_entry_in_validate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_ninety_nine() {
-    assert_eq!(all_shipped_codes().len(), 99);
+fn the_shipped_code_count_is_one_hundred() {
+    assert_eq!(all_shipped_codes().len(), 100);
 }

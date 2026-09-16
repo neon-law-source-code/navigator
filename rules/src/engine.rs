@@ -364,6 +364,114 @@ pub fn code_uniqueness_violations(
     Ok(violations)
 }
 
+/// Cross-file check (`N124`): every notation template code named by a
+/// services catalog must be declared under `templates/notations/`. A dangling
+/// reference would leave a public service with no notation to open.
+pub fn service_template_violations(
+    dir: &Path,
+    filter: &dyn FileFilter,
+) -> io::Result<Vec<Violation>> {
+    #[derive(Debug, Deserialize)]
+    struct ServicesCatalog {
+        #[serde(default)]
+        services: Vec<ServiceReference>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ServiceReference {
+        id: String,
+        #[serde(default)]
+        template: Option<String>,
+    }
+
+    let mut template_codes = std::collections::BTreeSet::new();
+    let mut catalogs = Vec::new();
+
+    for entry in WalkDir::new(dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.file_type().is_dir() && e.depth() > 0 {
+                filter.include_dir(e.path())
+            } else {
+                true
+            }
+        })
+    {
+        let entry = entry.map_err(io::Error::other)?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path();
+        let is_services_catalog =
+            path.file_name().and_then(|name| name.to_str()) == Some("services-catalog.yaml");
+        if !filter.include_file(path) && !is_services_catalog {
+            continue;
+        }
+        let contents = fs::read_to_string(path)?;
+
+        if is_services_catalog {
+            if let Ok(catalog) = serde_yaml::from_str::<ServicesCatalog>(&contents) {
+                catalogs.push((path.to_path_buf(), contents.clone(), catalog.services));
+            }
+        }
+
+        if is_notation_catalog_path(path) {
+            let file = SourceFile {
+                path: path.to_path_buf(),
+                contents,
+            };
+            if classify_source(&file) == DocumentKind::NotationTemplate {
+                if let Some(frontmatter) = crate::frontmatter::extract(&file.contents) {
+                    if let Some(code) = crate::frontmatter::field(frontmatter, "code") {
+                        if !code.is_empty() {
+                            template_codes.insert(code.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut violations = Vec::new();
+    for (path, contents, services) in catalogs {
+        for service in services {
+            let Some(template) = service.template else {
+                continue;
+            };
+            if template_codes.contains(&template) {
+                continue;
+            }
+            let line = contents
+                .lines()
+                .enumerate()
+                .find_map(|(index, line)| {
+                    (line.contains("template:") && line.contains(&template)).then_some(index + 1)
+                })
+                .unwrap_or(1);
+            violations.push(Violation {
+                code: "N124",
+                path: path.clone(),
+                line,
+                range: crate::line_byte_range(&contents, line),
+                message: format!(
+                    "Service `{}` names notation template `{template}`, but no template with that code exists under `templates/notations/`",
+                    service.id
+                ),
+            });
+        }
+    }
+    Ok(violations)
+}
+
+fn is_notation_catalog_path(path: &Path) -> bool {
+    let components: Vec<_> = path.components().collect();
+    components.windows(2).any(|pair| {
+        pair[0].as_os_str() == std::ffi::OsStr::new("templates")
+            && pair[1].as_os_str() == std::ffi::OsStr::new("notations")
+    })
+}
+
 #[derive(Debug, Deserialize)]
 struct CanonicalQuestions {
     records: Vec<CanonicalQuestion>,

@@ -380,6 +380,63 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/authorities": {
+          "post": {
+            "summary": "Create (or find) the global Authority for a citation, archiving its artifact",
+            "description": "Global legal reference data (#890): a case, statute, regulation, administrative proceeding, or secondary source, shared across every matter rather than scoped to one. `archive_base64` is ingested as a bare content asset (content-addressed, deduped by SHA-256) and the resulting asset id is recorded as `archived_asset_id`. Find-or-create on `citation`: repeating an already-recorded citation returns the existing row untouched, including its original archive — the second call's bytes are still ingested as an asset (so the request is never rejected for carrying them) but never replace the first row's archive or metadata. Authorization: Lawyer tier only, the same gate as every other `/app/api` authoring door.",
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["class", "citation", "title", "archive_base64"],
+                  "properties": {
+                    "class": { "type": "string", "enum": ["case_law", "statute", "regulation", "administrative", "secondary"] },
+                    "citation": { "type": "string" },
+                    "title": { "type": "string" },
+                    "short_cite": { "type": "string" },
+                    "publisher": { "type": "string" },
+                    "issued_on": { "type": "string" },
+                    "canonical_url": { "type": "string" },
+                    "checked_on": { "type": "string" },
+                    "archive_base64": { "type": "string", "format": "byte", "description": "The archived artifact's bytes, base64-encoded." },
+                    "content_type": { "type": "string", "description": "Defaults to application/octet-stream when absent or blank." }
+                  }
+                }
+              } }
+            },
+            "responses": {
+              "200": { "description": "The recorded (or already-existing) Authority", "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "class": { "type": "string" },
+                    "citation": { "type": "string" },
+                    "short_cite": { "type": "string", "nullable": true },
+                    "title": { "type": "string" },
+                    "publisher": { "type": "string", "nullable": true },
+                    "issued_on": { "type": "string", "nullable": true },
+                    "canonical_url": { "type": "string", "nullable": true },
+                    "checked_on": { "type": "string", "nullable": true },
+                    "archived_asset_id": { "type": "string", "format": "uuid", "nullable": true },
+                    "inserted_at": { "type": "string", "format": "date-time" },
+                    "updated_at": { "type": "string", "format": "date-time" }
+                  }
+                }
+              } } },
+              "400": { "description": "class is outside the closed vocabulary (`invalid_class`), or archive_base64 is missing, not valid base64, or decodes to zero bytes (`archive_unreadable`)", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/entities/{id}": {
           "get": {
             "summary": "Get one entity by id",

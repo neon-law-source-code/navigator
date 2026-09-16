@@ -254,9 +254,15 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   client, and anonymous denied) no longer describe anything this policy
     //   decides.
     // 462 − 4 = 458.
+    //
+    // + 6 for the citation apparatus' write door, POST /app/api/authorities
+    //   (ENG-712): Lawyer and Admin admitted; Clerk, Client, and anonymous
+    //   denied; one case pins the rule at exactly the collection path and
+    //   POST.
+    // 458 + 6 = 464.
     assert_eq!(
         test_names.len(),
-        458,
+        464,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

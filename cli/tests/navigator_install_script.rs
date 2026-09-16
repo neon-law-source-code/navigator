@@ -136,10 +136,13 @@ async fn downloads_verifies_and_installs_the_published_archive() {
     Mock::given(method("GET"))
         .and(path(format!("/navigator-{version}-linux.tar.gz")))
         .respond_with(
-            ResponseTemplate::new(200).set_body_from_file(
-                fixtures
-                    .path()
-                    .join(format!("navigator-{version}-linux.tar.gz")),
+            ResponseTemplate::new(200).set_body_bytes(
+                fs::read(
+                    fixtures
+                        .path()
+                        .join(format!("navigator-{version}-linux.tar.gz")),
+                )
+                .unwrap(),
             ),
         )
         .mount(&server)
@@ -147,10 +150,13 @@ async fn downloads_verifies_and_installs_the_published_archive() {
     Mock::given(method("GET"))
         .and(path(format!("/navigator-{version}-linux.tar.gz.sha256")))
         .respond_with(
-            ResponseTemplate::new(200).set_body_from_file(
-                fixtures
-                    .path()
-                    .join(format!("navigator-{version}-linux.tar.gz.sha256")),
+            ResponseTemplate::new(200).set_body_bytes(
+                fs::read(
+                    fixtures
+                        .path()
+                        .join(format!("navigator-{version}-linux.tar.gz.sha256")),
+                )
+                .unwrap(),
             ),
         )
         .mount(&server)
@@ -197,17 +203,20 @@ async fn a_mismatched_checksum_fails_the_install() {
     Mock::given(method("GET"))
         .and(path(format!("/navigator-{version}-linux.tar.gz")))
         .respond_with(
-            ResponseTemplate::new(200).set_body_from_file(
-                fixtures
-                    .path()
-                    .join(format!("navigator-{version}-linux.tar.gz")),
+            ResponseTemplate::new(200).set_body_bytes(
+                fs::read(
+                    fixtures
+                        .path()
+                        .join(format!("navigator-{version}-linux.tar.gz")),
+                )
+                .unwrap(),
             ),
         )
         .mount(&server)
         .await;
     Mock::given(method("GET"))
         .and(path(format!("/navigator-{version}-linux.tar.gz.sha256")))
-        .respond_with(ResponseTemplate::new(200).set_body_from_file(&checksum))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(fs::read(&checksum).unwrap()))
         .mount(&server)
         .await;
 
@@ -233,10 +242,13 @@ async fn a_missing_checksum_sidecar_warns_but_still_installs() {
     Mock::given(method("GET"))
         .and(path(format!("/navigator-{version}-linux.tar.gz")))
         .respond_with(
-            ResponseTemplate::new(200).set_body_from_file(
-                fixtures
-                    .path()
-                    .join(format!("navigator-{version}-linux.tar.gz")),
+            ResponseTemplate::new(200).set_body_bytes(
+                fs::read(
+                    fixtures
+                        .path()
+                        .join(format!("navigator-{version}-linux.tar.gz")),
+                )
+                .unwrap(),
             ),
         )
         .mount(&server)

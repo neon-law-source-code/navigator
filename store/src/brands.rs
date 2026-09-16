@@ -390,10 +390,17 @@ async fn authorize(
 }
 
 /// Authorize an edit to an existing brand. Owner governs existing brands on
-/// every Firm through the Firm-capability resolver; a Firm's own Admin DRI
-/// governs its Firm-scoped brand. Creation remains stricter: only Owner may
-/// create a system-wide brand, and only the Firm's Admin DRI may create a
-/// Firm-scoped one.
+/// every Firm; a Firm's own Admin DRI governs its Firm-scoped brand. A
+/// Firm-scoped target routes through
+/// [`crate::firm_capability::resolve_quietly`] with
+/// [`crate::firm_capability::FirmCapability::ManageBrand`] (ENG-645) rather
+/// than re-deriving the Owner-bypass-then-Admin-DRI rule by hand, so the two
+/// can no longer drift; `resolve_quietly` is the non-emitting entry point
+/// because this is a defense-in-depth check behind a command
+/// [`find_by_key_for_actor`] already authorized once through the emitting
+/// [`crate::firm_capability::resolve`]. Creation remains stricter: only
+/// Owner may create a system-wide brand, and only the Firm's Admin DRI may
+/// create a Firm-scoped one.
 async fn authorize_existing(
     surreal: &SurrealDb,
     actor_role: Role,
@@ -409,22 +416,22 @@ async fn authorize_existing(
             }
         }
         Some(firm_id) => {
-            if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
-                return Err(BrandError::NoSuchFirm(firm_id));
-            }
-            if actor_role == Role::Owner {
-                return Ok(());
-            }
-            let Some(person_id) = actor_person_id else {
-                return Err(BrandError::NotAuthorized);
-            };
-            match crate::firms::membership_for_person(surreal, person_id, firm_id).await? {
-                Some(row)
-                    if row.is_dri && row.membership == crate::firms::FirmMembership::Admin =>
-                {
-                    Ok(())
+            match crate::firm_capability::resolve_quietly(
+                surreal,
+                actor_role,
+                actor_person_id,
+                firm_id,
+                crate::firm_capability::FirmCapability::ManageBrand,
+            )
+            .await?
+            {
+                crate::firm_capability::FirmCapabilityDecision::Allowed => Ok(()),
+                crate::firm_capability::FirmCapabilityDecision::Forbidden => {
+                    Err(BrandError::NotAuthorized)
                 }
-                _ => Err(BrandError::NotAuthorized),
+                crate::firm_capability::FirmCapabilityDecision::FirmNotFound => {
+                    Err(BrandError::NoSuchFirm(firm_id))
+                }
             }
         }
     }
@@ -1498,5 +1505,121 @@ mod tests {
             .await
             .unwrap();
         assert!(find_by_id(&db, unworn.id).await.unwrap().is_none());
+    }
+
+    async fn person_with_membership(
+        db: &SurrealDb,
+        firm_id: Uuid,
+        role: Role,
+        membership: Option<(FirmMembership, bool)>,
+    ) -> Uuid {
+        let person_id = crate::persons::create(
+            db,
+            &NewPerson::with_role(
+                "Resolver Parity Person",
+                format!("resolver-parity-{}@example.com", Uuid::now_v7()),
+                role,
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
+        if let Some((membership, is_dri)) = membership {
+            crate::firms::add_membership(
+                db,
+                &NewPersonFirmRole {
+                    person_id,
+                    firm_id,
+                    membership,
+                    is_dri,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        person_id
+    }
+
+    /// ENG-645: `authorize_existing`'s Firm-scoped decision must never drift
+    /// from `firm_capability::resolve(ManageBrand)`, the check it now calls
+    /// (through the non-emitting [`crate::firm_capability::resolve_quietly`])
+    /// instead of restating by hand. Sweeps Owner, Client, and every
+    /// Admin/Lawyer/Clerk actor across every membership tier and DRI
+    /// combination, plus a target Firm that does not exist, and asserts the
+    /// two always agree.
+    #[tokio::test]
+    async fn authorize_existing_agrees_with_the_capability_resolver_for_every_combination() {
+        use crate::firm_capability::{FirmCapability, FirmCapabilityDecision};
+
+        let db = mem_surreal().await;
+        let (firm, admin_dri) = practice(&db, "Resolver Parity Practice").await;
+
+        let mut cases: Vec<(Role, Option<Uuid>)> = vec![
+            (Role::Owner, None),
+            (Role::Client, None),
+            // Seeded by `practice`: Admin membership with `is_dri = true`.
+            (Role::Admin, Some(admin_dri)),
+        ];
+        for role in [Role::Admin, Role::Lawyer, Role::Clerk] {
+            // No `person_firm_role` row at all.
+            cases.push((role, None));
+            for membership in [
+                FirmMembership::Admin,
+                FirmMembership::Lawyer,
+                FirmMembership::Clerk,
+            ] {
+                for is_dri in [true, false] {
+                    let person_id =
+                        person_with_membership(&db, firm.id, role, Some((membership, is_dri)))
+                            .await;
+                    cases.push((role, Some(person_id)));
+                }
+            }
+        }
+
+        for (role, person_id) in cases {
+            let expected = crate::firm_capability::resolve(
+                &db,
+                role,
+                person_id,
+                firm.id,
+                FirmCapability::ManageBrand,
+            )
+            .await
+            .unwrap();
+            let actual = authorize_existing(&db, role, person_id, Some(firm.id)).await;
+            match expected {
+                FirmCapabilityDecision::Allowed => {
+                    assert!(actual.is_ok(), "{role:?}/{person_id:?} expected allowed");
+                }
+                FirmCapabilityDecision::Forbidden => {
+                    assert!(
+                        matches!(actual, Err(BrandError::NotAuthorized)),
+                        "{role:?}/{person_id:?} expected NotAuthorized, got {actual:?}"
+                    );
+                }
+                FirmCapabilityDecision::FirmNotFound => {
+                    assert!(
+                        matches!(actual, Err(BrandError::NoSuchFirm(_))),
+                        "{role:?}/{person_id:?} expected NoSuchFirm, got {actual:?}"
+                    );
+                }
+            }
+        }
+
+        // A Firm that does not exist agrees too.
+        let missing_firm = Uuid::now_v7();
+        let expected = crate::firm_capability::resolve(
+            &db,
+            Role::Owner,
+            None,
+            missing_firm,
+            FirmCapability::ManageBrand,
+        )
+        .await
+        .unwrap();
+        assert_eq!(expected, FirmCapabilityDecision::FirmNotFound);
+        let actual = authorize_existing(&db, Role::Owner, None, Some(missing_firm)).await;
+        assert!(matches!(actual, Err(BrandError::NoSuchFirm(id)) if id == missing_firm));
     }
 }

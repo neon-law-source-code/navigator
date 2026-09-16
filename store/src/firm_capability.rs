@@ -179,6 +179,32 @@ pub async fn resolve(
     Ok(decision)
 }
 
+/// Resolve whether `actor` may exercise `capability` against
+/// `target_firm_id`, without emitting the `firm_capability.resolve`
+/// telemetry event [`resolve`] always emits (ENG-645).
+///
+/// For a defense-in-depth call that already sits behind a primary command
+/// that itself calls [`resolve`] (or will) — so the decision would otherwise
+/// be logged twice for one write. Same decision, same 404-vs-403 shape as
+/// [`resolve`]; only the audit trail differs.
+pub(crate) async fn resolve_quietly(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    target_firm_id: Uuid,
+    capability: FirmCapability,
+) -> Result<FirmCapabilityDecision, FirmError> {
+    let (decision, _reason) = resolve_inner(
+        surreal,
+        actor_role,
+        actor_person_id,
+        target_firm_id,
+        capability,
+    )
+    .await?;
+    Ok(decision)
+}
+
 async fn resolve_inner(
     surreal: &SurrealDb,
     actor_role: Role,

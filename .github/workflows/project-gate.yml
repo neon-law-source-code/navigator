@@ -149,10 +149,6 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ ! -d documents ]; then
-              echo "no documents — nothing to verify"
-              exit 0
-          fi
           if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
               navigator site document verify . --ci --host "${HOST}"
           else

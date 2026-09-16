@@ -11,26 +11,24 @@ use crate::remote::DocumentClient;
 
 const GITIGNORE: &str = "*\n!*/\n!*.yml\n!.gitignore\n";
 
-#[derive(Deserialize)]
-pub(crate) struct ProjectManifest {
-    pub(crate) project: String,
-    pub(crate) host: Option<String>,
-}
-
 /// Read and validate `<root>/navigator.yaml` — the one manifest every
 /// document command (`sync`, and the read verbs under `navigator site document`)
-/// resolves its Project and login host from.
-pub(crate) fn read_manifest(root: &Path) -> Result<ProjectManifest> {
+/// resolves its Project and login host from. Returns `(project, host)`.
+///
+/// Routes through [`crate::projects::manifest::parse`], the one reader that
+/// accepts both the current `project: {host, name}` shape and the deprecated
+/// flat `project:`/`host:` shape, so a v2 manifest never fails with a
+/// `serde_yaml` type-mismatch instead of this command's own error.
+pub(crate) fn read_manifest(root: &Path) -> Result<(String, Option<String>)> {
     let manifest_path = root.join("navigator.yaml");
-    let manifest: ProjectManifest = serde_yaml::from_str(
-        &std::fs::read_to_string(&manifest_path)
-            .with_context(|| format!("read {}", manifest_path.display()))?,
-    )
-    .context("parse navigator.yaml")?;
-    if manifest.project.trim().is_empty() {
-        return Err(anyhow!("navigator.yaml must name a Project"));
-    }
-    Ok(manifest)
+    let contents = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("read {}", manifest_path.display()))?;
+    let manifest = crate::projects::manifest::parse(&contents).map_err(|error| anyhow!(error))?;
+    let project = manifest
+        .project
+        .filter(|project| !project.trim().is_empty())
+        .ok_or_else(|| anyhow!("navigator.yaml must name a Project"))?;
+    Ok((project, manifest.host))
 }
 
 /// Synchronize the current Project repository's staged documents.
@@ -45,7 +43,7 @@ pub(crate) async fn run(root: &Path, dry_run: bool) -> ExitCode {
 }
 
 async fn sync(root: &Path, dry_run: bool) -> Result<()> {
-    let manifest = read_manifest(root)?;
+    let (project, host) = read_manifest(root)?;
     let documents = root.join("documents");
     let (binaries, pointers) = discover(&documents)?;
     if dry_run {
@@ -64,7 +62,7 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
             .with_context(|| format!("write {}", ignore.display()))?;
     }
 
-    let client = DocumentClient::connect(manifest.host.as_deref(), manifest.project.trim()).await?;
+    let client = DocumentClient::connect(host.as_deref(), &project).await?;
 
     // A committed visibility edit is desired state. Replaying it is safe and
     // lets the server's ordinary API audit record every reconciliation.
@@ -587,7 +585,7 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
             "recover interrupted pull: {error:#}; document targets may be in an interrupted publication state; retry pull to attempt recovery"
         )
     })?;
-    let manifest = read_manifest(&root).map_err(document_targets_unchanged)?;
+    let (project, host) = read_manifest(&root).map_err(document_targets_unchanged)?;
     let pointers =
         crate::document_read::discover_pointers(&root).map_err(document_targets_unchanged)?;
     if pointers.is_empty() {
@@ -610,7 +608,7 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
             .map_err(document_targets_unchanged)?;
     }
 
-    let client = DocumentClient::connect(manifest.host.as_deref(), manifest.project.trim())
+    let client = DocumentClient::connect(host.as_deref(), &project)
         .await
         .map_err(document_targets_unchanged)?;
     let staging = tempfile::tempdir().map_err(|error| {
@@ -736,11 +734,57 @@ pub(crate) fn read_pointer(
 #[cfg(test)]
 mod tests {
     use super::{
-        matches_digest, pull_target, pull_transaction_path, recover_interrupted_pull,
-        write_pull_transaction_state, PullTransactionPhase, PullTransactionState,
-        PullTransactionTarget,
+        matches_digest, pull_target, pull_transaction_path, read_manifest,
+        recover_interrupted_pull, write_pull_transaction_state, PullTransactionPhase,
+        PullTransactionState, PullTransactionTarget,
     };
     use std::path::Path;
+
+    #[test]
+    fn read_manifest_yields_project_and_host_from_a_v2_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("navigator.yaml"),
+            "version: \"1.0.0\"\nproject:\n  host: staging.neonlaw.com\n  name: acme\n",
+        )
+        .unwrap();
+
+        let (project, host) = read_manifest(dir.path()).unwrap();
+
+        assert_eq!(project, "acme");
+        assert_eq!(host, Some("staging.neonlaw.com".to_string()));
+    }
+
+    #[test]
+    fn read_manifest_still_yields_project_and_host_from_the_deprecated_flat_form() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("navigator.yaml"),
+            "project: acme\nhost: staging.neonlaw.com\n",
+        )
+        .unwrap();
+
+        let (project, host) = read_manifest(dir.path()).unwrap();
+
+        assert_eq!(project, "acme");
+        assert_eq!(host, Some("staging.neonlaw.com".to_string()));
+    }
+
+    #[test]
+    fn read_manifest_reports_one_error_against_navigator_yaml_for_a_malformed_project_map() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("navigator.yaml"),
+            "project:\n  name: acme\n",
+        )
+        .unwrap();
+
+        let error = read_manifest(dir.path()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains("navigator.yaml"), "{message}");
+        assert_eq!(message.matches("navigator.yaml").count(), 1, "{message}");
+    }
 
     #[test]
     fn pull_target_strips_yml_and_stays_below_documents() {

@@ -469,8 +469,15 @@
   margin: 0;
 }
 
+/* The 600 stop, not the 500 one. This badge is the only *text* that sits on
+   `.fm-services__package`'s 8% primary tint, and the tint is what eats the
+   headroom `tokens.css` warns about: the firm's 500 clears 4.89:1 on a plain
+   surface but only 4.41:1 once 8% of itself is mixed into that surface, under
+   the 4.5:1 floor for 11px text. Stepping the ink to `primary-hover` — the
+   alias for 600, and the lighter stop in dark — takes the tightest palette to
+   5.57:1. */
 .fm-services__package-badge {
-  color: var(--nav-color-primary);
+  color: var(--nav-color-primary-hover);
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.08em;

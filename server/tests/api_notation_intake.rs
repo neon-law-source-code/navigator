@@ -226,9 +226,10 @@ async fn dispatched_intake_uses_the_project_code_in_its_route() {
     let captured = h.email.captured();
     assert_eq!(captured.len(), 1, "the command sends one intake email");
     assert!(
-        captured[0]
-            .body
-            .contains(&format!("/app/projects/{}/intake/{notation_id}", project.code)),
+        captured[0].body.contains(&format!(
+            "/app/projects/{}/intake/{notation_id}",
+            project.code
+        )),
         "the emailed route must use the code the intake handler resolves: {}",
         captured[0].body
     );

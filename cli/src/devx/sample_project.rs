@@ -251,7 +251,17 @@ fn declared_project(checkout: &Path) -> Result<(String, String)> {
     Ok((manifest, code))
 }
 
-/// Refuse a checkout with no lockfile, before spending an install on it.
+/// Discover the one application this command can build from a Project checkout.
+fn application_workspace(checkout: &Path) -> Result<PathBuf> {
+    let applications = crate::projects::repository::discovered_applications(checkout);
+    match applications.as_slice() {
+        [application] => Ok(application.clone()),
+        [] => bail!("the repository has no Project application workspace"),
+        _ => bail!("the repository has multiple application workspaces; name one before building"),
+    }
+}
+
+/// Refuse an application with no lockfile, before spending an install on it.
 ///
 /// `--frozen-lockfile` is what keeps the build reproducible, so this says
 /// plainly what is wrong rather than letting `pnpm` fail with its own less
@@ -403,24 +413,25 @@ pub(super) fn build_from_repository(repo: &str, git_ref: Option<&str>) -> Result
     run_in(temp.path(), "git", &args)?;
 
     let (manifest, code) = declared_project(&checkout)?;
+    let application = application_workspace(&checkout)?;
     println!(
         "navigator: {} declares Project `{code}`",
         repo_basename(repo)
     );
 
-    require_lockfile(&checkout, repo)?;
+    require_lockfile(&application, repo)?;
 
     println!("navigator: installing dependencies (pnpm)");
     run_in(
-        &checkout,
+        &application,
         "pnpm",
         &["install".to_string(), "--frozen-lockfile".to_string()],
     )?;
 
     println!("navigator: building the bundle (pnpm build)");
-    run_in(&checkout, "pnpm", &["build".to_string()])?;
+    run_in(&application, "pnpm", &["build".to_string()])?;
 
-    let dist = built_bundle(&checkout)?;
+    let dist = built_bundle(&application)?;
     Ok(BuiltApplication {
         temp,
         manifest,
@@ -710,6 +721,21 @@ mod tests {
         std::fs::write(dir.path().join("pnpm-lock.yaml"), b"lockfileVersion: '9.0'")
             .expect("write");
         require_lockfile(dir.path(), "https://forge.example/o/r").expect("a lockfile is enough");
+    }
+
+    #[test]
+    fn a_portal_workspace_supplies_the_build_lockfile() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let portal = dir.path().join("portal");
+        std::fs::create_dir_all(&portal).expect("mkdir");
+        std::fs::write(portal.join("package.json"), "{}\n").expect("package");
+        std::fs::write(portal.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")
+            .expect("lockfile");
+
+        let application = application_workspace(dir.path()).expect("portal workspace");
+        assert_eq!(application, portal);
+        require_lockfile(&application, "https://forge.example/o/r")
+            .expect("the portal lockfile makes the build reproducible");
     }
 
     /// The two failed-build shapes are reported separately, because they have

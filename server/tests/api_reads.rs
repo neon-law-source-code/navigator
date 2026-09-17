@@ -296,6 +296,62 @@ async fn matter_reads_are_scoped() {
 }
 
 #[tokio::test]
+async fn notation_answers_are_lawyer_only_and_matter_scoped() {
+    let fx = build_fixture().await;
+    let path = format!("/app/api/notations/{}/answers", fx.notation_id);
+
+    assert_eq!(
+        get(&fx, &path, Some(&fx.lawyer)).await.status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        get(&fx, &path, Some(&fx.client)).await.status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        get(&fx, &path, Some(&fx.outsider)).await.status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(&fx, &path, None).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn notation_inventory_is_lawyer_only_and_matter_scoped() {
+    let fx = build_fixture().await;
+    let path = format!("/app/api/projects/{}/notation-inventory", fx.project_id);
+
+    let lawyer_inventory = get(&fx, &path, Some(&fx.lawyer)).await;
+    assert_eq!(lawyer_inventory.status(), StatusCode::OK);
+    let body = lawyer_inventory
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    let inventory: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(inventory.as_array().unwrap().len(), 1);
+    assert_eq!(inventory[0]["id"], fx.notation_id.to_string());
+    assert_eq!(inventory[0]["template_code"], "test__read_walk");
+    assert_eq!(inventory[0]["respondent_email"], "client@example.com");
+
+    assert_eq!(
+        get(&fx, &path, Some(&fx.client)).await.status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        get(&fx, &path, Some(&fx.outsider)).await.status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(&fx, &path, None).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
 async fn playbook_reads_are_lawyer_only() {
     let fx = build_fixture().await;
 

@@ -230,6 +230,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "/app/api/projects/{id}/notations",
             get(list_notations_door),
         ),
+        (
+            "GET",
+            "/app/api/projects/{id}/notation-inventory",
+            get(notation_inventory_door),
+        ),
         ("GET", "/app/api/notations/{id}", get(get_notation_door)),
         (
             "GET",
@@ -306,6 +311,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "POST",
             "/app/api/projects/{id}/notations",
             post(create_notation),
+        ),
+        (
+            "GET",
+            "/app/api/notations/{id}/answers",
+            get(list_notation_answers_door),
         ),
         (
             "POST",
@@ -1088,6 +1098,59 @@ async fn list_notations_door(
     Ok((StatusCode::OK, Json(notations)).into_response())
 }
 
+/// One private row in a Project's notation inventory. The CLI uses this
+/// projection rather than the client-readable notation list so an operator can
+/// identify a notation by template code and respondent without separately
+/// resolving internal ids.
+#[derive(Serialize)]
+struct NotationInventoryRow {
+    id: Uuid,
+    template_code: Option<String>,
+    state: String,
+    respondent_name: Option<String>,
+    respondent_email: Option<String>,
+}
+
+/// `GET /app/api/projects/{id}/notation-inventory` — a lawyer's private,
+/// matter-scoped inventory of the notations opened on one Project.
+async fn notation_inventory_door(
+    State(state): State<ApiState>,
+    lawyer: LawyerSession,
+    Path(id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    let in_scope = store::access::can_see_project_as_lawyer(
+        &state.surreal,
+        lawyer.0.person_id,
+        lawyer.0.role,
+        id,
+    )
+    .await
+    .unwrap_or(false);
+    if !in_scope {
+        return Err(ApiError::NotFound);
+    }
+
+    let notations = store::notations::list_by_project(&state.surreal, id).await?;
+    let mut rows = Vec::with_capacity(notations.len());
+    for notation in notations {
+        let template_code = store::templates::find_by_id(&state.surreal, notation.template_id)
+            .await
+            .map_err(|error| ApiError::Db(error.to_string()))?
+            .map(|template| template.code);
+        let respondent = store::persons::find_by_id(&state.surreal, notation.person_id)
+            .await
+            .map_err(|error| ApiError::Db(error.to_string()))?;
+        rows.push(NotationInventoryRow {
+            id: notation.id,
+            template_code,
+            state: notation.state,
+            respondent_name: respondent.as_ref().map(|person| person.name.clone()),
+            respondent_email: respondent.map(|person| person.email),
+        });
+    }
+    Ok((StatusCode::OK, Json(rows)).into_response())
+}
+
 /// `GET /app/api/notations/{id}` — one notation, scoped by its matter.
 async fn get_notation_door(
     State(state): State<ApiState>,
@@ -1101,6 +1164,21 @@ async fn get_notation_door(
         return Err(ApiError::NotFound);
     }
     Ok((StatusCode::OK, Json(notation)).into_response())
+}
+
+/// `GET /app/api/notations/{id}/answers` — the filed answers for one notation.
+/// The answer values, source, and author provenance are firm work product, so
+/// this route is lawyer-tier and matter-scoped rather than client-readable.
+async fn list_notation_answers_door(
+    State(state): State<ApiState>,
+    lawyer: LawyerSession,
+    Path(id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    let notation = notation_in_lawyer_scope(&state, &lawyer, id).await?;
+    let answers = store::answers::for_notation(&state.surreal, notation.id)
+        .await
+        .map_err(|error| ApiError::Db(error.to_string()))?;
+    Ok((StatusCode::OK, Json(answers)).into_response())
 }
 
 /// `GET /app/api/playbooks` — the firm's contract-review playbooks (lawyer tier).

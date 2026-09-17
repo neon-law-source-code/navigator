@@ -188,7 +188,7 @@ sentences they are.
 | `N120` | Error | A template body placeholder must name a declared questionnaire state. | No |
 | `N121` | Error | A `sent_for_signature` state must be preceded by a `generate_pdf` state. | No |
 | `N122` | Error | Every declared questionnaire state must be read by the template body. | No |
-| `N123` | Error | An outlined kind's body must be a Harvard outline in that kind's scheme. | No |
+| `N123` | Error | An outlined kind's body must be a Harvard outline, titled to match its frame. | No |
 | `N124` | Error | A services catalog template reference must name a notation under `templates/notations/`. | No |
 
 ### E-family — events

@@ -463,18 +463,28 @@ pub(crate) fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// `navigator site document verify [dir]` — the same drift check `log`/`get` use,
-/// called two ways (#486):
+/// called three ways (#486, LAW-12):
 ///
-/// - **Offline** (the default, what a pull request runs): every pointer below
+/// - **Offline** (no flags, what a pull request runs): every pointer below
 ///   `<dir>/documents/` must parse as a valid [`store::document_pointers::DocumentPointer`].
 ///   No token is minted, so this never needs network access or a login.
-/// - **Live** (`--ci`, what a push to `main` runs): exchanges this GitHub
-///   Actions run's own OIDC token for a Navigator session
-///   (`navigator site document verify`'s counterpart to `navigator site import
-///   --ci`), then checks every pointer against the live asset record —
-///   [`check_pointer_drift`], the exact function `log`/`get` already call.
+/// - **Live from a login** (`--host <host>`): checks every pointer against the
+///   live asset record using the operator's own `navigator site login` session.
+///   This is the answer to "did my upload actually land?" — before LAW-12 the
+///   flag was accepted and then ignored, so `--host` took the offline branch and
+///   reported `N pointer(s) valid` for a checkout with the bytes deleted and no
+///   network at all. The only live confirmation available to a human was reading
+///   the `ci / verify` job on a pull request.
+/// - **Live from CI** (`--ci --host <host>`, what a push to `main` runs):
+///   the same live check, but exchanging this GitHub Actions run's own OIDC
+///   token for a Navigator session (`navigator site document verify`'s
+///   counterpart to `navigator site import --ci`) rather than reading a stored
+///   login, which a runner does not have.
 ///
-/// A repository carrying no `documents/` succeeds trivially in either mode —
+/// The two live modes differ only in where the session comes from: both walk
+/// [`check_pointer_drift`], the exact function `log`/`get` already call.
+///
+/// A repository carrying no `documents/` succeeds trivially in every mode —
 /// the common case for every repository today.
 pub(crate) async fn verify(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode {
     run(async {
@@ -484,7 +494,16 @@ pub(crate) async fn verify(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode
             return Ok(());
         }
 
-        if !ci {
+        // Offline: shape only. Reached when the caller named no host, so
+        // there is nothing to round-trip against.
+        let Some(host) = host else {
+            if ci {
+                // `--ci` is declared `requires = "host"`, so clap refuses this
+                // before we are called. Kept as a refusal rather than an
+                // `unwrap` so a future argument edit cannot silently downgrade
+                // a CI run to an offline pass.
+                return Err(anyhow!("--ci requires --host"));
+            }
             for relative in &pointers {
                 let path = dir.join(relative);
                 let raw = std::fs::read_to_string(&path)
@@ -495,12 +514,15 @@ pub(crate) async fn verify(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode
             }
             println!("{} pointer(s) valid", pointers.len());
             return Ok(());
-        }
+        };
 
-        let host = host.ok_or_else(|| anyhow!("--ci requires --host"))?;
         let (project_code, _) = manifest_at(dir)?;
-        let (base, token) = crate::remote::resolve_ci_document(host).await?;
-        let client = DocumentClient::with_credential(base, token, &project_code).await?;
+        let client = if ci {
+            let (base, token) = crate::remote::resolve_ci_document(host).await?;
+            DocumentClient::with_credential(base, token, &project_code).await?
+        } else {
+            DocumentClient::connect(Some(host), &project_code).await?
+        };
 
         let mut failures = Vec::new();
         for relative in &pointers {

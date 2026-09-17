@@ -75,7 +75,9 @@ Pay the sum of `{{amount}}` to **NEON LAW** without delay.
 
 /// Same shape, `kind: will` — a kind whose default is `plain`, so this
 /// proves the derivation does not blanket every notation kind in
-/// letterhead.
+/// letterhead. A `will` is an outlined kind, so the body carries the `#`
+/// title and the numbered `##` section `N123` requires of one; without
+/// them validation refuses the template and nothing renders.
 const VALID_WILL_NO_OUTPUT: &str = "\
 ---
 kind: will
@@ -97,6 +99,8 @@ workflow:
 ---
 
 # Last Will and Testament
+
+## I. Revocation
 
 I hereby revoke all prior wills.
 ";

@@ -334,17 +334,31 @@ Motions and contracts are walked paragraph by paragraph on a stage so a lawyer c
 Depth-1 headings take Roman numerals (`## I.`) on contracts and onboarding letters, or Arabic numerals (`## 1.`) in
 motion practice; lettered subsections are block quotes (`> **A. Label.** …`).
 
-**`N123` enforces the depth-1 scheme.** A body whose kind is `agreement`, `pleading`, `onboarding`, or `offboarding`
-must carry `##` sections, numbered in its kind's scheme and running in sequence — Roman on the three contract kinds,
-Arabic on a `pleading`. A `letter` and a `filing` are exempt: a demand or notice letter is often a single page of prose
-with no sections, and a filing's body is an intake summary beside a government `AcroForm`. Deeper levels are the
-parser's and the renderer's business, so the rule reads depth 1 only.
+**`N123` enforces the outline down to depth 2.** A body whose kind is `agreement`, `will`, `pleading`, `onboarding`, or
+`offboarding` must carry `##` sections, numbered in its kind's scheme and running in sequence — Roman on the contract
+kinds and on a `will`, Arabic on a `pleading` — and their `###` subsections must be lettered `A.`, `B.`, … in sequence,
+restarting beneath each section. Depth 2 is lettered in every scheme, because `word::MARKER_GROUPS` varies only at its
+root. A `letter` and a `filing` are exempt: a demand or notice letter is often a single page of prose with no sections,
+and a filing's body is an intake summary beside a government `AcroForm`. `####` and below stay the parser's and the
+renderer's business.
+
+**A body that renders without chrome must name itself.** `agreement`, `pleading`, and `will` carry exactly one `#`
+document title, and it opens the body above the first numbered section — nothing else supplies one, since a `will`
+renders with no frame at all and the contract and pleading frames print no name. `onboarding` and `offboarding` are the
+opposite case: they go out on firm letterhead and open with a `Re:` line and a salutation, so their name lives in
+frontmatter `title:` and a `#` heading in the body is refused rather than required.
 
 Court paper opens with its formal title line after the caption — `## SUMMONS — CIVIL` above `## 1.` — and that line is a
 caption element rather than the first section. Unnumbered `##` headings **before** the first numbered one are left
-alone, the same preamble `views::harvard_outline` gives depth 0. Once numbering starts it must not stop: an unnumbered
-heading after the first numbered section is a section that lost its marker. A body where numbering never starts has no
-outline at all, which is what the rule flags first.
+alone, the same preamble `views::harvard_outline` gives depth 0, and so is a `###` beneath them. A body where numbering
+never starts has no outline at all, which is what the rule flags first.
+
+**The execution tail is outside the numbering, by design.** The execution, attestation, and self-proving affidavit
+blocks that follow the testimonium carry no number or letter, but they are peers of the articles in depth, so they sit
+at `##`. The rule reads them as the unbroken run of unnumbered `##` headings from the last numbered section to the end
+of the body; a `###` inside that run is flagged, because the level is the rule's to state rather than the drafter's.
+Between two numbered sections an unnumbered heading is still a section that lost its marker — the tail can only run to
+the end, which is also why a final section keeps its own lettered subsections.
 
 A notation on a matter — the letter given to a client — narrates at `/app/projects/{code}/{notation_id}/outline`; step
 with Arrow keys, `N`/`P`, or Space, and press `H` to hide the hint.

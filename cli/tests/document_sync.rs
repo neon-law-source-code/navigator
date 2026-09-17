@@ -135,6 +135,13 @@ fn pointer_with_sha(asset_id: Uuid, sha256: &str, size_bytes: i64) -> serde_json
     })
 }
 
+fn pointer_with_kind_visibility(asset_id: Uuid, kind: &str, visibility: &str) -> serde_json::Value {
+    let mut pointer = pointer(asset_id);
+    pointer["kind"] = serde_json::Value::String(kind.to_string());
+    pointer["visibility"] = serde_json::Value::String(visibility.to_string());
+    pointer
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() {
     let server = MockServer::start().await;
@@ -228,6 +235,81 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
         .args(["project", "gate"])
         .assert()
         .success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_preserves_existing_pointer_kind_when_uploading_new_bytes() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    write(
+        root.path(),
+        "documents/pleadings/motion.pdf",
+        b"replacement pleading",
+    );
+    write(
+        root.path(),
+        "documents/pleadings/motion.pdf.yml",
+        serde_yaml::to_string(&pointer_with_kind_visibility(
+            asset_id, "pleading", "client",
+        ))
+        .unwrap(),
+    );
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PATCH"))
+        .and(path(format!(
+            "/app/api/projects/{project_id}/documents/{asset_id}"
+        )))
+        .and(body_json(serde_json::json!({ "visibility": "client" })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "changed": false })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "motion.pdf",
+            "content_base64": "cmVwbGFjZW1lbnQgcGxlYWRpbmc=",
+            "content_type": "application/pdf",
+            "kind": "pleading",
+            "visibility": "client",
+            "slug": "pleadings/motion.pdf"
+        })))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_body_json(pointer_with_kind_visibility(asset_id, "pleading", "client")),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 uploaded"));
+
+    let pointer = fs::read_to_string(root.path().join("documents/pleadings/motion.pdf.yml"))
+        .expect("rewritten pointer");
+    assert!(pointer.contains("kind: pleading"));
+    assert!(pointer.contains("visibility: client"));
 }
 
 #[test]

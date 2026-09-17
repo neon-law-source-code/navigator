@@ -268,8 +268,9 @@ Surreal `person.profile_image_url` records its public asset URL. The profile for
 uploads to 5 MB and 1024 × 1024 pixels. Client avatars retain their private documents-bucket keys
 (`people/{id}/avatars/…`), as do Entity avatars (`entities/{id}/avatars/…`). Dynamic avatars have no manifest entry to
 pull; application avatar routes retain their authorization checks, but a public firm-tier Person-avatar URL is
-intentionally world-readable. Until `fetch-referenced` learns the manifest, fetch a manifest photo's variants directly;
-the widths and formats are the ones `views::assets` generates:
+intentionally world-readable. Clearing a firm-tier Person avatar unlinks the row and removes both canonical public
+variants; clearing a Client avatar leaves its private object untouched. Until `fetch-referenced` learns the manifest,
+fetch a manifest photo's variants directly; the widths and formats are the ones `views::assets` generates:
 
 ```bash
 mkdir -p server/public/img/lake-tahoe

@@ -28,6 +28,42 @@ async fn state_with_engines() -> (AppState, store::surreal::SurrealDb) {
     )
 }
 
+/// Public-storage double that makes an unexpected delete observable instead
+/// of letting the test pass because the object was absent already.
+struct DeleteTrackingStorage {
+    inner: Arc<dyn cloud::StorageService>,
+    deletes: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait::async_trait]
+impl cloud::StorageService for DeleteTrackingStorage {
+    async fn put(
+        &self,
+        key: &str,
+        bytes: &[u8],
+        content_type: &str,
+    ) -> Result<(), cloud::StorageError> {
+        self.inner.put(key, bytes, content_type).await
+    }
+
+    async fn get(&self, key: &str) -> Result<cloud::StoredObject, cloud::StorageError> {
+        self.inner.get(key).await
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), cloud::StorageError> {
+        self.deletes.lock().unwrap().push(key.to_string());
+        Err(cloud::StorageError::Unsupported("unexpected test delete"))
+    }
+
+    async fn signed_url(
+        &self,
+        key: &str,
+        expires_in: std::time::Duration,
+    ) -> Result<String, cloud::StorageError> {
+        self.inner.signed_url(key, expires_in).await
+    }
+}
+
 /// The **firm** host, composed through `neon`'s own entry points.
 ///
 /// Both catalogs — the anonymous talks and the gated Navigator classes — mount
@@ -16757,8 +16793,128 @@ async fn admin_client_avatar_upload_keeps_the_private_bucket() {
     );
 }
 
+/// Clearing a firm-tier avatar removes both canonical public variants and
+/// leaves the row unlinked. The JPEG key is intentionally absent before the
+/// clear, proving a missing variant does not make the clear fail.
+#[tokio::test]
+async fn clearing_a_firm_person_avatar_deletes_both_public_variants() {
+    let (state, surreal) = state_with_engines().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let png_key = format!("people/{}/avatar.png", person.id);
+    let jpg_key = format!("people/{}/avatar.jpg", person.id);
+    state
+        .assets_storage
+        .put(&png_key, ONE_PIXEL_PNG, "image/png")
+        .await
+        .unwrap();
+    store::persons::set_profile_image_url(
+        &surreal,
+        person.id,
+        Some(views::assets::asset_url(&png_key)),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, _) = admin_session_cookie_and_csrf();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/app/admin/people/{}/avatar", person.id))
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let row = store::persons::find_by_id(&surreal, person.id)
+        .await
+        .unwrap()
+        .expect("person row remains");
+    assert!(row.profile_image_url.is_none());
+    assert!(state.assets_storage.get(&png_key).await.is_err());
+    assert!(state.assets_storage.get(&jpg_key).await.is_err());
+}
+
+/// Clearing a Client row only unlinks the row. Its private object remains
+/// available, and a public-storage backend that rejects deletes must not be
+/// touched by the clear path.
+#[tokio::test]
+async fn clearing_a_client_person_avatar_preserves_private_storage() {
+    let (mut state, surreal) = state_with_engines().await;
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let private_key = format!("people/{}/avatars/{}.png", client.id, client.id);
+    state
+        .storage
+        .put(&private_key, ONE_PIXEL_PNG, "image/png")
+        .await
+        .unwrap();
+    store::persons::set_profile_image_url(&surreal, client.id, Some(private_key.clone()))
+        .await
+        .unwrap();
+    let deletes = Arc::new(Mutex::new(Vec::new()));
+    state.assets_storage = Arc::new(DeleteTrackingStorage {
+        inner: state.assets_storage.clone(),
+        deletes: deletes.clone(),
+    });
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, _) = session_cookie_and_csrf_for_person(&client);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/app/avatar")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let row = store::persons::find_by_id(&surreal, client.id)
+        .await
+        .unwrap()
+        .expect("client row remains");
+    assert!(row.profile_image_url.is_none());
+    assert_eq!(
+        state.storage.get(&private_key).await.unwrap().bytes,
+        ONE_PIXEL_PNG
+    );
+    assert!(deletes.lock().unwrap().is_empty());
+}
+
 /// The two public extensions are canonical alternatives. Replacing PNG with
-/// JPEG removes the former public object instead of leaving it addressable.
+/// JPEG removes the former public object instead of leaving it addressable;
+/// the reverse direction must remove JPEG just as symmetrically.
 #[tokio::test]
 async fn replacing_a_public_person_avatar_deletes_the_superseded_extension() {
     let (state, surreal) = state_with_engines().await;
@@ -16779,8 +16935,8 @@ async fn replacing_a_public_person_avatar_deletes_the_superseded_extension() {
     let (cookie, csrf) = admin_session_cookie_and_csrf();
 
     for (extension, content_type, bytes) in [
-        ("png", "image/png", ONE_PIXEL_PNG.to_vec()),
         ("jpg", "image/jpeg", jpeg_avatar()),
+        ("png", "image/png", ONE_PIXEL_PNG.to_vec()),
     ] {
         let boundary = "----navigator-test-replace-public-avatar-boundary";
         let body = avatar_multipart_body(
@@ -16811,23 +16967,23 @@ async fn replacing_a_public_person_avatar_deletes_the_superseded_extension() {
 
     let png_key = format!("people/{}/avatar.png", person.id);
     let jpg_key = format!("people/{}/avatar.jpg", person.id);
-    assert!(state.assets_storage.get(&png_key).await.is_err());
     assert_eq!(
         state
             .assets_storage
-            .get(&jpg_key)
+            .get(&png_key)
             .await
             .unwrap()
             .content_type,
-        "image/jpeg"
+        "image/png"
     );
+    assert!(state.assets_storage.get(&jpg_key).await.is_err());
     let row = store::persons::find_by_id(&surreal, person.id)
         .await
         .unwrap()
         .expect("person row remains");
     assert_eq!(
         row.profile_image_url.as_deref(),
-        Some(views::assets::asset_url(&jpg_key).as_str())
+        Some(views::assets::asset_url(&png_key).as_str())
     );
 }
 

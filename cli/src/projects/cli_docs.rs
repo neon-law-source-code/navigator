@@ -157,6 +157,7 @@ mod tests {
                             .subcommand(Command::new("sync-skills")),
                     ),
             )
+            .subcommand(Command::new("validate"))
     }
 
     #[test]

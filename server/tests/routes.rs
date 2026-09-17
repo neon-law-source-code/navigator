@@ -13,7 +13,7 @@ use portal::workshops::{WorkshopChapter, WorkshopSection};
 use portal::{AppState, AuthConfig, CanonicalHost, SessionStore, WorkshopIndex, WorkshopMaterial};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Cursor, Write};
 use std::sync::{Arc, Mutex, Once};
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
@@ -16594,14 +16594,23 @@ fn avatar_multipart_body(
     body
 }
 
-/// `POST /app/admin/people/{id}/avatar` writes the image to the **private**
-/// documents bucket (never the public assets lane — nothing shows a
-/// person's avatar to a signed-out visitor now that `/team` is a static
-/// page), points `profile_image_url` at the bucket key, and redirects back
-/// to the show page. `GET` on the same path then streams it back, admin-gated
-/// like the upload.
+/// A valid transparent PNG with caller-selected dimensions. This exercises
+/// the public-avatar metadata limit with bytes a real decoder accepts.
+fn png_avatar(width: u32, height: u32) -> Vec<u8> {
+    let image = image::DynamicImage::ImageRgba8(image::RgbaImage::new(width, height));
+    let mut bytes = Cursor::new(Vec::new());
+    image
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .expect("encode synthetic PNG");
+    bytes.into_inner()
+}
+
+/// `POST /app/admin/people/{id}/avatar` writes the image to the public-assets
+/// lane at the canonical Person key and records its public URL on the singular
+/// Surreal `person` row. The authenticated route redirects that URL for the
+/// existing admin preview.
 #[tokio::test]
-async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_streams_it_back() {
+async fn admin_person_avatar_upload_writes_the_public_assets_bucket_and_redirects_to_it() {
     let (state, surreal) = state_with_engines().await;
     let libra = store::persons::create(
         &surreal,
@@ -16649,12 +16658,13 @@ async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_strea
         .await
         .unwrap()
         .expect("row still present");
-    let key = row
+    let url = row
         .profile_image_url
         .expect("the upload must set profile_image_url");
-    assert_eq!(key, format!("people/{}/avatars/{}.png", libra.id, libra.id));
+    let key = format!("people/{}/avatar.png", libra.id);
+    assert_eq!(url, views::assets::asset_url(&key));
 
-    let stored = state.storage.get(&key).await.unwrap();
+    let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");
 
@@ -16668,18 +16678,14 @@ async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_strea
         )
         .await
         .unwrap();
-    assert_eq!(download.status(), StatusCode::OK);
+    assert_eq!(download.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         download
             .headers()
-            .get(header::CONTENT_TYPE)
+            .get(header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("image/png")
+        Some(url.as_str())
     );
-    let bytes = axum::body::to_bytes(download.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
 }
 
 /// A person written before `email_confirmed` and `is_admitted` existed still
@@ -16757,7 +16763,7 @@ async fn admin_person_avatar_upload_handles_a_historical_person_row() {
     assert_eq!(email_confirmed, Some(false));
     assert_eq!(
         row.profile_image_url.as_deref(),
-        Some(format!("people/{id}/avatars/{id}.png").as_str()),
+        Some(views::assets::asset_url(&format!("people/{id}/avatar.png")).as_str()),
     );
 }
 
@@ -16886,8 +16892,8 @@ async fn admin_person_avatar_download_requires_admin() {
 }
 
 /// The shared application chrome reads only the signed-in person's avatar. It
-/// serves initials until an upload exists, then streams that person's private
-/// object — without accepting another person's id in the request path.
+/// serves initials until an upload exists, then redirects to a public URL;
+/// legacy private keys still stream through the authenticated route.
 #[tokio::test]
 async fn current_viewer_avatar_serves_initials_then_the_private_upload() {
     let (state, surreal) = state_with_engines().await;
@@ -17015,6 +17021,10 @@ async fn profile_page_avatar_form_posts_to_the_sibling_upload_route() {
         "the file input carries the id the in-place script binds to: {html}"
     );
     assert!(
+        html.contains("Your avatar will be publicly available."),
+        "the profile page must disclose public avatar availability: {html}"
+    );
+    assert!(
         !html.contains("/app/profile/avatar"),
         "a nested action under /app/profile is not the upload route: {html}"
     );
@@ -17026,12 +17036,12 @@ async fn profile_page_avatar_form_posts_to_the_sibling_upload_route() {
     );
 }
 
-/// `POST /app/avatar` writes the caller's own image to the private documents
-/// bucket, points `profile_image_url` at the key, and redirects back to
+/// `POST /app/avatar` writes the caller's own image to the public-assets
+/// bucket, points `profile_image_url` at its public URL, and redirects back to
 /// `/app/profile`. A Client session succeeds — the handler resolves the
 /// person from the signed session, never from the URL.
 #[tokio::test]
-async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to_profile() {
+async fn client_profile_avatar_upload_writes_the_public_assets_bucket_and_redirects_to_profile() {
     let (state, surreal) = state_with_engines().await;
     let viewer = store::persons::create(
         &surreal,
@@ -17079,14 +17089,12 @@ async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to
         .await
         .unwrap()
         .expect("row still present");
-    let key = row
+    let url = row
         .profile_image_url
         .expect("the upload must set profile_image_url");
-    assert_eq!(
-        key,
-        format!("people/{}/avatars/{}.png", viewer.id, viewer.id)
-    );
-    let stored = state.storage.get(&key).await.unwrap();
+    let key = format!("people/{}/avatar.png", viewer.id);
+    assert_eq!(url, views::assets::asset_url(&key));
+    let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");
 
@@ -17100,11 +17108,14 @@ async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to
         )
         .await
         .unwrap();
-    assert_eq!(download.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(download.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
+    assert_eq!(download.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        download
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok()),
+        Some(url.as_str())
+    );
 }
 
 /// The profile page's in-place script posts the same multipart body with
@@ -17158,10 +17169,12 @@ async fn client_profile_avatar_upload_stays_on_the_profile_page_for_xhr() {
         .await
         .unwrap()
         .expect("row still present");
-    let key = row
+    let url = row
         .profile_image_url
         .expect("the upload must set profile_image_url");
-    let stored = state.storage.get(&key).await.unwrap();
+    let key = format!("people/{}/avatar.png", viewer.id);
+    assert_eq!(url, views::assets::asset_url(&key));
+    let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
 }
 
@@ -17216,16 +17229,70 @@ async fn client_profile_avatar_upload_accepts_the_nested_form_action() {
         .await
         .unwrap()
         .expect("row still present");
-    let key = row
+    let url = row
         .profile_image_url
         .expect("the nested upload must set profile_image_url");
-    assert_eq!(
-        key,
-        format!("people/{}/avatars/{}.png", viewer.id, viewer.id)
-    );
-    let stored = state.storage.get(&key).await.unwrap();
+    let key = format!("people/{}/avatar.png", viewer.id);
+    assert_eq!(url, views::assets::asset_url(&key));
+    let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");
+}
+
+/// A public profile avatar must stay within both decoded-image dimensions,
+/// before either the public-assets bucket or the `person` row changes.
+#[tokio::test]
+async fn profile_avatar_upload_rejects_images_wider_or_taller_than_1024_pixels() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra Scales",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&viewer);
+
+    for (width, height) in [(1025, 1), (1, 1025)] {
+        let boundary = "----navigator-test-oversized-profile-avatar";
+        let body = avatar_multipart_body(
+            boundary,
+            &csrf,
+            "too-large.png",
+            "image/png",
+            &png_avatar(width, height),
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/app/avatar")
+                    .header(header::COOKIE, &cookie)
+                    .header(
+                        header::CONTENT_TYPE,
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    let row = store::persons::find_by_id(&surreal, viewer.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    assert!(row.profile_image_url.is_none());
 }
 
 /// An anonymous POST to the self-service upload is refused — the person id

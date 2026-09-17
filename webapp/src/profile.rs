@@ -8,7 +8,8 @@
 //! browser as `/app/avatar` (the last path segment is replaced). No tier
 //! gate at all: unlike the admin-only `/app/admin/people/{id}/avatar`, the
 //! target is always the caller's own row, resolved server-side from the
-//! signed session, never a person id supplied by the page.
+//! signed session, never a person id supplied by the page. A submitted avatar
+//! becomes publicly available through the deployment's public-assets origin.
 //!
 //! Email renders read-only: the account's mailbox is also its sign-in
 //! identity, so a self-service edit here would drift from the OIDC identity
@@ -153,6 +154,7 @@ fn avatar_upload_card(csrf_token: &str) -> Element {
             // `#profile-avatar` and `#profile-avatar-file`, posts the same
             // multipart body as a `fetch`, and cache-busts `/app/me/avatar`.
             document::Script { src: "/public/js/avatar-upload.js", defer: true }
+            p { class: "form-help", "Your avatar will be publicly available." }
             FormCard {
                 title: "Upload avatar".to_string(),
                 action: PROFILE_AVATAR_PATH.to_string(),
@@ -164,7 +166,7 @@ fn avatar_upload_card(csrf_token: &str) -> Element {
                     Field::file("Avatar", "file")
                         .id("profile-avatar-file")
                         .required()
-                        .help("PNG, JPEG, or WebP, up to 5 MB. Replaces any existing avatar."),
+                        .help("PNG or JPEG, up to 5 MB and 1024 × 1024 pixels. Replaces any existing avatar."),
                 ],
             }
         }
@@ -282,6 +284,14 @@ mod tests {
         assert!(
             out.contains(r#"id="profile-avatar-file""#),
             "the file input carries a stable id the in-place script can find: {out}"
+        );
+        assert!(
+            out.contains("Your avatar will be publicly available."),
+            "the upload card must disclose public availability: {out}"
+        );
+        assert!(
+            out.contains("1024 × 1024 pixels"),
+            "the upload card must state the dimension limits: {out}"
         );
         let csrf_pos = out.find(r#"name="_csrf""#);
         let file_pos = out.find(r#"type="file""#);

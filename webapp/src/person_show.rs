@@ -54,8 +54,8 @@ pub struct PersonFields {
     /// The public `LinkedIn` profile URL shown on `/team`. Blank when unset.
     pub linkedin_url: String,
     /// The admin-only route for the current avatar's preview
-    /// (`/app/admin/people/{id}/avatar`), streamed from the private
-    /// documents bucket. `None` until an avatar has been uploaded.
+    /// (`/app/admin/people/{id}/avatar`), which redirects public Person
+    /// avatars to their asset URL. `None` until an avatar has been uploaded.
     pub avatar_url: Option<String>,
 }
 
@@ -454,7 +454,7 @@ fn avatar_upload_card(view: &PersonShowView, fields: &PersonFields) -> Element {
                 fields: vec![
                     Field::file("Avatar", "file")
                         .required()
-                        .help("PNG, JPEG, or WebP, up to 5 MB. Replaces any existing avatar."),
+                        .help("PNG or JPEG, up to 5 MB and 1024 × 1024 pixels. The avatar will be publicly available."),
                 ],
             }
         }

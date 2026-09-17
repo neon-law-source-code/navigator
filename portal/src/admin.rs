@@ -4,6 +4,7 @@
 //! the same auth layer. New admin surfaces add another `.route(...)`
 //! and inherit auth automatically.
 
+use std::io::Cursor;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -200,9 +201,9 @@ pub fn routes(
             "/app/admin/people/{id}/avatar",
             // Axum's own default body limit (~2 MB) sits in front of this
             // handler's own `MAX_AVATAR_BYTES` check, same reasoning as the
-            // project-documents upload route below. The `GET` streams the
-            // avatar back from the private documents bucket; the admin
-            // show/edit page's `<img>` preview points at this same path.
+            // project-documents upload route below. Person avatars are stored
+            // in the public-assets lane; this authenticated URL remains for
+            // old private keys and redirects public ones to their asset URL.
             get(admin_person_avatar_download)
                 .post(admin_person_avatar_upload)
                 .layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
@@ -943,10 +944,15 @@ async fn admin_person_update(
     }
 }
 
-/// Content types the avatar upload accepts. A key extension is derived from
-/// whichever one matched, so the stored object has a sensible name — the
-/// bucket itself does not care, but a browser guessing the URL benefits.
-const ALLOWED_AVATAR_CONTENT_TYPES: [(&str, &str); 3] = [
+/// The public profile-avatar formats. The extension comes from the trusted
+/// content type, never the uploaded filename, so its public object key has a
+/// predictable JPEG or PNG suffix.
+const PERSON_AVATAR_CONTENT_TYPES: [(&str, &str); 2] =
+    [("image/png", "png"), ("image/jpeg", "jpg")];
+
+/// Entity avatars stay on their private lane and retain the historic WebP
+/// option. Public person avatars deliberately use the narrower type set.
+const ENTITY_AVATAR_CONTENT_TYPES: [(&str, &str); 3] = [
     ("image/png", "png"),
     ("image/jpeg", "jpg"),
     ("image/webp", "webp"),
@@ -955,11 +961,15 @@ const ALLOWED_AVATAR_CONTENT_TYPES: [(&str, &str); 3] = [
 /// Most bytes one avatar upload may carry. Generous for a profile photo,
 /// nowhere near the document-batch ceiling.
 const MAX_AVATAR_BYTES: usize = 5 * 1024 * 1024;
+/// Neither dimension of a publicly available profile image may exceed this
+/// bound. Reading only image metadata before upload avoids allocating an
+/// attacker-controlled decoded raster.
+const MAX_PERSON_AVATAR_DIMENSION: u32 = 1024;
 
 /// Read and validate the one `file` field a multipart avatar upload carries:
-/// the CSRF check, the field name and content type, the size ceiling. Shared
-/// by the person and entity upload handlers, which differ only in where the
-/// validated bytes get written and which row remembers the key.
+/// the CSRF check, field name, allowed content type, and size ceiling. Shared
+/// by person and entity handlers; the public person lane additionally checks
+/// decoded dimensions before writing.
 ///
 /// # Errors
 ///
@@ -969,6 +979,7 @@ async fn read_avatar_upload(
     cookies: &tower_cookies::Cookies,
     session_data: &SessionData,
     multipart: &mut Multipart,
+    allowed_content_types: &[(&str, &str)],
 ) -> Result<(String, axum::body::Bytes), Response> {
     if let Err(status) = crate::csrf::require_multipart_csrf(cookies, session_data, multipart).await
     {
@@ -981,7 +992,7 @@ async fn read_avatar_upload(
     };
     let content_type = field.content_type().map(str::to_string);
     let is_allowed = content_type.as_deref().is_some_and(|ct| {
-        ALLOWED_AVATAR_CONTENT_TYPES
+        allowed_content_types
             .iter()
             .any(|(allowed, _)| *allowed == ct)
     });
@@ -1003,15 +1014,31 @@ async fn read_avatar_upload(
     ))
 }
 
-/// `profile_image_url`/`avatar_url` has two writers with different shapes.
-/// This upload route writes a **bare** private documents-bucket key
-/// (`people/{id}/avatars/…`, no leading slash or scheme — see
-/// [`admin_person_avatar_upload`]). A directory-sync seed reconciliation
-/// (`store::seed`) can instead write an arbitrary external photo URL, and a
-/// row written by this route before it moved to the private bucket holds an
-/// old-style `/assets/…` public path. Both of those are already a URL a
-/// browser can fetch directly, so a redirect resolves them with no backfill;
-/// only the bare key needs this handler to read the bucket itself.
+/// Refuse malformed public-image bytes and any public avatar wider or taller
+/// than [`MAX_PERSON_AVATAR_DIMENSION`]. The MIME type chose the decoder, so
+/// a JPEG body mislabeled as PNG cannot pass by merely having image-like data.
+fn validate_person_avatar_dimensions(bytes: &[u8], content_type: &str) -> Result<(), Response> {
+    let format = match content_type {
+        "image/png" => image::ImageFormat::Png,
+        "image/jpeg" => image::ImageFormat::Jpeg,
+        _ => return Err(StatusCode::BAD_REQUEST.into_response()),
+    };
+    let Ok((width, height)) =
+        image::ImageReader::with_format(Cursor::new(bytes), format).into_dimensions()
+    else {
+        return Err(StatusCode::BAD_REQUEST.into_response());
+    };
+    if width > MAX_PERSON_AVATAR_DIMENSION || height > MAX_PERSON_AVATAR_DIMENSION {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+    }
+    Ok(())
+}
+
+/// `profile_image_url`/`avatar_url` has three writer shapes. New Person avatar
+/// uploads store a public asset URL; a directory-sync seed may store another
+/// external URL; and historical Person/Entity uploads store bare private
+/// documents-bucket keys. URLs redirect directly, while only the historical
+/// private key needs this handler to read a bucket.
 enum StoredAvatar {
     DirectlyFetchableUrl(String),
     DocumentsBucketKey(String),
@@ -1025,8 +1052,8 @@ fn classify_stored_avatar(value: String) -> StoredAvatar {
     }
 }
 
-/// Stream a private-lane avatar back, or 404 when the row names none or the
-/// object is missing. Shared by the person and entity download handlers.
+/// Stream a historical private-lane avatar back, or redirect a public URL.
+/// Shared by the person and entity download handlers.
 async fn stream_avatar(
     storage: &Arc<dyn cloud::StorageService>,
     stored: Option<String>,
@@ -1059,11 +1086,9 @@ async fn stream_avatar(
 
 /// `POST /app/admin/people/{id}/avatar` — the native multipart form behind the
 /// Dioxus admin show/edit page's avatar upload card. Validates the image,
-/// writes it to the **private** documents bucket at `people/{id}/avatars/…`
-/// (never the public assets bucket — nothing on the site shows a person's
-/// avatar to a signed-out visitor since `/team` stopped being a roster), and
-/// points `profile_image_url` at the key so [`admin_person_avatar_download`]
-/// can stream it back to the admin surface that is now its only viewer.
+/// writes it to the public-assets bucket at `people/{id}/avatar.{jpg,png}` and
+/// records the public asset URL on the singular Surreal `person` row. The
+/// profile screen discloses that public availability before a person uploads.
 async fn admin_person_avatar_upload(
     State(s): State<AdminState>,
     Path(id): Path<Uuid>,
@@ -1080,23 +1105,38 @@ async fn admin_person_avatar_upload(
     let Some(Extension(session_data)) = session else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    let (content_type, bytes) =
-        match read_avatar_upload(&cookies, &session_data, &mut multipart).await {
-            Ok(pair) => pair,
-            Err(response) => return response,
-        };
-    let ext = ALLOWED_AVATAR_CONTENT_TYPES
+    let (content_type, bytes) = match read_avatar_upload(
+        &cookies,
+        &session_data,
+        &mut multipart,
+        &PERSON_AVATAR_CONTENT_TYPES,
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(response) => return response,
+    };
+    if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
+        return response;
+    }
+    let ext = PERSON_AVATAR_CONTENT_TYPES
         .iter()
         .find(|(allowed, _)| *allowed == content_type)
         .map_or("bin", |(_, ext)| *ext);
 
-    let key = format!("people/{id}/avatars/{id}.{ext}");
-    if let Err(e) = s.storage.put(&key, &bytes, &content_type).await {
+    let key = format!("people/{id}/avatar.{ext}");
+    if let Err(e) = s.assets_storage.put(&key, &bytes, &content_type).await {
         tracing::error!(error = %e, person_id = %id, "avatar upload: storage write failed");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
-    match store::persons::set_profile_image_url(&s.surreal, id, Some(key)).await {
+    match store::persons::set_profile_image_url(
+        &s.surreal,
+        id,
+        Some(views::assets::asset_url(&key)),
+    )
+    .await
+    {
         Ok(true) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
         Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
@@ -1106,10 +1146,11 @@ async fn admin_person_avatar_upload(
     }
 }
 
-/// `GET /app/admin/people/{id}/avatar` — stream the person's avatar from the
-/// private documents bucket. Admin-gated like every other `/app/admin/people`
-/// door: embedded Rego policy admits only Owner/Admin to that resource, and
-/// this handler re-checks it the same way [`admin_person_avatar_upload`] does.
+/// `GET /app/admin/people/{id}/avatar` — redirect the Person's public avatar
+/// URL, or stream a historical private documents-bucket key. It remains
+/// Admin-gated like every other `/app/admin/people` door: embedded Rego admits
+/// only Owner/Admin here, and this handler re-checks that rule like
+/// [`admin_person_avatar_upload`] does.
 async fn admin_person_avatar_download(
     State(s): State<AdminState>,
     Path(id): Path<Uuid>,
@@ -1204,23 +1245,38 @@ async fn profile_avatar_upload(
     let Some(id) = session_data.person_id else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    let (content_type, bytes) =
-        match read_avatar_upload(&cookies, &session_data, &mut multipart).await {
-            Ok(pair) => pair,
-            Err(response) => return response,
-        };
-    let ext = ALLOWED_AVATAR_CONTENT_TYPES
+    let (content_type, bytes) = match read_avatar_upload(
+        &cookies,
+        &session_data,
+        &mut multipart,
+        &PERSON_AVATAR_CONTENT_TYPES,
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(response) => return response,
+    };
+    if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
+        return response;
+    }
+    let ext = PERSON_AVATAR_CONTENT_TYPES
         .iter()
         .find(|(allowed, _)| *allowed == content_type)
         .map_or("bin", |(_, ext)| *ext);
 
-    let key = format!("people/{id}/avatars/{id}.{ext}");
-    if let Err(e) = s.storage.put(&key, &bytes, &content_type).await {
+    let key = format!("people/{id}/avatar.{ext}");
+    if let Err(e) = s.assets_storage.put(&key, &bytes, &content_type).await {
         tracing::error!(error = %e, person_id = %id, "profile avatar upload: storage write failed");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
-    match store::persons::set_profile_image_url(&s.surreal, id, Some(key)).await {
+    match store::persons::set_profile_image_url(
+        &s.surreal,
+        id,
+        Some(views::assets::asset_url(&key)),
+    )
+    .await
+    {
         Ok(true) => profile_avatar_upload_accepted(&headers),
         Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
@@ -1673,9 +1729,10 @@ async fn entities_delete(State(s): State<AdminState>, Path(id): Path<Uuid>) -> R
 }
 
 /// `POST /app/admin/entities/{id}/avatar` — the native multipart form behind
-/// the entity edit page's avatar upload card. Same validation and private
-/// documents-bucket lane as [`admin_person_avatar_upload`]; no `admin_gate`
-/// here for the same reason [`entities_update`] carries none — embedded Rego
+/// the entity edit page's avatar upload card. Its private documents-bucket
+/// lane differs from [`admin_person_avatar_upload`]'s public Person-avatar
+/// lane; no `admin_gate` here for the same reason [`entities_update`] carries
+/// none — embedded Rego
 /// policy's `admin_lawyer_resources` set already admits the lawyer tier (and
 /// Owner/Admin through the route bypass) to every `/app/admin/entities/*`
 /// door, so a handler-level admin check would wrongly narrow it.
@@ -1689,12 +1746,18 @@ async fn entities_avatar_upload(
     let Some(Extension(session_data)) = session else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    let (content_type, bytes) =
-        match read_avatar_upload(&cookies, &session_data, &mut multipart).await {
-            Ok(pair) => pair,
-            Err(response) => return response,
-        };
-    let ext = ALLOWED_AVATAR_CONTENT_TYPES
+    let (content_type, bytes) = match read_avatar_upload(
+        &cookies,
+        &session_data,
+        &mut multipart,
+        &ENTITY_AVATAR_CONTENT_TYPES,
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(response) => return response,
+    };
+    let ext = ENTITY_AVATAR_CONTENT_TYPES
         .iter()
         .find(|(allowed, _)| *allowed == content_type)
         .map_or("bin", |(_, ext)| *ext);

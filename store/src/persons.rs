@@ -224,17 +224,13 @@ pub struct Person {
     /// Xero Contacts via the billing seam (one-way, Neon Law Navigator →
     /// Xero). `None` until first synced.
     pub xero_contact_id: Option<String>,
-    /// This person's avatar. Never a public surface — `/team` stopped being a
-    /// per-person roster — but visible to more than the admin Person page
-    /// now: the caller's own `/app/profile` always shows it, Owner/Admin may
-    /// see any avatar, and any viewer may see a target when they share a
-    /// Project (`store::access::avatar_visible_to`). Two
-    /// shapes: a bare private documents-bucket key
-    /// (`people/{id}/avatars/…`, written by the admin or self-service
-    /// avatar-upload route), or a directly-fetchable URL (an old-style
-    /// `/assets/…` path from before that route moved off the public bucket,
-    /// or an external photo URL a directory-sync seed reconciliation
-    /// supplied).
+    /// This person's avatar. New native uploads are public asset URLs for the
+    /// canonical `people/{id}/avatar.{png,jpg}` object; the profile form
+    /// discloses this public availability before it submits. Historical rows
+    /// can still hold a bare private documents-bucket key
+    /// (`people/{id}/avatars/…`), while directory-sync may supply another
+    /// directly-fetchable external URL. Application avatar routes retain their
+    /// own viewer checks for the former private shape.
     pub profile_image_url: Option<String>,
     /// Optional `LinkedIn` profile URL, shown on the admin Person page.
     /// `None` until set by an admin edit.
@@ -553,11 +549,12 @@ pub struct PersonEdit {
     pub given_name: Option<Option<String>>,
     pub family_name: Option<Option<String>>,
     pub middle_name: Option<Option<String>>,
-    /// The admin-only avatar route for this person's photo in the private
-    /// documents bucket (`people/{id}/avatars/…`), or `None` when they have
-    /// none. A seed reconciliation may replace it while leaving identity and
-    /// authority untouched; browser-facing commands do not populate this
-    /// field directly, so their existing PATCH contract is unchanged.
+    /// The public avatar URL for this Person's photo, or `None` when they have
+    /// none. Historical rows may retain a private documents-bucket key
+    /// (`people/{id}/avatars/…`). A seed reconciliation may replace it while
+    /// leaving identity and authority untouched; browser-facing commands do
+    /// not populate this field directly, so their existing PATCH contract is
+    /// unchanged.
     pub profile_image_url: Option<Option<String>>,
     /// The person's `LinkedIn` profile URL, shown on their admin Person page.
     /// Edited through the ordinary admin Person form, same

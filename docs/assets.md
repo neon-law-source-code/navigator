@@ -262,12 +262,13 @@ with no ADC the blog fills in and that photo stays a broken image. A person or e
 at runtime through `/app/avatar` and `/app/profile/avatar` (self-service; both POST to the same handler so a relative
 form action from `/app/profile` and a nested absolute action both land). The profile page posts that multipart body in
 place and refreshes `/app/me/avatar` without leaving the page; a navigation without JavaScript still redirects back to
-`/app/profile`. Admin uploads use `/app/admin/people/{id}/avatar`, or `/app/admin/entities/{id}/avatar` into the
-**private documents** bucket (`people/{id}/avatars/…`, `entities/{id}/avatars/…`), so it has no manifest entry to pull
-in the first place, is not public HTTPS content at all, and falls back to an initials circle until someone uploads one.
-Person avatar reads are limited to the person, Owner/Admin, or a viewer who shares a Project participation with that
-person. Until `fetch-referenced` learns the manifest, fetch a manifest photo's variants directly; the widths and formats
-are the ones `views::assets` generates:
+`/app/profile`. Person avatars, including an Admin upload at `/app/admin/people/{id}/avatar`, are public HTTPS content:
+the uploader writes a PNG or JPEG to the public-assets key `people/{id}/avatar.{png,jpg}` and the singular Surreal
+`person.profile_image_url` records its public asset URL. The profile form says this before submission and limits uploads
+to 5 MB and 1024 × 1024 pixels. Entity avatars remain private documents-bucket objects (`entities/{id}/avatars/…`).
+Dynamic avatars have no manifest entry to pull; application avatar routes retain their authorization checks, but a
+public Person-avatar URL is intentionally world-readable. Until `fetch-referenced` learns the manifest, fetch a manifest
+photo's variants directly; the widths and formats are the ones `views::assets` generates:
 
 ```bash
 mkdir -p server/public/img/lake-tahoe

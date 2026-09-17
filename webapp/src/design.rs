@@ -552,7 +552,7 @@ fn AppProfileMenuShowcase() -> Element {
             p {
                 "The circular avatar is the always-visible trigger. Opening it reveals the "
                 "viewer's Projects destination and Sign out action without requiring client-side "
-                "JavaScript. The real route serves the uploaded private avatar or initials fallback "
+                "JavaScript. The real route redirects an uploaded public avatar URL or serves an initials fallback "
                 "from the authenticated session."
             }
             nav { class: "lawyer-nav", "aria-label": "Application",

@@ -698,6 +698,41 @@ fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
 }
 
 #[test]
+fn validate_leaves_an_application_owned_templates_directory_alone() {
+    // The published Project gate runs `navigator validate .` over the whole
+    // checkout, and the layout permits application source under `apps/<app>/`
+    // and a root `portal/`. A Vite application's own `src/templates/*.md` is
+    // an application asset, not a notation, so asking it for a `kind:` would
+    // redden the required check on every repository carrying that shape. The
+    // lane is the repository's own `templates/` root and nothing else.
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    // A real Vite application, since a bare directory trips the layout's
+    // own workspace check before this rule is ever reached.
+    let app = dir.path().join("apps/web");
+    fs::create_dir_all(app.join("src/templates")).unwrap();
+    fs::write(app.join("package.json"), "{}\n").unwrap();
+    fs::write(app.join("index.html"), "<!doctype html>\n").unwrap();
+    fs::write(app.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+    fs::write(app.join("src/templates/page.md"), "# Page layout\n").unwrap();
+
+    validate(dir.path())
+        .success()
+        .stdout(str::contains("0 error(s)"));
+
+    // The repository's own template root is still held to it.
+    fs::write(
+        dir.path().join("templates/will.md"),
+        "---\ntitle: Last Will\ncode: sample__will\nconfidential: true\n---\n\n# Last Will\n",
+    )
+    .unwrap();
+    validate(dir.path())
+        .failure()
+        .code(1)
+        .stdout(str::contains("under `templates/` but declares no `kind:`"));
+}
+
+#[test]
 fn validate_ignores_raw_document_bytes_materialised_by_a_pull() {
     // LAW-12: `site sync` and `site pull` exist to put bytes under
     // `documents/`, and the `documents/.gitignore` they write keeps those
@@ -721,6 +756,9 @@ fn validate_ignores_raw_document_bytes_materialised_by_a_pull() {
     validate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"))
+        // Skipping is right, but silence about it is not: an author must be
+        // able to tell a clean run from a run that looked at less.
+        .stdout(str::contains("gitignored file(s) were not validated"))
         .stderr(predicates::str::contains(raw.display().to_string()).not());
 }
 

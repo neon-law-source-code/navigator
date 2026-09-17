@@ -135,8 +135,60 @@ fn in_template_lane(path: &std::path::Path) -> bool {
     {
         return false;
     }
-    path.components()
-        .any(|c| matches!(c, std::path::Component::Normal(seg) if seg == "templates"))
+    let mut templates_dirs = path
+        .ancestors()
+        .filter(|a| a.file_name().and_then(|n| n.to_str()) == Some("templates"))
+        .peekable();
+    if templates_dirs.peek().is_none() {
+        return false;
+    }
+    // Without a repository root there is nothing to measure the directory
+    // against, so any `templates/` tree counts — which is all a bare
+    // directory can mean, and what an ad hoc `navigator validate <dir>`
+    // over one expects.
+    if !has_repository_root(path) {
+        return true;
+    }
+    templates_dirs.any(is_repository_template_root)
+}
+
+/// The files that mark a directory as the root of a checkout: a Project
+/// repository's manifest, and the two any clone of either tree carries.
+const REPOSITORY_MARKERS: &[&str] = &["navigator.yaml", ".git", "Cargo.toml"];
+
+/// Whether any ancestor of `path` is a repository root.
+fn has_repository_root(path: &std::path::Path) -> bool {
+    path.ancestors().skip(1).any(is_repository_root)
+}
+
+/// Whether `dir` carries a [`REPOSITORY_MARKERS`] entry. An empty path is
+/// the working directory, which is what a relative `navigator validate .`
+/// produces for a root-level `templates/`.
+fn is_repository_root(dir: &std::path::Path) -> bool {
+    let dir = if dir.as_os_str().is_empty() {
+        std::path::Path::new(".")
+    } else {
+        dir
+    };
+    REPOSITORY_MARKERS
+        .iter()
+        .any(|marker| dir.join(marker).exists())
+}
+
+/// Whether `templates_dir` is a repository's own template root rather than
+/// a directory that merely shares the name.
+///
+/// This is the distinction the reviewer of navigator#607 caught: the
+/// Project layout permits application source under `apps/<app>/` and a
+/// root `portal/`, and the published Project gate runs `navigator validate
+/// .` over the whole checkout. A Vite application's `src/templates/*.md`
+/// is an application asset, and holding it to the notation lane would have
+/// reddened the required check on every repository carrying that shape.
+/// The lane is the `templates/` directory sitting directly in the
+/// repository root — `TEMPLATE_DIRECTORY` in a Project repository, and
+/// Navigator's own catalog.
+fn is_repository_template_root(templates_dir: &std::path::Path) -> bool {
+    templates_dir.parent().is_some_and(is_repository_root)
 }
 
 /// The finding for a template-lane file that declares no `kind:`.
@@ -368,6 +420,61 @@ mod tests {
                     .is_empty(),
                 "`{path}` must not be held to the template lane"
             );
+        }
+    }
+
+    /// A repository-shaped tree on disk: `root/<marker>` plus `rel`.
+    fn repository_with(marker: &str, rel: &str) -> (tempfile::TempDir, PathBuf) {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(root.path().join(marker), "").expect("write marker");
+        let path = root.path().join(rel);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
+        std::fs::write(&path, "# Page\n").expect("write file");
+        (root, path)
+    }
+
+    #[test]
+    fn application_source_under_a_nested_templates_directory_is_not_the_lane() {
+        // The Project layout permits application source under `apps/<app>/`
+        // and a root `portal/`, and the published Project gate runs
+        // `navigator validate .` over the whole checkout. A Vite app's own
+        // `src/templates/*.md` is an application asset, not a notation, so
+        // demanding a `kind:` there would have reddened the gate on every
+        // repository carrying that shape.
+        for (marker, rel) in [
+            (".git", "apps/web/src/templates/page.md"),
+            ("navigator.yaml", "portal/src/templates/page.md"),
+            ("navigator.yaml", "src/templates/page.md"),
+        ] {
+            let (_root, path) = repository_with(marker, rel);
+            let file = SourceFile {
+                path,
+                contents: "# Page\n".to_string(),
+            };
+            assert!(
+                S104MissingKind.lint(&file).is_empty(),
+                "`{rel}` is application source, not a template lane"
+            );
+        }
+    }
+
+    #[test]
+    fn the_templates_directory_at_the_repository_root_is_the_lane() {
+        // The lane is the repository's own `templates/` root — the one
+        // `TEMPLATE_DIRECTORY` names in a Project repository and the one
+        // Navigator's catalog lives in.
+        for (marker, rel) in [
+            ("navigator.yaml", "templates/will.md"),
+            (".git", "templates/notations/neon_law/shared/will.md"),
+        ] {
+            let (_root, path) = repository_with(marker, rel);
+            let file = SourceFile {
+                path,
+                contents: "---\ntitle: Last Will\ncode: test__will\n---\n".to_string(),
+            };
+            let violations = S104MissingKind.lint(&file);
+            assert_eq!(violations.len(), 1, "`{rel}` should be flagged");
+            assert_eq!(violations[0].code, "S104");
         }
     }
 }

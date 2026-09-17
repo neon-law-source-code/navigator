@@ -666,6 +666,20 @@ fn layout_entries(
     // what it ignores and skip exactly that, so this walk and the `gate`
     // branch above stop disagreeing about one directory.
     let ignored = git_ignored_files(root);
+    // Say what was skipped. Honouring `.gitignore` is right for the staged
+    // document bytes it exists for, but a repository-level `*.md`,
+    // `documents/`, or `/templates/` rule can make a whole untracked
+    // subtree disappear from `validate` behind a zero-error result, and an
+    // author who is not told cannot tell that apart from a clean run. The
+    // gate branch above is unaffected: it enumerates tracked and stageable
+    // files, so a forced-added byte is still seen either way.
+    if !ignored.is_empty() {
+        println!(
+            "note: {} gitignored file(s) were not validated; run `git check-ignore -v <path>` \
+             to see which rule covers one",
+            ignored.len()
+        );
+    }
     let mut entries = Vec::new();
     for entry in walkdir::WalkDir::new(root)
         .follow_links(false)

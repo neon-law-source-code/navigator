@@ -1647,7 +1647,9 @@ struct NotationAnswer {
 
 /// `navigator site notation answers <id>` — read filed answers and their
 /// provenance through the same lawyer-tier, matter-scoped API door as the
-/// browser workbench.
+/// browser workbench. The door requires a firm-side participation row of every
+/// tier, so an operator holding Owner or Admin and no row on the matter is
+/// refused with the same `404` as anyone else.
 pub async fn notation_answers(host: Option<&str>, notation_id: Uuid, json: bool) -> ExitCode {
     run(async {
         let (base, token) = resolve(host)?;

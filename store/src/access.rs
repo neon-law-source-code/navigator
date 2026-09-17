@@ -349,11 +349,15 @@ pub async fn supervised_projects(
 ///
 /// It deliberately does *not* delegate the firm arm to
 /// [`can_see_project_as_lawyer`], which still carries the documented
-/// project-scoping bypass for the surfaces this slice did not move (`/app/api/*`,
-/// the notation walker, contract reviews). Those are ENG-83's to
+/// project-scoping bypass for the surfaces this slice did not move (most of
+/// `/app/api/*`, the notation walker, contract reviews). Those are ENG-83's to
 /// collapse. Until then the two functions differ for exactly one input —
 /// an Owner or Admin with no row — so reach for this one on the matter
 /// surface and that one everywhere else.
+///
+/// A door added since ENG-81 that returns matter *content* starts here rather
+/// than waiting for ENG-83: the private notation inventory and a notation's
+/// filed answers already do.
 pub async fn can_see_project(
     surreal: &SurrealDb,
     person_id: Option<Uuid>,
@@ -384,10 +388,15 @@ pub async fn can_see_project_as_client(
 /// Owner/Admin project-scoping bypass still applied.
 ///
 /// This is the gate for the firm surfaces ENG-81 has **not** collapsed yet —
-/// `/app/api/*`, the notation walker, and contract reviews. It keeps the
+/// most of `/app/api/*`, the notation walker, and contract reviews. It keeps the
 /// behavior documented in `docs/access-model.md` so this slice does not quietly
 /// re-authorize surfaces outside its scope. The matter surface uses
-/// [`can_see_project`] instead, which has no bypass.
+/// [`can_see_project`] instead, which has no bypass, as do the matter-content
+/// reads added since — they are content, not oversight, so they never wanted
+/// the bypass in the first place.
+///
+/// Reach for this one only to keep an *existing* surface's behavior. A new
+/// door belongs on [`can_see_project`].
 pub async fn can_see_project_as_lawyer(
     surreal: &SurrealDb,
     person_id: Option<Uuid>,

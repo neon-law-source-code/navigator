@@ -23,7 +23,7 @@ fn project_gate_workflow() -> serde_yaml::Value {
 
 /// ENG-674: `verify` (the only remaining job that sets up pnpm, now that
 /// `lint`'s duplicate application-linting has folded into it) reads the
-/// manifest path from `navigator site projects applications --manifest`
+/// manifest path from `navigator project applications --manifest`
 /// rather than hard-coding one of the three layouts `application_workspaces`
 /// admits.
 #[test]
@@ -63,35 +63,35 @@ fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
     );
 }
 
-/// ENG-671: `notation` installs the CLI through the shared composite action
+/// Every job installs the CLI through the shared composite action
 /// (self-referenced with a pinned tag, since a step's `uses` key takes no
 /// expression) rather than an inline download block, and threads
 /// `read-manifest`'s resolved tag into it via `with: version:`, which `uses`
 /// cannot carry but a step's `with:` block can.
 #[test]
-fn the_project_gate_notation_job_installs_the_cli_through_the_composite_action() {
+fn the_project_gate_verify_job_installs_the_cli_through_the_composite_action() {
     let workflow = project_gate_workflow();
     let jobs = workflow["jobs"].as_mapping().expect("project gate jobs");
-    let notation_steps = jobs[&serde_yaml::Value::String("notation".to_string())]["steps"]
+    let verify_steps = jobs[&serde_yaml::Value::String("verify".to_string())]["steps"]
         .as_sequence()
-        .expect("notation steps");
+        .expect("verify steps");
 
     assert!(
-        notation_steps.iter().any(|step| {
+        verify_steps.iter().any(|step| {
             step["run"]
                 .as_str()
-                .is_some_and(|run| run.contains("navigator validate ."))
+                .is_some_and(|run| run.contains("navigator project gate --ci"))
         }),
-        "notation must run the installed CLI directly"
+        "verify must run the installed CLI directly"
     );
-    let install_step = notation_steps.iter().find(|step| {
+    let install_step = verify_steps.iter().find(|step| {
         step["uses"]
             .as_str()
             .is_some_and(|uses| uses.contains("/.github/actions/navigator-install@"))
     });
     assert!(
         install_step.is_some(),
-        "notation must install the CLI through the shared composite action"
+        "verify must install the CLI through the shared composite action"
     );
     assert_eq!(
         install_step.unwrap()["with"]["version"].as_str(),
@@ -298,8 +298,8 @@ fn every_navigator_install_reference_pins_the_same_tag() {
 
     assert_eq!(
         refs.len(),
-        5,
-        "expected all five CLI-installing jobs (verify, notation, documents, manifest, seeds) \
+        3,
+        "expected all three CLI-installing jobs (verify, documents, seeds) \
          to reference the composite action"
     );
     assert!(

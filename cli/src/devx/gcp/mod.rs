@@ -1204,7 +1204,7 @@ mod tests {
         let raw = std::fs::read_to_string(deploy_md)
             .expect("read DEPLOY.md — the deploy workshop must exist for this grounding test");
         // Collapse whitespace before matching. These are prose sentences, and
-        // `navigator validate` reflows prose to fill 120 columns — so a wording
+        // `navigator project gate` reflows prose to fill 120 columns — so a wording
         // edit anywhere earlier in a paragraph can push a pinned sentence across
         // a line break and fail this test for a reason that is not a regression.
         // The sibling grounding test in `cli/tests/workshop_command_grounding.rs`

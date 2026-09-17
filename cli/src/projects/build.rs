@@ -1,4 +1,4 @@
-//! `navigator site projects build` — install, lint, typecheck, test, and
+//! `navigator project build` — install, lint, typecheck, test, and
 //! build every application a Project repository declares.
 //!
 //! `project-gate.yml` and `project-publish.yml` used to reimplement this

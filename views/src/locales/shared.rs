@@ -275,7 +275,7 @@ pub fn referenced_keys(raw: &str) -> Vec<String> {
 ///
 /// A page catalog may carry the two brand placeholders and any shared
 /// reference. Anything else is a typo that would otherwise reach the page as
-/// a literal brace, so `navigator validate` rejects it.
+/// a literal brace, so `navigator project gate` rejects it.
 pub fn check_page_placeholders(stem: &str, raw: &str) -> Result<(), String> {
     for placeholder in placeholders(raw) {
         if placeholder.starts_with(REFERENCE_PREFIX)

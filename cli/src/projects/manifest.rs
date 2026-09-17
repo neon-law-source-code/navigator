@@ -1,6 +1,6 @@
 //! Project-repository `navigator.yaml` — one accepted key set, one reader.
 //!
-//! `navigator validate` and `navigator site projects drift` share this list so
+//! `navigator project gate` and `navigator project drift` share this list so
 //! a key one side honours cannot be a key the other refuses. Unknown keys are
 //! refused by name. There is no per-repository exemption key.
 

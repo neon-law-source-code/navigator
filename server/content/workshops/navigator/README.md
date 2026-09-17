@@ -287,7 +287,7 @@ writes the matter row. Immediately after submitting, `/app/projects/<code>` name
 Close that gap from the matter page's admin retry, or from the CLI:
 
 ```bash
-navigator site projects surfaces reconcile --project <code>
+navigator project surfaces reconcile --project <code>
 ```
 
 This creates — or adopts, if one already exists — an empty private GitHub repository and Drive folder, and records the
@@ -303,7 +303,7 @@ and MCP paths, which provision both surfaces synchronously as part of opening.
 Clone the now-existing empty repository, then generate its shell:
 
 ```bash
-navigator site projects repository scaffold <code> --dir . --action-version <YY.M.D>
+navigator project repository scaffold <code> --dir . --action-version <YY.M.D>
 ```
 
 `scaffold` is idempotent. It writes `README.md`, `AGENTS.md`, a `CLAUDE.md` symlink, `tests/README.md`, and two
@@ -328,7 +328,7 @@ what a sync would do, then run it:
 ```bash
 navigator site sync --dry-run
 navigator site sync
-navigator validate .
+navigator project gate
 ```
 
 Against a staged `documents/exhibits/exhibit-a.png`, the dry run prints one line per staged file and a count, and
@@ -413,8 +413,8 @@ needed.
 ### Verify
 
 ```bash
-navigator site projects doctor --project <code>
-navigator site projects drift --dir ~/neon-law
+navigator project doctor --project <code>
+navigator project drift --dir ~/neon-law
 ```
 
 `doctor` reports whether this machine and this Project's coordinates agree — the repository URL, the Drive folder, and

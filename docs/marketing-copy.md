@@ -53,7 +53,7 @@ Which stems a key ships is [`BrandKey::catalog_pages`](../views/src/brand.rs). D
 pages plus `/contact` (addresses, not a YAML stem); Lawyer Shook answers `/` alone. Other firm paths 404 on that host
 rather than rendering Neon's words.
 
-`views::locales` is the typed schema. `navigator validate` deserializes each file as the page its stem names, so a
+`views::locales` is the typed schema. `navigator project gate` deserializes each file as the page its stem names, so a
 missing field or an unknown stem fails the gate before a brand crate can load it. The advertising guards in
 `neon::firm_copy` still read the loaded Neon pages when the Rust suite runs.
 
@@ -82,8 +82,8 @@ heading:
 `{shared:<key>}` resolves before `{site_name}` and `{firm_email}`, in the raw YAML, so a reference works in any string
 field without the page schema knowing about it. A shared value may itself carry the two brand placeholders.
 
-[`views::locales::shared`](../views/src/locales/shared.rs) is the contract, and `navigator validate` (`Y002`) enforces
-all of it:
+[`views::locales::shared`](../views/src/locales/shared.rs) is the contract, and `navigator project gate` (`Y002`)
+enforces all of it:
 
 - **`catalog_version` equals the version this build authors.** A consumer built for another version refuses the
   document rather than rendering half of it.
@@ -144,7 +144,7 @@ the doors in Rust.
 Change the YAML, then run:
 
 ```bash
-cargo run -p cli --quiet -- validate .
+cargo run -p cli --quiet -- project gate
 ```
 
 CI always runs that command. It skips `cargo test --workspace` when the PR touches no Rust sources. A schema change
@@ -153,4 +153,4 @@ belongs in `views::locales` and is a Rust change.
 The catalog is compiled into the brand crate with `include_str!`. A merged YAML edit lands on the next image build that
 compiles `neon`.
 
-See [`validate.md`](validate.md) for `Y002` and [`gitops.md`](gitops.md) for the conditional rust job.
+See [`gate.md`](gate.md) for `Y002` and [`gitops.md`](gitops.md) for the conditional rust job.

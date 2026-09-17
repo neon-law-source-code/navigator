@@ -67,10 +67,10 @@ Four admin-tier operations act on a Firm's own provider resources, and the `navi
 
 | Command | Door |
 | --- | --- |
-| `navigator site projects notion ensure <code>` / `--all` | `POST /app/api/integrations/notion/ensure` |
-| `navigator site projects notion reconcile <code>` / `--all` | `POST /app/api/integrations/notion/reconcile` |
-| `navigator site projects slack ensure <code>` | `POST /app/api/integrations/slack/ensure` |
-| `navigator site projects slack notify <code> --event <kind>` | `POST /app/api/integrations/slack/notify` |
+| `navigator project notion ensure <code>` / `--all` | `POST /app/api/integrations/notion/ensure` |
+| `navigator project notion reconcile <code>` / `--all` | `POST /app/api/integrations/notion/reconcile` |
+| `navigator project slack ensure <code>` | `POST /app/api/integrations/slack/ensure` |
+| `navigator project slack notify <code> --event <kind>` | `POST /app/api/integrations/slack/notify` |
 
 They carry their own noun rather than nesting under `projects`, for the reason `project-surfaces` does: the `projects`
 policy rule admits any authenticated caller several segments deep, so a provisioning path nested there would be

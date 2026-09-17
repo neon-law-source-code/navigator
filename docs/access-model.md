@@ -416,7 +416,7 @@ request:
 
 ```json
 {
-  "path":       ["admin", "projects", "9a..."],
+  "path":       ["admin", "project", "9a..."],
   "method":     "GET",
   "session":    {
     "sub":   "<idp subject>",

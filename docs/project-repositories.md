@@ -163,7 +163,7 @@ between documents, splitting one chain or merging two — so it is a re-filing, 
 
 **The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
 [`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to
-the live row, so it cannot referee a disagreement between the two, and `navigator site projects drift` is where that
+the live row, so it cannot referee a disagreement between the two, and `navigator project drift` is where that
 disagreement is reported instead. The publish action is different: it uploads to a bucket prefix, and the prefix a
 Project repository declares for itself is the one that should win. Vite still derives its own build-time base from the
 checkout directory (`basename(resolve(__dirname, '..'))`), so a repository whose manifest names a code other than its
@@ -292,9 +292,9 @@ a deliberate visibility change, either of which needs a human rather than a sile
 
 `POST /app/api/project-surfaces/{id}` is the admin retry for a failed or legacy row. It carries its own noun rather than
 sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.
-CLI: `navigator site projects surfaces reconcile --project <code>` — an HTTP client of this same door, like every other
+CLI: `navigator project surfaces reconcile --project <code>` — an HTTP client of this same door, like every other
 `navigator site` command. It resolves the given code to an id through `GET /app/api/projects` (the same lookup
-`navigator site projects close` uses) and never opens a database connection of its own, even against a local deployment.
+`navigator project close` uses) and never opens a database connection of its own, even against a local deployment.
 Project participation is never copied onto the forge.
 
 ## The CI gate
@@ -322,22 +322,24 @@ steps, GitHub posts no check run under its own name at all — it posts one per 
 check `ops github setup` binds a Project repository's ruleset to is the compound context `ci / ci`, not the bare `ci` a
 repository whose `ci.yml` runs its own steps (like Navigator's own) requires.
 
-The scaffold generates four feeder jobs — verify, notation, documents, and manifest — for the Project check. A malformed
-manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce misleading
-findings. Each feeder job runs unconditionally and no-ops over a half this repository does not carry. `verify` installs
-the CLI through `.github/actions/navigator-install`, then runs `navigator site projects build`, which discovers every
-application — the root portal during the transition, `apps/<app>/`, or a root Vite workspace — and installs, lints,
-typechecks, tests, and builds each one; a repository with none no-ops.
+The scaffold generates three feeder jobs — verify, documents, and seeds — for the Project check. A malformed manifest is
+reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce misleading findings. Each
+feeder job runs unconditionally and no-ops over a half this repository does not carry. `verify` installs the CLI through
+`.github/actions/navigator-install`, then runs `navigator project build`, which discovers every application — the root
+portal during the transition, `apps/<app>/`, or a root Vite workspace — and installs, lints, typechecks, tests, and
+builds each one; a repository with none no-ops. It then runs `navigator project gate --ci` over the whole tree: the
+content rules, the layout, and — because this is the job that produced them — the origin pass reading each built
+`dist/`. One command, one job; on a push to `main` the same run also checks `navigator.yaml` against the live row.
 
 The `documents` job validates every `documents/` pointer — offline on every event, and additionally against the live
 asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange
-`seed-import` uses, at `POST /auth/ci/document-token`). It runs unconditionally alongside the other three and no-ops
-over a repository carrying no `documents/`, and is one of the required check's dependencies. Its offline half keeps pull
+`seed-import` uses, at `POST /auth/ci/document-token`). It runs unconditionally alongside the others and no-ops over a
+repository carrying no `documents/`, and is one of the required check's dependencies. Its offline half keeps pull
 requests independent of a live deployment; its live half runs only on a push to `main`.
 
-The `manifest` and `seeds` jobs retain their main-only live checks. `navigator validate` covers the offline shape of
-every `seeds/*.yaml` document on pull requests, while the live reconciliation remains outside the required `ci`
-dependencies because it needs a reachable deployment.
+The `seeds` job retains its main-only live check. `navigator project gate` covers the offline shape of every
+`seeds/*.yaml` document on pull requests, while the live reconciliation remains outside the required `ci` dependencies
+because it needs a reachable deployment.
 
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
 and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository
@@ -351,7 +353,7 @@ What the gate proves:
   refused by path and by extension.
 - Every direct `templates/<code>.md` passes the notation rules, each template's `code` equals its filename stem, and no
   template names `Neon Law` with a corporate suffix other than the firm entity of record (`Y010` in
-  [`docs/validate.md`](validate.md)).
+  [`docs/gate.md`](gate.md)).
 - Every direct `apps/<app>/package.json` declares a Vite workspace with an `index.html` and a lockfile. A root
   `portal/` has the same contract during the transition. The lockfile flavor is not constrained and there is
   deliberately **no dependency allowlist**: third-party libraries are the point, and Node never enters the Navigator
@@ -426,7 +428,7 @@ provider's `attributeCondition` must never be rewritten by hand: one CEL express
 Navigator's own `navigator-ci-pusher` deploy identity included, so a clause appended carelessly breaks Navigator's
 deploys an hour later and somewhere else.
 
-The thin caller workflow lives in the Project repository. `navigator site projects repository scaffold` writes
+The thin caller workflow lives in the Project repository. `navigator project repository scaffold` writes
 `.github/workflows/cd.yml`, so a scaffolded repository never hand-copies the build or publish implementation:
 
 ```yaml
@@ -521,7 +523,7 @@ applications live at the repository root, so the build emits `dist/` rather than
 
 The example at `docs/examples/sample-portal-publish.yml` is the same thin `cd.yml` caller that the scaffold emits. It
 passes the release pin, Project code, and staging host to the reusable publisher; it contains no build script, Python,
-bucket name, or credential. A new sample repository is `navigator site projects repository scaffold`.
+bucket name, or credential. A new sample repository is `navigator project repository scaffold`.
 
 The CLI parser refuses unknown manifest keys by naming the accepted set, and the origin scan skips an empty first label
 so a regex-literal `//.test(` is not a host.
@@ -573,8 +575,8 @@ and one for CD; it does not copy the job implementations or any Python helper.
 ## Scaffolding a repository
 
 ```bash
-navigator site projects repository scaffold <project-code> --dir . --host staging.neonlaw.com --action-version YY.M.D
-navigator validate .
+navigator project repository scaffold <project-code> --dir . --host staging.neonlaw.com --action-version YY.M.D
+navigator project gate
 ```
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `.gitattributes` pinning
@@ -582,8 +584,8 @@ checkout text files to LF, a versioned nested `navigator.yaml`, the thin PR-only
 caller guarded by the reusable publisher's deployment configuration, `README.md`, and `AGENTS.md`. It also writes a
 `CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder
 `templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing hand-copied
-`ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator validate` requires that
-pair: `AGENTS.md` must exist, `CLAUDE.md` must deliver the same bytes (the nine-byte stub form is refused), and the
+`ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator project gate` requires
+that pair: `AGENTS.md` must exist, `CLAUDE.md` must deliver the same bytes (the nine-byte stub form is refused), and the
 contract must name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the
 matter repository. The same `validate` walk extracts `navigator …` invocations from the repository's Markdown and checks
 each against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit
@@ -600,8 +602,8 @@ never created.
 
 It does **not** write `apps/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows how
 to make a Vite application and which released `@neon-law/ux` version to pin. A direct `apps/<app>/package.json` is the
-declaration the validator and generated gate discover. A root `portal/` remains valid during the layout transition and
-is checked by the same rules.
+declaration the gate discovers. A root `portal/` remains valid during the layout transition and is checked by the same
+rules.
 
 `validate` accepts templates, applications, either, or both, and reports a repository carrying neither distinctly rather
 than failing it. A Project may legitimately open before either half exists.
@@ -658,13 +660,13 @@ experiences them as one sequence, not five, so this section threads them togethe
    explicitly to create (or adopt) the empty private repository and Drive folder:
 
    ```bash
-   navigator site projects surfaces reconcile --project <code>
+   navigator project surfaces reconcile --project <code>
    ```
 
 3. **Populate the repository.** Clone it, then run [`scaffold`](#scaffolding-a-repository):
 
    ```bash
-   navigator site projects repository scaffold <code> --dir . --action-version <YY.M.D>
+   navigator project repository scaffold <code> --dir . --action-version <YY.M.D>
    ```
 
    Commit and push what it writes — that push is what makes `.github/workflows/ci.yml` live on the new repository.
@@ -678,8 +680,8 @@ experiences them as one sequence, not five, so this section threads them togethe
 6. **Verify.**
 
    ```bash
-   navigator site projects doctor --project <code>
-   navigator site projects drift --dir ~/<organization>
+   navigator project doctor --project <code>
+   navigator project drift --dir ~/<organization>
    ```
 
 Step 2's gap is current behavior, not a documented design choice: nothing marks the browser-only path as intentionally
@@ -700,12 +702,12 @@ These are **source** roots. Git never stores legal files, so they must not conve
 
 ## Verifying a machine
 
-`navigator site projects doctor` reports whether this machine and one Project workspace actually satisfy the map above,
-before anything is created:
+`navigator project doctor` reports whether this machine and one Project workspace actually satisfy the map above, before
+anything is created:
 
 ```bash
-navigator site projects doctor
-navigator site projects doctor --project acme
+navigator project doctor
+navigator project doctor --project acme
 ```
 
 It resolves the active deployment from `NAVIGATOR_GCP_PROJECT_ID`, then reports that deployment's Google Workspace,
@@ -723,7 +725,7 @@ It is not `ops doctor`, which diagnoses scheduled-job health in a running Kubern
 To create or adopt the three handles after a failed or legacy open:
 
 ```bash
-navigator site projects surfaces reconcile --project acme
+navigator project surfaces reconcile --project acme
 ```
 
 The same pass runs best-effort when a matter opens. This command is the operator retry: it authenticates to the
@@ -742,7 +744,7 @@ Reconciliation is therefore two halves, in two places, because the two questions
 | Question | Answered by | Needs |
 | --- | --- | --- |
 | Does this row agree with the repository it records? | [the reconciliation door][door] | One row and a rule |
-| Does this repository's declared code name a live row? | `navigator site projects drift` | The checkouts on a machine |
+| Does this repository's declared code name a live row? | `navigator project drift` | The checkouts on a machine |
 
 [door]: #reconciling-the-rows-against-what-they-record
 
@@ -751,8 +753,8 @@ so a row whose URL names a different repository is drift with no checkout involv
 a machine holding the clones knows what repositories exist. This section is the second half.
 
 ```bash
-navigator site projects drift --dir ~/<organization>
-navigator site projects drift --dir ~/<organization> --all --json
+navigator project drift --dir ~/<organization>
+navigator project drift --dir ~/<organization> --all --json
 ```
 
 It reads every checkout directly under `--dir` — the [local checkout root](#local-checkouts) — and takes the live

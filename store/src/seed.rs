@@ -580,7 +580,7 @@ pub async fn reconcile_yaml(
 /// Validate a seed document without connecting to a deployment.
 ///
 /// This is the same parser the authenticated reconciliation path uses, so a
-/// document accepted by `navigator validate` cannot fail later because the
+/// document accepted by `navigator project gate` cannot fail later because the
 /// two paths disagree about its shape.
 pub fn validate_yaml(model: SeedModel, yaml: &str) -> anyhow::Result<()> {
     match model {

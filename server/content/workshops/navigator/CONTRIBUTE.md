@@ -164,7 +164,7 @@ lawyer-only acceptance fields unmapped. Then run the form tests before you open 
 
 ```bash
 cargo test -p forms
-cargo run -p cli -- validate templates
+cargo run -p cli -- project gate
 ```
 
 ## Share What You Learn

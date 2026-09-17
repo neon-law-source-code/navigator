@@ -38,7 +38,7 @@ fn validate_action() -> String {
         .join("..")
         .join(".github")
         .join("actions")
-        .join("validate")
+        .join("gate")
         .join("action.yml");
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
 }
@@ -249,7 +249,7 @@ fn the_slack_message_offers_a_download_for_every_published_archive() {
 
 /// The macOS archive, and the 404 it closes.
 ///
-/// `.github/actions/validate` has always mapped a macOS runner to
+/// `.github/actions/gate` has always mapped a macOS runner to
 /// `platform=macos` and downloaded `navigator-<tag>-macos.tar.gz`. Nothing
 /// built one, so the notation gate failed on any Project repository that ran
 /// it on a macOS runner — the same breakage the Linux job's comment describes,
@@ -278,7 +278,7 @@ fn releases_build_and_attach_a_macos_cli_archive() {
 /// The same two-file contract the Linux archive is held to, for the platform
 /// whose absence was the reason to write this test.
 #[test]
-fn the_macos_archive_name_matches_what_the_validate_action_downloads() {
+fn the_macos_archive_name_matches_what_the_gate_action_downloads() {
     assert!(
         validate_action().contains("macOS)  platform=macos"),
         "the validate action must still map a macOS runner to the `macos` platform"
@@ -324,7 +324,7 @@ fn a_failed_cli_build_pages_engineering() {
 
 /// The Linux archive is the one CI actually consumes, and it went missing for
 /// long enough that no repository had a working notation gate. `deploy.yml`
-/// built and attached Windows only, while `.github/actions/validate` asks for
+/// built and attached Windows only, while `.github/actions/gate` asks for
 /// `navigator-<tag>-linux.tar.gz` on every runner.
 #[test]
 fn releases_build_and_attach_a_linux_cli_archive() {
@@ -347,12 +347,12 @@ fn releases_build_and_attach_a_linux_cli_archive() {
 }
 
 /// The archive name is a contract between two files that never reference each
-/// other. `.github/actions/validate` composes
+/// other. `.github/actions/gate` composes
 /// `navigator-${VERSION}-${platform}.tar.gz` with `platform=linux`; `deploy.yml`
 /// has to produce exactly that. Nothing else in the tree ties them together,
 /// and the drift cost every consuming repository its `ci` job.
 #[test]
-fn the_linux_archive_name_matches_what_the_validate_action_downloads() {
+fn the_linux_archive_name_matches_what_the_gate_action_downloads() {
     let action = validate_action();
 
     assert!(

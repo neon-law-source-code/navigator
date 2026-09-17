@@ -37,7 +37,7 @@
 //!   fence or frontmatter sat between them)
 //!
 //! The rule autofixes: `fix` repacks the whole block around the
-//! violation rather than pulling one word up, so `navigator validate
+//! violation rather than pulling one word up, so `navigator project gate
 //! --fix` reaches the rule's own fixpoint in a single pass. It declines
 //! the blocks where repacking would rewrite the document tree — an
 //! indented code block, a closing hard break, or a pack that would leave

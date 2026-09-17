@@ -498,17 +498,17 @@ Imbue markdown with a ton of rules. Incremental progress.
 ![Ferris inspects legal pages with a magnifying glass](img/rust-in-peace/clippy-for-law.png)
 
 ```bash
-navigator validate --help
-Validate Markdown and YAML files in `<dir>` (default `.`).
+navigator project gate --help
+Check this repository.
 
-Usage: navigator validate [OPTIONS] [DIR]
-
-Arguments:
-  [DIR]  Directory to walk [default: .]
+Usage: navigator project gate [OPTIONS]
 
 Options:
-      --fix   Apply every safe-by-construction rule autofix (whitespace, ATX heading spacing, blockquote.
-  -h, --help  Print help
+      --ci
+          Hold the run to what CI can prove.
+
+  -h, --help
+          Print help (see a summary with '-h')
 ```
 
 ---

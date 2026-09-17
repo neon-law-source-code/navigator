@@ -74,9 +74,9 @@ of Neon Law IP LLC (U.S. Reg. No. 6,325,650); **DELETEYOURDATA.COM™** and **LA
 Shook Law PLLC; see the [Trademarks note in the root README.md](../README.md#trademarks). A rebrand goes through the
 white-label seam.
 
-`navigator validate` rejects any legal template outside `notations/forms/` or `notations/neon_law/`. Those two shelves
-are the whole legal-notation surface; `github/` sits beside `notations/` for engineering intake, and nowhere else
-qualifies.
+`navigator project gate` rejects any legal template outside `notations/forms/` or `notations/neon_law/`. Those two
+shelves are the whole legal-notation surface; `github/` sits beside `notations/` for engineering intake, and nowhere
+else qualifies.
 
 `github/` holds the engineering intake notations — the questionnaires that gather what a GitHub issue or pull request
 needs before it is opened, and the bodies that render the answers into the text that gets posted. They declare `kind:
@@ -103,7 +103,7 @@ blast radius; the pull request states what changed, the covering test, the gates
 
 ## Naming convention
 
-The `navigator validate` command enforces these with the N-family notation rules:
+The `navigator project gate` command enforces these with the N-family notation rules:
 
 1. **Only `notations/forms/`, `notations/neon_law/`, and `github/` are valid template locations.**
 2. **Every legal template declares `jurisdiction:`**, using a code from `store/seeds/Jurisdiction.yaml` such as `NV`,
@@ -113,22 +113,16 @@ The `navigator validate` command enforces these with the N-family notation rules
 4. **Shared firm codes are role-first**: `onboarding__letter`, `offboarding__letter`.
 5. **Every path segment is lowercase `snake_case`**.
 
-Run it before committing:
+Run it from the repository root before committing. One run covers this tree and every other workspace README, and the
+gate classifies each file automatically, so there is no path or mode flag to pass:
 
 ```bash
-cargo run -p cli --quiet -- validate templates
-```
-
-This `README.md` is linted like every other workspace README (the validator classifies each file automatically, so there
-is no mode flag to pass):
-
-```bash
-cargo run -p cli --quiet -- validate templates/README.md
+cargo run -p cli --quiet -- project gate
 ```
 
 ## Authoring with live feedback — the LSP
 
-You do not have to run `validate` by hand to find a problem. The same rule engine ships as a small language server,
+You do not have to run the gate by hand to find a problem. The same rule engine ships as a small language server,
 `navigator-lsp`, that any editor (VS Code, Zed, Neovim, Helix, Emacs) can attach to `*.md`. As you type a notation it
 underlines what is wrong, in place:
 
@@ -148,7 +142,7 @@ attorneys in [`docs/frontmatter.md`](../docs/frontmatter.md); editor setup is in
 2. Add a sibling `<code>.fields.toml` when the form is fillable.
 3. Add a sibling `<code>.md` whose `code` matches the filename stem and whose `origin_url` is the government source.
 4. Add the PDF to `forms/src/lib.rs` so the binary embeds the same bytes the repo carries.
-5. Run `cargo run -p cli -- validate templates` and the `forms` crate tests.
+5. Run `cargo run -p cli -- project gate` and the `forms` crate tests.
 
 ## Licensing
 

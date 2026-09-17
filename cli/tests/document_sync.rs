@@ -82,7 +82,7 @@ fn write_agent_contract(root: &Path) {
     fs::copy(root.join("AGENTS.md"), &claude).unwrap();
 }
 
-fn write_layout_for_validate(root: &Path) {
+fn write_layout_for_the_gate(root: &Path) {
     write(
         root,
         "navigator.yaml",
@@ -90,6 +90,14 @@ fn write_layout_for_validate(root: &Path) {
     );
     write(root, "README.md", "# acme\n\nProject source.\n");
     write_agent_contract(root);
+    // The gate identifies a repository root by its `README` and `.git`, and
+    // reads the files Git would carry.
+    let status = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(root)
+        .status()
+        .expect("git init");
+    assert!(status.success(), "git init failed in {}", root.display());
     write(
         root,
         ".github/workflows/ci.yml",
@@ -214,10 +222,10 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
         .success()
         .stdout(predicate::str::contains("0 uploaded"));
 
-    write_layout_for_validate(root.path());
+    write_layout_for_the_gate(root.path());
     navigator()
         .current_dir(root.path())
-        .args(["validate", "."])
+        .args(["project", "gate"])
         .assert()
         .success();
 }
@@ -528,18 +536,17 @@ async fn pull_round_trips_synced_bytes_and_a_second_pull_writes_nothing() {
         .success()
         .stdout(predicate::str::contains("0 pulled"));
 
-    // The layout gate scans the filesystem directly and knows nothing about
-    // `.gitignore`, so the bytes `pull` just wrote are exactly as refused as
-    // any other raw document byte would be — `pull` must never widen that gate.
-    write_layout_for_validate(root.path());
+    // `pull` writes into `documents/`, whose `.gitignore` keeps the bytes out of
+    // Git; the gate judges what a pull request proposes, so it reads them as
+    // absent rather than as committed material. The guard that a *tracked* raw
+    // byte still fails is `gate_reports_a_tracked_raw_document_byte` in
+    // `cli/tests/project_repository.rs`.
+    write_layout_for_the_gate(root.path());
     navigator()
         .current_dir(root.path())
-        .args(["validate", "."])
+        .args(["project", "gate"])
         .assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "legal documents and raw document bytes must not be committed",
-        ));
+        .success();
 }
 
 #[tokio::test(flavor = "multi_thread")]

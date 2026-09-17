@@ -2,8 +2,8 @@
 //!
 //! Four operations, all admin-tier: ensure or reconcile a Project's
 //! Firm-private Notion page, and ensure or notify its Firm-private Slack
-//! channel. They are the server half of `navigator site projects notion` and
-//! `navigator site projects slack`.
+//! channel. They are the server half of `navigator project notion` and
+//! `navigator project slack`.
 //!
 //! ## Why its own noun
 //!

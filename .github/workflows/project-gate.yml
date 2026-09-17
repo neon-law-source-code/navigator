@@ -65,14 +65,13 @@ jobs:
               echo "project=${project}"
           } >> "${GITHUB_OUTPUT}"
 
-  # ENG-674: `lint` used to be a whole job holding only the install+lint half
-  # of what `verify` does with the rest — a split that existed because the
-  # bash re-detected applications independently in each place. `navigator
-  # site projects build` runs install, lint, typecheck, test, and build for
-  # every application in one call, so the split has nothing left to justify
-  # it; `verify` below now covers lint's ground too.
+  # Installs, lints, typechecks, tests, and builds every application this
+  # repository declares, then runs the one gate over the whole tree.
   verify:
     needs: read-manifest
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -95,7 +94,7 @@ jobs:
       # repository declares no application.
       - name: locate the application manifest
         id: application
-        run: echo "manifest=$(navigator site projects applications --manifest)" >> "${GITHUB_OUTPUT}"
+        run: echo "manifest=$(navigator project applications --manifest)" >> "${GITHUB_OUTPUT}"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.application.outputs.manifest != ''
         with:
@@ -108,27 +107,17 @@ jobs:
       # application, one at a time, stopping at the first failure. A
       # repository with none prints a notice and succeeds — the gate still
       # passes, it simply has nothing to build.
-      - name: navigator site projects build
-        run: navigator site projects build --dir .
-      # The origin gate (`Y009`) reads each application's built `dist/`, so it
-      # can only run in the job that produced one. `notation` validates a bare
-      # checkout on its own runner and never sees a build.
-      - name: navigator validate --ci
-        if: steps.application.outputs.manifest != ''
-        run: navigator validate . --ci
-
-  notation:
-    needs: read-manifest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # See the matching comment in the `verify` job: this pin lags until a
-      # release publishes the action.
-      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.17-rc.1
-        with:
-          version: ${{ needs.read-manifest.outputs.version }}
-      - name: navigator validate
-        run: navigator validate .
+      - name: navigator project build
+        run: navigator project build --dir .
+      # One gate over the whole repository: content rules, YAML, seeds,
+      # locales, layout, mount, and — because this is the job that ran the
+      # builds — the origin pass (`Y009`) reading each `dist/`. `--ci` writes
+      # nothing, so a file the gate would have fixed fails here rather than
+      # being rewritten in a checkout about to be discarded, and it opens the
+      # live-row door on the one ref that can mint a session. The host is the
+      # one `navigator.yaml` declares, so there is nothing to pass here.
+      - name: navigator project gate
+        run: navigator project gate --ci
 
   documents:
     needs: read-manifest
@@ -156,35 +145,9 @@ jobs:
               navigator site document verify .
           fi
 
-  manifest:
-    needs: read-manifest
-    permissions:
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # See the matching comment in the `verify` job: this pin lags until a
-      # release publishes the action.
-      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.17-rc.1
-        with:
-          version: ${{ needs.read-manifest.outputs.version }}
-      - name: live status
-        env:
-          HOST: ${{ inputs.host }}
-          EVENT_NAME: ${{ github.event_name }}
-          REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
-              navigator site projects gate --ci --host "${HOST}"
-          else
-              navigator site projects gate
-          fi
-
-  # Reconciles `seeds/` against the live deployment. `navigator validate`
+  # Reconciles `seeds/` against the live deployment. `navigator project gate`
   # already covers the offline shape of every `seeds/*.yaml` document (in
-  # `notation`, above) on every event, including a pull request from a fork —
+  # `verify`, above) on every event, including a pull request from a fork —
   # so this job mints nothing there. A PR branch cannot mint a scoped token in
   # any case (`POST /auth/ci/seed-token` only honors `refs/heads/main`), which
   # is exactly the hole a token mintable from a fork would open. Only a push
@@ -221,11 +184,11 @@ jobs:
           if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
               navigator site import --ci --host "${HOST}" --dir seeds
           else
-              echo "seeds/*.yaml is validated offline by navigator validate; reconciling against a live deployment happens on push to main"
+              echo "seeds/*.yaml is checked offline by navigator project gate; reconciling against a live deployment happens on push to main"
           fi
 
   ci:
-    needs: [read-manifest, verify, notation, documents, manifest]
+    needs: [read-manifest, verify, documents]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -233,6 +196,4 @@ jobs:
         run: |
           test "${{ needs.read-manifest.result }}" = "success"
           test "${{ needs.verify.result }}" = "success"
-          test "${{ needs.notation.result }}" = "success"
           test "${{ needs.documents.result }}" = "success"
-          test "${{ needs.manifest.result }}" = "success"

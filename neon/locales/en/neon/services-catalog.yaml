@@ -3,7 +3,7 @@
 # This is the machine-readable twin of the prose cards in `services.yaml`: the
 # same work, carrying the identifiers, item numbers, categories, keywords, and
 # fees a reader can search and a consumer can pin. `views::locales::services`
-# is the typed check `navigator validate` runs over it (Y002), and
+# is the typed check `navigator project gate` runs over it (Y002), and
 # `cli/examples/export-services-catalog.rs` publishes it as an
 # integrity-checked artifact the way `shared.yaml` is published.
 #

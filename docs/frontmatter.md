@@ -284,7 +284,7 @@ description: Why Neon Law chose one language for fast, safe, local-first access-
 The narrative above covers the keys you reach for daily. This table is the complete set the system knows, grouped by
 document kind, so nothing is hidden. The `Checked by` column names which rule catches a missing or malformed key; for
 what each code actually checks, its severity, and whether it autofixes, see the canonical reference at
-[`validate.md`](validate.md).
+[`gate.md`](gate.md).
 
 ### Notation template
 
@@ -392,7 +392,7 @@ flag is there to protect. Editor setup is in <lsp/README.md>.
 The editor checks continuously, but you can run the same checker by hand over a file or folder:
 
 ```bash
-cargo run -p cli --quiet -- validate <path>
+cargo run -p cli --quiet -- project gate
 ```
 
 It classifies each file automatically — a template is held to the template rules, a blog post to the blog rules, prose

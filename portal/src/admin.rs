@@ -2533,7 +2533,7 @@ async fn projects_create_lawyer_only(
     };
 
     // Open the matter through the shared command — the same boundary
-    // `POST /app/api/projects` (and, over HTTP, the CLI's `site projects
+    // `POST /app/api/projects` (and, over HTTP, the CLI's `project
     // create`) uses (#355). It owns the reference checks, the conflict
     // block, the attestation audit row, both DRI
     // designations in one transaction. The form is a thin adapter: it resolves

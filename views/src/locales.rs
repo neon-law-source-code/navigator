@@ -8,7 +8,7 @@
 //! `{shared:<key>}` pulls one sentence from the cross-repository catalog in
 //! [`shared`]; everything a visitor reads is otherwise the YAML.
 //!
-//! [`parse_locale_file`] is the typed check `navigator validate` runs so a
+//! [`parse_locale_file`] is the typed check `navigator project gate` runs so a
 //! copy-only edit cannot land a document the brand crate cannot load.
 
 use std::path::Path;
@@ -717,7 +717,7 @@ bands:
     }
 
     /// The services catalog reaches its own validator through the same
-    /// `parse_locale_file` seam every page does, so `navigator validate`'s
+    /// `parse_locale_file` seam every page does, so `navigator project gate`'s
     /// locale pass covers it under `Y002` with no change to the walker.
     #[test]
     fn the_services_catalog_stem_routes_to_its_validator() {

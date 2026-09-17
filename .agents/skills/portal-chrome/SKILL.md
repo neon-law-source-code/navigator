@@ -5,8 +5,8 @@ description: >
   `NavigatorShell` with `NavigatorNavbar` and `NavigatorFooter`, and a way back to the matter show page — and it never
   repaints the palette or hand-rolls the frame. Trigger whenever a task touches a portal's styling, colours, header,
   footer, navigation, or page frame, and before adding any stylesheet to `portal/src/styles/`. Synced verbatim into
-  every Project repository's `.claude/skills/` by `navigator site projects repository sync-skills`; this canonical copy
-  lives in Navigator's own `.agents/skills/`.
+  every Project repository's `.claude/skills/` by `navigator project repository sync-skills`; this canonical copy lives
+  in Navigator's own `.agents/skills/`.
 ---
 
 # The portal wears the library, unmodified
@@ -101,9 +101,9 @@ fill and stroke — a hex value there is the one mark on the page that will not 
 ## Before you open a pull request
 
 ```bash
-navigator validate .
+navigator project gate
 cd portal && pnpm check
 ```
 
-`navigator validate` reads `project:` from `navigator.yaml`. Without that key the layout half does not run, and a
+`navigator project gate` reads `project:` from `navigator.yaml`. Without that key the layout half does not run, and a
 checkout whose directory name is not the Project code still validates against the manifest.

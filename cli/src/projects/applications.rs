@@ -1,4 +1,4 @@
-//! `navigator site projects applications` — the same application discovery
+//! `navigator project applications` — the same application discovery
 //! [`super::build`] runs, exposed for a workflow step that needs to know
 //! before it runs anything.
 //!

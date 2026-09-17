@@ -214,7 +214,7 @@ pub struct SourceFile {
 /// A single rule violation discovered during linting.
 ///
 /// `range` is the byte offset span into the source file that the rule
-/// is flagging — used by the LSP server and `cli validate --fix` to
+/// is flagging — used by the LSP server and the gate's autofix to
 /// pinpoint the edit. `line` is the 1-based line number derived from
 /// `range.start`; kept as a separate field so the CLI text output and
 /// existing consumers stay unchanged.
@@ -407,7 +407,7 @@ pub fn description_for_code(code: &str) -> &'static str {
 /// Whether a violation blocks the gate (`Error`) or merely advises
 /// (`Warning`).
 ///
-/// `navigator validate` and CI fail on `Error`-severity violations and
+/// `navigator project gate` and CI fail on `Error`-severity violations and
 /// report `Warning`s without failing; `navigator-lsp` renders `Error`
 /// as a red squiggle and `Warning` as a yellow one. Severity is keyed
 /// off the rule code (a sibling of [`description_for_code`]) so the
@@ -415,7 +415,7 @@ pub fn description_for_code(code: &str) -> &'static str {
 /// unchanged — adding a field would touch every one of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
-    /// A blocking problem: fails `navigator validate`, red in the editor.
+    /// A blocking problem: fails `navigator project gate`, red in the editor.
     Error,
     /// A non-blocking advisory: reported but does not fail the gate,
     /// yellow in the editor. The "allowed but not built yet" signal.
@@ -427,7 +427,7 @@ pub enum Severity {
 /// Every rule is [`Severity::Error`] — a violation blocks the gate —
 /// except the "not built yet" advisories (currently `N112`), which are
 /// [`Severity::Warning`]: they surface as a yellow squiggle and are
-/// reported by `navigator validate` without failing it. The `N112`
+/// reported by `navigator project gate` without failing it. The `N112`
 /// *rule* (the emitter) lands in a later change; its severity and
 /// description are declared here first so the gate is severity-aware
 /// before anything emits a warning.

@@ -33,7 +33,7 @@ pub fn lint_buffer(path: PathBuf, text: String) -> (SourceFile, Vec<Violation>) 
 ///
 /// The LSP severity mirrors the gate severity from
 /// [`rules::severity_for_code`]: a blocking error (anything that fails
-/// `navigator validate`) renders as a **red** squiggle, while a
+/// `navigator project gate`) renders as a **red** squiggle, while a
 /// non-blocking advisory (e.g. `N112`, "step allowed but not built yet")
 /// renders as a **yellow** one — the same red/yellow split a lawyer sees
 /// described in `docs/frontmatter.md`.

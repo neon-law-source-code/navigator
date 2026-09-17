@@ -1,5 +1,5 @@
 # Example `cd.yml` for a Project repository. New repositories should use
-# `navigator site projects repository scaffold`, which writes this shape.
+# `navigator project repository scaffold`, which writes this shape.
 # The shared workflow owns build, validation, and publication; the repository
 # names only its own Project and deployment host.
 

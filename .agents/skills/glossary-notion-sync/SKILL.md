@@ -99,7 +99,7 @@ say the same thing worse.
 
    ```bash
    cargo run -p cli --quiet -- dev docs glossary-index --write
-   cargo run -p cli --quiet -- validate docs/glossary.md
+   cargo run -p cli --quiet -- project gate
    cargo nextest run -p cli -p store
    ```
 

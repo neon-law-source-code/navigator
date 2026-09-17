@@ -76,9 +76,10 @@ to" prose.
 
 ## Verify and hand off
 
-Run `cargo run -p cli --quiet -- validate .` after the change, plus the focused test and every gate the changed surface
-requires under `docs/agent-workflows.md`. For Rust or runtime changes, run formatting, clippy with warnings denied, the
-workspace tests, and coverage as that document requires. Verify user-facing changes through the documented browser loop.
+Run `cargo run -p cli --quiet -- project gate` after the change, plus the focused test and every gate the changed
+surface requires under `docs/agent-workflows.md`. For Rust or runtime changes, run formatting, clippy with warnings
+denied, the workspace tests, and coverage as that document requires. Verify user-facing changes through the documented
+browser loop.
 
 Before handoff, rebase with `git rebase -S origin/main` again and rerun the affected checks. Keep the issue identifier
 out of public prose except the bare identifier permitted by `docs/agent-workflows.md`; do not push, change Linear, or

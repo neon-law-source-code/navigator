@@ -186,13 +186,13 @@ matter.
 Three rule families guard every template, enforced identically in your editor, in `cli validate`, and in CI — because
 all three call the same `rules` crate. A template that is clean on your laptop is clean in the merge gate. N-family
 rules are diagnostic-only: a human must resolve them, the tool will not auto-rewrite legal structure. The full code
-table — every rule, its severity, and whether it autofixes — is the canonical reference at [`validate.md`](validate.md);
-this page only covers what those rules mean for a template's shape and body.
+table — every rule, its severity, and whether it autofixes — is the canonical reference at [`gate.md`](gate.md); this
+page only covers what those rules mean for a template's shape and body.
 
 Run it before committing any `.md` change:
 
 ```bash
-cargo run -p cli --quiet -- validate <path>
+cargo run -p cli --quiet -- project gate
 ```
 
 ## Authoring in markdown with the LSP
@@ -325,8 +325,8 @@ fresh PDF.
 any validation-passing notation template and compiles it in pure Rust. Because templates are authored in **Markdown**
 but the `pdf` crate compiles **Typst**, the body is converted by `pdf::markdown::to_typst` (headings, emphasis, lists,
 block quotes, inline code, links) before rendering. The command validates the file against the same rule set as
-`navigator validate`, refuses to render a template with any violation, and fills placeholders through the same notation
-evaluator used by preview and final PDF generation.
+`navigator project gate`, refuses to render a template with any violation, and fills placeholders through the same
+notation evaluator used by preview and final PDF generation.
 
 ### Harvard outline
 

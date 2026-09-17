@@ -1,11 +1,12 @@
-//! `navigator site projects gate` — the Project CI live-status check.
+//! The live-status half of `navigator project gate --ci`.
 //!
-//! Layout and origin already run through `navigator validate`. This verb adds
-//! the one question CI can only ask the deployment: whether `navigator.yaml`
-//! agrees with the live row (code, host, `repository_url`, status). `--ci`
-//! mints through GitHub Actions OIDC at `POST /auth/ci/document-token` and
-//! reads the participation-scoped project list. Without the OIDC request URL
-//! the door stays shut (exit 2) rather than falling back to a stored login.
+//! Layout, origin, and every content rule run offline in the gate itself. This
+//! module asks the one question only the deployment can answer: whether
+//! `navigator.yaml` agrees with the live row (code, host, `repository_url`,
+//! status). It mints through GitHub Actions OIDC at
+//! `POST /auth/ci/document-token`, and never falls back to a stored login: the
+//! door opens only where the server would honour it — a push or dispatch on
+//! `refs/heads/main` — and says it skipped everywhere else.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -14,36 +15,49 @@ use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 
 use super::manifest::{self, Manifest};
-use super::repository;
 use crate::remote;
 
-/// Run layout validation, then the OIDC live-status door when `--ci` is set.
-pub async fn run(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode {
-    let status = repository::validate_gate(dir, None);
-    if status != ExitCode::SUCCESS {
-        return status;
-    }
-    if !ci {
+/// Open the OIDC live-status door for a Project repository.
+///
+/// The mint honors only a push or dispatch on `refs/heads/main`, so anywhere
+/// else the door is shut at the server and asking would be a guaranteed 403.
+/// That makes this its own condition rather than a flag a caller has to
+/// remember: the gate runs the same way everywhere and the door opens where it
+/// can open.
+pub(crate) async fn live_status(dir: &Path) -> ExitCode {
+    let Some(host) = manifest_host(dir) else {
+        return ExitCode::SUCCESS;
+    };
+    if !on_main_push() || std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_err() {
+        println!("Skipped the live row: only a push to main mints a CI session");
         return ExitCode::SUCCESS;
     }
-    if std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_err() {
-        eprintln!(
-            "navigator: --ci exchanges GitHub Actions OIDC at POST /auth/ci/document-token; \
-             ACTIONS_ID_TOKEN_REQUEST_URL is unset — this is not a GitHub Actions job"
-        );
-        return ExitCode::from(2);
-    }
-    let Some(host) = host.map(str::trim).filter(|host| !host.is_empty()) else {
-        eprintln!("navigator: --ci requires --host");
-        return ExitCode::from(2);
-    };
-    match check_live(dir, host).await {
+    match check_live(dir, &host).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("navigator: {error:#}");
             ExitCode::from(1)
         }
     }
+}
+
+/// The deployment `navigator.yaml` names, which is the only host this gate
+/// speaks to. A repository that names none has no live row to check.
+fn manifest_host(dir: &Path) -> Option<String> {
+    let contents = std::fs::read_to_string(dir.join(manifest::FILE)).ok()?;
+    let parsed = manifest::parse(&contents).ok()?;
+    parsed
+        .host
+        .as_deref()
+        .map(str::trim)
+        .filter(|host| !host.is_empty())
+        .map(str::to_string)
+}
+
+fn on_main_push() -> bool {
+    std::env::var("GITHUB_REF").is_ok_and(|git_ref| git_ref == "refs/heads/main")
+        && std::env::var("GITHUB_EVENT_NAME")
+            .is_ok_and(|event| matches!(event.as_str(), "push" | "workflow_dispatch"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,18 +78,6 @@ async fn check_live(dir: &Path, host: &str) -> Result<()> {
         .map(str::trim)
         .filter(|code| !code.is_empty())
         .ok_or_else(|| anyhow!("navigator.yaml has no project:"))?;
-    if let Some(manifest_host) = parsed
-        .host
-        .as_deref()
-        .map(str::trim)
-        .filter(|h| !h.is_empty())
-    {
-        if !hosts_agree(manifest_host, host) {
-            return Err(anyhow!(
-                "manifest host `{manifest_host}` does not match --host `{host}`"
-            ));
-        }
-    }
     let reason = rowless_reason(&parsed);
     let (base, token) = remote::resolve_ci_document(host).await?;
     let response = reqwest::Client::new()
@@ -106,19 +108,6 @@ fn rowless_reason(manifest: &Manifest) -> Option<&str> {
         }
         _ => None,
     }
-}
-
-fn hosts_agree(manifest_host: &str, flag: &str) -> bool {
-    let base = crate::credentials::base_url(flag);
-    if base.starts_with("http://") {
-        return true;
-    }
-    let flag_host = base
-        .trim_start_matches("https://")
-        .split('/')
-        .next()
-        .unwrap_or(flag);
-    manifest_host.eq_ignore_ascii_case(flag_host)
 }
 
 fn this_repository_url() -> Option<String> {
@@ -269,22 +258,6 @@ mod tests {
             Some("https://github.com/org/acme"),
         )
         .unwrap();
-    }
-
-    #[test]
-    fn hosts_agree_on_loopback_even_when_the_manifest_names_staging() {
-        assert!(super::hosts_agree(
-            "staging.neonlaw.com",
-            "http://127.0.0.1:9"
-        ));
-    }
-
-    #[test]
-    fn hosts_disagree_when_the_flag_is_a_different_https_host() {
-        assert!(!super::hosts_agree(
-            "staging.neonlaw.com",
-            "https://other.example"
-        ));
     }
 
     #[tokio::test(flavor = "current_thread")]

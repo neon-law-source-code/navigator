@@ -74,7 +74,7 @@ name: deploy
 #      waits for it. Building them earlier also billed three runners, one a
 #      90-minute cold Windows compile, on releases whose e2e then went red.
 #
-#      IT IS LOAD-BEARING BEYOND THE HUMAN DOWNLOAD. `.github/actions/validate`
+#      IT IS LOAD-BEARING BEYOND THE HUMAN DOWNLOAD. `.github/actions/gate`
 #      — the composite gate EVERY Project repository runs — fetches
 #      `navigator-<version>-<platform>` from the Release this job creates. If
 #      it stops running, Project CI breaks everywhere with a download 404 and
@@ -2065,7 +2065,7 @@ jobs:
   # These jobs are PEERS of each other and of the publishes, and
   # `release-windows-cli-publish` waits for all three so one Release carries
   # every platform. A release that cannot produce its CLI is not a complete
-  # release: `.github/actions/validate` — the gate every Project repository runs
+  # release: `.github/actions/gate` — the gate every Project repository runs
   # — downloads these archives, so a missing one breaks Project CI everywhere
   # while this run reports green.
   release-windows-cli-build:
@@ -2179,7 +2179,7 @@ jobs:
     needs: [integration, release-version, release-tag]
     if: needs.release-version.outputs.publishable == 'true'
     runs-on: ubuntu-latest
-    # This is the archive CI actually consumes. `.github/actions/validate`
+    # This is the archive CI actually consumes. `.github/actions/gate`
     # derives its download from the runner's platform and asks for
     # `navigator-<tag>-linux.tar.gz`; its own comment says the Windows `.zip`
     # ships "for humans, not runners". So without this job the notation gate
@@ -2226,12 +2226,12 @@ jobs:
           mkdir -p dist/navigator-linux
           install -m 0755 target/release/navigator dist/navigator-linux/navigator
           # LICENSE and NOTICE travel with the archive, for the reason the
-          # Windows packaging step gives. `.github/actions/validate` extracts
+          # Windows packaging step gives. `.github/actions/gate` extracts
           # only `navigator`, so the extra members cost a CI consumer nothing.
           install -m 0644 LICENSE dist/navigator-linux/LICENSE
           install -m 0644 NOTICE dist/navigator-linux/NOTICE
           # `-C` is load-bearing: the members must sit at the archive ROOT.
-          # `.github/actions/validate` unpacks with
+          # `.github/actions/gate` unpacks with
           # `tar -xzf "${asset}" -C "${tmp}" navigator`, which matches nothing
           # if the binary carries a `dist/navigator-linux/` prefix.
           tar -czf "dist/navigator-${TAG}-linux.tar.gz" \
@@ -2295,7 +2295,7 @@ jobs:
     if: needs.release-version.outputs.publishable == 'true'
     runs-on: macos-latest
     # The third archive, and the one that closes a live hole rather than adding
-    # a convenience: `.github/actions/validate` ALREADY maps a macOS runner to
+    # a convenience: `.github/actions/gate` ALREADY maps a macOS runner to
     # `platform=macos` and downloads `navigator-<tag>-macos.tar.gz`. Until this
     # job existed, every Project repository running the notation gate on a
     # macOS runner failed on a download 404 — the same class of breakage the
@@ -2870,7 +2870,7 @@ jobs:
     #
     # `release-windows-cli-publish` must SUCCEED rather than being allowed to
     # skip. It cuts the tag and the Release, and
-    # `.github/actions/validate` — the gate every Project repository runs —
+    # `.github/actions/gate` — the gate every Project repository runs —
     # downloads the CLI from that Release. A skipped attach breaks Project CI
     # everywhere while this run reports green, so it is gated on success rather
     # than on not-failure.

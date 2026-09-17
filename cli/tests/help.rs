@@ -80,8 +80,8 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             "forms",
             "notations",
             "ops",
+            "project",
             "site",
-            "validate",
             "help",
         ]
     );
@@ -166,13 +166,13 @@ fn site_import_help_lists_the_seed_arguments() {
 
 #[test]
 fn site_projects_close_accepts_an_effective_time() {
-    let output = help(&["site", "projects", "close", "--help"]);
+    let output = help(&["project", "close", "--help"]);
 
     assert!(output.contains("--effective-at <EFFECTIVE_AT>"));
     assert!(unwrapped(&output).contains("RFC 3339 time when the matter actually closed."));
 }
 
-/// `site projects` is the Project workspace group: the verbs that operate on
+/// `projects` is the Project workspace group: the verbs that operate on
 /// the Drive folder plus the one repository a code names live with the site's
 /// project list and workbench.
 ///
@@ -195,7 +195,7 @@ fn site_projects_close_accepts_an_effective_time() {
 #[test]
 fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
-        command_names(&help(&["site", "projects", "--help"])),
+        command_names(&help(&["project", "--help"])),
         vec![
             "applications",
             "archive-repository",
@@ -216,11 +216,11 @@ fn projects_help_lists_the_project_workspace_verbs() {
         ]
     );
     assert_eq!(
-        command_names(&help(&["site", "projects", "repository", "--help"])),
+        command_names(&help(&["project", "repository", "--help"])),
         vec!["scaffold", "sync-skills", "help"]
     );
     assert_eq!(
-        command_names(&help(&["site", "projects", "surfaces", "--help"])),
+        command_names(&help(&["project", "surfaces", "--help"])),
         vec!["reconcile", "help"]
     );
 }
@@ -231,7 +231,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
 /// leave an operator guessing which one they want.
 #[test]
 fn the_two_doctors_keep_distinct_headlines() {
-    let projects = unwrapped(&help(&["site", "projects", "doctor", "--help"]));
+    let projects = unwrapped(&help(&["project", "doctor", "--help"]));
     assert!(
         projects.contains("Verify this machine and a Project workspace before Navigator creates."),
         "projects doctor headline: {projects}"
@@ -521,7 +521,6 @@ fn site_help_lists_the_live_deployment_members() {
             "mail",
             "mcp",
             "notation",
-            "projects",
             "pull",
             "seed",
             "sync",
@@ -785,7 +784,7 @@ fn notation_create_help_lists_template_and_client_flags() {
         .stdout(str::contains("--project"));
 }
 
-/// `--entity-name` is genuinely optional on `navigator site projects create`
+/// `--entity-name` is genuinely optional on `navigator project create`
 /// (ENG-473): omitting it opens the matter against a `Human` entity created
 /// for the client instead, which then requires `--jurisdiction` — asserted
 /// directly against the live command rather than a doc-comment scan, since
@@ -796,8 +795,7 @@ fn projects_create_requires_a_jurisdiction_when_entity_name_is_omitted() {
     Command::cargo_bin("navigator")
         .unwrap()
         .args([
-            "site",
-            "projects",
+            "project",
             "create",
             "--name",
             "No Entity",

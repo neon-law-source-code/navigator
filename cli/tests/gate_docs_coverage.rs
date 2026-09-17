@@ -1,9 +1,9 @@
-//! Guard that `docs/validate.md` documents every rule code that actually ships.
+//! Guard that `docs/gate.md` documents every rule code that actually ships.
 //!
 //! ENG-381 found 54 of 84 codes documented nowhere: the whole M-family, plus C003, E002, N112,
 //! N116, S102, and Y001. This test enumerates every code the `rules` crate and `cli`'s own
 //! seed-document pass emit and fails, naming each offender, when one has no entry in
-//! `docs/validate.md` — so a new rule cannot merge without its row in the table, which is how the
+//! `docs/gate.md` — so a new rule cannot merge without its row in the table, which is how the
 //! original 54 accumulated (N120 and Y001 both shipped in the two days before this test existed,
 //! neither with a doc change).
 
@@ -26,6 +26,9 @@ const ENTITY_CODE: &str = "Y010";
 const MANIFEST_COMMENT_CODE: &str = "Y011";
 const MANIFEST_VERSION_CODE: &str = "Y012";
 const MANIFEST_DEPRECATED_CODE: &str = "Y013";
+/// `F001` is the formatting pass's code: under `--ci` the gate withholds a fix
+/// it would otherwise have written, and reports the file instead.
+const UNFORMATTED_CODE: &str = "F001";
 
 fn all_shipped_codes() -> BTreeSet<&'static str> {
     let mut codes = BTreeSet::new();
@@ -59,23 +62,23 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
     codes.insert(MANIFEST_COMMENT_CODE);
     codes.insert(MANIFEST_VERSION_CODE);
     codes.insert(MANIFEST_DEPRECATED_CODE);
+    codes.insert(UNFORMATTED_CODE);
     codes
 }
 
 #[test]
-fn every_shipped_code_has_an_entry_in_validate_docs() {
+fn every_shipped_code_has_an_entry_in_the_gate_docs() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let validate_md =
-        fs::read_to_string(root.join("docs/validate.md")).expect("read docs/validate.md");
+    let gate_md = fs::read_to_string(root.join("docs/gate.md")).expect("read docs/gate.md");
 
     let missing: Vec<&str> = all_shipped_codes()
         .into_iter()
-        .filter(|code| !validate_md.contains(code))
+        .filter(|code| !gate_md.contains(code))
         .collect();
 
     assert!(
         missing.is_empty(),
-        "docs/validate.md has no entry for: {}. Add a row to the matching family table.",
+        "docs/gate.md has no entry for: {}. Add a row to the matching family table.",
         missing.join(", ")
     );
 }
@@ -83,6 +86,6 @@ fn every_shipped_code_has_an_entry_in_validate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_one_hundred() {
-    assert_eq!(all_shipped_codes().len(), 100);
+fn the_shipped_code_count_is_one_hundred_and_one() {
+    assert_eq!(all_shipped_codes().len(), 101);
 }

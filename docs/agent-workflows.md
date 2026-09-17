@@ -59,7 +59,7 @@ When a dirty tree is ready to land:
 3. Run the matching gate. Markdown changes require the workspace pass:
 
    ```bash
-   cargo run -p cli --quiet -- validate .
+   cargo run -p cli --quiet -- project gate
    ```
 
    The client-data gate rides along with the workspace test suite in step 4; there is no separate command.
@@ -359,7 +359,7 @@ but do not run, production or irreversible cloud operations.
 Use the workspace CLI, not a separate Markdown linter:
 
 ```bash
-cargo run -p cli --quiet -- validate <path>
+cargo run -p cli --quiet -- project gate
 ```
 
 `validate` applies prose rules to ordinary Markdown, N-family rules to notation templates, typed-event checks, and YAML
@@ -367,7 +367,7 @@ parsing. It walks directories and defaults to `.`. CI runs:
 
 ```bash
 cargo build -p cli --quiet
-./target/debug/navigator validate .
+./target/debug/navigator project gate
 ```
 
 ### No client data in the repo

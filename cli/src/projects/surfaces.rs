@@ -1,4 +1,4 @@
-//! `navigator site projects surfaces` — create or adopt a Project's three handles.
+//! `navigator project surfaces` — create or adopt a Project's three handles.
 //!
 //! Opening a Project records its identity. This command then creates or
 //! adopts the documents-bucket prefix, the Drive ingest folder, and the
@@ -9,7 +9,7 @@
 //! This is an HTTP client, not a database client: it authenticates like every
 //! other `navigator site` command, through `crate::remote::resolve`, and does
 //! its work through `GET /app/api/projects` (to resolve the given code to a
-//! matter id, the same way `navigator site projects close` does) and
+//! matter id, the same way `navigator project close` does) and
 //! `POST /app/api/project-surfaces/{id}` (the door `store::project_surfaces`
 //! sits behind). It never opens a `SurrealDb` connection of its own — even
 //! against a local deployment, the site's own admin-tier check and the
@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::palette;
 use store::project_surfaces::{ProjectSurfaces, SurfaceStatus};
 
-/// The label `navigator site projects surfaces reconcile` prints for a
+/// The label `navigator project surfaces reconcile` prints for a
 /// surface this pass never attempts — the documents-bucket prefix is a key
 /// convention derived from the code, and the code itself is the input that
 /// named which matter reconcile ran against. Neither is created, adopted, or
@@ -73,7 +73,7 @@ fn first_line(body: &str) -> &str {
 }
 
 /// Resolve a Project code to its id through `GET /app/api/projects`, the same
-/// door `navigator site projects close` reads. The reconcile door itself
+/// door `navigator project close` reads. The reconcile door itself
 /// takes an id, not a code, because a Project code is not guaranteed unique
 /// across the id space at the route layer the way it is at the store layer.
 async fn resolve_project_id(base: &str, token: &str, project_code: &str) -> Result<Uuid> {
@@ -125,7 +125,7 @@ async fn post_reconcile(base: &str, token: &str, project_id: Uuid) -> Result<Pro
     serde_json::from_str(&body).context("parse POST /app/api/project-surfaces/{id}")
 }
 
-/// `navigator site projects surfaces reconcile --project <code> [--host h]`.
+/// `navigator project surfaces reconcile --project <code> [--host h]`.
 pub async fn reconcile(host: Option<&str>, project_code: &str) -> ExitCode {
     if !store::projects::is_valid_code(project_code) {
         eprintln!("navigator: invalid project code");

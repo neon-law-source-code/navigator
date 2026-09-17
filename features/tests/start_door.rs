@@ -8,6 +8,7 @@
 use cucumber::{gherkin::Step, given, then, when, World};
 use features::journey::{client, Journey};
 use uuid::Uuid;
+use workflows::notation_session::ClientIntakeStep;
 
 #[derive(Default, World)]
 #[world(init = Self::default)]
@@ -37,6 +38,17 @@ impl StartDoorWorld {
 
     fn client(&self) -> &store::persons::Person {
         self.client.as_ref().expect("client not built")
+    }
+
+    /// Where the client-facing questionnaire currently stands.
+    async fn intake_step(&self) -> ClientIntakeStep {
+        workflows::notation_session::client_intake_step(
+            &self.journey().surreal,
+            Some(&self.journey().storage),
+            self.notation_id.expect("notation id not captured"),
+        )
+        .await
+        .expect("read the client intake step")
     }
 
     fn intake_path(&self) -> String {
@@ -106,29 +118,89 @@ async fn start_redirects(world: &mut StartDoorWorld) {
     );
 }
 
-#[when("the client answers the client questions:")]
+#[then(regex = r"^the intake asks question (\d+) of (\d+)$")]
+async fn intake_asks_question(world: &mut StartDoorWorld, position: usize, total: usize) {
+    match world.intake_step().await {
+        ClientIntakeStep::NeedsAnswer {
+            position: at,
+            total: of,
+            ..
+        } => {
+            assert_eq!((at, of), (position, total), "intake is not where expected");
+        }
+        ClientIntakeStep::Complete { .. } => panic!("the intake is already complete"),
+    }
+}
+
+/// Answer the whole questionnaire over real HTTP, one table row per question.
+///
+/// Each row names the question it answers, so the walk cannot silently drift:
+/// the step asserts the intake is actually on that question before posting,
+/// and that the redirect carries no `?error=` flash. Without both, a rejected
+/// answer still redirects (`303` back to the same question) and the scenario
+/// would pass having recorded nothing.
+#[when("the client answers every question the intake asks:")]
 async fn answer_client_questions(world: &mut StartDoorWorld, step: &Step) {
-    let table = step.table.as_ref().expect("questionnaire value table");
+    let table = step.table.as_ref().expect("questionnaire answer table");
     for row in table.rows.iter().skip(1) {
-        let value = row.first().expect("one answer value per row").as_str();
+        let code = row.first().expect("a question code per row").as_str();
+        let answer = row.get(1).expect("an answer per row").as_str();
+        let ClientIntakeStep::NeedsAnswer { question, .. } = world.intake_step().await else {
+            panic!("the intake finished before answering `{code}`");
+        };
+        assert_eq!(
+            question.code, code,
+            "the intake asks `{}`, not `{code}`",
+            question.code
+        );
         let response = world
             .journey()
             .client_post(
                 world.client(),
                 &world.intake_path(),
-                &format!("value={}", features::form_encode(value)),
+                &body_for(&question, answer),
             )
             .await;
-        assert!(
-            response.status.is_success() || response.status.is_redirection(),
-            "client answer returned {}",
+        assert_eq!(
+            response.status.as_u16(),
+            303,
+            "answering `{code}` returned {}",
             response.status
+        );
+        let location = response.location.clone().unwrap_or_default();
+        assert!(
+            !location.contains("error="),
+            "answering `{code}` was refused: {location}"
         );
         world.last_status = Some(response.status.as_u16());
     }
 }
 
-#[when("the completed intake is sent to lawyer review")]
+/// The form body one answer posts, which depends on the question's type: a
+/// `people_list` posts the widget's `p{row}_{part}` fields, everything else
+/// posts the single `value` field.
+fn body_for(question: &workflows::notation_session::QuestionDescriptor, answer: &str) -> String {
+    if question.answer_type == "people_list" {
+        format!("p0_name={}", features::form_encode(answer))
+    } else {
+        features::journey::answer_body(answer)
+    }
+}
+
+#[then("the client's part of the intake is complete")]
+async fn intake_is_complete(world: &mut StartDoorWorld) {
+    match world.intake_step().await {
+        ClientIntakeStep::Complete { .. } => {}
+        ClientIntakeStep::NeedsAnswer {
+            question, position, ..
+        } => panic!(
+            "the intake still asks `{}` at position {position}",
+            question.code
+        ),
+    }
+}
+
+#[when("the firm advances the completed intake to lawyer review")]
 async fn send_to_lawyer_review(world: &mut StartDoorWorld) {
     let worker = world.journey().worker();
     portal::retainer_walk::advance_to_lawyer_review(

@@ -81,6 +81,51 @@ pub const TYPEFACES: &[Typeface] = &[
         stack: "ui-sans-serif, system-ui, sans-serif",
         operator_licence_required: false,
     },
+    // The five practice-brand faces. All OFL-1.1, so none sets
+    // `operator_licence_required`: a fork may redistribute them, unlike GORP.
+    // Their bytes ride the same bucket lane as every other web font here, so
+    // a fresh clone carries none of them and no request ever leaves for a
+    // font CDN — which on an immigration or collection-defence site is a
+    // visitor-privacy property, not a performance one.
+    Typeface {
+        id: "eb-garamond",
+        label: "EB Garamond",
+        stack: "\"EB Garamond\", Garamond, Georgia, serif",
+        operator_licence_required: false,
+    },
+    Typeface {
+        id: "source-sans-3",
+        label: "Source Sans 3",
+        stack: "\"Source Sans 3\", ui-sans-serif, system-ui, sans-serif",
+        operator_licence_required: false,
+    },
+    Typeface {
+        id: "source-serif-4",
+        label: "Source Serif 4",
+        stack: "\"Source Serif 4\", Georgia, \"Times New Roman\", serif",
+        operator_licence_required: false,
+    },
+    // Devanagari and Latin in one family, so an Abhaya page translated into
+    // Hindi keeps its face instead of dropping to a system fallback.
+    Typeface {
+        id: "mukta",
+        label: "Mukta",
+        stack: "\"Mukta\", ui-sans-serif, system-ui, sans-serif",
+        operator_licence_required: false,
+    },
+    Typeface {
+        id: "public-sans",
+        label: "Public Sans",
+        stack: "\"Public Sans\", ui-sans-serif, system-ui, sans-serif",
+        operator_licence_required: false,
+    },
+    // The NYC summons practice reads as government-adjacent on purpose.
+    Typeface {
+        id: "libre-franklin",
+        label: "Libre Franklin",
+        stack: "\"Libre Franklin\", ui-sans-serif, system-ui, sans-serif",
+        operator_licence_required: false,
+    },
 ];
 
 /// Primaries and accents taken from the three compiled house-brand token
@@ -194,6 +239,202 @@ pub const PALETTE: &[Palette] = &[
             border: Some("#8f842d"),
         },
     },
+    // --- The five practice brands ------------------------------------
+    // Every primary below is a light-mode colour that clears WCAG AA on
+    // white; each also carries a dark-mode primary raised to clear 7:1 on
+    // the dark canvas, because the specified colours fail AA outright
+    // against a dark surface. `brand_presentation` tests assert both.
+    // Warm bronze — hearth and continuity, the Vesta reading. Not a
+    // grief palette: the audience is planning ahead, not bereaved.
+    Palette {
+        id: "vesta",
+        label: "Vesta bronze",
+        light: PaletteScheme {
+            primary: "#8A5A2B",
+            primary_hover: "#774d25",
+            primary_active: "#63411f",
+            on_primary: "#ffffff",
+            on_brand: "#ffffff",
+            link: "#8A5A2B",
+            link_hover: "#63411f",
+            surface_subtle: "#f9f3ee",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+        dark: PaletteScheme {
+            primary: "#cb925a",
+            primary_hover: "#d2a171",
+            primary_active: "#dab189",
+            on_primary: "#0d1117",
+            on_brand: "#0d1117",
+            link: "#cb925a",
+            link_hover: "#d2a171",
+            surface_subtle: "#302112",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+    },
+    // Deep claret. Gravity without alarm, and deliberately not a red
+    // cross in any form — that emblem is protected by 18 U.S.C. § 706 and
+    // appears nowhere in this brand's colour, mark, or iconography.
+    Palette {
+        id: "misericordia",
+        label: "Misericordia claret",
+        light: PaletteScheme {
+            primary: "#7A1F2B",
+            primary_hover: "#661a24",
+            primary_active: "#51151d",
+            on_primary: "#ffffff",
+            on_brand: "#ffffff",
+            link: "#7A1F2B",
+            link_hover: "#51151d",
+            surface_subtle: "#faedef",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+        dark: PaletteScheme {
+            primary: "#df838f",
+            primary_hover: "#e59ba5",
+            primary_active: "#ecb4bb",
+            on_primary: "#0d1117",
+            on_brand: "#0d1117",
+            link: "#df838f",
+            link_hover: "#e59ba5",
+            surface_subtle: "#321015",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+    },
+    // Deep indigo — steadiness. Chosen over the saffron an immigration
+    // brand borrowing a Sanskrit name would otherwise drift toward.
+    Palette {
+        id: "abhaya",
+        label: "Abhaya indigo",
+        light: PaletteScheme {
+            primary: "#1F4E79",
+            primary_hover: "#1a4165",
+            primary_active: "#153450",
+            on_primary: "#ffffff",
+            on_brand: "#ffffff",
+            link: "#1F4E79",
+            link_hover: "#153450",
+            surface_subtle: "#edf4fa",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+        dark: PaletteScheme {
+            primary: "#68a3d8",
+            primary_hover: "#80b2de",
+            primary_active: "#99c1e5",
+            on_primary: "#0d1117",
+            on_brand: "#0d1117",
+            link: "#68a3d8",
+            link_hover: "#80b2de",
+            surface_subtle: "#102232",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+    },
+    // Green for relief. Collection defence, not settlement: the palette
+    // carries no urgency or money-back signalling.
+    Palette {
+        id: "delete-your-debt",
+        label: "DeleteYourDebt green",
+        light: PaletteScheme {
+            primary: "#1F6F4A",
+            primary_hover: "#195b3d",
+            primary_active: "#14472f",
+            on_primary: "#ffffff",
+            on_brand: "#ffffff",
+            link: "#1F6F4A",
+            link_hover: "#14472f",
+            surface_subtle: "#eef9f4",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+        dark: PaletteScheme {
+            primary: "#32b377",
+            primary_hover: "#3bc887",
+            primary_active: "#53cf95",
+            on_primary: "#0d1117",
+            on_brand: "#0d1117",
+            link: "#32b377",
+            link_hover: "#3bc887",
+            surface_subtle: "#113122",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+    },
+    // Plum-slate. The least branded face in the family on purpose — the
+    // NYC summons audience is buying competence, not warmth.
+    Palette {
+        id: "oath",
+        label: "Summons plum",
+        light: PaletteScheme {
+            primary: "#4A2545",
+            primary_hover: "#391c35",
+            primary_active: "#281425",
+            on_primary: "#ffffff",
+            on_brand: "#ffffff",
+            link: "#4A2545",
+            link_hover: "#281425",
+            surface_subtle: "#f7f0f6",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+        dark: PaletteScheme {
+            primary: "#c58bbd",
+            primary_hover: "#cf9fc9",
+            primary_active: "#d9b4d4",
+            on_primary: "#0d1117",
+            on_brand: "#0d1117",
+            link: "#c58bbd",
+            link_hover: "#cf9fc9",
+            surface_subtle: "#2b1828",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+    },
 ];
 
 /// Look up a typeface by the id stored on a brand row.
@@ -218,6 +459,22 @@ impl BrandKey {
                 typeface_by_id("plus-jakarta-sans").expect("plus-jakarta-sans is catalogued")
             }
             Self::LawyerShook => typeface_by_id("tinos").expect("tinos is catalogued"),
+        }
+    }
+
+    /// The display face this key sets over [`Self::default_typeface`], when
+    /// it wears two.
+    ///
+    /// `None` means headings and body share one face, which is true of every
+    /// brand the firm shipped before the practice brands: a single
+    /// `--nav-font-family` was the whole typographic contract. Vesta and
+    /// Misericordia are the reason it is no longer enough — each pairs a
+    /// serif display face with a separate sans body face — so this returns
+    /// the *display* half and `default_typeface` keeps meaning body.
+    #[must_use]
+    pub fn display_typeface(self) -> Option<&'static Typeface> {
+        match self {
+            Self::Neon | Self::DeleteYourData | Self::LawyerShook => None,
         }
     }
 
@@ -286,16 +543,26 @@ pub fn font_face_for(typeface_id: Option<&str>, uploaded: Option<(&str, &str)>) 
 
 /// Render the tokens stylesheet a request for `brand-{key}-tokens.css` serves.
 #[must_use]
-pub fn tokens_stylesheet(face: &Typeface, palette: &Palette) -> String {
+pub fn tokens_stylesheet(face: &Typeface, display: Option<&Typeface>, palette: &Palette) -> String {
     let mut css = String::new();
     if let Some(faces) = webfont_css(face) {
         css.push_str(&faces);
         css.push('\n');
     }
+    // A brand whose display face differs from its body face carries both
+    // sets of `@font-face` rules. Vesta (EB Garamond over Source Sans 3)
+    // and Misericordia (Source Serif 4 over Source Sans 3) are why this
+    // exists; a brand that sets one face for everything emits one set.
+    if let Some(display) = display.filter(|d| d.id != face.id) {
+        if let Some(faces) = webfont_css(display) {
+            css.push_str(&faces);
+            css.push('\n');
+        }
+    }
     css.push_str(":root {\n");
-    emit_scheme(&mut css, face, &palette.light);
+    emit_scheme(&mut css, face, display, &palette.light);
     css.push_str("}\n\n@media (prefers-color-scheme: dark) {\n  :root {\n");
-    emit_scheme(&mut css, face, &palette.dark);
+    emit_scheme(&mut css, face, display, &palette.dark);
     css.push_str("  }\n}\n");
     css
 }
@@ -317,15 +584,68 @@ fn webfont_css(face: &Typeface) -> Option<String> {
             "/public/fonts/tinos/Tinos-Regular.woff2",
             "/public/fonts/tinos/Tinos-Bold.woff2",
         )),
+        "eb-garamond" => Some(bucket_face("EB Garamond", "eb-garamond", "EBGaramond")),
+        "source-sans-3" => Some(bucket_face("Source Sans 3", "source-sans-3", "SourceSans3")),
+        "source-serif-4" => Some(bucket_face(
+            "Source Serif 4",
+            "source-serif-4",
+            "SourceSerif4",
+        )),
+        "mukta" => Some(bucket_face("Mukta", "mukta", "Mukta")),
+        "public-sans" => Some(bucket_face("Public Sans", "public-sans", "PublicSans")),
+        "libre-franklin" => Some(bucket_face(
+            "Libre Franklin",
+            "libre-franklin",
+            "LibreFranklin",
+        )),
         _ => None,
     }
 }
 
-fn emit_scheme(css: &mut String, face: &Typeface, scheme: &PaletteScheme) {
+/// `@font-face` for an OFL family served from the deployment's asset bucket,
+/// under the `fonts/<dir>/<Stem>-{Regular,Bold}.woff2` layout every web font
+/// in this repository already uses.
+///
+/// Self-hosting is the requirement these faces exist to satisfy: the families
+/// are all available from Google Fonts, and linking them there would leak a
+/// request — carrying the visitor's IP and the referring page — to a third
+/// party on every pageview. On an immigration or debt-collection-defence
+/// site that is a disclosure about the reader, so the bytes come from our
+/// own origin and no brand stylesheet ever names a font CDN.
+fn bucket_face(family: &str, dir: &str, stem: &str) -> String {
+    font_face_css(
+        family,
+        &crate::assets::asset_url(&format!("fonts/{dir}/{stem}-Regular.woff2")),
+        &crate::assets::asset_url(&format!("fonts/{dir}/{stem}-Bold.woff2")),
+    )
+}
+
+fn emit_scheme(
+    css: &mut String,
+    face: &Typeface,
+    display: Option<&Typeface>,
+    scheme: &PaletteScheme,
+) {
     css.push_str("  --nav-font-family: ");
     css.push_str(face.stack);
     css.push_str(";\n");
     css.push_str("  --font-body: var(--nav-font-family);\n");
+    // The brand contract a new site is written against. It is emitted from
+    // the same `Palette`/`Typeface` values the `--nav-*` tokens below use,
+    // so the two can never drift: this is one generator with two
+    // vocabularies, not a hand-maintained alias list. `--nav-*` is what the
+    // shared layout consumes; `--brand-*` is what a brand's own stylesheet
+    // reads, and is the whole surface a new brand needs to supply.
+    css.push_str("  --brand-font-body: var(--nav-font-family);\n");
+    css.push_str("  --brand-font-display: ");
+    css.push_str(display.unwrap_or(face).stack);
+    css.push_str(";\n");
+    push_token(css, "--brand-primary", scheme.primary);
+    // The accessible text colour *on* the primary, not beside it. Every
+    // catalogued pairing is asserted at WCAG AA by `brand_presentation`
+    // tests, in both schemes.
+    push_token(css, "--brand-primary-ink", scheme.on_primary);
+    push_token(css, "--brand-surface", scheme.surface_subtle);
     push_token(css, "--nav-color-primary", scheme.primary);
     push_token(css, "--nav-color-primary-hover", scheme.primary_hover);
     push_token(css, "--nav-color-primary-active", scheme.primary_active);
@@ -535,7 +855,14 @@ mod tests {
                 "plus-jakarta-sans",
                 "tinos",
                 "system-serif",
-                "system-sans"
+                "system-sans",
+                // The practice brands. All OFL, all bucket-served.
+                "eb-garamond",
+                "source-sans-3",
+                "source-serif-4",
+                "mukta",
+                "public-sans",
+                "libre-franklin"
             ]
         );
         assert!(
@@ -563,6 +890,7 @@ mod tests {
     fn plus_jakarta_sans_serves_its_faces_through_the_asset_origin() {
         let css = tokens_stylesheet(
             typeface_by_id("plus-jakarta-sans").unwrap(),
+            None,
             palette_by_id("delete-your-data").unwrap(),
         );
         assert!(css.contains("font-family:'Plus Jakarta Sans'"), "{css}");
@@ -654,6 +982,7 @@ mod tests {
     fn tokens_stylesheet_names_the_face_and_primary() {
         let css = tokens_stylesheet(
             typeface_by_id("tinos").unwrap(),
+            None,
             palette_by_id("lawyer-shook").unwrap(),
         );
         assert!(css.contains("font-family:'Tinos'"), "{css}");
@@ -669,6 +998,7 @@ mod tests {
     fn system_sans_emits_no_font_face() {
         let css = tokens_stylesheet(
             typeface_by_id("system-sans").unwrap(),
+            None,
             palette_by_id("delete-your-data").unwrap(),
         );
         assert!(!css.contains("@font-face"), "{css}");
@@ -735,5 +1065,212 @@ mod tests {
 
         let without_face = tokens_stylesheet_from_hex("sans-serif", None, &scheme);
         assert!(!without_face.contains("@font-face"), "{without_face}");
+    }
+
+    // --- WCAG AA, computed rather than asserted by eye --------------------
+
+    /// Relative luminance, WCAG 2.x. Kept in the tests rather than shipped:
+    /// nothing at runtime needs it, and a palette is only ever checked when
+    /// someone edits the catalog.
+    fn luminance(hex: &str) -> f64 {
+        let hex = hex.trim_start_matches('#');
+        assert_eq!(hex.len(), 6, "not a 6-digit hex: {hex}");
+        let channel = |offset: usize| {
+            let raw = u8::from_str_radix(&hex[offset..offset + 2], 16)
+                .unwrap_or_else(|_| panic!("not hex: {hex}"));
+            let c = f64::from(raw) / 255.0;
+            if c <= 0.039_28 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4)
+    }
+
+    fn contrast(a: &str, b: &str) -> f64 {
+        let (x, y) = (luminance(a), luminance(b));
+        let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// WCAG AA body text. Large text is 3.0; we hold every pairing to the
+    /// stricter number so a token is never only conditionally safe.
+    const AA_BODY: f64 = 4.5;
+
+    /// The canvas a dark-scheme token is read against when the palette does
+    /// not override `bg` — the value the shipped dark palettes use.
+    const DARK_CANVAS: &str = "#0d1117";
+
+    /// The contract ENG-740 is really about: text drawn *on* the primary has
+    /// to be readable, in both schemes, for every brand in the catalog. A
+    /// new brand that lands a pretty primary with unreadable ink fails here
+    /// rather than in front of a client.
+    #[test]
+    fn every_catalogued_palette_puts_readable_ink_on_its_primary() {
+        for palette in PALETTE {
+            for (scheme_name, scheme) in [("light", &palette.light), ("dark", &palette.dark)] {
+                let ratio = contrast(scheme.primary, scheme.on_primary);
+                assert!(
+                    ratio >= AA_BODY,
+                    "{} {scheme_name}: ink {} on primary {} is {ratio:.2}:1, below AA {AA_BODY}",
+                    palette.id,
+                    scheme.on_primary,
+                    scheme.primary,
+                );
+            }
+        }
+    }
+
+    /// Every practice-brand primary is specified as a light-mode colour, and
+    /// each fails AA outright against a dark canvas — Misericordia's claret
+    /// is 2.06:1 on `#0d1117`. That is why each carries a separate dark
+    /// primary, and this asserts the pair actually works on the surface it
+    /// is drawn against, which single-scheme checking misses entirely.
+    #[test]
+    fn practice_brand_primaries_clear_aa_against_their_own_canvas() {
+        for id in [
+            "vesta",
+            "misericordia",
+            "abhaya",
+            "delete-your-debt",
+            "oath",
+        ] {
+            let palette = palette_by_id(id).expect("practice brand is catalogued");
+
+            let light = contrast(palette.light.primary, "#ffffff");
+            assert!(
+                light >= AA_BODY,
+                "{id} light primary {} is {light:.2}:1 on white",
+                palette.light.primary,
+            );
+
+            let dark = contrast(palette.dark.primary, DARK_CANVAS);
+            assert!(
+                dark >= AA_BODY,
+                "{id} dark primary {} is {dark:.2}:1 on {DARK_CANVAS}",
+                palette.dark.primary,
+            );
+
+            // The link colours are read as text on the same canvas, so they
+            // carry the same floor.
+            let link_light = contrast(palette.light.link, "#ffffff");
+            assert!(
+                link_light >= AA_BODY,
+                "{id} light link is {link_light:.2}:1"
+            );
+            let link_dark = contrast(palette.dark.link, DARK_CANVAS);
+            assert!(link_dark >= AA_BODY, "{id} dark link is {link_dark:.2}:1");
+        }
+    }
+
+    // --- The brand token contract ----------------------------------------
+
+    /// The five names ENG-740 defines as the seam a new brand is written
+    /// against, in both schemes.
+    #[test]
+    fn the_brand_token_contract_is_emitted_in_both_schemes() {
+        let body = typeface_by_id("source-sans-3").expect("catalogued");
+        let display = typeface_by_id("eb-garamond").expect("catalogued");
+        let palette = palette_by_id("vesta").expect("catalogued");
+        let css = tokens_stylesheet(body, Some(display), palette);
+
+        for token in [
+            "--brand-primary:",
+            "--brand-primary-ink:",
+            "--brand-surface:",
+            "--brand-font-display:",
+            "--brand-font-body:",
+        ] {
+            assert_eq!(
+                css.matches(token).count(),
+                2,
+                "{token} should appear once per scheme in:\n{css}"
+            );
+        }
+
+        // The display face reaches the contract, not just the body face.
+        assert!(
+            css.contains("--brand-font-display: \"EB Garamond\""),
+            "{css}"
+        );
+        assert!(css.contains("--brand-primary: #8A5A2B"), "{css}");
+    }
+
+    /// A two-face brand self-hosts both faces. Missing the display face here
+    /// is the bug that silently falls back to Georgia.
+    #[test]
+    fn a_two_face_brand_emits_font_faces_for_both() {
+        let body = typeface_by_id("source-sans-3").expect("catalogued");
+        let display = typeface_by_id("source-serif-4").expect("catalogued");
+        let palette = palette_by_id("misericordia").expect("catalogued");
+        let css = tokens_stylesheet(body, Some(display), palette);
+
+        assert!(css.contains("font-family:'Source Sans 3'"), "{css}");
+        assert!(css.contains("font-family:'Source Serif 4'"), "{css}");
+    }
+
+    /// A brand that sets one face for everything does not emit it twice.
+    #[test]
+    fn a_one_face_brand_emits_that_face_once() {
+        let face = typeface_by_id("public-sans").expect("catalogued");
+        let palette = palette_by_id("delete-your-debt").expect("catalogued");
+        let css = tokens_stylesheet(face, Some(face), palette);
+
+        assert_eq!(css.matches("font-family:'Public Sans'").count(), 2, "{css}");
+        assert!(
+            css.contains("--brand-font-display: \"Public Sans\""),
+            "{css}"
+        );
+    }
+
+    /// No brand stylesheet may reach a font CDN. This is a privacy property
+    /// for the immigration and collection-defence audiences, not a
+    /// performance one: a Google Fonts link discloses the visitor's IP and
+    /// the page they are reading to a third party on every pageview.
+    #[test]
+    fn no_catalogued_face_is_served_from_a_font_cdn() {
+        for face in TYPEFACES {
+            let Some(css) = webfont_css(face) else {
+                continue;
+            };
+            for host in [
+                "fonts.googleapis.com",
+                "fonts.gstatic.com",
+                "use.typekit.net",
+                "cdn.jsdelivr.net",
+                "cdnjs.cloudflare.com",
+            ] {
+                assert!(
+                    !css.contains(host),
+                    "{} is served from {host}: {css}",
+                    face.id,
+                );
+            }
+        }
+    }
+
+    /// The practice faces are all OFL, so none is licence-encumbered the way
+    /// GORP is — a fork may redistribute them.
+    #[test]
+    fn the_practice_faces_are_redistributable() {
+        for id in [
+            "eb-garamond",
+            "source-sans-3",
+            "source-serif-4",
+            "mukta",
+            "public-sans",
+            "libre-franklin",
+        ] {
+            let face = typeface_by_id(id).expect("practice face is catalogued");
+            assert!(
+                !face.operator_licence_required,
+                "{id} is OFL and should not require an operator licence",
+            );
+            assert!(
+                webfont_css(face).is_some(),
+                "{id} must be self-hosted, not left to a system fallback",
+            );
+        }
     }
 }

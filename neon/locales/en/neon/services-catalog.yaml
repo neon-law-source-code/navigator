@@ -7,22 +7,11 @@
 # `cli/examples/export-services-catalog.rs` publishes it as an
 # integrity-checked artifact the way `shared.yaml` is published.
 #
-# DRAFT — PENDING ATTORNEY REVIEW. Every fee, item code, service name, and
-# `includes` scope line below was transcribed from the `navigator-ux` gallery
-# specimen at revision f2e1129adc696b5fb8fe0eac3eb88b40a8334787, where they are
-# invented specimen figures. A licensed attorney confirms each of them before
-# this catalog advertises a fee to the public. Changing a published legal fee
-# is an attorney decision; do not adjust these while authoring.
-#
-# Two deliberate deviations from that specimen, both for review alongside the
-# rest: contractions are expanded to match the register the firm already
-# publishes in `services.yaml`, and the trademark `period` reads `fees` rather
-# than the specimen's singular `fee`, because `fees` is the wording already
-# live on `/services`. Estate planning starting fees and Notation-package
-# membership are attorney-set: a will, family plan, or living trust starts at
-# $3,000, and a package's advertised save is derived from those published
-# figures rather than authored as a separate number.
-catalog_version: 1
+# Fees, item codes, service names, and `includes` scope lines are attorney-set.
+# A Notation package has an a la carte price and may have a price for a named
+# plan. The catalog validates that every published plan price is at least half
+# off its package's a la carte price.
+catalog_version: 2
 
 # What a `flat_fee` service costs. Both flat-fee kinds resolve to this one
 # figure, so the page cannot print two different "flat fees".
@@ -72,13 +61,13 @@ services:
 
   - id: llc-launch
     item: "1102"
-    name: Company setup package
+    name: Business formation paperwork
     blurb: >-
       Set up your limited liability company and get the ownership agreement and
       tax ID a bank will usually ask for.
     category: company
-    flat_fee: form
-    period: per form
+    amount: "$100"
+    period: per package
     state_fee: true
     package:
       of:
@@ -88,6 +77,9 @@ services:
           amount: "$100"
         - name: A federal tax ID for your business
           amount: "$100"
+    plan_price:
+      amount: "$25"
+      plan: Business plan
     includes:
       - Set up your limited liability company
       - An agreement between the owners
@@ -228,13 +220,13 @@ services:
 
   - id: estate-package
     item: "1402"
-    name: Plan for your family
+    name: Estate plan paperwork
     blurb: >-
       Make a will and choose who can handle your money and healthcare decisions
       if you can't.
     category: estate
-    amount: "$3,000"
-    period: starting fee
+    amount: "$5,000"
+    period: per package
     state_fee: false
     package:
       of:
@@ -244,6 +236,9 @@ services:
           amount: "$3,000"
         - name: Your wishes for medical care and who can make decisions for you
           amount: "$3,000"
+    plan_price:
+      amount: "$2,000"
+      plan: Personal plan
     includes:
       - A will
       - A document naming someone to handle your finances

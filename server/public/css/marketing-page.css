@@ -407,14 +407,30 @@
   font-size: 0.8125rem;
 }
 
-/* The fee and what it is charged per, on one line, with the label above it —
-   so a reader scanning the column reads amounts rather than sentences. */
-.fm-services__fee {
+/* A Notation package has two honest ways to buy it. Put them next to each
+   other so the reader compares the a la carte and plan price without doing
+   arithmetic or hunting through a paragraph. */
+.fm-services__pricing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.25rem 0 0;
+}
+
+.fm-services__price-choice {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem;
-  margin: 0.25rem 0 0;
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--nav-color-text-muted) 28%, transparent);
+  border-radius: 0.5rem;
+}
+
+.fm-services__price-choice--plan {
+  border-color: color-mix(in srgb, var(--nav-color-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--nav-color-primary) 10%, var(--nav-color-surface));
 }
 
 .fm-services__fee-label {
@@ -464,8 +480,7 @@
 }
 
 .fm-services__package-badge,
-.fm-services__package-separate,
-.fm-services__package-save {
+.fm-services__package-members-label {
   margin: 0;
 }
 
@@ -482,11 +497,6 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.fm-services__package-save {
-  font-size: 0.9375rem;
-  line-height: 1.45;
 }
 
 .fm-services__package-members {

@@ -359,11 +359,8 @@ pub enum BandCopy {
         includes_label: String,
         /// The chip a Notation package carries.
         package_badge: String,
-        /// How much less the package is than buying each included Notation
-        /// on its own, as a suffix after the saved figure.
-        package_save_suffix: String,
-        /// The label in front of the à la carte total on a package card.
-        package_separate_label: String,
+        /// The label above a package's included Notations.
+        package_members_label: String,
         /// The chip a service requiring a plan carries.
         members_badge: String,
         /// The chip a service carrying a government charge carries. A
@@ -725,13 +722,15 @@ bands:
             locale_page_kind(services::SERVICES_CATALOG_STEM),
             Some(LocalePageKind::ServicesCatalog)
         );
+        // Built from the supported version rather than a literal, so a
+        // version bump cannot silently turn this into a test of the version
+        // check instead of the category-label rule it asserts.
         let err = parse_locale_file(
             services::SERVICES_CATALOG_STEM,
-            r"catalog_version: 1
-flat_fee: $50
-categories: []
-services: []
-",
+            &format!(
+                "catalog_version: {}\nflat_fee: $50\ncategories: []\nservices: []\n",
+                services::SUPPORTED_CATALOG_VERSION
+            ),
         )
         .expect_err("a catalog with no category labels");
         assert!(err.contains("category `company` has no label"), "{err}");

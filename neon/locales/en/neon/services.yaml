@@ -28,13 +28,15 @@ bands:
         - text: Personal plan
           href: /personal
         - text: >-
-            . Business-plan access is $10 a day. An unchanged template can be
-            sent for signature for $5. A Notation we prepare or revise begins
-            at $100. Estate planning starts at $3,000. A Notation package
-            costs less than buying each included Notation on its own.
+            . Business-plan access is $50 a day, and Personal-plan access is
+            $5 a day. Each plan has its own minimum retainer. Notation
+            packages show an a la carte price and a lower plan price. Every
+            plan price shown is at least half off the a la carte price.
             Government fees are separate.
       - - text: >-
             Each Notation has an agreed scope and price before work begins.
+            Plan access and its daily charge are separate from the package
+            price.
       - - text: "Have a dispute? Start with a "
         - text: free consultation
           href: /disputes
@@ -44,11 +46,10 @@ bands:
     overline: Individual services
     heading: "{shared:services.catalog_heading}"
     description: >-
-      Choose the help you need. We will explain what it includes and what it
-      costs before work starts. Government fees are separate. A Notation we
-      prepare or revise begins at $100. Estate planning starts at $3,000.
-      A Notation package costs less than buying each included Notation on
-      its own.
+      Choose a package a la carte, or see the lower price available with the
+      named plan. Every plan price shown is at least half off the a la carte
+      price. We will explain the scope and any government fees before work
+      starts.
     search_label: Search individual services
     search_placeholder: A contract, my business, a will, a dispute
     submit_label: Search
@@ -61,11 +62,10 @@ bands:
         query: family
       - label: A dispute
         query: dispute
-    fee_label: Legal fee
+    fee_label: A la carte price
     includes_label: What this includes
     package_badge: Notation package
-    package_separate_label: Bought separately
-    package_save_suffix: less than buying each Notation on its own
+    package_members_label: Package includes
     members_badge: Plan required
     state_fee_badge: Government fees cost extra
     empty: We could not find a match.

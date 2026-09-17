@@ -20,11 +20,12 @@
 //! - **Resolvable references.** A `related` id names a service this same
 //!   catalog defines. A dangling one would render as a link to nowhere.
 //!
-//! One rule is this document's own. A service publishes **exactly one** fee:
-//! either a [`FlatFee`] kind, which resolves to the catalog's single
+//! One rule is this document's own. A service publishes **exactly one** a la
+//! carte fee: either a [`FlatFee`] kind, which resolves to the catalog's single
 //! [`ServicesCatalog::flat_fee`] figure, or a literal [`ServiceCopy::amount`].
-//! Both is two prices on one matter; neither is a priced list with a blank in
-//! it. Both are refused here rather than on the page.
+//! Both is two a la carte prices on one matter; neither is a priced list with a
+//! blank in it. Both are refused here rather than on the page. A Notation
+//! package may additionally publish its lower price for a named plan.
 
 use std::collections::BTreeSet;
 
@@ -33,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use super::shared::{self, Provenance};
 
 /// The catalog version this build authors and understands.
-pub const SUPPORTED_CATALOG_VERSION: u32 = 1;
+pub const SUPPORTED_CATALOG_VERSION: u32 = 2;
 
 /// The stem a services catalog file carries:
 /// `locales/en/<brand-key>/services-catalog.yaml`.
@@ -167,6 +168,10 @@ pub struct ServiceCopy {
     pub package: Option<ServicePackage>,
     /// What the fee is charged per — `per form`, `per contract`, `per year`.
     pub period: String,
+    /// The discounted price a named plan pays for this Notation package.
+    /// Validation requires it to be at least 50% below the a la carte price.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_price: Option<PlanPrice>,
     /// Other services in this catalog worth reading next.
     #[serde(default)]
     pub related: Vec<String>,
@@ -195,6 +200,11 @@ impl ServiceCopy {
         .chain(self.amount.as_deref().map(|amount| ("amount", amount)))
         .chain(self.includes.iter().map(|line| ("includes", line.as_str())))
         .chain(self.keywords.iter().map(|word| ("keywords", word.as_str())))
+        .chain(
+            self.plan_price
+                .iter()
+                .map(|price| ("plan_price.plan", price.plan.as_str())),
+        )
         .chain(self.package.iter().flat_map(|package| {
             package
                 .extras
@@ -202,6 +212,13 @@ impl ServiceCopy {
                 .map(|extra| ("package.extras.name", extra.name.as_str()))
         }))
     }
+}
+
+/// A package's price for a named plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanPrice {
+    pub amount: String,
+    pub plan: String,
 }
 
 /// One named piece of work a package includes that is not sold as its own
@@ -216,10 +233,9 @@ pub struct PackageExtra {
 /// The members of a Notation package.
 ///
 /// [`Self::of`] names other services in this catalog; [`Self::extras`] names
-/// work the package includes that has no row of its own. Together they are
-/// the à la carte comparison. A page never authors a "discount" figure —
-/// it is derived from these fees and the package's own fee, so the two
-/// cannot drift.
+/// work the package includes that has no row of its own. Together they prove
+/// the package's a la carte fee remains lower than buying its pieces one at a
+/// time. A plan price is a separate, validated offer on the package itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ServicePackage {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -228,17 +244,12 @@ pub struct ServicePackage {
     pub of: Vec<String>,
 }
 
-/// The resolved à la carte comparison a package publishes.
+/// The included Notations a package publishes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageQuote {
     /// The names of the included Notations, in publication order: catalog
     /// members first, then extras.
     pub members: Vec<String>,
-    /// How much less the package is than buying each included Notation on
-    /// its own, as a dollar figure such as `$6,000`.
-    pub save: String,
-    /// The sum of the included starting fees, as a dollar figure.
-    pub separate_fee: String,
 }
 
 /// The services catalog document.
@@ -295,6 +306,7 @@ impl ServicesCatalog {
             if service.package.is_some() {
                 self.validate_package(service, &ids)?;
             }
+            self.validate_plan_price(service)?;
         }
         Ok(())
     }
@@ -403,7 +415,7 @@ impl ServicesCatalog {
         service.amount.as_deref().unwrap_or(self.flat_fee.as_str())
     }
 
-    /// The à la carte comparison for a Notation package, if `service` is one.
+    /// The included Notations for a Notation package, if `service` is one.
     ///
     /// Infallible for a catalog that has passed [`Self::parse`]: validation
     /// has already proved every member exists, every fee is a payable
@@ -413,23 +425,49 @@ impl ServicesCatalog {
     pub fn package_quote(&self, service: &ServiceCopy) -> Option<PackageQuote> {
         let package = service.package.as_ref()?;
         let mut members = Vec::new();
-        let mut separate_cents: i64 = 0;
         for id in &package.of {
             let member = self.get(id)?;
             members.push(member.name.clone());
-            separate_cents = separate_cents.saturating_add(fee_cents(self.fee(member))?);
         }
         for extra in &package.extras {
             members.push(extra.name.clone());
-            separate_cents = separate_cents.saturating_add(fee_cents(&extra.amount)?);
         }
-        let package_cents = fee_cents(self.fee(service))?;
-        let save_cents = separate_cents.saturating_sub(package_cents);
-        Some(PackageQuote {
-            members,
-            save: format_fee_cents(save_cents),
-            separate_fee: format_fee_cents(separate_cents),
-        })
+        Some(PackageQuote { members })
+    }
+
+    fn validate_plan_price(&self, service: &ServiceCopy) -> Result<(), String> {
+        let Some(plan_price) = service.plan_price.as_ref() else {
+            return Ok(());
+        };
+        if service.package.is_none() {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` publishes a plan price but is not a Notation package",
+                service.id
+            ));
+        }
+        check_fee(
+            &format!("{}.plan_price.amount", service.id),
+            &plan_price.amount,
+        )?;
+        let Some(a_la_carte_cents) = fee_cents(self.fee(service)) else {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` has no payable a la carte fee",
+                service.id
+            ));
+        };
+        let Some(plan_cents) = fee_cents(&plan_price.amount) else {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}.plan_price.amount` has no payable fee",
+                service.id
+            ));
+        };
+        if plan_cents.saturating_mul(2) > a_la_carte_cents {
+            return Err(format!(
+                "{SERVICES_CATALOG_STEM}: `{}` plan price is not at least half off its a la carte fee",
+                service.id
+            ));
+        }
+        Ok(())
     }
 
     fn validate_package(&self, service: &ServiceCopy, ids: &BTreeSet<&str>) -> Result<(), String> {
@@ -665,31 +703,6 @@ fn fee_cents(value: &str) -> Option<i64> {
     Some(dollars.saturating_mul(100).saturating_add(cents))
 }
 
-/// A dollar figure with comma grouping, matching the catalog's published
-/// form: `$6,000`, `$100`, `$12.50`.
-fn format_fee_cents(cents: i64) -> String {
-    let sign = if cents < 0 { "-" } else { "" };
-    let cents = cents.unsigned_abs();
-    let dollars = cents / 100;
-    let frac = cents % 100;
-    let grouped = {
-        let digits = dollars.to_string();
-        let mut out = String::new();
-        for (index, character) in digits.chars().rev().enumerate() {
-            if index > 0 && index % 3 == 0 {
-                out.push(',');
-            }
-            out.push(character);
-        }
-        out.chars().rev().collect::<String>()
-    };
-    if frac == 0 {
-        format!("{sign}${grouped}")
-    } else {
-        format!("{sign}${grouped}.{frac:02}")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -698,7 +711,7 @@ mod tests {
     /// mutates in exactly one way.
     fn fixture() -> String {
         String::from(
-            r"catalog_version: 1
+            r"catalog_version: 2
 flat_fee: $50
 categories:
   - value: company
@@ -740,6 +753,19 @@ services:
     includes:
       - A street address
 ",
+        )
+    }
+
+    /// The fixture with every `skip_serializing_if` field on `ServiceCopy`
+    /// set: `llc-file` already carries `template` and `flat_fee`, and this
+    /// adds the `package` and `plan_price` pair. What a canonical-form test
+    /// needs, because an omitted field cannot prove its own key order.
+    fn fixture_with_every_optional_field() -> String {
+        fixture().replace(
+            "    keywords:\n      - LLC\n",
+            "    keywords:\n      - LLC\n    package:\n      of:\n        - nv-address\n      \
+             extras:\n        - name: An agreement between the owners\n          amount: $50\n    \
+             plan_price:\n      amount: $25\n      plan: Business plan\n",
         )
     }
 
@@ -947,7 +973,7 @@ services:
     #[test]
     fn an_unsupported_catalog_version_is_refused() {
         let err =
-            ServicesCatalog::parse(&fixture().replace("catalog_version: 1", "catalog_version: 99"))
+            ServicesCatalog::parse(&fixture().replace("catalog_version: 2", "catalog_version: 99"))
                 .expect_err("unsupported version");
         assert!(err.contains("catalog version 99 is not supported"), "{err}");
     }
@@ -962,9 +988,16 @@ services:
     /// The canonical payload is the bytes a digest covers, so re-serializing
     /// the parsed value must reproduce it exactly — the property that lets a
     /// consumer detect a hand-edited artifact.
+    ///
+    /// Run against the catalog that sets every optional field, because
+    /// `skip_serializing_if` omits an unset one entirely: a field declared
+    /// out of alphabetical order only moves these bytes once some service
+    /// publishes it, so the bare fixture cannot hold `ServiceCopy` to the
+    /// order the digest depends on.
     #[test]
     fn the_canonical_payload_has_sorted_keys() {
-        let catalog = ServicesCatalog::parse(&fixture()).expect("fixture");
+        let catalog =
+            ServicesCatalog::parse(&fixture_with_every_optional_field()).expect("fixture");
         let source = Provenance {
             path: "neon/locales/en/neon/services-catalog.yaml".into(),
             repository: "neon-law-source-code/navigator".into(),
@@ -1002,22 +1035,53 @@ services:
         )
     }
 
-    /// A package's advertised save is derived from published fees, never
-    /// authored, so a $50 package of a $350 service plus a $50 extra is
-    /// $350 less — `$400` bought separately, `$50` as the package.
+    /// A package publishes the Notations it includes in catalog order.
     #[test]
     fn a_package_quote_is_derived_from_member_fees() {
         let catalog = ServicesCatalog::parse(&packaged_fixture()).expect("packaged fixture");
         let llc = catalog.get("llc-file").expect("llc-file");
         let quote = catalog.package_quote(llc).expect("llc-file is a package");
-        assert_eq!(quote.separate_fee, "$400");
-        assert_eq!(quote.save, "$350");
         assert_eq!(
             quote.members,
             vec![
                 "Nevada business address".to_string(),
                 "An agreement between the owners".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn a_plan_price_must_be_at_least_half_off_a_notation_package() {
+        let catalog = ServicesCatalog::parse(&fixture().replace(
+            "    keywords:\n      - LLC\n",
+            "    keywords:\n      - LLC\n    package:\n      of:\n        - nv-address\n      extras:\n        - name: An agreement between the owners\n          amount: $50\n    plan_price:\n      amount: $25\n      plan: Business plan\n",
+        ))
+        .expect("a half-off package plan price");
+        assert_eq!(
+            catalog
+                .get("llc-file")
+                .and_then(|service| service.plan_price.as_ref())
+                .map(|price| price.amount.as_str()),
+            Some("$25")
+        );
+        let err = ServicesCatalog::parse(&fixture().replace(
+            "    keywords:\n      - LLC\n",
+            "    keywords:\n      - LLC\n    package:\n      of:\n        - nv-address\n      extras:\n        - name: An agreement between the owners\n          amount: $50\n    plan_price:\n      amount: $26\n      plan: Business plan\n",
+        ))
+        .expect_err("a plan price above half off");
+        assert!(err.contains("plan price is not at least half off"), "{err}");
+    }
+
+    #[test]
+    fn a_plan_price_requires_a_notation_package() {
+        let err = ServicesCatalog::parse(&fixture().replace(
+            "    keywords:\n      - LLC\n",
+            "    keywords:\n      - LLC\n    plan_price:\n      amount: $25\n      plan: Business plan\n",
+        ))
+        .expect_err("a plan price on a non-package service");
+        assert!(
+            err.contains("publishes a plan price but is not a Notation package"),
+            "{err}"
         );
     }
 
@@ -1072,13 +1136,9 @@ services:
     }
 
     #[test]
-    fn grouped_whole_dollar_fees_round_trip_as_cents() {
+    fn grouped_whole_dollar_fees_parse_as_cents() {
         assert_eq!(fee_cents("$3,000"), Some(300_000));
         assert_eq!(fee_cents("$100"), Some(10_000));
         assert_eq!(fee_cents("$12.50"), Some(1_250));
-        assert_eq!(format_fee_cents(300_000), "$3,000");
-        assert_eq!(format_fee_cents(10_000), "$100");
-        assert_eq!(format_fee_cents(1_250), "$12.50");
-        assert_eq!(format_fee_cents(600_000), "$6,000");
     }
 }

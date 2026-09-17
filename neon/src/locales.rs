@@ -259,12 +259,14 @@ fn page_skin(skin: PageSkin) -> webapp::marketing_page::PageSkin {
 /// compiles for the browser, where the server-only `views` crate is not
 /// available — so this is the one place a whole-dollar amount becomes the
 /// badge the page actually renders. An amount with no photo (any value other
-/// than the two denominations the firm has published so far) renders no
+/// than the four denominations the firm has published so far) renders no
 /// badge at all, same as no amount.
 fn resolve_day_rate(amount: Option<u16>) -> Option<DayRateBadge> {
     let amount = amount?;
     let key = match amount {
+        50 => "img/fifty-dollar-bill/fifty-dollar-bill.jpg",
         10 => "img/ten-dollar-bill/ten-dollar-bill.jpg",
+        5 => "img/five-dollar-bill/five-dollar-bill.jpg",
         1 => "img/one-dollar-bill/one-dollar-bill.jpg",
         _ => return None,
     };
@@ -371,10 +373,15 @@ fn service(
         package: catalog.package_quote(record).map(|quote| {
             webapp::services_search::ServicePackageQuote {
                 members: quote.members,
-                save: quote.save,
-                separate_fee: quote.separate_fee,
             }
         }),
+        plan_price: record
+            .plan_price
+            .as_ref()
+            .map(|price| webapp::services_search::PlanPrice {
+                amount: price.amount.clone(),
+                plan: price.plan.clone(),
+            }),
     }
 }
 
@@ -396,8 +403,7 @@ fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCat
         fee_label,
         includes_label,
         package_badge,
-        package_save_suffix,
-        package_separate_label,
+        package_members_label,
         members_badge,
         state_fee_badge,
         empty,
@@ -425,8 +431,7 @@ fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCat
         fee_label,
         includes_label,
         package_badge,
-        package_save_suffix,
-        package_separate_label,
+        package_members_label,
         members_badge,
         state_fee_badge,
         empty,
@@ -884,8 +889,15 @@ mod tests {
             .package
             .as_ref()
             .expect("estate-package is a Notation package");
-        assert_eq!(quote.separate_fee, "$9,000");
-        assert_eq!(quote.save, "$6,000");
+        assert_eq!(quote.members.len(), 3);
+        assert_eq!(family_plan.fee, "$5,000");
+        assert_eq!(
+            family_plan.plan_price,
+            Some(webapp::services_search::PlanPrice {
+                amount: "$2,000".to_string(),
+                plan: "Personal plan".to_string(),
+            })
+        );
     }
 
     /// The search finds services by the words a reader would actually type,
@@ -954,19 +966,17 @@ mod tests {
         );
     }
 
-    /// `/business` publishes its base package as a $10-a-day retainer;
-    /// the bill photo the hero and fee section draw reads that same figure
-    /// and resolves through the asset seam rather than a bare filename.
+    /// `/business` publishes its base package as a $50-a-day retainer.
     #[test]
-    fn fractional_gc_publishes_its_ten_dollar_day_rate() {
+    fn fractional_gc_publishes_its_fifty_dollar_day_rate() {
         let content = fractional_gc(&views::brand::DEFAULT_BRANDING);
         let offer = content.pricing.first().expect("the Business plan offer");
-        assert_eq!(offer.price, "$10");
+        assert_eq!(offer.price, "$50");
         assert_eq!(offer.cadence.as_deref(), Some("/day"));
         for benefit in [
             "Contract-library access",
             "Name Neon Law as your counsel",
-            "$5,000 retainer to start",
+            "$10,000 minimum retainer to start",
             "60 days before daily credits run out",
             "unchanged template for signature at $5",
             "Notations for prepared or revised documents start at $100",
@@ -981,18 +991,21 @@ mod tests {
                 offer.features
             );
         }
-        let badge = content
-            .pricing
-            .first()
-            .and_then(|offer| offer.day_rate.clone());
+        assert!(
+            offer.blurb.contains("Ulysses S. Grant"),
+            "the Business plan gives the requested daily-price reference"
+        );
         assert_eq!(
-            badge.as_ref().map(|badge| badge.amount),
-            Some(10),
-            "the base package states its day rate as a figure, not only in the blurb sentence"
+            offer.day_rate.as_ref().map(|badge| badge.amount),
+            Some(50),
+            "the Business plan renders the matching $50 bill mark"
         );
         assert!(
-            badge.is_some_and(|badge| badge.image_src.contains("ten-dollar-bill")),
-            "the badge resolves the $10 bill photo"
+            offer
+                .day_rate
+                .as_ref()
+                .is_some_and(|badge| badge.image_src.ends_with("fifty-dollar-bill.jpg")),
+            "the Business plan uses the published $50 bill asset"
         );
     }
 
@@ -1013,9 +1026,9 @@ mod tests {
         assert!(!text.contains("Navigator"));
     }
 
-    /// `/personal` publishes its one flat fee as a $1-a-day plan.
+    /// `/personal` publishes its one flat fee as a $5-a-day plan.
     #[test]
-    fn personal_plan_publishes_its_one_dollar_day_rate() {
+    fn personal_plan_publishes_its_five_dollar_day_rate() {
         let content = personal_plan(&views::brand::DEFAULT_BRANDING);
         let plan = content
             .bands
@@ -1029,35 +1042,40 @@ mod tests {
                 _ => None,
             })
             .expect("the Personal plan offer");
-        assert_eq!(plan.chips.first().map(String::as_str), Some("$365"));
-        assert_eq!(plan.cadence.as_deref(), Some("/year"));
+        assert_eq!(plan.chips.first().map(String::as_str), Some("$5"));
+        assert_eq!(plan.cadence.as_deref(), Some("/day"));
         assert!(plan
             .features
             .contains(&"Optional credit monitoring".to_string()));
         assert!(plan
             .features
             .iter()
-            .any(|feature| feature.contains("$200 retainer")));
+            .any(|feature| feature.contains("$2,000 minimum retainer")));
+        assert!(plan
+            .features
+            .iter()
+            .any(|feature| feature.contains("Notations starting at $50")));
         assert!(plan
             .features
             .iter()
             .any(|feature| feature.contains("60 days before daily credits run out")));
-        let day_rate = content.bands.iter().find_map(|band| match band {
-            webapp::marketing_page::Band::Cards { items, .. } => {
-                items.first().and_then(|card| card.day_rate.clone())
-            }
-            _ => None,
-        });
         assert!(
-            day_rate
-                .as_ref()
-                .is_some_and(|badge| badge.image_src.contains("one-dollar-bill")),
-            "the badge resolves the $1 bill photo"
+            plan.body
+                .iter()
+                .flat_map(|paragraph| paragraph.iter())
+                .any(|run| run.text.contains("Abraham Lincoln")),
+            "the Personal plan gives the requested daily-price reference"
         );
         assert_eq!(
-            day_rate.map(|badge| badge.amount),
-            Some(1),
-            "the plan states its day rate as a figure, not only in the blurb sentence"
+            plan.day_rate.as_ref().map(|badge| badge.amount),
+            Some(5),
+            "the Personal plan renders the matching $5 bill mark"
+        );
+        assert!(
+            plan.day_rate
+                .as_ref()
+                .is_some_and(|badge| badge.image_src.ends_with("five-dollar-bill.jpg")),
+            "the Personal plan uses the published $5 bill asset"
         );
     }
 

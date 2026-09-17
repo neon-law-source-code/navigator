@@ -32,11 +32,11 @@ entries:
   fractional_gc.eyebrow: Business plan
   fractional_gc.title: The legal library for your business.
   fractional_gc.lede: Use our contract library and name Neon Law as your counsel for work we agree to handle.
-  fractional_gc.price: $10
+  fractional_gc.price: $50
   # `/personal`
   personal_plan.eyebrow: Personal plan
   personal_plan.title: Help with the things you need to take care of.
-  personal_plan.price: $365
+  personal_plan.price: $5
   personal_plan.included.data_removal: Help asking companies to remove your personal information
   personal_plan.included.credit_monitoring: Optional credit monitoring
 

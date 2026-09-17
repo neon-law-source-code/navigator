@@ -101,7 +101,7 @@ pub struct Service {
     /// What the fee buys.
     pub includes: Vec<String>,
     pub keywords: Vec<String>,
-    /// The resolved fee: the service's own amount, or the catalog's flat fee.
+    /// The a la carte fee: the service's own amount, or the catalog's flat-fee lookup.
     pub fee: String,
     /// What the fee is charged per.
     pub period: String,
@@ -109,18 +109,25 @@ pub struct Service {
     pub members_only: bool,
     /// Whether a government body charges its own fee on top.
     pub state_fee: bool,
-    /// When set, this service is a Notation package and these figures are
-    /// the à la carte comparison already resolved from the catalog.
+    /// When set, this service is a Notation package with its included work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<ServicePackageQuote>,
+    /// The lower price a named plan pays for this Notation package.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_price: Option<PlanPrice>,
 }
 
-/// The resolved à la carte comparison a Notation package publishes.
+/// The price a named plan pays for a Notation package.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct PlanPrice {
+    pub amount: String,
+    pub plan: String,
+}
+
+/// The included Notations a package publishes.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ServicePackageQuote {
     pub members: Vec<String>,
-    pub save: String,
-    pub separate_fee: String,
 }
 
 impl Service {
@@ -193,11 +200,8 @@ pub struct ServicesBand {
     pub includes_label: String,
     /// The chip a Notation package carries.
     pub package_badge: String,
-    /// How much less the package is than buying each included Notation on
-    /// its own, as a suffix after the saved figure.
-    pub package_save_suffix: String,
-    /// The label in front of the à la carte total on a package card.
-    pub package_separate_label: String,
+    /// The label above a package's included Notations.
+    pub package_members_label: String,
     /// The chip a service requiring a plan carries.
     pub members_badge: String,
     /// The chip a service with a government charge carries. This is a
@@ -329,24 +333,25 @@ pub fn ServicesSearch(band: ServicesBand, query: String) -> Element {
                             li { class: "fm-card fm-services__service", id: "service-{service.id}",
                                 h3 { class: "fm-card__title", "{service.name}" }
                                 p { class: "fm-services__category", "{service.category}" }
-                                p { class: "fm-services__fee",
-                                    span { class: "fm-services__fee-label", "{band.fee_label}" }
-                                    strong { class: "fm-services__fee-amount", "{service.fee}" }
-                                    span { class: "fm-services__fee-period", "{service.period}" }
+                                div { class: "fm-services__pricing",
+                                    p { class: "fm-services__price-choice",
+                                        span { class: "fm-services__fee-label", "{band.fee_label}" }
+                                        strong { class: "fm-services__fee-amount", "{service.fee}" }
+                                        span { class: "fm-services__fee-period", "{service.period}" }
+                                    }
+                                    if let Some(plan_price) = service.plan_price.as_ref() {
+                                        p { class: "fm-services__price-choice fm-services__price-choice--plan",
+                                            span { class: "fm-services__fee-label", "With {plan_price.plan}" }
+                                            strong { class: "fm-services__fee-amount", "{plan_price.amount}" }
+                                            span { class: "fm-services__fee-period", "plan price" }
+                                        }
+                                    }
                                 }
                                 if let Some(package) = service.package.as_ref() {
                                     div { class: "fm-services__package",
                                         p { class: "fm-services__package-badge", "{band.package_badge}" }
-                                        p { class: "fm-services__package-separate",
-                                            span { class: "fm-services__fee-label", "{band.package_separate_label}" }
-                                            strong { "{package.separate_fee}" }
-                                        }
-                                        p { class: "fm-services__package-save",
-                                            strong { "{package.save}" }
-                                            " "
-                                            "{band.package_save_suffix}"
-                                        }
                                         if !package.members.is_empty() {
+                                            p { class: "fm-services__package-members-label", "{band.package_members_label}" }
                                             ul { class: "fm-services__package-members",
                                                 for member in package.members.iter() {
                                                     li { "{member}" }
@@ -404,6 +409,7 @@ mod tests {
             members_only: false,
             state_fee: false,
             package: None,
+            plan_price: None,
         }
     }
 
@@ -555,8 +561,10 @@ mod tests {
                 "An agreement between the owners".to_string(),
                 "A federal tax ID for your business".to_string(),
             ],
-            save: "$200".to_string(),
-            separate_fee: "$300".to_string(),
+        });
+        setup.plan_price = Some(PlanPrice {
+            amount: "$25".to_string(),
+            plan: "Business plan".to_string(),
         });
         ServicesBand {
             anchor: "fees".to_string(),
@@ -570,11 +578,10 @@ mod tests {
                 label: "My business".to_string(),
                 query: "business".to_string(),
             }],
-            fee_label: "Legal fee".to_string(),
+            fee_label: "A la carte price".to_string(),
             includes_label: "What this includes".to_string(),
             package_badge: "Notation package".to_string(),
-            package_separate_label: "Bought separately".to_string(),
-            package_save_suffix: "less than buying each Notation on its own".to_string(),
+            package_members_label: "Package includes".to_string(),
             members_badge: "Plan required".to_string(),
             state_fee_badge: "Government fees cost extra".to_string(),
             empty: "We could not find a match.".to_string(),
@@ -692,26 +699,23 @@ mod tests {
         );
     }
 
-    /// A Notation package prints the à la carte total and the derived save,
+    /// A Notation package makes the a la carte and plan prices easy to compare,
     /// and a service that is not a package does not.
     #[test]
-    fn a_package_card_prints_the_derived_save() {
+    fn a_package_card_prints_its_plan_price() {
         let packaged = render_with("llc");
         assert!(packaged.contains("Notation package"), "{packaged}");
-        assert!(packaged.contains("Bought separately"), "{packaged}");
-        assert!(packaged.contains("$300"), "{packaged}");
-        assert!(packaged.contains("$200"), "{packaged}");
-        assert!(
-            packaged.contains("less than buying each Notation on its own"),
-            "{packaged}"
-        );
+        assert!(packaged.contains("A la carte price"), "{packaged}");
+        assert!(packaged.contains("With Business plan"), "{packaged}");
+        assert!(packaged.contains("$25"), "{packaged}");
+        assert!(packaged.contains("Package includes"), "{packaged}");
         assert!(
             packaged.contains("An agreement between the owners"),
             "{packaged}"
         );
         let unflagged = render_with("trademark");
         assert!(!unflagged.contains("Notation package"), "{unflagged}");
-        assert!(!unflagged.contains("Bought separately"), "{unflagged}");
+        assert!(!unflagged.contains("With Business plan"), "{unflagged}");
     }
 
     /// The result count is announced, so a filter that shortens the list says

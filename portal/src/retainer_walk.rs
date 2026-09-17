@@ -696,6 +696,12 @@ pub(crate) async fn send_intake(
     let client = store::persons::find_by_id(surreal, notation_row.person_id)
         .await?
         .ok_or(SendIntakeError::NoClient(notation_id))?;
+    let project = store::projects::find_by_id(surreal, notation_row.project_id)
+        .await
+        .map_err(|error| SendIntakeError::Db(error.to_string()))?
+        .ok_or_else(|| {
+            SendIntakeError::Db(format!("project {} not found", notation_row.project_id))
+        })?;
 
     // Ensure the client can see the matter (they already should from
     // matter-open; this is the find-or-create that backs the magic link).
@@ -712,7 +718,7 @@ pub(crate) async fn send_intake(
     let base_url = workflows::email::base_url_from_env();
     let link = format!(
         "{base_url}/app/projects/{}/intake/{notation_id}",
-        notation_row.project_id
+        project.code
     );
     let body = format!(
         "Your legal team has started your paperwork and needs you to confirm a few \

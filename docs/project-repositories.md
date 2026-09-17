@@ -357,7 +357,8 @@ What the gate proves:
 - Every direct `apps/<app>/package.json` declares a Vite workspace with an `index.html` and a lockfile. A root
   `portal/` has the same contract during the transition. The lockfile flavor is not constrained and there is
   deliberately **no dependency allowlist**: third-party libraries are the point, and Node never enters the Navigator
-  workspace.
+  workspace. Navigator builds the one declared application from that workspace, so its lockfile and `dist/` belong
+  beside its `package.json`, never at the repository root.
 - Every built `index.html` is mounted at `/app/projects/<code>/<app>/`, so a base that never reached a build fails here
   rather than in production.
 - No absolute path in an application's `src/` escapes its mount. A Vite base rewrites module and asset URLs and never an

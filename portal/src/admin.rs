@@ -397,14 +397,6 @@ async fn admin_lead_convert(
             log_lead_admin(id, "converted", session.as_deref());
             lead_row_redirect(id, "notice", "Created a Person from this lead.")
         }
-        Err(store::leads::LeadError::EmailTaken { .. }) => {
-            log_lead_admin(id, "email_taken", session.as_deref());
-            lead_row_redirect(
-                id,
-                "error",
-                "A Person already holds this mailbox. Link instead.",
-            )
-        }
         Err(store::leads::LeadError::NotFound) => {
             log_lead_admin(id, "not_found", session.as_deref());
             not_found_response()

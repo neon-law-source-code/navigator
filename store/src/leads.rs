@@ -141,8 +141,8 @@ pub enum LeadError {
     NotFound,
     #[error("status is not one of new, contacted, converted, declined, unsubscribed")]
     InvalidStatus,
-    #[error("a person already holds this mailbox")]
-    EmailTaken { person_id: Uuid },
+    #[error("converted status is set only when a Person is linked")]
+    ConvertedWithoutPerson,
     #[error("no person holds this mailbox")]
     NoMatchingPerson,
     #[error(transparent)]
@@ -259,19 +259,21 @@ pub async fn find(db: &SurrealDb, id: Uuid) -> Result<Option<Lead>, LeadError> {
 /// row becomes unsubscribed and left alone afterward.
 pub async fn set_status(db: &SurrealDb, id: Uuid, status: LeadStatus) -> Result<Lead, LeadError> {
     let existing = find(db, id).await?.ok_or(LeadError::NotFound)?;
+    if status == LeadStatus::Converted && existing.person_id.is_none() {
+        return Err(LeadError::ConvertedWithoutPerson);
+    }
     apply_status(db, existing, status).await
 }
 
 /// Create a Client Person from the lead mailbox and mark the row converted.
 ///
-/// Refuses when that mailbox already belongs to a Person, naming the existing
-/// row so the admin surface can offer a link instead.
+/// If an earlier attempt created the Person but did not link the lead, retrying
+/// completes that link. This makes the two writes recoverable without risking
+/// an unlinked Person that can sign in.
 pub async fn convert(db: &SurrealDb, id: Uuid) -> Result<Lead, LeadError> {
     let existing = find(db, id).await?.ok_or(LeadError::NotFound)?;
     if let Some(person) = persons::find_by_email_ci(db, &existing.email).await? {
-        return Err(LeadError::EmailTaken {
-            person_id: person.id,
-        });
+        return link_converted(db, existing.id, person.id).await;
     }
     let mut input = NewPerson::new(existing.email.clone(), existing.email.clone());
     input.phone = existing.phone.clone();
@@ -473,10 +475,15 @@ mod tests {
             find(&db, lead.id).await.unwrap().unwrap().unsubscribed_at,
             Some(stamped)
         );
+
+        assert!(matches!(
+            set_status(&db, lead.id, LeadStatus::Converted).await,
+            Err(LeadError::ConvertedWithoutPerson)
+        ));
     }
 
     #[tokio::test]
-    async fn conversion_writes_person_id_and_refuses_a_duplicate_email() {
+    async fn conversion_writes_person_id_and_retries_an_unlinked_person() {
         let db = mem_surreal().await;
         let mut incoming = lead("visitor@example.com", "neon");
         incoming.phone = Some("+1 (555) 010-9876".to_string());
@@ -493,16 +500,7 @@ mod tests {
         let duplicate = record(&db, &lead("visitor@example.com", "delete-your-data"))
             .await
             .unwrap();
-        match convert(&db, duplicate.id).await {
-            Err(LeadError::EmailTaken {
-                person_id: existing,
-            }) => {
-                assert_eq!(existing, person_id);
-            }
-            other => panic!("expected EmailTaken, got {other:?}"),
-        }
-
-        let linked = link_person(&db, duplicate.id).await.unwrap();
+        let linked = convert(&db, duplicate.id).await.unwrap();
         assert_eq!(linked.status, "converted");
         assert_eq!(linked.person_id, Some(person_id));
     }
@@ -536,7 +534,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn convert_refuses_an_already_seeded_mailbox() {
+    async fn convert_links_an_already_seeded_mailbox() {
         let db = mem_surreal().await;
         persons::create(&db, &NewPerson::new("Existing", "already@example.com"))
             .await
@@ -544,10 +542,9 @@ mod tests {
         let written = record(&db, &lead("already@example.com", "neon"))
             .await
             .unwrap();
-        assert!(matches!(
-            convert(&db, written.id).await,
-            Err(LeadError::EmailTaken { .. })
-        ));
+        let linked = convert(&db, written.id).await.unwrap();
+        assert_eq!(linked.status, "converted");
+        assert!(linked.person_id.is_some());
     }
 
     #[test]

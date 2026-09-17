@@ -5,7 +5,7 @@
 #   preflight.sh [remote]
 #
 # IT TAKES NO VERSION, and that is the change. The version is whatever
-# `[workspace.package].version` says: `ops release-version` wrote it, this script
+# `[workspace.package].version` says: `ops release version` wrote it, this script
 # checks it, `ci.yml` checks it again on the pull request, and `deploy.yml` reads
 # it on merge. One value, read in four places, named in one.
 #
@@ -15,8 +15,8 @@
 # WHAT IT NO LONGER DOES, because the pipeline stopped asking:
 #
 #   - validate a `YY.M.D` shape or its date. The shape is semver's, checked by
-#     `ops release-check`; the calendar is a convention with no enforcement.
-#   - prove the name is unspent on the remote. `ops release-check` compares the
+#     `ops release check`; the calendar is a convention with no enforcement.
+#   - prove the name is unspent on the remote. `ops release check` compares the
 #     version against every release tag, which is the same question asked better.
 #   - prove HEAD is reachable from `origin/main`. A merge to `main` is what
 #     publishes, so the release source cannot be anything else.
@@ -40,7 +40,7 @@ echo "    ok"
 # (nothing to publish — you have not bumped yet), or it is BEHIND one already
 # published, which fails.
 echo "==> is the workspace version a release?"
-cargo run -p cli --quiet -- ops release-check --no-fetch
+cargo run -p cli --quiet -- ops release check --no-fetch
 
 echo "==> notices must travel with the distributed binary"
 # `cargo fetch` first, and it is load-bearing. `ops notices` reads licence text
@@ -55,12 +55,12 @@ cargo fetch --locked
 cargo run -p cli --quiet -- ops notices --check
 
 # `deploy.yml` builds the release with `--locked` in four places, and `--locked`
-# refuses a lock the manifest has moved past. `ops release-version` refreshes
+# refuses a lock the manifest has moved past. `ops release version` refreshes
 # both files together; this proves it happened.
 echo "==> Cargo.lock must agree with the manifest"
 if ! cargo metadata --locked --format-version 1 >/dev/null 2>&1; then
     echo "FAIL: Cargo.lock does not match Cargo.toml." >&2
-    echo "      Re-run: cargo run -p cli -- ops release-version --tag <version>" >&2
+    echo "      Re-run: cargo run -p cli -- ops release version --tag <version>" >&2
     exit 1
 fi
 echo "    ok"
@@ -70,7 +70,17 @@ echo "    ok"
 # moves them. A pin left behind ships a gate no consumer can run: 26.9.17-rc.1
 # published `project-gate.yml` still pointing `navigator-install` at 26.9.16, a
 # tag predating the action, and every job needing the CLI died at action
-# resolution. Comments carry `@YY.M.D` usage examples; only `uses:` lines count.
+# resolution.
+#
+# `docs/examples/sample-portal-publish.yml` is checked with them, because it is
+# the same decision written a third time: `docs/project-repositories.md` calls it
+# the caller the scaffold emits, so a reader copies it into a Project repository
+# and inherits whatever tag it names. It sat at 26.9.14 for three releases while
+# the rule below watched only `.github/`, which is the drift this arm closes.
+#
+# A LITERAL tag is the only thing either arm reads. The `@YY.M.D` occurrences
+# elsewhere are placeholders standing in for a version, not naming one, and a
+# release that rewrote them would destroy the example rather than update it.
 echo "==> the self-referencing action pins must name this version"
 workspace_version="$(
     awk '/^\[workspace\.package\]/ { in_block = 1; next }
@@ -82,7 +92,8 @@ if [ -z "${workspace_version}" ]; then
     exit 1
 fi
 stale_pins="$(
-    git grep -n 'uses: *neon-law-source-code/navigator/\.github/actions/' -- .github/workflows/ \
+    git grep -nE 'uses: *neon-law-source-code/navigator/\.github/(actions|workflows)/[^@]+@[0-9]' \
+        -- .github/workflows/ docs/examples/ \
         | grep -v "@${workspace_version}\$" || true
 )"
 if [ -n "${stale_pins}" ]; then

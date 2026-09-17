@@ -452,13 +452,21 @@ impl Kind {
     /// The render profile a notation of this kind renders under when its
     /// template declares no `output:` frontmatter field at all — the
     /// default `N109`'s optional field falls back to. One of
-    /// [`crate::F109OutputFormat::VALID`] (`"letter"`, `"agreement"`,
-    /// `"form"`) or `"plain"`, the implicit default `output:` itself
-    /// never declares. A template's own `output:` is still an explicit
-    /// override: whatever resolves it (`cli::run_render`'s `--format` →
-    /// `output:` → this default → plain chain) tries the declared value
-    /// first and only falls back to this default when the field is
-    /// absent.
+    /// [`crate::F109OutputFormat::VALID`] (`"letter"`, `"contract"`,
+    /// `"pleading"`, `"form"`) or `"plain"`, the implicit default
+    /// `output:` itself never declares. A template's own `output:` is the
+    /// one explicit override: `cli::run_render` resolves `output:` → this
+    /// default → plain, trying the declared value first and falling back
+    /// here only when the field is absent. There is no third input —
+    /// `--format` was retired for choosing the frame a second time, from
+    /// outside the document it framed.
+    ///
+    /// `"pleading"` is the one value a caller cannot hand to
+    /// `pdf::OutputFormat::parse`: court geometry is calibrated by the
+    /// template's `jurisdiction:` through
+    /// `pdf::pleading::variant_for_jurisdiction`, so `run_render` resolves
+    /// that itself and refuses a jurisdiction the table has no
+    /// calibration for.
     ///
     /// Only a notation-family kind ([`Kind::is_notation`]) ever reaches
     /// a render profile — `output:` means nothing for a content page, a

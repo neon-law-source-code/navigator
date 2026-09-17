@@ -205,10 +205,11 @@ impl OutputFormat {
     /// offered and documented under is the new one.
     pub const RETIRED_CONTRACT_ALIAS: &'static str = "agreement";
 
-    /// Parse a format name as it appears in `output:` frontmatter or on
-    /// the CLI `--format` flag. Accepts `plain`, `letter`, and
-    /// `agreement`; returns `None` for anything else so callers can
-    /// report it. A parsed [`OutputFormat::Letter`] carries
+    /// Parse a format name as it appears in `output:` frontmatter — the
+    /// only place a frame is named, since the CLI `--format` flag was
+    /// retired. Accepts `plain`, `letter`, `contract`, and the retired
+    /// [`OutputFormat::RETIRED_CONTRACT_ALIAS`]; returns `None` for
+    /// anything else so callers can report it. A parsed [`OutputFormat::Letter`] carries
     /// [`LetterBlocks::default`] (every block absent) — a caller with
     /// questionnaire state to fill those blocks from constructs
     /// `OutputFormat::Letter(blocks)` directly rather than through this

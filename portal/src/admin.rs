@@ -950,6 +950,15 @@ async fn admin_person_update(
 const PERSON_AVATAR_CONTENT_TYPES: [(&str, &str); 2] =
     [("image/png", "png"), ("image/jpeg", "jpg")];
 
+/// Client avatars remain private. Keep their established WebP allowance and
+/// private documents-bucket representation: a public avatar can disclose a
+/// client's representation even when no application page links to it.
+const PRIVATE_PERSON_AVATAR_CONTENT_TYPES: [(&str, &str); 3] = [
+    ("image/png", "png"),
+    ("image/jpeg", "jpg"),
+    ("image/webp", "webp"),
+];
+
 /// Entity avatars stay on their private lane and retain the historic WebP
 /// option. Public person avatars deliberately use the narrower type set.
 const ENTITY_AVATAR_CONTENT_TYPES: [(&str, &str); 3] = [
@@ -1034,6 +1043,91 @@ fn validate_person_avatar_dimensions(bytes: &[u8], content_type: &str) -> Result
     Ok(())
 }
 
+/// The public representation is reserved for firm-tier people. `Client` is
+/// the one tier whose avatar can itself disclose representation, so its bytes
+/// must remain on the authenticated documents lane.
+fn person_avatar_is_public(role: store::persons::Role) -> bool {
+    !matches!(role, store::persons::Role::Client)
+}
+
+fn person_avatar_content_types(
+    role: store::persons::Role,
+) -> &'static [(&'static str, &'static str)] {
+    if person_avatar_is_public(role) {
+        &PERSON_AVATAR_CONTENT_TYPES
+    } else {
+        &PRIVATE_PERSON_AVATAR_CONTENT_TYPES
+    }
+}
+
+fn public_person_avatar_key(id: Uuid, stored: Option<&str>) -> Option<String> {
+    let stored = stored?;
+    ["png", "jpg"].into_iter().find_map(|extension| {
+        let key = format!("people/{id}/avatar.{extension}");
+        (stored == views::assets::asset_url(&key)).then_some(key)
+    })
+}
+
+/// Write one avatar in its role-appropriate storage lane and update the
+/// singular `person.profile_image_url` field. When a firm-tier avatar changes
+/// extension, remove the superseded public object so it cannot remain
+/// addressable after the row points at the replacement.
+async fn persist_person_avatar(
+    state: &AdminState,
+    person: &store::persons::Person,
+    content_type: &str,
+    bytes: &[u8],
+) -> Result<(), Response> {
+    let public = person_avatar_is_public(person.role);
+    let allowed = person_avatar_content_types(person.role);
+    let extension = allowed
+        .iter()
+        .find(|(allowed, _)| *allowed == content_type)
+        .map_or("bin", |(_, extension)| *extension);
+    let key = if public {
+        format!("people/{}/avatar.{extension}", person.id)
+    } else {
+        format!("people/{}/avatars/{}.{}", person.id, person.id, extension)
+    };
+    let storage = if public {
+        &state.assets_storage
+    } else {
+        &state.storage
+    };
+    if let Err(error) = storage.put(&key, bytes, content_type).await {
+        tracing::error!(error = %error, person_id = %person.id, public, "avatar upload: storage write failed");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+    }
+
+    let stored = if public {
+        views::assets::asset_url(&key)
+    } else {
+        key.clone()
+    };
+    match store::persons::set_profile_image_url(&state.surreal, person.id, Some(stored)).await {
+        Ok(true) => {}
+        Ok(false) => return Err(StatusCode::NOT_FOUND.into_response()),
+        Err(error) => {
+            tracing::error!(error = %error, person_id = %person.id, "avatar upload: person edit failed");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+        }
+    }
+
+    if public {
+        if let Some(previous_key) =
+            public_person_avatar_key(person.id, person.profile_image_url.as_deref())
+                .filter(|previous_key| previous_key != &key)
+        {
+            if let Err(error) = state.assets_storage.delete(&previous_key).await {
+                tracing::error!(error = %error, person_id = %person.id, key = %previous_key, "avatar upload: stale public avatar delete failed");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// `profile_image_url`/`avatar_url` has three writer shapes. New Person avatar
 /// uploads store a public asset URL; a directory-sync seed may store another
 /// external URL; and historical Person/Entity uploads store bare private
@@ -1086,9 +1180,9 @@ async fn stream_avatar(
 
 /// `POST /app/admin/people/{id}/avatar` — the native multipart form behind the
 /// Dioxus admin show/edit page's avatar upload card. Validates the image,
-/// writes it to the public-assets bucket at `people/{id}/avatar.{jpg,png}` and
-/// records the public asset URL on the singular Surreal `person` row. The
-/// profile screen discloses that public availability before a person uploads.
+/// writes firm-tier people to the public-assets bucket at
+/// `people/{id}/avatar.{jpg,png}` and records its public asset URL on the
+/// singular Surreal `person` row. Client avatars remain private.
 async fn admin_person_avatar_upload(
     State(s): State<AdminState>,
     Path(id): Path<Uuid>,
@@ -1105,44 +1199,33 @@ async fn admin_person_avatar_upload(
     let Some(Extension(session_data)) = session else {
         return StatusCode::FORBIDDEN.into_response();
     };
+    let person = match store::persons::find_by_id(&s.surreal, id).await {
+        Ok(Some(person)) => person,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, person_id = %id, "avatar upload: person read failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
     let (content_type, bytes) = match read_avatar_upload(
         &cookies,
         &session_data,
         &mut multipart,
-        &PERSON_AVATAR_CONTENT_TYPES,
+        person_avatar_content_types(person.role),
     )
     .await
     {
         Ok(pair) => pair,
         Err(response) => return response,
     };
-    if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
-        return response;
-    }
-    let ext = PERSON_AVATAR_CONTENT_TYPES
-        .iter()
-        .find(|(allowed, _)| *allowed == content_type)
-        .map_or("bin", |(_, ext)| *ext);
-
-    let key = format!("people/{id}/avatar.{ext}");
-    if let Err(e) = s.assets_storage.put(&key, &bytes, &content_type).await {
-        tracing::error!(error = %e, person_id = %id, "avatar upload: storage write failed");
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    }
-
-    match store::persons::set_profile_image_url(
-        &s.surreal,
-        id,
-        Some(views::assets::asset_url(&key)),
-    )
-    .await
-    {
-        Ok(true) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, person_id = %id, "avatar upload: person edit failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    if person_avatar_is_public(person.role) {
+        if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
+            return response;
         }
+    }
+    match persist_person_avatar(&s, &person, &content_type, &bytes).await {
+        Ok(()) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
+        Err(response) => response,
     }
 }
 
@@ -1222,12 +1305,11 @@ fn initials_avatar_response(name: &str) -> Response {
 }
 
 /// `POST /app/avatar` — the native multipart form behind the self-service
-/// `/app/profile` page's avatar upload card. Every authenticated tier
-/// reaches this handler (no `admin_gate`): the target is always the
-/// caller's own row, resolved from the signed session exactly like
-/// [`current_viewer_avatar`], never a person id supplied in the request —
-/// so, unlike [`admin_person_avatar_upload`], this cannot become a write to
-/// someone else's row.
+/// `/app/profile` page's avatar upload card. Every authenticated tier reaches
+/// this handler (no `admin_gate`): the target is always the caller's own row,
+/// resolved from the signed session exactly like [`current_viewer_avatar`],
+/// never a person id supplied in the request. The row's role selects the
+/// public firm-tier lane or the private client lane.
 ///
 /// A classic form navigation receives `303` back to `/app/profile`. The
 /// in-place script on that page sends `X-Requested-With: XMLHttpRequest`
@@ -1245,44 +1327,33 @@ async fn profile_avatar_upload(
     let Some(id) = session_data.person_id else {
         return StatusCode::FORBIDDEN.into_response();
     };
+    let person = match store::persons::find_by_id(&s.surreal, id).await {
+        Ok(Some(person)) => person,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, person_id = %id, "profile avatar upload: person read failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
     let (content_type, bytes) = match read_avatar_upload(
         &cookies,
         &session_data,
         &mut multipart,
-        &PERSON_AVATAR_CONTENT_TYPES,
+        person_avatar_content_types(person.role),
     )
     .await
     {
         Ok(pair) => pair,
         Err(response) => return response,
     };
-    if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
-        return response;
-    }
-    let ext = PERSON_AVATAR_CONTENT_TYPES
-        .iter()
-        .find(|(allowed, _)| *allowed == content_type)
-        .map_or("bin", |(_, ext)| *ext);
-
-    let key = format!("people/{id}/avatar.{ext}");
-    if let Err(e) = s.assets_storage.put(&key, &bytes, &content_type).await {
-        tracing::error!(error = %e, person_id = %id, "profile avatar upload: storage write failed");
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    }
-
-    match store::persons::set_profile_image_url(
-        &s.surreal,
-        id,
-        Some(views::assets::asset_url(&key)),
-    )
-    .await
-    {
-        Ok(true) => profile_avatar_upload_accepted(&headers),
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, person_id = %id, "profile avatar upload: person edit failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    if person_avatar_is_public(person.role) {
+        if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
+            return response;
         }
+    }
+    match persist_person_avatar(&s, &person, &content_type, &bytes).await {
+        Ok(()) => profile_avatar_upload_accepted(&headers),
+        Err(response) => response,
     }
 }
 

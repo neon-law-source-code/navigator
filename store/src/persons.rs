@@ -224,10 +224,10 @@ pub struct Person {
     /// Xero Contacts via the billing seam (one-way, Neon Law Navigator →
     /// Xero). `None` until first synced.
     pub xero_contact_id: Option<String>,
-    /// This person's avatar. New native uploads are public asset URLs for the
-    /// canonical `people/{id}/avatar.{png,jpg}` object; the profile form
-    /// discloses this public availability before it submits. Historical rows
-    /// can still hold a bare private documents-bucket key
+    /// This person's avatar. Firm-tier native uploads are public asset URLs
+    /// for the canonical `people/{id}/avatar.{png,jpg}` object; their profile
+    /// form discloses this before it submits. Client and historical rows hold
+    /// a bare private documents-bucket key
     /// (`people/{id}/avatars/…`), while directory-sync may supply another
     /// directly-fetchable external URL. Application avatar routes retain their
     /// own viewer checks for the former private shape.
@@ -549,8 +549,8 @@ pub struct PersonEdit {
     pub given_name: Option<Option<String>>,
     pub family_name: Option<Option<String>>,
     pub middle_name: Option<Option<String>>,
-    /// The public avatar URL for this Person's photo, or `None` when they have
-    /// none. Historical rows may retain a private documents-bucket key
+    /// The public avatar URL for a firm-tier Person's photo, or `None` when
+    /// they have none. Client and historical rows retain a private documents-bucket key
     /// (`people/{id}/avatars/…`). A seed reconciliation may replace it while
     /// leaving identity and authority untouched; browser-facing commands do
     /// not populate this field directly, so their existing PATCH contract is

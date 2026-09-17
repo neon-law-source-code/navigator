@@ -435,6 +435,12 @@ fn person_actions(view: &PersonShowView, welcome_recipient: &str) -> Element {
 /// `FormCard` only supports one per `<form>`.
 fn avatar_upload_card(view: &PersonShowView, fields: &PersonFields) -> Element {
     let action = format!("{DETAIL_PATH}/{}/avatar", view.id);
+    let avatar_is_public = fields.role != "client";
+    let help = if avatar_is_public {
+        "PNG or JPEG, up to 5 MB and 1024 × 1024 pixels. The avatar will be publicly available."
+    } else {
+        "PNG, JPEG, or WebP, up to 5 MB. This avatar stays private."
+    };
     rsx! {
         section { id: "person-avatar", class: "person-avatar",
             h2 { "Avatar" }
@@ -454,7 +460,7 @@ fn avatar_upload_card(view: &PersonShowView, fields: &PersonFields) -> Element {
                 fields: vec![
                     Field::file("Avatar", "file")
                         .required()
-                        .help("PNG or JPEG, up to 5 MB and 1024 × 1024 pixels. The avatar will be publicly available."),
+                        .help(help),
                 ],
             }
         }

@@ -215,11 +215,7 @@ pub async fn require_policy(
     {
         return Ok(deny_response(&path, true, swagger_ui_request));
     }
-    let input = serde_json::json!({
-        "path": path_segments,
-        "method": req.method().as_str(),
-        "session": session,
-    });
+    let input = policy_input(&path_segments, req.method().as_str(), &session);
     match client.evaluate(&input) {
         Ok(decision) if decision.allow => {
             let mut req = req;
@@ -323,6 +319,31 @@ pub(crate) fn path_segments(path: &str) -> Vec<String> {
         .collect()
 }
 
+/// The whole `input` document embedded Rego decides against.
+///
+/// Three keys, and the policy reads exactly these three: `input.path`,
+/// `input.method`, `input.session`. There is no fourth. Embedded Rego is a
+/// route-admission decision point and cannot read the participation ledger, so
+/// per-matter scope is the handler's to apply — `store::access::can_see_project`
+/// and the by-id reads that collapse an out-of-scope resource to `404`. A rule
+/// written against a key this function does not build is undefined, and an
+/// undefined rule denies.
+///
+/// Extracted from [`require_policy`] so the contract is a function the test
+/// below can call, and `docs/access-model.md` prints one worked example of its
+/// output.
+fn policy_input(
+    path_segments: &[String],
+    method: &str,
+    session: &impl serde::Serialize,
+) -> serde_json::Value {
+    serde_json::json!({
+        "path": path_segments,
+        "method": method,
+        "session": session,
+    })
+}
+
 /// Percent-encode a path so it survives being a `?return_to=` query
 /// value. Only the small set of characters that materially break a
 /// query string (`?`, `&`, `#`, `%`, `+`, space) is encoded — `/`
@@ -348,7 +369,7 @@ pub(crate) fn percent_encode_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{path_segments, PolicyClient, PolicyError};
+    use super::{path_segments, policy_input, PolicyClient, PolicyError};
     use serde_json::json;
 
     const POLICY: &str = r"
@@ -437,14 +458,52 @@ mod tests {
         let documented: serde_json::Value =
             serde_json::from_str(block).expect("the documented `input` document is valid JSON");
 
+        let built = policy_input(
+            &path_segments(webapp::matter_directory::MATTER_DIRECTORY_PATH),
+            "GET",
+            &documented["session"],
+        );
+
         assert_eq!(
-            documented["path"],
-            json!(path_segments(
-                webapp::matter_directory::MATTER_DIRECTORY_PATH
-            )),
-            "the documented `input.path` no longer names the administrator matter directory \
-             ({}) as the middleware segments it",
+            documented,
+            built,
+            "the documented `input` document is no longer the one the middleware builds for the \
+             administrator matter directory ({})",
             webapp::matter_directory::MATTER_DIRECTORY_PATH
+        );
+    }
+
+    /// The key set is the contract, and the doc is not free to advertise a
+    /// fourth. A rule written against a key the middleware never sends is
+    /// undefined, and an undefined rule denies — silently, at the moment
+    /// someone trusts the reference.
+    #[test]
+    fn the_policy_input_carries_exactly_the_keys_the_rego_reads() {
+        let built = policy_input(&path_segments("/app/admin/projects"), "GET", &json!(null));
+        let mut keys: Vec<&String> = built
+            .as_object()
+            .expect("the input document is a JSON object")
+            .keys()
+            .collect();
+        keys.sort();
+        assert_eq!(keys, ["method", "path", "session"]);
+
+        let rego = std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("policy")
+                .join("navigator.rego"),
+        )
+        .expect("read the embedded policy");
+        for key in &keys {
+            assert!(
+                rego.contains(&format!("input.{key}")),
+                "the middleware sends `input.{key}` and no rule reads it"
+            );
+        }
+        assert!(
+            !rego.contains("input.project_id"),
+            "a rule reads `input.project_id`, which the middleware does not send: an undefined \
+             key denies silently"
         );
     }
 

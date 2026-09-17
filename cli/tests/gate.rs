@@ -2050,3 +2050,60 @@ fn gate_exempts_a_form_notation_from_the_unread_state_check() {
         .success()
         .stdout(str::contains("found 0 error(s)"));
 }
+
+#[test]
+fn gate_keeps_the_spaces_around_a_code_span_its_reflow_wraps() {
+    // `S102` packs a paragraph to 120 columns, which can leave an inline
+    // code span opened on one line and closed on the next — valid GFM, and
+    // what a long sentence naturally produces. `M038` then reads each line
+    // on its own, so that closing backtick looks like an *opener* and the
+    // prose up to the next backtick reads as a padded code span whose
+    // spaces it trims: `` upload`can `` and `` it,`--host` ``. The gate
+    // reintroduced it on every run, so the text could not be fixed by hand.
+    let dir = TempDir::new().unwrap();
+    // Authored short so the reflow has to repack it. The packed first line
+    // reaches 114 columns at `` `site ``, and `document` would take it to
+    // 123 — so the span straddles the wrap.
+    write(
+        dir.path(),
+        "Notes.md",
+        "Alpha bravo charlie delta echo foxtrot golf\n\
+         hotel india juliett kilo lima mike november\n\
+         oscar papa quebec xx `site document upload`\n\
+         can confirm this before it, `--host` was accepted\n\
+         and then ignored entirely.\n",
+    );
+
+    gate(dir.path()).assert().success();
+
+    let packed = fs::read_to_string(dir.path().join("Notes.md")).unwrap();
+    let lines: Vec<&str> = packed.lines().collect();
+    assert_eq!(lines.len(), 2, "expected a two-line pack, got {packed:?}");
+    assert!(
+        lines[0].ends_with("`site"),
+        "the span should open at the end of line one, got {:?}",
+        lines[0]
+    );
+    assert!(
+        lines[1].starts_with("document upload` can confirm"),
+        "the space after the span's closing backtick must survive, got {:?}",
+        lines[1]
+    );
+    assert!(
+        lines[1].contains("before it, `--host` was"),
+        "the space before the next span must survive, got {:?}",
+        lines[1]
+    );
+
+    // And the gate must have reached its fixpoint: a second run changes
+    // nothing, which is what "cannot be corrected by hand" failed before.
+    gate(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("fixed 0 file(s)"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Notes.md")).unwrap(),
+        packed,
+        "the second pass must leave the file alone"
+    );
+}

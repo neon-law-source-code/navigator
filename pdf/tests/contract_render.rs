@@ -1,168 +1,118 @@
-//! Contract outline geometry, proven through the renderer rather than
-//! through the emitted string (#889's pattern, extended to
-//! `OutputFormat::Agreement` and `pdf::outline`).
+//! The `contract` render frame — what an executed instrument may and may
+//! not carry, proven through the renderer rather than through the emitted
+//! string (#889's pattern).
 //!
 //! See `pdf/tests/pleading_render.rs` for why these assertions are
-//! structural (counted, positioned glyph runs) rather than word-based:
-//! Typst's subset fonts mean a naive text extraction returns glyph ids,
-//! not Unicode, so `pdf::locate`/`pdf::occurrence_count` (the
-//! `/ToUnicode` `CMap` route) is what actually finds a quote.
+//! structural (counted glyph runs) rather than word-based: Typst's subset
+//! fonts mean a naive text extraction returns glyph ids, not Unicode, so
+//! `pdf::occurrence_count` (the `/ToUnicode` `CMap` route) is what
+//! actually finds a quote.
 //!
-//! `pdf::outline`'s own unit tests already prove the numbering mechanism
-//! in isolation (bare Typst headings, no letterhead). These tests prove
-//! the same properties through the real, published entry point a caller
-//! actually uses — `OutputFormat::Agreement` — and add the one case
-//! ENG-106 asks for specifically: a cross-reference that must follow an
-//! inserted clause, not just a heading's own marker.
+//! LAW-14 set this frame's contract. A contract is not firm
+//! correspondence, and the numbering belongs to the document: `N123`
+//! already requires the body to carry its own Harvard markers so a reader
+//! can cite `I.A` and `views::harvard_outline` can step the notation
+//! stage. The frame numbered them a second time on top of that, so a
+//! section written `## I. Scope` reached the page as `A. I. Scope`.
 
 use pdf::{Letterhead, OutputFormat};
 
-fn render(body: &str) -> Vec<u8> {
-    pdf::render_document(body, OutputFormat::Agreement, &Letterhead::default())
-        .expect("agreement renders")
+/// A contract body in the shape `N123` requires: depth-1 sections
+/// carrying their own Roman markers.
+const BODY: &str = "# Master Services Agreement\n\n\
+                    ## I. Scope\n\n\
+                    The parties agree as follows.\n\n\
+                    ### Payment\n\n\
+                    Fees are due on receipt.\n\n\
+                    ## II. Term\n\n\
+                    This agreement begins on the effective date.\n";
+
+fn render(body: &str, format: OutputFormat) -> Vec<u8> {
+    pdf::render_document(body, format, &Letterhead::default()).expect("renders")
 }
 
-/// A `<label>`/`@ref` pair is Typst syntax `pdf::markdown::to_typst` does
-/// not carry through unescaped (a bare `<name>` parses as an HTML tag and
-/// is dropped, per that module's own docs), so a cross-reference cannot
-/// be authored inside a Markdown notation body today. This helper renders
-/// literal Typst through the *same* `OutputFormat::Agreement` chrome
-/// `render_document` uses, matching `pdf/tests/pleading_render.rs`'s own
-/// pattern of compiling hand-written Typst directly against a format's
-/// `preamble` for exactly this reason.
-fn render_raw_typst(typst_body: &str) -> Vec<u8> {
-    let source = format!(
-        "{}{typst_body}",
-        OutputFormat::Agreement.preamble(&Letterhead::default())
-    );
-    pdf::render(&source).expect("agreement with raw typst headings renders")
-}
-
-/// A realistic six-level contract body (Markdown's own ceiling — see
-/// `pdf::outline`'s module docs) numbers every depth correctly through the
-/// real `OutputFormat::Agreement` entry point, not just a bare Typst
-/// heading.
 #[test]
-fn all_markdown_reachable_outline_depths_number_correctly_through_agreement() {
-    let body = "# Purchase\n\n\
-                Buyer shall purchase the Interest.\n\n\
-                ## Price\n\n\
-                The price is stated in Schedule A.\n\n\
-                ### Adjustments\n\n\
-                Subject to customary adjustments.\n\n\
-                #### Escrow\n\n\
-                Held by a mutually agreeable escrow agent.\n\n\
-                ##### Release Conditions\n\n\
-                Released upon closing.\n\n\
-                ###### Timing\n\n\
-                Within five business days.\n";
-    let pdf = render(body);
-    for (needle, depth) in [
-        ("I. Purchase", 1),
-        ("A. Price", 2),
-        ("1. Adjustments", 3),
-        ("a. Escrow", 4),
-        ("(1) Release Conditions", 5),
-        ("(a) Timing", 6),
-    ] {
+fn the_contract_frame_carries_no_firm_letterhead() {
+    // An instrument that gets executed must not go out over the drafter's
+    // letterhead. The `letter` frame keeps it; the contract frame prints
+    // the firm's contact line nowhere, and carries none of the embedded
+    // logo bytes that made it twice the size of a plain render.
+    let contract = render(BODY, OutputFormat::Contract);
+    let letterhead = Letterhead::default();
+    for mark in [letterhead.email.as_str(), letterhead.web.as_str()] {
         assert_eq!(
-            pdf::occurrence_count(&pdf, needle).expect("counts"),
-            1,
-            "depth {depth} marker `{needle}` missing or wrong"
+            pdf::occurrence_count(&contract, mark).expect("scan the rendered pdf"),
+            0,
+            "the contract frame must not print the firm contact line (`{mark}`)"
         );
     }
-    // None of the shallower headings leak a cumulative path onto the
-    // page — a heading shows only its own level's marker.
-    assert_eq!(
-        pdf::occurrence_count(&pdf, "I.A.").expect("counts"),
-        0,
-        "a heading's own marker must never show the cumulative path"
+
+    let letter = render(BODY, OutputFormat::Letter(pdf::LetterBlocks::default()));
+    assert!(
+        contract.len() < letter.len(),
+        "a letterhead-free contract ({}) must be smaller than the letter frame ({}) \
+         — an embedded logo is still riding along",
+        contract.len(),
+        letter.len()
     );
 }
 
-/// An off-by-one outline level is exactly what this suite exists to
-/// catch: swapping the depth-3 marker (`1.`) for the depth-2 marker
-/// (`A.`) on the same heading must fail, because the test asserts the
-/// *specific* marker glyphs at that heading, not merely that some marker
-/// is present. Demonstrated directly rather than asserted as a
-/// tautology: render the correct fixture and the wrong one, and show
-/// only the correct one satisfies the check.
 #[test]
-fn an_off_by_one_outline_level_is_caught_by_the_marker_assertion() {
-    let correct = "# One\n\n## Two\n\n### Three\n";
-    let pdf_correct = render(correct);
-    assert_eq!(
-        pdf::occurrence_count(&pdf_correct, "1. Three").expect("counts"),
-        1,
-        "the correct fixture must show the depth-3 marker"
-    );
-    assert_eq!(
-        pdf::occurrence_count(&pdf_correct, "A. Three").expect("counts"),
-        0,
-        "the correct fixture must not show a depth-2 marker on a depth-3 heading"
-    );
+fn the_contract_frame_does_not_number_a_heading_the_body_already_labels() {
+    // The double-numbering LAW-14 reports: the frame auto-numbered every
+    // heading into its own Harvard outline, so the `I.` the body is
+    // *required* to carry collided with an `A.` the frame invented — and
+    // the document title consumed depth 1, shifting the whole scheme.
+    let pdf = render(BODY, OutputFormat::Contract);
 
-    // The off-by-one mistake: "Three" demoted to depth 2 while "Two" stays
-    // at depth 2 too — the shape a bad diff produces. It renders (Typst
-    // is happy either way), but under the depth-3 assertion above it is
-    // wrong, which is exactly the point: the assertion is sensitive to
-    // the shift, not merely to *a* marker being present.
-    let off_by_one = "# One\n\n## Two\n\n## Three\n";
-    let pdf_wrong = render(off_by_one);
-    assert_eq!(
-        pdf::occurrence_count(&pdf_wrong, "1. Three").expect("counts"),
-        0,
-        "the off-by-one fixture must not satisfy the depth-3 assertion"
-    );
+    for authored in ["I. Scope", "II. Term"] {
+        assert_eq!(
+            pdf::occurrence_count(&pdf, authored).expect("scan the rendered pdf"),
+            1,
+            "the body's own marker `{authored}` must reach the page exactly once"
+        );
+    }
+    for invented in ["A. I. Scope", "B. II. Term", "I. Master Services Agreement"] {
+        assert_eq!(
+            pdf::occurrence_count(&pdf, invented).expect("scan the rendered pdf"),
+            0,
+            "the frame must not add a marker of its own (`{invented}`)"
+        );
+    }
 }
 
-/// The case ENG-106 names specifically: a cross-reference must follow an
-/// inserted clause, not just the referenced heading's own marker. Render
-/// the same three clauses with and without a clause inserted ahead of the
-/// referenced one, and confirm the reference text — not merely the
-/// heading's own marker — advances.
 #[test]
-fn a_cross_reference_follows_an_inserted_clause() {
-    let before = "= Purchase <sec-purchase>\n\
-                  Buyer shall purchase the Interest.\n\n\
-                  == Price <sec-price>\n\
-                  See @sec-price for the price term.\n";
-    let pdf_before = render_raw_typst(before);
+fn an_unlabelled_heading_is_left_exactly_as_written() {
+    // The sub-heading carries no marker at all. Left alone it must print
+    // as written rather than acquiring one — the frame has no opinion
+    // about numbering, which is the whole change.
+    let pdf = render(BODY, OutputFormat::Contract);
     assert_eq!(
-        pdf::occurrence_count(&pdf_before, "A. Price").expect("counts"),
+        pdf::occurrence_count(&pdf, "Payment").expect("scan the rendered pdf"),
         1
     );
     assert_eq!(
-        pdf::occurrence_count(&pdf_before, "Section I.A").expect("counts"),
-        1,
-        "the reference must resolve Price's full ancestor path before any insertion"
-    );
-
-    // Insert a new top-level clause ahead of Purchase. Price's own depth-2
-    // position is unchanged, but its top-level ancestor shifts from I to
-    // II, so the *reference* to it must now read "Section II.A" — the
-    // number an unwary manual cross-reference would leave stale at
-    // "Section I.A".
-    let after = "= Preamble\n\
-                 Recitals go here.\n\n\
-                 = Purchase <sec-purchase>\n\
-                 Buyer shall purchase the Interest.\n\n\
-                 == Price <sec-price>\n\
-                 See @sec-price for the price term.\n";
-    let pdf_after = render_raw_typst(after);
-    assert_eq!(
-        pdf::occurrence_count(&pdf_after, "A. Price").expect("counts"),
-        1,
-        "Price's own on-page marker is unaffected by a sibling top-level insertion"
-    );
-    assert_eq!(
-        pdf::occurrence_count(&pdf_after, "Section II.A").expect("counts"),
-        1,
-        "the reference must follow the inserted clause to Section II.A"
-    );
-    assert_eq!(
-        pdf::occurrence_count(&pdf_after, "Section I.A").expect("counts"),
+        pdf::occurrence_count(&pdf, "1. Payment").expect("scan the rendered pdf"),
         0,
-        "the reference must not still read the pre-insertion Section I.A"
+        "an unlabelled heading must not be numbered for the author"
+    );
+}
+
+#[test]
+fn agreement_is_still_accepted_as_the_frame_name() {
+    // The frame was called `agreement`; "contract" is the plainer word and
+    // the one clients use. The old spelling stays accepted for a release
+    // so a template carrying `output: agreement` keeps rendering.
+    assert_eq!(
+        OutputFormat::parse("contract"),
+        Some(OutputFormat::Contract)
+    );
+    assert_eq!(
+        OutputFormat::parse("agreement"),
+        Some(OutputFormat::Contract)
+    );
+    assert!(
+        OutputFormat::FRONTMATTER_VALUES.contains(&"contract"),
+        "`contract` is the name the frame is documented and offered under"
     );
 }

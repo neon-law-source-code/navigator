@@ -63,7 +63,6 @@ pub mod acroform;
 pub mod certificate;
 pub mod format;
 pub mod markdown;
-pub mod outline;
 pub mod passage;
 pub mod pleading;
 pub mod safety;

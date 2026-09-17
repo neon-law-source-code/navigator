@@ -913,6 +913,35 @@ fn pull_dry_run_lists_pending_pulls_without_logging_in() {
     assert!(!root.path().join("documents/pleadings/motion.pdf").exists());
 }
 
+#[test]
+fn a_failure_before_the_guard_is_written_promises_no_gitignore() {
+    // LAW-12: every refusal in `pull` claimed "documents/.gitignore may
+    // have been created", including the ones reached before `pull` writes
+    // that file at all. A dry run returns early, well ahead of the guard,
+    // so the claim was simply false — and the operator who went looking
+    // for the file found nothing.
+    let root = TempDir::new().unwrap();
+    write(root.path(), "navigator.yaml", "project: [not, a, scalar]\n");
+    write(
+        root.path(),
+        "documents/pleadings/motion.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(Uuid::now_v7(), &"a".repeat(64), 3)).unwrap(),
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "pull", "--dry-run"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("document targets are unchanged"))
+        .stderr(predicate::str::contains(".gitignore").not());
+
+    assert!(
+        !root.path().join("documents/.gitignore").exists(),
+        "the dry run must not write the guard file it was said to write"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_pointer_the_caller_cannot_read_is_reported_and_no_file_is_written() {
     let server = MockServer::start().await;

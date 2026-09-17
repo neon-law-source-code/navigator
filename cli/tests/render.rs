@@ -162,28 +162,33 @@ fn renders_a_letter_pdf_from_a_valid_template() {
 }
 
 #[test]
-fn cli_format_overrides_frontmatter_and_letter_is_larger_than_plain() {
+fn frontmatter_output_selects_the_frame_and_letterhead_is_larger_than_plain() {
+    // `output:` is the template's own deliberate override, and the only
+    // one: a `kind: will` template that declares none renders plain, an
+    // `output: letter` one renders on letterhead, and the frame is read
+    // from the document either way.
     let work = TempDir::new().unwrap();
-    let src = write(&work, "demand.md", VALID);
 
+    let letter_src = write(&work, "demand.md", VALID);
     let letter_out = work.path().join("letter.pdf");
-    // `output: letter` from frontmatter — no flag.
-    let letter = render(&[src.as_os_str(), "--out".as_ref(), letter_out.as_ref()]);
-    assert!(letter.status.success());
-
-    let plain_out = work.path().join("plain.pdf");
-    // `--format plain` overrides the `output: letter` frontmatter.
-    let plain = render(&[
-        src.as_os_str(),
+    let letter = render(&[
+        letter_src.as_os_str(),
         "--out".as_ref(),
-        plain_out.as_ref(),
-        "--format".as_ref(),
-        "plain".as_ref(),
+        letter_out.as_ref(),
     ]);
+    assert!(
+        letter.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&letter.stderr)
+    );
+
+    let plain_src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
+    let plain_out = work.path().join("plain.pdf");
+    let plain = render(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
     assert!(plain.status.success());
     assert!(
         String::from_utf8_lossy(&plain.stdout).contains("Plain"),
-        "override should report Plain, got: {}",
+        "a `kind: will` template should report Plain, got: {}",
         String::from_utf8_lossy(&plain.stdout)
     );
 
@@ -211,14 +216,11 @@ fn a_letter_kind_renders_on_letterhead_with_no_output_declared() {
         String::from_utf8_lossy(&derived.stderr)
     );
 
+    // The contrast case is a different `kind:`, not a flag: `will`
+    // derives plain, so the two derivations are what differ.
+    let plain_src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
     let plain_out = work.path().join("plain.pdf");
-    let plain = render(&[
-        src.as_os_str(),
-        "--out".as_ref(),
-        plain_out.as_ref(),
-        "--format".as_ref(),
-        "plain".as_ref(),
-    ]);
+    let plain = render(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
     assert!(plain.status.success());
 
     let derived_len = fs::read(&derived_out).unwrap().len();
@@ -228,12 +230,10 @@ fn a_letter_kind_renders_on_letterhead_with_no_output_declared() {
         "a `kind: letter` template with no `output:` should default to \
          letterhead ({derived_len}) rather than plain ({plain_len}) — logo missing?"
     );
-
-    // An explicit `--format` still overrides the derived default.
     let stdout = String::from_utf8_lossy(&plain.stdout);
     assert!(
         stdout.contains("Plain"),
-        "override should report Plain, got: {stdout}"
+        "a `kind: will` template should report Plain, got: {stdout}"
     );
 }
 
@@ -353,7 +353,113 @@ fn refuses_a_template_that_fails_validation() {
 }
 
 #[test]
-fn rejects_an_unknown_format() {
+fn the_format_flag_is_retired_and_cannot_reframe_an_instrument() {
+    // LAW-15: `--format` chose the frame a second time, from outside the
+    // document, and won over a correct header. A `kind: will` template
+    // renders the unadorned instrument; `--format letter`, passed out of
+    // habit, silently put the firm's letterhead on it. The flag is gone,
+    // so the mistake is now a refusal at the argument parser rather than
+    // a wrongly-framed PDF nobody was warned about.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
+    let out = work.path().join("will.pdf");
+    let result = render(&[
+        src.as_os_str(),
+        "--out".as_ref(),
+        out.as_ref(),
+        "--format".as_ref(),
+        "letter".as_ref(),
+    ]);
+    assert!(
+        !result.status.success(),
+        "--format must no longer be accepted"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("unexpected argument") && stderr.contains("--format"),
+        "expected clap to refuse the retired flag, got: {stderr}"
+    );
+    assert!(!out.exists(), "no PDF should be written");
+}
+
+/// A choice question whose options carry the prose the body reads.
+/// `custom_questions.<key>.choices` is a `value: label` map, and the body
+/// interpolates the state — so the rendered instrument must read the
+/// label ("Nevada"), never the stored key ("nevada").
+const VALID_CHOICE: &str = "\
+---
+kind: letter
+title: Governed Demand
+respondent_type: entity
+code: test__governed_demand
+confidential: true
+custom_questions:
+  governing_law:
+    prompt: Which state's law governs this engagement?
+    choices:
+      nevada: Nevada
+      california: California
+questionnaire:
+  BEGIN:
+    _: custom_single_choice__governing_law
+  custom_single_choice__governing_law:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    intake_submitted: lawyer_review
+  lawyer_review:
+    approved: END
+    rejected: END
+  END: {}
+---
+
+# Demand
+
+This letter is governed by the law of {{custom_single_choice__governing_law}}.
+";
+
+#[test]
+fn a_choice_answer_renders_its_label_not_its_stored_key() {
+    // LAW-13: a `{{custom_single_choice__*}}` placeholder filled with a
+    // declared choice *key* must reach the page as that choice's *label*.
+    // The key is an answer code, not prose; substituting it verbatim put
+    // "governed by the law of nevada" into the firm's own onboarding
+    // letter. The portal's document path already resolves the label
+    // (`retainer_walk::render_context_from_answers`); this proves the CLI
+    // preview agrees with it rather than rendering a different document.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "governed.md", VALID_CHOICE);
+    let out = work.path().join("governed.pdf");
+    let result = render(&[
+        src.as_os_str(),
+        "--out".as_ref(),
+        out.as_ref(),
+        "--answer".as_ref(),
+        "custom_single_choice__governing_law=nevada".as_ref(),
+    ]);
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let bytes = fs::read(&out).expect("pdf written");
+    assert_eq!(
+        pdf::occurrence_count(&bytes, "the law of Nevada").expect("scan the rendered pdf"),
+        1,
+        "the choice label must reach the page"
+    );
+    assert_eq!(
+        pdf::occurrence_count(&bytes, "the law of nevada").expect("scan the rendered pdf"),
+        0,
+        "the stored choice key must not reach the page"
+    );
+}
+
+#[test]
+fn a_free_text_answer_is_unaffected_by_choice_label_resolution() {
+    // The other side of LAW-13: a state with no declared `choices:` keeps
+    // its answer verbatim, so label resolution cannot swallow free text.
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", VALID);
     let out = work.path().join("demand.pdf");
@@ -361,13 +467,118 @@ fn rejects_an_unknown_format() {
         src.as_os_str(),
         "--out".as_ref(),
         out.as_ref(),
-        "--format".as_ref(),
-        "demand_letter".as_ref(),
+        "--answer".as_ref(),
+        "amount=5000 USD".as_ref(),
     ]);
-    assert!(!result.status.success(), "unknown format should fail");
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let bytes = fs::read(&out).expect("pdf written");
+    assert_eq!(
+        pdf::occurrence_count(&bytes, "5000 USD").expect("scan the rendered pdf"),
+        1,
+        "a free-text answer must render verbatim"
+    );
+}
+
+/// A pleading in the shape `N123` requires: Arabic depth-1 markers, and a
+/// `jurisdiction:` the court geometry is calibrated from. `{JURISDICTION}`
+/// is substituted per test.
+const VALID_PLEADING: &str = "\
+---
+kind: pleading
+title: Motion to Compel
+respondent_type: person
+code: test__motion
+jurisdiction: {JURISDICTION}
+confidential: true
+questionnaire:
+  BEGIN:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    intake_submitted: lawyer_review
+  lawyer_review:
+    approved: END
+  END: {}
+---
+
+# Motion to Compel
+
+## 1. Introduction
+
+Plaintiff moves to compel further responses.
+
+## 2. Argument
+
+The request is proper under the governing rule.
+";
+
+fn pleading_fixture(jurisdiction: &str) -> String {
+    VALID_PLEADING.replace("{JURISDICTION}", jurisdiction)
+}
+
+#[test]
+fn a_pleading_renders_court_geometry_calibrated_by_its_jurisdiction() {
+    // `Kind::Pleading::default_output()` is "pleading", but
+    // `OutputFormat::parse` deliberately never constructs
+    // `OutputFormat::Pleading` — its calibration comes from the template's
+    // `jurisdiction:`, a second field a bare format name cannot supply. The
+    // render path fed the derived name through that parser anyway and then
+    // took `unwrap_or_default()`, so a validation-passing motion came out
+    // on the plain frame: no numbered rail, wrong margins, wrong typeface.
+    // Court paper rendered to the wrong geometry is a filing that can be
+    // rejected, so the jurisdiction is resolved here instead.
+    for (jurisdiction, expected) in [("NV", "NumberedRailTrial"), ("US", "NoRailTrial")] {
+        let work = TempDir::new().unwrap();
+        let src = write(&work, "motion.md", &pleading_fixture(jurisdiction));
+        let out = work.path().join("motion.pdf");
+        let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
+        assert!(
+            result.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        assert!(
+            stdout.contains(&format!("Pleading({expected})")),
+            "`jurisdiction: {jurisdiction}` should calibrate to {expected}, got: {stdout}"
+        );
+        assert_eq!(&fs::read(&out).unwrap()[..4], b"%PDF");
+    }
+}
+
+#[test]
+fn a_pleading_whose_jurisdiction_has_no_calibration_is_refused() {
+    // `pleading::variant_for_jurisdiction` returns `None` for a real
+    // jurisdiction the calibration table has not been extended to, and its
+    // own docs are explicit that this is "a template that cannot render as
+    // a pleading yet, not a reason to guess". Falling back to plain would
+    // be exactly that guess, and it would be silent.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "motion.md", &pleading_fixture("CO"));
+    let out = work.path().join("motion.pdf");
+    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
+    assert!(
+        !result.status.success(),
+        "an uncalibrated jurisdiction must refuse rather than render plain"
+    );
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
-        stderr.contains("unknown --format"),
-        "expected unknown-format error, got: {stderr}"
+        stderr.contains("no court-paper calibration"),
+        "the refusal must say what is missing, got: {stderr}"
     );
+    // It names the calibrations that do exist rather than echoing the
+    // template's own `jurisdiction:` back — the actionable half, and it
+    // keeps a value read straight from a parsed document out of the log.
+    for calibrated in ["NV", "CA", "US"] {
+        assert!(
+            stderr.contains(calibrated),
+            "the refusal must name `{calibrated}` as a supported jurisdiction, got: {stderr}"
+        );
+    }
+    assert!(!out.exists(), "no PDF should be written on refusal");
 }

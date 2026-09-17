@@ -18,8 +18,8 @@ The command is `navigator notations render`, and it takes the template markdown,
 
 1. **Validates first.** The file runs through the same rule set as `navigator validate`. Any `Error`-severity violation
    stops the render, so a broken template never becomes a PDF someone could send. Yellow advisories print and pass.
-2. **Resolves the format** — `--format` on the command line, else the template's `output:` frontmatter field, else
-   `plain`. See [Output formats](#output-formats) below.
+2. **Resolves the frame from the document** — the template's `output:` frontmatter field, else the default its declared
+   `kind:` derives, else `plain`. There is no `--format` flag. See [Output formats](#output-formats) below.
 3. **Fills placeholders.** `--answer code=value`, repeatable, runs through the same notation evaluator as portal preview
    and final document generation. A token with no answer renders verbatim, which is what you want for a blank to fill in
    by hand:
@@ -40,35 +40,42 @@ This is the offline path — a draft for review, a letter to send by hand. The d
 
 ## Output formats
 
-`OutputFormat` (in `pdf::format`) is the page chrome wrapped around the body. A template declares its default in the
-optional `output:` frontmatter key, validated by rule `N109`; `--format` overrides per render.
+`OutputFormat` (in `pdf::format`) is the page chrome wrapped around the body. The frame is derived from the template's
+declared `kind:` (`rules::Kind::default_output`); the optional `output:` frontmatter key, validated by rule `N109`, is
+the deliberate override for a kind that legitimately renders two ways. Nothing outside the document chooses it.
 
 - **`plain`** (the default, declared by omitting the key) — page geometry and the firm typeface, one-inch margins, no
   letterhead.
 - **`letter`** — the firm letterhead described below, typeset airily. This is the dressing for documents that go out
   under the firm's name: engagement letters, demand letters.
-- **`agreement`** — the same letterhead, typeset curtly. The dressing for an executed contract between represented
-  parties.
+- **`contract`** — an executed contract between represented parties. No letterhead at all: an instrument that gets
+  signed must not carry the drafter's branding, so only a small grey line on continuation pages names the firm. Denser
+  than `letter` in margins, leading, and paragraph spacing, with a visible heading hierarchy so a reader scanning for a
+  clause can find where one section ends. It numbers nothing — `N123` already requires the body to carry its own Harvard
+  markers, and the frame printing a second set produced `A. I. Scope` from a section written `## I. Scope`. `agreement`
+  is the retired spelling and still parses for a release.
 - **`form`** — not typesetting at all. Prints questionnaire answers onto an official government blank (an AcroForm
   fill). See [`docs/gov-forms.md`](../docs/gov-forms.md).
 
 A new form — pleading paper, a fax cover — is a new `OutputFormat` variant plus the Typst preamble that frames it. The
 Markdown conversion, the embedded logo, and the font stack are shared, so a variant only describes its own chrome.
-`agreement` is the worked example of that seam: it reuses the letterhead block verbatim and changes nothing but page
-geometry and spacing.
+`contract` is the worked example of that seam: it shares the Markdown conversion and the font stack and describes
+nothing but its own page geometry, spacing, and heading hierarchy.
 
 ## The letterhead
 
-`OutputFormat::Letter` and `OutputFormat::Agreement` head the first page with the firm mark, the wordmark in
-letterspaced capitals, a rule the full width of the text block, and a contact line beneath it — one shared block, so the
-firm's identity is drawn in exactly one place. Every page is numbered `Page N of M`, so a reader can tell when one is
-missing from a signed copy.
+`OutputFormat::Letter` heads the first page with the firm mark, the wordmark in letterspaced capitals, a rule the full
+width of the text block, and a contact line beneath it. It is the only frame that carries it: `OutputFormat::Contract`
+dropped the letterhead in LAW-14, because a contract between two other parties is not firm correspondence and an
+executed instrument should not go out on the drafter's stationery. Every page of both is numbered `Page N of M`, so a
+reader can tell when one is missing from a signed copy.
 
-What differs between the two is density. The letter is typeset deliberately airier than `plain` — wider side margins,
-open leading, generous space between paragraphs and above headings. An engagement letter is read once, carefully, by
-someone deciding whether to sign it. The agreement tightens all of those and drops headings to body size, because a
-contract between represented parties is navigated by section number rather than read through; it also holds every table
-unbreakable, so a signature block moves to the next page whole instead of splitting across a page break.
+The letter is typeset deliberately airier than `plain` — wider side margins, open leading, generous space between
+paragraphs and above headings. An engagement letter is read once, carefully, by someone deciding whether to sign it. The
+contract tightens margins, leading, and paragraph spacing, because it is navigated by section number rather than read
+through, but keeps the letter's body size and sizes its headings by level so section boundaries stay findable. It also
+holds every table unbreakable, so a signature block moves to the next page whole instead of splitting across a page
+break.
 
 One grey line sits under the rule, carrying every way to reach the firm, voice line first:
 

@@ -655,6 +655,31 @@ fn layout_entries(
         };
     }
 
+    // `validate` walks the directory rather than asking Git, so it sees
+    // files Git is deliberately blind to — including the raw document
+    // bytes `site sync` and `site pull` stage under `documents/` behind
+    // the `documents/.gitignore` they write. Those are the supported
+    // workflow's own output, not committed client material, and calling
+    // them a committed legal document made the workflow
+    // self-contradictory: the only way to get `validate` green locally was
+    // to delete the bytes those commands exist to fetch (LAW-12). Ask Git
+    // what it ignores and skip exactly that, so this walk and the `gate`
+    // branch above stop disagreeing about one directory.
+    let ignored = git_ignored_files(root);
+    // Say what was skipped. Honouring `.gitignore` is right for the staged
+    // document bytes it exists for, but a repository-level `*.md`,
+    // `documents/`, or `/templates/` rule can make a whole untracked
+    // subtree disappear from `validate` behind a zero-error result, and an
+    // author who is not told cannot tell that apart from a clean run. The
+    // gate branch above is unaffected: it enumerates tracked and stageable
+    // files, so a forced-added byte is still seen either way.
+    if !ignored.is_empty() {
+        println!(
+            "note: {} gitignored file(s) were not validated; run `git check-ignore -v <path>` \
+             to see which rule covers one",
+            ignored.len()
+        );
+    }
     let mut entries = Vec::new();
     for entry in walkdir::WalkDir::new(root)
         .follow_links(false)
@@ -669,9 +694,50 @@ fn layout_entries(
             errors.push(Finding::at(root, "could not walk repository"));
             return None;
         };
-        entries.push((entry.path().to_path_buf(), entry.file_type().is_file()));
+        let is_file = entry.file_type().is_file();
+        if is_file && ignored.contains(entry.path()) {
+            continue;
+        }
+        entries.push((entry.path().to_path_buf(), is_file));
     }
     Some(entries)
+}
+
+/// The files Git reports as ignored under `root`.
+///
+/// Deliberately fail-open: a directory that is not a Git repository, or a
+/// host with no `git` on the path, yields an empty set and is walked
+/// entire, which is the behaviour every non-repository caller already
+/// relies on. An ignore file cannot mean anything without a repository to
+/// interpret it, so there is nothing to honour and nothing to warn about.
+///
+/// This lists ignored files individually rather than collapsing them by
+/// directory (no `--directory`), because the walk filters per path.
+fn git_ignored_files(root: &Path) -> std::collections::HashSet<PathBuf> {
+    let Ok(output) = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "ls-files",
+            "-z",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+        ])
+        .output()
+    else {
+        return std::collections::HashSet::new();
+    };
+    if !output.status.success() {
+        return std::collections::HashSet::new();
+    }
+    output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .filter_map(|path| std::str::from_utf8(path).ok())
+        .map(|relative| root.join(relative))
+        .collect()
 }
 
 fn validate_layout_with_files(

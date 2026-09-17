@@ -452,13 +452,21 @@ impl Kind {
     /// The render profile a notation of this kind renders under when its
     /// template declares no `output:` frontmatter field at all — the
     /// default `N109`'s optional field falls back to. One of
-    /// [`crate::F109OutputFormat::VALID`] (`"letter"`, `"agreement"`,
-    /// `"form"`) or `"plain"`, the implicit default `output:` itself
-    /// never declares. A template's own `output:` is still an explicit
-    /// override: whatever resolves it (`cli::run_render`'s `--format` →
-    /// `output:` → this default → plain chain) tries the declared value
-    /// first and only falls back to this default when the field is
-    /// absent.
+    /// [`crate::F109OutputFormat::VALID`] (`"letter"`, `"contract"`,
+    /// `"pleading"`, `"form"`) or `"plain"`, the implicit default
+    /// `output:` itself never declares. A template's own `output:` is the
+    /// one explicit override: `cli::run_render` resolves `output:` → this
+    /// default → plain, trying the declared value first and falling back
+    /// here only when the field is absent. There is no third input —
+    /// `--format` was retired for choosing the frame a second time, from
+    /// outside the document it framed.
+    ///
+    /// `"pleading"` is the one value a caller cannot hand to
+    /// `pdf::OutputFormat::parse`: court geometry is calibrated by the
+    /// template's `jurisdiction:` through
+    /// `pdf::pleading::variant_for_jurisdiction`, so `run_render` resolves
+    /// that itself and refuses a jurisdiction the table has no
+    /// calibration for.
     ///
     /// Only a notation-family kind ([`Kind::is_notation`]) ever reaches
     /// a render profile — `output:` means nothing for a content page, a
@@ -482,16 +490,20 @@ impl Kind {
             // geometry, never firm letterhead — a pleading's typeface and
             // margins are a court-rule compliance decision.
             Kind::Pleading => "pleading",
-            // Instruments between other parties never carry firm
-            // letterhead. Every other kind below never reaches a render
-            // profile: content pages, matter dashboards, the GitHub intake,
-            // and asset-lane-only classifications. `Agreement` covers the
-            // firm's own contractor agreements too, which override via an
-            // explicit `output:`.
+            // A contract gets the contract frame: an unadorned instrument
+            // with a visible section hierarchy and no firm letterhead. It
+            // defaulted to `plain` only because the frame used to print
+            // the letterhead, which an instrument between two other
+            // parties must never carry; LAW-14 removed it, so the kind can
+            // now derive the frame named after it.
+            Kind::Agreement => "contract",
+            // Instruments the firm drafts for a client to execute alone
+            // carry no chrome at all. Every other kind below never reaches
+            // a render profile: content pages, matter dashboards, the
+            // GitHub intake, and asset-lane-only classifications.
             Kind::Will
             | Kind::Trust
             | Kind::Directive
-            | Kind::Agreement
             | Kind::Event
             | Kind::Post
             | Kind::Workshop
@@ -1018,11 +1030,9 @@ mod tests {
     }
 
     #[test]
-    fn instruments_between_other_parties_default_to_plain() {
-        // A will, a trust, a directive, and a private agreement never
-        // carry firm letterhead by default; the firm's own contractor
-        // agreements override via an explicit `output:`.
-        for kind in [Kind::Will, Kind::Trust, Kind::Directive, Kind::Agreement] {
+    fn instruments_a_client_executes_alone_default_to_plain() {
+        // A will, a trust, and a directive carry no chrome at all.
+        for kind in [Kind::Will, Kind::Trust, Kind::Directive] {
             assert_eq!(
                 kind.default_output(),
                 "plain",
@@ -1030,6 +1040,21 @@ mod tests {
                 kind.as_str()
             );
         }
+    }
+
+    #[test]
+    fn a_contract_derives_the_contract_frame() {
+        // Before LAW-14 this derived `plain`, because the frame named
+        // after it printed the firm's letterhead — which a contract
+        // between two other parties must never carry. With the letterhead
+        // gone the kind derives its own frame, so a contract gets the
+        // section hierarchy and unbreakable signature blocks without the
+        // template having to say `output:` at all.
+        assert_eq!(Kind::Agreement.default_output(), "contract");
+        assert!(
+            crate::F109OutputFormat::VALID.contains(&Kind::Agreement.default_output()),
+            "the derived default must be a declarable profile"
+        );
     }
 
     #[test]

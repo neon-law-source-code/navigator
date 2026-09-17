@@ -190,12 +190,7 @@ pub async fn require_policy(
     }
     let swagger_ui_request = req.headers().contains_key("x-navigator-swagger-ui");
     let path = req.uri().path().to_string();
-    let path_segments: Vec<String> = path
-        .trim_start_matches('/')
-        .split('/')
-        .filter(|s| !s.is_empty())
-        .map(ToString::to_string)
-        .collect();
+    let path_segments = path_segments(&path);
     if req.method() == axum::http::Method::POST
         && path == "/app/view-as-client/stop"
         && session
@@ -311,6 +306,23 @@ pub(crate) fn swagger_ui_unauthenticated(path: &str) -> axum::response::Response
         .into_response()
 }
 
+/// The `input.path` array embedded Rego decides against: the request URL's
+/// segments, in order, with the empty ones dropped.
+///
+/// Extracted from [`require_policy`] so the shape is a function the policy
+/// contract's tests can call. `docs/access-model.md` prints one worked example
+/// of this array, and the test below is what keeps that example the output of
+/// this function rather than prose that drifts with the next rename — a
+/// repository-wide `projects` to `project` sweep once pluralised the segment
+/// there and nothing failed.
+pub(crate) fn path_segments(path: &str) -> Vec<String> {
+    path.trim_start_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
 /// Percent-encode a path so it survives being a `?return_to=` query
 /// value. Only the small set of characters that materially break a
 /// query string (`?`, `&`, `#`, `%`, `+`, space) is encoded — `/`
@@ -336,7 +348,7 @@ pub(crate) fn percent_encode_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PolicyClient, PolicyError};
+    use super::{path_segments, PolicyClient, PolicyError};
     use serde_json::json;
 
     const POLICY: &str = r"
@@ -395,5 +407,64 @@ mod tests {
             Err(PolicyError::Rego { .. })
         ));
         assert!(!PolicyClient::passthrough().is_enforced());
+    }
+
+    /// `docs/access-model.md` is the reference someone reads when adding or
+    /// auditing a policy rule, and its one worked `input` document is where
+    /// they learn what `input.path` looks like. A wrong path there produces a
+    /// wrong rule later, so the documented example is asserted to be exactly
+    /// what [`path_segments`] builds for the administrator matter directory —
+    /// the real route it illustrates.
+    #[test]
+    fn the_documented_policy_input_path_is_the_one_the_middleware_builds() {
+        let doc = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("docs")
+            .join("access-model.md");
+        let source = std::fs::read_to_string(&doc)
+            .unwrap_or_else(|error| panic!("read {}: {error}", doc.display()));
+
+        let block = source
+            .split("## How embedded Rego decides")
+            .nth(1)
+            .expect("access-model.md documents how embedded Rego decides")
+            .split("```json")
+            .nth(1)
+            .expect("that section prints a worked `input` document")
+            .split("```")
+            .next()
+            .expect("the fenced block closes");
+        let documented: serde_json::Value =
+            serde_json::from_str(block).expect("the documented `input` document is valid JSON");
+
+        assert_eq!(
+            documented["path"],
+            json!(path_segments(
+                webapp::matter_directory::MATTER_DIRECTORY_PATH
+            )),
+            "the documented `input.path` no longer names the administrator matter directory \
+             ({}) as the middleware segments it",
+            webapp::matter_directory::MATTER_DIRECTORY_PATH
+        );
+    }
+
+    /// The segmentation itself: leading, trailing, and doubled separators
+    /// contribute no segment, so a path the router treats as one request
+    /// cannot reach the policy as two different arrays.
+    #[test]
+    fn path_segments_drops_empty_segments() {
+        assert_eq!(
+            path_segments("/app/admin/projects"),
+            ["app", "admin", "projects"]
+        );
+        assert_eq!(
+            path_segments("/app/admin/projects/"),
+            ["app", "admin", "projects"]
+        );
+        assert_eq!(
+            path_segments("//app//admin//projects"),
+            ["app", "admin", "projects"]
+        );
+        assert!(path_segments("/").is_empty());
     }
 }

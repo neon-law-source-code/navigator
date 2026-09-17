@@ -421,14 +421,13 @@ request:
 
 ```json
 {
-  "path":       ["admin", "project", "9a..."],
-  "method":     "GET",
-  "session":    {
+  "path":    ["app", "admin", "projects"],
+  "method":  "GET",
+  "session": {
     "sub":   "<idp subject>",
     "email": "libra@example.com",
     "role":  "lawyer"
-  },
-  "project_id": "9a..."
+  }
 }
 ```
 

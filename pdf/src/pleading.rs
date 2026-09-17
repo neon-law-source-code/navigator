@@ -244,6 +244,16 @@ pub fn variant_for_jurisdiction(jurisdiction: &str) -> Option<Variant> {
     }
 }
 
+/// The jurisdiction codes [`variant_for_jurisdiction`] has a calibration
+/// for, so a caller refusing an unmapped one can say what it *does*
+/// support rather than only echoing what it was handed.
+///
+/// Kept beside the match it describes, and pinned to it by
+/// `every_listed_jurisdiction_resolves`, so extending the table without
+/// extending this list fails the build's own tests rather than leaving a
+/// diagnostic quietly out of date.
+pub const CALIBRATED_JURISDICTIONS: &[&str] = &["NV", "CA", "US"];
+
 /// Vertical space, expressible **only** in whole grid units of
 /// [`Calibration::DEFAULT`].
 ///
@@ -392,6 +402,23 @@ stroke: 0.5pt))\n\
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_listed_jurisdiction_resolves() {
+        // `CALIBRATED_JURISDICTIONS` exists so a refusal can name the
+        // supported set. A code listed there that no longer resolves would
+        // make that diagnostic a lie.
+        for code in super::CALIBRATED_JURISDICTIONS {
+            assert!(
+                super::variant_for_jurisdiction(code).is_some(),
+                "`{code}` is advertised as calibrated but resolves to no variant"
+            );
+        }
+        assert!(
+            super::variant_for_jurisdiction("CO").is_none(),
+            "an uncalibrated jurisdiction must stay uncalibrated"
+        );
+    }
+
     use super::{
         authority_entry, grid_skip, page_limit_warning, preamble, variant_for_jurisdiction,
         Calibration, Leading, Variant,

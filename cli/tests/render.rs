@@ -568,8 +568,17 @@ fn a_pleading_whose_jurisdiction_has_no_calibration_is_refused() {
     );
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
-        stderr.contains("CO") && stderr.contains("pleading"),
-        "the refusal must name the jurisdiction and the frame, got: {stderr}"
+        stderr.contains("no court-paper calibration"),
+        "the refusal must say what is missing, got: {stderr}"
     );
+    // It names the calibrations that do exist rather than echoing the
+    // template's own `jurisdiction:` back — the actionable half, and it
+    // keeps a value read straight from a parsed document out of the log.
+    for calibrated in ["NV", "CA", "US"] {
+        assert!(
+            stderr.contains(calibrated),
+            "the refusal must name `{calibrated}` as a supported jurisdiction, got: {stderr}"
+        );
+    }
     assert!(!out.exists(), "no PDF should be written on refusal");
 }

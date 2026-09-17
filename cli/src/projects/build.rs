@@ -77,6 +77,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     /// Writes a fake `pnpm` onto `$PATH` that appends every invocation it
@@ -92,9 +93,14 @@ mod tests {
             .unwrap()
             .write_all(script.as_bytes())
             .unwrap();
-        let mut perms = fs::metadata(&path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&path, perms).unwrap();
+        // The fake `pnpm` is a POSIX shell script, so only Unix needs an
+        // executable mode bit before invoking it.
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&path, perms).unwrap();
+        }
     }
 
     #[test]

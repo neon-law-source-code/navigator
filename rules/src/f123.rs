@@ -194,6 +194,229 @@ fn letter_marker(n: u32) -> String {
         )
 }
 
+fn violation(file: &SourceFile, line: usize, message: String) -> Violation {
+    Violation {
+        code: F123HarvardOutlineRequired::CODE,
+        path: file.path.clone(),
+        line,
+        range: line_byte_range(&file.contents, line),
+        message,
+    }
+}
+
+fn headings(contents: &str) -> Vec<(usize, usize, &str)> {
+    // Every heading the outline can speak about, in document order.
+    // `### ` is tested before `## ` so a deeper heading is never read as a
+    // shallower one. Depth 4 and below are left to the parser and the
+    // renderer that already own the seven-marker table.
+    frontmatter::body_lines(contents)
+        .into_iter()
+        .filter_map(|(line, text)| {
+            [(3_usize, "### "), (2, "## "), (1, "# ")]
+                .into_iter()
+                .find_map(|(depth, prefix)| {
+                    text.strip_prefix(prefix)
+                        .map(|rest| (line, depth, rest.trim()))
+                })
+        })
+        .collect()
+}
+
+fn is_numbered(heading: &(usize, usize, &str)) -> bool {
+    let (_, depth, text) = *heading;
+    depth == 2 && depth_one_marker(text).is_some()
+}
+
+fn title_violations(
+    file: &SourceFile,
+    kind: &str,
+    title_rule: Title,
+    headings: &[(usize, usize, &str)],
+    first_marked: usize,
+) -> Vec<Violation> {
+    let titles: Vec<usize> = headings
+        .iter()
+        .enumerate()
+        .filter_map(|(index, heading)| (heading.1 == 1).then_some(index))
+        .collect();
+    let mut violations = Vec::new();
+
+    match title_rule {
+        Title::Required => match titles.as_slice() {
+            [] => violations.push(violation(
+                file,
+                headings[first_marked].0,
+                format!(
+                    "`kind: {kind}` renders without a title of its own, so the body must open \
+                     with one `# ` document title above the first numbered section"
+                ),
+            )),
+            [first, extra @ ..] => {
+                if *first > first_marked {
+                    violations.push(violation(
+                        file,
+                        headings[*first].0,
+                        format!(
+                            "`# {}` sits below the outline; the `# ` document title opens the \
+                             body, above the first numbered section",
+                            headings[*first].2
+                        ),
+                    ));
+                }
+                for index in extra {
+                    violations.push(violation(
+                        file,
+                        headings[*index].0,
+                        format!(
+                            "`# {}` is a second `# ` heading; a document has exactly one title \
+                             and its outline sections are `## `",
+                            headings[*index].2
+                        ),
+                    ));
+                }
+            }
+        },
+        Title::FromFrame => {
+            for index in &titles {
+                violations.push(violation(
+                    file,
+                    headings[*index].0,
+                    format!(
+                        "`# {}` titles the body, but `kind: {kind}` renders on letterhead and \
+                         opens with its own salutation; the document name belongs in \
+                         frontmatter `title:`",
+                        headings[*index].2
+                    ),
+                ));
+            }
+        }
+    }
+
+    violations
+}
+
+fn outline_violations(
+    file: &SourceFile,
+    kind: &str,
+    scheme: Scheme,
+    headings: &[(usize, usize, &str)],
+    first_marked: usize,
+    last_marked: usize,
+) -> Vec<Violation> {
+    // LAW-16: the execution, attestation, and self-proving affidavit
+    // blocks that follow the testimonium carry no number and are peers of
+    // the articles in depth. They open at the first unnumbered `## ` after
+    // the last numbered section and run to the end of the body. Before
+    // that point an unnumbered `## ` is still a section that lost its
+    // marker, and a subsection of the final numbered section is still a
+    // subsection — which is why this is anchored to the last marker rather
+    // than to whatever heading happens to come last.
+    let tail = (last_marked + 1..headings.len()).find(|index| {
+        let (_, depth, text) = headings[*index];
+        depth == 2 && depth_one_marker(text).is_none()
+    });
+    let in_tail = |index: usize| tail.is_some_and(|start| index >= start);
+
+    let mut violations = Vec::new();
+    let mut expected = 1_u32;
+    let mut expected_sub = 1_u32;
+    for (index, &(line, depth, text)) in headings.iter().enumerate().skip(first_marked) {
+        match depth {
+            2 => {
+                expected_sub = 1;
+                let Some((found, value, title)) = depth_one_marker(text) else {
+                    if !in_tail(index) {
+                        violations.push(violation(
+                            file,
+                            line,
+                            format!(
+                                "`## {text}` carries no outline marker; `kind: {kind}` numbers \
+                                 depth-1 sections with {} (expected `## {} {text}`)",
+                                scheme.name(),
+                                roman_or_arabic(scheme, expected),
+                            ),
+                        ));
+                        expected += 1;
+                    }
+                    continue;
+                };
+                if found != scheme {
+                    violations.push(violation(
+                        file,
+                        line,
+                        format!(
+                            "`## {text}` numbers with {}; `kind: {kind}` numbers depth-1 \
+                             sections with {} (expected `## {} {title}`)",
+                            found.name(),
+                            scheme.name(),
+                            roman_or_arabic(scheme, expected),
+                        ),
+                    ));
+                } else if value != expected {
+                    violations.push(violation(
+                        file,
+                        line,
+                        format!(
+                            "`## {text}` is section {value}; depth-1 sections run in sequence, \
+                             so this one is {expected} (expected `## {} {title}`)",
+                            roman_or_arabic(scheme, expected),
+                        ),
+                    ));
+                }
+                expected += 1;
+            }
+            3 => {
+                // A heading outside the numbering is a peer of the
+                // articles, so it belongs at `## ` — LAW-16 asks for the
+                // level to be stated rather than left to the drafter.
+                if in_tail(index) {
+                    violations.push(violation(
+                        file,
+                        line,
+                        format!(
+                            "`### {text}` follows the outline but sits below it; an execution, \
+                             attestation, or affidavit block is a peer of the numbered \
+                             sections (expected `## {text}`)"
+                        ),
+                    ));
+                    continue;
+                }
+                let Some((value, title)) = depth_two_marker(text) else {
+                    violations.push(violation(
+                        file,
+                        line,
+                        format!(
+                            "`### {text}` carries no outline marker; depth-2 subsections are \
+                             lettered (expected `### {} {text}`)",
+                            letter_marker(expected_sub),
+                        ),
+                    ));
+                    expected_sub += 1;
+                    continue;
+                };
+                if value != expected_sub {
+                    violations.push(violation(
+                        file,
+                        line,
+                        format!(
+                            "`### {text}` is subsection {}; depth-2 subsections run in sequence \
+                             under their section and restart at `A.` beneath each one, so this \
+                             one is {} (expected `### {} {title}`)",
+                            letter_marker(value),
+                            letter_marker(expected_sub),
+                            letter_marker(expected_sub),
+                        ),
+                    ));
+                }
+                expected_sub += 1;
+            }
+            _ => {}
+        }
+    }
+
+    violations
+}
+
 impl Rule for F123HarvardOutlineRequired {
     fn code(&self) -> &'static str {
         Self::CODE
@@ -216,38 +439,12 @@ impl Rule for F123HarvardOutlineRequired {
             return Vec::new();
         };
 
-        let flag = |line: usize, message: String| Violation {
-            code: Self::CODE,
-            path: file.path.clone(),
-            line,
-            range: line_byte_range(&file.contents, line),
-            message,
-        };
-
-        // Every heading the outline can speak about, in document order.
-        // `### ` is tested before `## ` so a deeper heading is never read as a
-        // shallower one. Depth 4 and below are left to the parser and the
-        // renderer that already own the seven-marker table.
-        let headings: Vec<(usize, usize, &str)> = frontmatter::body_lines(&file.contents)
-            .into_iter()
-            .filter_map(|(line, text)| {
-                [(3_usize, "### "), (2, "## "), (1, "# ")]
-                    .into_iter()
-                    .find_map(|(depth, prefix)| {
-                        text.strip_prefix(prefix)
-                            .map(|rest| (line, depth, rest.trim()))
-                    })
-            })
-            .collect();
-
-        let numbered = |index: &usize| {
-            let (_, depth, text) = headings[*index];
-            depth == 2 && depth_one_marker(text).is_some()
-        };
+        let headings = headings(&file.contents);
         // The caption's own title line is a preamble, not section one, so
         // the outline starts at the first heading that carries a marker.
-        let Some(first_marked) = (0..headings.len()).find(numbered) else {
-            return vec![flag(
+        let Some(first_marked) = headings.iter().position(is_numbered) else {
+            return vec![violation(
+                file,
                 1,
                 format!(
                     "`kind: {kind}` must carry a Harvard outline; the body declares no numbered \
@@ -256,164 +453,20 @@ impl Rule for F123HarvardOutlineRequired {
                 ),
             )];
         };
-        let last_marked = (0..headings.len()).rfind(numbered).unwrap_or(first_marked);
+        let last_marked = headings
+            .iter()
+            .rposition(is_numbered)
+            .unwrap_or(first_marked);
 
-        // LAW-16: the execution, attestation, and self-proving affidavit
-        // blocks that follow the testimonium carry no number and are peers of
-        // the articles in depth. They open at the first unnumbered `## ` after
-        // the last numbered section and run to the end of the body. Before
-        // that point an unnumbered `## ` is still a section that lost its
-        // marker, and a subsection of the final numbered section is still a
-        // subsection — which is why this is anchored to the last marker rather
-        // than to whatever heading happens to come last.
-        let tail = (last_marked + 1..headings.len()).find(|index| {
-            let (_, depth, text) = headings[*index];
-            depth == 2 && depth_one_marker(text).is_none()
-        });
-        let in_tail = |index: usize| tail.is_some_and(|start| index >= start);
-
-        let mut violations = Vec::new();
-
-        let titles: Vec<usize> = (0..headings.len())
-            .filter(|index| headings[*index].1 == 1)
-            .collect();
-        match title_rule {
-            Title::Required => match titles.as_slice() {
-                [] => violations.push(flag(
-                    headings[first_marked].0,
-                    format!(
-                        "`kind: {kind}` renders without a title of its own, so the body must open \
-                         with one `# ` document title above the first numbered section"
-                    ),
-                )),
-                [first, extra @ ..] => {
-                    if *first > first_marked {
-                        violations.push(flag(
-                            headings[*first].0,
-                            format!(
-                                "`# {}` sits below the outline; the `# ` document title opens the \
-                                 body, above the first numbered section",
-                                headings[*first].2
-                            ),
-                        ));
-                    }
-                    for index in extra {
-                        violations.push(flag(
-                            headings[*index].0,
-                            format!(
-                                "`# {}` is a second `# ` heading; a document has exactly one title \
-                                 and its outline sections are `## `",
-                                headings[*index].2
-                            ),
-                        ));
-                    }
-                }
-            },
-            Title::FromFrame => {
-                for index in &titles {
-                    violations.push(flag(
-                        headings[*index].0,
-                        format!(
-                            "`# {}` titles the body, but `kind: {kind}` renders on letterhead and \
-                             opens with its own salutation; the document name belongs in \
-                             frontmatter `title:`",
-                            headings[*index].2
-                        ),
-                    ));
-                }
-            }
-        }
-
-        let mut expected = 1_u32;
-        let mut expected_sub = 1_u32;
-        for index in first_marked..headings.len() {
-            let (line, depth, text) = headings[index];
-            match depth {
-                2 => {
-                    expected_sub = 1;
-                    let Some((found, value, title)) = depth_one_marker(text) else {
-                        if !in_tail(index) {
-                            violations.push(flag(
-                                line,
-                                format!(
-                                    "`## {text}` carries no outline marker; `kind: {kind}` numbers \
-                                     depth-1 sections with {} (expected `## {} {text}`)",
-                                    scheme.name(),
-                                    roman_or_arabic(scheme, expected),
-                                ),
-                            ));
-                            expected += 1;
-                        }
-                        continue;
-                    };
-                    if found != scheme {
-                        violations.push(flag(
-                            line,
-                            format!(
-                                "`## {text}` numbers with {}; `kind: {kind}` numbers depth-1 \
-                                 sections with {} (expected `## {} {title}`)",
-                                found.name(),
-                                scheme.name(),
-                                roman_or_arabic(scheme, expected),
-                            ),
-                        ));
-                    } else if value != expected {
-                        violations.push(flag(
-                            line,
-                            format!(
-                                "`## {text}` is section {value}; depth-1 sections run in sequence, \
-                                 so this one is {expected} (expected `## {} {title}`)",
-                                roman_or_arabic(scheme, expected),
-                            ),
-                        ));
-                    }
-                    expected += 1;
-                }
-                3 => {
-                    // A heading outside the numbering is a peer of the
-                    // articles, so it belongs at `## ` — LAW-16 asks for the
-                    // level to be stated rather than left to the drafter.
-                    if in_tail(index) {
-                        violations.push(flag(
-                            line,
-                            format!(
-                                "`### {text}` follows the outline but sits below it; an execution, \
-                                 attestation, or affidavit block is a peer of the numbered \
-                                 sections (expected `## {text}`)"
-                            ),
-                        ));
-                        continue;
-                    }
-                    let Some((value, title)) = depth_two_marker(text) else {
-                        violations.push(flag(
-                            line,
-                            format!(
-                                "`### {text}` carries no outline marker; depth-2 subsections are \
-                                 lettered (expected `### {} {text}`)",
-                                letter_marker(expected_sub),
-                            ),
-                        ));
-                        expected_sub += 1;
-                        continue;
-                    };
-                    if value != expected_sub {
-                        violations.push(flag(
-                            line,
-                            format!(
-                                "`### {text}` is subsection {}; depth-2 subsections run in sequence \
-                                 under their section and restart at `A.` beneath each one, so this \
-                                 one is {} (expected `### {} {title}`)",
-                                letter_marker(value),
-                                letter_marker(expected_sub),
-                                letter_marker(expected_sub),
-                            ),
-                        ));
-                    }
-                    expected_sub += 1;
-                }
-                _ => {}
-            }
-        }
+        let mut violations = title_violations(file, &kind, title_rule, &headings, first_marked);
+        violations.extend(outline_violations(
+            file,
+            &kind,
+            scheme,
+            &headings,
+            first_marked,
+            last_marked,
+        ));
         violations
     }
 }

@@ -736,6 +736,11 @@ enum NotationsCmd {
     /// of habit put the firm's letterhead on an executed instrument with
     /// no warning (LAW-15).
     ///
+    /// A `kind: pleading` template is the one case that needs a second
+    /// field: court geometry is calibrated by its `jurisdiction:`. That is
+    /// resolved here, and a jurisdiction with no calibration is refused
+    /// rather than quietly rendered on the plain frame.
+    ///
     /// Markdown is converted to Typst and compiled in pure Rust (no
     /// shell-out). `{{placeholder}}` tokens render verbatim unless filled
     /// with `--answer code=value`.
@@ -3318,6 +3323,16 @@ const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing,
 /// the `kind:`-derived default → plain), fills
 /// any `{{code}}` placeholders from `answers`, and writes the compiled
 /// PDF to `out`.
+/// The render profile a template selects by declaring no `output:` and no
+/// `kind:` with a frame of its own. Never a declarable `output:` value —
+/// omitting the key is how a template selects it.
+const PLAIN_PROFILE: &str = "plain";
+
+/// The one profile `pdf::OutputFormat::parse` cannot construct from its
+/// name, because its calibration comes from the template's
+/// `jurisdiction:`. `run_render` resolves it itself.
+const PLEADING_PROFILE: &str = "pleading";
+
 fn run_render(
     file: &std::path::Path,
     out: &std::path::Path,
@@ -3371,17 +3386,50 @@ fn run_render(
     // mode this preview never renders) falls back to plain, as does a
     // template that declares no `kind:` at all. A *misspelled* `output:`
     // never reaches here: N109 refuses it at the validation gate above.
-    let format = rules::frontmatter::extract(&contents)
-        .and_then(|fm| rules::frontmatter::field(fm, "output"))
-        .filter(|value| !value.is_empty())
-        .and_then(|value| pdf::OutputFormat::parse(&value))
+    let field = |key: &str| {
+        rules::frontmatter::extract(&contents)
+            .and_then(|fm| rules::frontmatter::field(fm, key))
+            .filter(|value| !value.is_empty())
+    };
+    let profile = field("output")
         .or_else(|| {
-            rules::frontmatter::extract(&contents)
-                .and_then(|fm| rules::frontmatter::field(fm, "kind"))
+            field("kind")
                 .and_then(|k| rules::Kind::parse(&k))
-                .and_then(|k| pdf::OutputFormat::parse(k.default_output()))
+                .map(|k| k.default_output().to_string())
         })
-        .unwrap_or_default();
+        .unwrap_or_else(|| PLAIN_PROFILE.to_string());
+    // `pleading` is the one profile a bare name cannot construct: court
+    // geometry is calibrated by the template's `jurisdiction:`, a second
+    // field `OutputFormat::parse` never sees, so it returns `None` for the
+    // name by design. Feeding it through that parser and taking
+    // `unwrap_or_default()` put a validation-passing motion on the plain
+    // frame — no numbered rail, wrong margins, wrong typeface — and said
+    // nothing. Court paper rendered to the wrong geometry is a filing a
+    // clerk can reject, so resolve the calibration here and refuse when
+    // the table has not been extended to that jurisdiction:
+    // `variant_for_jurisdiction` returning `None` means a template that
+    // cannot render as a pleading yet, never a reason to guess.
+    let format = if profile == PLEADING_PROFILE {
+        let jurisdiction = field("jurisdiction").unwrap_or_default();
+        if let Some(variant) = pdf::pleading::variant_for_jurisdiction(&jurisdiction) {
+            pdf::OutputFormat::Pleading(variant)
+        } else {
+            eprintln!(
+                "navigator: {} renders as a pleading, but there is no court-paper \
+                 calibration for `jurisdiction: {}`; add one to \
+                 `pdf::pleading::variant_for_jurisdiction` before rendering it",
+                file.display(),
+                if jurisdiction.is_empty() {
+                    "<unset>"
+                } else {
+                    &jurisdiction
+                }
+            );
+            return ExitCode::from(2);
+        }
+    } else {
+        pdf::OutputFormat::parse(&profile).unwrap_or_default()
+    };
 
     // Body is everything after the frontmatter block; fill placeholders
     // through the same evaluator as preview and final document generation.

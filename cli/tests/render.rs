@@ -482,3 +482,94 @@ fn a_free_text_answer_is_unaffected_by_choice_label_resolution() {
         "a free-text answer must render verbatim"
     );
 }
+
+/// A pleading in the shape `N123` requires: Arabic depth-1 markers, and a
+/// `jurisdiction:` the court geometry is calibrated from. `{JURISDICTION}`
+/// is substituted per test.
+const VALID_PLEADING: &str = "\
+---
+kind: pleading
+title: Motion to Compel
+respondent_type: person
+code: test__motion
+jurisdiction: {JURISDICTION}
+confidential: true
+questionnaire:
+  BEGIN:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    intake_submitted: lawyer_review
+  lawyer_review:
+    approved: END
+  END: {}
+---
+
+# Motion to Compel
+
+## 1. Introduction
+
+Plaintiff moves to compel further responses.
+
+## 2. Argument
+
+The request is proper under the governing rule.
+";
+
+fn pleading_fixture(jurisdiction: &str) -> String {
+    VALID_PLEADING.replace("{JURISDICTION}", jurisdiction)
+}
+
+#[test]
+fn a_pleading_renders_court_geometry_calibrated_by_its_jurisdiction() {
+    // `Kind::Pleading::default_output()` is "pleading", but
+    // `OutputFormat::parse` deliberately never constructs
+    // `OutputFormat::Pleading` — its calibration comes from the template's
+    // `jurisdiction:`, a second field a bare format name cannot supply. The
+    // render path fed the derived name through that parser anyway and then
+    // took `unwrap_or_default()`, so a validation-passing motion came out
+    // on the plain frame: no numbered rail, wrong margins, wrong typeface.
+    // Court paper rendered to the wrong geometry is a filing that can be
+    // rejected, so the jurisdiction is resolved here instead.
+    for (jurisdiction, expected) in [("NV", "NumberedRailTrial"), ("US", "NoRailTrial")] {
+        let work = TempDir::new().unwrap();
+        let src = write(&work, "motion.md", &pleading_fixture(jurisdiction));
+        let out = work.path().join("motion.pdf");
+        let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
+        assert!(
+            result.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        assert!(
+            stdout.contains(&format!("Pleading({expected})")),
+            "`jurisdiction: {jurisdiction}` should calibrate to {expected}, got: {stdout}"
+        );
+        assert_eq!(&fs::read(&out).unwrap()[..4], b"%PDF");
+    }
+}
+
+#[test]
+fn a_pleading_whose_jurisdiction_has_no_calibration_is_refused() {
+    // `pleading::variant_for_jurisdiction` returns `None` for a real
+    // jurisdiction the calibration table has not been extended to, and its
+    // own docs are explicit that this is "a template that cannot render as
+    // a pleading yet, not a reason to guess". Falling back to plain would
+    // be exactly that guess, and it would be silent.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "motion.md", &pleading_fixture("CO"));
+    let out = work.path().join("motion.pdf");
+    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
+    assert!(
+        !result.status.success(),
+        "an uncalibrated jurisdiction must refuse rather than render plain"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("CO") && stderr.contains("pleading"),
+        "the refusal must name the jurisdiction and the frame, got: {stderr}"
+    );
+    assert!(!out.exists(), "no PDF should be written on refusal");
+}

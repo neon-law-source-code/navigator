@@ -49,6 +49,15 @@ allow if {
     input.session.role == "owner"
 }
 
+# The service start door admits an authenticated browser long enough for its
+# handler to apply the role-specific decision: clients may open their own
+# matter, while firm tiers are sent to the lawyer start form.
+allow if {
+    input.path[0] == "start"
+    count(input.path) == 2
+    is_authenticated(input.session)
+}
+
 # /app/projects/* is the one matter surface (ENG-81). Every tier enters the
 # same path, Clerk included now that the dedicated `/clerk` namespace is
 # retired, so the policy cannot make the firm/client/supervised split here —

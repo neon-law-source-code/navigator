@@ -115,6 +115,10 @@ pub struct Service {
     /// The lower price a named plan pays for this Notation package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_price: Option<PlanPrice>,
+    /// The public service id is mapped to a seeded Notation template when a
+    /// visitor may start this service online.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
 }
 
 /// The price a named plan pays for a Notation package.
@@ -211,6 +215,11 @@ pub struct ServicesBand {
     pub empty: String,
     pub empty_help: String,
     pub clear_label: String,
+    /// The label and one-line explanation on a service that has a start door.
+    #[serde(default)]
+    pub start_label: String,
+    #[serde(default)]
+    pub start_microcopy: String,
     pub services: Vec<Service>,
 }
 
@@ -373,6 +382,14 @@ pub fn ServicesSearch(band: ServicesBand, query: String) -> Element {
                                 div { class: "fm-card__body",
                                     p { "{service.blurb}" }
                                 }
+                                if service.template.is_some() {
+                                    a {
+                                        class: "fm-card__link",
+                                        href: "/start/{service.id}",
+                                        "{band.start_label}"
+                                    }
+                                    p { class: "fm-services__start-microcopy", "{band.start_microcopy}" }
+                                }
                                 if !service.includes.is_empty() {
                                     p { class: "fm-services__includes-label", "{band.includes_label}" }
                                     ul { class: "fm-services__includes",
@@ -410,6 +427,7 @@ mod tests {
             state_fee: false,
             package: None,
             plan_price: None,
+            template: None,
         }
     }
 
@@ -587,6 +605,8 @@ mod tests {
             empty: "We could not find a match.".to_string(),
             empty_help: "Tell us what you need.".to_string(),
             clear_label: "Show all services".to_string(),
+            start_label: "Start".to_string(),
+            start_microcopy: "Opens a short questionnaire.".to_string(),
             services: vec![setup, trademark],
         }
     }

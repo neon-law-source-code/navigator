@@ -127,6 +127,7 @@ const PARAMETERISED: &[(&str, &[&str])] = &[
         &["/blog/thanks-apple", "/blog/going-all-in-on-rust"],
     ),
     ("/notations/{slug}", &["/notations/onboarding-letter"]),
+    ("/start/{service_id}", &["/start/llc-file"]),
     ("/workshops/{slug}", &["/workshops/use-the-navigator"]),
     (
         "/workshops/{slug}/slides",

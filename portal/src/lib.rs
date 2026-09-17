@@ -151,6 +151,7 @@ pub mod session;
 pub mod session_renew;
 pub mod signature;
 pub mod signature_render;
+pub mod start_door;
 pub mod template_api;
 pub mod template_gallery;
 mod template_paths;
@@ -440,6 +441,9 @@ pub struct AppState {
     /// tests set it explicitly so the suite can run in parallel
     /// without env-var stomping.
     pub bootstrap_owner_email: Option<String>,
+    /// The admitted lawyer DRI for client-initiated service starts. Read once
+    /// at boot so a request never observes a changing process environment.
+    pub on_call_lawyer_email: Option<String>,
     /// Global self-signup capability, **off by default**. Off: an unknown
     /// verified email gets 403 (operator-mediated onboarding). On: the first
     /// login for an unknown email JIT-creates a `client` with an empty
@@ -859,6 +863,7 @@ pub fn bootstrap(
         billing_provider: state.billing_provider.clone(),
         contract_reviewer: state.contract_reviewer.clone(),
         bootstrap_owner_email: state.bootstrap_owner_email.clone(),
+        on_call_lawyer_email: state.on_call_lawyer_email.clone(),
         bootstrap_company: admin::bootstrap_company_from_env(),
         sessions: state.sessions.clone(),
         secure_cookies: secure_cookies(&state),

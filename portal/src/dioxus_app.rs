@@ -150,7 +150,7 @@ pub fn router() -> Option<Router> {
 ///
 /// Only the HTML render response is rewritten; the wasm/glue assets pass
 /// through untouched.
-async fn dioxus_document_head(req: Request, next: Next) -> Response {
+pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
     // Navigator publishes one language. The `PageLayout` set `<html lang>`
     // and the Dioxus port has no `PageLayout`, so it is stamped onto the SSR
     // shell's opening `<html>` tag here — whether that shell is bare or already
@@ -663,7 +663,7 @@ async fn inject_csrf_token(mut req: Request, next: Next) -> Response {
 /// Sign in is offered on every property, not just the firm's own host: every
 /// property signs into the one Navigator portal, so a visitor who lands on a
 /// white-label tenant still needs a door in.
-fn public_utility_links(
+pub(crate) fn public_utility_links(
     session: Option<&crate::session::SessionData>,
 ) -> Vec<webapp::public_chrome::ChromeNavLink> {
     let link = |label: &str, href: &str| webapp::public_chrome::ChromeNavLink {
@@ -1470,6 +1470,15 @@ async fn inject_client_intake(
         Ok(intake) => {
             req.extensions_mut()
                 .insert(webapp::client_intake::InjectedIntake(intake));
+            let started = req
+                .uri()
+                .query()
+                .is_some_and(|query| query.split('&').any(|pair| pair == "started=1"));
+            let confirmation = started
+                .then(|| crate::start_door::bundled_start_copy().map(|copy| copy.confirmation))
+                .flatten();
+            req.extensions_mut()
+                .insert(webapp::client_intake::IntakeStartConfirmation(confirmation));
             next.run(req).await
         }
         Err(response) => response,

@@ -558,6 +558,10 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         practice_catalog,
     ));
     routers.push(portal::catalog_workshop_command_routes(state));
+    routers.push(portal::start_door::routes(
+        state,
+        locales::services_catalog(branding),
+    ));
     routers
         .into_iter()
         .map(|router| router.layer(from_fn(reject_unpublished_firm_path)))

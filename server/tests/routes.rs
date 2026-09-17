@@ -592,6 +592,7 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         email_events_secret: None,
         sendgrid_events_public_key: None,
         bootstrap_owner_email: None,
+        on_call_lawyer_email: None,
         self_signup_enabled: false,
         identity_password: None,
         identity_admin: None,
@@ -8969,6 +8970,144 @@ async fn client_project_detail_links_only_to_pending_intake() {
         !body.contains("Continue intake"),
         "completed intake has no continuation link: {body}"
     );
+}
+
+#[tokio::test]
+async fn door_opened_client_matter_shows_continue_intake() {
+    let (mut state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let lawyer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Start Door Lawyer",
+            "door-lawyer@neonlaw.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    store::persons::set_admitted(&surreal, lawyer.id, true)
+        .await
+        .unwrap();
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Door Client",
+            "door-client@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let mut session = portal::SessionData::fresh("door-client", client.role);
+    session.email = Some(client.email.clone());
+    session.person_id = Some(client.id);
+    let csrf = session.csrf_token.clone();
+    let cookie = format!(
+        "{}={}",
+        portal::session::SESSION_COOKIE_NAME,
+        test_sessions().encode(&session)
+    );
+    state.self_signup_enabled = true;
+    state.on_call_lawyer_email = Some(lawyer.email);
+    let app = catalog_router(state);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/start/llc-file")
+                .header("cookie", &cookie)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!("_csrf={csrf}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let project = store::projects::all(&surreal)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("the start door opened a project");
+    let response = get_with_cookie(app, &format!("/app/projects/{}", project.code), &cookie).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(
+        body.contains(">Continue intake<"),
+        "a door-opened matter remains resumable: {body}"
+    );
+}
+
+#[tokio::test]
+async fn client_project_detail_hides_a_generated_review_draft_until_release() {
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, project_code, cookie) = client_project_fixture(&surreal).await;
+    let client_id = test_sessions()
+        .decode(cookie.trim_start_matches("navigator_session="))
+        .and_then(|session| session.person_id)
+        .expect("fixture cookie carries the client person id");
+    let template = store::templates::save_version(
+        &surreal,
+        None,
+        "door__review_draft",
+        store::templates::Version {
+            title: "Door intake review".into(),
+            respondent_type: "person".into(),
+            asset_id: None,
+            form_code: None,
+            kind: None,
+            source_commit_sha: None,
+        },
+    )
+    .await
+    .unwrap()
+    .into_model();
+    let notation = store::notations::create(
+        &surreal,
+        &store::notations::NewNotation::new(template.id, client_id, project_id, "lawyer_review"),
+    )
+    .await
+    .unwrap();
+    let review_id = store::review_documents::create(
+        &surreal,
+        &store::review_documents::NewReviewDocument {
+            notation_id: notation.id,
+            kind: "engagement",
+            title: "Unreleased door draft",
+            body_html: "<p>Not for the client yet.</p>",
+        },
+    )
+    .await
+    .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let response = get_with_cookie(
+        app.clone(),
+        &format!("/app/projects/{project_code}"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(!body.contains("Unreleased door draft"), "{body}");
+    assert!(!body.contains("Documents to review"), "{body}");
+
+    store::review_documents::set_status(
+        &surreal,
+        review_id,
+        store::review_documents::STATUS_PENDING_REVIEW,
+    )
+    .await
+    .unwrap();
+    let response = get_with_cookie(app, &format!("/app/projects/{project_code}"), &cookie).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(body.contains("Unreleased door draft"), "{body}");
 }
 
 #[tokio::test]

@@ -107,7 +107,15 @@ pub struct ClientIntakeView {
     /// answer that matched nothing on the matter. `None` on a plain visit.
     #[serde(default)]
     pub error: Option<String>,
+    /// The exact confirmation shown after the service start POST. Empty on a
+    /// normal resumed visit.
+    #[serde(default)]
+    pub start_confirmation: Option<String>,
 }
+
+/// Copy injected by the portal when the visitor has just opened a matter.
+#[derive(Clone, Default)]
+pub struct IntakeStartConfirmation(pub Option<String>);
 
 /// The intake page's `?error=` flash.
 #[derive(Deserialize, Default)]
@@ -138,12 +146,20 @@ pub async fn get_client_intake() -> Result<ClientIntakeView, ServerFnError> {
         _,
     >()
     .await?;
+    let start_confirmation = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::Extension<IntakeStartConfirmation>,
+        _,
+    >()
+    .await
+    .map(|axum::Extension(copy)| copy.0)
+    .unwrap_or_default();
 
     Ok(ClientIntakeView {
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         state,
         csrf_token,
         error: query.error.filter(|message| !message.is_empty()),
+        start_confirmation,
     })
 }
 
@@ -227,6 +243,9 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
         document::Stylesheet { href: "{view.tokens_href}" }
         main { id: "intake", class: "nav-theme",
+            if let Some(confirmation) = view.start_confirmation.as_ref() {
+                p { class: "nav-intake-confirmation", "{confirmation}" }
+            }
             if let Some(error) = view.error.as_ref() {
                 p { class: "nav-form-error", role: "alert", "{error}" }
             }
@@ -320,6 +339,7 @@ mod tests {
             })),
             csrf_token: "TOK".to_string(),
             error: None,
+            start_confirmation: None,
         }
     }
 
@@ -499,6 +519,7 @@ mod tests {
             },
             csrf_token: "TOK".to_string(),
             error: None,
+            start_confirmation: None,
         });
         assert!(html.contains("Thank you — your part is done"), "{html}");
         assert!(

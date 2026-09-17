@@ -7,7 +7,7 @@
 //! - `GET /app/lawyer/retainers/new` — the small "start a walk" form
 //!   (template code + client email).
 //! - `POST /app/lawyer/retainers/new` — find-or-insert the Person,
-//!   insert Project + role + Notation in one txn, redirect to
+//!   immediately commit the Project + role + Notation, redirect to
 //!   `/app/lawyer/notations/:id/step`.
 //! - `GET /app/lawyer/notations/:id/step` — render the current
 //!   question (read from the journal + spec) or redirect when the
@@ -138,6 +138,7 @@ fn refuse_start(body: &StartWalkBody, error: &str) -> Response {
 async fn discard_pending_intake_project(
     surreal: &store::surreal::SurrealDb,
     project_id: Uuid,
+    withdraw_admission: bool,
 ) -> Result<(), String> {
     let roles = store::projects::participations_for_project(surreal, project_id)
         .await
@@ -152,15 +153,17 @@ async fn discard_pending_intake_project(
             .await
             .map_err(|error| error.to_string())?;
     }
-    for person_id in client_person_ids {
-        if store::projects::participations_for_person(surreal, person_id)
-            .await
-            .map_err(|error| error.to_string())?
-            .is_empty()
-        {
-            store::persons::set_admitted(surreal, person_id, false)
+    if withdraw_admission {
+        for person_id in client_person_ids {
+            if store::projects::participations_for_person(surreal, person_id)
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| error.to_string())?
+                .is_empty()
+            {
+                store::persons::set_admitted(surreal, person_id, false)
+                    .await
+                    .map_err(|error| error.to_string())?;
+            }
         }
     }
     // `link_retainer_rows` may have already opened the retainer Notation
@@ -183,103 +186,90 @@ async fn discard_pending_intake_project(
         .map_err(|error| error.to_string())
 }
 
-/// POST `/app/lawyer/retainers/new` — create the four rows the
-/// retainer lifecycle needs, then redirect to the walker.
-#[allow(clippy::too_many_lines)]
-pub async fn start_post(
-    State(state): State<AdminState>,
-    session: Option<Extension<SessionData>>,
-    Form(body): Form<StartWalkBody>,
-) -> Response {
-    let client_email = body.client_email.trim();
-    let code = body.retainer_template_code.trim();
+/// The client identity used while opening an intake matter.
+pub(crate) enum IntakeClient<'a> {
+    ByEmail {
+        email: &'a str,
+        name: Option<&'a str>,
+    },
+    Existing(Uuid),
+}
 
-    if !client_email.contains('@') {
-        return refuse_start(&body, "client email must contain an @");
-    }
-    if code.is_empty() {
-        return refuse_start(&body, "choose an onboarding template");
-    }
+/// The rows and project created by one intake opening.
+pub(crate) struct OpenedIntakeMatter {
+    pub project: store::projects::Project,
+    pub rows: RetainerRows,
+}
 
-    // Resolved before the write opens: `templates` moved to
-    // SurrealDB with ENG-121, so this read is on the other engine and a
-    // miss should refuse the intake without having opened a transaction at
-    // all.
-    let template_row = match store::templates::resolve(&state.surreal, None, code).await {
-        Ok(Some(t)) => t,
-        Ok(None) => {
-            return refuse_start(&body, "that onboarding template was not found");
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "start_post: template lookup failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum OpenIntakeError {
+    BrandNotWorn,
+    Conflict,
+    Internal,
+}
+
+/// Open a new intake matter through the shared immediate-commit write path.
+/// The caller chooses whether compensation also withdraws a newly admitted
+/// client, which is safe for an email-created lawyer walk but not for an
+/// already signed-in client who is opening their own matter.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+pub(crate) async fn open_intake_matter(
+    surreal: &store::surreal::SurrealDb,
+    template_row: &store::templates::Template,
+    questionnaire_snapshot: serde_json::Value,
+    client: IntakeClient<'_>,
+    lawyer_dri_id: Uuid,
+    brand: views::brand::BrandKey,
+    status: &str,
+    withdraw_admission: bool,
+) -> Result<OpenedIntakeMatter, OpenIntakeError> {
+    let (client_email, client_name, existing_person_id) = match client {
+        IntakeClient::ByEmail { email, name } => (email.to_string(), name, None),
+        IntakeClient::Existing(person_id) => {
+            let person = match store::persons::find_by_id(surreal, person_id).await {
+                Ok(Some(person)) => person,
+                Ok(None) => {
+                    tracing::error!(%person_id, "open_intake_matter: client person missing");
+                    return Err(OpenIntakeError::Internal);
+                }
+                Err(error) => {
+                    tracing::error!(error = %error, %person_id, "open_intake_matter: client lookup failed");
+                    return Err(OpenIntakeError::Internal);
+                }
+            };
+            (person.email, None, Some(person_id))
         }
     };
-
-    let questionnaire_snapshot = match notation_session::questionnaire_snapshot_for_template(
-        &state.surreal,
-        Some(&state.storage),
-        &template_row,
-    )
-    .await
-    {
-        Ok(snapshot) => snapshot,
-        Err(e) => {
-            tracing::error!(error = %e, "start_post: questionnaire snapshot failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-        }
-    };
-
-    // Brand is the door (`views::brand::brand_key`); Firm is the house.
-    // Resolve ownership before any write so an unworn brand cannot open
-    // an orphan that the next boot would assign to the anchor Firm.
-    let brand = views::brand::brand_key();
-    let firm_id = match store::firms::firm_id_for_brand_key(&state.surreal, brand.as_str()).await {
+    let firm_id = match store::firms::firm_id_for_brand_key(surreal, brand.as_str()).await {
         Ok(Some(id)) => id,
         Ok(None) => {
-            return refuse_start(&body, "this brand is not worn by a firm");
+            tracing::warn!(
+                brand = brand.as_str(),
+                "open_intake_matter: brand is not worn"
+            );
+            return Err(OpenIntakeError::BrandNotWorn);
         }
-        Err(e) => {
-            tracing::error!(error = %e, "start_post: firm lookup for brand failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        Err(error) => {
+            tracing::error!(error = %error, brand = brand.as_str(), "open_intake_matter: firm lookup failed");
+            return Err(OpenIntakeError::Internal);
         }
     };
-
-    // `projects.entity_id` is NOT NULL, but a self-serve intake has no
-    // lawyer to designate a pre-existing entity. Open the matter against
-    // a fresh `Human` entity for this natural person.
-    let entity_id = match create_human_entity(&state.surreal, client_email).await {
+    let entity_id = match create_human_entity(surreal, &client_email).await {
         Ok(id) => id,
-        Err(e) => {
-            tracing::error!(error = %e, "start_post: human entity create failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        Err(error) => {
+            tracing::error!(error = %error, "open_intake_matter: human entity create failed");
+            return Err(OpenIntakeError::Internal);
         }
     };
-
-    // A self-serve intake has no lawyer in the room, so the lawyer DRI falls
-    // back to the seeded firm principal (`nick@neonlaw.com`) — a real person,
-    // no sentinel. The client DRI is designated below, once
-    // `link_retainer_rows` creates the self-serve client.
-    let lawyer_dri_id = if let Some(id) = session.as_deref().and_then(|s| s.person_id) {
-        id
-    } else if let Ok(Some(id)) = store::persons::default_firm_dri(&state.surreal).await {
-        id
-    } else {
-        tracing::error!("start_post: no lawyer DRI resolvable (unseeded db?)");
-        return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-    };
-
-    // The matter the walk opens is brand-new, so the project name is a
-    // placeholder until the `project_name` question lands.
     let project = match store::projects::create(
-        &state.surreal,
+        surreal,
         &store::projects::NewProject {
             code: store::projects::code_from_name(
                 &format!("(pending) {client_email}"),
                 Uuid::now_v7(),
             ),
             name: format!("(pending) {client_email}"),
-            status: "open".into(),
+            status: status.to_string(),
             brand: brand.as_str().to_string(),
             entity_id,
             firm_id: Some(firm_id),
@@ -289,125 +279,203 @@ pub async fn start_post(
     .await
     {
         Ok(project) => project,
-        Err(e) => {
-            tracing::error!(error = %e, "start_post: project insert failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        Err(error) => {
+            tracing::error!(error = %error, "open_intake_matter: project insert failed");
+            return Err(OpenIntakeError::Internal);
         }
     };
     let project_id = project.id;
-
-    // Find-or-create the client, attach the `client` role, and create the
-    // retainer Notation — the shared "hang a retainer on a matter" helper
-    // the matter-open form (`crate::admin`) also calls. The walk collects
-    // the client name later in the questionnaire and the client signs
-    // *embedded* (the historical default), so name is `None` and delivery
-    // is `embedded`.
-    let rows = match link_retainer_rows(
-        &state.surreal,
-        template_row.id,
-        project_id,
-        client_email,
-        None,
-        store::notations::DELIVERY_EMBEDDED,
-        Some(questionnaire_snapshot),
-    )
-    .await
-    {
-        Ok(rows) => rows,
-        Err(resp) => {
-            if let Err(error) = discard_pending_intake_project(&state.surreal, project_id).await {
-                tracing::error!(error = %error, %project_id, "start_post: pending project cleanup failed");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-            }
-            return resp;
+    let rows = match existing_person_id {
+        Some(person_id) => {
+            attach_retainer_rows(
+                surreal,
+                template_row.id,
+                project_id,
+                person_id,
+                store::notations::DELIVERY_EMBEDDED,
+                Some(questionnaire_snapshot),
+            )
+            .await
+        }
+        None => {
+            link_retainer_rows(
+                surreal,
+                template_row.id,
+                project_id,
+                &client_email,
+                client_name,
+                store::notations::DELIVERY_EMBEDDED,
+                Some(questionnaire_snapshot),
+            )
+            .await
         }
     };
-    let notation_id = rows.notation_id;
-
-    // Conflict check on the self-serve client of record. A brand-new intake has
-    // no relationships, but `link_retainer_rows` find-or-creates the client by
-    // email, so an intake whose email matches a person already adverse to a
-    // current client is caught here. A **blocking** conflict refuses the intake:
-    // `discard_pending_intake_project` below undoes the whole intake (the
-    // matter, the fresh entity, the client role, and the retainer notation —
-    // every write here is its own immediate Surreal commit, so undoing it is
-    // this handler's job, not a dropped transaction's). The form re-renders
-    // with a **generic** message that
-    // never discloses *why* — telling a self-serve visitor they are adverse to a
-    // current client would breach that client's confidentiality. Soft
-    // (non-blocking) findings proceed: unlike the lawyer / API / CLI doors there
-    // is no attorney in the room to attest, so the walk's downstream
-    // lawyer-review gate is where an attorney reviews the intake before the
-    // retainer is finalized. (Whether self-serve intake is gated at all, and the
-    // exact wording, are the matter-open self-serve policy points in #355.)
-    match store::conflicts::check_new_matter(&state.surreal, rows.person_id, entity_id).await {
-        Ok(report) if report.has_blocking() => {
-            tracing::warn!(
+    let Ok(rows) = rows else {
+        if let Err(error) =
+            discard_pending_intake_project(surreal, project_id, withdraw_admission).await
+        {
+            tracing::error!(
+                error = %error,
                 %project_id,
-                "start_post: self-serve intake refused — adverse to a current client",
-            );
-            if let Err(error) = discard_pending_intake_project(&state.surreal, project_id).await {
-                tracing::error!(error = %error, %project_id, "start_post: pending project cleanup failed");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-            }
-            return refuse_start(
-                &body,
-                "We're unable to start this intake online. \
-                 Please contact our office to proceed.",
+                "open_intake_matter: pending project cleanup failed"
             );
         }
-        Ok(_) => {}
-        Err(e) => {
-            tracing::error!(error = %e, "start_post: conflict check failed");
-            if let Err(error) = discard_pending_intake_project(&state.surreal, project_id).await {
-                tracing::error!(error = %error, %project_id, "start_post: pending project cleanup failed");
+        return Err(OpenIntakeError::Internal);
+    };
+    match store::conflicts::check_new_matter(surreal, rows.person_id, entity_id).await {
+        Ok(report) if report.has_blocking() => {
+            tracing::warn!(%project_id, "open_intake_matter: conflict refused");
+            if let Err(error) =
+                discard_pending_intake_project(surreal, project_id, withdraw_admission).await
+            {
+                tracing::error!(
+                    error = %error,
+                    %project_id,
+                    "open_intake_matter: pending project cleanup failed"
+                );
+                return Err(OpenIntakeError::Internal);
             }
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+            Err(OpenIntakeError::Conflict)
+        }
+        Ok(_) => {
+            if let Err(error) =
+                designate_intake_dris(surreal, project_id, rows.person_id, lawyer_dri_id).await
+            {
+                tracing::error!(
+                    error = %error,
+                    %project_id,
+                    "open_intake_matter: DRI designation failed"
+                );
+                if let Err(cleanup) =
+                    discard_pending_intake_project(surreal, project_id, withdraw_admission).await
+                {
+                    tracing::error!(
+                        error = %cleanup,
+                        %project_id,
+                        "open_intake_matter: pending project cleanup failed"
+                    );
+                }
+                Err(OpenIntakeError::Internal)
+            } else {
+                Ok(OpenedIntakeMatter { project, rows })
+            }
+        }
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                %project_id,
+                "open_intake_matter: conflict check failed"
+            );
+            if let Err(cleanup) =
+                discard_pending_intake_project(surreal, project_id, withdraw_admission).await
+            {
+                tracing::error!(
+                    error = %cleanup,
+                    %project_id,
+                    "open_intake_matter: pending project cleanup failed"
+                );
+            }
+            Err(OpenIntakeError::Internal)
         }
     }
+}
 
-    // Move the client-DRI marker onto the self-serve client
-    // `link_retainer_rows` just created. That call already wrote their
-    // `client` participation row, so this flags the row in place — the
-    // ledger and the accountability marker are now the same fact and cannot
-    // drift the way the old column did.
-    if let Err(e) = store::projects::designate_dri_in_surreal(
-        &state.surreal,
+async fn designate_intake_dris(
+    surreal: &store::surreal::SurrealDb,
+    project_id: Uuid,
+    client_person_id: Uuid,
+    lawyer_dri_id: Uuid,
+) -> Result<(), store::projects::ProjectStoreError> {
+    store::projects::designate_dri_in_surreal(
+        surreal,
         project_id,
-        rows.person_id,
+        client_person_id,
         store::projects::DriSide::Client,
     )
-    .await
-    {
-        tracing::error!(error = %e, "start_post: client DRI designation failed");
-        if let Err(error) = discard_pending_intake_project(&state.surreal, project_id).await {
-            tracing::error!(error = %error, %project_id, "start_post: pending project cleanup failed");
-        }
-        return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-    }
-
-    // Designate the accountable lawyer resolved above — the opening lawyer,
-    // or the firm principal on a self-serve walk with no lawyer in the room.
-    // `can_see_project` 404s a lawyer who isn't on the matter, so without this
-    // the matter would be invisible to the firm. Using the resolved value
-    // rather than only the session person also closes the old gap where an
-    // unauthenticated walk named a principal who had no membership row at all.
-    if let Err(e) = store::projects::designate_dri_in_surreal(
-        &state.surreal,
+    .await?;
+    store::projects::designate_dri_in_surreal(
+        surreal,
         project_id,
         lawyer_dri_id,
         store::projects::DriSide::Lawyer,
     )
     .await
-    {
-        tracing::error!(error = %e, "start_post: lawyer DRI designation failed");
-        if let Err(error) = discard_pending_intake_project(&state.surreal, project_id).await {
-            tracing::error!(error = %error, %project_id, "start_post: pending project cleanup failed");
-        }
-        return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-    }
+}
 
-    Redirect::to(&format!("/app/lawyer/notations/{notation_id}/step")).into_response()
+/// POST /app/lawyer/retainers/new — the existing lawyer-driven adapter.
+pub async fn start_post(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Form(body): Form<StartWalkBody>,
+) -> Response {
+    let client_email = body.client_email.trim();
+    let code = body.retainer_template_code.trim();
+    if !client_email.contains('@') {
+        return refuse_start(&body, "client email must contain an @");
+    }
+    if code.is_empty() {
+        return refuse_start(&body, "choose an onboarding template");
+    }
+    let template_row = match store::templates::resolve(&state.surreal, None, code).await {
+        Ok(Some(template)) => template,
+        Ok(None) => return refuse_start(&body, "that onboarding template was not found"),
+        Err(error) => {
+            tracing::error!(error = %error, "start_post: template lookup failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        }
+    };
+    let questionnaire_snapshot = match notation_session::questionnaire_snapshot_for_template(
+        &state.surreal,
+        Some(&state.storage),
+        &template_row,
+    )
+    .await
+    {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            tracing::error!(error = %error, "start_post: questionnaire snapshot failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        }
+    };
+    let lawyer_dri_id = if let Some(id) = session.as_deref().and_then(|s| s.person_id) {
+        id
+    } else if let Ok(Some(id)) = store::persons::default_firm_dri(&state.surreal).await {
+        id
+    } else {
+        tracing::error!("start_post: no lawyer DRI resolvable (unseeded db?)");
+        return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+    };
+    match open_intake_matter(
+        &state.surreal,
+        &template_row,
+        questionnaire_snapshot,
+        IntakeClient::ByEmail {
+            email: client_email,
+            name: None,
+        },
+        lawyer_dri_id,
+        views::brand::brand_key(),
+        "open",
+        true,
+    )
+    .await
+    {
+        Ok(opened) => Redirect::to(&format!(
+            "/app/lawyer/notations/{}/step",
+            opened.rows.notation_id
+        ))
+        .into_response(),
+        Err(OpenIntakeError::Conflict) => refuse_start(
+            &body,
+            "We're unable to start this intake online. Please contact our office to proceed.",
+        ),
+        Err(OpenIntakeError::BrandNotWorn) => {
+            refuse_start(&body, "this brand is not worn by a firm")
+        }
+        Err(OpenIntakeError::Internal) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response()
+        }
+    }
 }
 
 /// The client Person + Notation a retainer-type matter hangs off of,
@@ -506,13 +574,34 @@ pub(crate) async fn link_retainer_rows(
         }
     };
 
-    if let Err(e) =
+    attach_retainer_rows(
+        surreal,
+        template_id,
+        project_id,
+        person_id,
+        delivery,
+        questionnaire_snapshot,
+    )
+    .await
+}
+
+/// Attach an already-resolved client Person to a project and create its
+/// retainer Notation. This is the path the signed-in service door uses.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn attach_retainer_rows(
+    surreal: &store::surreal::SurrealDb,
+    template_id: Uuid,
+    project_id: Uuid,
+    person_id: Uuid,
+    delivery: &str,
+    questionnaire_snapshot: Option<serde_json::Value>,
+) -> Result<RetainerRows, Response> {
+    if let Err(error) =
         store::projects::add_participation(surreal, project_id, person_id, "client").await
     {
-        tracing::error!(error = %e, "link_retainer_rows: role insert failed");
+        tracing::error!(error = %error, "attach_retainer_rows: role insert failed");
         return Err((StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response());
     }
-
     let mut new_notation =
         store::notations::NewNotation::new(template_id, person_id, project_id, StateName::BEGIN)
             .with_delivery(delivery);
@@ -522,7 +611,7 @@ pub(crate) async fn link_retainer_rows(
     let notation_id = match store::notations::create(surreal, &new_notation).await {
         Ok(n) => n.id,
         Err(e) => {
-            tracing::error!(error = %e, "link_retainer_rows: notation insert failed");
+            tracing::error!(error = %e, "attach_retainer_rows: notation insert failed");
             return Err((StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response());
         }
     };
@@ -3981,6 +4070,7 @@ Sign: {{client.signature}}";
             billing_provider: app.billing_provider,
             contract_reviewer: app.contract_reviewer,
             bootstrap_owner_email: app.bootstrap_owner_email,
+            on_call_lawyer_email: app.on_call_lawyer_email,
             bootstrap_company: crate::admin::bootstrap_company_from_env(),
             sessions: app.sessions,
             secure_cookies: false,

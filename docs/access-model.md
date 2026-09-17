@@ -11,6 +11,11 @@ a session. It defaults to `true` for ordinary and historical rows. Discarding a 
 the retained client row has no remaining Project participation; it does not change the person's role, participation
 history, or conflict record.
 
+The client-initiated service start is one path where a self-signed-up client gains Project participation. It is safe
+because the handler accepts only the signed-in session's own Person, adds the configured lawyer DRI, and keeps the same
+conflict and lawyer-review gates as every other intake path. Compensation on a refused start removes the new Project and
+its notation without withdrawing admission from that already admitted client.
+
 The stored columns:
 
 | Column | Table | Decides |

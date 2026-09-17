@@ -183,6 +183,16 @@ pub struct ServiceCopy {
     pub template: Option<String>,
 }
 
+/// Copy shared by a service card's start link and the start-door flow.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct StartDoorCopy {
+    pub confirmation: String,
+    pub disclosure: String,
+    pub label: String,
+    pub microcopy: String,
+    pub refusal: String,
+}
+
 impl ServiceCopy {
     /// Every value of this service that a reader can see or search.
     ///
@@ -265,6 +275,9 @@ pub struct ServicesCatalog {
     pub flat_fee: String,
     /// The services, in publication order.
     pub services: Vec<ServiceCopy>,
+    /// The copy for the service start door and the client intake confirmation.
+    #[serde(default)]
+    pub start: StartDoorCopy,
 }
 
 impl ServicesCatalog {
@@ -286,6 +299,7 @@ impl ServicesCatalog {
         }
         check_fee("flat_fee", &self.flat_fee)?;
         self.validate_categories()?;
+        self.validate_start()?;
         let ids = self.validate_services()?;
         for service in &self.services {
             for related in &service.related {
@@ -307,6 +321,22 @@ impl ServicesCatalog {
                 self.validate_package(service, &ids)?;
             }
             self.validate_plan_price(service)?;
+        }
+        Ok(())
+    }
+
+    fn validate_start(&self) -> Result<(), String> {
+        if self.start == StartDoorCopy::default() {
+            return Ok(());
+        }
+        for (key, value) in [
+            ("start.confirmation", self.start.confirmation.as_str()),
+            ("start.disclosure", self.start.disclosure.as_str()),
+            ("start.label", self.start.label.as_str()),
+            ("start.microcopy", self.start.microcopy.as_str()),
+            ("start.refusal", self.start.refusal.as_str()),
+        ] {
+            check_value(key, value)?;
         }
         Ok(())
     }
@@ -580,6 +610,7 @@ impl ServicesCatalog {
             categories: self.categories.clone(),
             flat_fee: self.flat_fee.clone(),
             services: self.services.clone(),
+            start: self.start.clone(),
             source: source.clone(),
         };
         serde_json::to_string(&payload).expect("invariant: the export payload is plain JSON data")
@@ -595,6 +626,7 @@ struct ExportPayload {
     flat_fee: String,
     services: Vec<ServiceCopy>,
     source: Provenance,
+    start: StartDoorCopy,
 }
 
 /// Refuse a value a page cannot publish.

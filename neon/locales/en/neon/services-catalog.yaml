@@ -429,3 +429,22 @@ services:
       - tenant eviction defense
       - summary eviction
       - answer
+
+start:
+  confirmation: >-
+    Thank you. We have opened a file for you and a lawyer will review it and
+    check for conflicts before any work begins. You are not a client yet, and
+    we are not your lawyers until you receive and sign a written engagement
+    agreement, which will state the fee. Answer the questions below at your
+    own pace; your answers save as you go. Nothing is filed or sent to anyone
+    until a lawyer has reviewed it.
+  disclosure: >-
+    Starting here does not make you a client of Neon Law. A lawyer at the firm
+    will check for conflicts of interest and decide whether we can take your
+    matter. Until we send you a written engagement agreement and you sign it,
+    we are not your lawyers, nothing on this site is legal advice, and no fee
+    has been quoted. What you tell us here is kept confidential even if we
+    cannot take your matter, so please answer only what the questions ask.
+  label: Start
+  microcopy: Opens a short questionnaire. A lawyer reviews before anything is filed.
+  refusal: We cannot start this matter online right now. Please contact our office and we will help you directly.

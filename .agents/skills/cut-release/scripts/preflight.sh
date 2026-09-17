@@ -65,44 +65,19 @@ if ! cargo metadata --locked --format-version 1 >/dev/null 2>&1; then
 fi
 echo "    ok"
 
-# The reusable workflows name this repository's own composite actions by an
-# ABSOLUTE tag, not by the ref the caller used, so nothing but a deliberate edit
-# moves them. A pin left behind ships a gate no consumer can run: 26.9.17-rc.1
-# published `project-gate.yml` still pointing `navigator-install` at 26.9.16, a
-# tag predating the action, and every job needing the CLI died at action
-# resolution.
+# The reusable workflows and composite actions name this repository's own
+# actions by an ABSOLUTE tag, not by the ref the caller used, so nothing but a
+# deliberate edit moves them. A pin left behind ships a gate no consumer can
+# run: 26.9.17-rc.1 published `project-gate.yml` still pointing
+# `navigator-install` at 26.9.16, a tag predating the action, and every job
+# needing the CLI died at action resolution.
 #
-# `docs/examples/sample-portal-publish.yml` is checked with them, because it is
-# the same decision written a third time: `docs/project-repositories.md` calls it
-# the caller the scaffold emits, so a reader copies it into a Project repository
-# and inherits whatever tag it names. It sat at 26.9.14 for three releases while
-# the rule below watched only `.github/`, which is the drift this arm closes.
-#
-# A LITERAL tag is the only thing either arm reads. The `@YY.M.D` occurrences
-# elsewhere are placeholders standing in for a version, not naming one, and a
-# release that rewrote them would destroy the example rather than update it.
+# The rule itself lives in `cli/src/release_pins.rs`, and `ci.yml` runs this
+# same command on every pull request. That is the point: a stale pin is a red
+# pull request, days before a release cut would have been the first to see it,
+# and neither path can hold its own idea of what a stale pin is.
 echo "==> the self-referencing action pins must name this version"
-workspace_version="$(
-    awk '/^\[workspace\.package\]/ { in_block = 1; next }
-         /^\[/ { in_block = 0 }
-         in_block && /^version = / { gsub(/[":]|version = /, ""); print; exit }' Cargo.toml
-)"
-if [ -z "${workspace_version}" ]; then
-    echo "FAIL: could not read [workspace.package].version from Cargo.toml." >&2
-    exit 1
-fi
-stale_pins="$(
-    git grep -nE 'uses: *neon-law-source-code/navigator/\.github/(actions|workflows)/[^@]+@[0-9]' \
-        -- .github/workflows/ docs/examples/ \
-        | grep -v "@${workspace_version}\$" || true
-)"
-if [ -n "${stale_pins}" ]; then
-    echo "FAIL: these self-referencing pins do not name ${workspace_version}:" >&2
-    echo "${stale_pins}" >&2
-    echo "      A tag that predates the action it names publishes an unrunnable gate." >&2
-    exit 1
-fi
-echo "    ok (${workspace_version})"
+cargo run -p cli --quiet -- ops release pins
 
 echo "==> the workspace gate"
 cargo nextest run --workspace

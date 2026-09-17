@@ -605,6 +605,16 @@ jobs:
       #
       - name: is the workspace version a releasable one
         run: "${CARGO_TARGET_DIR:-target}/debug/navigator ops release check"
+      # The reusable workflows and composite actions under `.github/` name this
+      # repository's OWN actions by an absolute tag, so a bump that moves
+      # `[workspace.package].version` without sweeping the pins publishes a gate
+      # no consumer can run. This used to be a `git grep` in the `cut-release`
+      # preflight alone, which read `.github/workflows/` only and ran days after
+      # the pull request that broke it was still free to fix. Both callers now
+      # run this one command, so neither can hold its own idea of what a stale
+      # pin is.
+      - name: do the self-referencing action pins name the workspace version
+        run: "${CARGO_TARGET_DIR:-target}/debug/navigator ops release pins"
       # `ops notices --check` is here now. It could not be while `notices_for`
       # read "this crate's source is absent" and "this crate ships no licence
       # file" as the same empty result: `Cargo.lock` is deliberately

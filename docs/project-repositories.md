@@ -157,8 +157,8 @@ what a pull request runs. With `--host <host>` it checks each pointer against th
 `navigator site login` session, reporting the same drift `log` and `get` report: a revision missing from the live chain,
 a `sha256` or size that disagrees, or an operative revision the pointer does not name. With `--ci --host <host>` it runs
 that identical live check but mints the session from the GitHub Actions run's own OIDC token, because a runner carries
-no stored login; that is the mode a push to `main` uses. The `--host` mode exists so an operator who has just run `site
-document upload`can confirm the asset exists remotely without reading a CI job (LAW-12) — before it,`--host` was
+no stored login; that is the mode a push to `main` uses. The `--host` mode exists so that an operator who has just
+uploaded a document can confirm the asset exists remotely without reading a CI job (LAW-12). Before it, `--host` was
 accepted and then ignored, and verify reported success offline for a checkout whose bytes were already deleted.
 
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer

@@ -182,6 +182,37 @@ Issuance is asynchronous (Let's Encrypt validates through the DNSimple-delegated
 `--redirect-apex-to-www` flag writes the `URL` record and prints this same certificate reminder — it does not issue the
 certificate for you.
 
+### The apex redirect is not done when the `URL` record lands
+
+A `URL` record with no certificate behind it is the failure this trips over most, because it **passes a casual check**.
+The redirector answers port 80 immediately, so `curl -I http://<zone>` returns the 301 you were looking for and the
+record looks finished. Browsers and pasted links default to HTTPS, where the same host fails the TLS handshake outright
+— so the first person to find it is a visitor, not the operator.
+
+Two things must both be true before the apex is actually reachable, and neither implies the other:
+
+1. The account is on **Teams or higher**. HTTPS redirects are a Teams-tier feature; below it the redirector serves port
+   80 only, and no certificate changes that.
+2. A **certificate exists for that domain**. Teams does not issue one for a `URL` record, and `--redirect-apex-to-www`
+   does not either — it only prints the reminder.
+
+Check the tier once per account and the certificate once per domain, since a single account holding several domains will
+have certificates for some and not others:
+
+```bash
+curl -s -H "Authorization: Bearer $DNS_SIMPLE" -H "Accept: application/json" \
+  https://api.dnsimple.com/v2/accounts                                  # → plan_identifier
+curl -s -H "Authorization: Bearer $DNS_SIMPLE" -H "Accept: application/json" \
+  "https://api.dnsimple.com/v2/$DNS_ACCT/domains/$DNS_ZONE/certificates"  # → [] means HTTP only
+```
+
+Verify **both** schemes, never just one — checking only `http://` is what lets the broken state ship:
+
+```bash
+curl -sI "http://$DNS_ZONE"  | head -1   # → 301
+curl -sI "https://$DNS_ZONE" | head -1   # → 301, not a TLS error
+```
+
 **Migrating an existing domain** whose apex still points at another redirect (e.g. a set of apex `A`/`AAAA` forwarding
 records) requires deleting those apex records first. `ops dns setup` is additive and never deletes, and a `URL` record
 cannot coexist with address records on the same name, so the command **refuses to run** — `conflicting records at the

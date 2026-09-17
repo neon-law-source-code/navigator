@@ -26,8 +26,8 @@ use restate_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 use workflows::{
-    dispatch_step, dispatches_side_effect, EmailService, MachineKind, QuestionnaireSpec, StateName,
-    StepDeps, WorkflowSpec,
+    dispatch_step, dispatches_side_effect, email::OutboundEmail, EmailService, MachineKind,
+    QuestionnaireSpec, StateName, StepDeps, WorkflowSpec,
 };
 
 use crate::journal::{answer_payload, append_event, TransitionRecord};
@@ -111,6 +111,60 @@ pub struct SignalResponse {
 pub struct CurrentStateResponse {
     pub state: Option<String>,
 }
+
+/// The two human notifications emitted by a workflow transition.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+enum ReviewNotificationHop {
+    Lawyer,
+    Client,
+}
+
+impl ReviewNotificationHop {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Lawyer => "lawyer",
+            Self::Client => "client",
+        }
+    }
+}
+
+/// Recipient selection is journaled separately from each send. That freezes
+/// the DRI/fallback decision for a transition, while a fallback list can still
+/// be sent one recipient at a time with one journal entry per email.
+///
+/// Opaque ids only. `ctx.run` persists this value in the Restate journal so a
+/// replay reuses it, and the journal is an operator debugging surface: a
+/// mailbox names a client (`portal::retainer_walk::send_intake`) and a Project
+/// code names who retained the firm. Ids freeze the decision just as well, and
+/// the address and the code are resolved inside the send step, whose own
+/// journaled value is `()`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct ReviewNotificationPlan {
+    project_id: uuid::Uuid,
+    recipient_ids: Vec<uuid::Uuid>,
+}
+
+/// The wording one notification carries.
+///
+/// Authored here rather than in `neon/locales/`, because those catalogs are
+/// the firm's *page* copy and say so: the shared catalog is exported to the
+/// other repository entry by entry, and `neon::locales` asserts that every key
+/// it authors is read by a shipped page. Transactional email is read by no
+/// page, so a key for it fails that gate. Copy with no catalog belongs in the
+/// module that renders it.
+struct ReviewCopy {
+    subject: &'static str,
+    body: &'static str,
+}
+
+const LAWYER_REVIEW_COPY: ReviewCopy = ReviewCopy {
+    subject: "A draft is ready for your review",
+    body: "A draft is ready for your review.",
+};
+const CLIENT_REVIEW_COPY: ReviewCopy = ReviewCopy {
+    subject: "Your reviewed draft is ready",
+    body: "Your reviewed draft is ready.",
+};
 
 /// Service struct held by the Restate endpoint. Carries the shared
 /// store handle, the worker-side [`workflows::EmailService`] that
@@ -372,6 +426,53 @@ impl NotationService {
                 .await?;
             }
 
+            // A notification follows the record of the transition it announces.
+            // The only reason anything precedes `append-workflow-event` is a
+            // step that produces a payload for that row, and a notification
+            // produces none — running it first meant a mail-provider failure
+            // left the transition unjournaled.
+            if !body.ephemeral {
+                if let Some(hop) = review_notification_hop(&from_state, &body.condition, &next) {
+                    let surreal = self.surreal.clone();
+                    let plan = ctx
+                        .run(move || async move {
+                            resolve_review_notification_plan(&surreal, notation_id, hop)
+                                .await
+                                .map(Json)
+                        })
+                        .name("resolve-review-notification-recipients")
+                        .await?
+                        .into_inner();
+
+                    for recipient_id in plan.recipient_ids {
+                        let email = Arc::clone(&self.email);
+                        let surreal = self.surreal.clone();
+                        let project_id = plan.project_id;
+                        // The mailbox and the Project code are read inside the
+                        // send step, never carried across it: this run's
+                        // journaled value is `()`, so neither reaches the
+                        // journal.
+                        ctx.run(move || async move {
+                            let target =
+                                review_notification_target(&surreal, project_id, recipient_id)
+                                    .await?;
+                            send_review_notification(
+                                email,
+                                notation_id,
+                                project_id,
+                                &target.project_code,
+                                recipient_id,
+                                &target.address,
+                                hop,
+                            )
+                            .await
+                        })
+                        .name("send-review-notification")
+                        .await?;
+                    }
+                }
+            }
+
             // The firm signing the closing letter (`firm_signature__*`)
             // closes the matter: flip the bound Project `open` → `closed`.
             // The symmetric bookend to the client-signed retainer that
@@ -453,9 +554,284 @@ async fn dispatch_workflow_step(
         .map_err(|e| HandlerError::from(TerminalError::new(format!("dispatch: {e}"))))
 }
 
+fn review_notification_hop(
+    from: &StateName,
+    condition: &str,
+    next: &StateName,
+) -> Option<ReviewNotificationHop> {
+    if next.as_str().starts_with("lawyer_review") {
+        return Some(ReviewNotificationHop::Lawyer);
+    }
+    if from.as_str().starts_with("lawyer_review")
+        && !next.as_str().starts_with("reask__")
+        && matches!(condition, "approved" | "_")
+    {
+        return Some(ReviewNotificationHop::Client);
+    }
+    None
+}
+
+async fn resolve_review_notification_plan(
+    surreal: &store::surreal::SurrealDb,
+    notation_id: uuid::Uuid,
+    hop: ReviewNotificationHop,
+) -> Result<ReviewNotificationPlan, HandlerError> {
+    let notation = store::notations::find_by_id(surreal, notation_id)
+        .await
+        .map_err(|e| {
+            HandlerError::from(TerminalError::new(format!(
+                "review notification notation: {e}"
+            )))
+        })?
+        .ok_or_else(|| TerminalError::new("review notification notation not found"))?;
+    let project = store::projects::find_by_id(surreal, notation.project_id)
+        .await
+        .map_err(|e| {
+            HandlerError::from(TerminalError::new(format!(
+                "review notification project: {e}"
+            )))
+        })?
+        .ok_or_else(|| TerminalError::new("review notification project not found"))?;
+    let rows = store::projects::participations_for_project(surreal, project.id)
+        .await
+        .map_err(|e| {
+            HandlerError::from(TerminalError::new(format!(
+                "review notification participants: {e}"
+            )))
+        })?;
+    let candidate_ids = review_recipient_ids(&rows, hop);
+    let mut candidates = Vec::new();
+    for person_id in candidate_ids {
+        if let Some(person) = store::persons::find_by_id(surreal, person_id)
+            .await
+            .map_err(|e| {
+                HandlerError::from(TerminalError::new(format!(
+                    "review notification person: {e}"
+                )))
+            })?
+        {
+            candidates.push(person);
+        }
+    }
+    let recipient_ids: Vec<uuid::Uuid> = match hop {
+        ReviewNotificationHop::Lawyer => candidates
+            .into_iter()
+            .filter(|person| person.role.is_lawyer_tier())
+            .map(|person| person.id)
+            .collect(),
+        ReviewNotificationHop::Client => candidates
+            .into_iter()
+            .next()
+            .map(|person| person.id)
+            .into_iter()
+            .collect(),
+    };
+    let recipient_ids = if matches!(hop, ReviewNotificationHop::Lawyer) && recipient_ids.is_empty()
+    {
+        let mut fallback = Vec::new();
+        for person_id in review_fallback_ids(&rows) {
+            if let Some(person) = store::persons::find_by_id(surreal, person_id)
+                .await
+                .map_err(|e| {
+                    HandlerError::from(TerminalError::new(format!(
+                        "review notification fallback person: {e}"
+                    )))
+                })?
+            {
+                if person.role.is_lawyer_tier() {
+                    fallback.push(person.id);
+                }
+            }
+        }
+        fallback
+    } else {
+        recipient_ids
+    };
+
+    if recipient_ids.is_empty() {
+        tracing::warn!(
+            target: "audit",
+            audit = true,
+            notation_id = %notation_id,
+            project_id = %project.id,
+            recipient_role = "none",
+            hop = hop.as_str(),
+            outcome = "skipped_no_recipient",
+            "review notification skipped: no recipient"
+        );
+    }
+
+    Ok(ReviewNotificationPlan {
+        project_id: project.id,
+        recipient_ids,
+    })
+}
+
+/// What one send needs that the journaled plan deliberately does not carry.
+struct ReviewNotificationTarget {
+    address: String,
+    project_code: String,
+}
+
+/// Read the recipient's mailbox and the matter's code at send time.
+///
+/// Both are client identifiers, so they are resolved here rather than frozen
+/// into [`ReviewNotificationPlan`]: this runs inside the send step, whose
+/// journaled value is `()`.
+async fn review_notification_target(
+    surreal: &store::surreal::SurrealDb,
+    project_id: uuid::Uuid,
+    recipient_id: uuid::Uuid,
+) -> Result<ReviewNotificationTarget, HandlerError> {
+    let person = store::persons::find_by_id(surreal, recipient_id)
+        .await
+        .map_err(|e| {
+            HandlerError::from(TerminalError::new(format!(
+                "review notification recipient: {e}"
+            )))
+        })?
+        .ok_or_else(|| TerminalError::new("review notification recipient not found"))?;
+    let project = store::projects::find_by_id(surreal, project_id)
+        .await
+        .map_err(|e| {
+            HandlerError::from(TerminalError::new(format!(
+                "review notification project: {e}"
+            )))
+        })?
+        .ok_or_else(|| TerminalError::new("review notification project not found"))?;
+    Ok(ReviewNotificationTarget {
+        address: person.email,
+        project_code: project.code,
+    })
+}
+
+fn review_recipient_ids(
+    rows: &[store::projects::PersonProjectRole],
+    hop: ReviewNotificationHop,
+) -> Vec<uuid::Uuid> {
+    match hop {
+        ReviewNotificationHop::Lawyer => {
+            let eligible = rows.iter().filter(|row| {
+                !store::projects::PARTICIPATION_CLIENT_SIDE.contains(&row.participation.as_str())
+            });
+            // The role tier is resolved after the row query. A DRI marker is
+            // the first choice; person lookup rejects stale links and filters
+            // the result to the licensed lawyer tiers.
+            let dris: Vec<uuid::Uuid> = eligible
+                .clone()
+                .filter(|row| row.is_lawyer_dri)
+                .map(|row| row.person_id)
+                .collect();
+            if dris.is_empty() {
+                eligible.map(|row| row.person_id).collect()
+            } else {
+                dris
+            }
+        }
+        ReviewNotificationHop::Client => rows
+            .iter()
+            .filter(|row| row.participation == "client")
+            .find(|row| row.is_client_dri)
+            .or_else(|| rows.iter().find(|row| row.participation == "client"))
+            .map(|row| vec![row.person_id])
+            .unwrap_or_default(),
+    }
+}
+
+fn review_fallback_ids(rows: &[store::projects::PersonProjectRole]) -> Vec<uuid::Uuid> {
+    rows.iter()
+        .filter(|row| {
+            !store::projects::PARTICIPATION_CLIENT_SIDE.contains(&row.participation.as_str())
+        })
+        .map(|row| row.person_id)
+        .collect()
+}
+
+async fn send_review_notification(
+    email: Arc<dyn EmailService>,
+    notation_id: uuid::Uuid,
+    project_id: uuid::Uuid,
+    project_code: &str,
+    recipient_id: uuid::Uuid,
+    recipient_email: &str,
+    hop: ReviewNotificationHop,
+) -> Result<(), HandlerError> {
+    let copy = review_copy(hop);
+    let base_url = workflows::email::base_url_from_env();
+    let path = match hop {
+        ReviewNotificationHop::Lawyer => {
+            format!("/app/lawyer/notations/{notation_id}/review")
+        }
+        ReviewNotificationHop::Client => format!("/app/projects/{project_code}"),
+    };
+    let body = format!(
+        "{}\n\n{}{}",
+        copy.body,
+        base_url.trim_end_matches('/'),
+        path
+    );
+    // Every person-addressed Navigator email carries the inline-styled firm
+    // layout as its `text/html` alternative beside the plain part, so a rich
+    // client shows the wordmark rather than a bare URL.
+    let html = workflows::email::render_email_html(&body, &base_url);
+    let outbound = OutboundEmail::new(recipient_email, copy.subject, body)
+        .with_html(html)
+        .with_template(format!("notation-review-{}", hop.as_str()))
+        .with_person(recipient_id.to_string());
+    match email.send(outbound).await {
+        Ok(_) => {
+            tracing::info!(
+                target: "audit",
+                audit = true,
+                notation_id = %notation_id,
+                project_id = %project_id,
+                recipient_role = hop.as_str(),
+                hop = hop.as_str(),
+                outcome = "sent",
+                "review notification sent"
+            );
+            Ok(())
+        }
+        Err(error) => {
+            // The variant, never the message: `EmailError::InvalidRecipient`
+            // carries the address it refused, and telemetry leaves the firm's
+            // trust boundary. The two words still separate a bad mailbox from
+            // a provider outage, which is the whole diagnostic question, and
+            // they ride the handler error rather than a new audit field — the
+            // collector's allow-list is fail-closed, so a key added here would
+            // export as a blank until it is allow-listed too.
+            let reason = match error {
+                workflows::email::EmailError::InvalidRecipient(_) => "invalid recipient",
+                workflows::email::EmailError::Transport(_) => "transport",
+            };
+            tracing::info!(
+                target: "audit",
+                audit = true,
+                notation_id = %notation_id,
+                project_id = %project_id,
+                recipient_role = hop.as_str(),
+                hop = hop.as_str(),
+                outcome = "failed",
+                "review notification failed"
+            );
+            Err(TerminalError::new(format!("review notification send failed: {reason}")).into())
+        }
+    }
+}
+
+const fn review_copy(hop: ReviewNotificationHop) -> ReviewCopy {
+    match hop {
+        ReviewNotificationHop::Lawyer => LAWYER_REVIEW_COPY,
+        ReviewNotificationHop::Client => CLIENT_REVIEW_COPY,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{dispatch_workflow_step, next_state};
+    use super::{
+        dispatch_workflow_step, next_state, review_copy, review_notification_hop,
+        review_recipient_ids, send_review_notification, ReviewNotificationHop,
+    };
     use std::sync::Arc;
     use workflows::{CapturingEmail, EmailPayload, StateName, StepDeps, WorkflowSpec};
 
@@ -507,7 +883,7 @@ END: {}
     }
 
     #[tokio::test]
-    async fn dispatch_workflow_step_skips_human_gate_states() {
+    async fn lawyer_review_dispatch_is_noop_but_sends_one_notification() {
         let email = Arc::new(CapturingEmail::new());
         let deps = StepDeps::new(email.clone(), fs_storage("lawyer-review").await);
 
@@ -522,6 +898,138 @@ END: {}
 
         assert!(payload.is_none());
         assert!(email.captured().is_empty());
+
+        send_review_notification(
+            email.clone(),
+            uuid::Uuid::from_u128(11),
+            uuid::Uuid::from_u128(12),
+            "sample-litigation",
+            uuid::Uuid::from_u128(13),
+            "lawyer@example.com",
+            ReviewNotificationHop::Lawyer,
+        )
+        .await
+        .expect("lawyer review notification");
+
+        let captured = email.captured();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].subject, "A draft is ready for your review");
+        let html = captured[0]
+            .html_body
+            .as_deref()
+            .expect("the firm layout is the html alternative");
+        assert!(html.contains("/app/lawyer/notations/00000000-0000-0000-0000-00000000000b/review"));
+        assert!(captured[0]
+            .body
+            .contains("/app/lawyer/notations/00000000-0000-0000-0000-00000000000b/review"));
+        assert!(!captured[0].body.contains("Jane Roe"));
+        assert!(!captured[0].body.contains("Cruller v. Prine"));
+        assert!(!captured[0].body.contains("Estate Plan"));
+    }
+
+    #[tokio::test]
+    async fn approved_review_sends_one_client_notification() {
+        let email = Arc::new(CapturingEmail::new());
+        send_review_notification(
+            email.clone(),
+            uuid::Uuid::from_u128(21),
+            uuid::Uuid::from_u128(22),
+            "sample-litigation",
+            uuid::Uuid::from_u128(23),
+            "client@example.com",
+            ReviewNotificationHop::Client,
+        )
+        .await
+        .expect("client review notification");
+
+        let captured = email.captured();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].subject, "Your reviewed draft is ready");
+        let html = captured[0]
+            .html_body
+            .as_deref()
+            .expect("the firm layout is the html alternative");
+        assert!(html.contains("/app/projects/sample-litigation"));
+        assert!(captured[0]
+            .body
+            .ends_with("/app/projects/sample-litigation"));
+    }
+
+    #[tokio::test]
+    async fn no_lawyer_tier_participant_yields_no_recipient() {
+        // The fixture designates a lawyer DRI, but `dri_person` is seeded at
+        // the default `Role::Client` tier, so its participation is client-side
+        // and the DRI marker resolves to nobody the firm may notify.
+        let surreal = store::test_support::mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let plan = super::resolve_review_notification_plan(
+            &surreal,
+            notation_id,
+            ReviewNotificationHop::Lawyer,
+        )
+        .await
+        .expect("resolve review recipients");
+
+        assert!(plan.recipient_ids.is_empty());
+    }
+
+    /// `ctx.run` persists this value in the Restate journal, which is an
+    /// operator debugging surface. A mailbox names a client and a Project code
+    /// names who retained the firm, so neither may be frozen into the plan —
+    /// both are read inside the send step instead.
+    #[tokio::test]
+    async fn the_journaled_plan_carries_opaque_ids_only() {
+        let surreal = store::test_support::mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let plan = super::resolve_review_notification_plan(
+            &surreal,
+            notation_id,
+            ReviewNotificationHop::Client,
+        )
+        .await
+        .expect("resolve review recipients");
+
+        assert_eq!(
+            plan.recipient_ids.len(),
+            1,
+            "the client DRI is the recipient"
+        );
+        let journaled = serde_json::to_string(&plan).expect("the plan is journaled as JSON");
+        assert!(
+            !journaled.contains('@'),
+            "a mailbox reached the journal: {journaled}"
+        );
+        assert!(
+            !journaled.contains("libra-estate"),
+            "a Project code reached the journal: {journaled}"
+        );
+    }
+
+    #[test]
+    fn review_hops_cover_approval_and_exclude_reask_or_refusal() {
+        let review = StateName::from("lawyer_review");
+        assert!(matches!(
+            review_notification_hop(&StateName::from("draft"), "ready", &review),
+            Some(ReviewNotificationHop::Lawyer)
+        ));
+        assert!(matches!(
+            review_notification_hop(&review, "approved", &StateName::from("generate_pdf__draft")),
+            Some(ReviewNotificationHop::Client)
+        ));
+        assert!(review_notification_hop(
+            &review,
+            "changes_requested",
+            &StateName::from("reask__client")
+        )
+        .is_none());
+        assert!(review_notification_hop(&review, "rejected", &StateName::end()).is_none());
+    }
+
+    #[test]
+    fn no_lawyer_participants_produce_no_recipient_ids() {
+        assert!(review_recipient_ids(&[], ReviewNotificationHop::Lawyer).is_empty());
+        let copy = review_copy(ReviewNotificationHop::Lawyer);
+        assert_eq!(copy.subject, "A draft is ready for your review");
     }
 
     #[tokio::test]

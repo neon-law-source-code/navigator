@@ -198,6 +198,8 @@ data:
           - person_id
           - project_id
           - notation_id
+          - recipient_role
+          - hop
           - document_id
           - entity_id
           - template_id

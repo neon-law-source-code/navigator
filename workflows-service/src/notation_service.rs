@@ -157,6 +157,55 @@ struct ReviewCopy {
     body: &'static str,
 }
 
+/// The funnel step caused by one durable workflow transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkflowFunnelStep {
+    IntakeComplete,
+    ReviewEntered,
+    Sent(telemetry::FunnelChannel),
+}
+
+fn workflow_funnel_step(
+    _from: &StateName,
+    _condition: &str,
+    next: &StateName,
+) -> Option<WorkflowFunnelStep> {
+    if next.as_str().starts_with("lawyer_review") {
+        return Some(WorkflowFunnelStep::ReviewEntered);
+    }
+    None
+}
+
+async fn record_notation_funnel_step(
+    surreal: &store::surreal::SurrealDb,
+    notation_id: uuid::Uuid,
+    step: WorkflowFunnelStep,
+) -> Result<(), HandlerError> {
+    let notation = store::notations::find_by_id(surreal, notation_id)
+        .await
+        .map_err(|e| HandlerError::from(TerminalError::new(format!("funnel notation: {e}"))))?
+        .ok_or_else(|| TerminalError::new("funnel notation not found"))?;
+    let notation_id = notation_id.to_string();
+    let project_id = notation.project_id.to_string();
+    let event = match step {
+        WorkflowFunnelStep::IntakeComplete => telemetry::FunnelEvent::IntakeComplete {
+            notation_id: &notation_id,
+            project_id: &project_id,
+        },
+        WorkflowFunnelStep::ReviewEntered => telemetry::FunnelEvent::ReviewEntered {
+            notation_id: &notation_id,
+            project_id: &project_id,
+        },
+        WorkflowFunnelStep::Sent(channel) => telemetry::FunnelEvent::Sent {
+            notation_id: &notation_id,
+            project_id: &project_id,
+            channel,
+        },
+    };
+    telemetry::record_funnel_event(event);
+    Ok(())
+}
+
 const LAWYER_REVIEW_COPY: ReviewCopy = ReviewCopy {
     subject: "A draft is ready for your review",
     body: "A draft is ready for your review.",
@@ -282,6 +331,20 @@ impl NotationService {
             })
             .name("append-questionnaire-event")
             .await?;
+
+            if next == StateName::end() {
+                let surreal = self.surreal.clone();
+                ctx.run(move || async move {
+                    record_notation_funnel_step(
+                        &surreal,
+                        notation_id,
+                        WorkflowFunnelStep::IntakeComplete,
+                    )
+                    .await
+                })
+                .name("record-funnel-intake-complete")
+                .await?;
+            }
 
             Ok(Json(SignalResponse {
                 next_state: next.as_str().to_string(),
@@ -426,6 +489,17 @@ impl NotationService {
                 .await?;
             }
 
+            if !body.ephemeral {
+                if let Some(step) = workflow_funnel_step(&from_state, &body.condition, &next) {
+                    let surreal = self.surreal.clone();
+                    ctx.run(move || async move {
+                        record_notation_funnel_step(&surreal, notation_id, step).await
+                    })
+                    .name("record-funnel-step")
+                    .await?;
+                }
+            }
+
             // A notification follows the record of the transition it announces.
             // The only reason anything precedes `append-workflow-event` is a
             // step that produces a payload for that row, and a notification
@@ -443,8 +517,10 @@ impl NotationService {
                         .name("resolve-review-notification-recipients")
                         .await?
                         .into_inner();
+                    let record_client_handoff = matches!(hop, ReviewNotificationHop::Client)
+                        && !plan.recipient_ids.is_empty();
 
-                    for recipient_id in plan.recipient_ids {
+                    for recipient_id in plan.recipient_ids.iter().copied() {
                         let email = Arc::clone(&self.email);
                         let surreal = self.surreal.clone();
                         let project_id = plan.project_id;
@@ -468,6 +544,20 @@ impl NotationService {
                             .await
                         })
                         .name("send-review-notification")
+                        .await?;
+                    }
+
+                    if record_client_handoff {
+                        let surreal = self.surreal.clone();
+                        ctx.run(move || async move {
+                            record_notation_funnel_step(
+                                &surreal,
+                                notation_id,
+                                WorkflowFunnelStep::Sent(telemetry::FunnelChannel::Email),
+                            )
+                            .await
+                        })
+                        .name("record-funnel-sent")
                         .await?;
                     }
                 }
@@ -870,6 +960,141 @@ END: {}
         let spec = WorkflowSpec::from_yaml(SPEC).unwrap();
         let err = next_state(&spec, &StateName::begin(), "bogus").unwrap_err();
         assert!(format!("{err:?}").contains("no transition"));
+    }
+
+    #[test]
+    fn workflow_transition_identifies_review_entry_without_premature_send() {
+        assert!(matches!(
+            super::workflow_funnel_step(
+                &StateName::from("intake_persisted__client"),
+                "rendered",
+                &StateName::from("lawyer_review")
+            ),
+            Some(super::WorkflowFunnelStep::ReviewEntered)
+        ));
+        assert!(super::workflow_funnel_step(
+            &StateName::from("lawyer_review"),
+            "approved",
+            &StateName::from("generate_pdf__draft")
+        )
+        .is_none());
+        assert!(super::workflow_funnel_step(
+            &StateName::from("generate_pdf__draft"),
+            "pdf_persisted",
+            &StateName::from("sent_for_signature__pending")
+        )
+        .is_none());
+        assert!(super::workflow_funnel_step(
+            &StateName::from("lawyer_review"),
+            "changes_requested",
+            &StateName::from("reask__client")
+        )
+        .is_none());
+    }
+
+    #[tokio::test]
+    async fn notation_funnel_events_carry_ids_without_client_content() {
+        use std::io::Write;
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt::MakeWriter;
+
+        #[derive(Clone)]
+        struct Buffer(Arc<Mutex<Vec<u8>>>);
+
+        impl Write for Buffer {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture lock")
+                    .extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl<'a> MakeWriter<'a> for Buffer {
+            type Writer = Buffer;
+
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(Buffer(output.clone()))
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let surreal = store::test_support::mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let project_id = store::notations::find_by_id(&surreal, notation_id)
+            .await
+            .expect("notation lookup")
+            .expect("seeded notation")
+            .project_id;
+
+        super::record_notation_funnel_step(
+            &surreal,
+            notation_id,
+            super::WorkflowFunnelStep::IntakeComplete,
+        )
+        .await
+        .expect("intake funnel event");
+        super::record_notation_funnel_step(
+            &surreal,
+            notation_id,
+            super::WorkflowFunnelStep::ReviewEntered,
+        )
+        .await
+        .expect("review funnel event");
+        super::record_notation_funnel_step(
+            &surreal,
+            notation_id,
+            super::WorkflowFunnelStep::Sent(telemetry::FunnelChannel::Email),
+        )
+        .await
+        .expect("sent funnel event");
+
+        let rendered = String::from_utf8(output.lock().expect("capture lock").clone())
+            .expect("capture is UTF-8");
+        let funnel_lines: Vec<_> = rendered
+            .lines()
+            .filter(|line| line.contains(r#""target":"funnel""#))
+            .collect();
+        assert_eq!(funnel_lines.len(), 3, "funnel: {rendered}");
+        let funnel = funnel_lines.join("\n");
+        assert!(
+            funnel.contains("funnel.intake_complete"),
+            "funnel: {funnel}"
+        );
+        assert!(funnel.contains("funnel.review_entered"), "funnel: {funnel}");
+        assert!(funnel.contains("funnel.sent"), "funnel: {funnel}");
+        assert!(funnel.contains(r#""channel":"email""#), "funnel: {funnel}");
+        assert!(
+            funnel.contains(&notation_id.to_string()),
+            "funnel: {funnel}"
+        );
+        assert!(funnel.contains(&project_id.to_string()), "funnel: {funnel}");
+        for forbidden in [
+            "libra@example.com",
+            "Libra",
+            "libra-estate",
+            "Estate Plan",
+            "email=",
+            "phone=",
+            "name=",
+            "address=",
+            "project_code=",
+        ] {
+            assert!(!funnel.contains(forbidden), "{forbidden} leaked: {funnel}");
+        }
     }
 
     async fn fs_storage(suite: &str) -> Arc<dyn cloud::StorageService> {

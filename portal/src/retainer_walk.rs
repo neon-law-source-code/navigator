@@ -2037,6 +2037,13 @@ pub(crate) async fn dispatch_signature(
     // (`crate::esignature_webhook`) can resolve its callback back to this
     // notation.
     persist_signature_request_id(deps.surreal, notation_id, &id.0).await?;
+    let notation_id = notation_id.to_string();
+    let project_id = notation_row.project_id.to_string();
+    telemetry::record_funnel_event(telemetry::FunnelEvent::Sent {
+        notation_id: &notation_id,
+        project_id: &project_id,
+        channel: telemetry::FunnelChannel::Signature,
+    });
 
     Ok((s, id))
 }

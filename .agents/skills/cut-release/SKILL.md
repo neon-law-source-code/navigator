@@ -38,10 +38,10 @@ through a PR; merging `main` drives publication.
   comments, so leave them. A pin left behind is not cosmetic. `navigator-install` was added after `26.9.16` (ENG-671)
   while its pins still read `@26.9.16`, a tag that does not carry it, so `26.9.17-rc.1` published a gate no consumer
   could run: every job needing the CLI failed in ~5s on `Can't find 'action.yml', 'action.yaml' or 'Dockerfile'`, and
-  only `read-manifest` — the one job needing no CLI — stayed green. Naming the version being cut is what makes a
-  release self-consistent, since a caller only ever resolves a *published* tag, by which point the tag exists. Where
-  that is too bold for a given cut, the conservative fallback is the most recent published tag that actually carries
-  the action — never a tag predating it.
+  only `read-manifest` — the one job needing no CLI — stayed green. Naming the version being cut is what makes a release
+  self-consistent, since a caller only ever resolves a *published* tag, by which point the tag exists. Where that is too
+  bold for a given cut, the conservative fallback is the most recent published tag that actually carries the action —
+  never a tag predating it.
 - Make the smallest version-only commit, run the documented gate, and open the PR against `main`. **No draft PRs**: a
   release PR must open ready for review, not as a draft. Auto-merge only lands a PR that is not a draft, so a release
   cut as a draft sits published-but-unmerged until someone notices and marks it ready — take it out of draft as soon as

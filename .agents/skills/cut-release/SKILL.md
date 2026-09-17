@@ -52,7 +52,33 @@ through a PR; merging `main` drives publication.
   agent's own token, a bot) sits at `REVIEW_REQUIRED` until a human approves it, so auto-merge will not just fire on its
   own. See [Review gate: two rulesets with a narrow
   bypass](../../../docs/gitops.md#review-gate-two-rulesets-with-a-narrow-bypass).
-- Stop when that PR merges. Report its URL. Do not watch `deploy.yml` for the tag, images, archives, or tap.
+- **Hand the new tag to the Project repositories, after the merge publishes it.** The pins swept above are the ones
+  *inside* this repository. Every Project repository carries its own copy of the same decision — `ci.yml` calls
+  `project-gate.yml@YY.M.D`, `cd.yml` calls `project-publish.yml@YY.M.D`, and `navigator.yaml` names the identical tag
+  in `version:` — and nothing in `deploy.yml` moves them: the run's own `GITHUB_TOKEN` cannot reach another repository,
+  and the one cross-repository grant that exists (`HOMEBREW_TAP_TOKEN`) is scoped to the tap. So the fleet sweep is an
+  operator step, run once the tag is published, one repository at a time, dry run first:
+
+  ```bash
+  navigator ops github setup <owner>/<repo> --action-version <YY.M.D> --dry-run
+  navigator ops github setup <owner>/<repo> --action-version <YY.M.D>
+  ```
+
+  It opens a pull request per repository on `ops-github-setup/workflow-templates-<YY.M.D>` rather than writing `main`,
+  so each one still needs that repository's own `ci` and a code owner. Rerun the dry run afterwards; no drift is the
+  only proof it converged.
+
+  **That reconcile writes `ci.yml` and `cd.yml` only.** `navigator.yaml` is read, never written, so its `version:` stays
+  behind and the pull request fails its own gate:
+
+  ```text
+  project-gate workflow ref `26.9.17` must equal manifest version `26.9.16`
+  ```
+
+  Move `version:` on that same branch before merging it. Until `ops github setup` reconciles the manifest too, a release
+  is not finished when its own PR merges — it is finished when the fleet resolves the tag it published.
+- Stop when that PR merges, then report its URL and the fleet sweep it leaves outstanding. Do not watch
+  `deploy.yml` for the tag, images, archives, or tap.
 - Do not deploy, mutate production, or copy production coordinates into the branch, PR, or release notes. Where release
   notes cite planning, cite the bare Linear issue identifier (`ENG-1234`) — never a `linear.app` URL, issue title, or
   project name. See [Linking a PR to its Linear

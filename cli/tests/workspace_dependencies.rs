@@ -118,6 +118,7 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "tracing-core",
     "tracing-opentelemetry",
     "tracing-subscriber",
+    "typst",
     "url",
     "uuid",
     "views",

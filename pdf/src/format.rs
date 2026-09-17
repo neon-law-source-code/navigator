@@ -19,7 +19,7 @@
 //! frontmatter field is validated by the `rules` crate's `N109` rule;
 //! keep [`OutputFormat::FRONTMATTER_VALUES`] in step with it.
 
-use crate::{render, PdfError, LOGO_PATH};
+use crate::{PdfError, LOGO_PATH};
 
 /// The firm identity printed on a letterhead.
 ///
@@ -542,13 +542,27 @@ pub fn render_document(
     format: OutputFormat,
     letterhead: &Letterhead,
 ) -> Result<Vec<u8>, PdfError> {
+    render_document_with_options(body, format, letterhead, &crate::RenderOptions::default())
+}
+
+/// Render a document with explicit PDF serialization options.
+///
+/// `options` is forwarded to [`crate::render_with_options`] after Markdown
+/// and format chrome have been composed.
+#[allow(clippy::needless_pass_by_value)]
+pub fn render_document_with_options(
+    body: &str,
+    format: OutputFormat,
+    letterhead: &Letterhead,
+    options: &crate::RenderOptions,
+) -> Result<Vec<u8>, PdfError> {
     let source = format!(
         "{}{}{}",
         format.preamble(letterhead),
         crate::markdown::to_typst(body),
         format.postamble(),
     );
-    render(&source)
+    crate::render_with_options(&source, options)
 }
 
 #[cfg(test)]

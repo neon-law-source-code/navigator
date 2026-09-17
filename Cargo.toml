@@ -92,6 +92,9 @@ percent-encoding = "2"
 google-cloud-storage = { version = "0.24", default-features = false, features = ["rustls-tls", "auth"] }
 google-cloud-auth = { version = "0.17", default-features = false, features = ["rustls-tls"] }
 google-cloud-token = "0.1"
+# Typst's public foundations API supplies the PDF date value for explicit
+# creation timestamps; keep it aligned with the pinned PDF exporter.
+typst = "=0.15.1"
 # The maintained AWS Rust SDK backs the S3-compatible Garage adapter in
 # `cloud`; the adapter forces path-style SigV4 requests at its endpoint.
 aws-credential-types = "1.3"

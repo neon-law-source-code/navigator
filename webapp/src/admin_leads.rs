@@ -17,7 +17,7 @@ pub const LEADS_PATH: &str = "/app/admin/leads";
 pub const LEAD_PATH: &str = "/app/admin/leads/{id}";
 
 /// Closed status words the status form offers.
-const STATUSES: &[&str] = &["new", "contacted", "converted", "declined", "unsubscribed"];
+const STATUSES: &[&str] = &["new", "contacted", "declined", "unsubscribed"];
 
 /// One row on the queue list. The phone is already masked.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -572,6 +572,7 @@ mod tests {
         assert!(html.contains("+1 (555) 010-9876"), "{html}");
         assert!(html.contains("professional ethics"), "{html}");
         assert!(html.contains("Create Person"), "{html}");
+        assert!(!html.contains(r#"value="converted""#), "{html}");
         assert!(
             html.contains(
                 r#"action="/app/admin/leads/11111111-1111-1111-1111-111111111111/convert""#

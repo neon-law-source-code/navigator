@@ -29,6 +29,7 @@ flate2.workspace = true
 forms.workspace = true
 hmac.workspace = true
 include_dir.workspace = true
+image.workspace = true
 jsonwebtoken.workspace = true
 live-inquiry.workspace = true
 mail-parser.workspace = true

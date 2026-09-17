@@ -13,7 +13,7 @@ use portal::workshops::{WorkshopChapter, WorkshopSection};
 use portal::{AppState, AuthConfig, CanonicalHost, SessionStore, WorkshopIndex, WorkshopMaterial};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Cursor, Write};
 use std::sync::{Arc, Mutex, Once};
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
@@ -16594,14 +16594,32 @@ fn avatar_multipart_body(
     body
 }
 
-/// `POST /app/admin/people/{id}/avatar` writes the image to the **private**
-/// documents bucket (never the public assets lane — nothing shows a
-/// person's avatar to a signed-out visitor now that `/team` is a static
-/// page), points `profile_image_url` at the bucket key, and redirects back
-/// to the show page. `GET` on the same path then streams it back, admin-gated
-/// like the upload.
+/// A valid transparent PNG with caller-selected dimensions. This exercises
+/// the public-avatar metadata limit with bytes a real decoder accepts.
+fn png_avatar(width: u32, height: u32) -> Vec<u8> {
+    let image = image::DynamicImage::ImageRgba8(image::RgbaImage::new(width, height));
+    let mut bytes = Cursor::new(Vec::new());
+    image
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .expect("encode synthetic PNG");
+    bytes.into_inner()
+}
+
+fn jpeg_avatar() -> Vec<u8> {
+    let image = image::DynamicImage::ImageRgba8(image::RgbaImage::new(1, 1));
+    let mut bytes = Cursor::new(Vec::new());
+    image
+        .write_to(&mut bytes, image::ImageFormat::Jpeg)
+        .expect("encode synthetic JPEG");
+    bytes.into_inner()
+}
+
+/// `POST /app/admin/people/{id}/avatar` writes the image to the public-assets
+/// lane at the canonical Person key and records its public URL on the singular
+/// Surreal `person` row. The authenticated route redirects that URL for the
+/// existing admin preview.
 #[tokio::test]
-async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_streams_it_back() {
+async fn admin_person_avatar_upload_writes_the_public_assets_bucket_and_redirects_to_it() {
     let (state, surreal) = state_with_engines().await;
     let libra = store::persons::create(
         &surreal,
@@ -16649,12 +16667,13 @@ async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_strea
         .await
         .unwrap()
         .expect("row still present");
-    let key = row
+    let url = row
         .profile_image_url
         .expect("the upload must set profile_image_url");
-    assert_eq!(key, format!("people/{}/avatars/{}.png", libra.id, libra.id));
+    let key = format!("people/{}/avatar.png", libra.id);
+    assert_eq!(url, views::assets::asset_url(&key));
 
-    let stored = state.storage.get(&key).await.unwrap();
+    let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");
 
@@ -16668,24 +16687,152 @@ async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_strea
         )
         .await
         .unwrap();
-    assert_eq!(download.status(), StatusCode::OK);
+    assert_eq!(download.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         download
             .headers()
-            .get(header::CONTENT_TYPE)
+            .get(header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("image/png")
+        Some(url.as_str())
     );
-    let bytes = axum::body::to_bytes(download.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
 }
 
-/// A person written before `email_confirmed` and `is_admitted` existed still
-/// accepts an admin avatar upload after schema apply because the avatar
-/// writer materializes the missing defaults for that row before updating the
-/// avatar.
+/// An Admin may update a client avatar, but the target's stored role keeps it
+/// in the private lane rather than publishing a stable public URL.
+#[tokio::test]
+async fn admin_client_avatar_upload_keeps_the_private_bucket() {
+    let (state, surreal) = state_with_engines().await;
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = admin_session_cookie_and_csrf();
+    let boundary = "----navigator-test-client-avatar-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "client.png", "image/png", ONE_PIXEL_PNG);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/people/{}/avatar", client.id))
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let row = store::persons::find_by_id(&surreal, client.id)
+        .await
+        .unwrap()
+        .expect("client row remains");
+    let private_key = format!("people/{}/avatars/{}.png", client.id, client.id);
+    assert_eq!(row.profile_image_url.as_deref(), Some(private_key.as_str()));
+    assert_eq!(
+        state.storage.get(&private_key).await.unwrap().bytes,
+        ONE_PIXEL_PNG
+    );
+    assert!(
+        state
+            .assets_storage
+            .get(&format!("people/{}/avatar.png", client.id))
+            .await
+            .is_err(),
+        "the public lane must not receive a client avatar"
+    );
+}
+
+/// The two public extensions are canonical alternatives. Replacing PNG with
+/// JPEG removes the former public object instead of leaving it addressable.
+#[tokio::test]
+async fn replacing_a_public_person_avatar_deletes_the_superseded_extension() {
+    let (state, surreal) = state_with_engines().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Ada Lovelace",
+            "ada@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = admin_session_cookie_and_csrf();
+
+    for (extension, content_type, bytes) in [
+        ("png", "image/png", ONE_PIXEL_PNG.to_vec()),
+        ("jpg", "image/jpeg", jpeg_avatar()),
+    ] {
+        let boundary = "----navigator-test-replace-public-avatar-boundary";
+        let body = avatar_multipart_body(
+            boundary,
+            &csrf,
+            &format!("avatar.{extension}"),
+            content_type,
+            &bytes,
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/app/admin/people/{}/avatar", person.id))
+                    .header(header::COOKIE, &cookie)
+                    .header(
+                        header::CONTENT_TYPE,
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    }
+
+    let png_key = format!("people/{}/avatar.png", person.id);
+    let jpg_key = format!("people/{}/avatar.jpg", person.id);
+    assert!(state.assets_storage.get(&png_key).await.is_err());
+    assert_eq!(
+        state
+            .assets_storage
+            .get(&jpg_key)
+            .await
+            .unwrap()
+            .content_type,
+        "image/jpeg"
+    );
+    let row = store::persons::find_by_id(&surreal, person.id)
+        .await
+        .unwrap()
+        .expect("person row remains");
+    assert_eq!(
+        row.profile_image_url.as_deref(),
+        Some(views::assets::asset_url(&jpg_key).as_str())
+    );
+}
+
+/// A historical Client row materializes its schema defaults while retaining
+/// the private avatar lane.
 #[tokio::test]
 async fn admin_person_avatar_upload_handles_a_historical_person_row() {
     let surreal = store::surreal::test_support::unmigrated().await;
@@ -16755,10 +16902,17 @@ async fn admin_person_avatar_upload_handles_a_historical_person_row() {
         .take(0)
         .unwrap();
     assert_eq!(email_confirmed, Some(false));
+    let private_key = format!("people/{id}/avatars/{id}.png");
+    assert_eq!(row.profile_image_url.as_deref(), Some(private_key.as_str()));
     assert_eq!(
-        row.profile_image_url.as_deref(),
-        Some(format!("people/{id}/avatars/{id}.png").as_str()),
+        state.storage.get(&private_key).await.unwrap().bytes,
+        ONE_PIXEL_PNG
     );
+    assert!(state
+        .assets_storage
+        .get(&format!("people/{id}/avatar.png"))
+        .await
+        .is_err());
 }
 
 /// Another person's avatar is readable by the person, Owner/Admin, or a
@@ -16886,8 +17040,8 @@ async fn admin_person_avatar_download_requires_admin() {
 }
 
 /// The shared application chrome reads only the signed-in person's avatar. It
-/// serves initials until an upload exists, then streams that person's private
-/// object — without accepting another person's id in the request path.
+/// serves initials until an upload exists, then redirects to a public URL;
+/// legacy private keys still stream through the authenticated route.
 #[tokio::test]
 async fn current_viewer_avatar_serves_initials_then_the_private_upload() {
     let (state, surreal) = state_with_engines().await;
@@ -16980,9 +17134,9 @@ async fn profile_page_avatar_form_posts_to_the_sibling_upload_route() {
     let viewer = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role(
-            "Libra Scales",
-            "libra@example.com",
-            store::persons::Role::Client,
+            "Ada Lovelace",
+            "ada@example.com",
+            store::persons::Role::Lawyer,
         ),
     )
     .await
@@ -17015,6 +17169,10 @@ async fn profile_page_avatar_form_posts_to_the_sibling_upload_route() {
         "the file input carries the id the in-place script binds to: {html}"
     );
     assert!(
+        html.contains("Your avatar will be publicly available."),
+        "the profile page must disclose public avatar availability: {html}"
+    );
+    assert!(
         !html.contains("/app/profile/avatar"),
         "a nested action under /app/profile is not the upload route: {html}"
     );
@@ -17026,12 +17184,49 @@ async fn profile_page_avatar_form_posts_to_the_sibling_upload_route() {
     );
 }
 
-/// `POST /app/avatar` writes the caller's own image to the private documents
-/// bucket, points `profile_image_url` at the key, and redirects back to
-/// `/app/profile`. A Client session succeeds — the handler resolves the
-/// person from the signed session, never from the URL.
+/// The same profile route must not tell a Client that their private avatar
+/// becomes public. The stored Person role, rather than the route admission
+/// tier alone, selects this copy and its storage lane.
 #[tokio::test]
-async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to_profile() {
+async fn client_profile_page_keeps_avatar_private_copy() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra Scales",
+            "libra@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (cookie, _) = session_cookie_and_csrf_for_person(&viewer);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/profile")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = body_string(response).await;
+    assert!(
+        !html.contains("publicly available"),
+        "client profile must not claim public avatar availability: {html}"
+    );
+    assert!(html.contains("PNG, JPEG, or WebP, up to 5 MB"), "{html}");
+}
+
+/// A Client profile upload preserves the private documents-bucket path. Its
+/// row must never point at the public assets bucket, even though the handler
+/// resolves the target from the signed session rather than from the request.
+#[tokio::test]
+async fn client_profile_avatar_upload_keeps_the_private_bucket_and_redirects_to_profile() {
     let (state, surreal) = state_with_engines().await;
     let viewer = store::persons::create(
         &surreal,
@@ -17089,6 +17284,14 @@ async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to
     let stored = state.storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");
+    assert!(
+        state
+            .assets_storage
+            .get(&format!("people/{}/avatar.png", viewer.id))
+            .await
+            .is_err(),
+        "a client avatar must not reach the public-assets lane"
+    );
 
     let download = app
         .oneshot(
@@ -17101,10 +17304,13 @@ async fn client_profile_avatar_upload_writes_the_private_bucket_and_redirects_to
         .await
         .unwrap();
     assert_eq!(download.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(download.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
+    assert_eq!(
+        download
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("image/png")
+    );
 }
 
 /// The profile page's in-place script posts the same multipart body with
@@ -17161,6 +17367,10 @@ async fn client_profile_avatar_upload_stays_on_the_profile_page_for_xhr() {
     let key = row
         .profile_image_url
         .expect("the upload must set profile_image_url");
+    assert_eq!(
+        key,
+        format!("people/{}/avatars/{}.png", viewer.id, viewer.id)
+    );
     let stored = state.storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
 }
@@ -17168,14 +17378,14 @@ async fn client_profile_avatar_upload_stays_on_the_profile_page_for_xhr() {
 /// The same upload posted at `/app/profile/avatar`, the nested action a
 /// browser uses when the form's `action` is that absolute path.
 #[tokio::test]
-async fn client_profile_avatar_upload_accepts_the_nested_form_action() {
+async fn firm_profile_avatar_upload_accepts_the_nested_form_action() {
     let (state, surreal) = state_with_engines().await;
     let viewer = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role(
-            "Libra Scales",
-            "libra@example.com",
-            store::persons::Role::Client,
+            "Ada Lovelace",
+            "ada@example.com",
+            store::persons::Role::Lawyer,
         ),
     )
     .await
@@ -17216,16 +17426,70 @@ async fn client_profile_avatar_upload_accepts_the_nested_form_action() {
         .await
         .unwrap()
         .expect("row still present");
-    let key = row
+    let url = row
         .profile_image_url
         .expect("the nested upload must set profile_image_url");
-    assert_eq!(
-        key,
-        format!("people/{}/avatars/{}.png", viewer.id, viewer.id)
-    );
-    let stored = state.storage.get(&key).await.unwrap();
+    let key = format!("people/{}/avatar.png", viewer.id);
+    assert_eq!(url, views::assets::asset_url(&key));
+    let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");
+}
+
+/// A public profile avatar must stay within both decoded-image dimensions,
+/// before either the public-assets bucket or the `person` row changes.
+#[tokio::test]
+async fn profile_avatar_upload_rejects_images_wider_or_taller_than_1024_pixels() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Ada Lovelace",
+            "ada@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&viewer);
+
+    for (width, height) in [(1025, 1), (1, 1025)] {
+        let boundary = "----navigator-test-oversized-profile-avatar";
+        let body = avatar_multipart_body(
+            boundary,
+            &csrf,
+            "too-large.png",
+            "image/png",
+            &png_avatar(width, height),
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/app/avatar")
+                    .header(header::COOKIE, &cookie)
+                    .header(
+                        header::CONTENT_TYPE,
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    let row = store::persons::find_by_id(&surreal, viewer.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    assert!(row.profile_image_url.is_none());
 }
 
 /// An anonymous POST to the self-service upload is refused — the person id

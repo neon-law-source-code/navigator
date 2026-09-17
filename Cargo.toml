@@ -105,8 +105,9 @@ http-body-util = "0.1"
 # `image` decodes the source JPEGs, resizes (Lanczos3) and re-encodes
 # JPEG; `webp` (libwebp via cc) handles lossy WebP; `ravif` (pure-Rust
 # rav1e) handles AVIF, the smallest of the three, with `rgb` for the
-# pixel slice. Lean — default features off, JPEG codec only on `image`.
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# pixel slice. Lean — default features off, with the JPEG and PNG codecs the
+# public image-upload surfaces validate before publishing a file.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 webp = "0.3"
 ravif = { version = "0.13", default-features = false }
 rgb = "0.8"

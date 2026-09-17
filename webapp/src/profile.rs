@@ -8,7 +8,9 @@
 //! browser as `/app/avatar` (the last path segment is replaced). No tier
 //! gate at all: unlike the admin-only `/app/admin/people/{id}/avatar`, the
 //! target is always the caller's own row, resolved server-side from the
-//! signed session, never a person id supplied by the page.
+//! signed session, never a person id supplied by the page. Firm-tier avatars
+//! become publicly available through the deployment's public-assets origin;
+//! client avatars stay on the private documents lane.
 //!
 //! Email renders read-only: the account's mailbox is also its sign-in
 //! identity, so a self-service edit here would drift from the OIDC identity
@@ -54,6 +56,9 @@ pub struct ProfileFields {
     pub name: String,
     pub email: String,
     pub csrf_token: String,
+    /// Public availability applies only to firm-tier avatars. This derives
+    /// from the current `person.role`, not a potentially stale session role.
+    pub avatar_is_public: bool,
 }
 
 #[cfg(feature = "server")]
@@ -112,6 +117,7 @@ async fn load_profile(role: ViewerRole) -> Result<ProfileView, ServerFnError> {
             name: person.name,
             email: person.email,
             csrf_token,
+            avatar_is_public: !matches!(person.role, store::persons::Role::Client),
         }),
         logo,
     })
@@ -138,7 +144,12 @@ pub fn Profile() -> Element {
 /// The avatar preview and self-service upload form, a sibling `FormCard` to
 /// the read-only contact card below it — the two need different `enctype`s,
 /// and `FormCard` only supports one per `<form>`.
-fn avatar_upload_card(csrf_token: &str) -> Element {
+fn avatar_upload_card(csrf_token: &str, avatar_is_public: bool) -> Element {
+    let help = if avatar_is_public {
+        "PNG or JPEG, up to 5 MB and 1024 × 1024 pixels. Replaces any existing avatar."
+    } else {
+        "PNG, JPEG, or WebP, up to 5 MB. Replaces any existing avatar."
+    };
     rsx! {
         section { id: "profile-avatar", class: "person-avatar",
             h2 { "Avatar" }
@@ -153,6 +164,9 @@ fn avatar_upload_card(csrf_token: &str) -> Element {
             // `#profile-avatar` and `#profile-avatar-file`, posts the same
             // multipart body as a `fetch`, and cache-busts `/app/me/avatar`.
             document::Script { src: "/public/js/avatar-upload.js", defer: true }
+            if avatar_is_public {
+                p { class: "form-help", "Your avatar will be publicly available." }
+            }
             FormCard {
                 title: "Upload avatar".to_string(),
                 action: PROFILE_AVATAR_PATH.to_string(),
@@ -164,7 +178,7 @@ fn avatar_upload_card(csrf_token: &str) -> Element {
                     Field::file("Avatar", "file")
                         .id("profile-avatar-file")
                         .required()
-                        .help("PNG, JPEG, or WebP, up to 5 MB. Replaces any existing avatar."),
+                        .help(help),
                 ],
             }
         }
@@ -227,7 +241,7 @@ fn render_profile(resource: &Resource<Result<ProfileView, ServerFnError>>) -> El
             }
             match &view.fields {
                 Some(fields) => rsx! {
-                    {avatar_upload_card(&fields.csrf_token)}
+                    {avatar_upload_card(&fields.csrf_token, fields.avatar_is_public)}
                     {contact_card(fields)}
                 },
                 None => rsx! {
@@ -253,11 +267,16 @@ mod tests {
             name: "Libra Scales".to_string(),
             email: "libra@example.com".to_string(),
             csrf_token: "csrf-token".to_string(),
+            avatar_is_public: false,
         }
     }
 
     fn avatar_app() -> Element {
-        avatar_upload_card("csrf-token")
+        avatar_upload_card("csrf-token", true)
+    }
+
+    fn private_avatar_app() -> Element {
+        avatar_upload_card("csrf-token", false)
     }
 
     fn contact_app() -> Element {
@@ -283,12 +302,30 @@ mod tests {
             out.contains(r#"id="profile-avatar-file""#),
             "the file input carries a stable id the in-place script can find: {out}"
         );
+        assert!(
+            out.contains("Your avatar will be publicly available."),
+            "the upload card must disclose public availability: {out}"
+        );
+        assert!(
+            out.contains("1024 × 1024 pixels"),
+            "the upload card must state the dimension limits: {out}"
+        );
         let csrf_pos = out.find(r#"name="_csrf""#);
         let file_pos = out.find(r#"type="file""#);
         assert!(
             csrf_pos.is_some() && file_pos.is_some() && csrf_pos < file_pos,
             "CSRF must be the first field, before the file input: {out}"
         );
+    }
+
+    #[test]
+    fn a_client_avatar_card_keeps_the_private_lane_copy() {
+        let out = ssr(private_avatar_app);
+        assert!(
+            !out.contains("publicly available"),
+            "client avatars must not claim public availability: {out}"
+        );
+        assert!(out.contains("PNG, JPEG, or WebP, up to 5 MB"), "{out}");
     }
 
     /// The contact card renders every field disabled and offers no Save — an

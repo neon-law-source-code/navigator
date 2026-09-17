@@ -519,7 +519,7 @@ fn the_help_parser_still_reads_the_top_level_commands() {
     let mut cache = BTreeMap::new();
     let root = node_at(&mut cache, &[]);
 
-    for expected in ["dev", "forms", "notations", "ops", "site", "validate"] {
+    for expected in ["dev", "forms", "notations", "ops", "project", "site"] {
         assert!(
             root.children.iter().any(|name| name == expected),
             "the `Commands:` parser read {:?} at the top level and missed \
@@ -642,9 +642,8 @@ fn the_scan_reads_the_cargo_run_spelling() {
 /// remediation that shows the operator what to substitute would fail.
 #[test]
 fn a_placeholder_ends_a_path_instead_of_becoming_a_subcommand() {
-    let path =
-        subcommand_path("navigator site projects create --code <CODE>").expect("an invocation");
-    assert_eq!(path, vec!["site", "projects", "create"]);
+    let path = subcommand_path("navigator project create --code <CODE>").expect("an invocation");
+    assert_eq!(path, vec!["project", "create"]);
 }
 
 /// Developer prose is out of scope, and staying out of scope is part of the

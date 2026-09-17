@@ -223,4 +223,4 @@ notations/<notation-id>/certificate-of-completion.pdf
 3. Add a sibling markdown template with matching `code`, `jurisdiction`, `origin_url`, and `form`.
 4. Add a sibling field map if the PDF is fillable — `navigator forms fields <code>` prints the real `/T` names.
 5. Add the form's metadata (with its `include_str!` pin) and field map to the `forms` crate registry.
-6. Run `cargo test -p forms` and `cargo run -p cli -- validate templates`.
+6. Run `cargo test -p forms` and `cargo run -p cli -- project gate`.

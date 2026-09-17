@@ -1,7 +1,7 @@
 name: ci
 
 # The PR flow (see docs/gitops.md "CI/CD workflows"). Lean on purpose: the
-# `validate` job always runs `navigator validate` over YAML and Markdown. The
+# `gate` job always runs `navigator project gate` over YAML and Markdown. The
 # `rust` job — fmt + clippy + the whole workspace test suite, which also
 # carries the coverage floor under `cargo llvm-cov` — runs only when the PR
 # touches Rust or the files that job is the proof for. Coverage is a byproduct
@@ -243,10 +243,10 @@ jobs:
       - name: test the managed Word adapter
         run: dotnet test word/adapter/WordAdapter.Tests.csproj --no-restore --configuration Release
 
-  # Always run. A locale or Markdown edit still has to pass `navigator
-  # validate`; that is the cheap gate that lets the rust job stay skipped.
-  validate:
-    name: validate content
+  # Always run. A locale or Markdown edit still has to pass `navigator project
+  # gate`; that is the cheap gate that lets the rust job stay skipped.
+  gate:
+    name: gate content
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -265,11 +265,11 @@ jobs:
       - name: cache the Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: validate-cli
+          shared-key: gate-cli
       - name: build navigator CLI
         run: cargo build -p cli --quiet
-      - name: validate content tree with navigator
-        run: "${CARGO_TARGET_DIR:-target}/debug/navigator validate ."
+      - name: gate the content tree with navigator
+        run: "${CARGO_TARGET_DIR:-target}/debug/navigator project gate --ci"
       # `production` requires signatures on `main`. Squash-merge writes a
       # GitHub-signed commit there, which does not prove the PR head was
       # signed. Inspect the pull-request head — not the workflow merge commit —
@@ -590,8 +590,8 @@ jobs:
       # One content validator over the whole tree: lint every `.md` against the
       # classified rule set, run the typed event checks over each event file,
       # and parse every `.yaml`/`.yml` in the same walk.
-      - name: validate content tree with navigator
-        run: "${CARGO_TARGET_DIR:-target}/debug/navigator validate ."
+      - name: gate the content tree with navigator
+        run: "${CARGO_TARGET_DIR:-target}/debug/navigator project gate --ci"
       # ---- The release preflight, run on every pull request ----------------
       #
       # THESE CHECKS USED TO LIVE ONLY IN A SCRIPT SOMEONE REMEMBERED TO RUN.
@@ -880,14 +880,14 @@ jobs:
   # gate would quietly stop blocking exactly when it matters. Testing the
   # result makes every non-success outcome, including `cancelled`, a failure of
   # this job. `rust` may be `skipped` when the PR touches no Rust files; that
-  # is success so long as `validate` succeeded.
+  # is success so long as `gate` succeeded.
   #
   # `enable-automerge` is deliberately not a dependency: it is conditional, it
   # does not run on forks, and whether auto-merge got armed is not a statement
   # about whether the code is good.
   ci:
     name: ci
-    needs: [changes, validate, rust, word-adapter]
+    needs: [changes, gate, rust, word-adapter]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -895,21 +895,21 @@ jobs:
       - name: report the gate result
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          VALIDATE_RESULT: ${{ needs.validate.result }}
+          GATE_RESULT: ${{ needs.gate.result }}
           RUST_RESULT: ${{ needs.rust.result }}
           WORD_ADAPTER_RESULT: ${{ needs.word-adapter.result }}
         run: |
           set -euo pipefail
           echo "classify the pull request: ${CHANGES_RESULT}"
-          echo "validate content: ${VALIDATE_RESULT}"
+          echo "gate content: ${GATE_RESULT}"
           echo "cargo test (workspace): ${RUST_RESULT}"
           echo "test managed Word adapter: ${WORD_ADAPTER_RESULT}"
           if [ "${CHANGES_RESULT}" != "success" ]; then
               echo "::error::the merge gate is red — classify the pull request reported ${CHANGES_RESULT}"
               exit 1
           fi
-          if [ "${VALIDATE_RESULT}" != "success" ]; then
-              echo "::error::the merge gate is red — validate content reported ${VALIDATE_RESULT}"
+          if [ "${GATE_RESULT}" != "success" ]; then
+              echo "::error::the merge gate is red — gate content reported ${GATE_RESULT}"
               exit 1
           fi
           if [ "${RUST_RESULT}" != "success" ] && [ "${RUST_RESULT}" != "skipped" ]; then

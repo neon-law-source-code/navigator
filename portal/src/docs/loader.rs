@@ -505,6 +505,7 @@ mod tests {
             "durable-workflows",
             "editing-workflows",
             "frontmatter",
+            "gate",
             "glossary",
             "gov-forms",
             // The hub `/docs` itself resolves. It is the documentation front
@@ -517,7 +518,6 @@ mod tests {
             "oss-install",
             "public-contributor-safety",
             "retainer-intake",
-            "validate",
         ]);
         assert_eq!(actual, expected);
     }

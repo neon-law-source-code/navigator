@@ -23,7 +23,7 @@ use walkdir::WalkDir;
 
 /// Load every known question code from the `questions` table and
 /// return them as a strict registry suitable for passing to
-/// `F104FlowQuestionCodes::new`. Used by `navigator validate` after a
+/// `F104FlowQuestionCodes::new`. Used by `navigator project gate` after a
 /// directory has been imported so N104 can flag unknown codes.
 pub async fn load_question_codes(
     surreal: &store::surreal::SurrealDb,

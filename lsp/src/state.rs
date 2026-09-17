@@ -192,7 +192,7 @@ impl Server {
         }
         if !all_edits.is_empty() {
             // Sort by start asc + code asc; drop overlaps keeping the
-            // lower-coded edit; this mirrors `cli validate --fix`.
+            // lower-coded edit; this mirrors the gate's own autofix.
             all_edits.sort_by(|a, b| a.0.range.start.cmp(&b.0.range.start).then(a.1.cmp(b.1)));
             let mut kept: Vec<rules::TextEdit> = Vec::with_capacity(all_edits.len());
             for (edit, _) in all_edits {

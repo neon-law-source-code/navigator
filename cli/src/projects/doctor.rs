@@ -1,4 +1,4 @@
-//! `navigator site projects doctor` — read-only Project workspace diagnostics.
+//! `navigator project doctor` — read-only Project workspace diagnostics.
 //!
 //! Verify a machine and a Project workspace *before* Navigator is allowed to
 //! create anything. Every check here reads: no folder is created, no file is
@@ -307,7 +307,7 @@ fn project_checks(drive: Option<&DriveCoordinates>, code: &str, probe: &Probe<'_
 
     // A Project's source repository is a whole URL stored on the Project, not
     // a coordinate composed from deployment configuration, so there is nothing
-    // for a configuration doctor to derive or check here. `navigator validate`
+    // for a configuration doctor to derive or check here. `navigator project gate`
     // inspects an actual checkout instead.
     checks.push(Check::ok(
         "portal mount",
@@ -347,7 +347,7 @@ fn report(diagnosis: &Diagnosis) -> ExitCode {
     }
 }
 
-/// `navigator site projects doctor [--host h] [--project code]`.
+/// `navigator project doctor [--host h] [--project code]`.
 ///
 /// Reads the live environment, the real filesystem, and the stored
 /// credentials. Writes nothing, and makes no network or database call: the

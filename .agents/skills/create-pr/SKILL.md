@@ -32,7 +32,7 @@ Load-bearing rules from those docs:
   run the workspace gate:
 
   ```bash
-  cargo run -p cli -- validate <path>
+  cargo run -p cli -- project gate
   cargo fmt
   cargo clippy --workspace --all-targets -- -D warnings
   cargo nextest run --workspace && cargo test -p features

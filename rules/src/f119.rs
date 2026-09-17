@@ -101,7 +101,7 @@ pub const CHANGE_SURFACES: &[(&str, &str, &str)] = &[
         "Government form",
         "A change that vendors or re-authors a government PDF form under `templates/notations/forms/` — \
          the blank PDF, its `.fields.toml` field map, and the catalog card that binds them. \
-         Gate: the `forms` crate tests and `navigator validate templates`.",
+         Gate: the `forms` crate tests and `navigator project gate`.",
     ),
 ];
 

@@ -719,7 +719,7 @@ pub async fn document_upload(
     .await
 }
 
-/// `navigator site projects archive-repository <code> [--dir .]` — zip the
+/// `navigator project archive-repository <code> [--dir .]` — zip the
 /// repository's working tree at HEAD (no git history — a snapshot document,
 /// not a clone), and file it as a `closed_repository` document, recording
 /// the final commit SHA in the asset's `metadata` (ENG-481). The content
@@ -885,7 +885,7 @@ fn no_redirect_client() -> Result<reqwest::Client> {
         .context("build http client")
 }
 
-/// `navigator site projects list [--host h] [--json]`.
+/// `navigator project list [--host h] [--json]`.
 pub async fn projects_list(host: Option<&str>, json: bool) -> ExitCode {
     run(async {
         let (base, token) = resolve(host)?;
@@ -918,7 +918,7 @@ struct ProjectLifecycle {
     source_state: store::project_surfaces::SourceState,
 }
 
-/// `navigator site projects lifecycle [--host h] [--json]` — read the
+/// `navigator project lifecycle [--host h] [--json]` — read the
 /// deployment-wide lifecycle projection from the admin-tier API route.
 pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
     run(async {
@@ -967,7 +967,7 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
     .await
 }
 
-/// `navigator site projects notion <ensure|reconcile>` — post one Project
+/// `navigator project notion <ensure|reconcile>` — post one Project
 /// code, or `--all`, to the server's Notion integration door. The Firm's
 /// provider credential is resolved server-side from the Project's `firm_id`,
 /// so no provider token is read, accepted, or printed by the CLI.
@@ -1033,7 +1033,7 @@ pub async fn notion_reconcile(
     notion_command(host, "reconcile", project_code, all, json).await
 }
 
-/// `navigator site projects slack <ensure|notify>` — post one Project code,
+/// `navigator project slack <ensure|notify>` — post one Project code,
 /// and for `notify` one closed event kind, to the server's Slack integration
 /// door. The event vocabulary is validated here so an unsupported kind fails
 /// before the request, and no free-text message body is accepted.
@@ -1102,7 +1102,7 @@ pub async fn slack_notify(
     slack_command(host, "notify", project_code, Some(event), json).await
 }
 
-/// `navigator site projects close <project-code>` — move a matter directly to
+/// `navigator project close <project-code>` — move a matter directly to
 /// `closed` through the REST lifecycle door
 /// (`POST /app/api/projects/{id}/lifecycle`). Resolves the human-facing code
 /// to the matter id the same way `document upload` and `projects surfaces
@@ -1362,7 +1362,7 @@ async fn create_human_entity(
     Ok(created.id)
 }
 
-/// `navigator site projects create --code --name --client-email [--entity-name |
+/// `navigator project create --code --name --client-email [--entity-name |
 /// --jurisdiction] [--closed --closed-at] --attest` — open a matter through
 /// the live site's `POST /app/api/projects`, the caller's own bearer token
 /// attached so the conflict attestation stays a personal act rather than a
@@ -1509,7 +1509,7 @@ pub async fn projects_create(
 /// `navigator site notation create <template-code> --project <code> --client-email …`
 /// — open a notation on an **already-existing** matter and surface the
 /// notation id. Every notation hangs on a pre-existing Project (the matter
-/// is a deliberate prior step, `navigator site projects create`), so
+/// is a deliberate prior step, `navigator project create`), so
 /// `--project` is required: this resolves the human-facing matter **code**
 /// to the Project id, then posts to the project-scoped create route
 /// (`POST /app/projects/<project-code>/notations/new`). The template is read

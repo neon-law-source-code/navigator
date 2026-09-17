@@ -9,7 +9,7 @@
 //! input from inline LF literals, so nothing else in the suite exercises
 //! this.
 //!
-//! `navigator validate --fix` is not a dry run — `cli`'s `fix_directory`
+//! The gate is not a dry run — `cli`'s `fix_directory`
 //! writes the result back with `fs::write`, and the flag documents these
 //! autofixes as "safe-by-construction". It is also pointed at *other*
 //! repositories' working trees. A fix that corrupts a line ending is

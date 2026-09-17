@@ -34,6 +34,7 @@ Index
   [Entity](#entity) · [Entity Type](#entity-type) · [External System Identity](#external-system-identity) ·
   [Extract](#extract)
 - **F** — [Filing](#filing) · [Firm](#firm) · [Firm Brand](#firm-brand) · [Firm Signature](#firm-signature)
+- **G** — [Gate](#gate)
 - **H** — [Harvard Outline](#harvard-outline)
 - **I** — [Ingestion](#ingestion) · [Inquiry](#inquiry) · [Intake Persisted](#intake-persisted)
 - **J** — [Jurisdiction](#jurisdiction)
@@ -56,7 +57,7 @@ Index
   [State](#state) · [Statement of Legal Aid (SOLA)](#statement-of-legal-aid-sola) · [Statement of the
   present](#statement-of-the-present) · [Step](#step)
 - **T** — [Template](#template) · [Transcript Segment](#transcript-segment) · [Transition](#transition)
-- **V** — [Validate](#validate) · [Verification](#verification)
+- **V** — [Verification](#verification)
 - **W** — [Witnesses](#witnesses) · [Workflow](#workflow) · [Workflow Runtime](#workflow-runtime) · [Workflow
   Spec](#workflow-spec) · [Workshop](#workshop)
 
@@ -309,8 +310,8 @@ The [Asset](#asset) kind `rules::kind::Kind::ClosedRepository` (`kind: closed_re
 [Project](#project)'s repository working tree at its final commit, with no git history, filed on the matter once the
 repository is redundant. It follows the [Offboarding](#offboarding) close rather than gating it — a matter closes on its
 own signed closing letter, and an operator files the archive afterward with its own separate command, named for the
-matter code: `navigator site projects archive-repository <code>`. Asset-lane only: `Kind::valid_for(Lane::Template)`
-refuses it, so no template ever declares this kind.
+matter code: `navigator project archive-repository <code>`. Asset-lane only: `Kind::valid_for(Lane::Template)` refuses
+it, so no template ever declares this kind.
 
 Deleting the repository from its forge is a separate, deliberate step an operator (or `delete_closed_repository`) takes
 only after this document exists and its recorded commit SHA is checked against the live repository's current HEAD — the
@@ -972,6 +973,16 @@ The workflow prefix `firm_signature` records a lawyer-side signature, usually th
 signature. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
+## Gate
+
+`navigator project gate`, the single command that checks one repository — every Markdown, YAML, and seed document in it
+— against the Neon Law Navigator rule set, the same engine `navigator-lsp` runs on every keystroke. It takes no path: it
+identifies the repository root by the `README` and `.git` beside it and refuses to run anywhere else. Safe-by-
+construction fixes land as it goes; errors fail the run and warnings print but pass. `--ci` writes nothing, holds the
+origin pass to a built tree, and on a push to `main` checks the manifest against the live row.
+
+- Reference: [`gate`](gate.md)
+
 ## Harvard Outline
 
 The numbering used on motions and contracts so a provision is addressable by path (`I`, `I.A`, `1.B`). Depth-1 headings
@@ -1493,11 +1504,11 @@ A **[Matter](#matter)** in client English. The durable container every [Notation
 a `Human` entity for a solo natural person. The `entity_id` FK is `NOT NULL`: a matter without an entity is a bug.
 
 Lifecycle status changes move through the shared transition command (`store::projects::transition_project`): the REST
-door is `POST /app/api/projects/{id}/lifecycle`, which the CLI's `site projects close` calls, and the `close_project`
-MCP tool calls the command directly. The descriptive `PATCH /app/api/projects/{id}` never touches `status`; it rejects
-the field outright rather than accepting and forwarding it, so `closed_at` — derived only inside the transition command
-— cannot be bypassed by a partial update reaching it through a second door. Close and archive transitions may carry an
-RFC 3339 `effective_at` between matter-open and now; the command derives `closed_at` from that value so an existing
+door is `POST /app/api/projects/{id}/lifecycle`, which the CLI's `projects close` calls, and the `close_project` MCP
+tool calls the command directly. The descriptive `PATCH /app/api/projects/{id}` never touches `status`; it rejects the
+field outright rather than accepting and forwarding it, so `closed_at` — derived only inside the transition command —
+cannot be bypassed by a partial update reaching it through a second door. Close and archive transitions may carry an RFC
+3339 `effective_at` between matter-open and now; the command derives `closed_at` from that value so an existing
 retention start can be corrected. Without it, a new close starts at the server's current time and an existing stamp is
 preserved. Reopen accepts no effective time and clears `closed_at`.
 
@@ -1579,7 +1590,7 @@ private documents bucket, not a bucket per Project. Google Drive is the Project'
 matter named for `project.code`. Workspace users drop files there, and Navigator copies them into the documents bucket.
 Drive never serves content or receives CI publishes. Project participation grants Navigator and deployed application
 access, never source-forge access. `store::project_surfaces` creates or adopts the handles. Their retry API/CLI are
-`POST /app/api/project-surfaces/{id}` and `navigator site projects surfaces reconcile --project <code>`.
+`POST /app/api/project-surfaces/{id}` and `navigator project surfaces reconcile --project <code>`.
 
 - Schema and commands: [`store::projects`](../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
@@ -2014,14 +2025,6 @@ session role before confirming an Answer.
 ## Transition
 
 One edge between States, fired by an event (e.g. `retainer_rendered`, `signature_received`).
-
-## Validate
-
-`navigator validate <dir>` (default `.`), the single command that lints every Markdown, YAML, and seed document under a
-directory tree against the Neon Law Navigator rule set — the same engine `navigator-lsp` runs on every keystroke. Errors
-fail the gate; warnings print but pass. `--fix` applies every safe-by-construction autofix in place, then re-validates.
-
-- Reference: [`validate`](validate.md)
 
 ## Verification
 

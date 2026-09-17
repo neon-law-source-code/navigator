@@ -1979,8 +1979,8 @@ from the CLI using the matter code:
 ```bash
 navigator site login --host www.your-domain.example    # opens the browser → ~8h token, stored 0600 (~/.navigator.json)
 navigator site whoami                                  # "you@example.com (admin) — expires in 7h52m"
-navigator site projects list                           # GET /app/projects.csv → table (or --json)
-navigator site projects open estate-of-doe              # opens the existing matter workbench if visible
+navigator project list                                 # GET /app/projects.csv → table (or --json)
+navigator project open estate-of-doe                   # opens the existing matter workbench if visible
 navigator site notation create onboarding__letter \
   --project estate-of-doe --client-email jane@example.com
 navigator site notation approve <notation-id>          # renders + parks the retainer PDF (no envelope yet)

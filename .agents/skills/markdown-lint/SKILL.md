@@ -14,30 +14,25 @@ definitions, exit codes, and CI behavior stay coherent.
 
 ## The canonical command
 
-```bash
-cargo run -p cli --quiet -- validate <path>
-```
-
-What each piece does:
-
-- `validate` classifies each file by its content and path — prose markdown gets the M-family rules + S101/S102, a
-  notation template under `templates/` (or any file declaring `questionnaire:`/`workflow:`) also gets the N-family,
-  events get the E-family, and blog posts get the C-family. A plain README classifies as prose on its own, so it never
-  trips bogus N101/N102/N103. It walks the whole tree — README/`CLAUDE.md` and every directory are in scope; `.agents/`
-  is the canonical skill catalog; `.git`, `.build`, `.claude`, `.codex`, and `target/` are skipped. It folds in the
-  typed event pass and a `.yaml`/`.yml` parse over the same walk. The per-kind frontmatter keys are documented for
-  attorneys in `docs/frontmatter.md`.
-- `<path>` — either a file or a directory (default `.`). The walker recurses.
-
-## Lint every workspace README in one pass
+Run it from the repository root — the gate takes no path and refuses to run anywhere else:
 
 ```bash
-for d in rules store views workflows cloud web cli mcp; do
-  cargo run -p cli --quiet -- validate "$d"
-done
+cargo run -p cli --quiet -- project gate
 ```
 
-Exit `0` on every iteration means clean. Otherwise the violating file, line, rule code, and message print to stdout.
+It classifies each file by its content and path: prose markdown gets the M-family rules plus S101/S102, a notation
+template under `templates/` (or any file declaring `questionnaire:`/`workflow:`) also gets the N-family, events get the
+E-family, and blog posts get the C-family. A plain README classifies as prose on its own, so it never trips bogus
+N101/N102/N103.
+
+One run covers the whole workspace — every README, `AGENTS.md`, and `docs/` page in one pass, with the typed event pass
+and a `.yaml`/`.yml` parse folded into the same walk. `.agents/` is the canonical skill catalog and stays in scope;
+`.git`, `.build`, `.claude`, `.codex`, `node_modules/`, `dist/`, and `target/` are skipped. The per-kind frontmatter
+keys are documented for attorneys in `docs/frontmatter.md`.
+
+Safe-by-construction fixes — trailing whitespace, ATX heading spacing, blockquote spacing, and S102 paragraph packing —
+are applied in place as it goes, so what prints is what still needs a person. Exit `0` means clean; otherwise the
+violating file, line, rule code, and message print to stdout.
 
 ## Common rules that fire
 

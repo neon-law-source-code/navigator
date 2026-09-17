@@ -73,7 +73,7 @@ impl LintReport {
 
     /// True when at least one violation is [`crate::Severity::Error`].
     ///
-    /// `navigator validate` fails the gate on this rather than on the
+    /// `navigator project gate` fails the gate on this rather than on the
     /// mere presence of any violation, so [`crate::Severity::Warning`]
     /// advisories (e.g. "step not built yet") are reported without
     /// failing the build.

@@ -159,7 +159,7 @@ than failing the open, so an unconfigured deployment still records the coordinat
 operator reconciles later:
 
 ```bash
-navigator site projects surfaces reconcile --project <code>
+navigator project surfaces reconcile --project <code>
 ```
 
 ## Limits, stated rather than discovered

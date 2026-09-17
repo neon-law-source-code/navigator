@@ -208,7 +208,7 @@ backups only until commit or rollback, and an interrupted run is recovered on th
 `!*.yml`, `!.gitignore`) when it is absent. An ignore rule only keeps *untracked* paths out of `git add`'s default
 sweep: `git add -f`, a `git mv` onto a path below `documents/`, or any other index entry stages the plaintext anyway,
 and a commit of it lands in the private repository's history before anything refuses it. The control is the repository
-gate. `navigator site projects gate` enumerates `git ls-files --cached --others --exclude-standard`
+gate. `navigator project gate` enumerates `git ls-files --cached --others --exclude-standard`
 ([`cli/src/projects/repository.rs:563`](../cli/src/projects/repository.rs)), so a force-added byte is in the `--cached`
 half whatever the ignore file says, and the gate rejects every file below `documents/` that is not a `.yml` pointer or
 the guard ([`repository.rs:694`](../cli/src/projects/repository.rs)). Two limits follow. The gate runs when someone runs

@@ -2,22 +2,28 @@
 publish: true
 ---
 
-# Validate
+# Gate
 
-`navigator validate <dir>` (default `.`) is the single command every editor, CI gate, and this repository's `AGENTS.md`
-point at. This page is its canonical reference: what it runs, its flag, the error/warning split, and one row per rule
-code. `cli/tests/validate_docs_coverage.rs` fails the build when a code exists in `rules/src/` or `cli/src/main.rs` with
-no entry here, so this table cannot go stale.
+`navigator project gate` is the single command every editor, CI gate, and this repository's `AGENTS.md` point at. This
+page is its canonical reference: what it runs, its one flag, the error/warning split, and one row per rule code.
+`cli/tests/gate_docs_coverage.rs` fails the build when a code exists in `rules/src/` or `cli/src/main.rs` with no entry
+here, so this table cannot go stale.
 
 ## Usage
 
 ```bash
-cargo run -p cli --quiet -- validate [dir]
+cargo run -p cli --quiet -- project gate
 ```
 
-`dir` defaults to `.` and is always a directory, not a single file — `validate` walks the whole tree under it. Run it
-from the repository root to check everything, or point it at a narrower directory (e.g. `docs`, `templates`) to check
-just that subtree.
+It takes no path. The gate runs on a whole repository, and it finds that repository by the `README` and the `.git`
+beside it in the directory it was started from; anywhere else it refuses (exit `2`) rather than reporting a clean scan
+over the files it never read. Run it from the root.
+
+Safe-by-construction fixes land as it goes — trailing whitespace, ATX heading spacing, blockquote spacing, and `S102`
+paragraph packing — and each file is re-scanned until it stops changing, because one fix routinely uncovers another:
+trimming trailing whitespace off a short line hands that line to `S102`, which could not flag it while it still looked
+like a hard break. What remains is what a human has to resolve. There is no flag for this; fixing what it can is what
+the gate does.
 
 The walk covers authored content only. It descends into everything except the trees nobody authors: `.git/`, `target/`,
 `.worktrees/`, `node_modules/`, and `dist/`, plus — for the Markdown passes — every other hidden directory apart from
@@ -26,13 +32,13 @@ the canonical `.agents/` skill catalog. The match is on a whole directory name, 
 below: `Y009` opens each application's `dist/` directly, because a built bundle is exactly what it exists to check.
 
 This is also the exact command every Project repository's generated CI gate runs against its own tree — see
-[`project-repositories.md`](project-repositories.md) for how `navigator site projects repository scaffold` wires it up.
+[`project-repositories.md`](project-repositories.md) for how `navigator project repository scaffold` wires it up.
 
 ## What it runs
 
 Nine normal validation passes happen in this order:
 
-1. **The classified rule engine** (`rules::ClassifiedRuleEngine::lint_directory`) walks every `.md` file, classifies
+1. **The classified rule engine** (`rules::navigator_classified_rules_with_codes`) walks every `.md` file, classifies
    each one by its declared `kind:` (notation template, event, blog post, workshop, GitHub notation, matter dashboard,
    or plain prose), and lints it against that kind's rule set — the S, N, E, C, D, and M families below.
 2. **Cross-file code uniqueness** (`rules::code_uniqueness_violations`, rule `N111`) walks the same tree a second time
@@ -51,41 +57,40 @@ Nine normal validation passes happen in this order:
    names fails the gate. A house-of-brands tree uses `locales/en/<brand-key>/<page>.yaml`; a fixture may still use the
    flat `locales/en/<page>.yaml` layout. This is what lets a copy-only edit stay a YAML change without landing a catalog
    the brand crate cannot load.
-6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yml` only when the validation root is a Project
+6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yml` only when the root is a Project
    repository declared by `navigator.yaml`. It checks the closed asset kind and visibility vocabularies, current
    revision metadata, revision-chain linkage, and the retained document extension without reading the network or bytes.
-7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`–`Y013`) runs when the walked root carries either manifest
+7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`–`Y013`) runs when the root carries either manifest
    spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name` to
    `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
    string. It refuses unknown keys by naming the set, refuses YAML comment tokens so a reason lives on the pull request
    and in the repository contract rather than a `#` line, and tells a `navigator.yml` file to rename to `navigator.yaml`
-   before validation. The legacy flat shape remains a warning during migration.
-8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project repository.
+   before the gate reads it. The legacy flat shape remains a warning during migration.
+8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the root is a Project repository.
    Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a source-only tree
-   can still validate, and is a finding under `--ci`, where the build has already run and nothing to scan means the pass
+   can still be gated, and is a finding under `--ci`, where the build has already run and nothing to scan means the pass
    read nothing; a present `dist/` with an off-origin host fails either way. An `href` whose host is in `allowed_links`
    passes only when that anchor carries `rel="noreferrer"`.
 9. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
-When `--fix` is passed, it replaces those nine passes entirely: it applies every rule's safe-by-construction autofix
-across the tree, prints the file it changed, re-lints, and prints whatever the autofix could not resolve. This is the
-same fix the `navigator-lsp` `source.fixAll` editor action ships.
+The autofix runs inside pass 1 rather than beside it: each file is fixed and then linted, so what pass 1 reports is what
+survived its own fixes. It is the same fix the `navigator-lsp` `source.fixAll` editor action ships.
 
-## Flags
+## The one flag
 
-- **`--fix`** — apply every autofixable rule's fix in place (see the Autofix column below), then re-validate and report
-  what remains. Each file is re-scanned until it stops changing, because one fix routinely uncovers another — trimming
-  trailing whitespace off a short line hands that line to `S102`, which could not flag it while it still looked like a
-  hard break. Exits `0` only if no violation remains after fixing; a remaining violation is always one a human has to
-  resolve, never a bug in the fixer.
-- **`--errors-only`** — print only the findings that fail the gate, hiding the Warning-severity advisories. The summary
-  line still counts both and the exit code is unchanged: this narrows the listing for a CI-triage read, not the gate. It
-  is rejected with `--fix`, where a remaining advisory still fails the run and so has to stay on screen.
-- **`--ci`** — assert that the origin pass read a real build. A declared application with no `dist/` becomes a `Y009`
-  finding instead of a skip. The `verify` job in `.github/workflows/project-gate.yml` is the only caller: it runs each
-  application's build and then this command, so a missing `dist/` there means the pass examined nothing rather than that
-  the tree has not been built yet. Local runs and the bare-checkout `notation` job omit it.
+**`--ci`** holds the run to what CI can prove, and it is what every CI job passes.
+
+- **Nothing is written.** A file the gate would have fixed becomes an `F001` finding instead. A CI checkout is discarded
+  when the job ends, so a silent rewrite there would pass a gate while leaving the unformatted file on `main` — the
+  problem would never converge. Locally the fix simply lands and the run moves on.
+- **The origin pass reads a real build.** A declared application with no `dist/` becomes a `Y009` finding instead of a
+  skip, because the `verify` job runs each application's build before the gate; a missing `dist/` there means the pass
+  examined nothing, not that the tree has yet to be built.
+- **The live-status door opens.** On a push or dispatch to `refs/heads/main`, the gate exchanges GitHub Actions OIDC at
+  `POST /auth/ci/document-token` and checks `navigator.yaml` against the row the deployment holds. The host is the one
+  the manifest declares, so there is nothing to pass. On any other ref the mint is refused at the server, so the gate
+  says it skipped rather than spending a request that cannot succeed.
 
 ## Errors versus warnings
 
@@ -123,9 +128,9 @@ Reading it is how to answer "which line do I fix"; the summary counts and the ex
 
 ## Rule codes
 
-Every code below is defined in `rules/src/`, except `Y001`–`Y013`, which live in `cli/src/` because the typed YAML,
-Project-manifest, and origin passes run outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the file
-for that violation without a human decision; every other code needs a person to resolve it.
+Every code below is defined in `rules/src/`, except `Y001`–`Y013` and `F001`, which live in `cli/src/` because the typed
+YAML, Project-manifest, origin, and formatting passes run outside the `rules` crate entirely. "Autofix" means the gate
+rewrites the file for that violation without a human decision; every other code needs a person to resolve it.
 
 ### S-family — cross-cutting structure
 
@@ -281,10 +286,20 @@ literally and the columns disappear.
 | `Y012` | Error | A Project manifest `version` must be an exact Navigator release tag. | No |
 | `Y013` | Warning | Flat `host`/`project` shape should be replaced by the versioned nested shape. | No |
 
-`Y010` runs inside the Project-repository check that `navigator validate` applies when the walked root is a Project
-repository. It reads each `templates/<code>.md` and compares any `Neon Law` spelled with a corporate suffix (`, Inc.`,
-`LLC`, `PLLC`, and the like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature
-instrument cannot name a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.
+`Y010` runs inside the Project-repository check the gate applies when the root is a Project repository. It reads each
+`templates/<code>.md` and compares any `Neon Law` spelled with a corporate suffix (`, Inc.`, `LLC`, `PLLC`, and the
+like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature instrument cannot name
+a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.
+
+### F-family — files the gate had to fix
+
+| Code | Severity | Rule | Autofix |
+| --- | --- | --- | --- |
+| `F001` | Error | File is not formatted; a safe-by-construction fix was withheld under `--ci`. | Locally |
+
+`F001` fires only under `--ci`, where the gate writes nothing. Locally the same file is simply fixed and never reported,
+so this code is how a formatting problem reaches a pull request instead of being rewritten in a checkout that is about
+to be discarded. Run the gate and commit the result.
 
 `Y011` runs in the Project-manifest pass. A `#` comment token is an error; the reason belongs on the pull request that
 adds the entry and in the repository contract. A `#` inside a quoted or block scalar is not a comment.

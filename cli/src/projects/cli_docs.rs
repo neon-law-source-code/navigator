@@ -149,17 +149,14 @@ mod tests {
                     .subcommand(Command::new("format")),
             )
             .subcommand(
-                Command::new("site").subcommand(
-                    Command::new("projects")
-                        .subcommand(Command::new("gate"))
-                        .subcommand(
-                            Command::new("repository")
-                                .subcommand(Command::new("scaffold"))
-                                .subcommand(Command::new("sync-skills")),
-                        ),
-                ),
+                Command::new("project")
+                    .subcommand(Command::new("gate"))
+                    .subcommand(
+                        Command::new("repository")
+                            .subcommand(Command::new("scaffold"))
+                            .subcommand(Command::new("sync-skills")),
+                    ),
             )
-            .subcommand(Command::new("validate"))
     }
 
     #[test]
@@ -174,19 +171,23 @@ mod tests {
             None
         );
         assert_eq!(unresolved_verb("navigator notations format", &tree), None);
+        // The retired group: `projects` was promoted out of `site` and made
+        // singular, so both old spellings are unresolved at their first verb.
         assert_eq!(
-            unresolved_verb("navigator projects repository validate .", &tree).as_deref(),
+            unresolved_verb("navigator projects gate", &tree).as_deref(),
             Some("projects")
         );
         assert_eq!(
-            unresolved_verb("navigator site projects repository validate .", &tree).as_deref(),
+            unresolved_verb("navigator site projects gate", &tree).as_deref(),
+            Some("site")
+        );
+        // And the retired leaf under a live path is named at the leaf.
+        assert_eq!(
+            unresolved_verb("navigator project repository validate .", &tree).as_deref(),
             Some("validate")
         );
-        assert_eq!(
-            unresolved_verb("navigator site projects gate .", &tree),
-            None
-        );
-        assert_eq!(unresolved_verb("navigator validate .", &tree), None);
+        assert_eq!(unresolved_verb("navigator project gate", &tree), None);
+        assert_eq!(unresolved_verb("navigator project gate --ci", &tree), None);
     }
 
     #[test]
@@ -194,7 +195,7 @@ mod tests {
         let md = concat!(
             "Run `navigator template render x`.\n\n",
             "```bash\n",
-            "$ navigator site projects gate .\n",
+            "$ navigator project gate --ci\n",
             "```\n",
         );
         let found = unresolved_invocations(md, &tree());
@@ -204,7 +205,7 @@ mod tests {
         let all = invocations(md);
         assert!(
             all.iter()
-                .any(|(_, cmd)| cmd == "navigator site projects gate ."),
+                .any(|(_, cmd)| cmd == "navigator project gate --ci"),
             "{all:?}"
         );
     }

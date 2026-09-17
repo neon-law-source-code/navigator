@@ -6,8 +6,8 @@ description: >-
 
 # The publish half of a Project repository's CI, downstream of the one gate.
 #
-# `neon-law-source-code/navigator/.github/actions/validate@YY.M.D` runs
-# `navigator validate`, which is the source-only, no-legal-files gate and
+# `neon-law-source-code/navigator/.github/actions/gate@YY.M.D` runs
+# `navigator project gate`, which is the source-only, no-legal-files gate and
 # also proves the built portal is mounted at `/app/projects/<code>/portal/`
 # when the tree declares a Project. This action runs AFTER that gate, in the
 # same job, and moves the bytes: it
@@ -21,7 +21,7 @@ description: >-
 # repository *secrets* — the bucket, the Workload Identity provider, and the
 # publisher service account. The Project code is read from the repository's own
 # root `navigator.yaml` manifest (`project:`), the same file and key
-# `store::sample_project::MANIFEST_FILE` and `navigator site projects drift` read;
+# `store::sample_project::MANIFEST_FILE` and `navigator project drift` read;
 # the `repository:` input falls back to `github.event.repository.name` only
 # when a checkout carries no manifest.
 #
@@ -66,7 +66,7 @@ description: >-
 #       - run: pnpm --dir portal typecheck
 #       - run: pnpm --dir portal test
 #       - run: pnpm --dir portal build            # Vite base /app/projects/<code>/portal/
-#       - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
+#       - uses: neon-law-source-code/navigator/.github/actions/gate@YY.M.D
 #         with:
 #           version: "YY.M.D"
 #       - uses: neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D

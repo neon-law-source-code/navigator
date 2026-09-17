@@ -1,7 +1,7 @@
 # Navigator editor integration
 
 `navigator-lsp` brings Navigator's Markdown and Notation diagnostics to any editor that supports the Language Server
-Protocol. It provides the same rule results and safe fixes as `navigator validate`, over local JSON-RPC with no
+Protocol. It provides the same rule results and safe fixes as `navigator project gate`, over local JSON-RPC with no
 telemetry.
 
 It serves attorneys and engineers who review or edit repository Markdown outside the web editor. The integration is

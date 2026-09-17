@@ -22,8 +22,8 @@ use std::process::Command;
 const SKIPPED_FILES: &[&str] = &[
     "navigator_manifest_retired.rs",
     "manifest.rs",
-    "validate.rs",
-    "validate.md",
+    "gate.rs",
+    "gate.md",
 ];
 
 fn repo_root() -> PathBuf {

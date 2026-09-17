@@ -1,23 +1,24 @@
-name: navigator validate
+name: navigator project gate
 description: >-
-  Lint a content repository's Markdown, event, and YAML files with the
-  Neon Law Navigator CLI, using a published release binary.
+  Run the Neon Law Navigator gate over a content repository, using a published
+  release binary.
 
 # The one-line gate for repositories that hold content, including a Project
 # repository. `deploy.yml` already attaches `navigator-<TAG>-<platform>` archives
 # to every immutable release (`YY.M.D`, legacy `YY.M.D.H`, or
 # `YY.M.D-hotfix.N`); this action downloads the one that matches
-# the runner and runs `navigator validate` over the checked-out tree.
+# the runner and runs `navigator project gate` at the root of the checked-out tree.
 #
 # Consuming repository, in full:
 #
 #     - uses: actions/checkout@<sha>  # v7
-#     - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
+#     - uses: neon-law-source-code/navigator/.github/actions/gate@YY.M.D
 #       with:
 #         version: "YY.M.D"
 #
-# A Project repository's `navigator.yaml` makes `navigator validate` also run
-# layout, mount, and origin. There is no separate input for that half.
+# A Project repository's `navigator.yaml` makes the gate also run layout, mount,
+# and origin. There is no separate input for that half. The gate runs on the
+# whole repository from its root, so there is no directory input either.
 #
 # `version` is required and must be an exact tag. That is the house rule from
 # docs/gitops.md ("Pin every consumed image, binary, and action"): publishing
@@ -31,10 +32,6 @@ inputs:
       `YY.M.D-hotfix.N`. Required and never `latest` — consumed binaries are
       pinned.
     required: true
-  dir:
-    description: Directory to validate, relative to the workspace.
-    required: false
-    default: "."
   token:
     description: >-
       Token used to download the release asset. The default `github.token` is
@@ -134,17 +131,18 @@ runs:
         esac
 
     # One walk: Markdown, YAML, seeds, locales, and — when `navigator.yaml`
-    # declares a Project — layout, mount, and origin.
-    - name: navigator validate
+    # declares a Project — layout, mount, and origin. `--ci` writes nothing, so
+    # a file the gate would have fixed fails the job instead of being rewritten
+    # in a checkout that is about to be thrown away.
+    - name: navigator project gate
       shell: bash
       env:
-        DIR: ${{ inputs.dir }}
         QUESTION_CODES_FROM_STORE: ${{ inputs.question_codes_from_store }}
       run: |
         set -euo pipefail
         case "${QUESTION_CODES_FROM_STORE}" in
             true|false)
-                navigator validate "${DIR}"
+                navigator project gate --ci
                 ;;
             *)
                 echo "::error::'question_codes_from_store' must be 'true' or 'false'."

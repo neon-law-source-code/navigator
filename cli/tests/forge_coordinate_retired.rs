@@ -87,7 +87,7 @@ const COORDINATE_SOURCES: &[&str] = &[
     "cli/src/projects/doctor.rs",
     "cli/src/projects/repository.rs",
     "cli/src/devx/github_setup.rs",
-    ".github/actions/validate/action.yml",
+    ".github/actions/gate/action.yml",
 ];
 
 /// Files exempt by provenance rather than by name: only this test, whose own

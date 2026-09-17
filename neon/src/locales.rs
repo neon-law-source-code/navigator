@@ -44,7 +44,7 @@ const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shoo
 /// The shipped shared catalog, parsed and validated once.
 ///
 /// Every page load resolves references against it, so it is parsed on first
-/// use and kept. `navigator validate` (`Y002`) is the gate that keeps the
+/// use and kept. `navigator project gate` (`Y002`) is the gate that keeps the
 /// parse infallible, and the `shared_catalog_is_valid` test below proves it
 /// in the Rust suite.
 #[must_use]
@@ -53,7 +53,7 @@ pub fn shared_catalog() -> &'static views::locales::shared::SharedCatalog {
         std::sync::OnceLock::new();
     CATALOG.get_or_init(|| {
         views::locales::shared::SharedCatalog::parse(SHARED_CATALOG_YAML).expect(
-            "invariant: locales/en/shared.yaml is valid; navigator validate Y002 is the gate",
+            "invariant: locales/en/shared.yaml is valid; navigator project gate Y002 is the gate",
         )
     })
 }
@@ -91,8 +91,9 @@ fn load<T: serde::de::DeserializeOwned>(yaml: &str, branding: &views::brand::Bra
     )
     .expect("invariant: every `{shared:…}` reference resolves; the catalog test is the gate");
     let raw = interpolate(&shared, branding.firm.site_name, branding.firm_email);
-    serde_yaml::from_str(&raw)
-        .expect("invariant: shipped locale YAML deserializes; navigator validate Y002 is the gate")
+    serde_yaml::from_str(&raw).expect(
+        "invariant: shipped locale YAML deserializes; navigator project gate Y002 is the gate",
+    )
 }
 
 /// The brand's individual-services schedule, if it publishes one.
@@ -117,7 +118,7 @@ pub fn services_catalog(
     let raw = interpolate(&shared, branding.firm.site_name, branding.firm_email);
     Some(
         views::locales::services::ServicesCatalog::parse(&raw).expect(
-            "invariant: the shipped services catalog is valid; navigator validate Y002 is the gate",
+            "invariant: the shipped services catalog is valid; navigator project gate Y002 is the gate",
         ),
     )
 }

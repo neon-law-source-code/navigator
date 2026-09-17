@@ -9,7 +9,7 @@
 //!
 //! - [`repos::RepoStore`] — read `templates/<code>.md` from `refs/heads/main`
 //!   at HEAD and pin the commit SHA it was read from.
-//! - [`rules`] — validate with the same rule set `navigator validate` runs,
+//! - [`rules`] — validate with the same rule set `navigator project gate` runs,
 //!   and **refuse on any blocking (Error-severity) violation**. Unlike the
 //!   `navigator site seed` batch seeder, which *skips* a bad file, a notation
 //!   must never open from an invalid template, so `create` fails loudly.
@@ -137,7 +137,7 @@ pub async fn persist_from_repo(
     let contents =
         String::from_utf8(bytes).map_err(|_| TemplateSourceError::NotUtf8(code.to_string()))?;
 
-    // Validate with the same rule set `navigator validate` runs. Refuse on
+    // Validate with the same rule set `navigator project gate` runs. Refuse on
     // any blocking violation — a notation must never open from bad paper.
     //
     // The file is presented under the bare `<code>.md` name, not its

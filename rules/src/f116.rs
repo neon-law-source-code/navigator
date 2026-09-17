@@ -9,7 +9,7 @@
 //! "no outbound act without a human" invariant the engine enforces at
 //! run time, hoisted to validation so a template that mails or files
 //! without an attorney review is a red squiggle in the editor and a
-//! `navigator validate` error — before it ever runs.
+//! `navigator project gate` error — before it ever runs.
 //!
 //! The gated set is deliberately the **submission** set, not every
 //! binding-looking step:

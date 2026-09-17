@@ -181,7 +181,7 @@ fn project_gate_does_not_own_auto_merge_or_inherit_secrets() {
     assert!(workflow["jobs"]["enable-automerge"].is_null());
     assert!(!source.contains("secrets: inherit"));
     assert!(
-        source.contains("navigator site projects gate --ci"),
+        source.contains("navigator project gate --ci"),
         "project-gate.yml must run the live-status door"
     );
 }

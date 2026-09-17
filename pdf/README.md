@@ -16,8 +16,9 @@ cargo run -p cli -- notations render templates/notations/neon_law/shared/onboard
 
 The command is `navigator notations render`, and it takes the template markdown, not a rendered document. It:
 
-1. **Validates first.** The file runs through the same rule set as `navigator validate`. Any `Error`-severity violation
-   stops the render, so a broken template never becomes a PDF someone could send. Yellow advisories print and pass.
+1. **Validates first.** The file runs through the same rule set as `navigator project gate`. Any `Error`-severity
+   violation stops the render, so a broken template never becomes a PDF someone could send. Yellow advisories print and
+   pass.
 2. **Resolves the frame from the document** — the template's `output:` frontmatter field, else the default its declared
    `kind:` derives, else `plain`. There is no `--format` flag. See [Output formats](#output-formats) below.
 3. **Fills placeholders.** `--answer code=value`, repeatable, runs through the same notation evaluator as portal preview

@@ -11,7 +11,6 @@
 //!    end up as `questions` rows the application can later resolve.
 
 use std::path::PathBuf;
-use std::process::Command;
 
 fn fixtures_dir() -> PathBuf {
     // CARGO_MANIFEST_DIR points at cli; the templates live at the
@@ -63,29 +62,6 @@ async fn fs_storage() -> std::sync::Arc<dyn cloud::StorageService> {
             .await
             .expect("temp FsStorage"),
     )
-}
-
-#[tokio::test]
-async fn fixture_directory_validates_clean() {
-    let bin = assert_cmd::cargo::cargo_bin("navigator");
-    // Run from a scratch dir so the `cli` binary's startup `dotenvy`
-    // load can't pick up a developer's `.devx/env` (which points
-    // `NAVIGATOR_SURREAL_ENDPOINT` at a KIND port-forward). This test asserts the
-    // fixtures lint clean against the *default* rule set — a no-DB,
-    // structural check — so it must stay hermetic and not flake on
-    // whether a local port-forward happens to be up.
-    let out = Command::new(&bin)
-        .current_dir(std::env::temp_dir())
-        .arg("validate")
-        .arg(fixtures_dir())
-        .output()
-        .expect("run navigator validate");
-    assert!(
-        out.status.success(),
-        "navigator validate must succeed on fixtures; stdout=\n{}\nstderr=\n{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr),
-    );
 }
 
 #[tokio::test]

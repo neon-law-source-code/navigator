@@ -33,7 +33,7 @@
 # (kept for documentation/intent even though policies are disabled here).
 #
 # Pin `compute.image` to an explicit tag — never `latest`; the workspace-wide
-# rule and its `navigator validate` guard live in docs/gitops.md § "Pin every
+# rule and its `navigator project gate` guard live in docs/gitops.md § "Pin every
 # consumed image, binary, and action". Keep server, operator chart, and restate
 # CLI on the same release (server 1.7.2 ⇄ operator 2.8.1 ⇄ CLI 1.7.2; the latter
 # two in `cli/src/devx/mod.rs`).

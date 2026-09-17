@@ -184,8 +184,8 @@ unless a job in it actually reports as `ci`.
 
 It accepts either `.github/workflows/ci.yml` or `.github/workflows/gate.yml`, and looks for them in that order.
 Firm-administered repositories and scaffolded Project repositories both carry `ci.yml` as the required-check file.
-`navigator site projects repository scaffold` writes that file. A retired `gate.yml` is still accepted so a repository
-that has not been regenerated continues to bind the required `ci` check. What they share is the invariant the gate is
+`navigator project repository scaffold` writes that file. A retired `gate.yml` is still accepted so a repository that
+has not been regenerated continues to bind the required `ci` check. What they share is the invariant the gate is
 actually matched by — a job whose check run is named `ci` — so the filename is free to differ. A repository carrying
 neither file is refused, and so is one whose workflow exists but ends in some other job name; those are different
 problems with different fixes, so they are different errors.
@@ -244,9 +244,9 @@ change a hard dependency on one named person, and the predictable end state is r
 unreviewed merge as a reviewed one, and is worse than an honest zero. That is not a claim that review is unnecessary; it
 is a claim about what a two-person bench can honestly promise.
 
-**Once the Project gate-pin rollout reaches a repository, its pinned `navigator validate .` gate runs inside the
-required `ci` check.** It holds the things a Project repository can actually get wrong: the manifest key set and value
-shapes, document pointers, the origin scan over the built bundle, and the no-client-data pass. A mechanical change that
+**Once the Project gate-pin rollout reaches a repository, its pinned `navigator project gate` runs inside the required
+`ci` check.** It holds the things a Project repository can actually get wrong: the manifest key set and value shapes,
+document pointers, the origin scan over the built bundle, and the no-client-data pass. A mechanical change that
 satisfies those has had the review that matters; a change that would publish a client identifier or an off-origin host
 fails the check and does not merge, reviewer or no reviewer. Auto-merge is armed on every pull request opened non-draft,
 so the required check is the only thing one waits on — open a pull request as a draft to hold it for a human. Revisit
@@ -309,7 +309,7 @@ rather than half-reconciled.
 - Prose-only changes require:
 
   ```bash
-  cargo run -p cli -- validate <path>
+  cargo run -p cli -- project gate
   ```
 
 - After each PR update, clean task-owned builds, KIND, browser, images, and build cache. Never prune volumes without
@@ -334,11 +334,11 @@ and Blacksmith serves the Actions cache protocol from its own store, so `/action
 both report zero while every gate run restores a full match. Grep the job for `Cache hit`, `No cache found`, and `full
 match` instead — that is the only authoritative signal.
 
-`ci.yml`'s `validate content` job also runs `navigator ops github check-signatures` over `base.sha..head.sha`.
-`production` already requires verified signatures on `main`, but squash-merge writes a new GitHub-signed commit there,
-so that rule does not prove the pull-request head was signed. Cloud Agents attach an HSM Ed25519 `gpgsig`; disabling
-`commit.gpgsign` does not. The check reads the commit object, not GitHub's verification API, and inspects the PR head
-rather than the workflow merge commit.
+`ci.yml`'s `gate content` job also runs `navigator ops github check-signatures` over `base.sha..head.sha`. `production`
+already requires verified signatures on `main`, but squash-merge writes a new GitHub-signed commit there, so that rule
+does not prove the pull-request head was signed. Cloud Agents attach an HSM Ed25519 `gpgsig`; disabling `commit.gpgsign`
+does not. The check reads the commit object, not GitHub's verification API, and inspects the PR head rather than the
+workflow merge commit.
 
 | Workflow | Trigger | Job |
 | --- | --- | --- |
@@ -406,11 +406,11 @@ gh pr view <n> --json statusCheckRollup \
 ### PR flow — `ci.yml`
 
 `ci.yml` runs for PRs to `main`, never pushes. The `validate` job always runs: it builds the `navigator` CLI and walks
-the tree with `navigator validate` (Markdown, YAML syntax, seed documents, locale catalogs, consumed mutable tags). The
-`rust` job runs formatting, clippy with warnings denied, and `cargo test --workspace`. It runs only when the PR touches
-Rust sources or the files that job is the proof for (`.rs`, `.surql`, `.feature`, Cargo manifests, the toolchain,
-nextest config, or `ci.yml` itself). A locale or Markdown edit therefore still validates and does not spend a Blacksmith
-runner on the workspace suite.
+the tree with `navigator project gate` (Markdown, YAML syntax, seed documents, locale catalogs, consumed mutable tags).
+The `rust` job runs formatting, clippy with warnings denied, and `cargo test --workspace`. It runs only when the PR
+touches Rust sources or the files that job is the proof for (`.rs`, `.surql`, `.feature`, Cargo manifests, the
+toolchain, nextest config, or `ci.yml` itself). A locale or Markdown edit therefore still validates and does not spend a
+Blacksmith runner on the workspace suite.
 
 The rust job runs on `blacksmith-4vcpu-ubuntu-2404`, and every other job on the pull-request path stays on stock
 `ubuntu-latest`, which is free for a public repository. Four vCPU is a measured choice rather than a default: Blacksmith
@@ -712,7 +712,7 @@ describes the whole release instead of only the images. It also stops occupying 
 cold Windows compile, on every release whose integration job then goes red — those runners are free on a public
 repository, but the archives they produce have no possible consumer once the Release is never cut. Nothing reaches a
 stranger early either, because `release-windows-cli-publish` needs both publish jobs as well as the three archives — the
-Release is the first fetchable artifact of the run. This is not only for human downloads: the `.github/actions/validate`
+Release is the first fetchable artifact of the run. This is not only for human downloads: the `.github/actions/gate`
 composite action, the gate **every** Project repository runs, downloads `navigator-<version>-<platform>` from the
 Release these jobs cut. If they stop running, Project CI breaks everywhere with a download 404 and nothing in this
 repository goes red — which is exactly the kind of failure worth stating in prose, because no test here will catch it.
@@ -979,7 +979,7 @@ deliberate, tested change.
 - **Third-party GitHub Actions** (`uses:`): pin the full commit SHA with a trailing `# vX.Y.Z` comment, per GitHub's
   guidance — a bare `@v2` resolves to a branch tip upstream can force-push.
 
-`navigator validate` rejects mutable consumption under `k8s/`, `examples/`, `images/`, and `.github/workflows/`;
+`navigator project gate` rejects mutable consumption under `k8s/`, `examples/`, `images/`, and `.github/workflows/`;
 `deploy.yml` publication sites are exempt.
 
 ## Publish vs. roll out

@@ -121,7 +121,7 @@ Grounding a Project-application issue means reading, in this order:
 5. The Project's own coordinates, which are derived rather than registered:
 
 ```bash
-navigator site projects doctor --project <project-code>
+navigator project doctor --project <project-code>
 ```
 
 There is no application list to register. A Project has one repository, named for its code, and the direct
@@ -172,10 +172,10 @@ a marketing page, anything at a Navigator route — the React is a prototype and
 
 ## Publication boundary
 
-Each Project repository holds `templates/` and `apps/<app>/` side by side. `navigator site projects repository`
-scaffolds and validates it, and `.github/actions/validate` is the one PR gate. A root `portal/` remains accepted during
-the layout transition and keeps its existing `/app/projects/{code}/portal/` build base. It can coexist with differently
-named apps, but the gate rejects a simultaneous `apps/portal/` because both would claim that route.
+Each Project repository holds `templates/` and `apps/<app>/` side by side. `navigator project repository` scaffolds and
+validates it, and `.github/actions/gate` is the one PR gate. A root `portal/` remains accepted during the layout
+transition and keeps its existing `/app/projects/{code}/portal/` build base. It can coexist with differently named apps,
+but the gate rejects a simultaneous `apps/portal/` because both would claim that route.
 
 The existing CI publisher remains specific to that root `portal/`: `.github/actions/application-publish` uploads its
 bundle to `<code>/portal/` in the deployment's private applications bucket. The PR gate can build and verify additional

@@ -230,7 +230,7 @@ const NAVIGATOR_CODEQL_INTEGRATION_ID: u64 = 57789;
 ///
 /// Two spellings are live at once. A repository the Firm has always
 /// administered carries `ci.yml`, and so does a Project repository written by
-/// `navigator site projects repository scaffold`. A retired `gate.yml` is still
+/// `navigator project repository scaffold`. A retired `gate.yml` is still
 /// accepted so a repository that has not been regenerated continues to bind
 /// the required `ci` check. What they share is the invariant that actually
 /// matters — a job whose check run is named `ci` — so the gate accepts either
@@ -3269,9 +3269,9 @@ mod tests {
         );
     }
 
-    /// A copy-only PR still has to validate YAML and Markdown, and must not
-    /// spend the workspace test runner. The required `ci` job stays posted
-    /// either way: it treats a skipped rust job as success.
+    /// A copy-only PR still has to gate YAML and Markdown, and must not spend
+    /// the workspace test runner. The required `ci` job stays posted either
+    /// way: it treats a skipped rust job as success.
     #[test]
     fn this_repository_skips_the_rust_suite_when_the_pr_touches_no_rust() {
         let workflow = include_str!("../../../.github/workflows/ci.yml");
@@ -3280,23 +3280,23 @@ mod tests {
         let jobs = parsed["jobs"].as_mapping().expect("ci.yml declares jobs");
 
         assert!(
-            jobs.contains_key(serde_yaml::Value::String("validate".into())),
-            "ci.yml must keep a validate job so a copy-only PR still runs navigator validate"
+            jobs.contains_key(serde_yaml::Value::String("gate".into())),
+            "ci.yml must keep a gate job so a copy-only PR still runs navigator project gate"
         );
-        let validate = serde_yaml::to_string(&parsed["jobs"]["validate"])
-            .expect("the validate job re-serialises");
+        let gate =
+            serde_yaml::to_string(&parsed["jobs"]["gate"]).expect("the gate job re-serialises");
         assert!(
-            validate.contains("ops github check-signatures"),
-            "validate must refuse unsigned commits on the pull-request head so a Cloud Agent \
+            gate.contains("ops github check-signatures"),
+            "the gate must refuse unsigned commits on the pull-request head so a Cloud Agent \
              session that disabled commit.gpgsign cannot merge"
         );
         assert!(
-            validate.contains("github.event.pull_request.head.sha"),
+            gate.contains("github.event.pull_request.head.sha"),
             "the signature check must inspect the pull-request head, not the workflow merge commit"
         );
         assert!(
-            validate.contains("fetch-depth: 0"),
-            "the signature check needs the PR range in the clone, so validate cannot stay at depth 1"
+            gate.contains("fetch-depth: 0"),
+            "the signature check needs the PR range in the clone, so the gate cannot stay at depth 1"
         );
         assert_eq!(
             parsed["jobs"]["rust"]["if"].as_str(),
@@ -3307,7 +3307,7 @@ mod tests {
             .as_sequence()
             .expect("the ci job needs its gates");
         let needed: Vec<&str> = ci_needs.iter().filter_map(|value| value.as_str()).collect();
-        for job in ["changes", "validate", "rust"] {
+        for job in ["changes", "gate", "rust"] {
             assert!(
                 needed.contains(&job),
                 "the required ci job must need `{job}` so a skip or failure is visible; needed {needed:?}"

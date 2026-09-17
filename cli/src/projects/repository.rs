@@ -39,7 +39,7 @@
 //! checkout without one, not the primary source. [`validate`] here does not
 //! follow suit: it runs inside one repository's own CI with no access to the
 //! live row, so it cannot tell a repository whose manifest is wrong from one
-//! whose name is; `navigator site projects drift` (`super::drift`) is where that
+//! whose name is; `navigator project drift` (`super::drift`) is where that
 //! disagreement is reported, against the live rows it needs to judge it.
 //!
 //! One filename, one key: the earlier `.yml` spelling and its `name:` key are
@@ -142,10 +142,7 @@ const ALLOWED_ROOTS: &[&str] = &[
     APPLICATIONS_DIRECTORY,
     "fixtures",
     DOCUMENT_DIRECTORY,
-    // The manifest a Project repository declares its Project code in. Refusing
-    // it made the layout unsatisfiable for every repository that carries one,
-    // which is why the pinned validate action had to be pulled from all six
-    // Project gates rather than the manifest being removed.
+    // The manifest a Project repository declares its Project code in.
     //
     // One entry, not two: `PROJECT_MANIFEST` and `store::sample_project::MANIFEST_FILE`
     // name the same file. The retired `.yml` spelling is not admitted; see
@@ -291,7 +288,7 @@ pub fn scaffold(
             );
         } else {
             eprintln!(
-                "navigator: invalid validate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}"
+                "navigator: invalid gate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}"
             );
         }
         return ExitCode::from(2);
@@ -374,7 +371,7 @@ pub fn scaffold(
 
     // Do not interpolate the CLI root here: `Command` also carries `Secrets`,
     // and CodeQL treats any printed Command field as cleartext logging.
-    println!("\nValidate with: navigator validate .");
+    println!("\nCheck with: navigator project gate");
     ExitCode::SUCCESS
 }
 
@@ -440,17 +437,10 @@ pub fn sync_skills(root: &Path) -> ExitCode {
 /// Templates and applications are independently optional, and a repository
 /// carrying neither is reported distinctly rather than failed. A Project may
 /// legitimately have opened before either half exists.
-pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
-    validate_inner(root, repository, false)
-}
-
-/// Validate a Project repository for the gate, including only files Git would
-/// consider tracked or stageable when checking commit-state rules.
+/// Commit-state rules read the files Git would carry, not the files on disk:
+/// the gate judges what a pull request proposes, and an untracked scratch file
+/// is not part of that.
 pub(crate) fn validate_gate(root: &Path, repository: Option<&str>) -> ExitCode {
-    validate_inner(root, repository, true)
-}
-
-fn validate_inner(root: &Path, repository: Option<&str>, gate_files: bool) -> ExitCode {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
@@ -483,11 +473,7 @@ fn validate_inner(root: &Path, repository: Option<&str>, gate_files: bool) -> Ex
         ));
     }
 
-    let manifest_valid = if gate_files {
-        validate_layout_for_gate(root, &mut errors, &mut warnings)
-    } else {
-        validate_layout(root, &mut errors, &mut warnings)
-    };
+    let manifest_valid = validate_layout(root, &mut errors, &mut warnings);
     validate_skills(root, &mut errors);
     validate_documented_cli(root, &mut errors);
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
@@ -625,127 +611,20 @@ fn git_tracked_and_stageable_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {
-    validate_layout_with_files(root, errors, false, warnings)
-}
-
-fn validate_layout_for_gate(
-    root: &Path,
-    errors: &mut Vec<Finding>,
-    warnings: &mut Vec<Finding>,
-) -> bool {
-    validate_layout_with_files(root, errors, true, warnings)
-}
-
-fn layout_entries(
-    root: &Path,
-    errors: &mut Vec<Finding>,
-    gate_files: bool,
-) -> Option<Vec<(PathBuf, bool)>> {
-    if gate_files {
-        return match git_tracked_and_stageable_files(root) {
-            Ok(files) => Some(files.into_iter().map(|path| (path, true)).collect()),
-            Err(error) => {
-                errors.push(Finding::at(
-                    root,
-                    format!("could not enumerate git-tracked and stageable files: {error}"),
-                ));
-                None
-            }
-        };
-    }
-
-    // `validate` walks the directory rather than asking Git, so it sees
-    // files Git is deliberately blind to — including the raw document
-    // bytes `site sync` and `site pull` stage under `documents/` behind
-    // the `documents/.gitignore` they write. Those are the supported
-    // workflow's own output, not committed client material, and calling
-    // them a committed legal document made the workflow
-    // self-contradictory: the only way to get `validate` green locally was
-    // to delete the bytes those commands exist to fetch (LAW-12). Ask Git
-    // what it ignores and skip exactly that, so this walk and the `gate`
-    // branch above stop disagreeing about one directory.
-    let ignored = git_ignored_files(root);
-    // Say what was skipped. Honouring `.gitignore` is right for the staged
-    // document bytes it exists for, but a repository-level `*.md`,
-    // `documents/`, or `/templates/` rule can make a whole untracked
-    // subtree disappear from `validate` behind a zero-error result, and an
-    // author who is not told cannot tell that apart from a clean run. The
-    // gate branch above is unaffected: it enumerates tracked and stageable
-    // files, so a forced-added byte is still seen either way.
-    if !ignored.is_empty() {
-        println!(
-            "note: {} gitignored file(s) were not validated; run `git check-ignore -v <path>` \
-             to see which rule covers one",
-            ignored.len()
-        );
-    }
-    let mut entries = Vec::new();
-    for entry in walkdir::WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|entry| {
-            entry.file_name() != ".git"
-                && entry.file_name() != "node_modules"
-                && entry.file_name() != "dist"
-        })
-    {
-        let Ok(entry) = entry else {
-            errors.push(Finding::at(root, "could not walk repository"));
-            return None;
-        };
-        let is_file = entry.file_type().is_file();
-        if is_file && ignored.contains(entry.path()) {
-            continue;
+fn layout_entries(root: &Path, errors: &mut Vec<Finding>) -> Option<Vec<(PathBuf, bool)>> {
+    match git_tracked_and_stageable_files(root) {
+        Ok(files) => Some(files.into_iter().map(|path| (path, true)).collect()),
+        Err(error) => {
+            errors.push(Finding::at(
+                root,
+                format!("could not enumerate git-tracked and stageable files: {error}"),
+            ));
+            None
         }
-        entries.push((entry.path().to_path_buf(), is_file));
     }
-    Some(entries)
 }
 
-/// The files Git reports as ignored under `root`.
-///
-/// Deliberately fail-open: a directory that is not a Git repository, or a
-/// host with no `git` on the path, yields an empty set and is walked
-/// entire, which is the behaviour every non-repository caller already
-/// relies on. An ignore file cannot mean anything without a repository to
-/// interpret it, so there is nothing to honour and nothing to warn about.
-///
-/// This lists ignored files individually rather than collapsing them by
-/// directory (no `--directory`), because the walk filters per path.
-fn git_ignored_files(root: &Path) -> std::collections::HashSet<PathBuf> {
-    let Ok(output) = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args([
-            "ls-files",
-            "-z",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-        ])
-        .output()
-    else {
-        return std::collections::HashSet::new();
-    };
-    if !output.status.success() {
-        return std::collections::HashSet::new();
-    }
-    output
-        .stdout
-        .split(|byte| *byte == 0)
-        .filter(|path| !path.is_empty())
-        .filter_map(|path| std::str::from_utf8(path).ok())
-        .map(|relative| root.join(relative))
-        .collect()
-}
-
-fn validate_layout_with_files(
-    root: &Path,
-    errors: &mut Vec<Finding>,
-    gate_files: bool,
-    warnings: &mut Vec<Finding>,
-) -> bool {
+fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {
     if !root.join("README.md").is_file() {
         errors.push(Finding::at(
             root.join("README.md"),
@@ -771,7 +650,7 @@ fn validate_layout_with_files(
         },
     }
 
-    let Some(entries) = layout_entries(root, errors, gate_files) else {
+    let Some(entries) = layout_entries(root, errors) else {
         return manifest_valid;
     };
 
@@ -971,14 +850,14 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
                 &path,
                 format!(
                     "synced skill `{name}` has drifted from the canonical copy; \
-                     run `navigator site projects repository sync-skills`"
+                     run `navigator project repository sync-skills`"
                 ),
             )),
             Err(_) => errors.push(Finding::at(
                 &path,
                 format!(
                     "this repository has a `.claude/` directory but is missing synced skill \
-                     `{name}`; run `navigator site projects repository sync-skills`"
+                     `{name}`; run `navigator project repository sync-skills`"
                 ),
             )),
         }
@@ -1476,7 +1355,7 @@ fn readme(project_code: &str) -> String {
          It preserves that commit SHA and the template body's content hash as provenance.\n\n\
          Do not commit client uploads, answers, generated documents, secrets, dependencies, or build output.\n\n\
          Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
-         Run `navigator validate .` before opening a pull request.\n"
+         Run `navigator project gate` from this directory before opening a pull request.\n"
     )
 }
 
@@ -1698,18 +1577,18 @@ mod tests {
     }
 
     #[test]
-    fn scaffold_validate_hint_does_not_echo_the_cli_root() {
+    fn scaffold_gate_hint_does_not_echo_the_cli_root() {
         let src = include_str!("repository.rs");
         let production = src
             .split("#[cfg(test)]")
             .next()
             .expect("production source precedes the test module");
         assert!(
-            production.contains("Validate with: navigator validate ."),
-            "the post-scaffold hint must name the validate command"
+            production.contains("Check with: navigator project gate"),
+            "the post-scaffold hint must name the gate command"
         );
         assert!(
-            !production.contains("repository validate {}"),
+            !production.contains("repository gate {}"),
             "echoing the CLI root trips CodeQL cleartext-logging because Command also carries Secrets"
         );
     }
@@ -2094,27 +1973,27 @@ jobs:
         );
     }
 
-    /// ENG-674 folded `lint`'s duplicate application-linting into `verify`
-    /// (both used to hand-detect applications independently; `navigator site
-    /// projects build` does it once), leaving four feeder jobs rather than
-    /// five.
+    /// One command gates the repository, so one job runs it. `verify` builds
+    /// every application and then gates the whole tree; `documents` and
+    /// `seeds` remain because each asks the deployment something the offline
+    /// gate cannot.
     #[test]
-    fn the_reusable_workflow_fans_four_jobs_into_the_required_check() {
+    fn the_reusable_workflow_fans_two_jobs_into_the_required_check() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
-        for job in ["verify:", "notation:", "documents:", "manifest:"] {
+        for job in ["verify:", "documents:", "seeds:"] {
             assert!(
                 generated.contains(&format!("\n  {job}\n")),
                 "missing job `{job}`:\n{generated}"
             );
         }
+        for retired in ["\n  lint:\n", "\n  notation:\n", "\n  manifest:\n"] {
+            assert!(
+                !generated.contains(retired),
+                "`{retired}` ground now belongs to verify:\n{generated}"
+            );
+        }
         assert!(
-            !generated.contains("\n  lint:\n"),
-            "lint's ground now belongs to verify:\n{generated}"
-        );
-        assert!(
-            generated.contains(
-                "\n  ci:\n    needs: [read-manifest, verify, notation, documents, manifest]\n"
-            ),
+            generated.contains("\n  ci:\n    needs: [read-manifest, verify, documents]\n"),
             "{generated}"
         );
     }
@@ -2123,49 +2002,49 @@ jobs:
     fn the_required_check_asserts_every_dependencys_result() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(generated.contains("if: always()"), "{generated}");
-        for job in [
-            "read-manifest",
-            "verify",
-            "notation",
-            "documents",
-            "manifest",
-        ] {
+        for job in ["read-manifest", "verify", "documents"] {
             assert!(
                 generated.contains(&format!("needs.{job}.result")),
                 "the required check does not check `{job}`'s result:\n{generated}"
             );
         }
-        assert!(
-            !generated.contains("needs.lint.result"),
-            "lint is retired, so nothing should still check its result:\n{generated}"
-        );
+        for retired in [
+            "needs.lint.result",
+            "needs.notation.result",
+            "needs.manifest.result",
+        ] {
+            assert!(
+                !generated.contains(retired),
+                "`{retired}` is retired, so nothing should still check it:\n{generated}"
+            );
+        }
     }
 
     /// The origin pass reads a built `dist/`, so the job that builds is the
-    /// only job that can validate it. Asserting the step's *presence* would
-    /// pass on a workflow that validated before the build and scanned a
-    /// source tree, so the assertion is on the byte offsets: the build comes
-    /// first, and the validate step carries `--ci` so a missing `dist/` is a
-    /// finding rather than a skip.
+    /// only job that can gate it. Asserting the step's *presence* would pass
+    /// on a workflow that gated before the build and scanned a source tree, so
+    /// the assertion is on the byte offsets: the build comes first, and the
+    /// gate step carries `--ci` so a missing `dist/` is a finding rather than
+    /// a skip.
     #[test]
-    fn the_verify_job_validates_after_it_builds() {
+    fn the_verify_job_gates_after_it_builds() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         let verify = generated
             .split_once("\n  verify:\n")
             .expect("no verify job")
             .1
-            .split_once("\n  notation:\n")
-            .expect("verify is not followed by notation")
+            .split_once("\n  documents:\n")
+            .expect("verify is not followed by documents")
             .0;
         let build = verify
-            .find("navigator site projects build --dir .")
+            .find("navigator project build --dir .")
             .expect("verify does not build:\n{verify}");
-        let validate = verify
-            .find("navigator validate . --ci")
+        let gate = verify
+            .find("navigator project gate --ci")
             .unwrap_or_else(|| panic!("verify does not run the origin gate:\n{verify}"));
         assert!(
-            build < validate,
-            "verify validates before it builds, so `Y009` reads a source tree:\n{verify}"
+            build < gate,
+            "verify gates before it builds, so `Y009` reads a source tree:\n{verify}"
         );
         assert!(
             verify.contains("/.github/actions/navigator-install@"),
@@ -2174,7 +2053,7 @@ jobs:
     }
 
     /// ENG-674: application discovery is a CLI call now (`navigator site
-    /// projects applications --manifest`, then `navigator site projects
+    /// project applications --manifest`, then `navigator project
     /// build`), not a `hashFiles(...)`/glob guard reimplemented in the
     /// workflow. The CLI's own discovery (`application_workspaces`, above)
     /// is what wakes the JS steps for a root Vite workspace or any other
@@ -2184,11 +2063,11 @@ jobs:
     fn the_application_steps_discover_every_workspace_at_run_time() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(
-            generated.contains("navigator site projects applications --manifest"),
+            generated.contains("navigator project applications --manifest"),
             "{generated}"
         );
         assert!(
-            generated.contains("navigator site projects build --dir ."),
+            generated.contains("navigator project build --dir ."),
             "{generated}"
         );
         assert!(

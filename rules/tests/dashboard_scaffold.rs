@@ -2,7 +2,7 @@
 //! produces a composition that validates (#896).
 //!
 //! This runs the real classified engine — the same selection
-//! `navigator validate` and `navigator-lsp` consume — rather than calling
+//! `navigator project gate` and `navigator-lsp` consume — rather than calling
 //! the D-family rules directly. That is the point: the scaffold #895 hands
 //! an attorney and the validator that then judges their file must agree on
 //! the first keystroke, or the authoring loop starts red.

@@ -166,7 +166,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
     // than untidy. `ci.yml` catches it on the pull request, which is where it is
     // free; unnoticed, it lands after the release tag exists, and the
     // `release-tags` ruleset admits no bypass actor, so that version is spent. The
-    // archive jobs are also what `.github/actions/validate` downloads, so the
+    // archive jobs are also what `.github/actions/gate` downloads, so the
     // breakage surfaces as a 404 in every Project repository's CI while nothing
     // here goes red. Refresh the lock in the same breath as the manifest.
     //

@@ -1,4 +1,4 @@
-//! Pin `.github/actions/validate` as the one CLI download plus `navigator validate`.
+//! Pin `.github/actions/gate` as the one CLI download plus `navigator project gate`.
 //!
 //! Project layout, mount, and origin live in that command when the tree
 //! declares `navigator.yaml`. The composite must not grow a second verb or a
@@ -16,23 +16,27 @@ fn workspace_root() -> PathBuf {
 }
 
 fn action_source() -> String {
-    let path = workspace_root().join(".github/actions/validate/action.yml");
+    let path = workspace_root().join(".github/actions/gate/action.yml");
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
 #[test]
-fn the_action_runs_navigator_validate_and_nothing_else() {
+fn the_action_runs_the_gate_and_nothing_else() {
     let source = action_source();
     assert!(
-        source.contains("navigator validate \"${DIR}\""),
-        "the action must run navigator validate",
+        source.contains("navigator project gate --ci"),
+        "the action must run the gate under --ci",
+    );
+    assert!(
+        !source.contains("inputs.dir"),
+        "the gate runs at the repository root, so the action takes no directory",
     );
     assert!(
         !source.contains("project_repository"),
         "the action must not expose a Project-repository input; navigator.yaml is the switch",
     );
     assert!(
-        !source.contains("site projects repository validate"),
+        !source.contains("project repository validate"),
         "the retired repository-validate verb must not remain in the action",
     );
     assert!(
@@ -175,7 +179,7 @@ fn the_action_is_deployment_agnostic() {
     }
 }
 
-/// The gate the composite runs is `navigator validate`, so a rule added to
+/// The gate the composite runs is `navigator project gate`, so a rule added to
 /// the `rules` crate reaches all 23 Project repositories on their next CLI
 /// version bump — no per-repo check, no second verb, no rollout.
 ///
@@ -191,7 +195,7 @@ fn the_gate_the_action_runs_fails_a_project_template_with_an_unread_state() {
     use tempfile::TempDir;
 
     assert!(
-        action_source().contains("navigator validate \"${DIR}\""),
+        action_source().contains("navigator project gate --ci"),
         "this test drives the command the action runs; keep the two in step",
     );
 
@@ -216,11 +220,21 @@ fn the_gate_the_action_runs_fails_a_project_template_with_an_unread_state() {
     )
     .unwrap();
 
+    // The gate identifies a repository root by these two, and reads the files
+    // Git would carry.
+    fs::write(dir.path().join("README.md"), "# acme\n").unwrap();
+    let status = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(dir.path())
+        .status()
+        .unwrap();
+    assert!(status.success(), "git init failed");
+
     let mut command = Command::cargo_bin("navigator").unwrap();
     command.env_remove("GITHUB_REPOSITORY");
     command
-        .arg("validate")
-        .arg(dir.path())
+        .current_dir(dir.path())
+        .args(["project", "gate", "--ci"])
         .assert()
         .failure()
         .code(1)

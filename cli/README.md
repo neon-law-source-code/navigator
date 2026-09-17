@@ -26,37 +26,36 @@ navigator site login --host staging.neonlaw.com
 List Projects visible to that login, then open one by its Project code:
 
 ```bash
-navigator site projects list
-navigator site projects open <project-code>
+navigator project list
+navigator project open <project-code>
 ```
 
 Admin-tier users can read every Project's lifecycle fields across the deployment:
 
 ```bash
-navigator site projects lifecycle --json
+navigator project lifecycle --json
 ```
 
 To discover the repository and Drive coordinates derived from a Project, run the read-only Project check with its code:
 
 ```bash
-navigator site projects doctor --project <project-code>
+navigator project doctor --project <project-code>
 ```
 
-Validate a folder locally. The command walks Markdown and YAML files below the directory; omit the directory to use the
-current folder:
+Check this repository locally. The gate walks the whole tree from the root it is run in, fixing what is safe to fix and
+reporting what needs a person:
 
 ```bash
-navigator validate <dir>
-navigator validate
+navigator project gate
 ```
 
 Open a matter through the logged-in site, against a pre-existing client and either an existing entity or a `Human`
 entity this command creates for a solo client:
 
 ```bash
-navigator site projects create --name "Acme LLC — Formation" --code acme-llc-formation \
+navigator project create --name "Acme LLC — Formation" --code acme-llc-formation \
   --client-email <client@example.com> --entity-name "Acme LLC" --attest
-navigator site projects create --name "Shook Estate" --code shook-estate \
+navigator project create --name "Shook Estate" --code shook-estate \
   --client-email <client@example.com> --jurisdiction Nevada --attest
 ```
 
@@ -122,6 +121,6 @@ transitions, and resulting workflow state — reflects the same journal a real r
 empty and is discarded on exit. It reads no deployment selection or ambient Navigator configuration and never calls a
 live provider.
 
-You do not need a site to work locally. Use `navigator validate`, the `navigator notations` authoring commands, and the
-KIND-backed `navigator dev` loop; seed a local catalog with `navigator site seed` when that command's local store and
-storage environment are available, or import deployment data with `navigator site import` after logging in.
+You do not need a site to work locally. Use `navigator project gate`, the `navigator notations` authoring commands, and
+the KIND-backed `navigator dev` loop; seed a local catalog with `navigator site seed` when that command's local store
+and storage environment are available, or import deployment data with `navigator site import` after logging in.

@@ -5,7 +5,7 @@
 # key with `{shared:<key>}` rather than repeating the words, and navigator-ux
 # consumes the exported catalog pinned to one Navigator revision.
 #
-# Rules, enforced by `views::locales::shared` through `navigator validate`
+# Rules, enforced by `views::locales::shared` through `navigator project gate`
 # (`Y002`): the version is explicit, every key in `REQUIRED_KEYS` must be
 # present, a value is one line with no double quote, and the only placeholders
 # are `{site_name}` and `{firm_email}`.

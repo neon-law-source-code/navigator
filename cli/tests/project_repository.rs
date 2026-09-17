@@ -31,14 +31,7 @@ const FIXTURE_PIN: &str = "26.8.23";
 
 fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
     let result = navigator()
-        .args([
-            "site",
-            "projects",
-            "repository",
-            "scaffold",
-            project_code,
-            "--dir",
-        ])
+        .args(["project", "repository", "scaffold", project_code, "--dir"])
         .arg(dir)
         .args([
             "--action-version",
@@ -78,49 +71,79 @@ fn project_gate_source() -> String {
 #[test]
 fn the_reusable_gate_keeps_live_work_out_of_the_required_check() {
     let source = project_gate_source();
-    assert!(source.contains("navigator site projects gate --ci"));
+    assert!(source.contains("navigator project gate --ci"));
     assert!(!source.contains("enable-automerge:"));
-    assert!(source.contains("needs: [read-manifest, verify, notation, documents, manifest]"));
+    assert!(source.contains("needs: [read-manifest, verify, documents]"));
 }
 
+/// The gate is one job, because it is one command: `verify` builds every
+/// application and then runs the whole check over the tree, origin pass
+/// included. Nothing else may run it, or the repository is gated twice and
+/// the second run is the one nobody reads.
 #[test]
-fn the_project_gate_keeps_manifest_validation_offline_on_prs() {
+fn the_reusable_gate_runs_the_gate_exactly_once() {
+    let source = project_gate_source();
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&source).expect("project gate parses as YAML");
+    let jobs = workflow["jobs"].as_mapping().expect("jobs");
+    let running_the_gate: Vec<&str> = jobs
+        .iter()
+        .filter_map(|(name, job)| {
+            let runs = job["steps"].as_sequence()?.iter().any(|step| {
+                step["run"]
+                    .as_str()
+                    .is_some_and(|run| run.contains("navigator project gate --ci"))
+            });
+            runs.then(|| name.as_str()).flatten()
+        })
+        .collect();
+    assert_eq!(
+        running_the_gate,
+        vec!["verify"],
+        "the gate belongs to `verify` alone:\n{source}"
+    );
+    let names: Vec<&str> = jobs.keys().filter_map(|key| key.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["read-manifest", "verify", "documents", "seeds", "ci"]
+    );
+}
+
+/// The live row is checked only where a session can be minted. That rule now
+/// lives in the CLI, which reads the ref and the event itself, so the workflow
+/// carries no branch for it and the gate reads the same everywhere.
+#[test]
+fn the_project_gate_needs_no_branch_to_stay_offline_on_prs() {
     let workflow: serde_yaml::Value =
         serde_yaml::from_str(&project_gate_source()).expect("project gate parses as YAML");
-    let manifest_steps = workflow["jobs"]["manifest"]["steps"]
-        .as_sequence()
-        .expect("manifest steps");
-    let live_status = manifest_steps
+    let verify = &workflow["jobs"]["verify"];
+    assert_eq!(
+        verify["permissions"]["id-token"].as_str(),
+        Some("write"),
+        "the gate mints the live-row session from this job"
+    );
+    let steps = verify["steps"].as_sequence().expect("verify steps");
+    let gate = steps
         .iter()
         .find(|step| {
             step["run"]
                 .as_str()
-                .is_some_and(|run| run.contains("navigator site projects gate --ci"))
+                .is_some_and(|run| run.contains("navigator project gate"))
         })
-        .expect("manifest live status step");
-    let run = live_status["run"].as_str().expect("live status script");
-
-    assert!(
-        live_status["env"]["EVENT_NAME"].as_str() == Some("${{ github.event_name }}")
-            && live_status["env"]["REF"].as_str() == Some("${{ github.ref }}"),
-        "manifest live status must know which event and ref it is running for"
-    );
-    assert!(
-        run.contains(r#"[ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]"#),
-        "manifest live status must be limited to pushes to main"
-    );
-    assert!(
-        run.contains("navigator site projects gate\n")
-            || run.contains("navigator site projects gate\r\n"),
-        "manifest must retain an offline gate for pull requests"
+        .expect("verify gate step");
+    let run = gate["run"].as_str().expect("gate script");
+    assert_eq!(
+        run.trim(),
+        "navigator project gate --ci",
+        "the gate takes no host and no ref branch:\n{run}"
     );
 }
 
 /// The `seeds` job reconciles `seeds/` on a push to `main`, is offline on a
-/// pull request (`navigator validate` already covers the shape), never
-/// overwrites, no-ops cleanly with no `seeds/` directory, and stays outside
-/// the required `ci` job's dependencies — its live half needs a reachable
-/// deployment, and the always-required check must never depend on that.
+/// pull request (the gate already covers the shape), never overwrites, no-ops
+/// cleanly with no `seeds/` directory, and stays outside the required `ci`
+/// job's dependencies — its live half needs a reachable deployment, and the
+/// always-required check must never depend on that.
 #[test]
 fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
     let source = project_gate_source();
@@ -131,20 +154,21 @@ fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
     ));
     assert!(source.contains(r#"navigator site import --ci --host "${HOST}" --dir seeds"#));
     assert!(source.contains("needs: read-manifest"));
-    assert!(source.contains("needs: [read-manifest, verify, notation, documents, manifest]"));
-    assert!(
-        !source.contains("needs: [read-manifest, verify, notation, documents, manifest, seeds]")
-    );
+    assert!(source.contains("needs: [read-manifest, verify, documents]"));
+    assert!(!source.contains("needs: [read-manifest, verify, documents, seeds]"));
 }
 
-fn validate(dir: &Path) -> assert_cmd::assert::Assert {
-    navigator().args(["validate"]).arg(dir).assert()
-}
-
-fn validate_as(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
+fn gate(dir: &Path) -> assert_cmd::assert::Assert {
     navigator()
-        .args(["validate"])
-        .arg(dir)
+        .current_dir(dir)
+        .args(["project", "gate"])
+        .assert()
+}
+
+fn gate_as(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
+    navigator()
+        .current_dir(dir)
+        .args(["project", "gate"])
         .env("GITHUB_REPOSITORY", format!("org/{repository}"))
         .assert()
 }
@@ -159,7 +183,7 @@ fn the_flat_manifest_shape_is_read_with_a_deprecation_warning() {
     )
     .unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("Y013"))
         .stdout(str::contains("1 warning(s)"));
@@ -175,7 +199,7 @@ fn a_malformed_manifest_is_reported_without_template_cascade() {
     )
     .unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .stderr(str::contains("navigator.yaml"))
         .stderr(str::contains("Y005"))
@@ -195,7 +219,7 @@ fn the_ci_ref_must_match_the_manifest_version() {
     )
     .unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .stderr(str::contains("must equal manifest version"))
         .stderr(str::contains("26.8.22"))
@@ -222,7 +246,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("1 template(s), 0 application(s), 0 error(s)"));
 
@@ -291,36 +315,41 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         fs::read_to_string(dir.path().join(".gitattributes")).unwrap(),
         "# repository preference\n"
     );
-    validate(dir.path()).success();
+    gate(dir.path()).success();
 }
 
 #[test]
-fn gate_ci_without_oidc_is_a_closed_door() {
+fn gate_without_oidc_leaves_the_live_row_alone() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     navigator()
-        .args(["site", "projects", "gate", "--ci"])
-        .arg(dir.path())
+        .current_dir(dir.path())
+        .args(["project", "gate", "--ci"])
         .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
+        .env("GITHUB_REF", "refs/heads/main")
+        .env("GITHUB_EVENT_NAME", "push")
         .assert()
-        .failure()
-        .code(2)
-        .stderr(str::contains("ACTIONS_ID_TOKEN_REQUEST_URL is unset"));
+        .success()
+        .stdout(str::contains("only a push to main mints a CI session"));
 }
 
+/// The live row is checked only where a session can be minted: a push to
+/// `main`. Anywhere else the gate finishes its offline work and says why it
+/// stopped, rather than spending a request the server would refuse.
 #[test]
-fn gate_ci_without_host_is_a_closed_door() {
+fn gate_ci_off_main_leaves_the_live_row_alone() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     navigator()
-        .args(["site", "projects", "gate", "--ci"])
-        .arg(dir.path())
+        .current_dir(dir.path())
+        .args(["project", "gate", "--ci"])
         .env("ACTIONS_ID_TOKEN_REQUEST_URL", "http://127.0.0.1/oidc")
         .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "token")
+        .env("GITHUB_REF", "refs/pull/7/merge")
+        .env("GITHUB_EVENT_NAME", "pull_request")
         .assert()
-        .failure()
-        .code(2)
-        .stderr(str::contains("--ci requires --host"));
+        .success()
+        .stdout(str::contains("only a push to main mints a CI session"));
 }
 
 /// All three shapes validate: templates only, a portal only, and both.
@@ -329,7 +358,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     // Templates only — what the scaffold produces.
     let templates_only = TempDir::new().unwrap();
     scaffold(templates_only.path(), "example-project").success();
-    validate(templates_only.path())
+    gate(templates_only.path())
         .success()
         .stdout(str::contains("1 template(s), 0 application(s)"));
 
@@ -337,7 +366,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     let both = TempDir::new().unwrap();
     scaffold(both.path(), "example-project").success();
     write_portal(both.path());
-    validate(both.path())
+    gate(both.path())
         .success()
         .stdout(str::contains("1 template(s), 1 application(s)"));
 
@@ -345,7 +374,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     let portal_only = TempDir::new().unwrap();
     scaffold(portal_only.path(), "example-project").success();
     write_portal(portal_only.path());
-    validate(portal_only.path())
+    gate(portal_only.path())
         .success()
         .stdout(str::contains("1 template(s), 1 application(s)"));
 }
@@ -358,7 +387,7 @@ fn a_nested_template_is_refused_in_a_project_repository() {
     let nested = dir.path().join("templates/neon_law/onboarding.md");
     fs::create_dir_all(nested.parent().unwrap()).unwrap();
     fs::rename(&flat, &nested).unwrap();
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stdout(str::contains("N110"))
@@ -383,7 +412,7 @@ fn a_template_filename_needs_no_project_code_prefix() {
         .replace("code: onboarding", "code: project_template");
     fs::rename(&path, dir.path().join("templates/project_template.md")).unwrap();
     fs::write(dir.path().join("templates/project_template.md"), body).unwrap();
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("1 template(s), 0 application(s), 0 error(s)"));
 }
@@ -397,7 +426,7 @@ fn a_template_code_must_equal_the_filename_stem() {
         .unwrap()
         .replace("code: onboarding", "code: other");
     fs::write(&path, body).unwrap();
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("onboarding"))
@@ -417,12 +446,12 @@ fn direct_apps_are_discovered_and_each_is_validated() {
     fs::create_dir_all(dir.path().join("apps/shared")).unwrap();
     fs::write(dir.path().join("apps/shared/routes.ts"), "export {};\n").unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("2 application(s)"));
 
     fs::remove_file(dir.path().join("apps/exchange/index.html")).unwrap();
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("apps/exchange"))
@@ -434,7 +463,7 @@ fn direct_apps_are_discovered_and_each_is_validated() {
         "SECRET=synthetic\n",
     )
     .unwrap();
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("apps/exchange/.env.production"))
@@ -451,7 +480,7 @@ fn a_legacy_root_portal_and_new_apps_can_transition_together() {
     write_portal(dir.path());
     write_vite_workspace(dir.path(), "apps/exchange");
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("2 application(s)"));
 }
@@ -463,7 +492,7 @@ fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
     write_portal(dir.path());
     write_vite_workspace(dir.path(), "apps/portal");
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("apps/portal"))
@@ -510,7 +539,7 @@ fn the_scaffold_links_claude_md_to_an_existing_agents_md() {
 }
 
 /// ENG-674: `verify` no longer generates a per-application bash loop — it
-/// calls `navigator site projects build`, which discovers and builds every
+/// calls `navigator project build`, which discovers and builds every
 /// application itself. That call's own per-application, per-verb behavior
 /// (order, `pnpm` arguments, stopping at the first failure) is covered
 /// directly in `cli/src/projects/build.rs`'s unit tests; this just pins that
@@ -519,7 +548,7 @@ fn the_scaffold_links_claude_md_to_an_existing_agents_md() {
 fn the_verify_job_installs_lints_typechecks_tests_and_builds_through_the_cli() {
     let source = project_gate_source();
     assert!(
-        source.contains("navigator site projects build --dir ."),
+        source.contains("navigator project build --dir ."),
         "verify must call the CLI's build verb"
     );
     for retired in [
@@ -542,7 +571,7 @@ fn an_application_directory_name_must_be_a_route_safe_slug() {
     scaffold(dir.path(), "example-project").success();
     write_vite_workspace(dir.path(), "apps/Client_Exchange");
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("Client_Exchange"))
@@ -563,7 +592,7 @@ fn a_repository_carrying_neither_half_is_reported_and_not_failed() {
         fs::remove_dir_all(templates).unwrap();
     }
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("carries neither"));
 }
@@ -575,14 +604,14 @@ fn a_repository_name_that_is_not_a_valid_project_code_is_refused() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
 
-    validate_as(dir.path(), "Not_A_Code")
+    gate_as(dir.path(), "Not_A_Code")
         .failure()
         .code(1)
         .stderr(str::contains("is not a valid Navigator Project code"));
 
     // `new` is well-formed and still refused: `/app/projects/new` is
     // Navigator's matter-open form.
-    validate_as(dir.path(), "new")
+    gate_as(dir.path(), "new")
         .failure()
         .code(1)
         .stderr(str::contains("is not a valid Navigator Project code"));
@@ -601,7 +630,7 @@ fn a_portal_that_is_not_a_vite_workspace_is_refused() {
     fs::create_dir_all(dir.path().join("portal/src")).unwrap();
     fs::write(dir.path().join("portal/package.json"), "{}\n").unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("is not a Vite workspace"))
@@ -617,9 +646,10 @@ fn client_uploads_and_generated_output_are_refused() {
     fs::create_dir_all(dir.path().join("uploads")).unwrap();
     fs::write(dir.path().join("uploads/client-document.pdf"), "synthetic").unwrap();
     fs::create_dir_all(dir.path().join("target")).unwrap();
+    fs::write(dir.path().join("target/build.log"), "synthetic").unwrap();
     fs::write(dir.path().join(".env.production"), "SECRET=x").unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("forbidden `uploads` path"))
@@ -644,18 +674,19 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
     )
     .unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 
     // A raw byte staged behind the `documents/.gitignore` is the supported
     // workflow's own output — `site pull` puts it there — so it is not a
-    // committed legal document and `validate` leaves it alone (LAW-12).
+    // committed legal document and the gate leaves it alone (LAW-12).
     let binary = dir
         .path()
         .join("documents/exhibits/2026-09-05/screenshot.png");
     fs::write(&binary, b"synthetic image bytes").unwrap();
-    validate(dir.path())
+    // Ignored, so nothing proposes it and the gate stays green.
+    gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 
@@ -665,7 +696,7 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
         dir.path(),
         &["add", "-f", "documents/exhibits/2026-09-05/screenshot.png"],
     );
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains(binary.display().to_string()))
@@ -674,6 +705,11 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
         ));
 }
 
+/// `site sync` and `site pull` exist to put bytes under `documents/`, and the
+/// `documents/.gitignore` they write keeps those bytes untracked. The gate
+/// enumerates what Git would carry, so it reads them as absent rather than as
+/// committed legal material — otherwise the only way to get a green run would
+/// be to delete the bytes those commands exist to fetch (LAW-12).
 #[test]
 fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
     let dir = TempDir::new().unwrap();
@@ -688,8 +724,8 @@ fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
     fs::write(&raw, "synthetic pulled bytes\n").unwrap();
 
     navigator()
-        .args(["site", "projects", "gate"])
-        .arg(dir.path())
+        .current_dir(dir.path())
+        .args(["project", "gate"])
         .assert()
         .success()
         .stdout(str::contains("0 error(s)"))
@@ -698,7 +734,7 @@ fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
 }
 
 #[test]
-fn validate_leaves_an_application_owned_templates_directory_alone() {
+fn gate_leaves_an_application_owned_templates_directory_alone() {
     // The published Project gate runs `navigator validate .` over the whole
     // checkout, and the layout permits application source under `apps/<app>/`
     // and a root `portal/`. A Vite application's own `src/templates/*.md` is
@@ -716,7 +752,7 @@ fn validate_leaves_an_application_owned_templates_directory_alone() {
     fs::write(app.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
     fs::write(app.join("src/templates/page.md"), "# Page layout\n").unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 
@@ -726,66 +762,10 @@ fn validate_leaves_an_application_owned_templates_directory_alone() {
         "---\ntitle: Last Will\ncode: sample__will\nconfidential: true\n---\n\n# Last Will\n",
     )
     .unwrap();
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stdout(str::contains("under `templates/` but declares no `kind:`"));
-}
-
-#[test]
-fn validate_ignores_raw_document_bytes_materialised_by_a_pull() {
-    // LAW-12: `site sync` and `site pull` exist to put bytes under
-    // `documents/`, and the `documents/.gitignore` they write keeps those
-    // bytes untracked. `gate` enumerates git-tracked and stageable files
-    // and reported 0 errors on exactly this tree; `validate` walked the
-    // directory with no notion of `.gitignore` and called the same bytes a
-    // committed legal document. The two disagreed about one directory,
-    // which made the supported workflow self-contradictory: the only way
-    // to get `validate` green locally was to delete the staged bytes.
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    fs::create_dir_all(dir.path().join("documents/pleadings")).unwrap();
-    fs::write(
-        dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yml\n!.gitignore\n",
-    )
-    .unwrap();
-    let raw = dir.path().join("documents/pleadings/motion.pdf");
-    fs::write(&raw, b"synthetic pulled bytes").unwrap();
-
-    validate(dir.path())
-        .success()
-        .stdout(str::contains("0 error(s)"))
-        // Skipping is right, but silence about it is not: an author must be
-        // able to tell a clean run from a run that looked at less.
-        .stdout(str::contains("gitignored file(s) were not validated"))
-        .stderr(predicates::str::contains(raw.display().to_string()).not());
-}
-
-#[test]
-fn validate_still_reports_a_tracked_raw_document_byte() {
-    // The other side of it: honouring `.gitignore` must not blunt the
-    // rule. A byte that is actually *committed* is what the rule exists
-    // to catch, and `git add -f` is how one gets there past the guard.
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    fs::create_dir_all(dir.path().join("documents/pleadings")).unwrap();
-    fs::write(
-        dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yml\n!.gitignore\n",
-    )
-    .unwrap();
-    let raw = dir.path().join("documents/pleadings/motion.pdf");
-    fs::write(&raw, b"synthetic committed bytes").unwrap();
-    run_git(dir.path(), &["add", "-f", "documents/pleadings/motion.pdf"]);
-
-    validate(dir.path())
-        .failure()
-        .code(1)
-        .stderr(str::contains(raw.display().to_string()))
-        .stderr(str::contains(
-            "legal documents and raw document bytes must not be committed",
-        ));
 }
 
 #[test]
@@ -803,8 +783,8 @@ fn gate_reports_a_tracked_raw_document_byte() {
     run_git(dir.path(), &["add", "-f", "documents/memos/agreement.md"]);
 
     navigator()
-        .args(["site", "projects", "gate"])
-        .arg(dir.path())
+        .current_dir(dir.path())
+        .args(["project", "gate"])
         .assert()
         .failure()
         .code(1)
@@ -824,8 +804,8 @@ fn gate_honours_a_nested_ignore_file() {
     fs::write(&ignored, "synthetic secret\n").unwrap();
 
     navigator()
-        .args(["site", "projects", "gate"])
-        .arg(dir.path())
+        .current_dir(dir.path())
+        .args(["project", "gate"])
         .assert()
         .success()
         .stdout(str::contains("0 error(s)"))
@@ -834,10 +814,10 @@ fn gate_honours_a_nested_ignore_file() {
 }
 
 #[test]
-fn gate_fails_clearly_when_the_directory_is_not_a_git_repository() {
+fn gate_refuses_a_scaffolded_tree_that_is_not_a_git_repository() {
     let dir = TempDir::new().unwrap();
     navigator()
-        .args(["site", "projects", "repository", "scaffold"])
+        .args(["project", "repository", "scaffold"])
         .arg("example-project")
         .args(["--dir"])
         .arg(dir.path())
@@ -851,15 +831,12 @@ fn gate_fails_clearly_when_the_directory_is_not_a_git_repository() {
         .success();
 
     navigator()
-        .args(["site", "projects", "gate"])
-        .arg(dir.path())
+        .current_dir(dir.path())
+        .args(["project", "gate"])
         .assert()
         .failure()
-        .code(1)
-        .stderr(str::contains(
-            "could not enumerate git-tracked and stageable files",
-        ))
-        .stderr(str::contains("not a Git repository"));
+        .code(2)
+        .stderr(str::contains("has no .git"));
 }
 
 /// The retired `notations repository` command is gone rather than aliased.
@@ -873,7 +850,7 @@ fn the_notations_repository_command_is_gone() {
 
 fn sync_skills(dir: &Path) -> assert_cmd::assert::Assert {
     navigator()
-        .args(["site", "projects", "repository", "sync-skills"])
+        .args(["project", "repository", "sync-skills"])
         .arg(dir)
         .assert()
 }
@@ -900,7 +877,7 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
         assert!(!fs::read_to_string(&path).unwrap().is_empty());
     }
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 }
@@ -927,7 +904,7 @@ fn sync_skills_overwrites_a_hand_edited_copy() {
 /// and names the file, so a hand edit or a stale sync is caught rather than
 /// silently diverging across 19 repositories.
 #[test]
-fn validate_fails_on_a_drifted_synced_skill() {
+fn gate_fails_on_a_drifted_synced_skill() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     sync_skills(dir.path()).success();
@@ -938,7 +915,7 @@ fn validate_fails_on_a_drifted_synced_skill() {
     )
     .unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("synced skill `council` has drifted"))
@@ -950,7 +927,7 @@ fn validate_fails_on_a_drifted_synced_skill() {
 /// about what an agent working here must be told — which is nothing at all if
 /// no agent works here.
 #[test]
-fn validate_passes_when_no_skills_have_been_synced() {
+fn gate_passes_when_no_skills_have_been_synced() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     assert!(
@@ -958,7 +935,7 @@ fn validate_passes_when_no_skills_have_been_synced() {
         "scaffold must not create `.claude/`, or this asserts the wrong branch"
     );
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 }
@@ -973,12 +950,12 @@ fn validate_passes_when_no_skills_have_been_synced() {
 /// that violated it, in sixteen repositories, claiming a fleet-wide
 /// uniformity that had already broken in two directions.
 #[test]
-fn validate_fails_when_claude_exists_without_the_catalog() {
+fn gate_fails_when_claude_exists_without_the_catalog() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     fs::create_dir_all(dir.path().join(".claude")).unwrap();
 
-    validate(dir.path())
+    gate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("missing synced skill `portal-chrome`"))
@@ -990,13 +967,13 @@ fn validate_fails_when_claude_exists_without_the_catalog() {
 /// once `sync-skills` has run. A check whose only remedy is deleting the
 /// directory that triggered it would just teach people to delete it.
 #[test]
-fn validate_passes_when_claude_exists_and_the_catalog_is_synced() {
+fn gate_passes_when_claude_exists_and_the_catalog_is_synced() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     fs::create_dir_all(dir.path().join(".claude")).unwrap();
     sync_skills(dir.path()).success();
 
-    validate(dir.path())
+    gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 }

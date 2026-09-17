@@ -4,8 +4,8 @@ description: >
   Start a Project portal's Vite dev server on a random free port and report the mounted URL, then screenshot it to
   confirm it actually rendered. Trigger when asked to start the server, run or preview the portal, show the local
   server, or restart it after a change; also covers stopping one and finding what is already running. Synced verbatim
-  into every Project repository's `.claude/skills/` by `navigator site projects repository sync-skills`; this canonical
-  copy lives in Navigator's own `.agents/skills/`.
+  into every Project repository's `.claude/skills/` by `navigator project repository sync-skills`; this canonical copy
+  lives in Navigator's own `.agents/skills/`.
 ---
 
 # Start the portal on a random port

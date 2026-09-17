@@ -151,7 +151,7 @@ Never paste a Linear issue title or URL into a GitHub review. Public review text
 
 Choose the smallest meaningful proof for the changed surface and record exact commands and outcomes:
 
-- Markdown, YAML, seed, or agent-contract changes: `cargo run -p cli --quiet -- validate .`;
+- Markdown, YAML, seed, or agent-contract changes: `cargo run -p cli --quiet -- project gate`;
 - Rust or runtime changes: formatting, the targeted tests, and the relevant clippy/test gate; use the workspace gate
   when the blast radius is broad;
 - UI or browser behavior: use the documented KIND/web loop and `web-preview` when live behavior materially affects the
@@ -214,7 +214,7 @@ package or path filter, and therefore what it did not run. A narrowed gate is a 
 complete one is not.
 
 ```bash
-cargo run -p cli --quiet -- validate .
+cargo run -p cli --quiet -- project gate
 cargo nextest run -p <package>
 cargo fmt --check && cargo clippy -p <package> --all-targets -- -D warnings
 ```

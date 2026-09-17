@@ -295,41 +295,13 @@ enum Command {
     // ─────────────── Authoring a notation locally ───────────────
     // The notation author's workbench: everything here runs offline (or
     // against a local store), no live site required.
-    /// Validate Markdown and YAML files in `<dir>` (default `.`).
+    /// One Project repository: its gate, its applications, and its live row.
     ///
-    /// A Project repository's generated CI gate runs this exact command against its own tree —
-    /// see `docs/project-repositories.md`.
-    Validate {
-        /// Directory to walk.
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// Apply every safe-by-construction rule autofix
-        /// (whitespace, ATX heading spacing, blockquote spacing, S102
-        /// paragraph packing) to the files in place, re-scanning each
-        /// file until it stops changing, then re-validate.
-        /// Diagnostic-only rules (N-family notation-template, M024
-        /// duplicate headings, M026 trailing punctuation) are still
-        /// reported but not auto-fixed. The autofixed-source view is
-        /// what the `navigator-lsp` `source.fixAll` action ships in
-        /// editors.
-        #[arg(long)]
-        fix: bool,
-        /// Print only the findings that fail the gate, hiding the
-        /// Warning-severity advisories. The summary line still counts
-        /// both and the exit code is unchanged: this narrows the
-        /// listing for a CI-triage read, not the gate itself. Rejected
-        /// with `--fix`, where a remaining warning still has to be
-        /// resolved before the run passes and so must stay on screen.
-        #[arg(long, conflicts_with = "fix")]
-        errors_only: bool,
-        /// Hold the origin pass (`Y009`) to a tree that has already been
-        /// built. A Project repository's CI runs its applications' builds
-        /// and then this command, so a declared application with no `dist/`
-        /// means the scan read nothing and is a finding. Without the flag a
-        /// missing `dist/` is skipped, which is what lets a source-only
-        /// checkout validate before anyone runs a build.
-        #[arg(long)]
-        ci: bool,
+    /// Singular because a checkout is one Project — the repository name *is* the Project code.
+    #[command(name = "project")]
+    Projects {
+        #[command(subcommand)]
+        action: ProjectsCmd,
     },
     /// The notation author's offline workbench for everything under
     /// `templates/notations/`.
@@ -506,16 +478,25 @@ enum ProjectsCmd {
         #[arg(long)]
         json: bool,
     },
-    /// Run the Project CI gate: layout, then the OIDC live-status door.
+    /// Check this repository: Markdown, YAML, seeds, locales, and — when
+    /// `navigator.yaml` declares a Project — its layout, mount, and origin.
+    ///
+    /// Runs on the whole tree from the repository root, which it identifies by
+    /// the `README` and `.git` beside it, and refuses to run anywhere else.
+    /// Safe-by-construction rule fixes (whitespace, ATX heading spacing,
+    /// blockquote spacing, S102 paragraph packing) are applied in place; what
+    /// is left needs a human. Every Project repository's CI runs this command.
     Gate {
-        /// Repository root. Defaults to the current directory.
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// Exchange GitHub Actions OIDC for a document-verify session.
+        /// Hold the run to what CI can prove. Nothing is written, so a file the
+        /// gate would have fixed is a finding rather than a silent rewrite of a
+        /// checkout about to be discarded; the origin pass (`Y009`) reads each
+        /// declared application's built `dist/` rather than skipping it; and on
+        /// a push to `main` the live-status door opens, exchanging GitHub
+        /// Actions OIDC at `POST /auth/ci/document-token` to check
+        /// `navigator.yaml` against the row the deployment holds. The host is
+        /// the one `navigator.yaml` declares — there is nothing to pass.
         #[arg(long)]
         ci: bool,
-        #[command(flatten)]
-        host: HostOpt,
     },
     /// Install, lint, typecheck, test, and build every application this
     /// Project repository declares, one application at a time, stopping at
@@ -927,11 +908,6 @@ enum SiteCmd {
         /// Host to serve. Optional when exactly one host is stored.
         #[arg(long)]
         host: Option<String>,
-    },
-    /// Read-side operations against a live site's matters.
-    Projects {
-        #[command(subcommand)]
-        action: ProjectsCmd,
     },
     /// Inspect or drive a notation's workflow on a live site.
     Notation {
@@ -1989,7 +1965,7 @@ enum NotationAction {
     ///
     /// Every notation hangs on an already-existing Project, so `--project`
     /// (the matter code) is required — open the matter first with
-    /// `navigator site projects create`. The template is read from that
+    /// `navigator project create`. The template is read from that
     /// Project's git repo when authored there, else from the bundled firm
     /// catalog; the notation opens pinned to it
     /// (`POST /app/projects/<id>/notations/new`).
@@ -2114,12 +2090,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     match cli_command {
-        Command::Validate {
-            dir,
-            fix,
-            errors_only,
-            ci,
-        } => run_validate(&dir, fix, errors_only, ci),
+        Command::Projects { action } => runtime().block_on(run_projects(action)),
         // The docs reference helpers need no cluster, so they are handled
         // here rather than routed into the KIND dispatcher with the rest
         // of `dev`.
@@ -2200,7 +2171,6 @@ fn main() -> ExitCode {
                     dry_run,
                 )),
             },
-            SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
             SiteCmd::Authorities { action } => match action {
                 AuthoritiesAction::Create {
@@ -2455,9 +2425,7 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             all,
             json,
         } => projects::drift::run(host.host.as_deref(), &dir, all, json).await,
-        ProjectsCmd::Gate { dir, ci, host } => {
-            projects::gate::run(&dir, ci, host.host.as_deref()).await
-        }
+        ProjectsCmd::Gate { ci } => run_gate(ci).await,
         ProjectsCmd::Build { dir } => projects::build::run(&dir),
         ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
         ProjectsCmd::Surfaces { action } => match action {
@@ -3159,106 +3127,93 @@ fn project_origin_pass(dir: &std::path::Path, ci: bool) -> Vec<GateError> {
     errors
 }
 
-fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool, ci: bool) -> ExitCode {
-    let question_codes = rules::canonical_question_codes();
-    if fix {
-        let fix_report = match fix_directory(dir, &rules::DefaultFileFilter::default(), |file| {
-            rules::navigator_classified_rules_with_codes(file, &question_codes)
-        }) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("navigator: {e}");
-                return ExitCode::from(2);
-            }
-        };
-        for path in &fix_report.fixed_files {
-            println!("{}", palette::dim(format!("fixed {}", path.display())));
-        }
-        for v in &fix_report.remaining {
-            print_violation(&v.path.display().to_string(), v.line, v.code, &v.message);
-        }
-        println!(
-            "{}",
-            palette::dim(format!(
-                "Fixed {} file(s); {} remaining violation(s) need a human.",
-                fix_report.fixed_files.len(),
-                fix_report.remaining.len(),
-            ))
-        );
-        return if fix_report.remaining.is_empty() {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::from(1)
-        };
-    }
-    let report = {
-        let engine = rules::ClassifiedRuleEngine::new().with_question_codes(question_codes);
-        engine.lint_directory(dir)
+/// The repository root the gate runs at: the directory holding both a `README`
+/// and a `.git`. The gate takes no path argument, because one that could be
+/// pointed at a subdirectory reports a clean tree over the files it never read.
+fn gate_root() -> Result<PathBuf, String> {
+    let root =
+        std::env::current_dir().map_err(|error| format!("read current directory: {error}"))?;
+    let readme = std::fs::read_dir(&root)
+        .map_err(|error| format!("read {}: {error}", root.display()))?
+        .filter_map(Result::ok)
+        .any(|entry| entry.file_name().to_string_lossy().starts_with("README"));
+    // A worktree's `.git` is a file holding a pointer, not a directory, so this
+    // asks whether the entry exists at all rather than what shape it is.
+    let git = root.join(".git").exists();
+    let missing = match (readme, git) {
+        (true, true) => return Ok(root),
+        (false, false) => "no README and no .git",
+        (false, true) => "no README",
+        _ => "no .git",
     };
-    let mut report = match report {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("navigator: {e}");
+    Err(format!(
+        "{} has {missing} — the gate runs on a whole repository, so run it from the root",
+        root.display()
+    ))
+}
+
+/// `navigator project gate` — the one check over one repository.
+///
+/// Fixes what is safe to fix, reports what needs a human, and fails on either
+/// an Error-severity finding or, under `--ci`, a file it had to fix. With
+/// `--ci` it also asks the deployment whether `navigator.yaml` agrees with the
+/// live row, which is the one question an offline pass cannot answer.
+async fn run_gate(ci: bool) -> ExitCode {
+    let root = match gate_root() {
+        Ok(root) => root,
+        Err(message) => {
+            eprintln!("navigator: {message}");
             return ExitCode::from(2);
         }
     };
-    // Cross-file `N111`: notation template `code` must be unique across
-    // the tree. Always run — only notation templates carry a `code`, so a
+    let dir = root.as_path();
+    let question_codes = rules::canonical_question_codes();
+
+    // The markdown pass and the autofix are one walk: every safe-by-construction
+    // edit lands first, and what it reports is what survived them.
+    let mut report = match fix_directory(
+        dir,
+        &rules::DefaultFileFilter::default(),
+        |file| rules::navigator_classified_rules_with_codes(file, &question_codes),
+        !ci,
+    ) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut violations = std::mem::take(&mut report.remaining);
+
+    // Cross-file `N111`: notation template `code` must be unique across the
+    // tree. Always run — only notation templates carry a `code`, so a
     // prose-only tree simply finds nothing.
     match rules::code_uniqueness_violations(dir, &rules::DefaultFileFilter::default()) {
-        Ok(mut v) => report.violations.append(&mut v),
-        Err(e) => {
-            eprintln!("navigator: {e}");
+        Ok(mut found) => violations.append(&mut found),
+        Err(error) => {
+            eprintln!("navigator: {error}");
             return ExitCode::from(2);
         }
     }
     // Cross-file `N124`: every notation template named by a services catalog
     // must exist under `templates/notations/`.
     match rules::service_template_violations(dir, &rules::DefaultFileFilter::default()) {
-        Ok(mut v) => report.violations.append(&mut v),
-        Err(e) => {
-            eprintln!("navigator: {e}");
+        Ok(mut found) => violations.append(&mut found),
+        Err(error) => {
+            eprintln!("navigator: {error}");
             return ExitCode::from(2);
         }
     }
-    // `--errors-only` narrows what prints here and nothing else: the
-    // summary below still counts every advisory, and the gate below still
-    // ignores them.
-    for v in &report.violations {
-        if errors_only && rules::severity_for_code(v.code) != rules::Severity::Error {
-            continue;
-        }
-        print_violation(&v.path.display().to_string(), v.line, v.code, &v.message);
-    }
-    let (error_count, warning_count) = severity_counts(&report.violations);
-    let mut gate_errors: Vec<GateError> = report
-        .violations
-        .iter()
-        .filter(|v| rules::severity_for_code(v.code) == rules::Severity::Error)
-        .map(|v| {
-            GateError::new(
-                format!("{}:{}", v.path.display(), v.line),
-                Some(v.code),
-                v.message.clone(),
-            )
-        })
-        .collect();
 
-    println!(
-        "{}",
-        palette::dim(format!(
-            "Scanned {} file(s), found {error_count} error(s), {warning_count} warning(s)",
-            report.files_scanned,
-        ))
-    );
+    let mut gate_errors = report_content_findings(dir, ci, &report, &violations);
 
     // Standalone raw-tree passes over the same walk: YAML parse errors, seed
     // document shape, locale catalogs, and consumed mutable image/binary tags
     // (navigator#540).
     match standalone_tree_passes(dir, ci) {
         Ok(mut errors) => gate_errors.append(&mut errors),
-        Err(e) => {
-            eprintln!("navigator: {e}");
+        Err(error) => {
+            eprintln!("navigator: {error}");
             return ExitCode::from(2);
         }
     }
@@ -3268,19 +3223,97 @@ fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool, ci: bool) -
     // something to be found by scrolling.
     print_error_recap(&gate_errors);
 
-    let project_layout_failed = is_project_repository(dir)
-        && projects::repository::validate(dir, None) != ExitCode::SUCCESS;
+    let project = is_project_repository(dir);
+    let layout_failed =
+        project && projects::repository::validate_gate(dir, None) != ExitCode::SUCCESS;
 
-    // Fail the gate on Error-severity markdown violations, malformed YAML,
-    // seed documents, locale catalogs, a consumed mutable tag, or a Project
-    // repository's layout/mount findings. Warning-severity advisories are
-    // printed but do not fail.
-    if gate_errors.is_empty() && !project_layout_failed {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
+    if !gate_errors.is_empty() || layout_failed {
+        return ExitCode::from(1);
     }
+    if !ci || !project {
+        return ExitCode::SUCCESS;
+    }
+    // The one question this tree cannot answer about itself: whether the
+    // manifest still agrees with the row the deployment holds.
+    projects::gate::live_status(dir).await
 }
+
+/// Print everything the content pass found — the files it fixed, then each
+/// surviving violation, then the counts — and return the findings that fail the
+/// run. Split out of [`run_gate`] because it is the whole of what a reader sees,
+/// and reads better on its own than as the middle of a longer function.
+fn report_content_findings(
+    dir: &std::path::Path,
+    ci: bool,
+    report: &FixReport,
+    violations: &[rules::Violation],
+) -> Vec<GateError> {
+    for path in &report.fixed_files {
+        let relative = path.strip_prefix(dir).unwrap_or(path);
+        if ci {
+            // A formatting finding is about the file, not one line of it, so it
+            // carries no line number — naming one would send a reader to a line
+            // that may be nowhere near the edit.
+            println!(
+                "{}",
+                diagnostic_line(
+                    rules::severity_for_code("F001"),
+                    &relative.display().to_string(),
+                    Some("F001"),
+                    FIXABLE_IN_CI,
+                )
+            );
+        } else {
+            println!("{}", palette::dim(format!("fixed {}", relative.display())));
+        }
+    }
+    for violation in violations {
+        print_violation(
+            &violation.path.display().to_string(),
+            violation.line,
+            violation.code,
+            &violation.message,
+        );
+    }
+
+    let (error_count, warning_count) = severity_counts(violations);
+    let mut gate_errors: Vec<GateError> = violations
+        .iter()
+        .filter(|violation| rules::severity_for_code(violation.code) == rules::Severity::Error)
+        .map(|violation| {
+            GateError::new(
+                format!("{}:{}", violation.path.display(), violation.line),
+                Some(violation.code),
+                violation.message.clone(),
+            )
+        })
+        .collect();
+    if ci {
+        gate_errors.extend(report.fixed_files.iter().map(|path| {
+            GateError::new(
+                path.strip_prefix(dir).unwrap_or(path).display().to_string(),
+                Some("F001"),
+                FIXABLE_IN_CI.to_string(),
+            )
+        }));
+    }
+
+    // Under `--ci` nothing was written, so "fixed" would be a lie: the same
+    // count is what a local run would have to fix.
+    let fixes = if ci { "unformatted" } else { "fixed" };
+    println!(
+        "{}",
+        palette::dim(format!(
+            "Scanned {} file(s), found {error_count} error(s), {warning_count} warning(s), {fixes} {} file(s)",
+            report.files_scanned,
+            report.fixed_files.len(),
+        ))
+    );
+    gate_errors
+}
+
+/// What `--ci` says about a file the gate could have fixed but must not write.
+const FIXABLE_IN_CI: &str = "not formatted; run `navigator project gate` and commit the result";
 
 /// Parse a `--answer code=value` argument into its halves. The value
 /// may itself contain `=`; only the first `=` splits.
@@ -3517,6 +3550,7 @@ fn strip_frontmatter(contents: &str) -> &str {
 }
 
 struct FixReport {
+    files_scanned: usize,
     fixed_files: Vec<PathBuf>,
     remaining: Vec<rules::Violation>,
 }
@@ -3539,7 +3573,9 @@ fn fix_directory(
     dir: &std::path::Path,
     filter: &dyn rules::FileFilter,
     rules_for_file: impl Fn(&rules::SourceFile) -> Vec<Box<dyn rules::Rule>>,
+    write: bool,
 ) -> std::io::Result<FixReport> {
+    let mut files_scanned = 0usize;
     let mut fixed_files = Vec::new();
     let mut remaining = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
@@ -3561,6 +3597,7 @@ fn fix_directory(
         if !filter.include_file(path) {
             continue;
         }
+        files_scanned += 1;
         let contents = std::fs::read_to_string(path)?;
         let mut file = rules::SourceFile {
             path: path.to_path_buf(),
@@ -3610,7 +3647,13 @@ fn fix_directory(
             file.contents = new_contents;
         }
         if file.contents != original {
-            std::fs::write(path, &file.contents)?;
+            // `write` is off under `--ci`, where the checkout is discarded the
+            // moment the job ends. The fix is still computed — that is how the
+            // caller knows the file needs one — but writing it would let a
+            // formatting problem pass a gate and never reach `main`.
+            if write {
+                std::fs::write(path, &file.contents)?;
+            }
             fixed_files.push(path.to_path_buf());
         }
         for rule in &rules_for_file(&file) {
@@ -3618,6 +3661,7 @@ fn fix_directory(
         }
     }
     Ok(FixReport {
+        files_scanned,
         fixed_files,
         remaining,
     })
@@ -3677,7 +3721,7 @@ fn print_violation(path: &str, line: usize, code: &str, message: &str) {
     );
 }
 
-/// One finding that fails the `validate` gate, retained so a run can
+/// One finding that fails the gate, retained so a run can
 /// recapitulate every error at the end.
 ///
 /// The primary listing prints in tree order — per pass, per file, per

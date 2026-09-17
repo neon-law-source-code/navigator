@@ -1,7 +1,7 @@
 //! ENG-671: `.github/actions/navigator-install` is the one place every job
 //! that installs the navigator CLI now goes through, replacing the download
 //! block `project-gate.yml` used to carry five times. These tests pin its
-//! contract the same way `project_gate.rs` pins `.github/actions/validate`'s:
+//! contract the same way `project_gate.rs` pins `.github/actions/gate`'s:
 //! reading the composite action's source rather than driving a GitHub Actions
 //! runner.
 

@@ -57,7 +57,7 @@ fn ci_definition_files() -> Vec<PathBuf> {
     }
 
     for expected in [
-        ".github/actions/validate/action.yml",
+        ".github/actions/gate/action.yml",
         ".github/actions/application-publish/action.yml",
     ] {
         assert!(

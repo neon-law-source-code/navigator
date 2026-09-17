@@ -3414,17 +3414,18 @@ fn run_render(
         if let Some(variant) = pdf::pleading::variant_for_jurisdiction(&jurisdiction) {
             pdf::OutputFormat::Pleading(variant)
         } else {
-            // The template's own `jurisdiction:` is deliberately not echoed
-            // back. It reaches this line straight from a parsed document,
-            // which CodeQL's `rust/cleartext-logging` treats as tainted, and
-            // the author is looking at the file they just wrote — naming the
-            // calibrations that *do* exist is the more actionable half of the
-            // message anyway.
+            // Neither the template's `jurisdiction:` nor its path is echoed
+            // back. Both reach this line from caller-supplied input — the
+            // one from a parsed document, the other from the command line —
+            // and `rust/cleartext-logging` flags a new log of either. There
+            // is nothing to lose by leaving them out: `notations render`
+            // takes exactly one file, named on the command line a moment
+            // earlier, and what the author cannot already see is which
+            // calibrations exist.
             eprintln!(
-                "navigator: {} declares `kind: pleading`, but its `jurisdiction:` has no \
-                 court-paper calibration; the calibrated jurisdictions are {}. Add one to \
-                 `pdf::pleading::variant_for_jurisdiction` before rendering it",
-                file.display(),
+                "navigator: this template declares `kind: pleading`, but its `jurisdiction:` \
+                 has no court-paper calibration; the calibrated jurisdictions are {}. Add one \
+                 to `pdf::pleading::variant_for_jurisdiction` before rendering it",
                 pdf::pleading::CALIBRATED_JURISDICTIONS.join(", ")
             );
             return ExitCode::from(2);

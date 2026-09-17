@@ -65,12 +65,20 @@ the right actor class (system / lawyer / respondent) per state.
 Four routes, all under [`portal::retainer_walk`](../portal/src/retainer_walk.rs):
 
 - `GET /app/lawyer/retainers/new` — render the "start a walk" form.
-- `POST /app/lawyer/retainers/new` — find-or-insert person, then insert project + role + notation in one
-  transaction; redirect to `/app/lawyer/notations/:id/step`.
+- `POST /app/lawyer/retainers/new` — find-or-insert person, then immediately commit project + role + notation;
+  redirect to `/app/lawyer/notations/:id/step`.
 - `GET /app/lawyer/notations/:id/step` — render the current question, or redirect once the questionnaire reaches
   `END`.
 - `POST /app/lawyer/notations/:id/step` — persist the answer, signal the runtime, advance the walker — or, on
   `END`, drive the post-intake workflow (render → send for signature).
+
+### The client-initiated start
+
+The client-initiated start opens a new `pitch` matter from a mapped service card, adds the signed-in client and the
+configured lawyer DRI, and sends the client to the questionnaire. Admission is the ordinary cookie session and the
+client participation row, with no magic-link credential or second identity scheme. A deployment must set the
+`NAVIGATOR_ON_CALL_LAWYER_EMAIL` to an admitted lawyer-tier Person before the door will open. The door does not quote a
+fee, file anything, or bypass the conflict check and lawyer-review gate.
 
 Every state-changing request carries a CSRF token; auth is enforced by the `require_auth` layer on the admin router.
 

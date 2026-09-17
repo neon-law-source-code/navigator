@@ -382,6 +382,7 @@ fn service(
                 amount: price.amount.clone(),
                 plan: price.plan.clone(),
             }),
+        template: record.template.clone(),
     }
 }
 
@@ -437,6 +438,8 @@ fn services_band(copy: BandCopy, catalog: &views::locales::services::ServicesCat
         empty,
         empty_help,
         clear_label,
+        start_label: catalog.start.label.clone(),
+        start_microcopy: catalog.start.microcopy.clone(),
         services: catalog
             .services
             .iter()

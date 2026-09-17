@@ -183,6 +183,16 @@ pub struct ServiceCopy {
     pub template: Option<String>,
 }
 
+/// Copy shared by a service card's start link and the start-door flow.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct StartDoorCopy {
+    pub confirmation: String,
+    pub disclosure: String,
+    pub label: String,
+    pub microcopy: String,
+    pub refusal: String,
+}
+
 impl ServiceCopy {
     /// Every value of this service that a reader can see or search.
     ///
@@ -265,6 +275,9 @@ pub struct ServicesCatalog {
     pub flat_fee: String,
     /// The services, in publication order.
     pub services: Vec<ServiceCopy>,
+    /// The copy for the service start door and the client intake confirmation.
+    #[serde(default)]
+    pub start: StartDoorCopy,
 }
 
 impl ServicesCatalog {
@@ -286,6 +299,7 @@ impl ServicesCatalog {
         }
         check_fee("flat_fee", &self.flat_fee)?;
         self.validate_categories()?;
+        self.validate_start()?;
         let ids = self.validate_services()?;
         for service in &self.services {
             for related in &service.related {
@@ -307,6 +321,22 @@ impl ServicesCatalog {
                 self.validate_package(service, &ids)?;
             }
             self.validate_plan_price(service)?;
+        }
+        Ok(())
+    }
+
+    fn validate_start(&self) -> Result<(), String> {
+        if self.start == StartDoorCopy::default() {
+            return Ok(());
+        }
+        for (key, value) in [
+            ("start.confirmation", self.start.confirmation.as_str()),
+            ("start.disclosure", self.start.disclosure.as_str()),
+            ("start.label", self.start.label.as_str()),
+            ("start.microcopy", self.start.microcopy.as_str()),
+            ("start.refusal", self.start.refusal.as_str()),
+        ] {
+            check_value(key, value)?;
         }
         Ok(())
     }
@@ -580,6 +610,7 @@ impl ServicesCatalog {
             categories: self.categories.clone(),
             flat_fee: self.flat_fee.clone(),
             services: self.services.clone(),
+            start: self.start.clone(),
             source: source.clone(),
         };
         serde_json::to_string(&payload).expect("invariant: the export payload is plain JSON data")
@@ -595,6 +626,7 @@ struct ExportPayload {
     flat_fee: String,
     services: Vec<ServiceCopy>,
     source: Provenance,
+    start: StartDoorCopy,
 }
 
 /// Refuse a value a page cannot publish.
@@ -1083,6 +1115,43 @@ services:
             err.contains("publishes a plan price but is not a Notation package"),
             "{err}"
         );
+    }
+
+    /// The start block is the copy a visitor reads at the service door and on
+    /// the matter they just opened — the "you are not a client yet" sentences.
+    /// A catalog may omit it entirely (no brand has to publish a door), but a
+    /// half-authored one would publish a blank disclosure or a nameless
+    /// button, so every field is required once any of them is set.
+    #[test]
+    fn a_partly_authored_start_block_is_refused() {
+        let catalog = ServicesCatalog::parse(&fixture()).expect("no start block is allowed");
+        assert_eq!(catalog.start, StartDoorCopy::default());
+
+        let err = ServicesCatalog::parse(&format!(
+            "{}\nstart:\n  confirmation: We opened a file.\n  disclosure: Not a client yet.\n  \
+             label: Start\n  microcopy: ''\n  refusal: We cannot start this online.\n",
+            fixture()
+        ))
+        .expect_err("a blank field in an authored start block");
+        assert!(err.contains("`start.microcopy` is empty"), "{err}");
+    }
+
+    /// The whole block round-trips, so the door and the post-start
+    /// confirmation read the same strings the catalog publishes.
+    #[test]
+    fn an_authored_start_block_parses_every_field() {
+        let catalog = ServicesCatalog::parse(&format!(
+            "{}\nstart:\n  confirmation: We opened a file.\n  disclosure: Not a client yet.\n  \
+             label: Start\n  microcopy: Opens a short questionnaire.\n  refusal: We cannot \
+             start this online.\n",
+            fixture()
+        ))
+        .expect("a fully authored start block");
+        assert_eq!(catalog.start.confirmation, "We opened a file.");
+        assert_eq!(catalog.start.disclosure, "Not a client yet.");
+        assert_eq!(catalog.start.label, "Start");
+        assert_eq!(catalog.start.microcopy, "Opens a short questionnaire.");
+        assert_eq!(catalog.start.refusal, "We cannot start this online.");
     }
 
     #[test]

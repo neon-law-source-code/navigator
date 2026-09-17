@@ -708,6 +708,7 @@ mod tests {
             billing_provider: app.billing_provider,
             contract_reviewer: app.contract_reviewer,
             bootstrap_owner_email: app.bootstrap_owner_email,
+            on_call_lawyer_email: app.on_call_lawyer_email,
             bootstrap_company: crate::admin::bootstrap_company_from_env(),
             sessions: app.sessions,
             secure_cookies: false,

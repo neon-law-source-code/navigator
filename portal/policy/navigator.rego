@@ -49,6 +49,21 @@ allow if {
     input.session.role == "owner"
 }
 
+# The service start door admits clients and lawyer-tier sessions. The handler
+# sends lawyer-tier POSTs to the existing lawyer start form; Clerk is not a
+# lawyer tier and must not reach this door.
+allow if {
+    input.path[0] == "start"
+    count(input.path) == 2
+    input.session.role == "client"
+}
+
+allow if {
+    input.path[0] == "start"
+    count(input.path) == 2
+    is_lawyer(input.session)
+}
+
 # /app/projects/* is the one matter surface (ENG-81). Every tier enters the
 # same path, Clerk included now that the dedicated `/clerk` namespace is
 # retired, so the policy cannot make the firm/client/supervised split here —

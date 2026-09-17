@@ -39,6 +39,25 @@ test_owner_bypass_reaches_unrouted_path if {
 	authz.allow with input as {"path": ["not-a-mounted-surface"], "method": "GET", "session": owner_session}
 }
 
+# ---------- /start/{service_id} ----------
+
+test_authenticated_roles_reach_the_start_door if {
+	authz.allow with input as {"path": ["start", "llc-file"], "method": "GET", "session": client_session}
+	authz.allow with input as {"path": ["start", "llc-file"], "method": "POST", "session": lawyer_session}
+}
+
+test_clerk_cannot_reach_the_start_door if {
+	not authz.allow with input as {"path": ["start", "llc-file"], "method": "GET", "session": clerk_session}
+}
+
+test_anonymous_cannot_reach_the_start_door if {
+	not authz.allow with input as {"path": ["start", "llc-file"], "method": "GET", "session": null}
+}
+
+test_start_door_rule_is_exact if {
+	not authz.allow with input as {"path": ["start", "llc-file", "extra"], "method": "GET", "session": client_session}
+}
+
 # ---------- /app/projects/* (any authenticated caller; ENG-81) ----------
 # The policy admits every tier onto the one matter surface. Row scoping is the
 # handler's job, so these tests pin admission only — the denial that matters

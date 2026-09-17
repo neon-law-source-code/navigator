@@ -453,6 +453,17 @@
   font-size: 0.875rem;
 }
 
+/* The one-line explanation under a service card's Start link. It sits with
+   the link, not the scope list, so it reads as part of the door rather than
+   as another thing the service includes. */
+
+.fm-services__start-microcopy {
+  margin: 0.25rem 0 0;
+  color: var(--nav-color-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
 .fm-services__includes-label {
   margin: 0.5rem 0 0;
   color: var(--nav-color-text-muted);

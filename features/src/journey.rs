@@ -67,6 +67,16 @@ impl Journey {
     /// so every journey opens the same router and walks whichever pages it is
     /// about.
     pub async fn open(suite: &str) -> Self {
+        Self::open_with_start_door(suite, false).await
+    }
+
+    /// Open the composed router with the public service door enabled and a
+    /// synthetic admitted lawyer configured as its DRI.
+    pub async fn open_start_door(suite: &str) -> Self {
+        Self::open_with_start_door(suite, true).await
+    }
+
+    async fn open_with_start_door(suite: &str, start_door: bool) -> Self {
         let surreal = shared_surreal().await;
         let storage = fs_storage(suite).await;
         seed::seed_canonical(&surreal, &storage)
@@ -82,6 +92,23 @@ impl Journey {
             sessions.clone(),
         )
         .await;
+        if start_door {
+            let lawyer = store::persons::find_or_create(
+                &surreal,
+                &store::persons::NewPerson::with_role(
+                    "Start Door Lawyer",
+                    "lawyer@neonlaw.com",
+                    store::persons::Role::Lawyer,
+                ),
+            )
+            .await
+            .expect("create configured lawyer");
+            store::persons::set_admitted(&surreal, lawyer.id, true)
+                .await
+                .expect("admit configured lawyer");
+            state.self_signup_enabled = true;
+            state.on_call_lawyer_email = Some("lawyer@neonlaw.com".to_string());
+        }
         // Blank government forms live only in the assets bucket, sha-
         // pinned; stage synthetic blanks (with matching pins) on the
         // journey's storage root so formation fills run against the same

@@ -131,6 +131,7 @@ const CONTRACT: &[(&str, Access)] = &[
     ("/llms.txt", Access::HostPublic),
     ("/blog", Access::HostPublic),
     ("/notations", Access::HostPublic),
+    ("/start/llc-file", Access::HostPublic),
     // The explicit anonymous allowlist.
     ("/version", Access::PublicIngress),
     ("/auth/login", Access::PublicIngress),

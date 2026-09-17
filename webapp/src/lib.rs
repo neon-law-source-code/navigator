@@ -109,6 +109,7 @@ pub mod review;
 pub mod schedules;
 pub mod services_search;
 pub mod source_repository;
+pub mod start_door;
 pub mod team_home;
 pub mod team_page;
 pub mod template_gallery;

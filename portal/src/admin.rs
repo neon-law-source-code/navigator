@@ -131,6 +131,8 @@ pub struct AdminState {
     /// `None` disables the lock — every row's role becomes freely
     /// editable.
     pub bootstrap_owner_email: Option<String>,
+    /// The boot-resolved lawyer DRI for client-initiated service starts.
+    pub on_call_lawyer_email: Option<String>,
     /// Legal name of the firm anchor Entity. The matching row is never
     /// deletable by application users, including admins.
     pub bootstrap_company: String,

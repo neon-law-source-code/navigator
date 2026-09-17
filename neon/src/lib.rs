@@ -42,6 +42,7 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/",
     "/personal",
     "/services",
+    "/start/{service_id}",
     "/disputes",
     "/business",
     "/navigator",

@@ -55,6 +55,7 @@ async fn harness() -> Harness {
         billing_provider: Arc::new(portal::billing::StubBillingProvider::new()),
         contract_reviewer: Arc::new(portal::contract_review::StubContractReviewer),
         bootstrap_owner_email: None,
+        on_call_lawyer_email: None,
         bootstrap_company: portal::admin::DEFAULT_BOOTSTRAP_COMPANY.into(),
         sessions: portal::SessionStore::new("test-session-key-not-for-production"),
         secure_cookies: false,

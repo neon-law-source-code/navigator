@@ -54,6 +54,10 @@ name = "client_intake"
 harness = false
 
 [[test]]
+name = "start_door"
+harness = false
+
+[[test]]
 name = "mutable_intake_docusign"
 harness = false
 

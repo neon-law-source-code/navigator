@@ -437,6 +437,15 @@ pub async fn start_post(
             return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
         }
     };
+    let brand = views::brand::brand_key();
+    match store::firms::firm_id_for_brand_key(&state.surreal, brand.as_str()).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return refuse_start(&body, "this brand is not worn by a firm"),
+        Err(error) => {
+            tracing::error!(error = %error, "start_post: firm lookup for brand failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        }
+    }
     let lawyer_dri_id = if let Some(id) = session.as_deref().and_then(|s| s.person_id) {
         id
     } else if let Ok(Some(id)) = store::persons::default_firm_dri(&state.surreal).await {
@@ -454,7 +463,7 @@ pub async fn start_post(
             name: None,
         },
         lawyer_dri_id,
-        views::brand::brand_key(),
+        brand,
         "open",
         true,
     )

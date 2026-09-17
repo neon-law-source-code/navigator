@@ -49,13 +49,19 @@ allow if {
     input.session.role == "owner"
 }
 
-# The service start door admits an authenticated browser long enough for its
-# handler to apply the role-specific decision: clients may open their own
-# matter, while firm tiers are sent to the lawyer start form.
+# The service start door admits clients and lawyer-tier sessions. The handler
+# sends lawyer-tier POSTs to the existing lawyer start form; Clerk is not a
+# lawyer tier and must not reach this door.
 allow if {
     input.path[0] == "start"
     count(input.path) == 2
-    is_authenticated(input.session)
+    input.session.role == "client"
+}
+
+allow if {
+    input.path[0] == "start"
+    count(input.path) == 2
+    is_lawyer(input.session)
 }
 
 # /app/projects/* is the one matter surface (ENG-81). Every tier enters the

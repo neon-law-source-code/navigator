@@ -267,12 +267,12 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   named case. Deny-by-omission, same as `/app/admin/projects`.
     // 464 + 3 = 467.
     //
-    // + 3 for the authenticated `/start/{service_id}` door: the exact path
-    // shape, plus its client and firm-tier policy cases.
-    // 467 + 3 = 470.
+    // + 4 for the authenticated `/start/{service_id}` door: the exact path
+    // shape, its client and firm-tier policy cases, and the Clerk denial.
+    // 467 + 4 = 471.
     assert_eq!(
         test_names.len(),
-        470,
+        471,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

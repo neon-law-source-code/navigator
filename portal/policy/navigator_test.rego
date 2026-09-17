@@ -46,6 +46,10 @@ test_authenticated_roles_reach_the_start_door if {
 	authz.allow with input as {"path": ["start", "llc-file"], "method": "POST", "session": lawyer_session}
 }
 
+test_clerk_cannot_reach_the_start_door if {
+	not authz.allow with input as {"path": ["start", "llc-file"], "method": "GET", "session": clerk_session}
+}
+
 test_anonymous_cannot_reach_the_start_door if {
 	not authz.allow with input as {"path": ["start", "llc-file"], "method": "GET", "session": null}
 }

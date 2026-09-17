@@ -3236,46 +3236,55 @@ fn gate_root() -> Result<PathBuf, String> {
 /// edit; `--errors-only` hides Warning-severity advisories; `--ci` holds
 /// the origin pass to a built tree.
 fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool, ci: bool) -> ExitCode {
-    let question_codes = rules::canonical_question_codes();
     if fix {
-        let fix_report = match fix_directory(
-            dir,
-            &rules::DefaultFileFilter::default(),
-            |file| rules::navigator_classified_rules_with_codes(file, &question_codes),
-            true,
-        ) {
-            Ok(report) => report,
-            Err(error) => {
-                eprintln!("navigator: {error}");
-                return ExitCode::from(2);
-            }
-        };
-        for path in &fix_report.fixed_files {
-            println!("{}", palette::dim(format!("fixed {}", path.display())));
-        }
-        for violation in &fix_report.remaining {
-            print_violation(
-                &violation.path.display().to_string(),
-                violation.line,
-                violation.code,
-                &violation.message,
-            );
-        }
-        println!(
-            "{}",
-            palette::dim(format!(
-                "Fixed {} file(s); {} remaining violation(s) need a human.",
-                fix_report.fixed_files.len(),
-                fix_report.remaining.len(),
-            ))
-        );
-        return if fix_report.remaining.is_empty() {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::from(1)
-        };
+        run_validate_fix(dir)
+    } else {
+        run_validate_scan(dir, errors_only, ci)
     }
+}
 
+fn run_validate_fix(dir: &std::path::Path) -> ExitCode {
+    let question_codes = rules::canonical_question_codes();
+    let fix_report = match fix_directory(
+        dir,
+        &rules::DefaultFileFilter::default(),
+        |file| rules::navigator_classified_rules_with_codes(file, &question_codes),
+        true,
+    ) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    for path in &fix_report.fixed_files {
+        println!("{}", palette::dim(format!("fixed {}", path.display())));
+    }
+    for violation in &fix_report.remaining {
+        print_violation(
+            &violation.path.display().to_string(),
+            violation.line,
+            violation.code,
+            &violation.message,
+        );
+    }
+    println!(
+        "{}",
+        palette::dim(format!(
+            "Fixed {} file(s); {} remaining violation(s) need a human.",
+            fix_report.fixed_files.len(),
+            fix_report.remaining.len(),
+        ))
+    );
+    if fix_report.remaining.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn run_validate_scan(dir: &std::path::Path, errors_only: bool, ci: bool) -> ExitCode {
+    let question_codes = rules::canonical_question_codes();
     let mut report = match rules::ClassifiedRuleEngine::new()
         .with_question_codes(question_codes)
         .lint_directory(dir)

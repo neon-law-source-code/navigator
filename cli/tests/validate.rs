@@ -151,7 +151,7 @@ fn validate_errors_only_hides_advisories_but_not_their_count() {
         stdout.contains("found 1 error(s), 1 warning(s)"),
         "the summary still counts the hidden advisories:\n{stdout}",
     );
-    assert!(stdout.contains("S101"), "the error still prints:\n{stdout}",);
+    assert!(stdout.contains("S101"), "the error still prints:\n{stdout}");
 }
 
 #[test]

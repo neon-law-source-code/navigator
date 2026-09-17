@@ -44,6 +44,7 @@ struct Harness {
     surreal: store::surreal::SurrealDb,
     runtime: Arc<dyn StateMachineRuntime>,
     storage: Arc<dyn cloud::StorageService>,
+    email: Arc<portal::email::CapturingEmail>,
 }
 
 async fn build_app() -> Harness {
@@ -56,11 +57,13 @@ async fn build_app() -> Harness {
     );
     seed::seed_canonical(&surreal, &storage).await.unwrap();
     let runtime: Arc<dyn StateMachineRuntime> = Arc::new(InMemoryRuntime::new());
+    let email = Arc::new(portal::email::CapturingEmail::new());
     let state = AppState {
         sessions: SessionStore::new(KEY),
         storage: storage.clone(),
         workflow_runtime: runtime.clone(),
         questionnaire_runtime: runtime.clone(),
+        email: email.clone(),
         ..portal::test_support::app_state(surreal.clone()).await
     };
     Harness {
@@ -68,6 +71,7 @@ async fn build_app() -> Harness {
         surreal,
         runtime,
         storage,
+        email,
     }
 }
 
@@ -200,6 +204,34 @@ async fn participant_lawyer_dispatches_the_intake_and_reports_the_recipient() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["notation_id"], notation_id.to_string());
     assert_eq!(json["recipient"], CLIENT_EMAIL);
+}
+
+#[tokio::test]
+async fn dispatched_intake_uses_the_project_code_in_its_route() {
+    let _repo_guard = REPO_ENV_LOCK.lock().await;
+    let h = build_app().await;
+    let project = open_project(&h.surreal).await;
+    let notation_id = open_notation(&h, &project).await;
+    let lawyer = bearer(
+        &h.surreal,
+        "acting-lawyer@example.com",
+        Role::Lawyer,
+        Some(project.id),
+    )
+    .await;
+
+    let response = post_intake(&h.app, Some(&lawyer), notation_id).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let captured = h.email.captured();
+    assert_eq!(captured.len(), 1, "the command sends one intake email");
+    assert!(
+        captured[0]
+            .body
+            .contains(&format!("/app/projects/{}/intake/{notation_id}", project.code)),
+        "the emailed route must use the code the intake handler resolves: {}",
+        captured[0].body
+    );
 }
 
 #[tokio::test]

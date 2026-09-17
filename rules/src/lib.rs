@@ -197,7 +197,8 @@ pub use engine::{
     canonical_question_codes, classify_source, code_uniqueness_violations, lint_source_classified,
     navigator_classified_rules, navigator_classified_rules_with_codes, navigator_default_rules,
     navigator_default_rules_with_codes, navigator_event_rules, navigator_markdown_only_rules,
-    ClassifiedRuleEngine, DefaultFileFilter, DocumentKind, FileFilter, LintReport, RuleEngine,
+    service_template_violations, ClassifiedRuleEngine, DefaultFileFilter, DocumentKind, FileFilter,
+    LintReport, RuleEngine,
 };
 
 use std::ops::Range;
@@ -297,6 +298,7 @@ pub trait Rule: Send + Sync {
 /// that hovering a violation explains the rule without re-walking
 /// the registry on every lookup.
 #[must_use]
+#[allow(clippy::too_many_lines)] // one flat match keeps the rule catalogue easy to audit
 pub fn description_for_code(code: &str) -> &'static str {
     match code {
         "S101" => "Line exceeds the 120-character limit",
@@ -335,6 +337,9 @@ pub fn description_for_code(code: &str) -> &'static str {
         "N122" => "Every declared questionnaire state must be read by the template body",
         "N123" => {
             "Agreement, pleading, and engagement-letter bodies must carry a Harvard outline"
+        }
+        "N124" => {
+            "A services catalog template reference must name a notation under `templates/notations/`"
         }
         "E001" => "Event must declare both a `starts_at` timestamp and a `timezone`",
         "E002" => "A file is either an event or a notation template, never both",

@@ -46,6 +46,7 @@ categories:
 
 services:
   - id: llc-file
+    template: nv__llc_formation
     item: "1101"
     name: Start a company
     blurb: >-
@@ -103,6 +104,7 @@ services:
       - Launch
 
   - id: nonprofit
+    template: nv__nonprofit_501c3_formation
     item: "1103"
     name: Start a nonprofit
     blurb: >-
@@ -125,6 +127,7 @@ services:
       - conflict-of-interest policy
 
   - id: annual-report
+    template: nv__annual_report
     item: "1201"
     name: Renew your Nevada business paperwork
     blurb: >-

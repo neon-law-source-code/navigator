@@ -3212,6 +3212,15 @@ fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool, ci: bool) -
             return ExitCode::from(2);
         }
     }
+    // Cross-file `N124`: every notation template named by a services catalog
+    // must exist under `templates/notations/`.
+    match rules::service_template_violations(dir, &rules::DefaultFileFilter::default()) {
+        Ok(mut v) => report.violations.append(&mut v),
+        Err(e) => {
+            eprintln!("navigator: {e}");
+            return ExitCode::from(2);
+        }
+    }
     // `--errors-only` narrows what prints here and nothing else: the
     // summary below still counts every advisory, and the gate below still
     // ignores them.

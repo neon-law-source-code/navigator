@@ -173,6 +173,9 @@ pub struct ServiceCopy {
     /// Whether a government body charges its own fee on top of this one.
     #[serde(default)]
     pub state_fee: bool,
+    /// The notation template a public start can open for this service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
 }
 
 impl ServiceCopy {
@@ -712,6 +715,7 @@ categories:
     label: Disputes and housing
 services:
   - id: llc-file
+    template: nv__llc_formation
     item: '1101'
     name: Start a company
     blurb: We set up your company and a lawyer files the papers.
@@ -750,6 +754,7 @@ services:
         // A flat-fee service reads the catalog's one figure; a literal amount
         // reads itself.
         let llc = catalog.get("llc-file").expect("llc-file");
+        assert_eq!(llc.template.as_deref(), Some("nv__llc_formation"));
         assert_eq!(catalog.fee(llc), "$50");
         let address = catalog.get("nv-address").expect("nv-address");
         assert_eq!(catalog.fee(address), "$350");

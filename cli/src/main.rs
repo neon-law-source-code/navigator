@@ -1960,6 +1960,19 @@ enum MailAction {
 
 #[derive(Subcommand)]
 enum NotationAction {
+    /// List the private notation inventory for one matter. The output includes
+    /// the template code, workflow state, and respondent so an author can
+    /// check for an existing instrument before opening another one.
+    List {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code whose notation inventory to inspect.
+        #[arg(long)]
+        project: String,
+        /// Emit the raw JSON inventory.
+        #[arg(long)]
+        json: bool,
+    },
     /// Create a questionnaire-driven notation on an existing matter and
     /// leave its questionnaire ready for the site intake flow.
     ///
@@ -1993,6 +2006,16 @@ enum NotationAction {
         #[command(flatten)]
         host: HostOpt,
         /// Emit the raw JSON status body.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read the filed answers and their source provenance for one notation.
+    Answers {
+        /// Notation UUID.
+        notation_id: uuid::Uuid,
+        #[command(flatten)]
+        host: HostOpt,
+        /// Emit the raw JSON answers.
         #[arg(long)]
         json: bool,
     },
@@ -2476,6 +2499,11 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
 
 async fn run_notation(action: NotationAction) -> ExitCode {
     match action {
+        NotationAction::List {
+            host,
+            project,
+            json,
+        } => remote::notation_list(host.host.as_deref(), &project, json).await,
         NotationAction::Create {
             template_code,
             host,
@@ -2495,6 +2523,11 @@ async fn run_notation(action: NotationAction) -> ExitCode {
             host,
             json,
         } => remote::notation_status(host.host.as_deref(), notation_id, json).await,
+        NotationAction::Answers {
+            notation_id,
+            host,
+            json,
+        } => remote::notation_answers(host.host.as_deref(), notation_id, json).await,
         NotationAction::Approve { notation_id, host } => {
             remote::notation_approve(host.host.as_deref(), notation_id).await
         }

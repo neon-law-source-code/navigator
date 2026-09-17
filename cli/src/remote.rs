@@ -25,7 +25,7 @@ use std::process::ExitCode;
 use anyhow::{anyhow, Context, Result};
 use base64::Engine as _;
 use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::credentials::{self, default_credentials_path, HostCredential};
@@ -1575,6 +1575,117 @@ pub async fn notation_create(
     .await
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct NotationInventoryRow {
+    id: Uuid,
+    template_code: Option<String>,
+    state: String,
+    respondent_name: Option<String>,
+    respondent_email: Option<String>,
+}
+
+/// `navigator site notation list --project <code>` — inspect the private
+/// notation inventory for one matter without opening its browser workbench.
+pub async fn notation_list(host: Option<&str>, project_code: &str, json: bool) -> ExitCode {
+    run(async {
+        let client = DocumentClient::connect(host, project_code).await?;
+        let url = format!(
+            "{}/app/api/projects/{}/notation-inventory",
+            client.base, client.project_id
+        );
+        let response = client
+            .client
+            .get(&url)
+            .bearer_auth(&client.token)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "list notation inventory failed: {}",
+                server_error(status, &body)
+            ));
+        }
+        let rows: Vec<NotationInventoryRow> =
+            serde_json::from_str(&body).context("parse notation inventory")?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&rows)?);
+        } else if rows.is_empty() {
+            println!("{}", palette::dim("no notations on this matter"));
+        } else {
+            for row in rows {
+                let template = row.template_code.as_deref().unwrap_or("unknown template");
+                let respondent = row
+                    .respondent_name
+                    .as_deref()
+                    .unwrap_or("unknown respondent");
+                let email = row.respondent_email.as_deref().unwrap_or("unknown email");
+                println!(
+                    "{} {} ({respondent} <{email}>) — {}",
+                    palette::highlight(template),
+                    palette::dim(row.id),
+                    row.state
+                );
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct NotationAnswer {
+    id: Uuid,
+    question_id: Uuid,
+    state_name: Option<String>,
+    value: serde_json::Value,
+    source: String,
+    authored_by_person_id: Option<Uuid>,
+}
+
+/// `navigator site notation answers <id>` — read filed answers and their
+/// provenance through the same lawyer-tier, matter-scoped API door as the
+/// browser workbench.
+pub async fn notation_answers(host: Option<&str>, notation_id: Uuid, json: bool) -> ExitCode {
+    run(async {
+        let (base, token) = resolve(host)?;
+        let url = format!("{base}/app/api/notations/{notation_id}/answers");
+        let response = reqwest::Client::new()
+            .get(&url)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "read notation answers failed: {}",
+                server_error(status, &body)
+            ));
+        }
+        let answers: Vec<NotationAnswer> =
+            serde_json::from_str(&body).context("parse notation answers")?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&answers)?);
+        } else if answers.is_empty() {
+            println!("{}", palette::dim("no filed answers"));
+        } else {
+            for answer in answers {
+                let state = answer.state_name.as_deref().unwrap_or("unscoped");
+                let author = answer
+                    .authored_by_person_id
+                    .map_or_else(|| "system".to_string(), |id| id.to_string());
+                println!("{state}: {} [{} by {author}]", answer.value, answer.source);
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
 /// Legacy intake client — walk the notation's questionnaire one
 /// question at a time over the same `/app/lawyer/notations/:id/step`
 /// route the browser POSTs, reading each question's metadata from the
@@ -2724,12 +2835,12 @@ mod tests {
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
         clause_list, document_upload, ensure_no_unused_selections, fetch_status, mail_file,
-        matter_close, matter_open, notation_approve, notation_create, notation_document,
-        notation_request_changes, notation_status, notation_update, parse_scripted_selection,
-        picker_selection_fields, projects_create, projects_lifecycle, projects_list,
-        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
-        select_candidate, CoverageSummary, DocumentClient, SeedCredential, StepQuestion,
-        StepResponse,
+        matter_close, matter_open, notation_answers, notation_approve, notation_create,
+        notation_document, notation_list, notation_request_changes, notation_status,
+        notation_update, parse_scripted_selection, picker_selection_fields, projects_create,
+        projects_lifecycle, projects_list, retainer_approve, retainer_send,
+        scripted_picker_selection_fields, seed, seed_directory, select_candidate, CoverageSummary,
+        DocumentClient, SeedCredential, StepQuestion, StepResponse,
     };
     use super::{
         exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, parse_csv,
@@ -4094,6 +4205,22 @@ mod tests {
             .await;
     }
 
+    async fn mount_notation_read_routes(server: &MockServer, ids: LawyerRouteIds) {
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/app/api/projects/{}/notation-inventory",
+                ids.project
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/app/api/notations/{}/answers", ids.notation)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(server)
+            .await;
+    }
+
     async fn exercise_project_commands(host: Option<&str>) {
         assert_eq!(projects_list(host, true).await, ExitCode::SUCCESS);
         assert_eq!(matter_open(host, "acme").await, ExitCode::SUCCESS);
@@ -4101,6 +4228,7 @@ mod tests {
     }
 
     async fn exercise_notation_commands(host: Option<&str>, server_uri: &str, ids: LawyerRouteIds) {
+        assert_eq!(notation_list(host, "acme", true).await, ExitCode::SUCCESS);
         assert_eq!(
             notation_create(host, "memo__contract_review", "libra@example.com", "acme",).await,
             ExitCode::SUCCESS
@@ -4113,6 +4241,10 @@ mod tests {
             .is_some());
         assert_eq!(
             notation_approve(host, ids.notation).await,
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            notation_answers(host, ids.notation, true).await,
             ExitCode::SUCCESS
         );
         let out = tempfile::NamedTempFile::new().unwrap();
@@ -4440,6 +4572,7 @@ mod tests {
         };
         mount_project_routes(&server, ids).await;
         mount_notation_routes(&server, ids).await;
+        mount_notation_read_routes(&server, ids).await;
 
         exercise_project_commands(host).await;
         exercise_notation_commands(host, &server_uri, ids).await;

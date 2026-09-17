@@ -1337,6 +1337,22 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/projects/{id}/notation-inventory": {
+          "get": {
+            "summary": "List a matter's private notation inventory",
+            "description":
+              "Lists each notation's template code, workflow state, and respondent for a participating lawyer. Authorization: lawyer or admin, and the caller must participate in the matter; an out-of-scope matter returns 404.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "responses": {
+              "200": { "description": "The private notation inventory", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object" } } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          }
+        },
         "/app/api/notations/{id}": {
           "get": {
             "summary": "Get one notation",
@@ -1373,6 +1389,21 @@ pub fn document_with_base(base: &str) -> Value {
           }
         },
         "/app/api/notations/{id}/answers": {
+          "get": {
+            "summary": "Read a notation's filed answers",
+            "description":
+              "Returns the filed answer values and source provenance. Authorization: lawyer or admin, and the caller must participate in the notation's matter; an out-of-scope or unknown notation returns 404.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true,
+                "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "responses": {
+              "200": { "description": "The notation's filed answers", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object" } } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such notation, or it is outside the caller's scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          },
           "post": {
             "summary": "Answer a notation's current questionnaire step",
             "x-mcp-tool": "answer_notation",
@@ -3363,8 +3394,16 @@ mod tests {
             "/app/api/projects/{id}/participants/{role_id}".to_string()
         )));
         assert!(ops.contains(&(
+            "GET".to_string(),
+            "/app/api/projects/{id}/notation-inventory".to_string()
+        )));
+        assert!(ops.contains(&(
             "POST".to_string(),
             "/app/api/projects/{id}/notations".to_string()
+        )));
+        assert!(ops.contains(&(
+            "GET".to_string(),
+            "/app/api/notations/{id}/answers".to_string()
         )));
         assert!(ops.contains(&(
             "POST".to_string(),

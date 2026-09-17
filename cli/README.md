@@ -72,6 +72,14 @@ navigator site notation create offboarding__letter \
   --client-email <client@example.com>
 ```
 
+Before opening another instrument, inspect the matter's private notation inventory. A lawyer can then read the filed
+answers and their source provenance for a particular Notation:
+
+```bash
+navigator site notation list --project <project-code>
+navigator site notation answers <notation-uuid>
+```
+
 ## Exit codes for `--ci` commands
 
 `navigator site import --ci` and `navigator site document verify --ci` first exchange the runner's GitHub Actions OIDC

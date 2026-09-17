@@ -33,12 +33,120 @@ struct Fixture {
     lawyer: String,
     client: String,
     outsider: String,
+    /// An Owner with no participation row on the fixture matter.
+    unassigned_owner: String,
+    /// An Admin with no participation row on the fixture matter.
+    unassigned_admin: String,
+    /// An Admin who *is* seeded onto the matter, so the firm-side gate is
+    /// proved to be about the participation row rather than about the tier.
+    participating_admin: String,
+    /// A Clerk: the supervised non-lawyer tier, which `LawyerSession` refuses.
+    clerk: String,
 }
 
 fn bearer(person_id: Uuid, role: Role) -> String {
     let mut s = SessionData::fresh("api-reads-sub", role);
     s.person_id = Some(person_id);
     format!("Bearer {}", SessionStore::new(KEY).encode(&s))
+}
+
+/// The privileged and supervised tiers the participation gate has to answer
+/// for. None of them is needed as a `Person` elsewhere in the fixture, so they
+/// are seeded straight to the bearer their session presents.
+struct TierBearers {
+    unassigned_owner: String,
+    unassigned_admin: String,
+    participating_admin: String,
+    clerk: String,
+}
+
+/// Seed an Owner and an Admin who hold no row on `project_id`, an Admin who
+/// does, and a Clerk. The unassigned pair is the point: it is what proves the
+/// privileged tiers reach matter *content* through the participation ledger
+/// like everybody else (ENG-81) rather than through their tier.
+async fn seed_tier_bearers(surreal: &store::surreal::SurrealDb, project_id: Uuid) -> TierBearers {
+    let mut seeded = Vec::new();
+    for (name, email, role, seated) in [
+        ("Owner", "owner@example.com", Role::Owner, false),
+        ("Admin", "admin@example.com", Role::Admin, false),
+        (
+            "Seated Admin",
+            "seated-admin@example.com",
+            Role::Admin,
+            true,
+        ),
+        ("Clerk", "clerk@example.com", Role::Clerk, false),
+    ] {
+        let person = store::persons::create(
+            surreal,
+            &store::persons::NewPerson::with_role(name, email, role),
+        )
+        .await
+        .unwrap();
+        if seated {
+            store::projects::add_participation(surreal, project_id, person.id, "lawyer")
+                .await
+                .unwrap();
+        }
+        seeded.push(bearer(person.id, role));
+    }
+    let mut seeded = seeded.into_iter();
+    TierBearers {
+        unassigned_owner: seeded.next().unwrap(),
+        unassigned_admin: seeded.next().unwrap(),
+        participating_admin: seeded.next().unwrap(),
+        clerk: seeded.next().unwrap(),
+    }
+}
+
+/// Seed a notation on the matter and a playbook for the firm, so the reads
+/// under test return content rather than empty arrays. Returns the notation id.
+async fn seed_matter_content(
+    surreal: &store::surreal::SurrealDb,
+    project_id: Uuid,
+    entity_id: Uuid,
+    respondent_id: Uuid,
+) -> Uuid {
+    let tmpl = store::templates::save_version(
+        surreal,
+        None,
+        "test__read_walk",
+        store::templates::Version {
+            title: "Read walk".into(),
+            respondent_type: "person".into(),
+            asset_id: None,
+            form_code: None,
+            kind: None,
+            source_commit_sha: None,
+        },
+    )
+    .await
+    .unwrap()
+    .into_model();
+    let notation_id = store::notations::create(
+        surreal,
+        &store::notations::NewNotation::new(tmpl.id, respondent_id, project_id, "BEGIN"),
+    )
+    .await
+    .unwrap()
+    .id;
+    store::playbooks::create(
+        surreal,
+        &store::playbooks::NewPlaybook {
+            entity_id,
+            name: "Vendor MSA",
+            positions: &[store::playbooks::Position {
+                topic: "Liability".into(),
+                preferred: "cap".into(),
+                fallback: "2x".into(),
+                walkaway: "uncapped".into(),
+                severity: store::playbooks::SEVERITY_HIGH.into(),
+            }],
+        },
+    )
+    .await
+    .unwrap();
+    notation_id
 }
 
 async fn build_fixture() -> Fixture {
@@ -88,47 +196,9 @@ async fn build_fixture() -> Fixture {
     )
     .await
     .unwrap();
+    let tiers = seed_tier_bearers(&surreal, project.id).await;
 
-    // A notation on the matter, and a playbook, so the reads return content.
-    let tmpl = store::templates::save_version(
-        &surreal,
-        None,
-        "test__read_walk",
-        store::templates::Version {
-            title: "Read walk".into(),
-            respondent_type: "person".into(),
-            asset_id: None,
-            form_code: None,
-            kind: None,
-            source_commit_sha: None,
-        },
-    )
-    .await
-    .unwrap()
-    .into_model();
-    let notation_id = store::notations::create(
-        &surreal,
-        &store::notations::NewNotation::new(tmpl.id, client.id, project.id, "BEGIN"),
-    )
-    .await
-    .unwrap()
-    .id;
-    store::playbooks::create(
-        &surreal,
-        &store::playbooks::NewPlaybook {
-            entity_id,
-            name: "Vendor MSA",
-            positions: &[store::playbooks::Position {
-                topic: "Liability".into(),
-                preferred: "cap".into(),
-                fallback: "2x".into(),
-                walkaway: "uncapped".into(),
-                severity: store::playbooks::SEVERITY_HIGH.into(),
-            }],
-        },
-    )
-    .await
-    .unwrap();
+    let notation_id = seed_matter_content(&surreal, project.id, entity_id, client.id).await;
 
     let state = AppState {
         sessions: SessionStore::new(KEY),
@@ -142,6 +212,10 @@ async fn build_fixture() -> Fixture {
         lawyer: bearer(lawyer.id, Role::Lawyer),
         client: bearer(client.id, Role::Client),
         outsider: bearer(outsider.id, Role::Lawyer),
+        unassigned_owner: tiers.unassigned_owner,
+        unassigned_admin: tiers.unassigned_admin,
+        participating_admin: tiers.participating_admin,
+        clerk: tiers.clerk,
     }
 }
 
@@ -349,6 +423,57 @@ async fn notation_inventory_is_lawyer_only_and_matter_scoped() {
         get(&fx, &path, None).await.status(),
         StatusCode::UNAUTHORIZED
     );
+}
+
+/// The notation inventory and the filed answers are matter *content*, so the
+/// participation ledger scopes them for every tier — Owner and Admin included
+/// (ENG-81). Route admission is where a privileged tier skips project-scoping;
+/// it is not a key to a matter's work product. An unassigned Owner or Admin
+/// therefore gets the same 404 an unassigned Lawyer gets, and the fact that
+/// they could name the matter's UUID changes nothing.
+#[tokio::test]
+async fn private_notation_reads_require_participation_from_every_tier() {
+    let fx = build_fixture().await;
+    let inventory = format!("/app/api/projects/{}/notation-inventory", fx.project_id);
+    let answers = format!("/app/api/notations/{}/answers", fx.notation_id);
+
+    for path in [&inventory, &answers] {
+        for (label, auth) in [
+            ("unassigned owner", &fx.unassigned_owner),
+            ("unassigned admin", &fx.unassigned_admin),
+            ("unassigned lawyer", &fx.outsider),
+        ] {
+            assert_eq!(
+                get(&fx, path, Some(auth)).await.status(),
+                StatusCode::NOT_FOUND,
+                "{label} must not read {path} without a participation row"
+            );
+        }
+
+        assert_eq!(
+            get(&fx, path, Some(&fx.participating_admin)).await.status(),
+            StatusCode::OK,
+            "an admin seated on the matter still reads {path}"
+        );
+    }
+}
+
+/// Clerk is the supervised non-lawyer tier, not a narrower Lawyer, so it is
+/// refused at the extractor rather than scoped at the matter — 403, not 404.
+#[tokio::test]
+async fn private_notation_reads_refuse_the_clerk_tier() {
+    let fx = build_fixture().await;
+
+    for path in [
+        format!("/app/api/projects/{}/notation-inventory", fx.project_id),
+        format!("/app/api/notations/{}/answers", fx.notation_id),
+    ] {
+        assert_eq!(
+            get(&fx, &path, Some(&fx.clerk)).await.status(),
+            StatusCode::FORBIDDEN,
+            "{path} is lawyer-tier, and a clerk is not lawyer tier"
+        );
+    }
 }
 
 #[tokio::test]

@@ -1113,20 +1113,13 @@ struct NotationInventoryRow {
 
 /// `GET /app/api/projects/{id}/notation-inventory` — a lawyer's private,
 /// matter-scoped inventory of the notations opened on one Project.
+/// Participation is required of every tier, Owner and Admin included.
 async fn notation_inventory_door(
     State(state): State<ApiState>,
     lawyer: LawyerSession,
     Path(id): Path<Uuid>,
 ) -> Result<Response, ApiError> {
-    let in_scope = store::access::can_see_project_as_lawyer(
-        &state.surreal,
-        lawyer.0.person_id,
-        lawyer.0.role,
-        id,
-    )
-    .await
-    .unwrap_or(false);
-    if !in_scope {
+    if !participates_as_firm(&state, &lawyer, id).await {
         return Err(ApiError::NotFound);
     }
 
@@ -1169,12 +1162,13 @@ async fn get_notation_door(
 /// `GET /app/api/notations/{id}/answers` — the filed answers for one notation.
 /// The answer values, source, and author provenance are firm work product, so
 /// this route is lawyer-tier and matter-scoped rather than client-readable.
+/// Participation is required of every tier, Owner and Admin included.
 async fn list_notation_answers_door(
     State(state): State<ApiState>,
     lawyer: LawyerSession,
     Path(id): Path<Uuid>,
 ) -> Result<Response, ApiError> {
-    let notation = notation_in_lawyer_scope(&state, &lawyer, id).await?;
+    let notation = notation_in_firm_participation(&state, &lawyer, id).await?;
     let answers = store::answers::for_notation(&state.surreal, notation.id)
         .await
         .map_err(|error| ApiError::Db(error.to_string()))?;
@@ -1233,6 +1227,30 @@ async fn get_contract_review_door(
         return Err(ApiError::NotFound);
     }
     Ok((StatusCode::OK, Json(review)).into_response())
+}
+
+/// Whether a lawyer-tier caller holds a *firm-side* participation row on
+/// `project_id` — the gate for matter content that is firm work product.
+///
+/// Deliberately not [`store::access::can_see_project_as_lawyer`]: that helper
+/// still carries the Owner/Admin project-scoping bypass for the surfaces ENG-83
+/// has not collapsed. Owner and Admin bypass project-scoping at *route
+/// admission*; that is oversight, not a key to a matter's work product, and a
+/// notation inventory or a filed answer is content. `matter_viewer` scopes
+/// every tier by the participation ledger with no short-circuit (ENG-81), and
+/// `is_firm_side` keeps a lawyer who holds a client-side row on their own
+/// matter in the client lens rather than handing them the firm's notes.
+async fn participates_as_firm(state: &ApiState, lawyer: &LawyerSession, project_id: Uuid) -> bool {
+    store::access::matter_viewer(
+        &state.surreal,
+        lawyer.0.person_id,
+        lawyer.0.role,
+        project_id,
+    )
+    .await
+    .ok()
+    .flatten()
+    .is_some_and(store::access::MatterViewer::is_firm_side)
 }
 
 /// Whether `authed` may see matter `project_id`, in either lens.
@@ -2146,6 +2164,29 @@ async fn answer_notation_step(
             .await?;
     }
     Ok((StatusCode::OK, Json(NotationStepResponse::from(next))).into_response())
+}
+
+/// Load a notation and confirm the caller participates on its matter from the
+/// firm side, or 404.
+///
+/// The content-read sibling of [`notation_in_lawyer_scope`]. That one keeps the
+/// Owner/Admin bypass the write and workflow doors were built on, which ENG-83
+/// owns collapsing; this one goes through [`participates_as_firm`], so a
+/// privileged tier with no row on the matter is refused exactly like an
+/// unassigned lawyer. Use this one whenever the door returns the matter's work
+/// product rather than driving its workflow.
+async fn notation_in_firm_participation(
+    state: &ApiState,
+    lawyer: &LawyerSession,
+    notation_id: Uuid,
+) -> Result<store::notations::Notation, ApiError> {
+    let notation = store::notations::find_by_id(&state.surreal, notation_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if !participates_as_firm(state, lawyer, notation.project_id).await {
+        return Err(ApiError::NotFound);
+    }
+    Ok(notation)
 }
 
 /// Load a notation and confirm the lawyer caller may see its matter, or 404.

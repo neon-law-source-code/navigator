@@ -80,6 +80,10 @@ navigator site notation list --project <project-code>
 navigator site notation answers <notation-uuid>
 ```
 
+Both read matter content, so both require a firm-side participation row on the matter — of every tier, Owner and Admin
+included. Being Owner or Admin is not itself a key to a matter's work product: seat yourself on the matter first, or
+these answer `404`. A Clerk is not lawyer tier and gets `403`.
+
 ## Exit codes for `--ci` commands
 
 `navigator site import --ci` and `navigator site document verify --ci` first exchange the runner's GitHub Actions OIDC

@@ -1341,15 +1341,15 @@ pub fn document_with_base(base: &str) -> Value {
           "get": {
             "summary": "List a matter's private notation inventory",
             "description":
-              "Lists each notation's template code, workflow state, and respondent for a participating lawyer. Authorization: lawyer or admin, and the caller must participate in the matter; an out-of-scope matter returns 404.",
+              "Lists each notation's template code, workflow state, and respondent for a participating lawyer. Authorization: lawyer tier (lawyer, admin, or owner), and the caller must hold a firm-side participation row on the matter. Participation is required of every tier: owner and admin bypass project-scoping at route admission but not on matter content, so an unassigned owner or admin gets 404 like any other non-participant. A clerk is not lawyer tier and gets 403.",
             "parameters": [
               { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
             ],
             "responses": {
               "200": { "description": "The private notation inventory", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object" } } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "404": { "description": "No such matter, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+              "403": { "description": "Authenticated caller is not lawyer tier (a clerk or a client)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter, or the caller holds no firm-side participation row on it", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           }
         },
@@ -1392,7 +1392,7 @@ pub fn document_with_base(base: &str) -> Value {
           "get": {
             "summary": "Read a notation's filed answers",
             "description":
-              "Returns the filed answer values and source provenance. Authorization: lawyer or admin, and the caller must participate in the notation's matter; an out-of-scope or unknown notation returns 404.",
+              "Returns the filed answer values and source provenance, which are firm work product. Authorization: lawyer tier (lawyer, admin, or owner), and the caller must hold a firm-side participation row on the notation's matter. Participation is required of every tier: owner and admin bypass project-scoping at route admission but not on matter content, so an unassigned owner or admin gets 404, as does an unknown notation. A clerk is not lawyer tier and gets 403.",
             "parameters": [
               { "name": "id", "in": "path", "required": true,
                 "schema": { "type": "string", "format": "uuid" } }
@@ -1400,8 +1400,8 @@ pub fn document_with_base(base: &str) -> Value {
             "responses": {
               "200": { "description": "The notation's filed answers", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object" } } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "404": { "description": "No such notation, or it is outside the caller's scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+              "403": { "description": "Authenticated caller is not lawyer tier (a clerk or a client)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such notation, or the caller holds no firm-side participation row on its matter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           },
           "post": {

@@ -423,7 +423,8 @@ impl Rule for F123HarvardOutlineRequired {
     }
 
     fn description(&self) -> &'static str {
-        "Agreement, pleading, and engagement-letter bodies must carry a Harvard outline"
+        "Agreement, will, pleading, and engagement-letter bodies must carry a Harvard \
+         outline, titled to match the frame they render in"
     }
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {

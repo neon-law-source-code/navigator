@@ -1117,6 +1117,43 @@ services:
         );
     }
 
+    /// The start block is the copy a visitor reads at the service door and on
+    /// the matter they just opened — the "you are not a client yet" sentences.
+    /// A catalog may omit it entirely (no brand has to publish a door), but a
+    /// half-authored one would publish a blank disclosure or a nameless
+    /// button, so every field is required once any of them is set.
+    #[test]
+    fn a_partly_authored_start_block_is_refused() {
+        let catalog = ServicesCatalog::parse(&fixture()).expect("no start block is allowed");
+        assert_eq!(catalog.start, StartDoorCopy::default());
+
+        let err = ServicesCatalog::parse(&format!(
+            "{}\nstart:\n  confirmation: We opened a file.\n  disclosure: Not a client yet.\n  \
+             label: Start\n  microcopy: ''\n  refusal: We cannot start this online.\n",
+            fixture()
+        ))
+        .expect_err("a blank field in an authored start block");
+        assert!(err.contains("`start.microcopy` is empty"), "{err}");
+    }
+
+    /// The whole block round-trips, so the door and the post-start
+    /// confirmation read the same strings the catalog publishes.
+    #[test]
+    fn an_authored_start_block_parses_every_field() {
+        let catalog = ServicesCatalog::parse(&format!(
+            "{}\nstart:\n  confirmation: We opened a file.\n  disclosure: Not a client yet.\n  \
+             label: Start\n  microcopy: Opens a short questionnaire.\n  refusal: We cannot \
+             start this online.\n",
+            fixture()
+        ))
+        .expect("a fully authored start block");
+        assert_eq!(catalog.start.confirmation, "We opened a file.");
+        assert_eq!(catalog.start.disclosure, "Not a client yet.");
+        assert_eq!(catalog.start.label, "Start");
+        assert_eq!(catalog.start.microcopy, "Opens a short questionnaire.");
+        assert_eq!(catalog.start.refusal, "We cannot start this online.");
+    }
+
     #[test]
     fn a_package_of_an_unknown_service_is_refused() {
         let err = ServicesCatalog::parse(

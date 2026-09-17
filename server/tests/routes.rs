@@ -9028,12 +9028,49 @@ async fn door_opened_client_matter_shows_continue_intake() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
+    let started = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .expect("the start redirects to the client intake")
+        .to_string();
+    assert!(started.ends_with("?started=1"), "{started}");
+
     let project = store::projects::all(&surreal)
         .await
         .unwrap()
         .into_iter()
         .next()
         .expect("the start door opened a project");
+
+    // The hand-off the visitor actually lands on. The confirmation is the
+    // "you are not a client yet, nothing is filed" disclosure, and it is the
+    // catalog's own sentence rather than one this test invents — a reworded
+    // catalog must fail here, not ship silently.
+    let confirmation = views::locales::services::ServicesCatalog::parse(include_str!(
+        "../../neon/locales/en/neon/services-catalog.yaml"
+    ))
+    .expect("the shipped service catalog parses")
+    .start
+    .confirmation;
+    let response = get_with_cookie(app.clone(), &started, &cookie).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(
+        body.contains(&confirmation),
+        "the start hand-off shows the approved confirmation: {body}"
+    );
+
+    // Resuming the same intake without the hand-off query shows it once only.
+    let resumed = started.trim_end_matches("?started=1");
+    let response = get_with_cookie(app.clone(), resumed, &cookie).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(
+        !body.contains(&confirmation),
+        "the confirmation is not repeated on a resumed visit: {body}"
+    );
+
     let response = get_with_cookie(app, &format!("/app/projects/{}", project.code), &cookie).await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = body_string(response).await;

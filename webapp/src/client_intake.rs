@@ -355,6 +355,32 @@ mod tests {
         dioxus_ssr::render_element(intake_body(view))
     }
 
+    /// The confirmation is the disclosure a visitor reads immediately after
+    /// opening a matter — that they are not yet a client and nothing is filed.
+    /// It is shown once, on the `?started=1` hand-off, so it is rendered
+    /// verbatim and only when the portal injected it.
+    #[test]
+    fn the_start_confirmation_renders_verbatim_after_a_service_start() {
+        let mut view = step("string", "", &[]);
+        view.start_confirmation = Some(
+            "Thank you. We have opened a file for you and a lawyer will review it.".to_string(),
+        );
+        let html = render(&view);
+        assert!(
+            html.contains("Thank you. We have opened a file for you and a lawyer will review it."),
+            "{html}"
+        );
+        assert!(html.contains("nav-intake-confirmation"), "{html}");
+    }
+
+    /// A resumed visit carries no `?started=1`, so the portal injects nothing
+    /// and the one-time confirmation must not reappear on every answer.
+    #[test]
+    fn a_resumed_intake_shows_no_start_confirmation() {
+        let html = render(&step("string", "", &[]));
+        assert!(!html.contains("nav-intake-confirmation"), "{html}");
+    }
+
     #[test]
     fn a_step_posts_back_to_the_intake_handler_with_the_csrf_token() {
         let html = render(&step("string", "", &[]));

@@ -49,6 +49,13 @@ reporting what needs a person:
 navigator project gate
 ```
 
+Lint an arbitrary directory that is neither a Navigator checkout nor a Project repository:
+
+```bash
+navigator validate
+navigator validate /path/to/tree
+```
+
 Open a matter through the logged-in site, against a pre-existing client and either an existing entity or a `Human`
 entity this command creates for a solo client:
 

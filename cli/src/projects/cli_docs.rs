@@ -157,6 +157,7 @@ mod tests {
                             .subcommand(Command::new("sync-skills")),
                     ),
             )
+            .subcommand(Command::new("validate"))
     }
 
     #[test]
@@ -188,6 +189,8 @@ mod tests {
         );
         assert_eq!(unresolved_verb("navigator project gate", &tree), None);
         assert_eq!(unresolved_verb("navigator project gate --ci", &tree), None);
+        assert_eq!(unresolved_verb("navigator validate", &tree), None);
+        assert_eq!(unresolved_verb("navigator validate . --ci", &tree), None);
     }
 
     #[test]

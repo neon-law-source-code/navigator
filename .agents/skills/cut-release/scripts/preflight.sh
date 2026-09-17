@@ -65,6 +65,34 @@ if ! cargo metadata --locked --format-version 1 >/dev/null 2>&1; then
 fi
 echo "    ok"
 
+# The reusable workflows name this repository's own composite actions by an
+# ABSOLUTE tag, not by the ref the caller used, so nothing but a deliberate edit
+# moves them. A pin left behind ships a gate no consumer can run: 26.9.17-rc.1
+# published `project-gate.yml` still pointing `navigator-install` at 26.9.16, a
+# tag predating the action, and every job needing the CLI died at action
+# resolution. Comments carry `@YY.M.D` usage examples; only `uses:` lines count.
+echo "==> the self-referencing action pins must name this version"
+workspace_version="$(
+    awk '/^\[workspace\.package\]/ { in_block = 1; next }
+         /^\[/ { in_block = 0 }
+         in_block && /^version = / { gsub(/[":]|version = /, ""); print; exit }' Cargo.toml
+)"
+if [ -z "${workspace_version}" ]; then
+    echo "FAIL: could not read [workspace.package].version from Cargo.toml." >&2
+    exit 1
+fi
+stale_pins="$(
+    git grep -n 'uses: *neon-law-source-code/navigator/\.github/actions/' -- .github/workflows/ \
+        | grep -v "@${workspace_version}\$" || true
+)"
+if [ -n "${stale_pins}" ]; then
+    echo "FAIL: these self-referencing pins do not name ${workspace_version}:" >&2
+    echo "${stale_pins}" >&2
+    echo "      A tag that predates the action it names publishes an unrunnable gate." >&2
+    exit 1
+fi
+echo "    ok (${workspace_version})"
+
 echo "==> the workspace gate"
 cargo nextest run --workspace
 cargo test -p features

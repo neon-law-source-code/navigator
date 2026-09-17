@@ -26,6 +26,22 @@ through a PR; merging `main` drives publication.
   dev browser-e2e`; that is the full browser and axe-core audit. If no fixture is running, do not run the browser suite
   raw — it intentionally self-skips without a harness. Report that browser E2E was skipped; do not describe it as a
   passing accessibility audit.
+- **Bump every version this repository names, not just the manifest.** `.github/workflows/project-gate.yml` and
+  `project-publish.yml` reference this repository's own composite actions by an **absolute tag**, not by the ref the
+  caller used, so a release moves them only if this step does:
+
+  ```bash
+  git grep -n 'uses: *neon-law-source-code/navigator/\.github/actions/' -- .github/workflows/
+  ```
+
+  Every hit must name the version being cut; the `@YY.M.D` occurrences elsewhere under `.github/` are usage examples in
+  comments, so leave them. A pin left behind is not cosmetic. `navigator-install` was added after `26.9.16` (ENG-671)
+  while its pins still read `@26.9.16`, a tag that does not carry it, so `26.9.17-rc.1` published a gate no consumer
+  could run: every job needing the CLI failed in ~5s on `Can't find 'action.yml', 'action.yaml' or 'Dockerfile'`, and
+  only `read-manifest` — the one job needing no CLI — stayed green. Naming the version being cut is what makes a release
+  self-consistent, since a caller only ever resolves a *published* tag, by which point the tag exists. Where that is too
+  bold for a given cut, the conservative fallback is the most recent published tag that actually carries the action —
+  never a tag predating it.
 - Make the smallest version-only commit, run the documented gate, and open the PR against `main`. **No draft PRs**: a
   release PR must open ready for review, not as a draft. Auto-merge only lands a PR that is not a draft, so a release
   cut as a draft sits published-but-unmerged until someone notices and marks it ready — take it out of draft as soon as

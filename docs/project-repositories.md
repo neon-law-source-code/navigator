@@ -151,6 +151,16 @@ path. Creating or retaining `documents/.gitignore` is outside that document-byte
 storage failure and run `pull` again; a completed pull hydrates every missing or stale target, and a later pull reports
 `0 pulled` because matching digests are skipped.
 
+**`navigator site document verify` answers "did it land?" in one of three modes, chosen by what you pass.** With no
+flags it checks pointer shape only — every `*.yml` below `documents/` must parse — and opens no connection, which is
+what a pull request runs. With `--host <host>` it checks each pointer against the live asset record using your own
+`navigator site login` session, reporting the same drift `log` and `get` report: a revision missing from the live chain,
+a `sha256` or size that disagrees, or an operative revision the pointer does not name. With `--ci --host <host>` it runs
+that identical live check but mints the session from the GitHub Actions run's own OIDC token, because a runner carries
+no stored login; that is the mode a push to `main` uses. The `--host` mode exists so an operator who has just run `site
+document upload`can confirm the asset exists remotely without reading a CI job (LAW-12) — before it,`--host` was
+accepted and then ignored, and verify reported success offline for a checkout whose bytes were already deleted.
+
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
 anywhere offers a control that changes a document's key (`slug`, the chain identity a revision belongs to). Both stay

@@ -1955,16 +1955,20 @@ enum DocumentAction {
         a: usize,
         b: usize,
     },
-    /// Validate every pointer offline, or against the live record with `--ci`.
+    /// Validate every pointer offline, or against the live record by naming
+    /// a `--host`.
     Verify {
         /// Directory to walk.
         #[arg(default_value = ".")]
         dir: PathBuf,
-        /// Verify against the live asset record via GitHub Actions OIDC,
-        /// rather than only checking pointer shape offline.
+        /// Mint the session from this GitHub Actions run's OIDC token rather
+        /// than from a stored login, which a runner does not have. For CI; a
+        /// human confirming an upload passes `--host` on its own.
         #[arg(long, requires = "host")]
         ci: bool,
-        /// Host to mint a CI session against. Required with `--ci`.
+        /// Check every pointer against the live asset record on this host,
+        /// using your `navigator site login` session. Without it, verify
+        /// checks pointer shape only and makes no network call.
         #[arg(long)]
         host: Option<String>,
     },

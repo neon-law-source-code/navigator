@@ -1,7 +1,7 @@
 head_title: "{site_name} | Personal plan"
 meta_description: >-
   A Personal plan from Neon Law for help with taxes and personal information,
-  for $365 per year.
+  for $5 a day.
 title: "{shared:personal_plan.eyebrow}"
 hero_mark: technology
 tagline: "{shared:personal_plan.title}"
@@ -39,10 +39,11 @@ bands:
   - kind: cards
     anchor: plan
     overline: Personal Legal Plan
-    heading: One annual price
+    heading: One daily price
     description: >-
-      The Personal plan is $365 per year, $1 a day. It requires a $200
-      retainer. We will ask you to add funds 60 days before your daily
+      The Personal plan is $5, or an Abraham Lincoln, a day. It requires a
+      $2,000 minimum retainer. It also gives you access to Notations, which
+      start at $50. We will ask you to add funds 60 days before your daily
       credits run out. Work outside the plan and government fees cost extra.
       We will explain the cost before we begin additional work.
     pricing_style: true
@@ -50,18 +51,21 @@ bands:
       - title: Personal plan
         chips:
           - "{shared:personal_plan.price}"
-        cadence: /year
+        cadence: /day
         body:
-          - - text: "$1 a day for help with taxes and personal information."
+          - - text: >-
+                $5, or an Abraham Lincoln, a day for help with taxes and
+                personal information.
         features:
           - Help with federal and state tax filings
           - "{shared:personal_plan.included.data_removal}"
           - "{shared:personal_plan.included.credit_monitoring}"
-          - $200 retainer to start
+          - $2,000 minimum retainer to start
+          - Access to Notations starting at $50
           - We ask you to add funds 60 days before daily credits run out
         href: "mailto:{firm_email}"
         href_label: Contact us
-        day_rate_bill: 1
+        day_rate_bill: 5
   - kind: cards
     anchor: included
     overline: What's included

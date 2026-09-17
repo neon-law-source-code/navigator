@@ -68,18 +68,16 @@ mod firm_copy_tests {
                     badges.push_str(&services.state_fee_badge);
                 }
                 let package = service.package.as_ref().map_or_else(String::new, |quote| {
-                    format!(
-                        "{} {} {} {} {} {}",
-                        services.package_badge,
-                        services.package_separate_label,
-                        quote.separate_fee,
-                        quote.save,
-                        services.package_save_suffix,
-                        quote.members.join(" "),
-                    )
+                    format!("{} {}", services.package_badge, quote.members.join(" "))
                 });
+                let plan_price = service
+                    .plan_price
+                    .as_ref()
+                    .map_or_else(String::new, |price| {
+                        format!("{} {}", price.plan, price.amount)
+                    });
                 format!(
-                    "{} {} {} {} {} {} {} {badges} {package}",
+                    "{} {} {} {} {} {} {} {badges} {package} {plan_price}",
                     service.item,
                     service.name,
                     service.category,
@@ -93,7 +91,7 @@ mod firm_copy_tests {
             .join(" ");
         let description = services.description.clone().unwrap_or_default();
         format!(
-            "{} {} {description} {} {} {} {} {} {} {} {} {} {} {entries}",
+            "{} {} {description} {} {} {} {} {} {} {} {} {} {entries}",
             services.overline,
             services.heading,
             services.search_label,
@@ -102,8 +100,7 @@ mod firm_copy_tests {
             services.fee_label,
             services.includes_label,
             services.package_badge,
-            services.package_separate_label,
-            services.package_save_suffix,
+            services.package_members_label,
             services.empty,
             services.empty_help,
         )
@@ -485,11 +482,9 @@ mod firm_copy_tests {
     fn the_services_page_explains_notation_pricing_and_separate_fees() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         let text = page_text(&content.bands).to_lowercase();
-        assert!(text.contains("business-plan access is $10 a day"));
-        assert!(text.contains("unchanged template can be sent for signature for $5"));
-        assert!(text.contains("notation we prepare or revise begins at $100"));
-        assert!(text.contains("estate planning starts at $3,000"));
-        assert!(text.contains("notation package costs less than buying each included notation"));
+        assert!(text.contains("business-plan access is $50 a day"));
+        assert!(text.contains("a la carte price and a lower plan price"));
+        assert!(text.contains("at least half off the a la carte price"));
         assert!(text.contains("government fees are separate"));
         assert!(text.contains("free consultation"));
         let schedule = schedule(&content);
@@ -504,41 +499,33 @@ mod firm_copy_tests {
             !trademark.members_only,
             "a trademark Notation is available a la carte"
         );
-        for estate in ["will", "estate-package", "trust"] {
-            let service = schedule
-                .services
-                .iter()
-                .find(|service| service.id == estate)
-                .unwrap_or_else(|| panic!("{estate} is on the schedule"));
-            assert_eq!(
-                service.fee, "$3,000",
-                "{estate} starts at $3,000: {}",
-                service.fee
-            );
-            assert_eq!(service.period, "starting fee");
-        }
         let family_plan = schedule
             .services
             .iter()
             .find(|service| service.id == "estate-package")
             .expect("the family plan is a Notation package");
-        let quote = family_plan
-            .package
-            .as_ref()
-            .expect("estate-package publishes its à la carte comparison");
-        assert_eq!(quote.separate_fee, "$9,000");
-        assert_eq!(quote.save, "$6,000");
+        assert_eq!(family_plan.fee, "$5,000");
+        assert_eq!(family_plan.period, "per package");
+        assert_eq!(
+            family_plan.plan_price,
+            Some(webapp::services_search::PlanPrice {
+                amount: "$2,000".to_string(),
+                plan: "Personal plan".to_string(),
+            })
+        );
         let setup = schedule
             .services
             .iter()
             .find(|service| service.id == "llc-launch")
             .expect("company setup is a Notation package");
-        let setup_quote = setup
-            .package
-            .as_ref()
-            .expect("llc-launch publishes its à la carte comparison");
-        assert_eq!(setup_quote.separate_fee, "$300");
-        assert_eq!(setup_quote.save, "$200");
+        assert_eq!(setup.fee, "$100");
+        assert_eq!(
+            setup.plan_price,
+            Some(webapp::services_search::PlanPrice {
+                amount: "$25".to_string(),
+                plan: "Business plan".to_string(),
+            })
+        );
     }
 
     /// Litigation and fractional GC stay off the one-time-matter schedule.

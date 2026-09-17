@@ -1,7 +1,7 @@
 head_title: "{site_name} | Business plan"
 meta_description: >-
   Contract-library access and a counsel relationship for the work we agree to
-  handle, for $10 a day.
+  handle, for $50 a day.
 eyebrow: "{shared:fractional_gc.eyebrow}"
 heading:
   text: "{shared:fractional_gc.title}"
@@ -23,28 +23,29 @@ virtues:
       prepared.
 fee_heading: Access and work, priced separately
 fee_body: >-
-  The Business plan is $10 a day for contract-library access and the ability to
-  name Neon Law as your counsel in work we agree to handle. It requires a
-  $5,000 retainer. We will ask you to add funds 60 days before your daily
-  credits run out. Fill out an unchanged template and we can send it for
-  signature for $5. When you need a document prepared or revised, we agree a
-  fixed Notation fee before starting; Notations begin at $100.
+  The Business plan is $50, or a Ulysses S. Grant, a day for contract-library
+  access and the ability to name Neon Law as your counsel in work we agree to
+  handle. It requires a $10,000 minimum retainer. We will ask you to add funds
+  60 days before your daily credits run out. Fill out an unchanged template and
+  we can send it for signature for $5. When you need a document prepared or
+  revised, we agree a fixed Notation fee before starting; Notations begin at
+  $100.
 pricing:
   - title: Business plan
     price: "{shared:fractional_gc.price}"
     cadence: /day
     blurb: >-
-      $10 a day for contract-library access and a counsel relationship tied to
-      work we agree to handle.
+      $50, or a Ulysses S. Grant, a day for contract-library access and a
+      counsel relationship tied to work we agree to handle.
     features:
       - Contract-library access
       - Name Neon Law as your counsel in work we agree to handle
-      - $5,000 retainer to start
+      - $10,000 minimum retainer to start
       - We ask you to add funds 60 days before daily credits run out
       - Send an unchanged template for signature at $5
       - Notations for prepared or revised documents start at $100
       - One agreed scope and price for each Notation
-    day_rate_bill: 10
+    day_rate_bill: 50
 closing_heading: Ready to start a Notation?
 closing_body: Ask whether the Business plan and your next Notation fit your work.
 closing_email: "{firm_email}"

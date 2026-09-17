@@ -165,7 +165,7 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
 #[tokio::test]
 async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
     // The firm's consumer legal plan: taxes, privacy protection, and credit
-    // monitoring (beta) on one flat annual or daily fee — the personal-side
+    // monitoring (beta) on one flat daily fee — the personal-side
     // counterpart to Fractional GC, and it publishes a real figure.
     let app = site_app().await;
     let resp = anon_get(&app, "/personal").await;
@@ -179,7 +179,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         body.contains("fm-hero__title"),
         "the page states its offering in an h1: {body}"
     );
-    for figure in ["$365", "/year", "$1 a day", "$200"] {
+    for figure in ["$5", "/day", "$2,000 minimum retainer", "$50"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     assert!(
@@ -209,7 +209,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         "Warm, clear help.",
         "We cannot promise that every company will remove every record.",
         "Choose whether to opt in.",
-        "$200 retainer",
+        "$2,000 minimum retainer",
         "60 days before your daily credits run out",
     ] {
         assert!(body.contains(promise), "missing {promise}: {body}");
@@ -266,11 +266,9 @@ async fn site_host_serves_the_legal_services_page() {
     );
     for promise in [
         "A lawyer you can turn to.",
-        "Business-plan access is $10 a day.",
-        "An unchanged template can be sent for signature for $5.",
-        "A Notation we prepare or revise begins at $100.",
-        "Estate planning starts at $3,000.",
-        "A Notation package costs less than buying each included Notation on its own.",
+        "Business-plan access is $50 a day, and Personal-plan access is $5 a day.",
+        "a la carte price and a lower plan price.",
+        "at least half off the a la carte price.",
         "free consultation",
         "You do not need a subscription for that first conversation.",
         "Tell us what you need.",
@@ -559,7 +557,7 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
         body.contains("Access and work, priced separately"),
         "the structure: {body}"
     );
-    for figure in ["$10", "/day", "$5", "$100", "$5,000"] {
+    for figure in ["$50", "/day", "$5", "$100", "$10,000"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
     assert!(
@@ -648,10 +646,7 @@ async fn both_practice_pages_hoist_their_own_stylesheet() {
 #[tokio::test]
 async fn recurring_offer_pages_share_the_commitment_treatment() {
     let app = site_app().await;
-    for (path, rate) in [
-        ("/business", "$10 a day"),
-        ("/personal", "One annual price"),
-    ] {
+    for (path, rate) in [("/business", "$50 a day"), ("/personal", "One daily price")] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in [
             "/public/css/commitment.css",
@@ -996,8 +991,8 @@ async fn plans_and_services_publish_real_fees() {
                 "$100", "$350", "per year", "$250", "$500", "$750", "$5", "$3,000",
             ],
         ),
-        ("/business", vec!["$10", "$100", "$5", "$5,000"]),
-        ("/personal", vec!["$365", "$1", "$200"]),
+        ("/business", vec!["$50", "$100", "$5", "$10,000"]),
+        ("/personal", vec!["$5", "$50", "$2,000"]),
     ] {
         let body = body_string(anon_get(&app, priced).await).await;
         assert!(

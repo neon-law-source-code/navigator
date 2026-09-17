@@ -243,7 +243,7 @@ fn a_floating_revision_is_refused() {
 fn an_unsupported_catalog_version_never_becomes_an_artifact() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = write_catalog(&dir, |yaml| {
-        yaml.replace("catalog_version: 1", "catalog_version: 99")
+        yaml.replace("catalog_version: 2", "catalog_version: 99")
     });
     let output = export(&["--revision", REVISION, "--catalog", &path.to_string_lossy()]);
     assert!(!output.status.success());

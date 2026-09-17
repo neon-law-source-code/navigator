@@ -362,8 +362,10 @@ Use the workspace CLI, not a separate Markdown linter:
 cargo run -p cli --quiet -- project gate
 ```
 
-`validate` applies prose rules to ordinary Markdown, N-family rules to notation templates, typed-event checks, and YAML
-parsing. It walks directories and defaults to `.`. CI runs:
+`project gate` applies prose rules to ordinary Markdown, N-family rules to notation templates, typed-event checks, and
+YAML parsing over a recognised repository root. A directory that is neither a Navigator checkout nor a Project
+repository uses `navigator validate [DIR]` instead — same rule set, path argument, default `.`. CI in this repository
+runs:
 
 ```bash
 cargo build -p cli --quiet

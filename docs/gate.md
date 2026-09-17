@@ -4,12 +4,14 @@ publish: true
 
 # Gate
 
-`navigator project gate` is the single command every editor, CI gate, and this repository's `AGENTS.md` point at. This
-page is its canonical reference: what it runs, its one flag, the error/warning split, and one row per rule code.
-`cli/tests/gate_docs_coverage.rs` fails the build when a code exists in `rules/src/` or `cli/src/main.rs` with no entry
-here, so this table cannot go stale.
+`navigator project gate` is the command every editor, CI gate, and this repository's `AGENTS.md` point at for a
+recognised repository. This page is the canonical reference for the rule set both that command and `navigator validate`
+share: what it runs, the error/warning split, and one row per rule code. `cli/tests/gate_docs_coverage.rs` fails the
+build when a code exists in `rules/src/` or `cli/src/main.rs` with no entry here, so this table cannot go stale.
 
 ## Usage
+
+A Navigator checkout and a Project repository run:
 
 ```bash
 cargo run -p cli --quiet -- project gate
@@ -19,11 +21,21 @@ It takes no path. The gate runs on a whole repository, and it finds that reposit
 beside it in the directory it was started from; anywhere else it refuses (exit `2`) rather than reporting a clean scan
 over the files it never read. Run it from the root.
 
+A directory that is neither of those shapes — no `Cargo.toml`, no `navigator.yaml`, no assumption about the surrounding
+repository — still has the same rule set through `navigator validate [DIR]`. The directory defaults to `.`. `--fix`
+writes every safe-by-construction edit, `--errors-only` hides Warning-severity advisories, and `--ci` holds the origin
+pass to a built tree.
+
+```bash
+navigator validate
+navigator validate /path/to/tree --ci
+```
+
 Safe-by-construction fixes land as it goes — trailing whitespace, ATX heading spacing, blockquote spacing, and `S102`
 paragraph packing — and each file is re-scanned until it stops changing, because one fix routinely uncovers another:
 trimming trailing whitespace off a short line hands that line to `S102`, which could not flag it while it still looked
-like a hard break. What remains is what a human has to resolve. There is no flag for this; fixing what it can is what
-the gate does.
+like a hard break. What remains is what a human has to resolve. `project gate` always writes those edits; `validate`
+writes them only with `--fix`.
 
 The walk covers authored content only. It descends into everything except the trees nobody authors: `.git/`, `target/`,
 `.worktrees/`, `node_modules/`, and `dist/`, plus — for the Markdown passes — every other hidden directory apart from

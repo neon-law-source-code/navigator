@@ -82,6 +82,7 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             "ops",
             "project",
             "site",
+            "validate",
             "help",
         ]
     );
@@ -97,6 +98,10 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
     assert!(output.lines().any(
         |l| l.trim_start().starts_with("ops ") && l.contains("Production and cloud operations")
     ));
+    assert!(output
+        .lines()
+        .any(|l| l.trim_start().starts_with("validate ")
+            && l.contains("Validate Markdown and YAML files")));
     assert!(command_names(&output)
         .iter()
         .all(|name| !name.starts_with("start-")));

@@ -52,8 +52,8 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 - [`notation.md`](notation.md) — the notation vocabulary: templates, questionnaires, workflows.
 - [`notation-authoring.md`](notation-authoring.md) — authoring a notation template's body and structure.
 - [`frontmatter.md`](frontmatter.md) — the frontmatter cover sheet on every file, by document kind.
-- [`gate.md`](gate.md) — the canonical reference for `navigator project gate`: its passes, its one flag, and every
-  rule code.
+- [`gate.md`](gate.md) — the canonical reference for `navigator project gate` and `navigator validate`: the shared
+  passes, flags, and every rule code.
 - [`marketing-copy.md`](marketing-copy.md) — the English marketing catalog and how a copy-only edit is gated.
 - [`editing-workflows.md`](editing-workflows.md) — editing a legal workflow's state machine.
 - [`durable-workflows.md`](durable-workflows.md) — Restate-backed durable execution for legal workflows.

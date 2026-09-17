@@ -20,7 +20,7 @@
 //! journal write a Restate-journaled side effect, so a replay
 //! reuses the cached row id instead of double-writing.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use restate_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -144,19 +144,27 @@ struct ReviewNotificationPlan {
     recipient_ids: Vec<uuid::Uuid>,
 }
 
+/// The wording one notification carries.
+///
+/// Authored here rather than in `neon/locales/`, because those catalogs are
+/// the firm's *page* copy and say so: the shared catalog is exported to the
+/// other repository entry by entry, and `neon::locales` asserts that every key
+/// it authors is read by a shipped page. Transactional email is read by no
+/// page, so a key for it fails that gate. Copy with no catalog belongs in the
+/// module that renders it.
 struct ReviewCopy {
-    subject: String,
-    body: String,
+    subject: &'static str,
+    body: &'static str,
 }
 
-const SHARED_CATALOG_YAML: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../neon/locales/en/shared.yaml"
-));
-const LAWYER_REVIEW_SUBJECT_KEY: &str = "review.lawyer_subject";
-const LAWYER_REVIEW_BODY_KEY: &str = "review.lawyer_body";
-const CLIENT_REVIEW_SUBJECT_KEY: &str = "review.client_subject";
-const CLIENT_REVIEW_BODY_KEY: &str = "review.client_body";
+const LAWYER_REVIEW_COPY: ReviewCopy = ReviewCopy {
+    subject: "A draft is ready for your review",
+    body: "A draft is ready for your review.",
+};
+const CLIENT_REVIEW_COPY: ReviewCopy = ReviewCopy {
+    subject: "Your reviewed draft is ready",
+    body: "Your reviewed draft is ready.",
+};
 
 /// Service struct held by the Restate endpoint. Carries the shared
 /// store handle, the worker-side [`workflows::EmailService`] that
@@ -748,7 +756,7 @@ async fn send_review_notification(
     recipient_email: &str,
     hop: ReviewNotificationHop,
 ) -> Result<(), HandlerError> {
-    let copy = review_copy(hop)?;
+    let copy = review_copy(hop);
     let base_url = workflows::email::base_url_from_env();
     let path = match hop {
         ReviewNotificationHop::Lawyer => {
@@ -811,32 +819,11 @@ async fn send_review_notification(
     }
 }
 
-fn review_copy(hop: ReviewNotificationHop) -> Result<ReviewCopy, HandlerError> {
-    static CATALOG: OnceLock<Result<views::locales::shared::SharedCatalog, String>> =
-        OnceLock::new();
-    let catalog =
-        CATALOG.get_or_init(|| views::locales::shared::SharedCatalog::parse(SHARED_CATALOG_YAML));
-    let (subject_key, body_key) = match hop {
-        ReviewNotificationHop::Lawyer => (LAWYER_REVIEW_SUBJECT_KEY, LAWYER_REVIEW_BODY_KEY),
-        ReviewNotificationHop::Client => (CLIENT_REVIEW_SUBJECT_KEY, CLIENT_REVIEW_BODY_KEY),
-    };
-    let catalog = catalog.as_ref().map_err(|error| {
-        HandlerError::from(TerminalError::new(format!(
-            "review notification copy: {error}"
-        )))
-    })?;
-    let subject = catalog.lookup("neon", subject_key).ok_or_else(|| {
-        TerminalError::new(format!(
-            "review notification copy key missing: {subject_key}"
-        ))
-    })?;
-    let body = catalog.lookup("neon", body_key).ok_or_else(|| {
-        TerminalError::new(format!("review notification copy key missing: {body_key}"))
-    })?;
-    Ok(ReviewCopy {
-        subject: subject.to_string(),
-        body: body.to_string(),
-    })
+const fn review_copy(hop: ReviewNotificationHop) -> ReviewCopy {
+    match hop {
+        ReviewNotificationHop::Lawyer => LAWYER_REVIEW_COPY,
+        ReviewNotificationHop::Client => CLIENT_REVIEW_COPY,
+    }
 }
 
 #[cfg(test)]
@@ -1041,7 +1028,7 @@ END: {}
     #[test]
     fn no_lawyer_participants_produce_no_recipient_ids() {
         assert!(review_recipient_ids(&[], ReviewNotificationHop::Lawyer).is_empty());
-        let copy = review_copy(ReviewNotificationHop::Lawyer).expect("locale copy");
+        let copy = review_copy(ReviewNotificationHop::Lawyer);
         assert_eq!(copy.subject, "A draft is ready for your review");
     }
 

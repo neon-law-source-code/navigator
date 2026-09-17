@@ -15,13 +15,6 @@
 catalog_version: 1
 
 entries:
-  # Durable notation-review notifications. The worker reads these same
-  # English strings so email copy has one published source.
-  review.lawyer_subject: A draft is ready for your review
-  review.lawyer_body: A draft is ready for your review.
-  review.client_subject: Your reviewed draft is ready
-  review.client_body: Your reviewed draft is ready.
-
   # `/` — the question the home page opens on.
   home.need_prompt: What is your legal need?
   home.mission_heading: Everyone deserves to be seen.

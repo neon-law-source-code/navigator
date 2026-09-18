@@ -268,6 +268,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(instructions.contains("A precedent"));
     assert!(instructions.contains("citation is still a breach"));
     assert!(dir.path().join("templates/onboarding.md").is_file());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("documents/.gitignore")).unwrap(),
+        "*\n!*/\n!*.yml\n!.gitignore\n"
+    );
     assert!(!dir.path().join("templates/project_template.md").exists());
     assert_eq!(
         fs::read_to_string(dir.path().join(".gitattributes")).unwrap(),
@@ -793,6 +797,44 @@ fn gate_reports_a_tracked_raw_document_byte() {
             "legal documents and raw document bytes must not be committed",
         ))
         .stdout(str::contains("1 error(s)"));
+}
+
+#[test]
+fn a_documents_gitignore_that_drops_the_deny_line_fails_under_ci() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let ignore = dir.path().join("documents/.gitignore");
+    let drifted = "# Files never land, only pointers.\n!*/\n!*.yml\n!.gitignore\n";
+    fs::write(&ignore, drifted).unwrap();
+
+    navigator()
+        .current_dir(dir.path())
+        .args(["project", "gate", "--ci"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(str::contains("Y014"))
+        .stderr(str::contains("documents/.gitignore"));
+
+    assert_eq!(fs::read_to_string(&ignore).unwrap(), drifted);
+}
+
+#[test]
+fn project_gate_rewrites_a_drifted_documents_gitignore() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let ignore = dir.path().join("documents/.gitignore");
+    fs::write(&ignore, "!*/\n!*.yml\n!.gitignore\n").unwrap();
+
+    gate(dir.path())
+        .success()
+        .stdout(str::contains("fixed"))
+        .stdout(str::contains("0 error(s)"));
+
+    assert_eq!(
+        fs::read_to_string(&ignore).unwrap(),
+        "*\n!*/\n!*.yml\n!.gitignore\n"
+    );
 }
 
 #[test]

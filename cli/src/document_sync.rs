@@ -9,7 +9,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::remote::DocumentClient;
 
-const GITIGNORE: &str = "*\n!*/\n!*.yml\n!.gitignore\n";
+/// The exact `documents/.gitignore` every Project repository must carry.
+///
+/// Deny everything, then re-admit subdirectories, pointer files, and this
+/// file. Dropping `*` leaves three negations of nothing, and the directory
+/// silently ignores nothing at all. `Y014` and `scaffold` share these bytes
+/// with `site sync` / `site pull` so a new repository cannot drift from the
+/// guard those commands write.
+pub(crate) const DOCUMENTS_GITIGNORE: &str = "*\n!*/\n!*.yml\n!.gitignore\n";
 
 /// Read and validate `<root>/navigator.yaml` — the one manifest every
 /// document command (`sync`, and the read verbs under `navigator site document`)
@@ -58,7 +65,7 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
         .with_context(|| format!("create {}", documents.display()))?;
     let ignore = documents.join(".gitignore");
     if !ignore.exists() {
-        std::fs::write(&ignore, GITIGNORE)
+        std::fs::write(&ignore, DOCUMENTS_GITIGNORE)
             .with_context(|| format!("write {}", ignore.display()))?;
     }
 
@@ -624,7 +631,7 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
         .map_err(document_targets_unchanged)?;
     let ignore = documents.join(".gitignore");
     if !ignore.exists() {
-        std::fs::write(&ignore, GITIGNORE)
+        std::fs::write(&ignore, DOCUMENTS_GITIGNORE)
             .with_context(|| format!("write {}", ignore.display()))
             .map_err(document_targets_unchanged)?;
     }

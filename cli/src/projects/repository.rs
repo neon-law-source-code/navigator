@@ -336,6 +336,10 @@ pub fn scaffold(
                 .join(format!("{template_stem}.md")),
             placeholder_template(template_stem),
         ),
+        (
+            root.join(DOCUMENT_DIRECTORY).join(".gitignore"),
+            crate::document_sync::DOCUMENTS_GITIGNORE.to_string(),
+        ),
     ];
 
     for (path, contents) in files {
@@ -440,7 +444,7 @@ pub fn sync_skills(root: &Path) -> ExitCode {
 /// Commit-state rules read the files Git would carry, not the files on disk:
 /// the gate judges what a pull request proposes, and an untracked scratch file
 /// is not part of that.
-pub(crate) fn validate_gate(root: &Path, repository: Option<&str>) -> ExitCode {
+pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: bool) -> ExitCode {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
@@ -474,6 +478,7 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>) -> ExitCode {
     }
 
     let manifest_valid = validate_layout(root, &mut errors, &mut warnings);
+    validate_documents_gitignore(root, write_fixes, &mut errors);
     validate_skills(root, &mut errors);
     validate_documented_cli(root, &mut errors);
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
@@ -1149,6 +1154,49 @@ fn validate_templates(
         lint_project_template(path, &rules, &mut declared_codes, errors, warnings);
     }
     paths.len()
+}
+
+/// `Y014` — a Project repository's `documents/.gitignore` must be the canonical
+/// four-line deny-all pointer admit, byte for byte.
+///
+/// The first line is what does the ignoring. The three negations re-admit
+/// subdirectories, pointer files, and this file. A comment, a dropped `*`, or
+/// any other edit leaves a file that still parses and that `git check-ignore`
+/// still accepts, while the directory silently ignores nothing — or only the
+/// extensions the root `.gitignore` happens to name. The explanation belongs
+/// in `AGENTS.md`, not in this file.
+pub const DOCUMENT_GITIGNORE_CODE: &str = "Y014";
+
+/// When `documents/` exists, hold `documents/.gitignore` to
+/// [`crate::document_sync::DOCUMENTS_GITIGNORE`]. Local `project gate` writes
+/// the canonical bytes; `--ci` reports and leaves the file alone.
+fn validate_documents_gitignore(root: &Path, write_fixes: bool, errors: &mut Vec<Finding>) {
+    let documents = root.join(DOCUMENT_DIRECTORY);
+    if !documents.is_dir() {
+        return;
+    }
+    let path = documents.join(".gitignore");
+    let current = fs::read(&path).ok();
+    if current.as_deref() == Some(crate::document_sync::DOCUMENTS_GITIGNORE.as_bytes()) {
+        return;
+    }
+    if write_fixes {
+        if let Err(error) = fs::write(&path, crate::document_sync::DOCUMENTS_GITIGNORE) {
+            errors.push(Finding::at(
+                &path,
+                format!("{DOCUMENT_GITIGNORE_CODE}: could not write canonical `documents/.gitignore`: {error}"),
+            ));
+            return;
+        }
+        println!("fixed {}", path.display());
+        return;
+    }
+    errors.push(Finding::at(
+        path,
+        format!(
+            "{DOCUMENT_GITIGNORE_CODE}: `documents/.gitignore` must be exactly `*`, `!*/`, `!*.yml`, and `!.gitignore` (one per line, no comments); every other byte leaves the directory ignoring nothing, or only what the root `.gitignore` already covers"
+        ),
+    ));
 }
 
 /// `Y010` — a Project template names `Neon Law` with a corporate suffix that is

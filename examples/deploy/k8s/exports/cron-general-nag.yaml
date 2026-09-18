@@ -1,12 +1,19 @@
-# general-nag daily #general post — Flavor B (see docs/cronjobs.md): a
-# self-contained batch, not a trigger for a durable Restate workflow. It
-# posts one static message through the Slack Web API bot client and exits;
-# there is no multi-step state a mid-run crash could lose or duplicate, so
-# there is nothing for Restate to buy here.
+# general-nag nightly trigger — starts one `GeneralNag` Restate workflow
+# invocation per day. The workflow itself is hosted by the `workflows-service`
+# worker (../gke/workflows-service/) — all workflows live there, so there is
+# no separate nag worker. This CronJob is a thin trigger that POSTs to the
+# Restate Cloud ingress and exits in seconds. Restate owns the retry schedule.
+#
+# `GeneralNag` posts the daily jab to `#general`. A simulated-matters
+# deployment discloses that the post is from the staging account; a real
+# deployment follows with how many neon-brand matters are open and how many
+# of those are still pitches.
 #
 # Schedule `11 1 * * *` UTC = 01:11 UTC — the same minute as
-# dri-digest-trigger. Both are sub-second calls to different destinations
-# (Slack Web API vs. the Restate ingress), so the shared minute is harmless.
+# dri-digest-trigger. Both are thin, sub-second calls to the Restate
+# ingress for different workflows, so the shared minute is harmless. The
+# trigger keys each invocation on the UTC date, so a same-day double-fire
+# is a no-op.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -35,27 +42,34 @@ spec:
               image: YOUR_IMAGE_REGISTRY/navigator-general-nag:YY.M.D
               imagePullPolicy: Always
               env:
-                # The Slack Web API bot token. Sourced from the Secret rather
+                # Restate Cloud ingress endpoint. Sourced from the Secret rather
                 # than written inline — see the `RESTATE_INGRESS_URL` note in
-                # kustomization.yaml for why a literal here blocks every
-                # manifest change.
-                - name: SLACK_BOT_TOKEN
+                # kustomization.yaml for why a literal here blocks every manifest
+                # change. The trigger POSTs
+                # `${RESTATE_INGRESS_URL}/GeneralNag/<run-date>/run`.
+                - name: RESTATE_INGRESS_URL
                   valueFrom:
                     secretKeyRef:
                       name: navigator-web-secrets
-                      key: SLACK_BOT_TOKEN
+                      key: RESTATE_INGRESS_URL
                       optional: true
-                # #general's channel ID — the stable posting coordinate for
-                # the Slack Web API (see workflows::notify::SlackChannel).
-                # Not a secret; substitute the real ID at render time.
-                - name: SLACK_GENERAL_CHANNEL_ID
-                  value: YOUR_SLACK_GENERAL_CHANNEL_ID
+                # Restate Cloud authenticates every ingress call with the
+                # tenant bearer. Sourced from the same `navigator-web-secrets`
+                # Secret the web Deployment mounts. `optional` so KIND — where
+                # this manifest isn't applied — never blocks on a missing key.
+                - name: RESTATE_AUTH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: navigator-web-secrets
+                      key: RESTATE_AUTH_TOKEN
+                      optional: true
                 - name: RUST_LOG
                   value: info
               envFrom:
-                # Collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) — the job
-                # emits through the fail-closed redaction collector, shared
-                # with web + workflows-service via one ConfigMap.
+                # Collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) — the trigger
+                # emits the `navigator.workflow.trigger.fired` metric (flushed on
+                # exit) through the fail-closed redaction collector. Shared with
+                # web + workflows-service via one ConfigMap.
                 - configMapRef:
                     name: navigator-otel-env
               resources:

@@ -30,7 +30,7 @@ Durable execution is split across two crates so the rest of the workspace never 
 One worker pod hosts every service — new workflows bind onto the worker endpoint, never a new pod. Today that worker
 serves two virtual objects — `notation` (questionnaire + workflow timelines on one journal) and `project-slack`
 (per-Project private-channel notices) — and the durable workflows `Archives`, `BillingCanary`, `BillingDigest`,
-`ReconcileInvoices`, `DriDigest`, and `Heartbeat`. The exact set is the single source of truth in
+`ReconcileInvoices`, `DriDigest`, `GeneralNag`, and `Heartbeat`. The exact set is the single source of truth in
 `workflows_service::registry`, whose tests assert every workflow name is PascalCase (template filenames follow the
 separate snake_case convention `N103` enforces) and that the registry never drifts from the worker's actual `.bind(...)`
 calls — one worker, every service. In the reference deploy the worker runs behind `workflows.your-domain.example`.

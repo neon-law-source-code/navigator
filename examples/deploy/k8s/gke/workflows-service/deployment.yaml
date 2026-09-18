@@ -152,6 +152,18 @@ spec:
             #   value: YOUR_PROJECT_ID
             - name: RUST_LOG
               value: info
+            # Same selector `web` carries: a production-profile deployment
+            # that discloses simulated matters (persistent staging) so
+            # `DriDigest` and `GeneralNag` label Slack as staging and skip
+            # the real-matter-only open-count follow-up. `ops ship` renders
+            # `false` when the deployment's `config.toml` omits the key.
+            - name: NAVIGATOR_SIMULATED_MATTERS
+              value: "YOUR_SIMULATED_MATTERS"
+            # `#general`'s channel ID — the stable posting coordinate for
+            # `GeneralNag`. Not a secret; substitute the real ID at render
+            # time. Unset/empty fails that workflow as a terminal error.
+            - name: SLACK_GENERAL_CHANNEL_ID
+              value: YOUR_SLACK_GENERAL_CHANNEL_ID
             - name: OTEL_SERVICE_NAME
               value: workflows-service
           envFrom:

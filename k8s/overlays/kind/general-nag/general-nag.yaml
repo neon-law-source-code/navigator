@@ -1,16 +1,14 @@
-# `general-nag` — daily #general post.
+# `general-nag` — nightly trigger for the `GeneralNag` workflow.
 #
-# Flavor B (see docs/cronjobs.md): a self-contained batch, not a trigger for
-# a durable Restate workflow — it posts once through the Slack Web API bot
-# client and exits. Requires SLACK_BOT_TOKEN and SLACK_GENERAL_CHANNEL_ID,
-# neither of which KIND provisions by default, so this CronJob fails its run
-# (and shows in `failedJobsHistoryLimit`) until both are exported into the
-# container's env — unlike the no-op-when-unconfigured triggers elsewhere in
-# this overlay.
+# The workflow itself is hosted by the `workflows-service` worker (it binds
+# `GeneralNagService` alongside `Notation` and the other workflows — see
+# `../workflows-service/`), so there is no separate nag worker pod. This
+# CronJob is the thin trigger: it POSTs to the Restate ingress to start one
+# invocation, then exits. Restate owns retries.
 #
 # Schedule "11 1 * * *" = 01:11 UTC — the same minute as
-# `dri-digest-trigger`. Both are sub-second calls to different destinations
-# (Slack Web API vs. the Restate ingress), so the shared minute is harmless.
+# `dri-digest-trigger`. Both are sub-second calls to the Restate
+# ingress for different workflows, so the shared minute is harmless.
 #
 # Trigger a run by hand:
 #   kubectl create job --from=cronjob/general-nag general-nag-manual -n navigator
@@ -46,5 +44,9 @@ spec:
               image: navigator-general-nag:dev
               imagePullPolicy: IfNotPresent
               env:
+                # In-cluster Restate ingress (see
+                # k8s/staging/restate.yaml).
+                - name: RESTATE_INGRESS_URL
+                  value: http://restate.restate.svc.cluster.local:8080
                 - name: RUST_LOG
                   value: info

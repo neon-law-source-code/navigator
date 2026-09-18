@@ -15,6 +15,7 @@ use billing_workflows::reconcile::ReconcileInvoicesService;
 use restate_sdk::prelude::*;
 use workflows::{EmailService, SlackOpsDelivery};
 use workflows_service::dri_digest::DriDigestService;
+use workflows_service::general_nag::GeneralNagService;
 use workflows_service::heartbeat::HeartbeatService;
 use workflows_service::request_identity::{apply_identity_key, install_crypto_provider};
 use workflows_service::{
@@ -23,7 +24,7 @@ use workflows_service::{
 };
 
 macro_rules! bind_common_services {
-    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr, $simulated_matters:expr) => {
+    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr, $general_channel:expr, $simulated_matters:expr) => {
         $endpoint
             .bind(NotationService::new(
                 $surreal.clone(),
@@ -40,8 +41,14 @@ macro_rules! bind_common_services {
             .bind(BillingDigestService::new($ops_delivery))
             .bind(ReconcileInvoicesService::new($surreal.clone()))
             .bind(DriDigestService::new(
-                $surreal,
+                $surreal.clone(),
                 $notifier,
+                $simulated_matters,
+            ))
+            .bind(GeneralNagService::new(
+                $surreal,
+                $slack_bot,
+                $general_channel,
                 $simulated_matters,
             ))
     };
@@ -61,9 +68,9 @@ async fn main() -> anyhow::Result<()> {
 
     let environment =
         store::DeploymentEnvironment::from_env().context("parse NAVIGATOR_ENVIRONMENT")?;
-    // Drives the `DriDigest` workflow's staging disclosure and open-matters
-    // follow-up gate — the same flag the site-wide "simulated projects"
-    // banner reads.
+    // Drives `DriDigest` and `GeneralNag` staging disclosure and the
+    // production-only open-matters follow-up — the same flag the site-wide
+    // "simulated projects" banner reads.
     let simulated_matters =
         store::sample_matters(environment).context("resolve NAVIGATOR_SIMULATED_MATTERS")?;
     // Makes `jsonwebtoken`'s process-level `CryptoProvider` deterministic
@@ -122,6 +129,10 @@ async fn main() -> anyhow::Result<()> {
     // client content inside the client delivery channel.
     let notifier = notifier_from_env();
     let slack_bot = slack_bot_from_env();
+    // `#general`'s channel ID — unset in KIND, where the CronJob is still
+    // installed but has no live Slack destination. An empty value fails the
+    // `GeneralNag` run as a terminal error rather than posting nowhere.
+    let general_channel = std::env::var("SLACK_GENERAL_CHANNEL_ID").unwrap_or_default();
     tracing::info!(
         backend = if workflows_service::notify_config::slack_enabled(|k| std::env::var(k).ok()) {
             "Slack"
@@ -149,12 +160,12 @@ async fn main() -> anyhow::Result<()> {
     // One endpoint hosts every workflow: the `Notation` virtual object and
     // the `Archives` nightly-export, `Heartbeat`
     // durable-execution liveness canary, `BillingCanary`, `BillingDigest`
-    // (daily GCP cost email), `ReconcileInvoices`, and `DriDigest` (nightly
-    // project-DRI Slack notice) workflows, each with a thin `*-trigger`
-    // CronJob. All run against this one worker — there is no per-workflow
-    // pod. The exact set of service names bound here is mirrored in
-    // `workflows_service::registry`, which the registry tests guard against
-    // drift (count + PascalCase naming).
+    // (daily GCP cost email), `ReconcileInvoices`, `DriDigest` (nightly
+    // project-DRI Slack notice), and `GeneralNag` (daily `#general` jab)
+    // workflows, each with a thin CronJob trigger. All run against this one
+    // worker — there is no per-workflow pod. The exact set of service names
+    // bound here is mirrored in `workflows_service::registry`, which the
+    // registry tests guard against drift (count + PascalCase naming).
     let server = HttpServer::new(
         bind_common_services!(
             endpoint_builder,
@@ -164,6 +175,7 @@ async fn main() -> anyhow::Result<()> {
             notifier,
             ops_delivery,
             slack_bot,
+            general_channel,
             simulated_matters
         )
         .build(),

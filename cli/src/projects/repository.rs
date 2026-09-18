@@ -10,13 +10,12 @@
 //! <organization>/<project-code>
 //! ├── .github/workflows/ci.yml
 //! ├── .github/workflows/cd.yml
-//! ├── .claude/skills/    # synced from Navigator via `sync-skills`
+//! ├── .agents/skills/    # synced from Navigator via `sync-skills`
 //! ├── apps/              # React + Vite workspaces, discovered by package.json
 //! │   └── portal/
 //! ├── templates/         # *.md notation blueprints
 //! ├── seeds/             # lookup_fields / records YAML for `navigator site import`
 //! ├── AGENTS.md
-//! ├── CLAUDE.md
 //! ├── README.md
 //! └── navigator.yaml     # the Project this repository declares
 //! ```
@@ -116,7 +115,6 @@ const ALLOWED_ROOTS: &[&str] = &[
     ".gitignore",
     ".gitattributes",
     "AGENTS.md",
-    "CLAUDE.md",
     // Every one of these repositories is proprietary, and a licence belongs at
     // the root where a reader looks for it. A portal-bearing repository could
     // hide one inside `portal/`; a templates-only Project has nowhere to put it
@@ -164,8 +162,9 @@ const ALLOWED_ROOTS: &[&str] = &[
     // make the layout unsatisfiable for the thing ENG-383 exists to let a
     // Project repository carry: a Project's portal is client-facing legal
     // copy, and the skills synced here are the review councils that critique
-    // exactly that.
-    ".claude",
+    // exactly that. One catalog root, matching Navigator's own: a
+    // harness-specific mirror beside it is what this repository retired.
+    ".agents",
 ];
 const FORBIDDEN_COMPONENTS: &[&str] = &[
     "answers",
@@ -207,7 +206,7 @@ const VITE_LOCKFILES: &[&str] = &[
 /// client-facing legal copy — an engagement summary, a documents tab, a
 /// matter timeline — so the two review councils that critique exactly that,
 /// plus the general engineering council, are the initial set. `stay-in-repo`
-/// joins them as the shared scope rule every Project repository's `CLAUDE.md`
+/// joins them as the shared scope rule every Project repository's `AGENTS.md`
 /// used to hand-write on its own, three times, in three different voices.
 const SYNCED_SKILLS: &[(&str, &str)] = &[
     (
@@ -366,48 +365,10 @@ pub fn scaffold(
         println!("created   {}", path.display());
     }
 
-    let claude = root.join("CLAUDE.md");
-    if claude.exists() {
-        println!("exists    {} (left alone)", claude.display());
-    } else {
-        match link_claude_to_agents(root, &claude) {
-            Ok(mechanism) => println!("created   {} ({mechanism})", claude.display()),
-            Err(error) => {
-                eprintln!("navigator: {}: {error}", claude.display());
-                return ExitCode::from(2);
-            }
-        }
-    }
-
     // Do not interpolate the CLI root here: `Command` also carries `Secrets`,
     // and CodeQL treats any printed Command field as cleartext logging.
     println!("\nCheck with: navigator project gate");
     ExitCode::SUCCESS
-}
-
-/// Make `CLAUDE.md` deliver the bytes of `AGENTS.md`.
-///
-/// One contract, read by whichever harness is pointed at the tree: the same
-/// invariant Navigator's own `cli/tests/agent_instruction_links.rs` guards,
-/// and it is stated in resolved bytes rather than link type. On Unix the
-/// cheapest way to keep two paths reading one document is a relative symlink.
-/// Windows cannot be asked for one: `symlink_file` needs a privilege an
-/// ordinary account lacks unless Developer Mode is on, and a link a Windows
-/// clone materialises without `core.symlinks` is a stub holding its own target
-/// path, which is the exact failure the guard exists to catch. So there the
-/// contract is copied from the `AGENTS.md` on disk, whether `scaffold` wrote
-/// it just now or left an existing one alone, so both platforms resolve to the
-/// same file. The returned string names the mechanism for the `created` line.
-#[cfg(unix)]
-fn link_claude_to_agents(_root: &Path, claude: &Path) -> std::io::Result<&'static str> {
-    std::os::unix::fs::symlink("AGENTS.md", claude)?;
-    Ok("symlink to AGENTS.md")
-}
-
-#[cfg(not(unix))]
-fn link_claude_to_agents(root: &Path, claude: &Path) -> std::io::Result<&'static str> {
-    fs::copy(root.join("AGENTS.md"), claude)?;
-    Ok("copy of AGENTS.md")
 }
 
 /// Write Navigator's canonical skill catalog into a Project repository, from
@@ -421,7 +382,7 @@ fn link_claude_to_agents(root: &Path, claude: &Path) -> std::io::Result<&'static
 /// it.
 pub fn sync_skills(root: &Path) -> ExitCode {
     for (name, contents) in SYNCED_SKILLS {
-        let path = root.join(".claude/skills").join(name).join("SKILL.md");
+        let path = root.join(".agents/skills").join(name).join("SKILL.md");
         if let Some(parent) = path.parent() {
             if let Err(error) = fs::create_dir_all(parent) {
                 eprintln!("navigator: create {}: {error}", parent.display());
@@ -756,7 +717,6 @@ const CLI_FEEDBACK_NEEDLE: &str = "open a Linear issue on the Lawyers team";
 
 fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>) {
     let agents_path = root.join("AGENTS.md");
-    let claude_path = root.join("CLAUDE.md");
     let Ok(agents) = fs::read_to_string(&agents_path) else {
         errors.push(Finding::at(
             agents_path,
@@ -764,13 +724,6 @@ fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>) {
         ));
         return;
     };
-    if agents.trim() == "AGENTS.md" {
-        errors.push(Finding::at(
-            &agents_path,
-            "AGENTS.md is the broken-symlink stub form; it must be the agent contract, not the path to it",
-        ));
-        return;
-    }
     if !agents.contains(CLI_FEEDBACK_NEEDLE) {
         errors.push(Finding::at(
             &agents_path,
@@ -778,29 +731,6 @@ fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>) {
                 "AGENTS.md must name where Navigator CLI feedback goes ({CLI_FEEDBACK_NEEDLE})"
             ),
         ));
-    }
-    match fs::read(&claude_path) {
-        Ok(claude) if claude == b"AGENTS.md" || claude == b"AGENTS.md\n" => {
-            errors.push(Finding::at(
-                claude_path,
-                "CLAUDE.md is the broken-symlink stub form (nine bytes reading AGENTS.md); \
-                 set core.symlinks true and check out CLAUDE.md, or copy AGENTS.md over it",
-            ));
-        }
-        Ok(claude) => {
-            if claude != agents.as_bytes() {
-                errors.push(Finding::at(
-                    claude_path,
-                    "CLAUDE.md must deliver the bytes of AGENTS.md",
-                ));
-            }
-        }
-        Err(_) => {
-            errors.push(Finding::at(
-                claude_path,
-                "missing required CLAUDE.md; it must deliver the bytes of AGENTS.md",
-            ));
-        }
     }
 }
 
@@ -836,11 +766,11 @@ fn validate_manifest(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<
 /// this comparison already *is* "the canonical copy at the pinned CLI
 /// version" in the one place this check runs for real.
 ///
-/// ## `.claude/` is the opt-in, and it is opt-in to the whole catalog
+/// ## `.agents/` is the opt-in, and it is opt-in to the whole catalog
 ///
 /// Absence used to be silent everywhere, on the same reasoning `templates/`
 /// and `portal/` get: not adopted is not broken. That reasoning stops holding
-/// the moment a repository has a `.claude/` directory, because then an agent
+/// the moment a repository has an `.agents/` directory, because then an agent
 /// *is* working in it under whatever skills it happens to find — and the ones
 /// it does not find are the conventions nobody told it about.
 ///
@@ -852,19 +782,19 @@ fn validate_manifest(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<
 /// two directions. A convention an agent cannot see is a convention that
 /// drifts.
 ///
-/// So: no `.claude/` directory, no findings — a repository that has not
+/// So: no `.agents/` directory, no findings — a repository that has not
 /// adopted agent tooling is not failed for it. With one, every skill in the
 /// catalog is required, and `sync-skills` is how a repository gets them.
 ///
 /// This only reaches a repository when it bumps the validate action's pin, so
 /// adoption stays staged rather than turning the fleet red at once.
 fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
-    let agent_directory = root.join(".claude");
+    let agent_directory = root.join(".agents");
     if !agent_directory.is_dir() {
         return;
     }
     for (name, canonical) in SYNCED_SKILLS {
-        let path = root.join(".claude/skills").join(name).join("SKILL.md");
+        let path = root.join(".agents/skills").join(name).join("SKILL.md");
         match fs::read_to_string(&path) {
             Ok(contents) if contents == *canonical => {}
             Ok(_) => errors.push(Finding::at(
@@ -877,7 +807,7 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
             Err(_) => errors.push(Finding::at(
                 &path,
                 format!(
-                    "this repository has a `.claude/` directory but is missing synced skill \
+                    "this repository has an `.agents/` directory but is missing synced skill \
                      `{name}`; run `navigator project repository sync-skills`"
                 ),
             )),
@@ -1621,10 +1551,6 @@ mod tests {
         std::fs::write(root.join(WORKFLOW), workflow(FIXTURE_PIN)).unwrap();
         std::fs::write(root.join(CD_WORKFLOW), cd_workflow(FIXTURE_PIN)).unwrap();
         std::fs::write(root.join("AGENTS.md"), agents("acme")).unwrap();
-        #[cfg(unix)]
-        std::os::unix::fs::symlink("AGENTS.md", root.join("CLAUDE.md")).unwrap();
-        #[cfg(not(unix))]
-        std::fs::copy(root.join("AGENTS.md"), root.join("CLAUDE.md")).unwrap();
         let status = std::process::Command::new("git")
             .args(["init", "--quiet"])
             .current_dir(root)
@@ -1865,18 +1791,28 @@ jobs:
         );
     }
 
+    /// `AGENTS.md` is the contract, so a `CLAUDE.md` beside it is an
+    /// unenumerated root rather than a second copy to keep in sync. Refusing it
+    /// is what stops the mirror — and the symlink stub it used to check out as —
+    /// coming back one repository at a time.
     #[test]
-    fn a_claude_md_stub_is_refused() {
+    fn a_claude_md_is_refused_as_an_unknown_root() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
-        std::fs::remove_file(root.path().join("CLAUDE.md")).unwrap();
         std::fs::write(root.path().join("CLAUDE.md"), "AGENTS.md").unwrap();
-        let found = layout_findings(root.path());
+
+        // Asserted on the finding's path: every unenumerated root reports the
+        // same message, so the message alone would not say which file was
+        // refused, and this test would keep passing if `CLAUDE.md` were
+        // re-admitted while some other stray file carried the finding.
+        let mut errors: Vec<Finding> = Vec::new();
+        let mut warnings = Vec::new();
+        validate_layout(root.path(), &mut errors, &mut warnings);
         assert!(
-            found
+            errors
                 .iter()
-                .any(|finding| finding.contains("broken-symlink stub")),
-            "{found:?}"
+                .any(|finding| finding.path.ends_with("CLAUDE.md")),
+            "{errors:?}"
         );
     }
 
@@ -1885,12 +1821,6 @@ jobs:
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         std::fs::write(root.path().join("AGENTS.md"), "# Working in acme\n").unwrap();
-        std::fs::remove_file(root.path().join("CLAUDE.md")).unwrap();
-        std::fs::write(
-            root.path().join("CLAUDE.md"),
-            std::fs::read(root.path().join("AGENTS.md")).unwrap(),
-        )
-        .unwrap();
         let found = layout_findings(root.path());
         assert!(
             found

@@ -113,6 +113,19 @@ pub struct PublicChrome {
     /// The legal person the footer's copyright names, resolved from the firm
     /// brand on both faces.
     pub legal_entity: String,
+    /// "A practice of Shook Law PLLC", when the name on the masthead is not
+    /// the name of the legal person behind it. Empty otherwise.
+    ///
+    /// Derived rather than listed. A trade name is permitted in Nevada
+    /// because it is not misleading, and *disclosed affiliation* is what does
+    /// that work — so the line is owed exactly when the visible name and the
+    /// legal entity differ, which is a property of the brand rather than a
+    /// set of sites someone remembers to update. The NYC summons practice is
+    /// the case that proves it: its masthead already *is* the firm, because
+    /// New York Rule 7.5(b) bars a trade name there, so it needs no line and
+    /// a hardcoded list would have given it one.
+    #[serde(default)]
+    pub attribution: String,
     pub disclaimer: String,
     /// The firm's registered word mark, its U.S. registration number, and the
     /// register's own record for it — the footer's trademark notice. Resolved
@@ -196,6 +209,7 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
             // services, resolved from the firm brand, so it is the same name at
             // the bottom of every page.
             copyright_holder: chrome.legal_entity.clone(),
+            attribution: chrome.attribution.clone(),
             disclaimer: chrome.disclaimer.clone(),
             // The mark notice reads `copyright_holder` as its registrant, so
             // it is handed in beside that name rather than resolved apart from
@@ -330,6 +344,11 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
         firm_logo_href: FIRM_BRAND.logo_href.to_string(),
         firm_home_href: FIRM_BRAND.home_href.to_string(),
         legal_entity: FIRM_BRAND.legal_entity.to_string(),
+        attribution: if brand.site_name == FIRM_BRAND.legal_entity {
+            String::new()
+        } else {
+            format!("A practice of {}", FIRM_BRAND.legal_entity)
+        },
         disclaimer: views::brand::firm_disclaimer().to_string(),
         trademark: trademark.to_string(),
         trademark_registration: registration.to_string(),
@@ -476,6 +495,7 @@ mod tests {
             firm_logo_href: "/public/logo.svg".to_string(),
             firm_home_href: "/".to_string(),
             legal_entity: "Shook Law PLLC".to_string(),
+            attribution: "A practice of Shook Law PLLC".to_string(),
             disclaimer: "This is an attorney advertisement.".to_string(),
             // The real registration, as `chrome_for` resolves it from the firm
             // brand: the notice's registrant is `legal_entity` above, so a
@@ -768,5 +788,36 @@ mod tests {
             out.contains("attorney advertisement") || out.contains("attorney advertising"),
             "the firm's own disclaimer is there: {out}"
         );
+    }
+
+    /// The attribution line is derived, not listed.
+    ///
+    /// A trade name is permitted in Nevada because it is not misleading, and
+    /// disclosed affiliation is what does that work — so the line is owed
+    /// exactly when the masthead name and the legal entity differ. Deriving
+    /// it means a brand added later cannot be forgotten, which is the failure
+    /// a hardcoded list of "brand sites" eventually produces.
+    #[cfg(feature = "server")]
+    #[test]
+    fn the_attribution_line_follows_the_name_on_the_masthead() {
+        for key in views::brand::BrandKey::ALL {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            let chrome = chrome_for(&branding.firm, Vec::new());
+
+            if branding.firm.site_name == branding.firm.legal_entity {
+                assert!(
+                    chrome.attribution.is_empty(),
+                    "{} already wears the firm's name and needs no line",
+                    key.as_str()
+                );
+            } else {
+                assert_eq!(
+                    chrome.attribution,
+                    "A practice of Shook Law PLLC",
+                    "{} wears a trade name and is owed the line",
+                    key.as_str()
+                );
+            }
+        }
     }
 }

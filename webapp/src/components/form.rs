@@ -50,6 +50,8 @@ pub enum FieldKind {
         placeholder: Option<String>,
         prefix: Option<String>,
         step: Option<String>,
+        autocomplete: Option<String>,
+        maxlength: Option<u32>,
         disabled: bool,
         multiple: bool,
         suggestions: Option<Vec<String>>,
@@ -107,6 +109,7 @@ pub struct Field {
     kind: FieldKind,
     required: bool,
     help: Option<String>,
+    help_runs: Option<Vec<super::copy_runs::CopyRun>>,
     /// A validation message for this control (see [`Field::error`]).
     error: Option<String>,
     /// The control's DOM id, when it must differ from `name` (see
@@ -122,6 +125,7 @@ impl Field {
             kind,
             required: false,
             help: None,
+            help_runs: None,
             error: None,
             control_id: None,
         }
@@ -144,6 +148,8 @@ impl Field {
                 placeholder: None,
                 prefix: None,
                 step: None,
+                autocomplete: None,
+                maxlength: None,
                 disabled: false,
                 multiple: false,
                 suggestions: None,
@@ -411,10 +417,39 @@ impl Field {
         self
     }
 
+    /// Set the browser's semantic input-purpose token (no-op on other kinds).
+    #[must_use]
+    pub fn autocomplete(mut self, token: impl Into<String>) -> Self {
+        if let FieldKind::Input { autocomplete, .. } = &mut self.kind {
+            *autocomplete = Some(token.into());
+        }
+        self
+    }
+
+    /// Bound the number of characters accepted by an input (no-op on other
+    /// kinds). The server must still validate the same bound.
+    #[must_use]
+    pub fn maxlength(mut self, limit: u32) -> Self {
+        if let FieldKind::Input { maxlength, .. } = &mut self.kind {
+            *maxlength = Some(limit);
+        }
+        self
+    }
+
     /// Attach hint text below the control, wired through `aria-describedby`.
     #[must_use]
     pub fn help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
+        self.help_runs = None;
+        self
+    }
+
+    /// Attach run-marked hint text below the control, with optional links,
+    /// wired through `aria-describedby`.
+    #[must_use]
+    pub fn help_runs(mut self, runs: Vec<super::copy_runs::CopyRun>) -> Self {
+        self.help = None;
+        self.help_runs = Some(runs);
         self
     }
 
@@ -501,7 +536,10 @@ impl Field {
     fn described_by(&self) -> Option<String> {
         let help_id = format!("{}-help", self.control_id());
         let error_id = format!("{}-error", self.control_id());
-        match (self.error.is_some(), self.help.is_some()) {
+        match (
+            self.error.is_some(),
+            self.help.is_some() || self.help_runs.is_some(),
+        ) {
             (true, true) => Some(format!("{error_id} {help_id}")),
             (true, false) => Some(error_id),
             (false, true) => Some(help_id),
@@ -541,6 +579,7 @@ impl Field {
             "nav-field nav-field--check"
         };
         let help = self.help.clone();
+        let help_runs = self.help_runs.clone();
         let error = self.error.clone();
         let picker_help = help.clone();
         let picker_error = error.clone();
@@ -557,7 +596,19 @@ impl Field {
                 // control.
                 div { class: "nav-field__error", id: "{error_id}", role: "alert", "{e}" }
             }
-            if let Some(h) = help {
+            if let Some(runs) = help_runs {
+                div { class: "nav-field__help", id: "{help_id}",
+                    for run in runs.iter() {
+                        if let Some(href) = run.href.as_ref() {
+                            a { href: "{href}", "{run.text}" }
+                        } else if run.emphasis {
+                            strong { "{run.text}" }
+                        } else {
+                            "{run.text}"
+                        }
+                    }
+                }
+            } else if let Some(h) = help {
                 div { class: "nav-field__help", id: "{help_id}", "{h}" }
             }
         };
@@ -737,6 +788,8 @@ impl Field {
             disabled,
             multiple,
             suggestions,
+            autocomplete,
+            maxlength,
         } = &self.kind
         else {
             return rsx! {};
@@ -768,6 +821,8 @@ impl Field {
                             value: input_value.clone(),
                             placeholder: placeholder.clone(),
                             step: step.clone(),
+                            autocomplete: autocomplete.clone(),
+                            maxlength: maxlength.map(|limit| limit.to_string()),
                             required,
                             disabled: *disabled,
                             multiple: *multiple,
@@ -785,6 +840,8 @@ impl Field {
                         value: input_value.clone(),
                         placeholder: placeholder.clone(),
                         step: step.clone(),
+                        autocomplete: autocomplete.clone(),
+                        maxlength: maxlength.map(|limit| limit.to_string()),
                         required,
                         disabled: *disabled,
                         multiple: *multiple,
@@ -936,6 +993,10 @@ pub fn question_fields(
 pub enum Heading {
     H1,
     H2,
+    /// Do not render a visible heading; the form keeps `title` as its
+    /// accessible name for an embedded CTA whose surrounding section already
+    /// supplies the visible heading.
+    Hidden,
 }
 
 /// A complete create / edit form rendered as a constrained card. Native submit
@@ -977,7 +1038,7 @@ pub fn FormCard(
             div { class: "nav-card__body",
                 if heading == Heading::H1 {
                     h1 { class: "nav-form-card__title", "{title}" }
-                } else {
+                } else if heading == Heading::H2 {
                     h2 { class: "nav-form-card__title", "{title}" }
                 }
                 if let Some(intro) = intro {
@@ -1116,6 +1177,35 @@ mod tests {
         assert!(html.contains("Send"), "{html}");
         // No Bootstrap classes.
         assert!(!html.contains("form-control"), "{html}");
+    }
+
+    #[test]
+    fn renders_input_purpose_limits_linked_help_and_a_hidden_heading() {
+        fn app() -> Element {
+            rsx! {
+                FormCard {
+                    title: "Embedded form".to_string(),
+                    action: "/contact".to_string(),
+                    submit_label: "Send".to_string(),
+                    heading: Heading::Hidden,
+                    fields: vec![Field::email("Email", "email", "")
+                        .autocomplete("email")
+                        .maxlength(254)
+                        .help_runs(vec![super::super::copy_runs::CopyRun {
+                            text: "Privacy Policy".to_string(),
+                            emphasis: false,
+                            href: Some("/privacy".to_string()),
+                        }])],
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(!html.contains("nav-form-card__title"), "{html}");
+        assert!(html.contains(r#"aria-label="Embedded form""#), "{html}");
+        assert!(html.contains(r#"autocomplete="email""#), "{html}");
+        assert!(html.contains(r#"maxlength="254""#), "{html}");
+        assert!(html.contains(r#"href="/privacy""#), "{html}");
+        assert_forms_accessible(&html, "embedded form");
     }
 
     #[test]

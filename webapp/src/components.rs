@@ -42,6 +42,7 @@ pub mod dri_view;
 pub mod focus;
 pub mod form;
 pub mod github_stars;
+pub mod honeypot;
 pub mod icon;
 pub mod links;
 pub mod navigator_chrome;
@@ -86,6 +87,7 @@ pub use form::{
     question_fields, Choice, Field, FieldKind, FormCard, Heading, QuestionFieldContext,
 };
 pub use github_stars::GitHubStars;
+pub use honeypot::Honeypot;
 pub use icon::{Icon, IconName, LIBRA_SCALES};
 pub use links::ExternalLink;
 pub use navigator_chrome::{

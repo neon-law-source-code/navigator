@@ -77,15 +77,10 @@ pub struct FirmFooterModel {
 
 /// Entry count at which the family list splits into two columns.
 ///
-/// Seven brands in one column runs longer than the rest of the footer and
-/// reads as a link dump, which is the shape this block replaced. The eighth
-/// entry — the NYC summons practice — is why the threshold exists rather
-/// than the list simply being styled for its current length.
-const FAMILY_TWO_COLUMN_THRESHOLD: usize = 7;
+/// Any multi-brand family uses two columns on desktop and one on mobile.
+const FAMILY_TWO_COLUMN_THRESHOLD: usize = 2;
 
-/// The family list's class, widened to two columns once the list is long
-/// enough to need it. Adding a brand stays a data change: nothing about the
-/// layout is edited when the list grows past the threshold.
+/// The family list's class, widened for every multi-brand family.
 #[must_use]
 fn family_list_class(entries: usize) -> &'static str {
     if entries >= FAMILY_TWO_COLUMN_THRESHOLD {
@@ -222,11 +217,7 @@ pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooter
         // host serves anything; see `views::brand::BrandKey::is_live`.
         .filter(|key| key.is_live() || **key == current)
         .map(|key| FirmFooterBrand {
-            label: key
-                .resolve_branding(&views::brand::DEFAULT_BRANDING)
-                .firm
-                .site_name
-                .to_string(),
+            label: compiled_footer_label(*key),
             href: key.public_home_href(),
             current: *key == current,
             byline: key.family_byline().to_string(),
@@ -234,12 +225,27 @@ pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooter
         .collect()
 }
 
-/// The firm's association memberships, from request-scoped branding, in the
-/// footer's own shape.
+/// The concise names the footer uses for the two public family entries whose
+/// masthead names are longer or more specific than their family labels.
+#[cfg(feature = "server")]
+fn compiled_footer_label(key: views::brand::BrandKey) -> String {
+    match key {
+        views::brand::BrandKey::Neon => "Emerging Technologies Counsel".to_string(),
+        views::brand::BrandKey::DeleteYourData => "Protect your info".to_string(),
+        _ => key
+            .resolve_branding(&views::brand::DEFAULT_BRANDING)
+            .firm
+            .site_name
+            .to_string(),
+    }
+}
+
 #[cfg(feature = "server")]
 #[must_use]
-fn firm_memberships() -> Vec<FirmFooterMembership> {
-    views::brand::firm_memberships()
+fn firm_memberships_from(
+    memberships: &'static [views::brand::FirmMembership],
+) -> Vec<FirmFooterMembership> {
+    memberships
         .iter()
         .map(|membership| FirmFooterMembership {
             label: membership.name.to_string(),
@@ -264,7 +270,7 @@ pub fn compiled_firm_footer_model(
     // names its one brand, so the model is never empty of identity.
     if brands.is_empty() {
         brands.push(FirmFooterBrand {
-            label: branding.firm.site_name.to_string(),
+            label: compiled_footer_label(current),
             href: String::new(),
             current: true,
             byline: current.family_byline().to_string(),
@@ -273,11 +279,11 @@ pub fn compiled_firm_footer_model(
     FirmFooterModel {
         legal_entity: branding.firm.legal_entity.to_string(),
         brands,
-        memberships: firm_memberships(),
-        disclaimer: views::brand::firm_disclaimer().to_string(),
-        trademark: views::brand::firm_trademark().0.to_string(),
-        trademark_registration: views::brand::firm_trademark().1.to_string(),
-        trademark_record_url: views::brand::firm_trademark().2.to_string(),
+        memberships: firm_memberships_from(branding.firm_memberships),
+        disclaimer: branding.firm_disclaimer.to_string(),
+        trademark: branding.firm_trademark.to_string(),
+        trademark_registration: branding.firm_trademark_registration.to_string(),
+        trademark_record_url: branding.firm_trademark_record_url.to_string(),
         copyright_year,
         source_repo: crate::source_repository::REPOSITORY_SLUG.to_string(),
         source_href: crate::source_repository::REPOSITORY_HREF.to_string(),
@@ -305,6 +311,7 @@ pub async fn resolve_firm_footer_model(
     copyright_year: i32,
     navigator_version: String,
 ) -> FirmFooterModel {
+    let branding = current.resolve_branding(&views::brand::DEFAULT_BRANDING);
     let fallback =
         || compiled_firm_footer_model(current, copyright_year, navigator_version.clone());
 
@@ -346,7 +353,9 @@ pub async fn resolve_firm_footer_model(
             continue;
         }
         brands.push(FirmFooterBrand {
-            label: brand.name,
+            label: compiled
+                .map(|key| compiled_footer_label(*key))
+                .unwrap_or(brand.name),
             href: compiled
                 .map(|key| key.public_home_href())
                 .unwrap_or_default(),
@@ -364,11 +373,11 @@ pub async fn resolve_firm_footer_model(
     FirmFooterModel {
         legal_entity: entity.name,
         brands,
-        memberships: firm_memberships(),
-        disclaimer: views::brand::firm_disclaimer().to_string(),
-        trademark: views::brand::firm_trademark().0.to_string(),
-        trademark_registration: views::brand::firm_trademark().1.to_string(),
-        trademark_record_url: views::brand::firm_trademark().2.to_string(),
+        memberships: firm_memberships_from(branding.firm_memberships),
+        disclaimer: branding.firm_disclaimer.to_string(),
+        trademark: branding.firm_trademark.to_string(),
+        trademark_registration: branding.firm_trademark_registration.to_string(),
+        trademark_record_url: branding.firm_trademark_record_url.to_string(),
         copyright_year,
         source_repo: crate::source_repository::REPOSITORY_SLUG.to_string(),
         source_href: crate::source_repository::REPOSITORY_HREF.to_string(),
@@ -520,13 +529,13 @@ mod tests {
                 FirmFooter {
                     model: model(vec![
                         FirmFooterBrand {
-                            label: "Neon Law".to_string(),
+                            label: "Emerging Technologies Counsel".to_string(),
                             href: "https://www.neonlaw.com".to_string(),
                             current: true,
                             byline: String::new(),
                         },
                         FirmFooterBrand {
-                            label: "DeleteYourData.com".to_string(),
+                            label: "Protect your info".to_string(),
                             href: "https://www.deleteyourdata.com".to_string(),
                             current: false,
                             byline: String::new(),
@@ -541,12 +550,12 @@ mod tests {
                 && html.contains(r#"<h2 class="app-footer__family-heading">Our Family</h2>"#),
             "a landmark named by its visible heading: {html}"
         );
-        let neon = html.find("Neon Law").expect("neon");
-        let dyd = html.find("DeleteYourData.com").expect("dyd");
+        let neon = html.find("Emerging Technologies Counsel").expect("neon");
+        let dyd = html.find("Protect your info").expect("dyd");
         assert!(neon < dyd, "registry order: {html}");
         assert!(
             html.contains(
-                r#"<span class="app-footer__family-current" aria-current="true">Neon Law</span>"#
+                r#"<span class="app-footer__family-current" aria-current="true">Emerging Technologies Counsel</span>"#
             ),
             "current brand is text, marked current: {html}"
         );
@@ -687,7 +696,7 @@ mod tests {
         );
     }
 
-    /// The compiled fallback lists the whole compiled family — every house
+    /// The compiled fallback lists the live compiled family — every house
     /// brand, in registry order, the request's key current and every other
     /// linking its production home — and the firm's membership, so the rows
     /// render before any Firm row exists.
@@ -697,7 +706,14 @@ mod tests {
         let model =
             compiled_firm_footer_model(views::brand::BrandKey::DeleteYourData, 2026, String::new());
         let labels: Vec<&str> = model.brands.iter().map(|b| b.label.as_str()).collect();
-        assert_eq!(labels, ["Neon Law", "DeleteYourData.com", "Lawyer Shook"]);
+        assert_eq!(
+            labels,
+            [
+                "Emerging Technologies Counsel",
+                "Protect your info",
+                "Lawyer Shook"
+            ]
+        );
         let current: Vec<bool> = model.brands.iter().map(|b| b.current).collect();
         assert_eq!(current, [false, true, false]);
         assert_eq!(model.brands[0].href, "https://www.neonlaw.com");
@@ -705,6 +721,29 @@ mod tests {
         assert_eq!(model.legal_entity, "Shook Law PLLC");
         assert_eq!(model.memberships.len(), 1);
         assert_eq!(model.memberships[0].label, "Justice Technology Association");
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn the_footer_uses_the_requested_public_family_labels() {
+        assert_eq!(
+            compiled_footer_label(views::brand::BrandKey::Neon),
+            "Emerging Technologies Counsel"
+        );
+        assert_eq!(
+            compiled_footer_label(views::brand::BrandKey::DeleteYourData),
+            "Protect your info"
+        );
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn a_non_default_brand_does_not_inherit_the_neon_trademark_notice() {
+        let model =
+            compiled_firm_footer_model(views::brand::BrandKey::DeleteYourData, 2026, String::new());
+        assert!(model.trademark.is_empty());
+        assert!(model.trademark_registration.is_empty());
+        assert!(!render_firm_footer(model).contains("NEON LAW"));
     }
 
     /// ENG-589: the resolver reads the live Firm/Entity/brand rows, not a
@@ -762,10 +801,10 @@ mod tests {
         assert_eq!(model.legal_entity, "Shook Law PLLC");
         assert_eq!(model.brands.len(), 2);
         assert!(model.brands[0].current);
-        assert_eq!(model.brands[0].label, "neon");
+        assert_eq!(model.brands[0].label, "Emerging Technologies Counsel");
     }
 
-    /// A second Firm wearing a runtime-created brand (never one of the three
+    /// A second Firm wearing a runtime-created brand (never one of the compiled
     /// compiled keys) alongside a compiled one: the footer for its compiled
     /// key names *that* Firm's Entity and lists both of *its* brands by their
     /// live names — never the other, seeded Firm's name or brands.
@@ -880,7 +919,7 @@ mod tests {
         assert_eq!(model.legal_entity, "Firm B Legal Entity LLC");
         assert_ne!(model.legal_entity, "Firm A Legal Entity LLC");
         let labels: Vec<&str> = model.brands.iter().map(|b| b.label.as_str()).collect();
-        assert!(labels.contains(&"lawyer-shook"));
+        assert!(labels.contains(&"Lawyer Shook"));
         assert!(labels.contains(&"Acme Runtime Brand"));
         assert!(
             !labels.iter().any(|label| label.contains("neon")),
@@ -973,14 +1012,13 @@ mod tests {
         assert!(!html.contains(" · "), "{html}");
     }
 
-    /// Six entries stay one column; seven split. Adding the eighth brand is
-    /// then a data change, which is what this issue asks for — nobody edits
-    /// the layout when the family grows.
+    /// Every multi-brand family gets the desktop two-column class; the
+    /// responsive stylesheet collapses it to one column on mobile.
     #[test]
     fn the_family_list_splits_into_two_columns_only_once_it_is_long() {
-        assert_eq!(family_list_class(6), "app-footer__family-list");
+        assert_eq!(family_list_class(1), "app-footer__family-list");
         assert_eq!(
-            family_list_class(7),
+            family_list_class(2),
             "app-footer__family-list app-footer__family-list--two-column"
         );
         assert_eq!(
@@ -989,10 +1027,10 @@ mod tests {
         );
     }
 
-    /// The seven-brand family renders in two columns end to end, not just in
-    /// the class helper.
+    /// A multi-brand family renders with the two-column class end to end, not
+    /// just in the class helper.
     #[test]
-    fn the_seven_brand_family_renders_two_columns() {
+    fn a_multi_brand_family_renders_two_columns() {
         fn app() -> Element {
             rsx! {
                 FirmFooter {
@@ -1059,18 +1097,15 @@ mod tests {
         let labels: Vec<&str> = rows.iter().map(|row| row.label.as_str()).collect();
 
         for key in views::brand::BrandKey::ALL {
-            let label = key
-                .resolve_branding(&views::brand::DEFAULT_BRANDING)
-                .firm
-                .site_name;
+            let label = compiled_footer_label(*key);
             if key.is_live() {
                 assert!(
-                    labels.contains(&label),
+                    labels.contains(&label.as_str()),
                     "{label} is live and is listed: {labels:?}"
                 );
             } else {
                 assert!(
-                    !labels.contains(&label),
+                    !labels.contains(&label.as_str()),
                     "{label} is not reachable and must not be advertised: {labels:?}"
                 );
             }

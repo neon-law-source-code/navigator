@@ -833,6 +833,11 @@ impl BrandKey {
         Self::Summons,
     ];
 
+    /// The compiled keys whose hosts currently serve a public site. The
+    /// remaining registered keys are built and staged, but intentionally stay
+    /// out of the footer's link row until their launches are approved.
+    pub const LIVE: &'static [Self] = &[Self::Neon, Self::DeleteYourData, Self::LawyerShook];
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -996,19 +1001,8 @@ impl BrandKey {
     /// Flip it in the same change that makes the site reachable — never
     /// earlier, and never as a batch.
     #[must_use]
-    pub const fn is_live(self) -> bool {
-        match self {
-            Self::Neon | Self::DeleteYourData | Self::LawyerShook => true,
-            // Built here, launch held: ENG-744..747 are gated on a staging
-            // deploy and the firm's review, and ENG-749 additionally on New
-            // York admission. No production deployment answers on their
-            // hosts yet.
-            Self::Vesta
-            | Self::Misericordia
-            | Self::Abhaya
-            | Self::DeleteYourDebt
-            | Self::Summons => false,
-        }
+    pub fn is_live(self) -> bool {
+        Self::LIVE.contains(&self)
     }
 
     /// Every host this key answers to, across every environment this
@@ -2283,6 +2277,21 @@ mod tests {
                     "{host} should resolve to {key:?}"
                 );
             }
+        }
+    }
+
+    /// The separately approved launch set is drawn from the same registry and
+    /// every live key has a host that resolves back to it.
+    #[test]
+    fn every_live_key_is_registered_and_reachable() {
+        for key in BrandKey::LIVE {
+            assert!(BrandKey::ALL.contains(key), "{key:?} is not in ALL");
+            assert!(
+                key.hosts()
+                    .iter()
+                    .any(|host| registered_brand_key(host) == Some(*key)),
+                "{key:?} has no resolving host"
+            );
         }
     }
 

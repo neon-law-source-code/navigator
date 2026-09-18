@@ -121,15 +121,10 @@ pub struct FooterNavLink {
     pub href: String,
 }
 
-/// Entry count at which the family list splits into two columns.
-///
-/// Seven brands in one column runs longer than the rest of the footer and
-/// reads as the link dump this block replaced. The eighth entry — the NYC
-/// summons practice — is why this is a threshold rather than the list simply
-/// being styled for its current length: adding a brand stays a data change.
-pub const FAMILY_TWO_COLUMN_THRESHOLD: usize = 7;
+/// Any multi-brand family uses two columns on desktop and one on mobile.
+pub const FAMILY_TWO_COLUMN_THRESHOLD: usize = 2;
 
-/// The family list's class, widened once the list is long enough to need it.
+/// The family list's class, widened for every multi-brand family.
 #[must_use]
 pub fn family_list_class(entries: usize) -> &'static str {
     if entries >= FAMILY_TWO_COLUMN_THRESHOLD {
@@ -1772,13 +1767,13 @@ mod tests {
     fn three_firm_brands() -> Vec<FooterBrandLink> {
         vec![
             FooterBrandLink {
-                label: "Neon Law".to_string(),
+                label: "Emerging Technologies Counsel".to_string(),
                 href: "https://www.neonlaw.com".to_string(),
                 current: true,
                 byline: String::new(),
             },
             FooterBrandLink {
-                label: "DeleteYourData.com".to_string(),
+                label: "Protect your info".to_string(),
                 href: "https://www.deleteyourdata.com".to_string(),
                 current: false,
                 byline: String::new(),
@@ -1833,13 +1828,13 @@ mod tests {
             family.contains(r#"<h2 class="site-footer__family-heading">Our Family</h2>"#),
             "the row is headed by the words its landmark is named with: {family}"
         );
-        let neon = family.find("Neon Law").expect("neon");
-        let dyd = family.find("DeleteYourData.com").expect("dyd");
+        let neon = family.find("Emerging Technologies Counsel").expect("neon");
+        let dyd = family.find("Protect your info").expect("dyd");
         let shook = family.find("Lawyer Shook").expect("lawyer shook");
         assert!(neon < dyd && dyd < shook, "registry order: {family}");
         assert!(
             family.contains(
-                r#"<span class="site-footer__family-current" aria-current="true">Neon Law</span>"#
+                r#"<span class="site-footer__family-current" aria-current="true">Emerging Technologies Counsel</span>"#
             ),
             "the current brand is text, marked current: {family}"
         );
@@ -1849,7 +1844,7 @@ mod tests {
         );
         assert!(
             family.contains(
-                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com">DeleteYourData.com</a>"#
+                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com">Protect your info</a>"#
             ),
             "other brands link their home host: {family}"
         );
@@ -2102,11 +2097,11 @@ mod tests {
         );
     }
 
-    /// Six entries stay one column; seven split. The eighth brand is then a
-    /// data change rather than a layout edit.
+    /// Every multi-brand family gets the desktop two-column class; the
+    /// responsive stylesheet collapses it to one column on mobile.
     #[test]
     fn the_family_list_splits_into_two_columns_only_once_it_is_long() {
-        assert_eq!(family_list_class(6), "site-footer__family-list");
+        assert_eq!(family_list_class(1), "site-footer__family-list");
         assert_eq!(
             family_list_class(FAMILY_TWO_COLUMN_THRESHOLD),
             "site-footer__family-list site-footer__family-list--two-column"

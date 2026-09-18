@@ -589,13 +589,13 @@ fn FirmFooterShowcase() -> Element {
                     legal_entity: "Shook Law PLLC".to_string(),
                     brands: vec![
                         crate::firm_footer::FirmFooterBrand {
-                            label: "Neon Law".to_string(),
+                            label: "Emerging Technologies Counsel".to_string(),
                             href: String::new(),
                             current: true,
                             byline: "flat-fee legal services for emerging tech".to_string(),
                         },
                         crate::firm_footer::FirmFooterBrand {
-                            label: "DeleteYourData.com".to_string(),
+                            label: "Protect your info".to_string(),
                             href: "https://www.deleteyourdata.com".to_string(),
                             current: false,
                             byline: "protect your personal information".to_string(),
@@ -647,13 +647,13 @@ fn demo_memberships() -> Vec<FooterMembership> {
 fn demo_family() -> Vec<FooterBrandLink> {
     [
         (
-            "Neon Law",
+            "Emerging Technologies Counsel",
             "https://www.neonlaw.com",
             true,
             "flat-fee legal services for emerging tech",
         ),
         (
-            "DeleteYourData.com",
+            "Protect your info",
             "https://www.deleteyourdata.com",
             false,
             "protect your personal information",
@@ -1906,7 +1906,6 @@ mod tests {
     #[test]
     fn app_footer_showcase_renders_the_platform_line() {
         use super::FirmFooterShowcase;
-        use crate::components::POWERED_BY_NEON_LAW_NAVIGATOR;
         use dioxus::prelude::*;
 
         fn app() -> Element {
@@ -1916,8 +1915,12 @@ mod tests {
         dom.rebuild_in_place();
         let html = dioxus_ssr::render(&dom);
         assert!(
-            html.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
-            "the gallery preview shows the shared platform line: {html}"
+            html.contains("Powered by"),
+            "the platform line renders: {html}"
+        );
+        assert!(
+            html.contains("neon-law-source-code/navigator") && html.contains("GitHub stars"),
+            "the gallery preview shows the source repository attribution: {html}"
         );
     }
 }

@@ -518,13 +518,13 @@ mod tests {
             }],
             brands: vec![
                 ChromeBrand {
-                    label: "Neon Law".to_string(),
+                    label: "Emerging Technologies Counsel".to_string(),
                     href: "https://www.neonlaw.com".to_string(),
                     current: true,
                     byline: "flat-fee legal services for emerging tech".to_string(),
                 },
                 ChromeBrand {
-                    label: "DeleteYourData.com".to_string(),
+                    label: "Protect your info".to_string(),
                     href: "https://www.deleteyourdata.com".to_string(),
                     current: false,
                     byline: "protect your personal information".to_string(),
@@ -749,7 +749,14 @@ mod tests {
     fn the_resolved_chrome_carries_the_compiled_family_and_the_membership() {
         let chrome = firm_public_chrome(Vec::new());
         let labels: Vec<&str> = chrome.brands.iter().map(|b| b.label.as_str()).collect();
-        assert_eq!(labels, ["Neon Law", "DeleteYourData.com", "Lawyer Shook"]);
+        assert_eq!(
+            labels,
+            [
+                "Emerging Technologies Counsel",
+                "Protect your info",
+                "Lawyer Shook"
+            ]
+        );
         assert!(chrome.brands[0].current, "the default brand is current");
         assert!(
             chrome.brands[1..]
@@ -770,6 +777,17 @@ mod tests {
             chrome.memberships[0].logo_href, "/public/img/justice-technology-association/logo.png",
             "with no asset base configured it falls back to the bundled mount"
         );
+    }
+
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn a_non_default_public_brand_does_not_inherit_the_neon_trademark_notice() {
+        let branding = views::brand::BrandKey::DeleteYourData
+            .resolve_branding(&views::brand::DEFAULT_BRANDING);
+        let chrome = views::brand::scope(branding, async { firm_public_chrome(Vec::new()) }).await;
+        assert!(chrome.trademark.is_empty());
+        assert!(chrome.trademark_registration.is_empty());
+        assert!(chrome.trademark_record_url.is_empty());
     }
 
     /// The public footer carries the firm's own disclaimer.

@@ -222,6 +222,10 @@ const SYNCED_SKILLS: &[(&str, &str)] = &[
         include_str!("../../../.agents/skills/client-council/SKILL.md"),
     ),
     (
+        "human-readable",
+        include_str!("../../../.agents/skills/human-readable/SKILL.md"),
+    ),
+    (
         "stay-in-repo",
         include_str!("../../../.agents/skills/stay-in-repo/SKILL.md"),
     ),

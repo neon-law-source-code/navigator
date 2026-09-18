@@ -984,6 +984,34 @@ mod tests {
         }
     }
 
+    /// The seeded `brand` row wears the same wordmark the compiled
+    /// `Branding` publishes.
+    ///
+    /// The two footer paths read different sources for one label:
+    /// [`compiled_family_brands`] takes `SiteBrand::site_name`, and
+    /// [`resolve_firm_footer_model`] takes `brand.name` from the row
+    /// `store::seed` wrote. `store` cannot depend on `views`, so that row's
+    /// name is a hand-copied constant — and this is the only place in the
+    /// workspace that can see both halves and hold them together. Without
+    /// it, a deployment with a seeded Firm quietly publishes a different
+    /// wordmark than the same page renders before seeding.
+    #[cfg(feature = "server")]
+    #[test]
+    fn every_compiled_brand_seeds_its_published_wordmark() {
+        for key in views::brand::BrandKey::ALL {
+            let published = key
+                .resolve_branding(&views::brand::DEFAULT_BRANDING)
+                .firm
+                .site_name;
+            assert_eq!(
+                store::seed::compiled_brand_name(key.as_str()),
+                Some(published),
+                "{} seeds a brand row named for the wordmark it publishes",
+                key.as_str(),
+            );
+        }
+    }
+
     /// Every compiled brand carries a line, so the family block can never
     /// render a bare wordmark for a brand the firm actually ships.
     #[test]

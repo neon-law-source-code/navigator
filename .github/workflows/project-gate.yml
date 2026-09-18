@@ -85,7 +85,7 @@ jobs:
       # after 26.9.16, so 26.9.17-rc.1 is the first tag that carries it — while
       # this pin still read 26.9.16, every caller of project-gate.yml@26.9.17-rc.1
       # failed to resolve the action at all.
-      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.17
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.18
         with:
           version: ${{ needs.read-manifest.outputs.version }}
       # Application discovery lives in the CLI (`cli/src/projects/repository.rs`)
@@ -129,7 +129,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # See the matching comment in the `verify` job: this pin lags until a
       # release publishes the action.
-      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.17
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.18
         with:
           version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site document verify
@@ -167,7 +167,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # See the matching comment in the `verify` job: this pin lags until a
       # release publishes the action.
-      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.17
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.18
         with:
           version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site import

@@ -58,8 +58,10 @@ is served by the redirect service, which sends both its apex and `www` host to t
 | `neonlaw.org` / `www.neonlaw.org` | the redirect service | `https://www.neonlaw.com` (path-preserving 301) |
 
 The `neonlaw.com` apex is not a deployment entry: it carries a `URL` record that 301s to `https://www.neonlaw.com`,
-which is a record inside the production zone. It is the Apex→www row of the record table below. The `neonlaw.org` zone
-has its own host-dispatched redirect service so deep links survive the domain migration.
+which is a record inside the production zone. It is the Apex→www row of the record table below. It must not appear on a
+GKE `ManagedCertificate`: the name does not resolve to the load balancer, and a Google-managed certificate stays in
+`Provisioning` until every listed name validates. The `neonlaw.org` zone has its own host-dispatched redirect service so
+deep links survive the domain migration.
 
 `DNS_ACCT` is the DNSimple account that holds the zone. Read it from `dnsimple accounts list` — a user token can span
 several accounts, and a command run against the wrong one fails with `Zone not found` rather than a permission error,

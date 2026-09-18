@@ -1,0 +1,13 @@
+# Additional Google-managed TLS certificates — one `ManagedCertificate`
+# per live brand family other than the default. Each document lists
+# exactly that family's environment host so a DNS miss or domain change
+# reissues only that family's certificate.
+#
+# `ops ship` replaces the token below with the rendered documents,
+# derived from `views::brand::BrandKey::ALL`. Renders to nothing when
+# this environment serves no other brand; the kustomization resource
+# entry is added only when at least one document exists.
+#
+# See `ingress/managed-certificate.yaml` for ManagedCertificate vs
+# Certificate Manager and the HTTP-01 challenge ordering.
+# NAVIGATOR_BRAND_MANAGED_CERTIFICATES

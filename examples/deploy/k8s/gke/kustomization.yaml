@@ -26,6 +26,7 @@ resources:
   - clamav.yaml
   - ingress/ingress.yaml
   - ingress/managed-certificate.yaml
+  # NAVIGATOR_BRAND_CERT_RESOURCES
   - ingress/frontend-config.yaml
   - ingress/web-backendconfig.yaml
   - ingress/workflows-managed-certificate.yaml

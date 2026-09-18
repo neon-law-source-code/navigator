@@ -985,12 +985,12 @@ impl BrandKey {
     /// separates the two, and it has two consequences that must not drift
     /// apart.
     ///
-    /// **It gates the certificate.** `cli::devx::ship` derives the managed
-    /// certificate and Ingress entries from this registry. A Google
-    /// `ManagedCertificate` does not provision per-domain: listing a
-    /// hostname whose DNS does not point at the load balancer holds the
-    /// whole certificate in `Provisioning`, so one unreachable brand would
-    /// take the firm's own certificate down with it.
+    /// **It gates the certificate.** `cli::devx::ship` derives a
+    /// `ManagedCertificate` and an Ingress host per live family from this
+    /// registry. An unpointed hostname on its own certificate sits in
+    /// `Provisioning` without taking another family's certificate down;
+    /// it still must not appear on Ingress or in the footer until DNS
+    /// points at the load balancer.
     ///
     /// **It gates the footer.** "Our Family" is a set of links. Listing a
     /// brand whose host serves nothing advertises a practice a reader cannot

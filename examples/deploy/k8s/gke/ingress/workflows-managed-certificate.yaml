@@ -2,11 +2,10 @@
 # — the hostname Restate Cloud uses to reach `workflows-service`.
 #
 # Attached to the shared `navigator-web-gke` Ingress alongside the
-# `navigator-web` cert via a comma-separated value in the
-# `networking.gke.io/managed-certificates` annotation. Two certs,
-# one LB; each cert covers exactly one hostname so that
-# revocations or renewals can target one host without disturbing
-# the other.
+# per-family web certificates via a comma-separated value in the
+# `networking.gke.io/managed-certificates` annotation. Each cert
+# covers exactly one hostname family so that revocations, domain
+# changes, or a DNS miss reissue only that family.
 #
 # See `ingress/managed-certificate.yaml` for the broader story
 # about ManagedCertificate vs Certificate Manager and the HTTP-01

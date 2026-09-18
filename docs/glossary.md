@@ -1084,23 +1084,25 @@ Talking to a lead is attorney work under professional ethics (advertising and so
   [`store::leads`](../store/src/leads.rs)
 
 ```text
-┌─ lead ───────────────────────────────────┐
-│ id                record                 │
-│ brand_key         string                 │
-│ consent_version   string                 │
-│ consented_at      datetime               │
-│ email             string                 │
-│ email_lower       string                 │
-│ inserted_at       datetime               │
-│ person_id         option<record<person>> │
-│ phone             option<string>         │
-│ sms_consented_at  option<datetime>       │
-│ source_path       string                 │
-│ status            string                 │
-│ submissions       int                    │
-│ unsubscribed_at   option<datetime>       │
-│ updated_at        datetime               │
-└──────────────────────────────────────────┘
+┌─ lead ──────────────────────────────────────┐
+│ id                   record                 │
+│ brand_key            string                 │
+│ consent_version      string                 │
+│ consented_at         datetime               │
+│ email                string                 │
+│ email_lower          string                 │
+│ inserted_at          datetime               │
+│ person_id            option<record<person>> │
+│ phone                option<string>         │
+│ sms_consent_version  option<string>         │
+│ sms_consented_at     option<datetime>       │
+│ sms_policy_version   option<string>         │
+│ source_path          string                 │
+│ status               string                 │
+│ submissions          int                    │
+│ unsubscribed_at      option<datetime>       │
+│ updated_at           datetime               │
+└─────────────────────────────────────────────┘
 ```
 
 ## Letter

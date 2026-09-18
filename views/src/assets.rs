@@ -78,18 +78,64 @@ pub const FALLBACK_WIDTH: u32 = 1200;
 /// vendored JS/CSS (Bootstrap, htmx, Alpine) is linked from the literal
 /// same-origin `/public` mount in [`crate::layout`], so it never follows
 /// the photo CDN cross-origin.
-static ASSET_BASE_URL: LazyLock<String> = LazyLock::new(|| {
-    std::env::var("NAVIGATOR_ASSET_BASE_URL")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "/public".to_string())
-});
+static ASSET_BASE_URL: LazyLock<String> =
+    LazyLock::new(|| bucket_origin().unwrap_or_else(|| SAME_ORIGIN_STATIC_MOUNT.to_string()));
+
+/// The crate-bundled static mount, and the [`asset_url`] default: tracked
+/// files ship inside the container image, so a deployment with no configured
+/// bucket origin still serves every photo the repository carries.
+const SAME_ORIGIN_STATIC_MOUNT: &str = "/public";
+
+/// The same-origin route that reads the assets bucket itself
+/// (`portal::public_asset`). The fallback for [`bucket_asset_url`], because a
+/// runtime upload lives only in that bucket.
+const SAME_ORIGIN_BUCKET_ROUTE: &str = "/assets";
+
+/// `NAVIGATOR_ASSET_BASE_URL` when it names the assets bucket's own public
+/// origin, or `None` when it is unset, blank, or the literal
+/// [`SAME_ORIGIN_STATIC_MOUNT`] — neither of which can serve a bucket object
+/// directly.
+fn bucket_origin() -> Option<String> {
+    bucket_origin_from(std::env::var("NAVIGATOR_ASSET_BASE_URL").ok())
+}
+
+/// The decision behind [`bucket_origin`]; split out like [`join_base`] so
+/// tests can exercise every configured form without stomping the
+/// process-wide env var, which would race the parallel test runner.
+fn bucket_origin_from(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty() && value != SAME_ORIGIN_STATIC_MOUNT)
+}
 
 /// Resolve a repo-relative asset path (e.g. `img/lake-tahoe/...`)
 /// against the configured base URL.
 #[must_use]
 pub fn asset_url(rel: &str) -> String {
     join_base(&ASSET_BASE_URL, rel)
+}
+
+/// Base URL every bucket-only object resolves against: a runtime upload such
+/// as a published profile avatar, which exists in the assets bucket and
+/// nowhere else. Read once, like [`ASSET_BASE_URL`].
+static BUCKET_ASSET_BASE_URL: LazyLock<String> =
+    LazyLock::new(|| bucket_origin().unwrap_or_else(|| SAME_ORIGIN_BUCKET_ROUTE.to_string()));
+
+/// Resolve an assets-bucket key (e.g. `people/<id>/avatar.png`) to the URL a
+/// browser can actually fetch it from.
+///
+/// This is [`asset_url`]'s sibling for objects written at runtime rather than
+/// tracked in the repository, and it differs in exactly one place: the
+/// fallback. With a configured bucket origin both resolve identically, against
+/// that origin. With none — the local loop, KIND, and any deployment that has
+/// not set `NAVIGATOR_ASSET_BASE_URL` — [`asset_url`] falls back to
+/// [`SAME_ORIGIN_STATIC_MOUNT`], which serves the crate-bundled directory and
+/// therefore answers `404` for an upload that was never tracked. A bucket-only
+/// object falls back to [`SAME_ORIGIN_BUCKET_ROUTE`] instead, which reads the
+/// bucket the uploader just wrote. A deployment sets the origin to
+/// `<NAV_BASE_URL>/assets`, so the configured and unconfigured forms name the
+/// same route either way.
+#[must_use]
+pub fn bucket_asset_url(key: &str) -> String {
+    join_base(&BUCKET_ASSET_BASE_URL, key)
 }
 
 /// Resolve a markdown image's `src` against the asset seam. A
@@ -471,8 +517,8 @@ pub fn responsive_picture(slug: &str, sizes: &str) -> Option<ResponsivePicture> 
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_url, find, font_face_css, join_base, join_site, validate_asset_base_url, Aspect,
-        Theme, GALLERY,
+        asset_url, bucket_asset_url, bucket_origin_from, find, font_face_css, join_base, join_site,
+        validate_asset_base_url, Aspect, Theme, GALLERY, SAME_ORIGIN_BUCKET_ROUTE,
     };
 
     /// `font_face_css` emits both weights under the given family name, so a
@@ -578,6 +624,40 @@ mod tests {
         assert_eq!(
             asset_url("img/lake-tahoe/lake-tahoe-800w.avif"),
             "/public/img/lake-tahoe/lake-tahoe-800w.avif"
+        );
+    }
+
+    #[test]
+    fn bucket_asset_url_falls_back_to_the_bucket_route_not_the_static_mount() {
+        // With no configured bucket origin a runtime upload must resolve to
+        // the same-origin route that reads the bucket. `/public` serves the
+        // crate-bundled directory, which never holds an uploaded object, so
+        // resolving there is a guaranteed 404 — the defect this seam exists
+        // to prevent.
+        let url = bucket_asset_url("people/0199/avatar.png");
+        assert_eq!(url, "/assets/people/0199/avatar.png");
+        assert!(!url.starts_with("/public"));
+    }
+
+    #[test]
+    fn bucket_origin_ignores_unset_blank_and_the_static_mount() {
+        // An absolute origin is the bucket's own, and is used as-is.
+        assert_eq!(
+            bucket_origin_from(Some("https://assets.example.test".to_string())).as_deref(),
+            Some("https://assets.example.test")
+        );
+        // Unset and blank both mean "no origin configured".
+        assert_eq!(bucket_origin_from(None), None);
+        assert_eq!(bucket_origin_from(Some("   ".to_string())), None);
+        // `/public` is a legal `NAVIGATOR_ASSET_BASE_URL` — the default,
+        // stated explicitly — but it is not a bucket origin: a bucket-only
+        // object resolved against it would 404 exactly as an unset var does,
+        // so it falls back with the rest.
+        assert_eq!(bucket_origin_from(Some("/public".to_string())), None);
+        // The fallback that replaces all three.
+        assert_eq!(
+            join_base(SAME_ORIGIN_BUCKET_ROUTE, "people/0199/avatar.png"),
+            "/assets/people/0199/avatar.png"
         );
     }
 

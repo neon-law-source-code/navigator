@@ -16707,7 +16707,7 @@ async fn admin_person_avatar_upload_writes_the_public_assets_bucket_and_redirect
         .profile_image_url
         .expect("the upload must set profile_image_url");
     let key = format!("people/{}/avatar.png", libra.id);
-    assert_eq!(url, views::assets::asset_url(&key));
+    assert_eq!(url, views::assets::bucket_asset_url(&key));
 
     let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
@@ -16731,6 +16731,88 @@ async fn admin_person_avatar_upload_writes_the_public_assets_bucket_and_redirect
             .and_then(|v| v.to_str().ok()),
         Some(url.as_str())
     );
+}
+
+/// The URL a public avatar upload records has to be one the deployment
+/// actually serves. `NAVIGATOR_ASSET_BASE_URL` is unset in the local loop, in
+/// KIND, and on staging, so an uploaded avatar's stored URL must resolve to
+/// the same-origin assets-bucket route (`/assets/{key}`) and not to the
+/// crate-bundled `/public` static mount, which only ever holds tracked files
+/// and so answers `404` for an object that exists in the bucket alone.
+#[tokio::test]
+async fn a_stored_public_avatar_url_is_served_by_the_router_that_recorded_it() {
+    let (state, surreal) = state_with_engines().await;
+    let libra = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = admin_session_cookie_and_csrf();
+    let boundary = "----navigator-test-avatar-served-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/people/{}/avatar", libra.id))
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{:?}", resp.status());
+
+    let stored = store::persons::find_by_id(&surreal, libra.id)
+        .await
+        .unwrap()
+        .expect("row still present")
+        .profile_image_url
+        .expect("the upload must set profile_image_url");
+    assert!(
+        stored.starts_with('/'),
+        "with no configured asset base URL the stored avatar URL must be \
+         same-origin, got {stored:?}"
+    );
+
+    // Anonymous, exactly as a browser follows the `303` from `/app/me/avatar`
+    // once the public URL leaves the authenticated origin.
+    let served = app
+        .oneshot(Request::builder().uri(&stored).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        served.status(),
+        StatusCode::OK,
+        "the stored avatar URL {stored:?} must be served, got {:?}",
+        served.status()
+    );
+    assert_eq!(
+        served
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok()),
+        Some("image/png"),
+    );
+    let bytes = axum::body::to_bytes(served.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
 }
 
 /// An Admin may update a client avatar, but the target's stored role keeps it
@@ -16819,7 +16901,7 @@ async fn clearing_a_firm_person_avatar_deletes_both_public_variants() {
     store::persons::set_profile_image_url(
         &surreal,
         person.id,
-        Some(views::assets::asset_url(&png_key)),
+        Some(views::assets::bucket_asset_url(&png_key)),
     )
     .await
     .unwrap();
@@ -16983,7 +17065,7 @@ async fn replacing_a_public_person_avatar_deletes_the_superseded_extension() {
         .expect("person row remains");
     assert_eq!(
         row.profile_image_url.as_deref(),
-        Some(views::assets::asset_url(&png_key).as_str())
+        Some(views::assets::bucket_asset_url(&png_key).as_str())
     );
 }
 
@@ -17586,7 +17668,7 @@ async fn firm_profile_avatar_upload_accepts_the_nested_form_action() {
         .profile_image_url
         .expect("the nested upload must set profile_image_url");
     let key = format!("people/{}/avatar.png", viewer.id);
-    assert_eq!(url, views::assets::asset_url(&key));
+    assert_eq!(url, views::assets::bucket_asset_url(&key));
     let stored = state.assets_storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");

@@ -264,13 +264,19 @@ form action from `/app/profile` and a nested absolute action both land). The pro
 place and refreshes `/app/me/avatar` without leaving the page; a navigation without JavaScript still redirects back to
 `/app/profile`. Firm-tier Person avatars, including an Admin upload at `/app/admin/people/{id}/avatar`, are public HTTPS
 content: the uploader writes a PNG or JPEG to the public-assets key `people/{id}/avatar.{png,jpg}` and the singular
-Surreal `person.profile_image_url` records its public asset URL. The profile form says this before submission and limits
-uploads to 5 MB and 1024 × 1024 pixels. Client avatars retain their private documents-bucket keys
-(`people/{id}/avatars/…`), as do Entity avatars (`entities/{id}/avatars/…`). Dynamic avatars have no manifest entry to
-pull; application avatar routes retain their authorization checks, but a public firm-tier Person-avatar URL is
-intentionally world-readable. Clearing a firm-tier Person avatar unlinks the row and removes both canonical public
-variants; clearing a Client avatar leaves its private object untouched. Until `fetch-referenced` learns the manifest,
-fetch a manifest photo's variants directly; the widths and formats are the ones `views::assets` generates:
+Surreal `person.profile_image_url` records its public asset URL. That URL comes from `views::assets::bucket_asset_url`,
+not `asset_url`. The two differ only in the unconfigured fallback, and only that fallback matters here: a deployment
+sets `NAVIGATOR_ASSET_BASE_URL` to `<NAV_BASE_URL>/assets` and `ops ship` refuses to roll without it, so both resolve to
+the `/assets/{key}` route there. With no configured origin — the local loop, KIND, `cargo test` — `asset_url` falls back
+to `/public`, the crate-bundled static mount, which holds tracked files only and so answers `404` for an object that
+exists in the bucket alone. `bucket_asset_url` falls back to the same-origin `/assets/{key}` route instead, which reads
+the bucket the uploader just wrote. The profile form says this before submission and limits uploads to 5 MB and 1024 ×
+1024 pixels. Client avatars retain their private documents-bucket keys (`people/{id}/avatars/…`), as do Entity avatars
+(`entities/{id}/avatars/…`). Dynamic avatars have no manifest entry to pull; application avatar routes retain their
+authorization checks, but a public firm-tier Person-avatar URL is intentionally world-readable. Clearing a firm-tier
+Person avatar unlinks the row and removes both canonical public variants; clearing a Client avatar leaves its private
+object untouched. Until `fetch-referenced` learns the manifest, fetch a manifest photo's variants directly; the widths
+and formats are the ones `views::assets` generates:
 
 ```bash
 mkdir -p server/public/img/lake-tahoe

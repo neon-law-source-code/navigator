@@ -319,8 +319,8 @@ DEFINE FIELD OVERWRITE middle_name ON person TYPE option<string>;
 DEFINE FIELD OVERWRITE email ON person TYPE string;
 DEFINE FIELD OVERWRITE email_lower ON person TYPE string VALUE string::lowercase(email);
 DEFINE FIELD OVERWRITE oidc_subject ON person TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS microsoft_subject ON person TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS apple_subject ON person TYPE option<string>;
+DEFINE FIELD OVERWRITE microsoft_subject ON person TYPE option<string>;
+DEFINE FIELD OVERWRITE apple_subject ON person TYPE option<string>;
 DEFINE FIELD OVERWRITE role ON person TYPE string DEFAULT 'client'
     ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client'];
 DEFINE FIELD OVERWRITE title ON person TYPE option<string>;

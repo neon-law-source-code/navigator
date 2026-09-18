@@ -3710,6 +3710,14 @@ mod tests {
             !workflows.contains("neon-law-420305-exports"),
             "worker must not derive a shared exports bucket from the GCP project"
         );
+        assert!(
+            workflows.contains("value: C012GENERAL"),
+            "worker receives #general's channel ID for GeneralNag"
+        );
+        assert!(
+            workflows.contains("NAVIGATOR_SIMULATED_MATTERS"),
+            "worker receives the simulated-matters selector DriDigest and GeneralNag read"
+        );
         let namespace_manifest = fs::read_to_string(
             rendered
                 .path()
@@ -3961,13 +3969,13 @@ mod tests {
             }
         }
 
-        // The four Restate trigger CronJobs each carry RESTATE_INGRESS_URL and
+        // Each Restate trigger CronJob carries RESTATE_INGRESS_URL and
         // RESTATE_AUTH_TOKEN. A floor rather than an equality so a new trigger
         // does not fail this, while a file that quietly drops the references —
         // the state that would make the loop above vacuous — does.
         assert!(
             sourced_from_secret >= 8,
-            "expected the four Restate triggers' two keys to be sourced from the deployment Secret"
+            "expected the Restate triggers' two keys to be sourced from the deployment Secret"
         );
 
         // The premise behind `optional: true`, proven rather than asserted:

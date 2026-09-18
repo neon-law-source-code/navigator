@@ -31,6 +31,7 @@ pub const WORKFLOW_SERVICES: &[&str] = &[
     "BillingDigest",
     "ReconcileInvoices",
     "DriDigest",
+    "GeneralNag",
     "Heartbeat",
 ];
 

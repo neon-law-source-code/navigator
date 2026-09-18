@@ -1,32 +1,26 @@
-//! `general-nag` — the thin, self-contained `CronJob` for a daily jab at
-//! `#general`.
+//! `general-nag` — the thin `CronJob` entrypoint for the daily `GeneralNag`
+//! workflow.
 //!
-//! Flavor B (see `docs/cronjobs.md`): a one-shot batch that does the whole
-//! job itself and exits, rather than a Flavor-A trigger that POSTs to the
-//! Restate ingress and lets a durable workflow run the steps. A single
-//! static Slack post has no multi-step state to lose or duplicate, so there
-//! is nothing for Restate to buy here. Built from the shared
-//! `images/Containerfile.trigger`
+//! Fires one `GeneralNag` invocation against the Restate ingress, then exits.
+//! The workflow key is the UTC run date, so a same-day re-fire is a no-op:
+//! Restate admits at most one invocation per workflow key. The call is
+//! one-way (`/send`): this process does no work beyond accepting the
+//! invocation — Restate owns the retry schedule and runs the notify →
+//! (optional) counts steps on the `workflows-service` worker. Built from the
+//! shared `images/Containerfile.trigger`
 //! (`--build-arg CRATE=workflows-service --build-arg BIN=general-nag`).
-//!
-//! Posts through the Slack Web API bot client (`SLACK_BOT_TOKEN`), not the
-//! fixed-destination incoming webhook (`SLACK_WEBHOOK_URL`) the ops
-//! liveness signals use — that webhook is pinned to the engineering
-//! channel, and this message targets `#general` by its channel ID
-//! (`SLACK_GENERAL_CHANNEL_ID`), which is the stable posting coordinate.
-//! Both env vars are required: a missing one fails the run loudly rather
-//! than silently skipping the post, since posting is this job's entire
-//! purpose.
 //!
 //! Cadence: daily at 01:11 UTC (the `general-nag` `CronJob` schedule) —
 //! the same minute as `dri-digest-trigger`. Both are thin, sub-second calls
-//! to different destinations (Slack Web API vs. the Restate ingress), so
-//! the shared minute costs nothing beyond the coincidence.
+//! to the Restate ingress for different workflows, so the shared minute
+//! costs nothing beyond the coincidence.
+//!
+//! Auth: prod Restate Cloud authenticates every ingress call with the tenant
+//! bearer (`RESTATE_AUTH_TOKEN`); the in-cluster KIND Operator does not. The
+//! shared [`workflows::start_workflow`] helper attaches the header only when
+//! the token is present and non-empty, so the same binary works in both.
 
 use anyhow::{Context, Result};
-use workflows::{SlackBot, SlackBotClient};
-
-const MESSAGE: &str = "Nobody Cares, Work Harder";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -37,17 +31,28 @@ async fn main() -> Result<()> {
     // so the drop flushes any batched export before the process exits.
     let _telemetry = telemetry::init("navigator-general-nag");
 
-    let token = std::env::var("SLACK_BOT_TOKEN")
-        .context("SLACK_BOT_TOKEN must be set (the Slack Web API bot token)")?;
-    let channel_id = std::env::var("SLACK_GENERAL_CHANNEL_ID")
-        .context("SLACK_GENERAL_CHANNEL_ID must be set (the #general channel ID)")?;
+    let ingress = std::env::var("RESTATE_INGRESS_URL")
+        .context("RESTATE_INGRESS_URL must be set (the Restate ingress endpoint)")?;
+    // Optional bearer — present only when targeting Restate Cloud.
+    let auth_token = std::env::var("RESTATE_AUTH_TOKEN").ok();
+    // Workflow key = UTC run date. Restate admits at most one invocation per
+    // workflow key, so a duplicate nightly fire is a no-op rather than a
+    // second jab.
+    let run_id = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
-    let bot = SlackBotClient::new(token);
-    bot.post_message(&channel_id, MESSAGE)
-        .await
-        .context("posting the daily #general nag")?;
+    let _response = workflows::start_workflow(
+        &ingress,
+        auth_token.as_deref(),
+        "GeneralNag",
+        &run_id,
+        "run",
+        &serde_json::json!({}),
+        true, // one-way: accept the invocation and exit; Restate runs it.
+    )
+    .await
+    .context("triggering GeneralNag workflow")?;
 
-    tracing::info!(%channel_id, "general nag posted");
-    println!("posted to {channel_id}: {MESSAGE}");
+    tracing::info!(%run_id, "general nag workflow triggered");
+    println!("triggered GeneralNag/{run_id}");
     Ok(())
 }

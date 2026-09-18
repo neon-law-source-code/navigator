@@ -175,10 +175,19 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    for pin in &swept {
+    // A COUNT, and nothing else. Both of the obvious things to say here are
+    // values CodeQL's `rust/cleartext-logging` reads as secret: `pin.file`
+    // descends from the CLI manifest path, and `version` is the `--tag` the
+    // operator passed — `Command` carries `Secrets`, so any printed field of it
+    // is a cleartext-logging sink, and a NEW one fails the scan at high
+    // severity. It is the same reason the read and write failures above name no
+    // path. Nothing is lost: the line above already named the version, a
+    // release is a version-only commit so `git show` is the per-line report,
+    // and `ops release pins` names any file and line still wrong.
+    if !swept.is_empty() {
         println!(
-            "navigator: moved {}:{} {} from {} to {version}",
-            pin.file, pin.line, pin.target, pin.tag
+            "navigator: swept {} self-referencing action pin(s)",
+            swept.len()
         );
     }
 
@@ -341,6 +350,23 @@ mod tests {
         assert!(
             !production.contains("release version: write {}"),
             "echoing the CLI manifest path trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
+        // Staging `pin.file` for `git add` is fine — `Command::args` is not a
+        // logging sink. PRINTING it is not: the path descends from the CLI
+        // manifest path and trips cleartext-logging the same way.
+        assert!(
+            !production.contains("navigator: moved {}"),
+            "the pin sweep must report a count, not the paths it walked: printing `pin.file` \
+             trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
+        assert!(
+            production.contains("self-referencing action pin(s)"),
+            "the sweep must still say it happened"
+        );
+        assert!(
+            !production.contains("action pin(s) to {version}"),
+            "the sweep report must not interpolate the --tag: `version` is a Command field, and \
+             Command also carries Secrets, so a new line printing it fails CodeQL"
         );
     }
 

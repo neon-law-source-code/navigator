@@ -82,6 +82,24 @@ fn unquote(text: &str) -> &str {
     text.trim_matches(|character: char| character.is_whitespace() || QUOTES.contains(&character))
 }
 
+/// Whether everything before the reference is a YAML `uses:` KEY, rather than
+/// prose that happens to end in those five characters.
+///
+/// The distinction is load-bearing because [`sweep`] writes: a matcher that
+/// accepted `description: See uses: …@26.9.18` would not merely over-report, it
+/// would rewrite the sentence. So the whole head has to be the key — optional
+/// indentation, an optional `-` sequence indicator for a step, `uses:`, and
+/// then nothing but the whitespace or quote separating it from its value.
+fn is_uses_key(before: &str) -> bool {
+    let mut head = before.trim_start();
+    // `- uses: …` is a step in a sequence. One indicator; `- - uses:` is not a
+    // shape YAML produces here.
+    if let Some(rest) = head.strip_prefix('-') {
+        head = rest.trim_start();
+    }
+    unquote(head) == "uses:"
+}
+
 /// One literal self-referencing pin, located.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pin {
@@ -124,10 +142,8 @@ pub fn pin_on_line(line: &str) -> Option<(&str, &str)> {
         return None;
     }
 
-    // YAML admits a quoted `uses:` value, so the opening quote can sit between
-    // the key and the reference.
     let (before, after) = line.split_once(SELF_REFERENCE)?;
-    if !unquote(before).ends_with("uses:") {
+    if !is_uses_key(before) {
         return None;
     }
 
@@ -487,6 +503,71 @@ mod tests {
                 "      - uses: neon-law-source-code/navigator/.github/actions/gate@26.9.16 # swept by the cut"
             ),
             Some(("actions/gate", "26.9.16"))
+        );
+    }
+
+    /// The head has to be the `uses:` KEY, not prose ending in those five
+    /// characters. This one is not about over-reporting: `sweep` WRITES, so a
+    /// matcher that accepted a sentence would rewrite the sentence.
+    #[test]
+    fn a_scalar_that_merely_contains_uses_is_not_a_pin() {
+        for line in [
+            "    description: See uses: neon-law-source-code/navigator/.github/actions/gate@26.9.18",
+            "      - run: echo \"uses: neon-law-source-code/navigator/.github/actions/gate@26.9.18\"",
+            "    note: uses: neon-law-source-code/navigator/.github/actions/gate@26.9.18 is the caller",
+            "    inputs-uses: neon-law-source-code/navigator/.github/actions/gate@26.9.18",
+            "    x-uses: neon-law-source-code/navigator/.github/actions/gate@26.9.18",
+        ] {
+            assert_eq!(pin_on_line(line), None, "`{line}` carries no `uses:` key");
+            assert_eq!(
+                rewritten_line(line, "26.9.19"),
+                None,
+                "`{line}` must never be rewritten"
+            );
+        }
+    }
+
+    /// And the shapes that ARE the key keep working, in both the forms this
+    /// repository writes them.
+    #[test]
+    fn both_real_uses_key_shapes_are_pins() {
+        for line in [
+            "      - uses: neon-law-source-code/navigator/.github/actions/gate@26.9.18",
+            "    uses: neon-law-source-code/navigator/.github/actions/gate@26.9.18",
+            "  -   uses:   neon-law-source-code/navigator/.github/actions/gate@26.9.18",
+            r#"      - uses: "neon-law-source-code/navigator/.github/actions/gate@26.9.18""#,
+        ] {
+            assert_eq!(
+                pin_on_line(line),
+                Some(("actions/gate", "26.9.18")),
+                "`{line}` is a `uses:` key"
+            );
+        }
+    }
+
+    /// The sweep leaves a file whose only mention is prose byte for byte.
+    #[test]
+    fn the_sweep_does_not_rewrite_prose() {
+        let root = tempfile::tempdir().expect("a temporary checkout");
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[workspace.package]\nversion = \"26.9.19\"\n",
+        )
+        .expect("write the manifest");
+        let dir = root.path().join(".github/actions/prose");
+        std::fs::create_dir_all(&dir).expect("create the directory");
+        let file = dir.join("action.yml");
+        let prose = "description: See uses: \
+                     neon-law-source-code/navigator/.github/actions/gate@26.9.18 for the gate\n";
+        std::fs::write(&file, prose).expect("write the prose");
+
+        let moved = sweep(root.path(), "26.9.19").expect("sweep the fixture");
+
+        assert!(moved.is_empty(), "prose is not a pin: {moved:#?}");
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("re-read"),
+            prose,
+            "the sentence must come back byte for byte"
         );
     }
 

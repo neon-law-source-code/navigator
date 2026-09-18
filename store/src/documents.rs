@@ -34,6 +34,7 @@
 //! [`crate::assets::ingest_content`], which writes an `asset` row with
 //! the document-metadata fields left unset.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -72,6 +73,42 @@ pub fn document_upload_size_message(actual: usize) -> String {
     format!(
         "Document upload exceeds the maximum of {MAX_DOCUMENT_UPLOAD_BYTES} bytes; received {actual} bytes."
     )
+}
+
+/// The repository pointer path must retain the uploaded filename's extension.
+/// A slug without one cannot be represented as `documents/<slug>.yml` while
+/// also satisfying the Project gate's pointer rule.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum DocumentSlugError {
+    #[error(
+        "document slug `{slug}` must retain the filename extension from `{filename}` so it can be represented as a repository pointer"
+    )]
+    MissingOrMismatchedExtension { filename: String, slug: String },
+}
+
+/// Reject a document identity that cannot be represented by a repository
+/// pointer. Upload callers share this check so a pointer is never issued that
+/// the local gate would necessarily reject.
+pub fn validate_document_slug(filename: &str, slug: &str) -> Result<(), DocumentSlugError> {
+    let filename_extension = Path::new(filename)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .filter(|extension| !extension.is_empty());
+    let slug_extension = Path::new(slug)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .filter(|extension| !extension.is_empty());
+
+    if filename_extension.is_some_and(|expected| {
+        slug_extension.is_some_and(|actual| expected.eq_ignore_ascii_case(actual))
+    }) {
+        Ok(())
+    } else {
+        Err(DocumentSlugError::MissingOrMismatchedExtension {
+            filename: filename.to_string(),
+            slug: slug.to_string(),
+        })
+    }
 }
 
 /// Inbound-channel literals written to `assets.source`. Centralized here
@@ -482,6 +519,20 @@ mod tests {
             MAX_DOCUMENT_UPLOAD_REQUEST_BYTES
                 >= MAX_DOCUMENT_UPLOAD_BYTES.div_ceil(3) * 4 + MAX_DOCUMENT_UPLOAD_JSON_BYTES
         );
+    }
+
+    #[test]
+    fn a_document_slug_keeps_the_uploaded_filename_extension() {
+        assert!(validate_document_slug("complaint.pdf", "dkt-001-complaint.pdf").is_ok());
+        assert!(validate_document_slug("complaint.PDF", "dkt-001-complaint.pdf").is_ok());
+
+        let error = validate_document_slug("complaint.pdf", "dkt-001-complaint").unwrap_err();
+        assert!(matches!(
+            error,
+            DocumentSlugError::MissingOrMismatchedExtension { .. }
+        ));
+        assert!(validate_document_slug("complaint.pdf", "dkt-001-complaint.txt").is_err());
+        assert!(validate_document_slug("complaint", "dkt-001-complaint").is_err());
     }
 
     #[tokio::test]

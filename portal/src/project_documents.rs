@@ -221,6 +221,10 @@ async fn file_one(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map_or_else(|| format!("upload-{project_id}"), str::to_string);
+    if store::documents::validate_document_slug(&file_name, &file_name).is_err() {
+        tracing::warn!(%project_id, filename = %file_name, "refusing a document filename without an extension");
+        return Err(StatusCode::BAD_REQUEST.into_response());
+    }
     let content_type = upload
         .content_type
         .as_deref()
@@ -929,6 +933,31 @@ mod tests {
             groups[0].revisions.len(),
             1,
             "the refused write left the chain at its original one revision"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_filename_without_an_extension_is_refused_before_filing() {
+        let (state, project_id) = fixtures("documents-lane-extension").await;
+
+        let refusal = file_one(
+            &state,
+            project_id,
+            &uploaded("extensionless-document", b"document bytes"),
+            "unclassified",
+            None,
+            visibility::INTERNAL,
+        )
+        .await
+        .expect_err("an extensionless filename cannot become a repository pointer");
+
+        assert_eq!(refusal.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert!(
+            store::assets::for_project(&state.surreal, project_id)
+                .await
+                .expect("list the project assets")
+                .is_empty(),
+            "the invalid filename must be refused before storage or database writes"
         );
     }
 }

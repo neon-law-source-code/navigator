@@ -3139,6 +3139,12 @@ struct UploadDocumentRequest {
     metadata: Option<serde_json::Value>,
 }
 
+fn invalid_document_slug_response(filename: &str, slug: &str) -> Option<Response> {
+    store::documents::validate_document_slug(filename, slug)
+        .err()
+        .map(|error| bad_request("invalid_slug", &error.to_string()))
+}
+
 /// `POST /app/api/projects/{id}/documents` — file a document into a matter, the
 /// REST mirror of the lawyer upload control. Bytes go to authoritative object
 /// storage and the response is the source-safe pointer that may be committed.
@@ -3150,6 +3156,7 @@ struct UploadDocumentRequest {
 /// That last one is why this door carries [`ApiError::Ingest`] rather than collapsing
 /// every ingest failure into a 500: the lawyer form constrains `kind` to a `<select>`
 /// and so cannot produce a bad value, but this door is reachable without the form.
+#[allow(clippy::too_many_lines)]
 async fn upload_document_door(
     State(state): State<ApiState>,
     lawyer: LawyerSession,
@@ -3214,6 +3221,9 @@ async fn upload_document_door(
         .map(str::trim)
         .filter(|slug| !slug.is_empty())
         .unwrap_or(filename);
+    if let Some(response) = invalid_document_slug_response(filename, slug) {
+        return Ok(response);
+    }
     let args = store::documents::IngestArgs {
         project_id: id,
         source: store::documents::source::UPLOAD,

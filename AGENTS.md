@@ -89,6 +89,8 @@ rejects the broken-stub form in a temporary fixture.
 
 ## Ground every action
 
+Use MCP for every supported action; use shell or UI fallbacks only when no suitable MCP exists.
+
 Start with [`docs/glossary.md`](docs/glossary.md), then use [`docs/index.md`](docs/index.md) to find the narrowest
 source of truth. Read the relevant issue or PR from its first comment, the current code, and the covering tests. Do not
 plan from assumptions, a diff alone, or leftover local state. Choose the smallest change that satisfies the evidence.

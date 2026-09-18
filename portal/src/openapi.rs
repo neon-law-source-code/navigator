@@ -2209,7 +2209,8 @@ pub fn document_with_base(base: &str) -> Value {
                A blank filename, a missing or blank `kind`, undecodable base64, or a `kind` \
                outside the accepted set is `400`. `kind` is required and must be one of the \
                documented enum values. Uploads over 25 MiB are refused with `400 \
-               document_too_large`. `visibility` defaults to internal work product; pass \
+               document_too_large`. A supplied `slug` must retain the filename extension or the \
+               request is refused with `400 invalid_slug`. `visibility` defaults to internal work product; pass \
                `\"client\"` to make it client-visible.",
             "parameters": [
               { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }

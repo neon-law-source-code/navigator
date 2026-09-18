@@ -539,6 +539,12 @@ impl DocumentClient {
         metadata: Option<serde_json::Value>,
     ) -> Result<store::document_pointers::DocumentPointer> {
         validate_document_upload_size_in_bytes(bytes.len())?;
+        let effective_slug = slug
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(filename);
+        store::documents::validate_document_slug(filename, effective_slug)
+            .map_err(anyhow::Error::from)?;
         let mut body = serde_json::json!({
             "filename": filename,
             "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
@@ -737,6 +743,7 @@ pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Pa
         let zip_bytes = git_archive_zip(dir)?;
         let client = DocumentClient::connect(host, project_code).await?;
         let kind = rules::kind::Kind::ClosedRepository.as_str();
+        let slug = format!("{kind}.zip");
         let pointer = client
             .upload_bytes(
                 &format!("{project_code}-closed-repository.zip"),
@@ -747,7 +754,7 @@ pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Pa
                     "Repository archive for {project_code} at commit {commit_sha}"
                 )),
                 Some("application/zip"),
-                Some(kind),
+                Some(&slug),
                 Some(serde_json::json!({ "commit_sha": commit_sha })),
             )
             .await?;
@@ -3573,6 +3580,7 @@ mod tests {
             .expect("the upload request was made");
         let body: serde_json::Value = serde_json::from_slice(&upload.body).unwrap();
         assert_eq!(body["kind"], "closed_repository");
+        assert_eq!(body["slug"], "closed_repository.zip");
         assert_eq!(body["metadata"]["commit_sha"], commit_sha);
         assert_eq!(body["content_type"], "application/zip");
     }
@@ -3619,6 +3627,48 @@ mod tests {
             .to_string()
             .contains(&store::documents::MAX_DOCUMENT_UPLOAD_BYTES.to_string()));
         assert!(error.to_string().contains(&oversized.len().to_string()));
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|request| !request.url.path().ends_with("/documents")));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn upload_bytes_refuses_a_slug_without_the_filename_extension() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = DocumentClient::connect(Some(server_uri.as_str()), "acme")
+            .await
+            .expect("connect to the mock door");
+        let error = client
+            .upload_bytes(
+                "complaint.pdf",
+                b"synthetic document",
+                "unclassified",
+                None,
+                None,
+                Some("application/pdf"),
+                Some("dkt-001-complaint"),
+                None,
+            )
+            .await
+            .expect_err("a bare slug cannot become a repository pointer");
+
+        assert!(error.to_string().contains("complaint.pdf"));
         assert!(server
             .received_requests()
             .await

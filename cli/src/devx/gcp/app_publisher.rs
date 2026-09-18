@@ -78,7 +78,9 @@
 use cloud::workspace::{is_valid_slug, SLUG_MAX_LEN};
 use serde_json::{json, Value};
 
-use super::artifact_registry::{ensure_wif_impersonation, project_number, GITHUB_OIDC_ISSUER};
+use super::artifact_registry::{
+    ensure_wif_impersonation, project_number, EnsureOutcome, GITHUB_OIDC_ISSUER,
+};
 use super::client::{GcpClient, GcpService};
 use super::error::{SetupError, SetupResult};
 use super::lro;
@@ -852,7 +854,9 @@ async fn ensure_wif_pool(client: &GcpClient, project_id: &str) -> SetupResult<()
          ?workloadIdentityPoolId={APP_PUBLISHER_WIF_POOL_ID}"
     );
     let body = json!({ "displayName": "Navigator application publisher" });
-    create_lro_or_conflict(client, &path, &body, "create app-publisher WIF pool").await
+    create_lro_or_conflict(client, &path, &body, "create app-publisher WIF pool")
+        .await
+        .map(|_| ())
 }
 
 /// Idempotently create the GitHub OIDC provider under the app-publisher pool,
@@ -868,11 +872,9 @@ async fn ensure_wif_provider(client: &GcpClient, project_id: &str, org: &str) ->
          ?workloadIdentityPoolProviderId={APP_PUBLISHER_WIF_PROVIDER_ID}"
     );
     // The "GitHub Enterprise OIDC" display name is stale — these repositories
-    // are on github.com — and it is deliberately left. `create_lro_or_conflict`
-    // POSTs and reads a 409 as done; there is no PATCH path here, so a rename
-    // would apply to providers created *after* it and to none of the ones that
-    // exist. Correcting it means adding convergence first, which is a change to
-    // live infrastructure rather than to a name (ENG-284 category 2).
+    // are on github.com — and it is deliberately left. The provider condition
+    // and issuer still converge on every run, while changing the display name
+    // remains a separate live-infrastructure decision.
     let body = json!({
         "displayName": "GitHub Enterprise OIDC",
         "oidc": { "issuerUri": GITHUB_OIDC_ISSUER },
@@ -883,7 +885,22 @@ async fn ensure_wif_provider(client: &GcpClient, project_id: &str, org: &str) ->
         },
         "attributeCondition": wif_attribute_condition(org)
     });
-    create_lro_or_conflict(client, &path, &body, "create app-publisher WIF provider").await
+    let outcome =
+        create_lro_or_conflict(client, &path, &body, "create app-publisher WIF provider").await?;
+    if outcome == EnsureOutcome::AlreadyExists {
+        patch_lro(
+            client,
+            &format!(
+                "/v1/projects/{project_id}/locations/global/workloadIdentityPools/\
+                 {APP_PUBLISHER_WIF_POOL_ID}/providers/{APP_PUBLISHER_WIF_PROVIDER_ID}\
+                 ?updateMask=oidc,attributeMapping,attributeCondition"
+            ),
+            &body,
+            "update app-publisher WIF provider",
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// POST an IAM create, waiting on any long-running operation and treating 409 as
@@ -893,7 +910,7 @@ async fn create_lro_or_conflict(
     path: &str,
     body: &Value,
     operation: &'static str,
-) -> SetupResult<()> {
+) -> SetupResult<EnsureOutcome> {
     let resp = client.post_json(GcpService::Iam, path, body).await?;
     match resp.status_u16() {
         200..=299 => {
@@ -903,9 +920,35 @@ async fn create_lro_or_conflict(
                     source,
                 })?;
             lro::wait(client, GcpService::Iam, &op, "/v1/{name}").await?;
+            Ok(EnsureOutcome::Created)
+        }
+        409 => Ok(EnsureOutcome::AlreadyExists),
+        other => Err(SetupError::BadStatus {
+            operation: operation.to_string(),
+            status: other,
+            body: resp.into_text(),
+        }),
+    }
+}
+
+/// PATCH an existing IAM provider and wait for its long-running operation.
+async fn patch_lro(
+    client: &GcpClient,
+    path: &str,
+    body: &Value,
+    operation: &'static str,
+) -> SetupResult<()> {
+    let resp = client.patch_json(GcpService::Iam, path, body).await?;
+    match resp.status_u16() {
+        200..=299 => {
+            let op: Value =
+                serde_json::from_str(&resp.into_text()).map_err(|source| SetupError::Json {
+                    what: "update operation",
+                    source,
+                })?;
+            lro::wait(client, GcpService::Iam, &op, "/v1/{name}").await?;
             Ok(())
         }
-        409 => Ok(()),
         other => Err(SetupError::BadStatus {
             operation: operation.to_string(),
             status: other,
@@ -1657,6 +1700,42 @@ mod tests {
         let client = GcpClient::new(Arc::new(StaticToken("t".into())))
             .with_base_url(GcpService::Iam, server.uri());
         ensure_wif_provider(&client, "p", "neon-law").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn wif_provider_patches_an_existing_provider_instead_of_reporting_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/v1/projects/p/locations/global/workloadIdentityPools/app-publisher/providers",
+            ))
+            .respond_with(ResponseTemplate::new(409))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(
+                "/v1/projects/p/locations/global/workloadIdentityPools/app-publisher/providers/ghe-oidc",
+            ))
+            .and(query_param(
+                "updateMask",
+                "oidc,attributeMapping,attributeCondition",
+            ))
+            .and(body_partial_json(json!({
+                "oidc": { "issuerUri": "https://token.actions.githubusercontent.com" },
+                "attributeCondition":
+                    "assertion.repository_owner == 'neon-law' && assertion.ref == 'refs/heads/main'"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "done": true })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = GcpClient::new(Arc::new(StaticToken("t".into())))
+            .with_base_url(GcpService::Iam, server.uri());
+
+        ensure_wif_provider(&client, "p", "neon-law")
+            .await
+            .expect("an existing provider must converge through PATCH");
     }
 
     /// Removing the publisher's binding drops exactly one clause — the

@@ -68,14 +68,47 @@ async fn fixture(code: &str) -> Fixture {
 }
 
 fn request_body(bytes: &[u8]) -> Vec<u8> {
-    serde_json::to_vec(&serde_json::json!({
+    request_body_with_slug(bytes, None)
+}
+
+fn request_body_with_slug(bytes: &[u8], slug: Option<&str>) -> Vec<u8> {
+    let mut body = serde_json::json!({
         "filename": "synthetic-document.bin",
         "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
         "content_type": "application/octet-stream",
         "kind": "unclassified",
         "visibility": "internal"
-    }))
-    .expect("serialize synthetic upload")
+    });
+    if let Some(slug) = slug {
+        body["slug"] = json!(slug);
+    }
+    serde_json::to_vec(&body).expect("serialize synthetic upload")
+}
+
+async fn upload_with_slug(fixture: &Fixture, bytes: &[u8], slug: &str) -> Value {
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/app/api/projects/{}/documents",
+                    fixture.project_id
+                ))
+                .header(header::CONTENT_TYPE, "application/json")
+                .extension(fixture.session.clone())
+                .body(Body::from(request_body_with_slug(bytes, Some(slug))))
+                .expect("build upload"),
+        )
+        .await
+        .expect("run upload");
+    let status = response.status();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read upload response");
+    let json: Value = serde_json::from_slice(&body).expect("upload response is JSON");
+    json!({ "status": status.as_u16(), "body": json })
 }
 
 async fn upload(fixture: &Fixture, bytes: &[u8], content_length: Option<&str>) -> Value {
@@ -136,4 +169,17 @@ async fn refuses_a_document_over_the_limit_with_both_sizes_for_lied_and_missing_
         assert!(!message.contains("compress"));
         assert!(!message.contains("re-render"));
     }
+}
+
+#[tokio::test]
+async fn refuses_a_slug_that_cannot_be_represented_by_a_pointer_path() {
+    let fixture = fixture("slug-pointer-shape").await;
+    let result = upload_with_slug(&fixture, b"synthetic document", "dkt-001-complaint").await;
+
+    assert_eq!(result["status"], 400);
+    assert_eq!(result["body"]["error"], "invalid_slug");
+    assert!(result["body"]["message"]
+        .as_str()
+        .expect("slug message")
+        .contains("synthetic-document.bin"));
 }

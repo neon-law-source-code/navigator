@@ -205,14 +205,14 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
 
     assert!(!root.path().join("documents/pleadings/summons.pdf").exists());
     let pointer =
-        fs::read_to_string(root.path().join("documents/pleadings/summons.pdf.yml")).unwrap();
+        fs::read_to_string(root.path().join("documents/pleadings/summons.pdf.yaml")).unwrap();
     assert!(pointer.contains(&asset_id.to_string()));
     assert_eq!(
         fs::read_to_string(root.path().join("documents/.gitignore")).unwrap(),
-        "*\n!*/\n!*.yml\n!.gitignore\n"
+        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n"
     );
 
-    let pointer_path = root.path().join("documents/pleadings/summons.pdf.yml");
+    let pointer_path = root.path().join("documents/pleadings/summons.pdf.yaml");
     fs::write(
         &pointer_path,
         pointer.replace("visibility: internal", "visibility: client"),
@@ -439,7 +439,7 @@ async fn an_interrupted_multi_file_sync_resumes_without_refiling_completed_work(
         .assert()
         .failure();
     assert!(!root.path().join("documents/pleadings/a.pdf").exists());
-    assert!(root.path().join("documents/pleadings/a.pdf.yml").exists());
+    assert!(root.path().join("documents/pleadings/a.pdf.yaml").exists());
     assert!(root.path().join("documents/pleadings/b.pdf").exists());
 
     let second_server = MockServer::start().await;
@@ -487,9 +487,9 @@ async fn an_interrupted_multi_file_sync_resumes_without_refiling_completed_work(
         .assert()
         .success()
         .stdout(predicate::str::contains("1 uploaded"));
-    assert!(root.path().join("documents/pleadings/a.pdf.yml").exists());
+    assert!(root.path().join("documents/pleadings/a.pdf.yaml").exists());
     assert!(!root.path().join("documents/pleadings/b.pdf").exists());
-    assert!(root.path().join("documents/pleadings/b.pdf.yml").exists());
+    assert!(root.path().join("documents/pleadings/b.pdf.yaml").exists());
 }
 
 #[tokio::test(flavor = "multi_thread")]

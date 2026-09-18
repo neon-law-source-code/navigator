@@ -1996,7 +1996,8 @@ enum DocumentAction {
     },
     /// The revision chain, newest first, marking the operative row.
     Log {
-        /// Path below `documents/`, such as `documents/pleadings/motion.pdf.yml`.
+        /// Path below `documents/`, such as `documents/pleadings/motion.pdf.yaml`.
+        /// The retired `.yml` spelling is still read.
         pointer: PathBuf,
     },
     /// Fetch one revision to a local path, verified by `sha256` and size
@@ -2775,7 +2776,7 @@ const SEED_DOCUMENT_CODE: &str = "Y001";
 /// `Y002` — a `locales/<locale>/[<brand-key>/]<page>.yaml` catalog must deserialize as that page.
 const LOCALE_DOCUMENT_CODE: &str = "Y002";
 
-/// `Y003` — a `documents/**/*.yml` pointer in a Project repository must name a valid asset revision.
+/// `Y003` — a `documents/**/*.yaml` pointer in a Project repository must name a valid asset revision.
 const DOCUMENT_POINTER_CODE: &str = "Y003";
 
 fn is_project_repository(dir: &std::path::Path) -> bool {
@@ -2794,9 +2795,12 @@ fn document_pointer_path(
 ) -> Option<std::path::PathBuf> {
     let relative = path.strip_prefix(root).ok()?;
     let mut components = relative.components();
-    (components.next()?.as_os_str() == "documents"
-        && path.extension().and_then(std::ffi::OsStr::to_str) == Some("yml"))
-    .then(|| relative.to_path_buf())
+    // Both spellings, via the one contract in `document_sync`. Matching only
+    // the retired `.yml` here would skip every pointer in a renamed
+    // repository, and `Y003` would report a clean pass over nothing — the
+    // silent-pass failure the shared constant exists to prevent (LAW-25).
+    (components.next()?.as_os_str() == "documents" && crate::document_sync::is_pointer_path(path))
+        .then(|| relative.to_path_buf())
 }
 
 /// Validate committed document pointers only when the walked root declares a

@@ -48,12 +48,12 @@ pub async fn mem() -> SurrealDb {
     db
 }
 
-/// Register the three compiled house-brand keys as system-wide `brand` rows
+/// Register every compiled house-brand key as a system-wide `brand` row
 /// — the same state `store::seed::seed_brands` reaches in a real deployment
 /// before any traffic ever arrives (ENG-587: `store::projects::create` and
 /// `open_matter` validate `brand` against live rows, not a compiled closed
 /// list, so a test engine that never reaches this state could not open a
-/// matter under any of the three compiled keys, unlike a real deployment).
+/// matter under any compiled key, unlike a real deployment).
 /// A test that needs to observe an empty `brand` table uses [`unmigrated`]
 /// directly instead of [`mem`].
 async fn seed_compiled_brands(db: &SurrealDb) {

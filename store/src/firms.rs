@@ -2137,7 +2137,7 @@ mod tests {
     }
 
     /// ENG-587: a Firm can wear a brand created at runtime through
-    /// `store::brands::create`, not just one of the three compiled house
+    /// `store::brands::create`, not just one of the compiled house
     /// brands — `attach_brand` validates against live `brand` rows, not a
     /// closed list, against the fully applied schema.
     #[tokio::test]

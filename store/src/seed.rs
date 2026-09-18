@@ -2616,11 +2616,11 @@ async fn seed_entities(
     Ok(())
 }
 
-/// Migrate the three compiled house-brand keys into system-wide `brand` rows
-/// (ENG-496), with the identity values their compiled `Branding` entries
-/// carry. `store` cannot depend on `views`, so these values — including each
-/// palette's light-mode primary hex (ENG-586: `primary_color` holds a
-/// validated hex, not a palette id) — are copied rather than read from it.
+/// The compiled house-brand keys and the identity values their compiled
+/// `Branding` entries carry. `store` cannot depend on `views`, so these values
+/// — including each palette's light-mode primary hex (ENG-586:
+/// `primary_color` holds a validated hex, not a palette id) — are copied
+/// rather than read from it.
 /// The compiled brands' real presentation still renders from the existing
 /// static stylesheet path (`views::brand_presentation`'s own compiled
 /// `PALETTE`/`TYPEFACES`), not from these columns; this migration keeps the
@@ -2629,13 +2629,34 @@ async fn seed_entities(
 /// every compiled palette clears the same WCAG AA gate this write enforces).
 /// Idempotent: a name or key already taken is this same migration having
 /// already run.
+const COMPILED_BRANDS: &[(&str, &str, &str, &str)] = &[
+    ("Neon Law", "neon", "gorp-serif", "#007c91"),
+    (
+        "DeleteYourData.com",
+        "delete-your-data",
+        "plus-jakarta-sans",
+        "#b91c1c",
+    ),
+    (
+        "DeleteYourDebt.com",
+        "delete-your-debt",
+        "public-sans",
+        "#1F6F4A",
+    ),
+    ("Vesta Estate Planning", "vesta", "source-sans-3", "#8A5A2B"),
+    (
+        "Misericordia Injury Law",
+        "misericordia",
+        "source-sans-3",
+        "#7A1F2B",
+    ),
+    ("Abhaya Immigration", "abhaya", "mukta", "#1F4E79"),
+    ("Lawyer Shook", "lawyer-shook", "tinos", "#5c5100"),
+    ("Shook Law PLLC", "summons", "libre-franklin", "#4A2545"),
+];
+
 async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
-    for (name, key) in [
-        ("Neon Law", "neon"),
-        ("DeleteYourData.com", "delete-your-data"),
-        ("Lawyer Shook", "lawyer-shook"),
-    ] {
-        let (typeface, hex) = compiled_brand_presentation(key);
+    for &(name, key, typeface, hex) in COMPILED_BRANDS {
         match crate::brands::create(
             surreal,
             crate::persons::Role::Owner,
@@ -2675,17 +2696,6 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
         }
     }
     Ok(())
-}
-
-/// The typeface id and light-mode primary hex each compiled house brand
-/// seeds — a copy of `views::brand_presentation::PALETTE`'s light scheme,
-/// since `store` cannot depend on `views`.
-fn compiled_brand_presentation(key: &str) -> (&'static str, &'static str) {
-    match key {
-        "delete-your-data" => ("plus-jakarta-sans", "#b91c1c"),
-        "lawyer-shook" => ("tinos", "#5c5100"),
-        _ => ("gorp-serif", "#007c91"),
-    }
 }
 
 /// The one practice this deployment already is: the `Shook Law PLLC` entity,
@@ -4985,6 +4995,44 @@ records:
             .expect("delete-your-data brand");
         assert_eq!(dyd.typeface.as_deref(), Some("plus-jakarta-sans"));
         assert_eq!(dyd.primary_color.as_deref(), Some("#b91c1c"));
+    }
+
+    /// A fresh deployment has no test-support pre-seed hiding a missing
+    /// registry row. Every key the practice fixture attaches must first be a
+    /// registered system-wide brand.
+    #[tokio::test]
+    async fn canonical_seed_registers_every_closed_brand_key() {
+        let surreal = crate::surreal::test_support::unmigrated().await;
+        crate::schema::apply(&surreal)
+            .await
+            .expect("apply the schema");
+
+        seed_canonical(&surreal, &fs_storage().await)
+            .await
+            .expect("canonical seed registers every closed brand key");
+
+        for key in crate::firms::CLOSED_BRAND_KEYS {
+            assert!(
+                crate::brands::find_by_key(&surreal, key)
+                    .await
+                    .expect("look up registered brand")
+                    .is_some(),
+                "fixture key {key} must name a registered brand"
+            );
+        }
+    }
+
+    /// The canonical seed and the closed request registry are two layers, so
+    /// keep their copied key lists equal. A newly registered key must be
+    /// represented in the seed before a deployment can attach the practice
+    /// fixture to it.
+    #[test]
+    fn compiled_brand_seed_keys_match_closed_brand_registry() {
+        let seeded_keys: Vec<_> = super::COMPILED_BRANDS
+            .iter()
+            .map(|(_, key, _, _)| *key)
+            .collect();
+        assert_eq!(seeded_keys, crate::firms::CLOSED_BRAND_KEYS);
     }
 
     #[tokio::test]

@@ -32,5 +32,4 @@ workflow:
 
 Annual List for `{{entity_name}}`, filed with the Nevada Secretary of State for the period ending
 `{{custom_single_choice__annual_or_amended}}`. The current managers and members of the company are:
-`{{people__managers}}`. The registered
-agent remains the one of record unless updated by a separate filing.
+`{{people__managers}}`. The registered agent remains the one of record unless updated by a separate filing.

@@ -522,10 +522,20 @@ pub fn navigator_default_rules() -> Vec<Box<dyn Rule>> {
         M052ReferenceLinksImages, M053LinkImageReferenceDefinitions, M054LinkImageStyle,
         M055TablePipeStyle, M056TableColumnCount, M057RelativeLinkResolves, M058BlanksAroundTables,
         M059DescriptiveLinkText, M060TableColumnStyle, M061WebPortableLink, S101LineLength,
-        S103KindEnum, S104MissingKind,
+        S102LinePacking, S103KindEnum, S104MissingKind,
     };
     vec![
         Box::new(S101LineLength::default()),
+        // S102 sits next to S101: the two line-length rules are a pair,
+        // one policing the upper bound and one the lower. It runs on
+        // notation templates as well as prose because a notation body is
+        // the text a client reads off a rendered instrument, so a ragged
+        // wrap shows up in the PDF. The rule already holds back every
+        // construct in a template whose line breaks carry meaning —
+        // frontmatter outside a folded scalar, fenced blocks, tables,
+        // headings, list items, and any line ending in a hard break, which
+        // is what a signature block is made of.
+        Box::new(S102LinePacking::default()),
         // S103/S104 are cross-cutting (they validate the `kind:`
         // discriminator on every file), so they live in the default set
         // and survive the markdown-only filter, which only drops the N and
@@ -626,15 +636,17 @@ pub fn navigator_default_rules_with_codes(valid_codes: &[String]) -> Vec<Box<dyn
 }
 
 /// The Markdown-only subset of [`navigator_default_rules`] — every
-/// rule except the N-family, plus `S102` (line-packing). Suitable for
-/// linting arbitrary prose markdown (READMEs, blog posts, marketing
-/// copy) that doesn't carry the Neon Law Navigator notation frontmatter and
-/// that benefits from being packed tight to the 120-character budget.
+/// rule except the N-family, plus `M036`. Suitable for linting arbitrary
+/// prose markdown (READMEs, blog posts, marketing copy) that doesn't
+/// carry the Neon Law Navigator notation frontmatter.
 ///
-/// `S102` is markdown-only rather than universal because template
-/// fixtures intentionally keep some lines short for readability
-/// alongside their structured YAML; only free-form prose should be
-/// reflowed to the limit.
+/// `S102` (line-packing) used to be added here, on the reasoning that
+/// template fixtures keep some lines short for readability alongside
+/// their structured YAML. That left the ragged wrap unchecked on exactly
+/// the files that render into a signed instrument, while the structured
+/// YAML it was protecting is already held back by the rule's own guards.
+/// `S102` is now in the default set; only [`navigator_github_rules`] opts
+/// out, and it says why.
 #[must_use]
 pub fn navigator_markdown_only_rules() -> Vec<Box<dyn Rule>> {
     // Drop both the N-family (notation) and the E-family (event) rules:
@@ -653,13 +665,8 @@ pub fn navigator_markdown_only_rules() -> Vec<Box<dyn Rule>> {
         .position(|r| r.code() == "M035")
         .map_or(rules.len(), |i| i + 1);
     rules.insert(insert_m036, Box::new(crate::M036NoEmphasisAsHeading));
-    // Place S102 right after S101 so the two line-length rules sit
-    // next to each other.
-    let insert_at = rules
-        .iter()
-        .position(|r| r.code() == "S101")
-        .map_or(0, |i| i + 1);
-    rules.insert(insert_at, Box::new(crate::S102LinePacking::default()));
+    // S102 is no longer inserted here: it lives in the default set and
+    // survives the N/E filter, exactly like S101 and the kind checks.
     rules
 }
 
@@ -757,6 +764,13 @@ pub fn navigator_github_rules_with_codes(valid_codes: &[String]) -> Vec<Box<dyn 
         .into_iter()
         .filter(|rule| {
             let code = rule.code();
+            // S102 is dropped here and nowhere else. A GitHub intake
+            // notation renders into an issue body rather than an
+            // instrument somebody signs, and its prose sits inline with
+            // structured YAML that the greedy reflow fights.
+            if code == "S102" {
+                return false;
+            }
             let family = code.starts_with('N') || code.starts_with('E');
             !family || GITHUB_NOTATION_RULE_CODES.contains(&code)
         })
@@ -1026,13 +1040,13 @@ mod tests {
     /// literally so this test fails loudly if a future change
     /// silently reorders or drops a rule.
     const EXPECTED_DEFAULT_RULE_CODES: &[&str] = &[
-        "S101", "S103", "S104", "N101", "N102", "N103", "N104", "N105", "N106", "N107", "N108",
-        "N109", "N110", "N112", "N113", "N114", "N115", "N116", "N117", "N118", "N120", "N121",
-        "N122", "N123", "E002", "M001", "M003", "M004", "M005", "M007", "M009", "M010", "M011",
-        "M012", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027",
-        "M028", "M029", "M030", "M031", "M032", "M034", "M035", "M037", "M038", "M039", "M040",
-        "M042", "M045", "M046", "M047", "M048", "M049", "M050", "M051", "M052", "M053", "M054",
-        "M055", "M056", "M057", "M058", "M059", "M060", "M061",
+        "S101", "S102", "S103", "S104", "N101", "N102", "N103", "N104", "N105", "N106", "N107",
+        "N108", "N109", "N110", "N112", "N113", "N114", "N115", "N116", "N117", "N118", "N120",
+        "N121", "N122", "N123", "E002", "M001", "M003", "M004", "M005", "M007", "M009", "M010",
+        "M011", "M012", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026",
+        "M027", "M028", "M029", "M030", "M031", "M032", "M034", "M035", "M037", "M038", "M039",
+        "M040", "M042", "M045", "M046", "M047", "M048", "M049", "M050", "M051", "M052", "M053",
+        "M054", "M055", "M056", "M057", "M058", "M059", "M060", "M061",
     ];
 
     #[test]
@@ -1054,8 +1068,64 @@ mod tests {
         );
     }
 
+    /// LAW-30: a notation template is the one family of file that renders
+    /// into an instrument somebody signs, and it used to be the one family
+    /// `S102` never ran on. A body wrapped at 40 characters passed the
+    /// gate with nothing to report.
     #[test]
-    fn navigator_markdown_only_rules_drop_n_family_and_add_s102_and_m036() {
+    fn s102_runs_on_a_notation_template() {
+        let file = source(
+            "templates/onboarding.md",
+            "---\nkind: onboarding\n---\n\nShort line.\nAnother short line.\n",
+        );
+        assert_eq!(
+            super::classify_source(&file),
+            DocumentKind::NotationTemplate
+        );
+        let codes: Vec<&'static str> = super::navigator_classified_rules(&file)
+            .iter()
+            .map(|r| r.code())
+            .collect();
+        assert!(
+            codes.contains(&"S102"),
+            "a notation body renders into a signed document; it earns the packing rule",
+        );
+
+        let violations: Vec<crate::Violation> = super::navigator_classified_rules(&file)
+            .iter()
+            .flat_map(|r| r.lint(&file))
+            .filter(|v| v.code == "S102")
+            .collect();
+        assert_eq!(
+            violations.len(),
+            1,
+            "the under-packed body pair should report exactly once",
+        );
+    }
+
+    /// The guard that makes the rule safe on a legal template: a signature
+    /// block is a stack of hard-broken lines, and packing them would
+    /// collapse the block on the rendered PDF.
+    #[test]
+    fn s102_leaves_a_signature_block_alone_on_a_notation_template() {
+        let file = source(
+            "templates/onboarding.md",
+            "---\nkind: onboarding\n---\n\nBy: {{firm.signature}}\\\nDate: {{firm.date}}\\\n\
+             By: {{client.signature}}\\\nDate: {{client.date}}\\\n",
+        );
+        let violations: Vec<crate::Violation> = super::navigator_classified_rules(&file)
+            .iter()
+            .flat_map(|r| r.lint(&file))
+            .filter(|v| v.code == "S102")
+            .collect();
+        assert!(
+            violations.is_empty(),
+            "hard-broken signature lines must never be packed: {violations:?}",
+        );
+    }
+
+    #[test]
+    fn navigator_markdown_only_rules_drop_n_family_and_add_m036() {
         use super::navigator_markdown_only_rules;
         let codes: Vec<&'static str> = navigator_markdown_only_rules()
             .iter()
@@ -1074,9 +1144,9 @@ mod tests {
         // right after M035.
         let m036_pos = expected.iter().position(|c| *c == "M035").unwrap() + 1;
         expected.insert(m036_pos, "M036");
-        // S102 sits right after S101.
-        let s102_pos = expected.iter().position(|c| *c == "S101").unwrap() + 1;
-        expected.insert(s102_pos, "S102");
+        // S102 is inherited from the default set rather than inserted
+        // here, so it is already in `expected` at its canonical position.
+        assert!(codes.contains(&"S102"));
         assert_eq!(codes, expected);
     }
 
@@ -1129,7 +1199,7 @@ mod tests {
             "---\nkind: github\ntitle: T\n---\n\nBody.\n",
         );
         assert_eq!(classify_source(&file), DocumentKind::Github);
-        let codes: Vec<&'static str> = super::navigator_classified_rules(&file)
+        let codes: Vec<&'static str> = super::super::navigator_classified_rules(&file)
             .iter()
             .map(|r| r.code())
             .collect();

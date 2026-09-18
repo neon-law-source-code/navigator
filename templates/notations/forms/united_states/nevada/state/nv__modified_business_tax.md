@@ -31,6 +31,6 @@ workflow:
   END: {}
 ---
 
-Nevada Modified Business Tax Return for `{{entity_name}}` covering tax year `{{custom_datetime__tax_year}}`.
-Total Nevada gross revenue for the period is `{{custom_usd__gross_revenue}}`. The signing member certifies under
-penalty of perjury that this return is true, correct, and complete to the best of their knowledge.
+Nevada Modified Business Tax Return for `{{entity_name}}` covering tax year `{{custom_datetime__tax_year}}`. Total
+Nevada gross revenue for the period is `{{custom_usd__gross_revenue}}`. The signing member certifies under penalty of
+perjury that this return is true, correct, and complete to the best of their knowledge.

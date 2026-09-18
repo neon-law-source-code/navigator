@@ -152,18 +152,25 @@ rewrites the file for that violation without a human decision; every other code 
 | Code | Severity | Rule | Autofix |
 | --- | --- | --- | --- |
 | `S101` | Error | A line exceeds the 120-character limit. | No |
-| `S102` | Error | A line could absorb more text from the next line before hitting the limit (prose only). | Yes |
+| `S102` | Error | A line could absorb more text from the next line before hitting the limit. | Yes |
 | `S103` | Error | The declared `kind:` must be a recognized document kind. | No |
 | `S104` | Error | A file's declared `kind:` must agree with its notation/event structure. | No |
 
-`S102` reflows prose only, so it holds back the block-level constructs whose lines carry meaning: headings, tables,
-block quotes, fences, horizontal rules, setext underlines, link-reference definitions, and HTML blocks. It recognises
-the last two the way CommonMark does. A definition needs at most three spaces of indentation, a label free of unescaped
-brackets, a colon, a destination that is bare-and-unspaced or wrapped in `<…>`, and then either nothing or a complete
-title; a title on the next line belongs to a definition that did not already carry one. An HTML block needs one of
-CommonMark's seven start conditions, which means a block-level tag name or a complete tag standing alone on its line.
-Anything looser is prose, so `[text]: this is prose` and a paragraph opening `<span>inline</span>` reflow like the
-sentences they are.
+`S102` runs on notation templates as well as prose. It used to be prose-only, which left the ragged wrap unchecked on
+the one family of files that renders into an instrument a client signs; the structured YAML that exclusion protected is
+already held back by the rule's own guards. The single exception is a GitHub intake notation under `templates/github/`,
+which renders into an issue body rather than a document and keeps its prose inline with structured YAML.
+
+It reflows prose, so it holds back the block-level constructs whose lines carry meaning: headings, tables, block quotes,
+fences, horizontal rules, setext underlines, link-reference definitions, and HTML blocks. It recognises the last two the
+way CommonMark does. A definition needs at most three spaces of indentation, a label free of unescaped brackets, a
+colon, a destination that is bare-and-unspaced or wrapped in `<…>`, and then either nothing or a complete title; a title
+on the next line belongs to a definition that did not already carry one. An HTML block needs one of CommonMark's seven
+start conditions, which means a block-level tag name or a complete tag standing alone on its line. Anything looser is
+prose, so `[text]: this is prose` and a paragraph opening `<span>inline</span>` reflow like the sentences they are. Two
+of those guards are what make the rule safe on a legal template: frontmatter is reflowed only inside a folded (`>`)
+scalar, never a literal (`|`) one or a plain mapping, and a line ending in a hard break — two trailing spaces or a
+trailing backslash — is left alone, which is what a signature block is built from.
 
 ### N-family — notation template shape
 

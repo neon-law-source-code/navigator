@@ -33,6 +33,6 @@ workflow:
 ---
 
 Nevada Charitable Solicitation Registration Statement for `{{entity_name}}` filed with the Secretary of State for the
-period ending `{{custom_single_choice__annual_or_amended}}`. The organization's fundraising activities during the
-period are: `{{custom_text__fundraising_activities}}`. This registration is required of any nonprofit that solicits
+period ending `{{custom_single_choice__annual_or_amended}}`. The organization's fundraising activities during the period
+are: `{{custom_text__fundraising_activities}}`. This registration is required of any nonprofit that solicits
 contributions from Nevada residents, and is renewed annually.

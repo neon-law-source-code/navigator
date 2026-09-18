@@ -26,8 +26,8 @@ custom_questions:
     prompt: When does this engagement begin?
   governing_law:
     prompt: >-
-      Which state's law governs this engagement? Nevada, unless the Firm has
-      agreed otherwise; California and Washington are the alternatives available.
+      Which state's law governs this engagement? Nevada, unless the Firm has agreed otherwise; California and Washington
+      are the alternatives available.
     choices:
       nevada: Nevada
       california: California
@@ -83,18 +83,18 @@ Re: Engagement to Provide Legal Services — {{project__engagement.name}}
 Dear {{person__client.name}}:
 
 Thank you for engaging the Firm. This letter (the "Onboarding Letter") sets out the terms on which the Firm will
-represent {{entity.name}} (the "Client" or "you") in the matter described below. This
-says what we are doing now, who is accountable on each side, how you reach us, how we bill, and how we resolve a
-disagreement if one arises. Everything particular to your matter is agreed in writing as we go, and each of those
-writings sits on top of this letter rather than replacing it.
+represent {{entity.name}} (the "Client" or "you") in the matter described below. This says what we are doing now, who is
+accountable on each side, how you reach us, how we bill, and how we resolve a disagreement if one arises. Everything
+particular to your matter is agreed in writing as we go, and each of those writings sits on top of this letter rather
+than replacing it.
 
 If these terms are acceptable, please sign below and return a copy.
 
 ## I. Client and scope of the engagement
 
-For this engagement the Firm's client is {{entity.name}}. Unless the Firm agrees in a separate signed writing,
-this engagement does not make any affiliate, stockholder, investor, officer, director, employee, or other related person
-or entity a client of the Firm.
+For this engagement the Firm's client is {{entity.name}}. Unless the Firm agrees in a separate signed writing, this
+engagement does not make any affiliate, stockholder, investor, officer, director, employee, or other related person or
+entity a client of the Firm.
 
 The Firm will represent the Client in the following matter (the "Matter"):
 
@@ -238,10 +238,10 @@ This letter is governed by the law of {{custom_single_choice__governing_law}}. I
 this engagement or this letter, you and the Firm agree to resolve it by final and binding arbitration before a single
 arbitrator administered by the **American Arbitration Association** under its Commercial Arbitration Rules — or, where
 the amount in controversy qualifies, its Expedited Procedures — conducted confidentially and decided under the law of
-{{custom_single_choice__governing_law}}. Each party bears its share of the AAA fees as those rules provide, and
-judgment on the award may be entered in any court of competent jurisdiction. The arbitrator applies the same law and may
-award the same remedies a court could; this clause selects the forum for a dispute and does **not** limit, cap, or waive
-the Firm's responsibility for its own work.
+{{custom_single_choice__governing_law}}. Each party bears its share of the AAA fees as those rules provide, and judgment
+on the award may be entered in any court of competent jurisdiction. The arbitrator applies the same law and may award
+the same remedies a court could; this clause selects the forum for a dispute and does **not** limit, cap, or waive the
+Firm's responsibility for its own work.
 
 > **A. Your fee-arbitration rights are preserved.** Nothing above waives or overrides any non-waivable statutory right
 > you have to arbitration of a fee dispute — including, in California, the Mandatory Fee Arbitration Act (Bus. & Prof.

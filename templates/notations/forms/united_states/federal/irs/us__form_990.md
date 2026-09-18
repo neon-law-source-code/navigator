@@ -33,6 +33,5 @@ workflow:
 
 IRS Form 990 for `{{entity_name}}` covering tax year `{{custom_datetime__tax_year}}`. Summary of gross revenue,
 program-service expense, and end-of-year net assets: `{{custom_text__revenue_strategy}}`. The officer signing this
-return certifies under penalty of perjury that the return is true, correct, and complete to the best of their
-knowledge. Filed with the Internal Revenue Service no later than the 15th day of the 5th month after the close of
-the tax year.
+return certifies under penalty of perjury that the return is true, correct, and complete to the best of their knowledge.
+Filed with the Internal Revenue Service no later than the 15th day of the 5th month after the close of the tax year.

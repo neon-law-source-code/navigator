@@ -199,16 +199,7 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
     } else {
         ""
     };
-    let font_head: &str = match views::brand::brand_key() {
-        views::brand::BrandKey::Neon => &GORP_HEAD,
-        views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
-        views::brand::BrandKey::LawyerShook => &TINOS_HEAD,
-        views::brand::BrandKey::Vesta => &VESTA_HEAD,
-        views::brand::BrandKey::Misericordia => &MISERICORDIA_HEAD,
-        views::brand::BrandKey::Abhaya => &ABHAYA_HEAD,
-        views::brand::BrandKey::DeleteYourDebt => &DELETE_YOUR_DEBT_HEAD,
-        views::brand::BrandKey::Summons => &SUMMONS_HEAD,
-    };
+    let font_head: &str = font_head(views::brand::brand_key());
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
         .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
         .replacen(
@@ -467,6 +458,29 @@ static DELETE_YOUR_DEBT_HEAD: std::sync::LazyLock<String> =
 
 static SUMMONS_HEAD: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| bucket_font_head("Libre Franklin", "libre-franklin/LibreFranklin"));
+
+/// The `@font-face` head fragment a page wears when this process serves
+/// `key` — the preload and declarations injected at the end of every rendered
+/// `<head>`.
+///
+/// Public because it is the authority for which faces a brand asks a browser
+/// to fetch, and the operator lane that publishes them has to be held against
+/// it: `cli::assets`'s font table covers exactly the bucket-served faces
+/// emitted here, and a brand whose face is served from neither the bucket nor
+/// the tracked `server/public` tree is a silent fallback-font page.
+#[must_use]
+pub fn font_head(key: views::brand::BrandKey) -> &'static str {
+    match key {
+        views::brand::BrandKey::Neon => &GORP_HEAD,
+        views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
+        views::brand::BrandKey::LawyerShook => &TINOS_HEAD,
+        views::brand::BrandKey::Vesta => &VESTA_HEAD,
+        views::brand::BrandKey::Misericordia => &MISERICORDIA_HEAD,
+        views::brand::BrandKey::Abhaya => &ABHAYA_HEAD,
+        views::brand::BrandKey::DeleteYourDebt => &DELETE_YOUR_DEBT_HEAD,
+        views::brand::BrandKey::Summons => &SUMMONS_HEAD,
+    }
+}
 
 /// Pure builder behind the registered font head fragments, so tests
 /// exercise every asset-origin shape without stomping the process-wide env

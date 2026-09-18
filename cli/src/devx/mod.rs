@@ -1143,14 +1143,6 @@ fn dns_zones(domains: Vec<String>) -> Result<Vec<String>> {
     Ok(zones)
 }
 
-fn apex_redirect_certificate_notice(zone: &str) -> String {
-    format!(
-        "note: the apex→www redirect serves HTTPS only once a certificate covers the \
-         apex. DNSimple does not auto-issue one for a URL record — issue an auto-renewing \
-         Let's Encrypt certificate for {zone} (see docs/dns.md)."
-    )
-}
-
 /// `devx gcp iap audience`: print the IAP audience string for
 /// `IAP_AUDIENCE`. Requires the LB to already exist (apply the gke
 /// overlay first); a 404 surfaces as a clear error.
@@ -2339,15 +2331,6 @@ mod tests {
             bootstrap < smoke,
             "the Garage bootstrap must run before `dev e2e`, else the rollout wait times out on unstarted pods"
         );
-    }
-
-    #[test]
-    fn apex_redirect_certificate_notice_names_zone_and_certificate_step() {
-        let notice = apex_redirect_certificate_notice("neonlaw.com");
-        assert!(notice.contains("neonlaw.com"));
-        assert!(notice.contains("URL record"));
-        assert!(notice.contains("auto-renewing Let's Encrypt certificate"));
-        assert!(notice.contains("docs/dns.md"));
     }
 
     // The deploy workflow's "stub public assets" step generates

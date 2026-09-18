@@ -8,10 +8,11 @@
 //!   one).
 //! - `GET /app/projects/{project_code}/documents/:doc_id` — per-document
 //!   detail page showing full provenance.
-//! - `GET /app/projects/{project_code}/documents/:doc_id/download` — issues
-//!   a 302 to a short-lived signed URL on the storage backend, or
-//!   streams bytes through the app on backends that can't sign
-//!   (`FsStorage` in local dev).
+//! - `GET /app/projects/{project_code}/documents/:doc_id/download` — streams
+//!   the object's bytes back through the app, same-origin. Add `?inline=1`
+//!   to ask for `Content-Disposition: inline` instead of `attachment`; the
+//!   route grants that only for the passive content types in
+//!   [`INLINE_CONTENT_TYPES`].
 //!
 //! # Authorization model
 //!
@@ -29,20 +30,46 @@
 //!    `internal` asset, so a client can't fetch internal work product
 //!    on their own matter by guessing a `doc_id` — matching the gate
 //!    the filename list and ZIP export already apply (#782).
-//! 3. **Signed-URL handoff** — only after layers 1+2 pass do we ask
-//!    the storage backend for a signed URL. The URL itself carries
-//!    an HMAC of the canonical request signed by the GCS service
-//!    account's private key; GCS rejects any request to the bucket
-//!    that doesn't carry a valid signature. Bytes never proxy
-//!    through this pod in production — the browser fetches direct
-//!    from GCS, the app's role is to *decide* whether to issue the
-//!    URL in the first place.
+//! 3. **Same-origin delivery** — only after layers 1+2 pass does the
+//!    handler read the object and write its bytes into the response.
+//!    No storage URL ever reaches the browser, so there is no
+//!    credential to leak through history, a screenshot, or a paste,
+//!    and no redirect hop for the session to lose.
 //!
-//! Production uses GCS V4 signing; local dev uses `FsStorage` which
-//! has no signing concept, so the handler falls back to streaming
-//! bytes through the app. Same Rust code path, two backends.
-
-use std::time::Duration;
+//! # Why the bytes proxy rather than redirect (ENG-651 / LAW-22)
+//!
+//! This route used to answer `307` with a `Location` on the storage
+//! origin. That closed *both* ways a Project portal could render a
+//! filed document: `pdf.js` fetches the PDF and the bucket publishes no
+//! CORS policy, and an `<iframe>` re-evaluates CSP on the redirect hop
+//! against a policy whose `frame-src` falls back to `default-src
+//! 'self'`. A top-level "Download" link still worked, so the feature
+//! looked wired up and only the viewer was a blank frame.
+//!
+//! [`docs/signed-url-delivery-audit.md`] Finding 7 chose proxying over
+//! admitting the storage origin to the portal CSP. Naming
+//! `storage.googleapis.com` in `connect-src` would admit *every* bucket
+//! on that shared host, not ours, to third-party portal bundles — and
+//! rendering inline would need `object-src 'none'` widened too, which is
+//! one of the policy's two clickjacking backstops. So `PORTAL_CSP` is
+//! deliberately unchanged by this route.
+//!
+//! Two consequences the code has to carry:
+//!
+//! - **Egress and CPU move to the pod**, and [`stream_through`] buffers
+//!   the whole object before responding. That is bounded by what upload
+//!   admits ([`MAX_BATCH_BYTES`], 500 MB), which is a real ceiling on
+//!   one request's memory. A true streaming body needs a `StorageService`
+//!   method that does not exist yet; tracked separately.
+//! - **Inline delivery of a caller-typed body is a same-origin script
+//!   vector.** An asset's `content_type` is whatever the uploader said —
+//!   the multipart part's own type here, or an extension map in
+//!   `cli`'s document sync — and ingest validates the `kind`, not the
+//!   type. Served from the storage origin a `text/html` document
+//!   executed somewhere holding none of Navigator's cookies; proxied
+//!   same-origin and served `inline`, the same bytes would execute as
+//!   Navigator. Hence [`INLINE_CONTENT_TYPES`], `nosniff`, and a
+//!   `sandbox` CSP on every streamed response.
 
 use axum::body::Body;
 use axum::extract::{Extension, Multipart, Path as AxumPath, State};
@@ -55,35 +82,26 @@ use uuid::Uuid;
 use crate::admin::AdminState;
 use crate::session::SessionData;
 
-/// Signed-URL validity window for project documents.
+/// Content types a proxied document may be served `Content-Disposition:
+/// inline` for.
 ///
-/// A signed URL is the *only* credential the browser presents to
-/// GCS — the URL contains an HMAC-SHA256 signature over the bucket,
-/// object key, expiry, and HTTP method, signed by the service
-/// account's RSA private key. GCS verifies the signature on every
-/// request and rejects unsigned hits to the bucket. That means the
-/// TTL is the URL's full security lifetime: anyone who obtains the
-/// URL (legitimate user, screenshot, browser history, Slack paste,
-/// dev-tools spectator on a shared screen) can fetch the bytes
-/// until expiry, with no further auth check.
+/// Passive formats only. An asset's `content_type` is whatever the
+/// uploader declared, and a document served `inline` renders in
+/// Navigator's own origin, so anything the browser will execute has to
+/// arrive as `attachment` no matter what the caller asked for.
 ///
-/// One hour is the product call. Trade-off:
-///
-/// - Shorter (e.g. 5 min, what retainer PDFs use in
-///   [`crate::documents`]) tightens the leak window but breaks the
-///   "lawyer opens the page, gets pulled into a call, comes back,
-///   clicks Download" flow — they'd hit a 403 and have to refresh.
-/// - Longer (24h, the user's stated upper bound) survives same-day
-///   share-via-Slack but means a URL caught in someone else's
-///   browser history is usable for the rest of the day.
-/// - One hour fits a typical work session: long enough for normal
-///   interruptions, short enough that a leak goes stale before the
-///   next coffee break.
-///
-/// GCS V4 caps signed-URL TTL at 7 days; we're well inside the
-/// bound. Bump cautiously: every hour added is another hour a leaked
-/// URL stays live.
-const SIGNED_URL_TTL: Duration = Duration::from_hours(1);
+/// `image/svg+xml` is deliberately absent. It is an image by name and a
+/// scriptable document by specification, which makes it exactly the
+/// entry someone adds by pattern-matching on the others.
+const INLINE_CONTENT_TYPES: &[&str] = &[
+    "application/pdf",
+    "image/apng",
+    "image/avif",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+];
 
 /// Most files one submission may carry.
 ///
@@ -514,12 +532,74 @@ async fn read_upload_batch(multipart: &mut Multipart) -> Result<UploadBatch, Bat
     })
 }
 
+/// How the streamed response asks the browser to treat the bytes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Disposition {
+    /// Save it. The default, and the only answer for a type the browser
+    /// might execute.
+    Attachment,
+    /// Render it in place, for the portal's embedded viewer.
+    Inline,
+}
+
+impl Disposition {
+    /// What the caller asked for, narrowed to what the content type earns.
+    ///
+    /// `inline` is a request, never an instruction: a caller that asks for
+    /// it on a `text/html` document gets `attachment` anyway. The allowlist
+    /// is the decision, not the query string.
+    fn resolve(requested_inline: bool, content_type: &str) -> Self {
+        // A stored type may carry parameters (`text/html; charset=utf-8`);
+        // compare the essence so a parameter cannot smuggle a type past the
+        // allowlist or keep an allowed one out of it.
+        let essence = content_type
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        if requested_inline && INLINE_CONTENT_TYPES.contains(&essence.as_str()) {
+            Self::Inline
+        } else {
+            Self::Attachment
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Attachment => "attachment",
+            Self::Inline => "inline",
+        }
+    }
+}
+
+/// `?inline=1` on the download route.
+#[derive(serde::Deserialize, Default)]
+pub struct DownloadQuery {
+    /// Present and truthy asks for `Content-Disposition: inline`.
+    ///
+    /// Typed as a string rather than a `bool` so `?inline=1` — what a
+    /// hand-written portal link actually spells — parses. A `bool` field
+    /// would reject it and 400 the whole request.
+    inline: Option<String>,
+}
+
+impl DownloadQuery {
+    fn wants_inline(&self) -> bool {
+        matches!(
+            self.inline.as_deref(),
+            Some("1" | "true" | "yes" | "inline" | "")
+        )
+    }
+}
+
 /// `GET /app/projects/{project_code}/documents/:doc_id/download`. Resolves
-/// the document, blocks cross-project leakage, then either 302s to
-/// a signed URL or streams bytes through the app.
+/// the document, blocks cross-project leakage, then streams the bytes
+/// back same-origin.
 pub async fn download(
     State(state): State<AdminState>,
     AxumPath((project_code, doc_id)): AxumPath<(String, Uuid)>,
+    axum::extract::Query(query): axum::extract::Query<DownloadQuery>,
     session: Option<Extension<SessionData>>,
 ) -> Response {
     // A code naming no matter is the same 404 a caller off the matter gets. A
@@ -561,28 +641,16 @@ pub async fn download(
         }
     };
     let filename = doc.filename.as_deref().unwrap_or("document");
+    let disposition = Disposition::resolve(query.wants_inline(), &doc.content_type);
 
-    match state
-        .storage
-        .signed_url(&doc.storage_key, SIGNED_URL_TTL)
-        .await
-    {
-        Ok(url) => Redirect::temporary(&url).into_response(),
-        Err(cloud::StorageError::Unsupported(_)) => {
-            stream_through(state, &doc.storage_key, &doc.content_type, filename).await
-        }
-        Err(cloud::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
-        Err(e) => {
-            tracing::error!(
-                error = %e,
-                %project_id,
-                %doc_id,
-                storage_key = %doc.storage_key,
-                "signed_url failed for project document"
-            );
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
+    stream_through(
+        state,
+        &doc.storage_key,
+        &doc.content_type,
+        filename,
+        disposition,
+    )
+    .await
 }
 
 /// `Ok(None)` is a refusal; `Err` is a store failure.
@@ -660,6 +728,7 @@ async fn stream_through(
     key: &str,
     content_type: &str,
     filename: &str,
+    disposition: Disposition,
 ) -> Response {
     match state.storage.get(key).await {
         Ok(obj) => Response::builder()
@@ -667,8 +736,17 @@ async fn stream_through(
             .header(header::CONTENT_TYPE, content_type)
             .header(
                 header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{filename}\""),
+                format!("{}; filename=\"{filename}\"", disposition.as_str()),
             )
+            // The declared type is the caller's, so forbid the sniff that
+            // would let a mislabelled body be re-read as something
+            // executable.
+            .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+            // The backstop behind the allowlist. `sandbox` with no tokens
+            // drops the response into an opaque origin with scripting off,
+            // so even a body that reaches `inline` under a wrong content
+            // type cannot run as Navigator or read its cookies.
+            .header(header::CONTENT_SECURITY_POLICY, "sandbox")
             .body(Body::from(obj.bytes))
             .map_or_else(
                 |e| {

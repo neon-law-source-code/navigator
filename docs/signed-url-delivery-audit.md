@@ -32,7 +32,7 @@ its name says.
 | 4 | Authorization runs before the bytes on the download route; one test proves the wrong layer. | Informational |
 | 5 | Committing `asset_id` and `sha256` to a private repository is acceptable, with corrections. | Low |
 | 6 | `navigator site pull` writes privileged plaintext to a laptop with no warning and no way to clean up. | Medium |
-| 7 | Portal CSP: proxy the bytes same-origin; do not admit the storage origin. | Medium |
+| 7 | Portal CSP: proxy the bytes same-origin; do not admit the storage origin. **Landed.** | Medium |
 | 8 | Publisher isolation holds, but staging runs a hand-made generation the code does not describe. | Medium |
 | 9 | A successful signed-URL issuance leaves no audit event; only failures are logged. | Medium |
 | 10 | The CI document session is main-only and single-use, but unscoped and attributed to the lawyer DRI. | Medium |
@@ -62,6 +62,19 @@ matter show page's Download link.
 
 **Follow-up.** Align `SIGNED_URL_TTL` across the two document routes and rewrite the trade-off comment around the
 per-click mint.
+
+**Closed by Finding 7's fix (LAW-22 / ENG-651), more completely than this recommendation expected.** The
+project-document route no longer signs anything, so its `SIGNED_URL_TTL` is gone rather than shortened. The
+recommendation above assumed the constant would survive to govern "the matter show page's Download link" — it does not,
+because that link and the portal's viewer are the same handler, and it now streams for both. Findings 1 and 2 therefore
+close for `/app/projects/{code}/documents/{doc_id}/download` entirely: there is no URL to leak, to age, or to land in
+history.
+
+The line references in the finding text above are left as they were found on 2026-09-12. This is a dated audit, and
+re-pointing them at today's file would make it a description of the present rather than a record of what was examined.
+
+`portal/src/documents.rs`'s five-minute constant for notation PDFs is untouched and still signs. Aligning the two is
+moot now that there is only one.
 
 ## Finding 2: Referer, history, and the redirect hop
 
@@ -290,6 +303,26 @@ portal policy drop the keyword; the site-wide policy would keep it until the tem
 **Follow-up.** Implement the same-origin streaming proxy for the portal document route with true streaming, an explicit
 disposition, an inline allowlist with `sandbox` on the response, keep `PORTAL_CSP` unchanged, and record the decision
 beside the TTL rationale in `docs/assets.md`.
+
+**Landed (LAW-22 / ENG-651).** The project-document download route no longer redirects. It reads the object and writes
+the bytes into its own response, so no storage URL reaches the browser on this path and `PORTAL_CSP` is untouched.
+`Content-Disposition` defaults to `attachment`; `?inline=1` asks for `inline` and is granted only for the passive types
+in `INLINE_CONTENT_TYPES` — `application/pdf` and raster images, deliberately not `image/svg+xml`. Every streamed
+response carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`, so a mis-typed body cannot
+execute as Navigator even if the allowlist is wrong. Pinned by
+[`server/tests/project_document_same_origin_delivery.rs`](../server/tests/project_document_same_origin_delivery.rs),
+whose storage double signs — a backend that *can* hand back a URL and is still not redirected through is what makes the
+test evidence rather than a restatement of the `FsStorage` fallback.
+
+Two parts of this follow-up did not land here, and neither is a silent omission:
+
+- **True streaming.** The route reuses the existing `stream_through` helper, which buffers the whole object before
+  responding. A streaming body needs a `StorageService` method that returns a byte stream, and the trait has none — that
+  is its own change across `cloud`'s three backends. One request's memory is bounded by what upload admits
+  (`MAX_BATCH_BYTES`, 500 MB), which is the ceiling to remove. Tracked separately.
+- **`docs/assets.md`.** The decision is recorded here instead. That document is titled *Public assets* and covers image
+  and webfont references; it carries no TTL rationale to sit beside, and a private matter document's delivery path is
+  not what a reader goes there for.
 
 ## Finding 8: per-Project publisher identity
 

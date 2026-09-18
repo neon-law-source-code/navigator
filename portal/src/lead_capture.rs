@@ -38,12 +38,16 @@ struct LeadForm {
     sms_consent: Option<String>,
     #[serde(default)]
     website: String,
-    #[serde(default)]
+    #[serde(default, alias = "_csrf")]
     csrf_token: String,
     #[serde(default)]
     source_path: String,
     #[serde(default)]
     consent_version: String,
+    #[serde(default)]
+    sms_consent_version: String,
+    #[serde(default)]
+    sms_policy_version: String,
 }
 
 /// Build the anonymous lead write route with its own rate-limit boundary and
@@ -115,9 +119,14 @@ async fn submit(
 
     let email = form.email.trim();
     let phone = form.phone.trim();
+    let sms_requested = form.sms_consent.as_deref() == Some("on");
     if !valid_email(email)
         || !valid_phone(phone)
         || form.consent_version.trim().is_empty()
+        || (sms_requested
+            && (!phone.is_empty()
+                && (form.sms_consent_version.trim().is_empty()
+                    || form.sms_policy_version.trim().is_empty())))
         || source_path == "/leads"
     {
         audit(brand, &source_path, "none", "rejected_validation");
@@ -125,14 +134,19 @@ async fn submit(
     }
 
     let phone = (!phone.is_empty()).then(|| phone.to_string());
-    let sms_consented_at =
-        (form.sms_consent.as_deref() == Some("on") && phone.is_some()).then(Utc::now);
+    let sms_consented_at = (sms_requested && phone.is_some()).then(Utc::now);
+    let sms_consent_version =
+        (sms_consented_at.is_some()).then(|| form.sms_consent_version.trim().to_string());
+    let sms_policy_version =
+        (sms_consented_at.is_some()).then(|| form.sms_policy_version.trim().to_string());
     let new_lead = store::leads::NewLead {
         email: email.to_string(),
         phone,
         brand_key: brand.as_str().to_string(),
         source_path: source_path.clone(),
         consent_version: form.consent_version,
+        sms_consent_version,
+        sms_policy_version,
         consented_at: Utc::now(),
         sms_consented_at,
     };
@@ -208,6 +222,8 @@ mod tests {
     use tower_cookies::CookieManagerLayer;
 
     const CONSENT: &str = "By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.";
+    const SMS_CONSENT_VERSION: &str = "Optional. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Our Privacy Policy and texting terms explain how we text and what we keep.\nYes, Neon Law may send me text messages about this inquiry at this number, including automated texts. Texting is not a condition of hiring the firm.";
+    const SMS_POLICY: &str = "2026-09-18";
 
     fn encoded(fields: &[(&str, &str)]) -> String {
         let mut serializer = url::form_urlencoded::Serializer::new(String::new());
@@ -257,6 +273,8 @@ mod tests {
             ("csrf_token", token),
             ("source_path", "/services"),
             ("consent_version", CONSENT),
+            ("sms_consent_version", SMS_CONSENT_VERSION),
+            ("sms_policy_version", SMS_POLICY),
         ];
         if sms {
             fields.push(("sms_consent", "on"));
@@ -302,6 +320,11 @@ mod tests {
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         let leads = store::leads::list(&db).await.unwrap();
         assert!(leads[0].sms_consented_at.is_some());
+        assert_eq!(
+            leads[0].sms_consent_version.as_deref(),
+            Some(SMS_CONSENT_VERSION)
+        );
+        assert_eq!(leads[0].sms_policy_version.as_deref(), Some(SMS_POLICY));
 
         let db = store::test_support::mem_surreal().await;
         let (app, sessions) = test_app(db.clone(), RateLimit::disabled()).await;

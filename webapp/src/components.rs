@@ -368,7 +368,6 @@ mod control_contract {
     const RAW_CONTROL_DEBT: &[(&str, usize)] = &[
         ("catalog_slides.rs", 2),
         ("conversation.rs", 1),
-        ("lead_capture.rs", 5),
         ("portal_project_detail.rs", 4),
         ("services_search.rs", 1),
     ];
@@ -403,9 +402,9 @@ mod control_contract {
                     collect_page_sources(&path, files);
                 }
             } else if path.extension().is_some_and(|extension| extension == "rs")
-                && path.file_name().is_none_or(|name| {
-                    name != "components.rs" && name != "design.rs"
-                })
+                && path
+                    .file_name()
+                    .is_none_or(|name| name != "components.rs" && name != "design.rs")
             {
                 files.push(path);
             }
@@ -451,8 +450,7 @@ mod control_contract {
                 .map(|line| line.len() + 1)
                 .sum::<usize>();
             let opener = prefix_len + line.len() - trimmed.len() + tag.len();
-            let Some(open_brace) = source[opener..].find('{').map(|offset| opener + offset)
-            else {
+            let Some(open_brace) = source[opener..].find('{').map(|offset| opener + offset) else {
                 continue;
             };
             let mut depth = 0usize;

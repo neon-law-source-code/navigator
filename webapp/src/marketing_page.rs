@@ -1231,7 +1231,8 @@ mod tests {
             skin: PageSkin::Marketing,
             lead_capture: LeadCaptureCopy {
                 consent_sentence: "By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.".to_string(),
-                phone_helper: "Optional. If you add a mobile number and check the box, Neon Law may text you about this inquiry. Message and data rates may apply. Reply STOP to stop, HELP for help. See the text-messaging terms.".to_string(),
+                phone_helper: "Optional. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Our Privacy Policy and texting terms explain how we text and what we keep.".to_string(),
+                sms_label: "Yes, Neon Law may send me text messages about this inquiry at this number, including automated texts. Texting is not a condition of hiring the firm.".to_string(),
             },
             bands: vec![
                 Band::Statement {
@@ -1405,7 +1406,10 @@ mod tests {
         let form = out.find(r#"action="/leads""#).expect("lead form");
         assert!(mail < form, "mail action stays beside the form: {out}");
         assert!(out.contains(r#"href="/privacy""#), "privacy link: {out}");
-        assert!(out.contains(r#"href="/terms""#), "terms link: {out}");
+        assert!(
+            out.contains(r#"href="/privacy#text-messaging-sms""#),
+            "sms policy link: {out}"
+        );
         assert!(
             out.contains("Attorney advertisement"),
             "advertising notice: {out}"

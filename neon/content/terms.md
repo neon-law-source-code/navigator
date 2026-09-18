@@ -3,6 +3,8 @@
 By accessing or using the websites and services of Neon Law ("we," "us," or "our"), you agree to be bound by these Terms
 of Service. If you do not agree, please do not use our services.
 
+Effective 2026-09-18
+
 ## Who Provides These Services
 
 **Neon Law** (Shook Law PLLC) operates this site and renders every legal service under these Terms. One organization
@@ -28,28 +30,10 @@ representing you.
 Our resources are intended for lawful purposes consistent with the firm's professional obligations. You agree not to
 misuse any information or services provided, and to provide accurate information when requesting legal assistance.
 
-## Text Messaging Program
+## Text Messaging
 
-**Program.** Neon Law operates a text-messaging (SMS) program so that clients and prospective clients can reach the firm
-and receive messages about their legal matter.
-
-**Enrollment and consent.** You consent to exchange text messages with us when you give us your mobile phone number —
-for example on our contact form or during intake — and agree to these Terms. Consent to receive text messages is not a
-condition of engaging the firm or of any purchase.
-
-**Messages and frequency.** The program is two-way and transactional: you can text us and we reply, and we may send you
-appointment reminders, document requests, case-status updates, and answers to your questions. **Message frequency
-varies.**
-
-**Rates.** **Message and data rates may apply.** Rates are set by your mobile carrier, not by us.
-
-**Opt out and help.** **Reply STOP to any message to unsubscribe; we will send one confirmation and no further messages.
-Reply HELP for help,** or contact us at [contact@neonlaw.com](mailto:contact@neonlaw.com) or +1 510 800 2080.
-
-**Delivery.** **Carriers are not liable for any delayed or undelivered messages.**
-
-**Privacy.** How we handle the mobile phone number you share is described in our [Privacy Policy](/privacy). We do not
-share or sell your mobile phone number or your SMS consent to third parties for their marketing purposes.
+The terms of our text-messaging program, including how to opt in and out, message frequency, rates, and what we record,
+are in the [Text Messaging section of our Privacy Policy](/privacy#text-messaging-sms).
 
 ## Trademarks
 

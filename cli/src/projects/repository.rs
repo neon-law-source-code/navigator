@@ -680,15 +680,12 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Fi
             ));
         }
         if first == DOCUMENT_DIRECTORY && is_file {
-            let is_pointer = path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| extension == "yml");
+            let is_pointer = crate::document_sync::is_pointer_path(&path);
             let is_guard = components.len() == 2 && components[1] == ".gitignore";
             if !is_pointer && !is_guard {
                 errors.push(Finding::at(
                     &path,
-                    "legal documents and raw document bytes must not be committed; keep only `*.yml` pointers under `documents/`",
+                    "legal documents and raw document bytes must not be committed; keep only `*.yaml` pointers under `documents/`",
                 ));
             }
         }
@@ -1194,7 +1191,7 @@ fn validate_documents_gitignore(root: &Path, write_fixes: bool, errors: &mut Vec
     errors.push(Finding::at(
         path,
         format!(
-            "{DOCUMENT_GITIGNORE_CODE}: `documents/.gitignore` must be exactly `*`, `!*/`, `!*.yml`, and `!.gitignore` (one per line, no comments); every other byte leaves the directory ignoring nothing, or only what the root `.gitignore` already covers"
+            "{DOCUMENT_GITIGNORE_CODE}: `documents/.gitignore` must be exactly `*`, `!*/`, `!*.yaml`, `!*.yml`, and `!.gitignore` (one per line, no comments); every other byte leaves the directory ignoring nothing, or only what the root `.gitignore` already covers"
         ),
     ));
 }

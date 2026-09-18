@@ -276,7 +276,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
     assert_eq!(
         fs::read_to_string(dir.path().join("documents/.gitignore")).unwrap(),
-        "*\n!*/\n!*.yml\n!.gitignore\n"
+        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n"
     );
     assert!(!dir.path().join("templates/project_template.md").exists());
     assert_eq!(
@@ -680,7 +680,7 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
     .unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yml\n!.gitignore\n",
+        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n",
     )
     .unwrap();
 
@@ -727,7 +727,7 @@ fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
     fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yml\n!.gitignore\n",
+        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n",
     )
     .unwrap();
     let raw = dir.path().join("documents/memos/agreement.md");
@@ -785,7 +785,7 @@ fn gate_reports_a_tracked_raw_document_byte() {
     fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yml\n!.gitignore\n",
+        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n",
     )
     .unwrap();
     let raw = dir.path().join("documents/memos/agreement.md");
@@ -839,7 +839,7 @@ fn project_gate_rewrites_a_drifted_documents_gitignore() {
 
     assert_eq!(
         fs::read_to_string(&ignore).unwrap(),
-        "*\n!*/\n!*.yml\n!.gitignore\n"
+        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n"
     );
 }
 

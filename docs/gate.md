@@ -69,12 +69,12 @@ Nine normal validation passes happen in this order:
    names fails the gate. A house-of-brands tree uses `locales/en/<brand-key>/<page>.yaml`; a fixture may still use the
    flat `locales/en/<page>.yaml` layout. This is what lets a copy-only edit stay a YAML change without landing a catalog
    the brand crate cannot load.
-6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yml` only when the root is a Project
-   repository declared by `navigator.yaml`. It checks the closed asset kind and visibility vocabularies, current
-   revision metadata, revision-chain linkage, and the retained document extension without reading the network or bytes.
-   When `documents/` exists, the same Project-repository check holds `documents/.gitignore` to four exact lines (rule
-   `Y014`): deny everything, then re-admit subdirectories, pointer files, and the ignore file itself. Local `project
-   gate`rewrites drift;`--ci` reports it.
+6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yaml` (and the retired `.yml`) only when the
+   root is a Project repository declared by `navigator.yaml`. It checks the closed asset kind and visibility
+   vocabularies, current revision metadata, revision-chain linkage, and the retained document extension without reading
+   the network or bytes. When `documents/` exists, the same Project-repository check holds `documents/.gitignore` to
+   five exact lines (rule `Y014`): deny everything, then re-admit subdirectories, pointer files in both spellings, and
+   the ignore file itself. Local `project gate`rewrites drift;`--ci` reports it.
 7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`–`Y013`) runs when the root carries either manifest
    spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name` to
    `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
@@ -296,7 +296,7 @@ literally and the columns disappear.
 | --- | --- | --- | --- |
 | `Y001` | Error | A `seeds/*.yaml` document must be accepted by `navigator site import`. | No |
 | `Y002` | Error | An English `locales/` catalog deserializes as its stem's page, or as the shared-copy contract. | No |
-| `Y003` | Error | A Project repository's `documents/**/*.yml` pointer must name a valid asset revision. | No |
+| `Y003` | Error | A Project repository's `documents/**/*.yaml` pointer must name a valid asset revision. | No |
 | `Y004` | Error | A Project manifest `host` must be a hostname (no scheme, port, or path). | No |
 | `Y005` | Error | A Project manifest `project` must be a valid Navigator Project code. | No |
 | `Y006` | Error | A Project manifest top-level key must be one of the accepted set. | No |
@@ -314,8 +314,10 @@ literally and the columns disappear.
 like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature instrument cannot name
 a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.
 
-`Y014` runs in the same Project-repository check whenever `documents/` exists. The four lines are shared with `scaffold`
-and `site sync` / `site pull`. Local `project gate` rewrites drift; `--ci` reports `Y014` and leaves the file.
+`Y014` runs in the same Project-repository check whenever `documents/` exists. The five lines are shared with `scaffold`
+and `site sync` / `site pull`. Local `project gate` rewrites drift; `--ci` reports `Y014` and leaves the file. Both
+`!*.yaml` and `!*.yml` are admitted: Navigator writes the former and still reads the latter, and admitting only the new
+spelling would leave a not-yet-renamed repository's pointers untracked (LAW-25).
 
 ### F-family — files the gate had to fix
 

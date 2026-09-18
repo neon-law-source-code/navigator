@@ -2133,3 +2133,65 @@ fn gate_keeps_the_spaces_around_a_code_span_its_reflow_wraps() {
         "the second pass must leave the file alone"
     );
 }
+
+/// LAW-25: `Y003` must walk both pointer spellings.
+///
+/// Navigator writes `.yaml` now and still reads the retired `.yml`, and the
+/// gate's pointer pass has to read exactly what the walkers read. A pass that
+/// matched only one spelling would skip every pointer in a repository on the
+/// other side of the rename and report a clean run over nothing — which looks
+/// from the outside identical to a repository that has no documents at all.
+/// That silent pass is the failure the shared extension contract exists to
+/// prevent, so it earns a test at the gate rather than only in the unit.
+#[test]
+fn gate_validates_document_pointers_in_both_spellings() {
+    const VALID: &str = "kind: agreement\nvisibility: internal\ncurrent_version:\n  version: 1\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T12:00:00Z\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  size_bytes: 42\n";
+
+    for extension in ["yaml", "yml"] {
+        let dir = TempDir::new().unwrap();
+        write_project_shell(dir.path(), "acme");
+        write(
+            dir.path(),
+            &format!("documents/agreements/terms.pdf.{extension}"),
+            VALID,
+        );
+        gate(dir.path()).assert().success().stdout(str::contains(
+            "Validated 1 document pointer(s), found 0 error(s)",
+        ));
+    }
+
+    // And a malformed pointer is caught under either spelling — the count
+    // above could be satisfied by a walker that finds the file and declines
+    // to validate it.
+    for extension in ["yaml", "yml"] {
+        let dir = TempDir::new().unwrap();
+        write_project_shell(dir.path(), "acme");
+        write(
+            dir.path(),
+            &format!("documents/agreements/terms.pdf.{extension}"),
+            "kind: agreement\nvisibility: internal\ncurrent_verison: {}\n",
+        );
+        gate(dir.path())
+            .assert()
+            .failure()
+            .code(1)
+            .stdout(str::contains("Y003"))
+            .stdout(str::contains("current_version"));
+    }
+}
+
+/// A repository carrying both spellings sees both counted, so a half-renamed
+/// checkout is never under-reported mid-migration.
+#[test]
+fn gate_counts_a_half_renamed_documents_directory_in_full() {
+    const VALID: &str = "kind: agreement\nvisibility: internal\ncurrent_version:\n  version: 1\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T12:00:00Z\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  size_bytes: 42\n";
+
+    let dir = TempDir::new().unwrap();
+    write_project_shell(dir.path(), "acme");
+    write(dir.path(), "documents/agreements/renamed.pdf.yaml", VALID);
+    write(dir.path(), "documents/agreements/retired.pdf.yml", VALID);
+
+    gate(dir.path()).assert().success().stdout(str::contains(
+        "Validated 2 document pointer(s), found 0 error(s)",
+    ));
+}

@@ -16,7 +16,53 @@ use crate::remote::DocumentClient;
 /// silently ignores nothing at all. `Y014` and `scaffold` share these bytes
 /// with `site sync` / `site pull` so a new repository cannot drift from the
 /// guard those commands write.
-pub(crate) const DOCUMENTS_GITIGNORE: &str = "*\n!*/\n!*.yml\n!.gitignore\n";
+///
+/// Both pointer spellings are admitted, and both must stay admitted for as
+/// long as [`POINTER_READ_EXTENSIONS`] reads both. This line is the backstop
+/// keeping legal bytes out of Git: admitting only `.yaml` while a repository
+/// still carries `.yml` pointers would leave those pointers ignored and
+/// untracked, which looks from the outside exactly like a repository that has
+/// no documents.
+pub(crate) const DOCUMENTS_GITIGNORE: &str = "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n";
+
+/// The extension Navigator writes a document pointer with.
+///
+/// `.yaml`, matching every other YAML file Navigator owns in a Project
+/// repository — `navigator.yaml`, `seeds/*.yaml`, `.sops.yaml`. Pointers were
+/// the one exception (LAW-25), and the extension is in the CLI's own help
+/// text, so it taught itself to every next repository.
+///
+/// `.github/workflows/*.yml` is GitHub's own convention and is not ours to
+/// change.
+pub(crate) const POINTER_EXTENSION: &str = "yaml";
+
+/// Every extension a document pointer may be *read* at.
+///
+/// Writing one spelling while reading both is what lets a fleet-wide rename
+/// happen after the release rather than atomically with it. The retired
+/// `.yml` stays readable until no repository carries one.
+///
+/// This must be the only place the set is spelled. The walkers match on
+/// extension, so a repository that renames ahead of the CLI reports
+/// `0 pointer(s)` and passes — indistinguishable from having no documents at
+/// all. That silent-pass failure is why the contract is central and not
+/// per-command.
+pub(crate) const POINTER_READ_EXTENSIONS: &[&str] = &[POINTER_EXTENSION, "yml"];
+
+/// Whether `path` names a committed document pointer, in either spelling.
+pub(crate) fn is_pointer_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| POINTER_READ_EXTENSIONS.contains(&extension))
+}
+
+/// `slug` without its pointer extension, in either spelling, or `None` when
+/// it names no pointer at all.
+pub(crate) fn strip_pointer_extension(slug: &str) -> Option<&str> {
+    POINTER_READ_EXTENSIONS
+        .iter()
+        .find_map(|extension| slug.strip_suffix(&format!(".{extension}")))
+}
 
 /// Read and validate `<root>/navigator.yaml` — the one manifest every
 /// document command (`sync`, and the read verbs under `navigator site document`)
@@ -89,7 +135,15 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
             .strip_prefix(&documents)
             .map_err(|_| anyhow!("{} is outside documents/", path.display()))?;
         let slug = slash_path(relative)?;
-        let existing_pointer = PathBuf::from(format!("{}.yml", path.display()));
+        // Read whichever spelling this repository already carries, so a
+        // re-sync updates the pointer in place instead of filing a second
+        // one beside it under the new extension.
+        let existing_pointer = POINTER_READ_EXTENSIONS
+            .iter()
+            .map(|extension| PathBuf::from(format!("{}.{extension}", path.display())))
+            .find(|candidate| candidate.exists())
+            .unwrap_or_else(|| PathBuf::from(format!("{}.{POINTER_EXTENSION}", path.display())));
+        let existing_path = existing_pointer.clone();
         let existing_pointer = read_pointer(&existing_pointer)?;
         let kind = existing_pointer
             .as_ref()
@@ -108,7 +162,14 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
                 Some(&slug),
             )
             .await?;
-        let pointer_path = PathBuf::from(format!("{}.yml", path.display()));
+        // Keep an existing pointer at the spelling it already has; a new one
+        // is written as `.yaml`. Renaming a repository's pointers is a
+        // deliberate migration, not a side effect of the next upload.
+        let pointer_path = if existing_path.exists() {
+            existing_path
+        } else {
+            PathBuf::from(format!("{}.{POINTER_EXTENSION}", path.display()))
+        };
         write_pointer_atomically(&pointer_path, &pointer.to_yaml()?)?;
         std::fs::remove_file(&path).with_context(|| format!("remove staged {}", path.display()))?;
         uploaded += 1;
@@ -139,11 +200,16 @@ pub(crate) async fn run_pull(root: &Path, dry_run: bool) -> ExitCode {
 fn pull_target(root: &Path, pointer_relative: &Path) -> Result<PathBuf> {
     let stem = pointer_relative
         .to_str()
-        .and_then(|path| path.strip_suffix(".yml"))
+        .and_then(strip_pointer_extension)
         .ok_or_else(|| {
             anyhow!(
-                "{} does not name a `.yml` pointer",
-                pointer_relative.display()
+                "{} does not name a document pointer (expected one of: {})",
+                pointer_relative.display(),
+                POINTER_READ_EXTENSIONS
+                    .iter()
+                    .map(|extension| format!(".{extension}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
             )
         })?;
     let documents_dir = crate::document_read::lexical(root, Path::new("documents"));
@@ -682,7 +748,7 @@ fn discover(documents: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
         if !entry.file_type().is_file() || entry.file_name() == ".gitignore" {
             continue;
         }
-        if entry.path().extension().and_then(|ext| ext.to_str()) == Some("yml") {
+        if is_pointer_path(entry.path()) {
             pointers.push(entry.into_path());
         } else {
             binaries.push(entry.into_path());
@@ -762,9 +828,10 @@ pub(crate) fn read_pointer(
 #[cfg(test)]
 mod tests {
     use super::{
-        matches_digest, pull_target, pull_transaction_path, read_manifest,
-        recover_interrupted_pull, write_pull_transaction_state, PullTransactionPhase,
-        PullTransactionState, PullTransactionTarget,
+        is_pointer_path, matches_digest, pull_target, pull_transaction_path, read_manifest,
+        recover_interrupted_pull, strip_pointer_extension, write_pull_transaction_state,
+        PullTransactionPhase, PullTransactionState, PullTransactionTarget, DOCUMENTS_GITIGNORE,
+        POINTER_EXTENSION, POINTER_READ_EXTENSIONS,
     };
     use std::path::Path;
 
@@ -815,11 +882,67 @@ mod tests {
     }
 
     #[test]
-    fn pull_target_strips_yml_and_stays_below_documents() {
+    fn pull_target_strips_either_pointer_extension_and_stays_below_documents() {
         let root = Path::new("/repo");
+        // Both spellings resolve to the same staging path. `.yml` is the
+        // retired one and stays readable so a fleet-wide rename does not have
+        // to be atomic with the release (LAW-25).
+        for pointer in [
+            "documents/pleadings/motion.pdf.yaml",
+            "documents/pleadings/motion.pdf.yml",
+        ] {
+            assert_eq!(
+                pull_target(root, Path::new(pointer)).unwrap(),
+                Path::new("/repo/documents/pleadings/motion.pdf"),
+                "{pointer} must resolve to the document beside it"
+            );
+        }
+    }
+
+    #[test]
+    fn pull_target_refuses_a_path_that_names_no_pointer_and_says_what_it_wanted() {
+        let root = Path::new("/repo");
+        let error = pull_target(root, Path::new("documents/pleadings/motion.pdf")).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(".yaml"), "{message}");
+        assert!(message.contains(".yml"), "{message}");
+    }
+
+    #[test]
+    fn the_pointer_extension_contract_writes_yaml_and_reads_both() {
         assert_eq!(
-            pull_target(root, Path::new("documents/pleadings/motion.pdf.yml")).unwrap(),
-            Path::new("/repo/documents/pleadings/motion.pdf")
+            POINTER_EXTENSION, "yaml",
+            "pointers are written at the extension every other Navigator YAML file uses"
+        );
+        assert_eq!(
+            POINTER_READ_EXTENSIONS,
+            &["yaml", "yml"],
+            "the retired spelling stays readable through the rename"
+        );
+        assert!(is_pointer_path(Path::new("documents/a.pdf.yaml")));
+        assert!(is_pointer_path(Path::new("documents/a.pdf.yml")));
+        assert!(!is_pointer_path(Path::new("documents/a.pdf")));
+        assert_eq!(strip_pointer_extension("a.pdf.yaml"), Some("a.pdf"));
+        assert_eq!(strip_pointer_extension("a.pdf.yml"), Some("a.pdf"));
+        assert_eq!(strip_pointer_extension("a.pdf"), None);
+    }
+
+    /// The guard that keeps legal bytes out of Git has to admit every
+    /// spelling the walkers read. Admitting only `.yaml` while a repository
+    /// still carries `.yml` pointers leaves those pointers ignored and
+    /// untracked — which reads from outside exactly like a repository with no
+    /// documents at all.
+    #[test]
+    fn the_documents_gitignore_admits_every_readable_pointer_extension() {
+        for extension in POINTER_READ_EXTENSIONS {
+            assert!(
+                DOCUMENTS_GITIGNORE.contains(&format!("!*.{extension}\n")),
+                "documents/.gitignore must re-admit *.{extension}, got {DOCUMENTS_GITIGNORE:?}"
+            );
+        }
+        assert!(
+            DOCUMENTS_GITIGNORE.starts_with("*\n"),
+            "it must deny everything first, or the negations negate nothing"
         );
     }
 

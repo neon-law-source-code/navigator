@@ -1,7 +1,7 @@
 //! `navigator site document log`, `get`, and `diff` — the offline-checkout read
 //! verbs for a matter document's revision chain (#485).
 //!
-//! All three take a pointer path below `documents/` (the committed `.yml`,
+//! All three take a pointer path below `documents/` (the committed `.yaml`,
 //! or the staged binary it names) and resolve the Project and the document
 //! slug from the checkout itself: `navigator.yaml` at `.` names the Project,
 //! and the path relative to `documents/` — the same rule
@@ -59,19 +59,32 @@ fn slug_from_pointer(root: &Path, pointer: &Path) -> Result<String> {
         )
     })?;
     let slashed = slash_path(relative)?;
-    Ok(slashed.strip_suffix(".yml").unwrap_or(&slashed).to_string())
+    Ok(crate::document_sync::strip_pointer_extension(&slashed)
+        .unwrap_or(&slashed)
+        .to_string())
 }
 
 /// The committed pointer's path for a document named by `pointer` — itself if
-/// it already names the `.yml`, else that path with `.yml` appended.
+/// it already names a pointer, else the sibling pointer this checkout carries,
+/// else that path with the written extension appended.
 fn pointer_yaml_path(pointer: &Path) -> PathBuf {
-    if pointer.extension().and_then(|ext| ext.to_str()) == Some("yml") {
-        pointer.to_path_buf()
-    } else {
-        let mut named = pointer.as_os_str().to_os_string();
-        named.push(".yml");
-        PathBuf::from(named)
+    if crate::document_sync::is_pointer_path(pointer) {
+        return pointer.to_path_buf();
     }
+    // A bare document name resolves to whichever spelling is on disk, so
+    // `document get motion.pdf` keeps working in a repository that has not
+    // been renamed yet.
+    for extension in crate::document_sync::POINTER_READ_EXTENSIONS {
+        let mut named = pointer.as_os_str().to_os_string();
+        named.push(format!(".{extension}"));
+        let candidate = PathBuf::from(named);
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    let mut named = pointer.as_os_str().to_os_string();
+    named.push(format!(".{}", crate::document_sync::POINTER_EXTENSION));
+    PathBuf::from(named)
 }
 
 /// Resolve `(Project code, login host)` from `<root>/navigator.yaml`.
@@ -447,9 +460,7 @@ pub(crate) fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
     let mut pointers = Vec::new();
     for entry in walkdir::WalkDir::new(&documents).follow_links(false) {
         let entry = entry.with_context(|| format!("walk {}", documents.display()))?;
-        if entry.file_type().is_file()
-            && entry.path().extension().and_then(|ext| ext.to_str()) == Some("yml")
-        {
+        if entry.file_type().is_file() && crate::document_sync::is_pointer_path(entry.path()) {
             let relative = entry
                 .path()
                 .strip_prefix(root)
@@ -614,14 +625,40 @@ mod tests {
     }
 
     #[test]
-    fn pointer_yaml_path_appends_yml_once() {
+    fn pointer_yaml_path_appends_the_written_extension_once() {
+        // A bare document name with nothing on disk resolves to the spelling
+        // Navigator writes today.
         assert_eq!(
             pointer_yaml_path(Path::new("documents/motion.pdf")),
-            Path::new("documents/motion.pdf.yml")
+            Path::new("documents/motion.pdf.yaml")
         );
+        // A path that already names a pointer is returned as given, in either
+        // spelling — `document get` must keep working against a repository
+        // that has not been renamed yet (LAW-25).
+        for named in ["documents/motion.pdf.yaml", "documents/motion.pdf.yml"] {
+            assert_eq!(
+                pointer_yaml_path(Path::new(named)),
+                Path::new(named),
+                "{named} already names a pointer"
+            );
+        }
+    }
+
+    /// A bare name resolves to whichever pointer the checkout actually
+    /// carries, so the retired spelling stays reachable without the caller
+    /// having to know which rename state the repository is in.
+    #[test]
+    fn pointer_yaml_path_prefers_the_pointer_that_exists_on_disk() {
+        let root = tempfile::tempdir().unwrap();
+        let documents = root.path().join("documents");
+        std::fs::create_dir_all(&documents).unwrap();
+        let retired = documents.join("motion.pdf.yml");
+        std::fs::write(&retired, "").unwrap();
+
         assert_eq!(
-            pointer_yaml_path(Path::new("documents/motion.pdf.yml")),
-            Path::new("documents/motion.pdf.yml")
+            pointer_yaml_path(&documents.join("motion.pdf")),
+            retired,
+            "an existing .yml pointer must be found rather than a .yaml that is not there"
         );
     }
 

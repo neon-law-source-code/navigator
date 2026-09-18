@@ -102,7 +102,13 @@ pub const PUBLIC_PATHS: &[&str] = &[
 #[must_use]
 pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
     match key {
-        BrandKey::DeleteYourData => ["/", "/services", "/contact"]
+        // Every practice brand publishes the same three paths it answers.
+        BrandKey::DeleteYourData
+        | BrandKey::Vesta
+        | BrandKey::Misericordia
+        | BrandKey::Abhaya
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Summons => ["/", "/services", "/contact"]
             .iter()
             .map(|path| (*path).to_string())
             .collect(),
@@ -144,6 +150,34 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
     }
 }
 
+/// The `llms.txt` index for a practice brand: the two pages it serves,
+/// described in its own compiled `Branding`.
+///
+/// Lifted out of [`llms_txt`] because every practice brand answers this the
+/// same way — the arm would otherwise repeat once per brand, and the five of
+/// them pushed that function past its length limit.
+fn practice_brand_llms_txt(key: BrandKey) -> portal::LlmsTxt {
+    let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+    let mark = branding.firm.site_name;
+    portal::LlmsTxt {
+        title: mark.to_string(),
+        summary: branding.mission_description.to_string(),
+        pages: vec![
+            portal::LlmsTxtLink {
+                title: mark.to_string(),
+                path: "/".to_string(),
+                description: branding.mission_description.to_string(),
+            },
+            portal::LlmsTxtLink {
+                title: "Services".to_string(),
+                path: "/services".to_string(),
+                description: branding.service_description.to_string(),
+            },
+        ],
+        sections: Vec::new(),
+    }
+}
+
 /// The site's `/llms.txt`: what a crawler has reached at `neonlaw.com`, and the
 /// pages it may read there.
 ///
@@ -159,6 +193,14 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
 #[must_use]
 pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
     match key {
+        // Each practice brand indexes the two pages it serves, from its own
+        // compiled `Branding` — the descriptions are the brand's own words,
+        // never another brand's.
+        key @ (BrandKey::Vesta
+        | BrandKey::Misericordia
+        | BrandKey::Abhaya
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Summons) => practice_brand_llms_txt(key),
         BrandKey::DeleteYourData => {
             let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
             let mark = branding.firm.site_name;

@@ -1,0 +1,158 @@
+head_title: "NYC summons defense — {site_name}"
+meta_description: >-
+  Shook Law PLLC represents respondents at the OATH Hearings Division:
+  Buildings, Sanitation, Environmental Protection, Consumer and Worker
+  Protection, Health and Mental Hygiene, and TLC summonses. A private law
+  firm, not affiliated with the City of New York or OATH.
+title: NYC summons defense
+hero_mark: scales
+tagline: A private law firm, not affiliated with the City of New York or OATH
+hero_lines:
+  - text: We defend City summonses
+    accent_words: 2
+  - text: at the OATH Hearings Division
+    accent_words: 0
+hero_lead: >-
+  Shook Law PLLC is a private law firm. We are not affiliated with the City
+  of New York or with OATH. Flat fee per summons, or a monthly retainer
+  across a portfolio.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: cards
+    anchor: agencies
+    overline: Agencies
+    heading: Whose summonses OATH hears
+    description: >-
+      OATH's Hearings Division hears summonses written by City enforcement
+      agencies. It does not write them and does not inspect.
+    items:
+      - title: Buildings
+        body:
+          - - text: >-
+                Construction, permits, facade, elevator, and boiler
+                summonses.
+      - title: Sanitation
+        body:
+          - - text: >-
+                Set-out times, containers, recycling, and sidewalk
+                conditions.
+      - title: Environmental Protection
+        body:
+          - - text: "Noise, air, and water summonses."
+      - title: Consumer and Worker Protection
+        body:
+          - - text: >-
+                Licensing, sign, pricing, and worker-protection summonses.
+      - title: Health and Mental Hygiene
+        body:
+          - - text: >-
+                Food-service and facility summonses, including inspection
+                findings.
+      - title: Taxi and Limousine Commission
+        body:
+          - - text: "Vehicle, driver, and base summonses."
+  - kind: cards
+    anchor: hearing
+    overline: How it works
+    heading: What happens at a hearing
+    description: ""
+    items:
+      - title: The hearing is informal
+        body:
+          - - text: >-
+                Most are held by telephone. Attorneys and non-attorney
+                representatives may both appear, at the respondent's own
+                expense.
+      - title: Only what is presented counts
+        body:
+          - - text: >-
+                The hearing officer may consider only the evidence and
+                witness statements presented during the hearing. A document
+                sitting in your office is not evidence.
+      - title: The outcomes
+        body:
+          - - text: >-
+                Dismissal, cure credit, a reduced penalty, or the summons
+                upheld.
+      - title: Appeals
+        body:
+          - - text: >-
+                Thirty days to appeal to the Appeals Unit. Either side may
+                appeal, including the agency that wrote the summons.
+  - kind: cards
+    anchor: default
+    overline: Missed a hearing
+    heading: The 75-day window
+    description: >-
+      A missed hearing becomes a default, and a default is the expensive
+      outcome. There is a route back, and it has a deadline.
+    items:
+      - title: What a default costs
+        body:
+          - - text: >-
+                Liens, civil judgments, and Sheriff or Marshal action, plus
+                exposure to losing a City licence, permit, or registration.
+      - title: The automatic new hearing
+        body:
+          - - text: >-
+                A new hearing may be requested once per summons. It is
+                granted automatically when the request is filed within 75
+                days of the missed hearing date.
+      - title: After 75 days
+        body:
+          - - text: >-
+                A new hearing is no longer automatic. It may still be
+                possible, and it depends on the circumstances.
+  - kind: cards
+    anchor: fees
+    overline: Fees
+    heading: What it costs
+    description: >-
+      Flat fee per summons, or a monthly retainer across a portfolio. Agreed
+      in writing before work begins.
+    items:
+      - title: Per summons
+        body:
+          - - text: >-
+                A flat fee for one summons, quoted before we take it on.
+      - title: Monthly retainer
+        body:
+          - - text: >-
+                For an owner, managing agent, or operator with recurring
+                summonses across a portfolio. The value is preparation and
+                not missing dates.
+      - title: What we do not promise
+        body:
+          - - text: >-
+                We do not promise a dismissal or a reduced penalty. The
+                hearing officer decides.
+  - kind: cards
+    anchor: about
+    overline: About
+    heading: Who you would be retaining
+    description: ""
+    items:
+      - title: The firm
+        body:
+          - - text: >-
+                Shook Law PLLC, a Nevada professional limited liability
+                company. This site is a marketing channel for the firm; the
+                firm's name, not the domain, is who you retain.
+      - title: Not the City
+        body:
+          - - text: >-
+                We are a private law firm. We are not affiliated with,
+                endorsed by, or acting for the City of New York or the
+                Office of Administrative Trials and Hearings. OATH runs a
+                free Help Center at every hearing location, and you are free
+                to use it instead of hiring anyone.
+  - kind: cta
+    heading: How many are open?
+    body: >-
+      Write to us with the number of open summonses, which agencies wrote
+      them, and whether any hearing date has already passed.
+    email: "{firm_email}"
+    email_subject: NYC summons defense

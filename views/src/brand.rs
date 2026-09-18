@@ -603,6 +603,202 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     portal_only: false,
     brand_key: BrandKey::LawyerShook,
 };
+
+/// The `vesta` house brand. Page copy lives in `neon/locales/en/vesta/`;
+/// the strings here are the chrome and crawler descriptions for the same
+/// practice. Trademark fields stay empty until that brand's registration
+/// status is decided.
+pub static VESTA_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "Vesta Estate Planning",
+        home_href: "/",
+        tagline: "A Shook Law PLLC practice. Wills, trusts, powers of attorney, and probate, at flat fees quoted before work begins.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "",
+        social_image: "",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@vestaestateplanning.com",
+    support_domain: "vestaestateplanning.com",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: FIRM_OFFICES,
+    firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "vestaestateplanning.com",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Vesta Estate Planning is a practice of Shook Law PLLC. A licensed attorney prepares wills, living trusts, powers of attorney, and advance directives, and handles probate. A will or a living trust starts at $3,000 and a full estate plan is $5,000, with court and recording fees separate. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Estate planning from Vesta Estate Planning, a practice of Shook Law PLLC. Wills and living trusts from $3,000, a full estate plan at $5,000, with government fees separate.",
+    portal_only: false,
+    brand_key: BrandKey::Vesta,
+};
+
+/// The `misericordia` house brand. Page copy lives in `neon/locales/en/misericordia/`;
+/// the strings here are the chrome and crawler descriptions for the same
+/// practice. Trademark fields stay empty until that brand's registration
+/// status is decided.
+pub static MISERICORDIA_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "Misericordia Injury Law",
+        home_href: "/",
+        tagline: "A Shook Law PLLC practice. Injury claims, on a contingency fee, with a free first conversation.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "",
+        social_image: "",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@misericordialaw.com",
+    support_domain: "misericordialaw.com",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: FIRM_OFFICES,
+    firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "misericordialaw.com",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Misericordia Injury Law is a practice of Shook Law PLLC. A licensed attorney handles car, truck, motorcycle, pedestrian, premises, and wrongful death claims. The first conversation is free, and the fee is a percentage of what is recovered, agreed in writing beforehand. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Injury claims from Misericordia Injury Law, a practice of Shook Law PLLC. Free consultation, contingency fee agreed in writing before work begins.",
+    portal_only: false,
+    brand_key: BrandKey::Misericordia,
+};
+
+/// The `abhaya` house brand. Page copy lives in `neon/locales/en/abhaya/`;
+/// the strings here are the chrome and crawler descriptions for the same
+/// practice. Trademark fields stay empty until that brand's registration
+/// status is decided.
+pub static ABHAYA_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "Abhaya Immigration",
+        home_href: "/",
+        tagline: "A Shook Law PLLC practice. Family petitions, employment visas, green cards, naturalization, and consular processing.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "",
+        social_image: "",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@abhayaimmigration.com",
+    support_domain: "abhayaimmigration.com",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: FIRM_OFFICES,
+    firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "abhayaimmigration.com",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Abhaya Immigration is a practice of Shook Law PLLC. A licensed attorney handles family petitions, employment visas, green cards, naturalization, and consular processing, for a flat fee quoted before work begins. USCIS filing fees are set by the government and are separate. We cannot promise an approval or a timeline; USCIS decides both. This is an attorney advertisement.",
+    service_description: "Immigration work from Abhaya Immigration, a practice of Shook Law PLLC. Flat fees quoted before work begins, with USCIS filing fees separate and government-set.",
+    portal_only: false,
+    brand_key: BrandKey::Abhaya,
+};
+
+/// The `delete-your-debt` house brand. Page copy lives in `neon/locales/en/delete-your-debt/`;
+/// the strings here are the chrome and crawler descriptions for the same
+/// practice. Trademark fields stay empty until that brand's registration
+/// status is decided.
+pub static DELETE_YOUR_DEBT_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "DeleteYourDebt.com",
+        home_href: "/",
+        tagline: "A Shook Law PLLC practice. Collection defense: we defend the lawsuit and make the collector prove the debt.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "",
+        social_image: "",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@deleteyourdebt.com",
+    support_domain: "deleteyourdebt.com",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: FIRM_OFFICES,
+    firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "deleteyourdebt.com",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "DeleteYourDebt.com is a practice of Shook Law PLLC. A licensed attorney defends collection lawsuits, makes collectors validate the debt, brings FDCPA claims, and disputes credit-report errors. This is collection defense: the practice does not settle debts, negotiate balances, or take a fee to reduce what is owed. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Collection defense from DeleteYourDebt.com, a practice of Shook Law PLLC. Collection-lawsuit defense, FDCPA claims, validation demands, and credit-report disputes.",
+    portal_only: false,
+    brand_key: BrandKey::DeleteYourDebt,
+};
+
+/// The `summons` house brand. Page copy lives in `neon/locales/en/summons/`;
+/// the strings here are the chrome and crawler descriptions for the same
+/// practice. Trademark fields stay empty until that brand's registration
+/// status is decided.
+///
+/// The masthead is the firm's own name rather than a trade name, and the
+/// domain is a marketing channel only. New York Rule 7.5(b) bars trade
+/// names for private practice, so unlike the Nevada brands this one has no
+/// separate identity to wear — `site_name` is `Shook Law PLLC` on purpose.
+pub static SUMMONS_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "Shook Law PLLC",
+        home_href: "/",
+        tagline: "A private law firm, not affiliated with the City of New York or OATH. We defend City summonses at the OATH Hearings Division.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "",
+        social_image: "",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@oathattorney.nyc",
+    support_domain: "oathattorney.nyc",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: FIRM_OFFICES,
+    firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_family: BrandKey::ALL,
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "oathattorney.nyc",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Shook Law PLLC represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. Flat fee per summons, or a monthly retainer across a portfolio. This is an attorney advertisement, not a promise about a result.",
+    service_description: "NYC summons defense from Shook Law PLLC at the OATH Hearings Division. Flat fee per summons, or a monthly retainer across a portfolio.",
+    portal_only: false,
+    brand_key: BrandKey::Summons,
+};
+
 /// A closed key naming which house brand a request resolves to. Distinct
 /// from `portal::hosting::Site`, which names the *binary*: a `BrandKey`
 /// names one request's resolved identity, and one running binary can resolve
@@ -615,11 +811,27 @@ pub enum BrandKey {
     Neon,
     DeleteYourData,
     LawyerShook,
+    Vesta,
+    Misericordia,
+    Abhaya,
+    DeleteYourDebt,
+    /// The NYC summons / OATH practice. Wears the firm's own name, not a
+    /// trade name — see `SUMMONS_BRANDING`.
+    Summons,
 }
 
 impl BrandKey {
     /// Every key the registry serves, in registry order.
-    pub const ALL: &'static [Self] = &[Self::Neon, Self::DeleteYourData, Self::LawyerShook];
+    pub const ALL: &'static [Self] = &[
+        Self::Neon,
+        Self::DeleteYourData,
+        Self::DeleteYourDebt,
+        Self::Vesta,
+        Self::Misericordia,
+        Self::Abhaya,
+        Self::LawyerShook,
+        Self::Summons,
+    ];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -627,6 +839,11 @@ impl BrandKey {
             Self::Neon => "neon",
             Self::DeleteYourData => "delete-your-data",
             Self::LawyerShook => "lawyer-shook",
+            Self::Vesta => "vesta",
+            Self::Misericordia => "misericordia",
+            Self::Abhaya => "abhaya",
+            Self::DeleteYourDebt => "delete-your-debt",
+            Self::Summons => "summons",
         }
     }
 
@@ -651,6 +868,11 @@ impl BrandKey {
             Self::Neon => "flat-fee legal services for emerging tech",
             Self::DeleteYourData => "protect your personal information",
             Self::LawyerShook => "Nicholas Shook",
+            Self::Vesta => "wills, trusts, and probate",
+            Self::Misericordia => "accidents and injury claims",
+            Self::Abhaya => "visas, green cards, and citizenship",
+            Self::DeleteYourDebt => "defend against debt collectors",
+            Self::Summons => "NYC summonses and OATH hearings",
         }
     }
 
@@ -679,8 +901,16 @@ impl BrandKey {
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
             Self::Neon => crate::locales::KNOWN_PAGES,
-            Self::DeleteYourData => &["home", "services"],
             Self::LawyerShook => &["services"],
+            // Every practice brand publishes the two stems it actually
+            // serves; a missing file is a loader-test failure rather than a
+            // first-request panic.
+            Self::DeleteYourData
+            | Self::Vesta
+            | Self::Misericordia
+            | Self::Abhaya
+            | Self::DeleteYourDebt
+            | Self::Summons => &["home", "services"],
         }
     }
 
@@ -698,6 +928,49 @@ impl BrandKey {
             Self::Neon => true,
             Self::DeleteYourData => matches!(path, "/" | "/services" | "/contact"),
             Self::LawyerShook => path == "/",
+            Self::Vesta
+            | Self::Misericordia
+            | Self::Abhaya
+            | Self::DeleteYourDebt
+            | Self::Summons => matches!(path, "/" | "/services" | "/contact"),
+        }
+    }
+
+    /// Whether a visitor can actually reach this brand's site.
+    ///
+    /// A brand is built, registered, and serving its copy from this
+    /// repository long before anyone can visit it. This is the flag that
+    /// separates the two, and it has two consequences that must not drift
+    /// apart.
+    ///
+    /// **It gates the certificate.** `cli::devx::ship` derives the managed
+    /// certificate and Ingress entries from this registry. A Google
+    /// `ManagedCertificate` does not provision per-domain: listing a
+    /// hostname whose DNS does not point at the load balancer holds the
+    /// whole certificate in `Provisioning`, so one unreachable brand would
+    /// take the firm's own certificate down with it.
+    ///
+    /// **It gates the footer.** "Our Family" is a set of links. Listing a
+    /// brand whose host serves nothing advertises a practice a reader cannot
+    /// reach — and for the NYC summons practice it would be worse than a
+    /// dead link, because holding out a New York practice before admission
+    /// is not merely untidy.
+    ///
+    /// Flip it in the same change that makes the site reachable — never
+    /// earlier, and never as a batch.
+    #[must_use]
+    pub const fn is_live(self) -> bool {
+        match self {
+            Self::Neon | Self::DeleteYourData | Self::LawyerShook => true,
+            // Built here, launch held: ENG-744..747 are gated on a staging
+            // deploy and the firm's review, and ENG-749 additionally on New
+            // York admission. No production deployment answers on their
+            // hosts yet.
+            Self::Vesta
+            | Self::Misericordia
+            | Self::Abhaya
+            | Self::DeleteYourDebt
+            | Self::Summons => false,
         }
     }
 
@@ -710,6 +983,14 @@ impl BrandKey {
             Self::Neon => &["www.neonlaw.com", "staging.neonlaw.com"],
             Self::DeleteYourData => &["www.deleteyourdata.com", "staging.deleteyourdata.com"],
             Self::LawyerShook => &["www.lawyershook.com", "staging.lawyershook.com"],
+            Self::Vesta => &[
+                "www.vestaestateplanning.com",
+                "staging.vestaestateplanning.com",
+            ],
+            Self::Misericordia => &["www.misericordialaw.com", "staging.misericordialaw.com"],
+            Self::Abhaya => &["www.abhayaimmigration.com", "staging.abhayaimmigration.com"],
+            Self::DeleteYourDebt => &["www.deleteyourdebt.com", "staging.deleteyourdebt.com"],
+            Self::Summons => &["www.oathattorney.nyc", "staging.oathattorney.nyc"],
         }
     }
 
@@ -724,6 +1005,11 @@ impl BrandKey {
             Self::Neon => default_branding,
             Self::DeleteYourData => &DELETE_YOUR_DATA_BRANDING,
             Self::LawyerShook => &LAWYER_SHOOK_BRANDING,
+            Self::Vesta => &VESTA_BRANDING,
+            Self::Misericordia => &MISERICORDIA_BRANDING,
+            Self::Abhaya => &ABHAYA_BRANDING,
+            Self::DeleteYourDebt => &DELETE_YOUR_DEBT_BRANDING,
+            Self::Summons => &SUMMONS_BRANDING,
         }
     }
 
@@ -746,6 +1032,11 @@ impl BrandKey {
             Self::Neon => None,
             Self::DeleteYourData => Some("NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT"),
             Self::LawyerShook => Some("NAVIGATOR_LOCAL_LAWYER_SHOOK_PORT"),
+            Self::Vesta => Some("NAVIGATOR_LOCAL_VESTA_PORT"),
+            Self::Misericordia => Some("NAVIGATOR_LOCAL_MISERICORDIA_PORT"),
+            Self::Abhaya => Some("NAVIGATOR_LOCAL_ABHAYA_PORT"),
+            Self::DeleteYourDebt => Some("NAVIGATOR_LOCAL_DELETE_YOUR_DEBT_PORT"),
+            Self::Summons => Some("NAVIGATOR_LOCAL_SUMMONS_PORT"),
         }
     }
 }

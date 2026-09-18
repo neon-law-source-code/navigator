@@ -1,0 +1,53 @@
+head_title: "{site_name} | Home"
+meta_description: >-
+  Abhaya Immigration is a practice of Shook Law PLLC. Family petitions,
+  employment visas, green cards, naturalization, and consular processing.
+  Flat fees. This is an attorney advertisement.
+heading: Help with your immigration case.
+lead: >-
+  Abhaya Immigration is a practice of Shook Law PLLC. We help people file
+  with USCIS and at consulates. We tell you our fee before any work begins.
+  Nothing here is legal advice without a signed retainer for an active
+  project.
+contact_label: Contact us
+service:
+  heading: What this practice does
+  body:
+    - - text: >-
+          We handle family petitions, employment visas, green cards,
+          naturalization, and consular processing. A licensed attorney
+          reviews the work. Shook Law PLLC is the law firm you would retain.
+    - - text: >-
+          Our fee is a flat amount. We tell you the amount before we start,
+          and we put it in writing.
+    - - text: >-
+          USCIS filing fees are separate. The government sets those fees, not
+          us. You pay them to the government. They can change, and we will
+          tell you the current amount when we quote the work.
+    - - text: >-
+          We cannot promise that USCIS will approve a case. No lawyer can.
+          USCIS decides. We also cannot make USCIS go faster. What we can do
+          is prepare the case carefully and tell you honestly what we think.
+    - - text: >-
+          You can write to us in your own words. If English is not your first
+          language, write anyway — say so, and we will find a way.
+    - - text: "Write to "
+      - text: "{firm_email}"
+        href: "mailto:{firm_email}"
+      - text: >-
+          . Tell us who you are, who you are filing for, and where they are
+          now.
+practices_heading: The work
+practices:
+  - mark: gavel
+    heading: Family and employment
+    body: >-
+      Petitions for relatives, and employment visas. Flat fee, quoted first.
+      USCIS fees are separate. This is an attorney advertisement.
+    href: /services
+  - mark: scales
+    heading: Green cards and citizenship
+    body: >-
+      Green cards, naturalization, and consular processing. Flat fee, quoted
+      first.
+    href: /services

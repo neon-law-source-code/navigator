@@ -1,0 +1,48 @@
+head_title: "{site_name} | Home"
+meta_description: >-
+  Misericordia Injury Law is a practice of Shook Law PLLC. Car, truck,
+  motorcycle, pedestrian, premises, and wrongful death claims. Free
+  consultation. This is an attorney advertisement.
+heading: You were hurt. Talk to a lawyer.
+lead: >-
+  Call +1 510 800 2080 for a free consultation. Misericordia Injury Law is a
+  practice of Shook Law PLLC. We handle injury claims. There is no fee to
+  speak with us, and no fee unless we recover something for you. Nothing here
+  is legal advice without a signed retainer for an active project.
+contact_label: Call for a free consultation
+service:
+  heading: What to do first
+  body:
+    - - text: >-
+          Get medical care. Tell the doctor everything that hurts, even if it
+          seems small. The record made now is the record that matters later.
+    - - text: >-
+          Write down what happened while you remember it. Photographs help.
+          So do the names of anyone who saw it.
+    - - text: >-
+          You do not have to give a recorded statement to another driver's
+          insurer. You can say you will call back.
+    - - text: >-
+          There is a deadline to bring a claim, and it is not the same for
+          every kind of case. Call and we will tell you what applies to yours.
+    - - text: "Call "
+      - text: "+1 510 800 2080"
+        href: "tel:+15108002080"
+      - text: " or write to "
+      - text: "{firm_email}"
+        href: "mailto:{firm_email}"
+      - text: ". The first conversation is free."
+practices_heading: What we handle
+practices:
+  - mark: scales
+    heading: Vehicle collisions
+    body: >-
+      Car, truck, motorcycle, and pedestrian claims. Free consultation. This
+      is an attorney advertisement.
+    href: /services
+  - mark: gavel
+    heading: Premises and wrongful death
+    body: >-
+      Injuries on someone else's property, and claims brought after a death.
+      Free consultation.
+    href: /services

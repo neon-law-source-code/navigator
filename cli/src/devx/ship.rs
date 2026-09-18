@@ -382,6 +382,12 @@ fn additional_brand_hosts(public_host: &str) -> Vec<&'static str> {
         .iter()
         .copied()
         .filter(|key| *key != BrandKey::default())
+        // A brand whose DNS does not yet point at a load balancer is skipped.
+        // It is not a cosmetic omission: a Google `ManagedCertificate` holds
+        // every listed domain in `Provisioning` until all of them validate,
+        // so one unpointed brand would block the certificate the firm's own
+        // host depends on. See `BrandKey::is_live`.
+        .filter(|key| key.is_live())
         .flat_map(|key| key.hosts().iter().copied())
         .filter(|host| host.starts_with("staging.") == staging)
         .collect()
@@ -3811,6 +3817,44 @@ mod tests {
             vec!["staging.deleteyourdata.com", "staging.lawyershook.com"],
             "a staging public host pulls in only the other brand's staging host"
         );
+    }
+
+    /// A registered brand whose DNS does not yet point at a load balancer
+    /// stays off the certificate and the Ingress.
+    ///
+    /// This is the failure mode worth spelling out: a Google
+    /// `ManagedCertificate` does not provision per-domain. Every listed
+    /// domain must validate before any of them is served, so one hostname
+    /// that does not resolve to the load balancer holds the whole
+    /// certificate in `Provisioning` — including `www.neonlaw.com`. Adding a
+    /// brand to the registry is therefore safe, and pointing its DNS is the
+    /// step that admits it here.
+    #[test]
+    fn a_brand_without_live_dns_stays_off_the_certificate() {
+        for key in views::brand::BrandKey::ALL {
+            if key.is_live() {
+                continue;
+            }
+            for host in key.hosts() {
+                assert!(
+                    !additional_brand_hosts("www.neonlaw.com").contains(host),
+                    "{host} has no DNS yet and must not reach the production certificate"
+                );
+                assert!(
+                    !additional_brand_hosts("staging.neonlaw.com").contains(host),
+                    "{host} has no DNS yet and must not reach the staging certificate"
+                );
+            }
+        }
+    }
+
+    /// The brands that *are* reachable still come through, so the gate above
+    /// cannot be satisfied by excluding everything.
+    #[test]
+    fn the_launched_brands_still_reach_the_certificate() {
+        let production = additional_brand_hosts("www.neonlaw.com");
+        assert!(production.contains(&"www.deleteyourdata.com"), "{production:?}");
+        assert!(production.contains(&"www.lawyershook.com"), "{production:?}");
     }
 
     #[test]

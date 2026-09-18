@@ -459,6 +459,16 @@ impl BrandKey {
                 typeface_by_id("plus-jakarta-sans").expect("plus-jakarta-sans is catalogued")
             }
             Self::LawyerShook => typeface_by_id("tinos").expect("tinos is catalogued"),
+            Self::Vesta | Self::Misericordia => {
+                typeface_by_id("source-sans-3").expect("source-sans-3 is catalogued")
+            }
+            Self::Abhaya => typeface_by_id("mukta").expect("mukta is catalogued"),
+            Self::DeleteYourDebt => {
+                typeface_by_id("public-sans").expect("public-sans is catalogued")
+            }
+            Self::Summons => {
+                typeface_by_id("libre-franklin").expect("libre-franklin is catalogued")
+            }
         }
     }
 
@@ -474,7 +484,22 @@ impl BrandKey {
     #[must_use]
     pub fn display_typeface(self) -> Option<&'static Typeface> {
         match self {
-            Self::Neon | Self::DeleteYourData | Self::LawyerShook => None,
+            // The two brands whose headings are set in a serif over a sans
+            // body — the reason this method exists at all.
+            Self::Vesta => Some(typeface_by_id("eb-garamond").expect("eb-garamond is catalogued")),
+            Self::Misericordia => {
+                Some(typeface_by_id("source-serif-4").expect("source-serif-4 is catalogued"))
+            }
+            // One face throughout. For most of these that is simply how the
+            // brand was drawn; for Abhaya it is the point of the choice,
+            // since Mukta carries Devanagari as well as Latin and a second
+            // display face would not.
+            Self::Neon
+            | Self::DeleteYourData
+            | Self::LawyerShook
+            | Self::Abhaya
+            | Self::DeleteYourDebt
+            | Self::Summons => None,
         }
     }
 
@@ -487,6 +512,15 @@ impl BrandKey {
                 palette_by_id("delete-your-data").expect("delete-your-data is catalogued")
             }
             Self::LawyerShook => palette_by_id("lawyer-shook").expect("lawyer-shook is catalogued"),
+            Self::Vesta => palette_by_id("vesta").expect("vesta is catalogued"),
+            Self::Misericordia => {
+                palette_by_id("misericordia").expect("misericordia is catalogued")
+            }
+            Self::Abhaya => palette_by_id("abhaya").expect("abhaya is catalogued"),
+            Self::DeleteYourDebt => {
+                palette_by_id("delete-your-debt").expect("delete-your-debt is catalogued")
+            }
+            Self::Summons => palette_by_id("oath").expect("oath is catalogued"),
         }
     }
 }

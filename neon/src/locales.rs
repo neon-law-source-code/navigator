@@ -36,6 +36,17 @@ const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml"
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
 const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
+const VESTA_HOME_YAML: &str = include_str!("../locales/en/vesta/home.yaml");
+const VESTA_SERVICES_YAML: &str = include_str!("../locales/en/vesta/services.yaml");
+const MISERICORDIA_HOME_YAML: &str = include_str!("../locales/en/misericordia/home.yaml");
+const MISERICORDIA_SERVICES_YAML: &str = include_str!("../locales/en/misericordia/services.yaml");
+const ABHAYA_HOME_YAML: &str = include_str!("../locales/en/abhaya/home.yaml");
+const ABHAYA_SERVICES_YAML: &str = include_str!("../locales/en/abhaya/services.yaml");
+const DELETE_YOUR_DEBT_HOME_YAML: &str = include_str!("../locales/en/delete-your-debt/home.yaml");
+const DELETE_YOUR_DEBT_SERVICES_YAML: &str =
+    include_str!("../locales/en/delete-your-debt/services.yaml");
+const SUMMONS_HOME_YAML: &str = include_str!("../locales/en/summons/home.yaml");
+const SUMMONS_SERVICES_YAML: &str = include_str!("../locales/en/summons/services.yaml");
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
 const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shook/services.yaml");
@@ -62,6 +73,16 @@ pub fn shared_catalog() -> &'static views::locales::shared::SharedCatalog {
 pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
     match (key, page) {
         (BrandKey::Neon, "home") => Some(NEON_HOME_YAML),
+        (BrandKey::Vesta, "home") => Some(VESTA_HOME_YAML),
+        (BrandKey::Vesta, "services") => Some(VESTA_SERVICES_YAML),
+        (BrandKey::Misericordia, "home") => Some(MISERICORDIA_HOME_YAML),
+        (BrandKey::Misericordia, "services") => Some(MISERICORDIA_SERVICES_YAML),
+        (BrandKey::Abhaya, "home") => Some(ABHAYA_HOME_YAML),
+        (BrandKey::Abhaya, "services") => Some(ABHAYA_SERVICES_YAML),
+        (BrandKey::DeleteYourDebt, "home") => Some(DELETE_YOUR_DEBT_HOME_YAML),
+        (BrandKey::DeleteYourDebt, "services") => Some(DELETE_YOUR_DEBT_SERVICES_YAML),
+        (BrandKey::Summons, "home") => Some(SUMMONS_HOME_YAML),
+        (BrandKey::Summons, "services") => Some(SUMMONS_SERVICES_YAML),
         (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
         (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
@@ -1369,5 +1390,273 @@ mod tests {
             })
             .expect("the Removal Request card");
         assert_eq!(removal_request.chips, vec!["$10".to_string()]);
+    }
+
+    // --- ENG-744…749: the practice brands, and the lines that bind them ---
+
+    /// Every word a practice brand publishes, home and services together, so
+    /// a constraint is checked against the whole site rather than one page.
+    fn brand_text(key: views::brand::BrandKey) -> String {
+        let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+        let home = home(branding);
+        let mut text = vec![
+            home.head_title.clone(),
+            home.meta_description.clone(),
+            home.heading.clone(),
+            home.lead.clone(),
+        ];
+        if let Some(service) = home.service.as_ref() {
+            text.extend(service.body.iter().flatten().map(|run| run.text.clone()));
+        }
+        for practice in &home.practices {
+            text.push(practice.heading.clone());
+            text.push(practice.body.clone());
+        }
+        text.push(dyd_page_text(&legal_services(branding)));
+        text.push(branding.mission_description.to_string());
+        text.push(branding.service_description.to_string());
+        text.join(" ")
+    }
+
+    const PRACTICE_BRANDS: &[views::brand::BrandKey] = &[
+        views::brand::BrandKey::Vesta,
+        views::brand::BrandKey::Misericordia,
+        views::brand::BrandKey::Abhaya,
+        views::brand::BrandKey::DeleteYourDebt,
+        views::brand::BrandKey::Summons,
+    ];
+
+    /// Every practice brand loads both catalogs it declares. A missing file
+    /// is a test failure here rather than a panic on a visitor's first
+    /// request.
+    #[test]
+    fn every_practice_brand_publishes_the_pages_it_declares() {
+        for key in PRACTICE_BRANDS {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            assert_eq!(
+                key.catalog_pages(),
+                ["home", "services"],
+                "{}",
+                key.as_str()
+            );
+            assert!(
+                !home(branding).heading.is_empty(),
+                "{} home renders",
+                key.as_str()
+            );
+            assert!(
+                !dyd_page_text(&legal_services(branding)).is_empty(),
+                "{} services renders",
+                key.as_str()
+            );
+        }
+    }
+
+    /// No brand promises a result, anywhere. Attorney advertising rules make
+    /// this the one claim none of these sites may make, whatever the
+    /// practice area.
+    #[test]
+    fn no_practice_brand_promises_an_outcome() {
+        for key in PRACTICE_BRANDS {
+            let text = brand_text(*key).to_lowercase();
+            for promise in [
+                "we guarantee",
+                "guaranteed result",
+                "we will win",
+                "you will win",
+                "we always win",
+                "guarantee that",
+            ] {
+                assert!(
+                    !text.contains(promise),
+                    "{} promises an outcome: {promise:?}",
+                    key.as_str()
+                );
+            }
+        }
+    }
+
+    /// **18 U.S.C. § 706.** The Misericordia of Florence carried a red cross,
+    /// and that emblem later became the protected symbol of medical care. It
+    /// is not available to this firm, in any form — so the brand's words
+    /// never reach for it either, which is where it would creep back in once
+    /// the palette is settled.
+    #[test]
+    fn misericordia_never_reaches_for_the_red_cross() {
+        let text = brand_text(views::brand::BrandKey::Misericordia).to_lowercase();
+        for emblem in ["red cross", "redcross", "cross symbol", "crimson cross"] {
+            assert!(!text.contains(emblem), "Misericordia names {emblem:?}");
+        }
+    }
+
+    /// No case results and no dollar figures on Misericordia. A headline
+    /// number is not cured by the advertising disclaimer beneath it, so the
+    /// fee page explains the contingency in words and publishes no amount.
+    #[test]
+    fn misericordia_publishes_no_recovery_figures() {
+        let text = brand_text(views::brand::BrandKey::Misericordia);
+        assert!(
+            !text.contains('$'),
+            "Misericordia publishes a dollar figure: {text}"
+        );
+        // Boasts, not the word "recover": describing *how the fee works* —
+        // a percentage of what is recovered — is the honest disclosure this
+        // practice owes. What is banned is a past result offered as a
+        // prediction, which the advertising disclaimer does not cure.
+        for boast in [
+            "we have recovered",
+            "we've recovered",
+            "million",
+            "verdict",
+            "record settlement",
+            "results speak",
+            "won over",
+        ] {
+            assert!(
+                !text.to_lowercase().contains(boast),
+                "Misericordia publishes a case result: {boast:?}"
+            );
+        }
+        // What it must say instead: the contingency, honestly, including the
+        // losing case.
+        assert!(text.contains("no fee unless we recover") || text.contains("owe us no attorney"));
+    }
+
+    /// Abhaya may never imply it can secure or speed a USCIS decision.
+    #[test]
+    fn abhaya_never_implies_it_controls_uscis() {
+        let text = brand_text(views::brand::BrandKey::Abhaya).to_lowercase();
+        for claim in [
+            "we can get you a visa",
+            "guaranteed approval",
+            "fast-track",
+            "expedite your case",
+            "we can speed",
+            "approval is certain",
+        ] {
+            assert!(!text.contains(claim), "Abhaya implies {claim:?}");
+        }
+        assert!(
+            text.contains("cannot promise"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// `DeleteYourDebt` is collection defense. Settlement framing pulls in a
+    /// different regulatory regime — the FTC Telemarketing Sales Rule's
+    /// advance-fee provisions and state debt-adjuster licensing — whose
+    /// attorney exemption is narrower than it is usually assumed to be.
+    ///
+    /// The banned phrases are allowed only inside an explicit denial, which
+    /// is how the site tells a reader it is *not* that service. So this
+    /// asserts on sentences, not on the page: a phrase may appear only where
+    /// "not" or "do not" appears with it.
+    #[test]
+    fn delete_your_debt_only_names_settlement_to_disclaim_it() {
+        let text = brand_text(views::brand::BrandKey::DeleteYourDebt);
+        for sentence in text.split('.') {
+            let lowered = sentence.to_lowercase();
+            let claims_settlement = [
+                "settle your debt",
+                "reduce what you owe",
+                "negotiate your balance",
+                "pennies on the dollar",
+                "eliminate your debt",
+            ]
+            .iter()
+            .any(|phrase| lowered.contains(phrase));
+            if claims_settlement {
+                assert!(
+                    lowered.contains("not") || lowered.contains("do not"),
+                    "settlement framing outside a denial: {sentence:?}"
+                );
+            }
+        }
+        assert!(
+            text.contains("We do not settle debts")
+                || text.contains("does not settle debts")
+                || text.contains("We are not a debt settlement"),
+            "and the disclaimer is actually present: {text}"
+        );
+    }
+
+    /// The NYC summons practice must not read as the tribunal it appears
+    /// before. OATH runs a free Help Center, so an implied affiliation is a
+    /// Rule 7.1 problem rather than a trademark one — and the domain carries
+    /// the agency's name, which is exactly why the line has to be in the
+    /// copy rather than left to the domain.
+    #[test]
+    fn the_summons_practice_disclaims_affiliation_with_the_city() {
+        let branding =
+            views::brand::BrandKey::Summons.resolve_branding(&views::brand::DEFAULT_BRANDING);
+
+        // On the home page and the services page, not merely somewhere.
+        let home_text = {
+            let home = home(branding);
+            let mut parts = vec![home.lead.clone(), home.meta_description.clone()];
+            if let Some(service) = home.service.as_ref() {
+                parts.extend(service.body.iter().flatten().map(|run| run.text.clone()));
+            }
+            parts.join(" ")
+        };
+        assert!(
+            home_text.contains("not affiliated with the City of New York"),
+            "home: {home_text}"
+        );
+        let services_text = dyd_page_text(&legal_services(branding));
+        assert!(
+            services_text.contains("not affiliated with"),
+            "services: {services_text}"
+        );
+
+        // New York Rule 7.5(b) bars a trade name for private practice, so the
+        // masthead is the firm itself rather than a brand.
+        assert_eq!(branding.firm.site_name, "Shook Law PLLC");
+    }
+
+    /// Every brand that wears a name other than the firm's says whose
+    /// practice it is. That disclosure is what keeps a Nevada trade name from
+    /// being misleading, so it is derived from the brand rather than listed.
+    #[test]
+    fn a_trade_name_brand_names_the_firm_behind_it() {
+        for key in views::brand::BrandKey::ALL {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            assert_eq!(
+                branding.firm.legal_entity,
+                "Shook Law PLLC",
+                "{} names the firm",
+                key.as_str()
+            );
+            // A brand whose masthead already *is* the firm needs no further
+            // disclosure; every other one is owed the footer's "A practice
+            // of Shook Law PLLC". That line is derived from exactly this
+            // comparison in `webapp::public_chrome`, and asserted there —
+            // what this test pins is that the comparison has a stable
+            // answer, i.e. every brand agrees on who the firm is.
+            if branding.firm.site_name == branding.firm.legal_entity {
+                assert_eq!(
+                    key.as_str(),
+                    "summons",
+                    "only the NY practice wears the firm's own name"
+                );
+            }
+        }
+    }
+
+    /// Nothing in this family loads a third-party font or analytics host.
+    #[test]
+    fn no_practice_brand_copy_references_a_third_party_host() {
+        for key in PRACTICE_BRANDS {
+            let text = brand_text(*key).to_lowercase();
+            for host in [
+                "fonts.googleapis.com",
+                "fonts.gstatic.com",
+                "google-analytics",
+                "googletagmanager",
+                "facebook.net",
+            ] {
+                assert!(!text.contains(host), "{} references {host}", key.as_str());
+            }
+        }
     }
 }

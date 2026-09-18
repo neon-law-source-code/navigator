@@ -175,6 +175,10 @@ pub fn render_firm_footer(model: FirmFooterModel) -> String {
 pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooterBrand> {
     views::brand::firm_family()
         .iter()
+        // "Our Family" is a set of links, so it lists only brands a reader
+        // can actually reach. A brand is registered here well before its
+        // host serves anything; see `views::brand::BrandKey::is_live`.
+        .filter(|key| key.is_live() || **key == current)
         .map(|key| FirmFooterBrand {
             label: key
                 .resolve_branding(&views::brand::DEFAULT_BRANDING)
@@ -282,6 +286,15 @@ pub async fn resolve_firm_footer_model(
         let compiled = views::brand::BrandKey::ALL
             .iter()
             .find(|candidate| candidate.as_str() == key);
+        // Same reachability rule the compiled fallback applies: a row in the
+        // `brand` table does not mean a host serves it. A runtime-created
+        // brand has no compiled key and so no launch state — it is listed,
+        // because nothing here knows better than the operator who made it.
+        if compiled.is_some_and(|candidate| !candidate.is_live())
+            && key.as_str() != current.as_str()
+        {
+            continue;
+        }
         brands.push(FirmFooterBrand {
             label: brand.name,
             href: compiled
@@ -797,7 +810,15 @@ mod tests {
             model.legal_entity,
             views::brand::DEFAULT_BRANDING.firm.legal_entity
         );
-        assert_eq!(model.brands.len(), views::brand::BrandKey::ALL.len());
+        // Only the reachable brands: the registry holds more than the
+        // footer advertises. See `BrandKey::is_live`.
+        assert_eq!(
+            model.brands.len(),
+            views::brand::BrandKey::ALL
+                .iter()
+                .filter(|key| key.is_live())
+                .count()
+        );
         assert!(model.brands[0].current);
         assert_eq!(model.memberships.len(), 1);
     }
@@ -924,6 +945,40 @@ mod tests {
                     !byline.contains(banned),
                     "{} byline contains settlement framing {banned:?}: {byline:?}",
                     key.as_str(),
+                );
+            }
+        }
+    }
+
+    /// A brand nobody can visit stays out of "Our Family".
+    ///
+    /// The row is a link, so listing an unreachable host advertises a
+    /// practice a reader cannot get to. For the NYC summons practice it is
+    /// sharper than a dead link: holding out a New York practice before
+    /// admission is a licensing problem, not a cosmetic one. The brand whose
+    /// page the reader is *on* is exempt, since it renders as plain text
+    /// rather than a link and a site that omitted itself would be stranger
+    /// still.
+    #[cfg(feature = "server")]
+    #[test]
+    fn an_unreachable_brand_stays_out_of_the_family_row() {
+        let rows = compiled_family_brands(views::brand::BrandKey::Neon);
+        let labels: Vec<&str> = rows.iter().map(|row| row.label.as_str()).collect();
+
+        for key in views::brand::BrandKey::ALL {
+            let label = key
+                .resolve_branding(&views::brand::DEFAULT_BRANDING)
+                .firm
+                .site_name;
+            if key.is_live() {
+                assert!(
+                    labels.contains(&label),
+                    "{label} is live and is listed: {labels:?}"
+                );
+            } else {
+                assert!(
+                    !labels.contains(&label),
+                    "{label} is not reachable and must not be advertised: {labels:?}"
                 );
             }
         }

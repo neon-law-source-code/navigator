@@ -655,7 +655,12 @@ fn resolve_firm_contact_content(
              Attorney advertisement. Nothing here is legal advice without a signed retainer for \
              an active project."
         ),
-        BrandKey::LawyerShook => format!(
+        BrandKey::LawyerShook
+        | BrandKey::Vesta
+        | BrandKey::Misericordia
+        | BrandKey::Abhaya
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Summons => format!(
             "Reach {firm_name}, a practice of Shook Law PLLC, about legal services. \
              Attorney advertisement. Nothing here is legal advice without a signed retainer for \
              an active project."

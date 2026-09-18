@@ -203,6 +203,11 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         views::brand::BrandKey::Neon => &GORP_HEAD,
         views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
         views::brand::BrandKey::LawyerShook => &TINOS_HEAD,
+        views::brand::BrandKey::Vesta => &VESTA_HEAD,
+        views::brand::BrandKey::Misericordia => &MISERICORDIA_HEAD,
+        views::brand::BrandKey::Abhaya => &ABHAYA_HEAD,
+        views::brand::BrandKey::DeleteYourDebt => &DELETE_YOUR_DEBT_HEAD,
+        views::brand::BrandKey::Summons => &SUMMONS_HEAD,
     };
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
         .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
@@ -414,6 +419,54 @@ static TINOS_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
         "/public/fonts/tinos/Tinos-Bold.woff2",
     )
 });
+
+/// `@font-face` head for a brand whose display face differs from its body
+/// face. Both are preloaded: a heading set in a face the browser has not
+/// fetched is the flash this fragment exists to prevent, and the display
+/// face is the one a reader sees first.
+fn two_face_head(display: (&str, &str), body: (&str, &str)) -> String {
+    format!(
+        "{}{}",
+        bucket_font_head(display.0, display.1),
+        bucket_font_head(body.0, body.1),
+    )
+}
+
+/// One OFL family served from the deployment's asset origin, on the same
+/// bucket lane GORP and Plus Jakarta Sans already ride.
+fn bucket_font_head(family: &str, dir_and_stem: &str) -> String {
+    let (dir, stem) = dir_and_stem
+        .split_once('/')
+        .expect("dir/stem for a bucket-served face");
+    font_head_fragment(
+        family,
+        &views::assets::asset_url(&format!("fonts/{dir}/{stem}-Regular.woff2")),
+        &views::assets::asset_url(&format!("fonts/{dir}/{stem}-Bold.woff2")),
+    )
+}
+
+static VESTA_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    two_face_head(
+        ("EB Garamond", "eb-garamond/EBGaramond"),
+        ("Source Sans 3", "source-sans-3/SourceSans3"),
+    )
+});
+
+static MISERICORDIA_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    two_face_head(
+        ("Source Serif 4", "source-serif-4/SourceSerif4"),
+        ("Source Sans 3", "source-sans-3/SourceSans3"),
+    )
+});
+
+static ABHAYA_HEAD: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| bucket_font_head("Mukta", "mukta/Mukta"));
+
+static DELETE_YOUR_DEBT_HEAD: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| bucket_font_head("Public Sans", "public-sans/PublicSans"));
+
+static SUMMONS_HEAD: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| bucket_font_head("Libre Franklin", "libre-franklin/LibreFranklin"));
 
 /// Pure builder behind the registered font head fragments, so tests
 /// exercise every asset-origin shape without stomping the process-wide env

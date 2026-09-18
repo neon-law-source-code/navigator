@@ -604,7 +604,6 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     portal_only: false,
     brand_key: BrandKey::LawyerShook,
 };
-
 /// A closed key naming which house brand a request resolves to. Distinct
 /// from `portal::hosting::Site`, which names the *binary*: a `BrandKey`
 /// names one request's resolved identity, and one running binary can resolve
@@ -629,6 +628,30 @@ impl BrandKey {
             Self::Neon => "neon",
             Self::DeleteYourData => "delete-your-data",
             Self::LawyerShook => "lawyer-shook",
+        }
+    }
+
+    /// The one-line description shown beside this brand in the footer's
+    /// "Our Family" block.
+    ///
+    /// The short names carry no information to a cold reader — "Vesta" and
+    /// "Abhaya" say nothing about wills or visas — so the family list is
+    /// unusable as bare links. These lines are what make it navigable.
+    ///
+    /// `DeleteYourDebt`'s wording is load-bearing rather than stylistic.
+    /// "Defend against debt collectors" describes FDCPA and
+    /// collection-defence work. Wording that drifts toward settling or
+    /// reducing a balance describes *debt settlement*, a distinct regulated
+    /// activity under the FTC Telemarketing Sales Rule's advance-fee
+    /// provisions and state debt-adjuster licensing, whose attorney
+    /// exemption is narrower than it is usually assumed to be. Changing this
+    /// string is a scope decision, not a copy edit.
+    #[must_use]
+    pub const fn family_byline(self) -> &'static str {
+        match self {
+            Self::Neon => "flat-fee legal services for emerging tech",
+            Self::DeleteYourData => "protect your personal information",
+            Self::LawyerShook => "Nicholas Shook",
         }
     }
 

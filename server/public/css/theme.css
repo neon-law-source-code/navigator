@@ -252,6 +252,39 @@ textarea {
   margin: 0;
 }
 
+/*
+ * Past the threshold the list stops being a wrapping row of wordmarks and
+ * becomes a two-column block, one brand per line. Bylines are what force
+ * this: "Vesta Estate Planning - wills, trusts, and probate" is a phrase, and
+ * seven phrases wrapped inline read as a paragraph of run-together links
+ * rather than a list. One column on narrow screens, where two would leave
+ * neither enough room.
+ */
+.app-footer__family-list--two-column {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-content: start;
+  gap: 0.35rem 2rem;
+  text-align: left;
+}
+
+@media (min-width: 40rem) {
+  .app-footer__family-list--two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/*
+ * The byline is supporting text, so it is quieter than the name it follows -
+ * but it still has to clear AA, so it reads --nav-color-text-muted rather
+ * than an opacity, which would silently drop contrast below the floor the
+ * palette guarantees.
+ */
+.app-footer__family-byline {
+  font-size: 0.8125rem;
+  color: var(--nav-color-text-muted);
+}
+
 .app-footer__family-link,
 .app-footer__family-current {
   font-size: 0.875rem;
@@ -1281,6 +1314,57 @@ a.nav-pagination__link:hover {
 
 .site-footer__family-item {
   margin: 0;
+}
+
+/*
+ * Past the threshold the row of chips becomes a two-column block, one brand
+ * per line. The bylines force it: "Misericordia Injury Law - accidents and
+ * injury claims" is a phrase, and seven phrases in wrapping chips read as a
+ * run-together paragraph, which is the link dump this block replaced. One
+ * column on narrow screens, where two would leave neither enough room.
+ */
+.site-footer__family-list--two-column {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem 2rem;
+}
+
+@media (min-width: 40rem) {
+  .site-footer__family-list--two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* In the block form the entry is a line of text, not a chip. */
+.site-footer__family-list--two-column .site-footer__family-link,
+.site-footer__family-list--two-column .site-footer__family-current {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+/*
+ * Supporting text, so quieter than the name it follows - but it still has to
+ * clear AA, so it reads --nav-color-text-muted rather than an opacity, which
+ * would silently drop contrast below the floor the palette guarantees.
+ */
+.site-footer__family-byline {
+  font-size: 0.8125rem;
+  color: var(--nav-color-text-muted);
+}
+
+/*
+ * "A practice of Shook Law PLLC". A regulatory line, not decoration: on a
+ * brand host it is what discloses which licensed entity is behind the trade
+ * name, so it sits above the legal strip where a reader looking for that
+ * answer will find it, and it is not dimmed to muted text.
+ */
+.site-footer__attribution {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  color: var(--nav-color-text);
 }
 
 /* A chip per brand, grounded like the contact band's tiles. The 2rem minimum

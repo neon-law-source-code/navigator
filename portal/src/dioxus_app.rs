@@ -816,6 +816,7 @@ async fn inject_public_utility(mut req: Request, next: Next) -> Response {
                 label: brand.label.clone(),
                 href: brand.href.clone(),
                 current: brand.current,
+                byline: brand.byline.clone(),
             })
             .collect();
     }

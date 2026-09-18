@@ -63,6 +63,10 @@ pub struct ChromeBrand {
     pub label: String,
     pub href: String,
     pub current: bool,
+    /// What this brand does, carried from the footer model so the family
+    /// block reads the same on a public page as it does inside `/app`.
+    #[serde(default)]
+    pub byline: String,
 }
 
 /// One association the firm belongs to, for the public footer's "Proud
@@ -254,6 +258,7 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
                     label: brand.label.clone(),
                     href: brand.href.clone(),
                     current: brand.current,
+                    byline: brand.byline.clone(),
                 })
                 .collect(),
             memberships: chrome
@@ -391,6 +396,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
                 label: brand.label,
                 href: brand.href,
                 current: brand.current,
+                byline: brand.byline,
             })
             .collect(),
         // The firm's association memberships. A firm fact like the offices
@@ -495,11 +501,13 @@ mod tests {
                     label: "Neon Law".to_string(),
                     href: "https://www.neonlaw.com".to_string(),
                     current: true,
+                    byline: "flat-fee legal services for emerging tech".to_string(),
                 },
                 ChromeBrand {
                     label: "DeleteYourData.com".to_string(),
                     href: "https://www.deleteyourdata.com".to_string(),
                     current: false,
+                    byline: "protect your personal information".to_string(),
                 },
             ],
             memberships: vec![ChromeMembership {

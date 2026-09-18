@@ -35,6 +35,14 @@ pub struct FirmFooterBrand {
     pub label: String,
     pub href: String,
     pub current: bool,
+    /// What this brand actually does, in a few words.
+    ///
+    /// A cold reader learns nothing from "Vesta" or "Abhaya", so the family
+    /// list is close to useless as bare wordmarks. Empty for a
+    /// runtime-created brand that has no compiled line, which renders the
+    /// wordmark alone rather than an empty dash.
+    #[serde(default)]
+    pub byline: String,
 }
 
 /// One association the firm belongs to, for the footer's "Proud member of
@@ -61,6 +69,26 @@ pub struct FirmFooterModel {
     pub navigator_version: String,
 }
 
+/// Entry count at which the family list splits into two columns.
+///
+/// Seven brands in one column runs longer than the rest of the footer and
+/// reads as a link dump, which is the shape this block replaced. The eighth
+/// entry — the NYC summons practice — is why the threshold exists rather
+/// than the list simply being styled for its current length.
+const FAMILY_TWO_COLUMN_THRESHOLD: usize = 7;
+
+/// The family list's class, widened to two columns once the list is long
+/// enough to need it. Adding a brand stays a data change: nothing about the
+/// layout is edited when the list grows past the threshold.
+#[must_use]
+fn family_list_class(entries: usize) -> &'static str {
+    if entries >= FAMILY_TWO_COLUMN_THRESHOLD {
+        "app-footer__family-list app-footer__family-list--two-column"
+    } else {
+        "app-footer__family-list"
+    }
+}
+
 /// The `/app` footer: the copyright naming the resolved Firm's legal entity,
 /// the "Our Family" row (a runtime-created brand listed exactly like a
 /// compiled one), the firm's membership lines, and the shared platform line.
@@ -76,7 +104,7 @@ pub fn FirmFooter(model: FirmFooterModel) -> Element {
             if model.brands.len() > 1 {
                 nav { class: "app-footer__family", "aria-label": "Our family",
                     h2 { class: "app-footer__family-heading", "Our Family" }
-                    ul { class: "app-footer__family-list",
+                    ul { class: family_list_class(model.brands.len()),
                         for brand in model.brands.iter() {
                             li { class: "app-footer__family-item", key: "{brand.label}",
                                 if brand.current {
@@ -93,6 +121,9 @@ pub fn FirmFooter(model: FirmFooterModel) -> Element {
                                         href: "{brand.href}",
                                         "{brand.label}"
                                     }
+                                }
+                                if !brand.byline.is_empty() {
+                                    span { class: "app-footer__family-byline", " · {brand.byline}" }
                                 }
                             }
                         }
@@ -152,6 +183,7 @@ pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooter
                 .to_string(),
             href: key.public_home_href(),
             current: *key == current,
+            byline: key.family_byline().to_string(),
         })
         .collect()
 }
@@ -189,6 +221,7 @@ pub fn compiled_firm_footer_model(
             label: branding.firm.site_name.to_string(),
             href: String::new(),
             current: true,
+            byline: current.family_byline().to_string(),
         });
     }
     FirmFooterModel {
@@ -255,6 +288,10 @@ pub async fn resolve_firm_footer_model(
                 .map(|key| key.public_home_href())
                 .unwrap_or_default(),
             current: key == current.as_str(),
+            // A runtime brand carries no compiled line; a compiled one does.
+            byline: compiled
+                .map(|key| key.family_byline().to_string())
+                .unwrap_or_default(),
         });
     }
     if brands.is_empty() {
@@ -355,6 +392,7 @@ mod tests {
                         label: "Neon Law".to_string(),
                         href: "https://www.neonlaw.com".to_string(),
                         current: true,
+                        byline: String::new(),
                     }]),
                 }
             }
@@ -379,11 +417,13 @@ mod tests {
                             label: "Neon Law".to_string(),
                             href: "https://www.neonlaw.com".to_string(),
                             current: true,
+                            byline: String::new(),
                         },
                         FirmFooterBrand {
                             label: "DeleteYourData.com".to_string(),
                             href: "https://www.deleteyourdata.com".to_string(),
                             current: false,
+                            byline: String::new(),
                         },
                     ]),
                 }
@@ -426,11 +466,13 @@ mod tests {
                             label: "Neon Law".to_string(),
                             href: "https://www.neonlaw.com".to_string(),
                             current: true,
+                            byline: String::new(),
                         },
                         FirmFooterBrand {
                             label: "Acme Runtime Brand".to_string(),
                             href: String::new(),
                             current: false,
+                            byline: String::new(),
                         },
                     ]),
                 }
@@ -457,11 +499,13 @@ mod tests {
                                 label: "Neon Law".to_string(),
                                 href: "https://www.neonlaw.com".to_string(),
                                 current: true,
+                                byline: String::new(),
                             },
                             FirmFooterBrand {
                                 label: "DeleteYourData.com".to_string(),
                                 href: "https://www.deleteyourdata.com".to_string(),
                                 current: false,
+                                byline: String::new(),
                             },
                         ])
                     },
@@ -756,5 +800,145 @@ mod tests {
         assert_eq!(model.brands.len(), views::brand::BrandKey::ALL.len());
         assert!(model.brands[0].current);
         assert_eq!(model.memberships.len(), 1);
+    }
+
+    // --- ENG-741: bylines and the two-column split ------------------------
+
+    fn brand(label: &str, href: &str, current: bool, byline: &str) -> FirmFooterBrand {
+        FirmFooterBrand {
+            label: label.to_string(),
+            href: href.to_string(),
+            current,
+            byline: byline.to_string(),
+        }
+    }
+
+    /// The whole point of the block: a wordmark alone tells a cold reader
+    /// nothing, so every entry carries what it does.
+    #[test]
+    fn a_brands_byline_renders_beside_its_name() {
+        fn app() -> Element {
+            rsx! {
+                FirmFooter {
+                    model: model(vec![
+                        brand("Neon Law", "", true, "flat-fee legal services for emerging tech"),
+                        brand(
+                            "Vesta Estate Planning",
+                            "https://www.vestaestateplanning.com",
+                            false,
+                            "wills, trusts, and probate",
+                        ),
+                    ]),
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains("wills, trusts, and probate"), "{html}");
+        assert!(
+            html.contains("flat-fee legal services for emerging tech"),
+            "the current brand keeps its byline too: {html}"
+        );
+    }
+
+    /// A runtime brand with no compiled line renders its wordmark alone
+    /// rather than a dangling em dash.
+    #[test]
+    fn a_brand_without_a_byline_renders_no_dash() {
+        fn app() -> Element {
+            rsx! {
+                FirmFooter {
+                    model: model(vec![
+                        brand("Neon Law", "", true, ""),
+                        brand("Someone Else", "https://example.test", false, ""),
+                    ]),
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(!html.contains("app-footer__family-byline"), "{html}");
+        assert!(!html.contains(" · "), "{html}");
+    }
+
+    /// Six entries stay one column; seven split. Adding the eighth brand is
+    /// then a data change, which is what this issue asks for — nobody edits
+    /// the layout when the family grows.
+    #[test]
+    fn the_family_list_splits_into_two_columns_only_once_it_is_long() {
+        assert_eq!(family_list_class(6), "app-footer__family-list");
+        assert_eq!(
+            family_list_class(7),
+            "app-footer__family-list app-footer__family-list--two-column"
+        );
+        assert_eq!(
+            family_list_class(8),
+            "app-footer__family-list app-footer__family-list--two-column"
+        );
+    }
+
+    /// The seven-brand family renders in two columns end to end, not just in
+    /// the class helper.
+    #[test]
+    fn the_seven_brand_family_renders_two_columns() {
+        fn app() -> Element {
+            rsx! {
+                FirmFooter {
+                    model: model(
+                        (0..7)
+                            .map(|i| brand(&format!("Brand {i}"), "https://example.test", i == 0, "does a thing"))
+                            .collect(),
+                    ),
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(
+            html.contains("app-footer__family-list--two-column"),
+            "{html}"
+        );
+    }
+
+    /// `DeleteYourDebt`'s byline is a regulatory boundary, not a style choice.
+    ///
+    /// "Defend against debt collectors" describes FDCPA and
+    /// collection-defence work. Wording that promises to settle, reduce, or
+    /// negotiate down a balance describes debt settlement — a separate
+    /// regulated activity under the FTC Telemarketing Sales Rule's
+    /// advance-fee provisions and state debt-adjuster licensing, whose
+    /// attorney exemption is narrower than it is usually assumed to be. A
+    /// copy edit here is a scope change, so it fails the build.
+    #[test]
+    fn no_family_byline_drifts_toward_debt_settlement() {
+        for key in views::brand::BrandKey::ALL {
+            let byline = key.family_byline().to_lowercase();
+            for banned in [
+                "settle",
+                "settlement",
+                "reduce what you owe",
+                "negotiate",
+                "pennies",
+                "write off",
+                "forgive",
+                "eliminate your debt",
+            ] {
+                assert!(
+                    !byline.contains(banned),
+                    "{} byline contains settlement framing {banned:?}: {byline:?}",
+                    key.as_str(),
+                );
+            }
+        }
+    }
+
+    /// Every compiled brand carries a line, so the family block can never
+    /// render a bare wordmark for a brand the firm actually ships.
+    #[test]
+    fn every_compiled_brand_has_a_byline() {
+        for key in views::brand::BrandKey::ALL {
+            assert!(
+                !key.family_byline().is_empty(),
+                "{} has no family byline",
+                key.as_str(),
+            );
+        }
     }
 }

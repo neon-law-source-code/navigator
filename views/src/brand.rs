@@ -777,8 +777,8 @@ pub static SUMMONS_BRANDING: Branding = Branding {
         is_law_firm: true,
         legal_entity: "Shook Law PLLC",
     },
-    firm_email: "contact@oathattorney.nyc",
-    support_domain: "oathattorney.nyc",
+    firm_email: "contact@summonsdefense.nyc",
+    support_domain: "summonsdefense.nyc",
     firm_phone: "+1 510 800 2080",
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
@@ -791,7 +791,7 @@ pub static SUMMONS_BRANDING: Branding = Branding {
     terms_url: "/terms",
     privacy_url: "/privacy",
     base_url: "",
-    primary_domain: "oathattorney.nyc",
+    primary_domain: "summonsdefense.nyc",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
     mission_description: "Shook Law PLLC represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. Flat fee per summons, or a monthly retainer across a portfolio. This is an attorney advertisement, not a promise about a result.",
     service_description: "NYC summons defense from Shook Law PLLC at the OATH Hearings Division. Flat fee per summons, or a monthly retainer across a portfolio.",
@@ -958,7 +958,7 @@ impl BrandKey {
             Self::Misericordia => "misericordialaw.com",
             Self::Abhaya => "abhayaimmigration.com",
             Self::DeleteYourDebt => "deleteyourdebt.com",
-            Self::Summons => "oathattorney.nyc",
+            Self::Summons => "summonsdefense.nyc",
         }
     }
 
@@ -1027,7 +1027,7 @@ impl BrandKey {
             Self::Misericordia => &["www.misericordialaw.com", "staging.misericordialaw.com"],
             Self::Abhaya => &["www.abhayaimmigration.com", "staging.abhayaimmigration.com"],
             Self::DeleteYourDebt => &["www.deleteyourdebt.com", "staging.deleteyourdebt.com"],
-            Self::Summons => &["www.oathattorney.nyc", "staging.oathattorney.nyc"],
+            Self::Summons => &["www.summonsdefense.nyc", "staging.summonsdefense.nyc"],
         }
     }
 

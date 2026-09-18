@@ -1829,9 +1829,17 @@ sops:
             message.contains("private repository"),
             "the error must say a private repository holds the tree: {message}"
         );
+        // Judge the wording, not the workspace path it was rendered around.
+        // That path is the message's one interpolated span, and a checkout can
+        // be named anything — a worktree named for this very test's subject
+        // put `navigator-deploy` in the path and failed the assertion below
+        // over text the message never wrote.
+        let workspace = crate::devx::orchestrate::workspace_root()
+            .expect("root() reached its bail, so the workspace resolved");
+        let wording = message.replace(&workspace.display().to_string(), "<workspace>");
         assert!(
-            !message.contains("navigator-deploy"),
-            "the error names the deploy repository; this repository does not name it: {message}"
+            !wording.contains("navigator-deploy"),
+            "the error names the deploy repository; this repository does not name it: {wording}"
         );
         assert!(
             message.contains("--deployments-dir") && message.contains(ROOT_ENV),

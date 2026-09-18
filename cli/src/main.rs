@@ -1745,10 +1745,14 @@ enum AssetsAction {
     },
 }
 
-/// Which licensed web font family `assets fonts upload` publishes. Each
-/// variant names a distinct [`assets::FontFamily`] — its own Regular/Bold
-/// filenames and its own bucket prefix — so a second brand's font is a new
-/// variant here plus a new constant in `assets.rs`, never a second command.
+/// Which web font family `assets fonts upload` publishes. Each variant names
+/// one entry of [`assets::BUCKET_FONT_FAMILIES`] — its own bucket directory
+/// and filename stem — so a brand's typeface is a new variant here plus a new
+/// row in that table, never a second command.
+///
+/// `font_family_arg_names_every_bucket_family` holds the two together: a
+/// family the table publishes and verifies but `--family` cannot name is one
+/// an operator has no way to upload.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum FontFamilyArg {
     /// The firm's licensed serif, from `TrashType`.
@@ -1756,6 +1760,23 @@ enum FontFamilyArg {
     /// DeleteYourData.com's OFL-1.1 sans, self-hosted on the same
     /// operator-upload lane as GORP's licensed delivery.
     PlusJakartaSans,
+    /// Vesta Estate Planning's display face.
+    EbGaramond,
+    /// The body face Vesta and Misericordia Injury Law share.
+    // Both `Source` values are spelled out because clap's derivation drops the
+    // hyphen before a trailing digit, and the value has to equal the bucket
+    // directory.
+    #[value(name = "source-sans-3")]
+    SourceSans3,
+    /// Misericordia Injury Law's display face.
+    #[value(name = "source-serif-4")]
+    SourceSerif4,
+    /// Abhaya Immigration's face.
+    Mukta,
+    /// DeleteYourDebt.com's face.
+    PublicSans,
+    /// The NYC summons practice's face.
+    LibreFranklin,
 }
 
 impl FontFamilyArg {
@@ -1763,6 +1784,12 @@ impl FontFamilyArg {
         match self {
             Self::GorpSerif => &assets::GORP_SERIF,
             Self::PlusJakartaSans => &assets::PLUS_JAKARTA_SANS,
+            Self::EbGaramond => &assets::EB_GARAMOND,
+            Self::SourceSans3 => &assets::SOURCE_SANS_3,
+            Self::SourceSerif4 => &assets::SOURCE_SERIF_4,
+            Self::Mukta => &assets::MUKTA,
+            Self::PublicSans => &assets::PUBLIC_SANS,
+            Self::LibreFranklin => &assets::LIBRE_FRANKLIN,
         }
     }
 }

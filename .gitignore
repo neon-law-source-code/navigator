@@ -79,6 +79,17 @@
 # plus-jakarta-sans` — see `docs/assets.md`.
 /server/public/fonts/plus-jakarta-sans/*.woff2
 
+# The five practice brands' six OFL families ride the same lane, one
+# `--family` value per directory. Only the OFL.txt notices are tracked; the
+# faces come from the deployment's public assets bucket. Lawyer Shook's Tinos
+# is the exception and stays tracked.
+/server/public/fonts/eb-garamond/*.woff2
+/server/public/fonts/source-sans-3/*.woff2
+/server/public/fonts/source-serif-4/*.woff2
+/server/public/fonts/mukta/*.woff2
+/server/public/fonts/public-sans/*.woff2
+/server/public/fonts/libre-franklin/*.woff2
+
 # Default local object-storage root (cloud::from_env fs backend)
 var/
 

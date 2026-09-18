@@ -1364,7 +1364,7 @@ fn placeholder_template_stem() -> &'static str {
 fn placeholder_template(stem: &str) -> String {
     [
         "---\n",
-        "kind: letter\n",
+        "kind: onboarding\n",
         "title: Onboarding letter\n",
         "respondent_type: entity\n",
         "code: ",

@@ -10,8 +10,10 @@
 //!
 //! The scheme is the document's, not the author's preference:
 //!
-//! - **Roman** (`## I.`, `## II.`) for `agreement`, `onboarding`, and
-//!   `offboarding` — contracts and engagement letters.
+//! - **Roman** (`## I.`, `## II.`) for `agreement` and `offboarding`.
+//!   `onboarding` is a letter at the render path and is exempt, the same
+//!   as `letter`: a scaffolded stub cannot pass the gate if it must invent
+//!   a fake outline to declare the kind it is.
 //! - **Arabic** (`## 1.`, `## 2.`) for `pleading` — motion practice, which
 //!   numbers its sections the way a court reads them.
 //!
@@ -27,9 +29,11 @@
 //!
 //! Every other `kind` is exempt. A `letter` is a demand or notice the firm
 //! sends on a client's behalf, often a single page of prose with no sections
-//! to number; a `filing` fills a government `AcroForm` and its body is an
-//! intake summary rather than the document. Neither has an outline to hold,
-//! so neither is asked for one.
+//! to number. `onboarding` renders through the same letter frame and is
+//! exempt for the same reason: the opening engagement is a letter, not a
+//! contract outline. A `filing` fills a government `AcroForm` and its body is
+//! an intake summary rather than the document. None of those has an outline
+//! to hold, so none is asked for one.
 //!
 //! **What this rule does not restate.** The seven-depth marker table
 //! (`I. A. 1. a. (1) (a) (i)`) lives in `word::MARKER_GROUPS` and is read
@@ -93,7 +97,6 @@ enum Title {
 /// did not draft it and cannot be held to its shape.
 const OUTLINED_KINDS: &[(&str, Scheme, Title)] = &[
     ("agreement", Scheme::Roman, Title::Required),
-    ("onboarding", Scheme::Roman, Title::FromFrame),
     ("offboarding", Scheme::Roman, Title::FromFrame),
     ("pleading", Scheme::Arabic, Title::Required),
     // LAW-16: a will drifted out of its outline with zero errors because the
@@ -601,12 +604,12 @@ mod tests {
 
     #[test]
     fn a_lettered_block_quote_subsection_runs_in_sequence() {
-        // The engagement letters write depth 2 as `> **A. Label.**`, not
+        // An engagement letter writes depth 2 as `> **A. Label.**`, not
         // `### A.` — the form `docs/notation-authoring.md` documents and
         // `views::harvard_outline` parses. Read only as headings, an
         // out-of-sequence letter here passes unseen.
         let body = "## I. Fees\n\n> **A. Costs.** Text.\n\n> **C. Invoices.** Text.\n";
-        let found = lint("onboarding", body);
+        let found = lint("offboarding", body);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
             found[0].message.contains("is subsection C.")
@@ -621,9 +624,9 @@ mod tests {
         let body = "## I. Fees\n\n> **A. Costs.** Text.\n\n> **B. Invoices.** Text.\n\n\
                     ## II. Contacts\n\n> **A. Ours.** Text.\n\n> **B. Yours.** Text.\n";
         assert!(
-            lint("onboarding", body).is_empty(),
+            lint("offboarding", body).is_empty(),
             "{:?}",
-            lint("onboarding", body)
+            lint("offboarding", body)
         );
     }
 
@@ -633,9 +636,9 @@ mod tests {
         // pull quote, not a lettered subsection, and carries no sequence.
         let body = "## I. Fees\n\n> Plain quoted prose.\n\n> **Bold but unlettered.** Text.\n";
         assert!(
-            lint("onboarding", body).is_empty(),
+            lint("offboarding", body).is_empty(),
             "{:?}",
-            lint("onboarding", body)
+            lint("offboarding", body)
         );
     }
 
@@ -661,9 +664,9 @@ mod tests {
 
     #[test]
     fn a_contract_numbered_like_motion_practice_is_flagged() {
-        // The live drift this rule exists to catch: an engagement letter
+        // The live drift this rule exists to catch: a closing letter
         // numbered `## 1.` when its kind numbers with Roman numerals.
-        let violations = lint("onboarding", "## 1. Client and scope\n\nText.\n");
+        let violations = lint("offboarding", "## 1. Client and scope\n\nText.\n");
         assert!(
             violations
                 .iter()
@@ -677,7 +680,7 @@ mod tests {
         // The message proposes a corrected heading. Building it from the
         // raw heading text would suggest `## I. 1. Client and scope` — the
         // marker being replaced, pasted back in front of its replacement.
-        let violations = lint("onboarding", "## 1. Client and scope\n\nText.\n");
+        let violations = lint("offboarding", "## 1. Client and scope\n\nText.\n");
         assert_eq!(violations.len(), 1, "{violations:?}");
         assert!(
             violations[0]
@@ -1011,8 +1014,8 @@ mod tests {
         // letterhead. A `# ` heading there would print a title block above
         // "Dear …", so the rule refuses one rather than requiring it — which
         // is why the two shipped engagement letters carry no title line.
-        let body = "# ONBOARDING LETTER\n\n## I. Client and scope\n\nText.\n";
-        let violations = lint("onboarding", body);
+        let body = "# CLOSING LETTER\n\n## I. Client and scope\n\nText.\n";
+        let violations = lint("offboarding", body);
         assert!(
             violations
                 .iter()
@@ -1025,9 +1028,20 @@ mod tests {
     fn an_untitled_letterhead_kind_passes() {
         let body = "## I. Client and scope\n\nText.\n\n## II. Fees\n\nText.\n";
         assert!(
-            lint("onboarding", body).is_empty(),
+            lint("offboarding", body).is_empty(),
             "{:?}",
-            lint("onboarding", body)
+            lint("offboarding", body)
         );
+    }
+
+    #[test]
+    fn an_onboarding_letter_without_an_outline_passes() {
+        // Onboarding renders as a letter. N123 must not force a scaffolded
+        // stub — or any opening engagement — into a fake Harvard outline.
+        let violations = lint(
+            "onboarding",
+            "Replace this placeholder with the notation.\n",
+        );
+        assert!(violations.is_empty(), "{violations:?}");
     }
 }

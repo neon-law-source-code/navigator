@@ -268,6 +268,12 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(instructions.contains("A precedent"));
     assert!(instructions.contains("citation is still a breach"));
     assert!(dir.path().join("templates/onboarding.md").is_file());
+    assert!(
+        fs::read_to_string(dir.path().join("templates/onboarding.md"))
+            .unwrap()
+            .contains("kind: onboarding\n"),
+        "the stub must declare the kind it is so a filled-in placeholder inherits it"
+    );
     assert_eq!(
         fs::read_to_string(dir.path().join("documents/.gitignore")).unwrap(),
         "*\n!*/\n!*.yml\n!.gitignore\n"

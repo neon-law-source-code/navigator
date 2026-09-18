@@ -633,8 +633,8 @@ A Project references a shared catalog template by its existing `code`, without c
 pins that exact template version on the Notation. A local file intentionally overrides the catalog for that Project; use
 one only for a genuinely Project-specific blueprint. Do not recode, rename, or copy a catalog template into a Project
 repository merely to reference it. `scaffold`'s generated `templates/onboarding.md` placeholder leans on exactly this:
-it is a stub, and a lawyer who wants the firm's real onboarding letter deletes it and runs the notation against the
-shared catalog's `onboarding__letter` instead of authoring a local copy.
+it is a stub that declares `kind: onboarding`, and a lawyer who wants the firm's real onboarding letter deletes it and
+runs the notation against the shared catalog's `onboarding__letter` instead of authoring a local copy.
 
 The filename stem of a Project-local template carries no required Project-code prefix (ENG-693). A `template` row is
 already scoped to its Project by `template.project_id`, so `code` only has to be unique *within* that one repository —

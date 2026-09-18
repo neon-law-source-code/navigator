@@ -1880,26 +1880,26 @@ fn gate_flags_a_questionnaire_state_the_body_stopped_reading() {
 /// `N123` — an instrument the firm drafts must carry a Harvard outline, in
 /// the scheme its kind uses.
 ///
-/// Driven through the real binary on the shipped onboarding letter for the
-/// same reason `N122` is: the rule is worth nothing if it passes because it
-/// never bound a real file. The unmodified letter is a clean Roman outline;
-/// renumbering its first section `## 1.` is the motion-practice scheme on a
-/// contract, and `validate` must fail on it.
+/// Driven through the real binary on the shipped closing letter: the rule is
+/// worth nothing if it passes because it never bound a real file. The
+/// unmodified letter is a clean Roman outline; renumbering its first section
+/// `## 1.` is the motion-practice scheme on a closing letter, and `validate`
+/// must fail on it.
 #[test]
 fn gate_flags_a_contract_numbered_like_motion_practice() {
     let source = fs::read_to_string(
-        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
+        workspace_root().join("templates/notations/neon_law/shared/offboarding_letter.md"),
     )
     .unwrap();
     assert!(
-        source.contains("## I. Client and scope of the engagement"),
+        source.contains("kind: offboarding") && source.contains("## I. Representation concluded"),
         "the letter must carry the Roman heading this test renumbers",
     );
 
     let clean = TempDir::new().unwrap();
     write(
         clean.path(),
-        "templates/notations/neon_law/shared/onboarding_letter.md",
+        "templates/notations/neon_law/shared/offboarding_letter.md",
         &source,
     );
     gate(clean.path())
@@ -1910,10 +1910,10 @@ fn gate_flags_a_contract_numbered_like_motion_practice() {
     let renumbered = TempDir::new().unwrap();
     write(
         renumbered.path(),
-        "templates/notations/neon_law/shared/onboarding_letter.md",
+        "templates/notations/neon_law/shared/offboarding_letter.md",
         &source.replace(
-            "## I. Client and scope of the engagement",
-            "## 1. Client and scope of the engagement",
+            "## I. Representation concluded",
+            "## 1. Representation concluded",
         ),
     );
     gate(renumbered.path())
@@ -1921,9 +1921,36 @@ fn gate_flags_a_contract_numbered_like_motion_practice() {
         .failure()
         .code(1)
         .stdout(str::contains("N123"))
-        .stdout(str::contains(
-            "expected `## I. Client and scope of the engagement`",
-        ));
+        .stdout(str::contains("expected `## I. Representation concluded`"));
+}
+
+/// `kind: onboarding` is a letter at the render path. N123 must not bind it,
+/// or the scaffold cannot ship a stub that declares the kind it is.
+#[test]
+fn gate_exempts_onboarding_from_the_outline_check() {
+    let source = fs::read_to_string(
+        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
+    )
+    .unwrap();
+    assert!(
+        source.contains("kind: onboarding")
+            && source.contains("## I. Client and scope of the engagement"),
+        "the fixture must be the Roman-numbered `onboarding` this test renumbers",
+    );
+
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "templates/notations/neon_law/shared/onboarding_letter.md",
+        &source.replace(
+            "## I. Client and scope of the engagement",
+            "## 1. Client and scope of the engagement",
+        ),
+    );
+    gate(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
 }
 
 /// The Nevada litigation papers are `kind: pleading`, so `N123` binds them
@@ -1982,9 +2009,8 @@ fn gate_accepts_a_pleading_whose_caption_title_precedes_the_outline() {
 /// outline the rule can hold to a scheme.
 ///
 /// Proven on the real engagement letter by renumbering it into the scheme
-/// its kind would be wrong in. The identical edit on the `onboarding`
-/// letter fails the run above; here it must not, because the exemption —
-/// not the numbering — is what this pins.
+/// its kind would be wrong in. `onboarding` is exempt for the same reason;
+/// `offboarding` is not, and is the run that still fails.
 #[test]
 fn gate_exempts_a_letter_from_the_outline_check() {
     let rel = "templates/notations/neon_law/shared/engagement_letter_nevada.md";

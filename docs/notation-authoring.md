@@ -331,18 +331,18 @@ notation evaluator used by preview and final PDF generation.
 ### Harvard outline
 
 Motions and contracts are walked paragraph by paragraph on a stage so a lawyer can highlight each unit while recording.
-Depth-1 headings take Roman numerals (`## I.`) on contracts and onboarding letters, or Arabic numerals (`## 1.`) in
-motion practice; lettered subsections are block quotes (`> **A. Label.** …`).
+Depth-1 headings take Roman numerals (`## I.`) on contracts and closing letters, or Arabic numerals (`## 1.`) in motion
+practice; lettered subsections are block quotes (`> **A. Label.** …`).
 
-**`N123` enforces the outline down to depth 2.** A body whose kind is `agreement`, `will`, `pleading`, `onboarding`, or
-`offboarding` must carry `##` sections, numbered in its kind's scheme and running in sequence — Roman on the contract
-kinds and on a `will`, Arabic on a `pleading` — and their subsections must be lettered `A.`, `B.`, … in sequence,
-restarting beneath each section. Depth 2 is lettered in every scheme, because `word::MARKER_GROUPS` varies only at its
-root. **Both depth-2 forms are read**: the `###` heading, and the `> **A. Label.**` block quote the engagement letters
-use — the same two `views::harvard_outline` parses. Checking only the heading would have left the letters, which is
-where lettered subsections actually ship, outside the rule. A `letter` and a `filing` are exempt: a demand or notice
-letter is often a single page of prose with no sections, and a filing's body is an intake summary beside a government
-`AcroForm`. `####` and below stay the parser's and the renderer's business.
+**`N123` enforces the outline down to depth 2.** A body whose kind is `agreement`, `will`, `pleading`, or `offboarding`
+must carry `##` sections, numbered in its kind's scheme and running in sequence — Roman on the contract kinds and on a
+`will`, Arabic on a `pleading` — and their subsections must be lettered `A.`, `B.`, … in sequence, restarting beneath
+each section. Depth 2 is lettered in every scheme, because `word::MARKER_GROUPS` varies only at its root. **Both depth-2
+forms are read**: the `###` heading, and the `> **A. Label.**` block quote an engagement letter uses — the same two
+`views::harvard_outline` parses. Checking only the heading would leave a lettered subsection written in the block-quote
+form outside the rule. A `letter`, an `onboarding` letter, and a `filing` are exempt: a demand, notice, or opening
+engagement is often a single page of prose with no sections, and a filing's body is an intake summary beside a
+government `AcroForm`. `####` and below stay the parser's and the renderer's business.
 
 **A body that renders without chrome must name itself.** `agreement`, `pleading`, and `will` carry exactly one `#`
 document title, and it opens the body above the first numbered section — nothing else supplies one, since a `will`

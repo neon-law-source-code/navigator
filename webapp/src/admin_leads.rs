@@ -63,6 +63,8 @@ pub struct LeadDetail {
     pub consent_version: String,
     pub consented_at: String,
     pub sms_consented_at: String,
+    pub sms_consent_version: String,
+    pub sms_policy_version: String,
     pub status: String,
     pub submissions: String,
     pub unsubscribed_at: String,
@@ -250,6 +252,8 @@ pub async fn lead_show_view() -> Result<LeadShowView, ServerFnError> {
             consent_version: lead.consent_version,
             consented_at: format_time(lead.consented_at),
             sms_consented_at: format_optional_time(lead.sms_consented_at),
+            sms_consent_version: lead.sms_consent_version.unwrap_or_else(|| "—".to_string()),
+            sms_policy_version: lead.sms_policy_version.unwrap_or_else(|| "—".to_string()),
             status: lead.status,
             submissions: lead.submissions.to_string(),
             unsubscribed_at: format_optional_time(lead.unsubscribed_at),
@@ -436,6 +440,10 @@ pub fn lead_show_body(view: &LeadShowView) -> Element {
                 dd { "{lead.consented_at}" }
                 dt { "SMS consented" }
                 dd { "{lead.sms_consented_at}" }
+                dt { "SMS consent version" }
+                dd { "{lead.sms_consent_version}" }
+                dt { "SMS policy version" }
+                dd { "{lead.sms_policy_version}" }
                 dt { "Status" }
                 dd { "{lead.status}" }
                 dt { "Submissions" }
@@ -561,6 +569,8 @@ mod tests {
                 consent_version: "By sending this, you agree.".to_string(),
                 consented_at: "2026-01-01T00:00:00Z".to_string(),
                 sms_consented_at: "—".to_string(),
+                sms_consent_version: "—".to_string(),
+                sms_policy_version: "—".to_string(),
                 status: "new".to_string(),
                 submissions: "1".to_string(),
                 unsubscribed_at: "—".to_string(),
@@ -601,6 +611,8 @@ mod tests {
                 consent_version: "By sending this, you agree.".to_string(),
                 consented_at: "2026-01-01T00:00:00Z".to_string(),
                 sms_consented_at: "—".to_string(),
+                sms_consent_version: "—".to_string(),
+                sms_policy_version: "—".to_string(),
                 status: "new".to_string(),
                 submissions: "1".to_string(),
                 unsubscribed_at: "—".to_string(),
@@ -636,6 +648,8 @@ mod tests {
                 consent_version: "By sending this, you agree.".to_string(),
                 consented_at: "2026-01-01T00:00:00Z".to_string(),
                 sms_consented_at: "—".to_string(),
+                sms_consent_version: "—".to_string(),
+                sms_policy_version: "—".to_string(),
                 status: "converted".to_string(),
                 submissions: "1".to_string(),
                 unsubscribed_at: "—".to_string(),

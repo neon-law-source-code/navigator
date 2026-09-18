@@ -627,6 +627,7 @@ pub fn lead_capture(branding: &views::brand::Branding) -> LeadCaptureCopy {
     LeadCaptureCopy {
         consent_sentence: copy("lead.consent"),
         phone_helper: copy("lead.phone_helper"),
+        sms_label: copy("lead.sms_label"),
     }
 }
 

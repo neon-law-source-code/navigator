@@ -272,6 +272,8 @@ DEFINE FIELD OVERWRITE brand_key ON lead TYPE string;
 DEFINE FIELD OVERWRITE source_path ON lead TYPE string;
 DEFINE FIELD OVERWRITE consent_version ON lead TYPE string;
 DEFINE FIELD OVERWRITE consented_at ON lead TYPE datetime;
+DEFINE FIELD OVERWRITE sms_consent_version ON lead TYPE option<string>;
+DEFINE FIELD OVERWRITE sms_policy_version ON lead TYPE option<string>;
 DEFINE FIELD OVERWRITE sms_consented_at ON lead TYPE option<datetime>;
 DEFINE FIELD OVERWRITE status ON lead TYPE string ASSERT $value IN
     ['new', 'contacted', 'converted', 'declined', 'unsubscribed'] DEFAULT 'new';

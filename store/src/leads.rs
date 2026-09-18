@@ -17,7 +17,7 @@ use crate::surreal::{record_id, record_uuid, SurrealDb};
 const TABLE: &str = "lead";
 const PERSON_TABLE: &str = "person";
 const SELECT: &str = "id, email, email_lower, phone, brand_key, source_path, consent_version, \
-                     consented_at, sms_consented_at, status, unsubscribed_at, person_id, \
+                     sms_consent_version, sms_policy_version, consented_at, sms_consented_at, status, unsubscribed_at, person_id, \
                      submissions, inserted_at, updated_at";
 
 /// Closed status set stored on `lead.status`.
@@ -67,6 +67,8 @@ pub struct Lead {
     pub brand_key: String,
     pub source_path: String,
     pub consent_version: String,
+    pub sms_consent_version: Option<String>,
+    pub sms_policy_version: Option<String>,
     pub consented_at: DateTime<Utc>,
     pub sms_consented_at: Option<DateTime<Utc>>,
     pub status: String,
@@ -85,6 +87,8 @@ pub struct NewLead {
     pub brand_key: String,
     pub source_path: String,
     pub consent_version: String,
+    pub sms_consent_version: Option<String>,
+    pub sms_policy_version: Option<String>,
     pub consented_at: DateTime<Utc>,
     pub sms_consented_at: Option<DateTime<Utc>>,
 }
@@ -98,6 +102,8 @@ struct LeadRow {
     brand_key: String,
     source_path: String,
     consent_version: String,
+    sms_consent_version: Option<String>,
+    sms_policy_version: Option<String>,
     consented_at: surrealdb::types::Datetime,
     sms_consented_at: Option<surrealdb::types::Datetime>,
     status: String,
@@ -118,6 +124,8 @@ impl LeadRow {
             brand_key: self.brand_key,
             source_path: self.source_path,
             consent_version: self.consent_version,
+            sms_consent_version: self.sms_consent_version,
+            sms_policy_version: self.sms_policy_version,
             consented_at: self.consented_at.into(),
             sms_consented_at: self.sms_consented_at.map(Into::into),
             status: self.status,
@@ -177,9 +185,20 @@ pub async fn record(db: &SurrealDb, new: &NewLead) -> Result<Lead, LeadError> {
     let existing = find_by_key(db, &email_lower, &new.brand_key).await?;
 
     let mut response = if let Some(existing) = existing {
+        let sms_consent_version = append_history(
+            existing.sms_consent_version.as_deref(),
+            new.sms_consent_version.as_deref(),
+        );
+        let sms_policy_version = append_history(
+            existing.sms_policy_version.as_deref(),
+            new.sms_policy_version.as_deref(),
+        );
+        let sms_consented_at = existing
+            .sms_consented_at
+            .or_else(|| new.sms_consented_at.map(surrealdb::types::Datetime::from));
         db.query(format!(
             "UPDATE $id SET email = $email, phone = $phone, source_path = $source_path, \
-             consent_version = $consent_version, consented_at = $consented_at, \
+             sms_consent_version = $sms_consent_version, sms_policy_version = $sms_policy_version, \
              sms_consented_at = $sms_consented_at, submissions += 1, updated_at = $now \
              RETURN {SELECT}"
         ))
@@ -187,15 +206,9 @@ pub async fn record(db: &SurrealDb, new: &NewLead) -> Result<Lead, LeadError> {
         .bind(("email", email.clone()))
         .bind(("phone", new.phone.clone()))
         .bind(("source_path", new.source_path.clone()))
-        .bind(("consent_version", new.consent_version.clone()))
-        .bind((
-            "consented_at",
-            surrealdb::types::Datetime::from(new.consented_at),
-        ))
-        .bind((
-            "sms_consented_at",
-            new.sms_consented_at.map(surrealdb::types::Datetime::from),
-        ))
+        .bind(("sms_consent_version", sms_consent_version))
+        .bind(("sms_policy_version", sms_policy_version))
+        .bind(("sms_consented_at", sms_consented_at))
         .bind(("now", surrealdb::types::Datetime::from(now)))
         .await?
         .check()?
@@ -203,6 +216,7 @@ pub async fn record(db: &SurrealDb, new: &NewLead) -> Result<Lead, LeadError> {
         db.query(format!(
             "CREATE $id SET email = $email, email_lower = $email_lower, phone = $phone, \
              brand_key = $brand_key, source_path = $source_path, consent_version = $consent_version, \
+             sms_consent_version = $sms_consent_version, sms_policy_version = $sms_policy_version, \
              consented_at = $consented_at, sms_consented_at = $sms_consented_at, status = 'new', \
              unsubscribed_at = NONE, person_id = NONE, submissions = 1, inserted_at = $now, \
              updated_at = $now RETURN {SELECT}"
@@ -214,6 +228,8 @@ pub async fn record(db: &SurrealDb, new: &NewLead) -> Result<Lead, LeadError> {
         .bind(("brand_key", new.brand_key.clone()))
         .bind(("source_path", new.source_path.clone()))
         .bind(("consent_version", new.consent_version.clone()))
+        .bind(("sms_consent_version", new.sms_consent_version.clone()))
+        .bind(("sms_policy_version", new.sms_policy_version.clone()))
         .bind((
             "consented_at",
             surrealdb::types::Datetime::from(new.consented_at),
@@ -230,6 +246,25 @@ pub async fn record(db: &SurrealDb, new: &NewLead) -> Result<Lead, LeadError> {
     let row: Option<LeadRow> = response.take(0)?;
     row.and_then(LeadRow::into_lead)
         .ok_or(LeadError::WriteReturnedNothing)
+}
+
+const CONSENT_HISTORY_SEPARATOR: &str = "\n---\n";
+
+fn append_history(existing: Option<&str>, next: Option<&str>) -> Option<String> {
+    match (existing, next) {
+        (None, None) => None,
+        (Some(value), None) | (None, Some(value)) => Some(value.to_string()),
+        (Some(history), Some(value))
+            if history
+                .split(CONSENT_HISTORY_SEPARATOR)
+                .any(|item| item == value) =>
+        {
+            Some(history.to_string())
+        }
+        (Some(history), Some(value)) => {
+            Some(format!("{history}{CONSENT_HISTORY_SEPARATOR}{value}"))
+        }
+    }
 }
 
 /// List leads newest first for the later admin queue.
@@ -382,7 +417,9 @@ mod tests {
         NewLead,
     };
     use crate::persons::{self, NewPerson, Role};
+    use crate::surreal::record_id;
     use crate::test_support::mem_surreal;
+    use uuid::Uuid;
 
     fn lead(email: &str, brand_key: &str) -> NewLead {
         NewLead {
@@ -391,6 +428,8 @@ mod tests {
             brand_key: brand_key.to_string(),
             source_path: "/contact".to_string(),
             consent_version: "By sending this, you agree.".to_string(),
+            sms_consent_version: None,
+            sms_policy_version: None,
             consented_at: Utc::now(),
             sms_consented_at: None,
         }
@@ -415,18 +454,58 @@ mod tests {
     #[tokio::test]
     async fn repeated_mailbox_and_brand_updates_one_row_and_increments_submissions() {
         let db = mem_surreal().await;
-        record(&db, &lead("visitor@example.com", "neon"))
-            .await
-            .unwrap();
+        let first_sms_at = Utc::now();
+        let mut first = lead("visitor@example.com", "neon");
+        first.consent_version = "first email disclosure".to_string();
+        first.sms_consent_version = Some("phone disclosure v0".to_string());
+        first.sms_policy_version = Some("2026-01-01".to_string());
+        first.sms_consented_at = Some(first_sms_at);
+        record(&db, &first).await.unwrap();
         let mut repeat = lead("VISITOR@example.com", "neon");
         repeat.phone = Some("+ ()".to_string());
+        repeat.consent_version = "second email disclosure".to_string();
+        repeat.sms_consent_version = Some("phone disclosure v1".to_string());
+        repeat.sms_policy_version = Some("2026-09-18".to_string());
         repeat.sms_consented_at = Some(Utc::now());
         let written = record(&db, &repeat).await.unwrap();
 
         assert_eq!(written.submissions, 2);
         assert_eq!(written.phone.as_deref(), Some("+ ()"));
-        assert!(written.sms_consented_at.is_some());
+        assert_eq!(written.consent_version, "first email disclosure");
+        assert_eq!(written.sms_consented_at, Some(first_sms_at));
+        assert_eq!(
+            written.sms_consent_version.as_deref(),
+            Some("phone disclosure v0\n---\nphone disclosure v1")
+        );
+        assert_eq!(
+            written.sms_policy_version.as_deref(),
+            Some("2026-01-01\n---\n2026-09-18")
+        );
         assert_eq!(list(&db).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn reads_a_historical_lead_without_sms_consent_fields() {
+        let db = mem_surreal().await;
+        let historical_id = Uuid::now_v7();
+        db.query(
+            "CREATE $id SET email = 'historical@example.com', \
+             email_lower = 'historical@example.com', phone = NONE, brand_key = 'neon', \
+             source_path = '/contact', consent_version = 'email disclosure', \
+             consented_at = time::now(), sms_consented_at = NONE, status = 'new', \
+             unsubscribed_at = NONE, person_id = NONE, submissions = 1, \
+             inserted_at = time::now(), updated_at = time::now()",
+        )
+        .bind(("id", record_id("lead", historical_id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        let leads = list(&db).await.unwrap();
+        assert_eq!(leads.len(), 1);
+        assert!(leads[0].sms_consent_version.is_none());
+        assert!(leads[0].sms_policy_version.is_none());
     }
 
     #[tokio::test]

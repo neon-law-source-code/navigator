@@ -262,7 +262,8 @@ mod tests {
                 firm_phone: "+1 555 010 0100".to_string(),
                 lead_capture: LeadCaptureCopy {
                     consent_sentence: "By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.".to_string(),
-                    phone_helper: "Optional. If you add a mobile number and check the box, Neon Law may text you about this inquiry. Message and data rates may apply. Reply STOP to stop, HELP for help. See the text-messaging terms.".to_string(),
+                    phone_helper: "Optional. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Our Privacy Policy and texting terms explain how we text and what we keep.".to_string(),
+                    sms_label: "Yes, Neon Law may send me text messages about this inquiry at this number, including automated texts. Texting is not a condition of hiring the firm.".to_string(),
                 },
             };
             rsx! { ContactPage { chrome, content, lead_capture: LeadCaptureContext::default() } }
@@ -346,9 +347,12 @@ mod tests {
         let out = html();
         assert!(out.contains(r#"action="/leads""#), "lead form: {out}");
         assert!(out.contains(r#"href="/privacy""#), "privacy link: {out}");
-        assert!(out.contains(r#"href="/terms""#), "terms link: {out}");
         assert!(
-            out.contains("You may text me about this inquiry"),
+            out.contains(r#"href="/privacy#text-messaging-sms""#),
+            "sms policy link: {out}"
+        );
+        assert!(
+            out.contains("Yes, Neon Law may send me text messages"),
             "sms copy: {out}"
         );
         assert!(

@@ -90,6 +90,18 @@ allow if {
     is_authenticated(input.session)
 }
 
+# Testimonial publication is a lawyer-tier operation. The handler still
+# checks the acting person's firm-side participation on the testimonial's
+# project; this rule only admits the system tier to the API door.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "testimonials"
+    count(input.path) == 5
+    input.method == "POST"
+    is_lawyer(input.session)
+}
+
 # /app/lawyer is the lawyer workbench: the firm dashboard and every
 # remaining lawyer-tier listing and walk that used to sit under a
 # separate `/lawyer` prefix. Owner and Admin reach it through the

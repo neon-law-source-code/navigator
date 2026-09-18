@@ -661,6 +661,10 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
             post(project_view_as_client),
         )
         .route(
+            &format!("{prefix}/{{project_code}}/testimonial"),
+            post(project_testimonial_save),
+        )
+        .route(
             &format!("{prefix}/{{project_code}}/people"),
             post(project_participation_create),
         )
@@ -763,6 +767,105 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
             &format!("{prefix}/{{project_code}}/intake/{{notation_id}}"),
             post(crate::intake::intake_save),
         )
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TestimonialForm {
+    #[serde(rename = "_csrf")]
+    _csrf_token: Option<String>,
+    quote: String,
+    attribution: String,
+    publication: String,
+}
+
+/// `POST /app/projects/{project_code}/testimonial` — the client DRI's one
+/// testimonial write. The CSRF layer on [`routes`] consumes the signed session
+/// cookie before this handler runs; the handler itself derives both identities
+/// from the path and session and never accepts either as form data.
+async fn project_testimonial_save(
+    State(surreal): State<store::surreal::SurrealDb>,
+    session: Option<Extension<SessionData>>,
+    Path(code): Path<String>,
+    Form(input): Form<TestimonialForm>,
+) -> Response {
+    let Some(session) = session else {
+        return not_found_response();
+    };
+    if session.viewing_as_dri.is_some() {
+        return not_found_response();
+    }
+    let Some(person_id) = session.person_id else {
+        return not_found_response();
+    };
+    let Some(project) = store::projects::find_by_code(&surreal, &code)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return not_found_response();
+    };
+    let participation = store::projects::participation_for_person(&surreal, person_id, project.id)
+        .await
+        .ok()
+        .flatten();
+    if !participation
+        .as_ref()
+        .is_some_and(|row| can_submit_testimonial(&session, row))
+    {
+        return not_found_response();
+    }
+    let request_public = match input.publication.as_str() {
+        "public" => true,
+        "private" => false,
+        _ => {
+            return Redirect::to(&format!(
+                "/app/projects/{code}?error={}",
+                encode_query_value(
+                    "Choose whether to keep the testimonial private or request public use."
+                )
+            ))
+            .into_response();
+        }
+    };
+    let result = store::testimonials::save_for_client_dri(
+        &surreal,
+        person_id,
+        project.id,
+        &store::testimonials::TestimonialSubmission {
+            quote: &input.quote,
+            attribution_label: (!input.attribution.trim().is_empty())
+                .then(|| input.attribution.trim().to_string()),
+            request_public,
+        },
+    )
+    .await;
+    match result {
+        Ok(_) => Redirect::to(&format!("/app/projects/{code}")).into_response(),
+        Err(
+            store::testimonials::TestimonialError::NotAuthorized
+            | store::testimonials::TestimonialError::NotFound,
+        ) => not_found_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "portal testimonial: save failed");
+            Redirect::to(&format!(
+                "/app/projects/{code}?error={}",
+                encode_query_value("Your testimonial could not be saved.")
+            ))
+            .into_response()
+        }
+    }
+}
+
+fn can_submit_testimonial(
+    session: &SessionData,
+    participation: &store::projects::PersonProjectRole,
+) -> bool {
+    session.viewing_as_dri.is_none()
+        && session.person_id == Some(participation.person_id)
+        && participation.is_client_dri
+        && store::projects::PARTICIPATION_CLIENT_SIDE
+            .contains(&participation.participation.as_str())
 }
 
 /// Returns `true` when the caller can act on the lawyer workbench.
@@ -3388,8 +3491,9 @@ async fn projects_csv(
 #[cfg(test)]
 mod tests {
     use super::{
-        admin_gated_message, bootstrap_company_from_lookup, encode_query_value, is_admin,
-        open_matter_form_error, participation_people, project_participation_access, ProjectInput,
+        admin_gated_message, bootstrap_company_from_lookup, can_submit_testimonial,
+        encode_query_value, is_admin, open_matter_form_error, participation_people,
+        project_participation_access, ProjectInput, TestimonialForm,
     };
     use crate::session::SessionData;
     use store::persons::Role;
@@ -3564,6 +3668,51 @@ mod tests {
         assert_eq!(
             response.status(),
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    fn participation(person_id: Uuid, is_client_dri: bool) -> store::projects::PersonProjectRole {
+        store::projects::PersonProjectRole {
+            id: Uuid::now_v7(),
+            person_id,
+            project_id: Uuid::now_v7(),
+            participation: "client".into(),
+            is_lawyer_dri: false,
+            is_client_dri,
+            inserted_at: String::new(),
+            updated_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn testimonial_form_allows_only_the_authenticated_client_dri() {
+        let person_id = Uuid::now_v7();
+        let mut session = SessionData::fresh("client", Role::Client);
+        session.person_id = Some(person_id);
+        assert!(can_submit_testimonial(
+            &session,
+            &participation(person_id, true)
+        ));
+        assert!(!can_submit_testimonial(
+            &session,
+            &participation(person_id, false)
+        ));
+        assert!(!can_submit_testimonial(
+            &session,
+            &participation(Uuid::now_v7(), true)
+        ));
+    }
+
+    #[test]
+    fn testimonial_form_rejects_arbitrary_identity_fields() {
+        let parsed = serde_json::from_str::<TestimonialForm>(
+            r#"{"_csrf":"token","quote":"quote","attribution":"Founder","publication":"private","project_id":"other"}"#,
+        );
+        assert!(parsed.is_err(), "the form must not accept a project id");
+        assert!(crate::csrf::extract_csrf_field("quote=quote").is_none());
+        assert_eq!(
+            crate::csrf::extract_csrf_field("_csrf=token&quote=quote").as_deref(),
+            Some("token")
         );
     }
 }

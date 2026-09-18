@@ -475,8 +475,8 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     // read.
     routers.push(dioxus_app::team_index_router("/team"));
     let home = resolve_firm_home_content(branding);
-    // The home page (`/`): a static statement of the practice, no per-request
-    // data. The practice boxes on `/` are the YAML catalog workshop slides
+    // The home page (`/`): static copy plus the store's approved testimonials.
+    // The practice boxes on `/` are the YAML catalog workshop slides
     // reuse — one list, not a second Rust copy. Slides always expand the
     // Neon catalog, even when another host is serving `/`.
     let practice_catalog = locales::home(&views::brand::DEFAULT_BRANDING)
@@ -485,7 +485,10 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     let home_copy = branded_map(branding, |resolved| {
         webapp::home::InjectedHome(resolve_firm_home_content(resolved))
     });
-    routers.push(with_branded(dioxus_app::home_router("/", home), home_copy));
+    routers.push(with_branded(
+        dioxus_app::home_router("/", home, state.surreal.clone()),
+        home_copy,
+    ));
     // The practice pages the home page's cards lead into. Static copy like the
     // home page's, resolved here so the `<title>` names the mounted brand.
     routers.push(dioxus_app::litigation_router(

@@ -7142,6 +7142,81 @@ async fn lawyer_dashboard_project_list_is_paginated_and_lawyer_scoped() {
     );
 }
 
+/// A naked domain 301s to that brand's own `www`, through the real router.
+///
+/// The redirect used to live in a DNS provider's URL record, which meant it
+/// terminated TLS on the apex and so needed a second certificate per brand.
+/// Serving it here puts the apex on the same managed certificate as `www`
+/// and makes the behaviour something this suite can assert.
+///
+/// Each brand going to *its own* `www` is the part worth pinning: the
+/// deployment-wide `CANONICAL_HOST` would have sent every naked domain to
+/// the firm's site, so `vestaestateplanning.com` would have landed a reader
+/// on Neon Law.
+#[tokio::test]
+async fn a_naked_domain_redirects_to_its_own_brands_www() {
+    let state = empty_state().await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for (apex, expected) in [
+        ("neonlaw.com", "https://www.neonlaw.com/"),
+        ("deleteyourdata.com", "https://www.deleteyourdata.com/"),
+        ("lawyershook.com", "https://www.lawyershook.com/"),
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(header::HOST, apex)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::MOVED_PERMANENTLY,
+            "{apex} is a moved address, so 301 rather than 308"
+        );
+        assert_eq!(
+            resp.headers()
+                .get(header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some(expected),
+            "{apex} must reach its own brand's www"
+        );
+    }
+}
+
+/// The apex carries the path and query across, so a deep link survives the
+/// move off the provider's redirector.
+#[tokio::test]
+async fn the_apex_redirect_keeps_the_path_and_query() {
+    let state = empty_state().await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/services?ref=card")
+                .header(header::HOST, "neonlaw.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(
+        resp.headers()
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok()),
+        Some("https://www.neonlaw.com/services?ref=card"),
+    );
+}
+
 #[tokio::test]
 async fn visitor_analytics_counts_public_routes_and_excludes_private_surfaces() {
     let state = empty_state().await;
@@ -7153,7 +7228,10 @@ async fn visitor_analytics_counts_public_routes_and_excludes_private_surfaces() 
         .oneshot(
             Request::builder()
                 .uri("/?utm_source=linkedin&token=secret")
-                .header(header::HOST, "neonlaw.com")
+                // The served host, not the apex: `neonlaw.com` now 301s to
+                // `www` in the app rather than at the DNS provider, and this
+                // test wants a rendered page to count.
+                .header(header::HOST, "www.neonlaw.com")
                 .header("x-navigator-client-region", "us")
                 .body(Body::empty())
                 .unwrap(),

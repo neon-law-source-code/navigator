@@ -936,6 +936,43 @@ impl BrandKey {
         }
     }
 
+    /// The naked domain this key answers for, which 301s to its own `www`.
+    ///
+    /// Serving the apex ourselves is what removes the dependency on a DNS
+    /// provider's redirector — and with it that provider's certificate, since
+    /// the apex then rides the same managed certificate as `www`. One
+    /// certificate system instead of two, and the redirect becomes behaviour
+    /// this repository tests rather than a record in someone's control panel.
+    ///
+    /// It is deliberately *not* in [`Self::hosts`]. A host listed there is
+    /// one this key **serves**, and an apex that served the page would
+    /// publish the same content at two addresses. The apex only ever
+    /// redirects.
+    #[must_use]
+    pub const fn apex(self) -> &'static str {
+        match self {
+            Self::Neon => "neonlaw.com",
+            Self::DeleteYourData => "deleteyourdata.com",
+            Self::LawyerShook => "lawyershook.com",
+            Self::Vesta => "vestaestateplanning.com",
+            Self::Misericordia => "misericordialaw.com",
+            Self::Abhaya => "abhayaimmigration.com",
+            Self::DeleteYourDebt => "deleteyourdebt.com",
+            Self::Summons => "oathattorney.nyc",
+        }
+    }
+
+    /// Where this key's apex sends a visitor: its own production host.
+    ///
+    /// Its *own*, which is the whole point. A single deployment-wide
+    /// canonical host would send every brand's naked domain to the firm's
+    /// site, so a reader typing `vestaestateplanning.com` would land on
+    /// Neon Law.
+    #[must_use]
+    pub fn canonical_host(self) -> &'static str {
+        self.hosts()[0]
+    }
+
     /// Whether a visitor can actually reach this brand's site.
     ///
     /// A brand is built, registered, and serving its copy from this
@@ -1039,6 +1076,16 @@ impl BrandKey {
             Self::Summons => Some("NAVIGATOR_LOCAL_SUMMONS_PORT"),
         }
     }
+}
+
+/// The key whose *apex* this host is, if any. `None` for a host that is
+/// either served (see [`registered_brand_key`]) or unknown.
+#[must_use]
+pub fn brand_key_for_apex(host: &str) -> Option<BrandKey> {
+    BrandKey::ALL
+        .iter()
+        .copied()
+        .find(|key| key.apex().eq_ignore_ascii_case(host))
 }
 
 /// Look up which key, if any, is registered to serve `host` (already

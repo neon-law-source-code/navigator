@@ -205,6 +205,37 @@ pub async fn resolve_brand_and_enforce_host(
             })
         })
     });
+    // A brand's naked domain 301s to that brand's own `www`, before the
+    // deployment-wide canonical fallback below can claim it. That ordering is
+    // the point: `CANONICAL_HOST` names one host for the whole deployment, so
+    // letting it answer here would send `vestaestateplanning.com` to the
+    // firm's site instead of Vesta's.
+    //
+    // Serving this ourselves is what lets the apex ride the same managed
+    // certificate as `www`, and removes the DNS provider's redirector — and
+    // its separate certificate — from the picture entirely.
+    if resolved.is_none() {
+        if let Some(key) = raw_host
+            .map(strip_port)
+            .and_then(views::brand::brand_key_for_apex)
+        {
+            let path_and_query = req
+                .uri()
+                .path_and_query()
+                .map_or_else(|| "/".to_string(), ToString::to_string);
+            let target = format!("https://{}{path_and_query}", key.canonical_host());
+            return match Uri::try_from(&target) {
+                // 301 rather than 308: a naked marketing domain is a moved
+                // address, not a promise about request methods, and 301 is
+                // what the crawlers and link checkers reading it handle best.
+                Ok(_) => {
+                    (StatusCode::MOVED_PERMANENTLY, [(header::LOCATION, target)]).into_response()
+                }
+                Err(_) => (StatusCode::BAD_REQUEST, "invalid apex redirect").into_response(),
+            };
+        }
+    }
+
     match (resolved, cfg.canonical()) {
         (Some(key), _) => {
             req.extensions_mut().insert(key);
@@ -237,6 +268,87 @@ fn strip_port(host_header: &str) -> &str {
 mod tests {
     use super::{local_brand_ports_from_lookup, strip_port, CanonicalHost};
     use views::brand::BrandKey;
+
+    // --- The apex redirect ------------------------------------------------
+
+    /// Every brand's naked domain resolves to that brand, and to no other.
+    ///
+    /// The failure this guards is the one a single deployment-wide
+    /// `CANONICAL_HOST` produces: `vestaestateplanning.com` sending a reader
+    /// to the firm's site rather than Vesta's. A registry that mapped two
+    /// brands to one apex, or a brand to another brand's apex, would do the
+    /// same thing more quietly.
+    #[test]
+    fn each_apex_resolves_to_its_own_brand() {
+        for key in BrandKey::ALL {
+            assert_eq!(
+                views::brand::brand_key_for_apex(key.apex()),
+                Some(*key),
+                "{} owns its apex {}",
+                key.as_str(),
+                key.apex(),
+            );
+            assert!(
+                key.canonical_host().ends_with(key.apex()),
+                "{}'s canonical host {} must sit under its own apex {}",
+                key.as_str(),
+                key.canonical_host(),
+                key.apex(),
+            );
+        }
+    }
+
+    /// An apex is never also a served host.
+    ///
+    /// If it were, the same page would answer at two addresses — the
+    /// duplicate-content problem that made "just add the apex to `hosts()`"
+    /// the wrong fix.
+    #[test]
+    fn an_apex_is_never_a_served_host() {
+        for key in BrandKey::ALL {
+            assert!(
+                views::brand::registered_brand_key(key.apex()).is_none(),
+                "{} serves its apex {} instead of redirecting it",
+                key.as_str(),
+                key.apex(),
+            );
+            for host in key.hosts() {
+                assert_ne!(
+                    *host,
+                    key.apex(),
+                    "{} lists its apex among the hosts it serves",
+                    key.as_str()
+                );
+            }
+        }
+    }
+
+    /// Apexes are distinct across the registry, so no two brands can claim
+    /// the same naked domain.
+    #[test]
+    fn no_two_brands_share_an_apex() {
+        let mut seen: Vec<&str> = Vec::new();
+        for key in BrandKey::ALL {
+            assert!(
+                !seen.contains(&key.apex()),
+                "{} repeats an apex already claimed: {}",
+                key.as_str(),
+                key.apex(),
+            );
+            seen.push(key.apex());
+        }
+    }
+
+    /// Case folding: a `Host:` header is not case-sensitive, and a crawler
+    /// that sends one in mixed case must still be redirected rather than
+    /// falling through to the deployment-wide canonical host.
+    #[test]
+    fn apex_lookup_ignores_host_case() {
+        assert_eq!(
+            views::brand::brand_key_for_apex("VestaEstatePlanning.com"),
+            Some(BrandKey::Vesta)
+        );
+    }
 
     #[test]
     fn from_env_disabled_when_var_unset_or_empty() {

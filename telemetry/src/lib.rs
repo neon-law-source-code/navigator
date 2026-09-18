@@ -871,6 +871,149 @@ fn record_funnel_step_with_meter(meter: &Meter, step: &str) {
     counter.add(1, &[KeyValue::new("step", step.to_string())]);
 }
 
+/// The instrumentation scope for browser sign-in metrics.
+const AUTH_METER: &str = "navigator.auth";
+
+/// Counter for completed browser sign-in callbacks, dimensioned by provider
+/// and bounded outcome.
+pub const AUTH_SIGN_IN: &str = "navigator.auth.sign_in";
+
+/// Bounded outcome values for [`AUTH_SIGN_IN`].
+pub mod auth_outcome {
+    /// A provider callback created a session.
+    pub const SIGNED_IN: &str = "signed_in";
+    /// A provider callback was refused.
+    pub const REFUSED: &str = "refused";
+}
+
+/// The provider values allowed in sign-in telemetry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthProvider {
+    /// Google sign-in through the primary OIDC slot.
+    Google,
+    /// Microsoft Entra sign-in.
+    Microsoft,
+    /// Sign in with Apple.
+    Apple,
+}
+
+impl AuthProvider {
+    /// The bounded value written to the event and metric dimensions.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Google => "google",
+            Self::Microsoft => "microsoft",
+            Self::Apple => "apple",
+        }
+    }
+}
+
+/// The refusal reasons allowed in sign-in telemetry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthSignInReason {
+    /// No subject matched and the token carried no usable email claim.
+    NoSubjectMatchNoEmail,
+    /// No admitted person matched the token's email claim.
+    EmailUnmatched,
+    /// A matching person is not admitted for sign-in.
+    NotAdmitted,
+    /// The provider token failed verification.
+    TokenInvalid,
+}
+
+impl AuthSignInReason {
+    /// The bounded value written to the refusal event and log.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoSubjectMatchNoEmail => "no_subject_match_no_email",
+            Self::EmailUnmatched => "email_unmatched",
+            Self::NotAdmitted => "not_admitted",
+            Self::TokenInvalid => "token_invalid",
+        }
+    }
+}
+
+/// One identifier-only browser sign-in outcome.
+#[derive(Debug, Clone, Copy)]
+pub enum AuthEvent<'a> {
+    /// A provider callback created an application session.
+    SignedIn {
+        /// The local Person identifier.
+        person_id: &'a str,
+        /// The provider that issued the callback token.
+        provider: AuthProvider,
+        /// The resolved house brand.
+        brand: &'a str,
+        /// Whether this sign-in is known to have persisted a provider link.
+        first_link: bool,
+    },
+    /// A provider callback was refused after token processing.
+    SignInRefused {
+        /// The provider that issued the callback token.
+        provider: AuthProvider,
+        /// The resolved house brand.
+        brand: &'a str,
+        /// The bounded refusal reason.
+        reason: AuthSignInReason,
+    },
+}
+
+/// Emit one structured browser sign-in event and increment its counter.
+pub fn record_auth_event(event: AuthEvent<'_>) {
+    match event {
+        AuthEvent::SignedIn {
+            person_id,
+            provider,
+            brand,
+            first_link,
+        } => {
+            record_auth_sign_in(provider, auth_outcome::SIGNED_IN);
+            tracing::info!(
+                target: "auth",
+                event = "auth.signed_in",
+                person_id,
+                provider = provider.as_str(),
+                brand,
+                first_link,
+            );
+        }
+        AuthEvent::SignInRefused {
+            provider,
+            brand,
+            reason,
+        } => {
+            record_auth_sign_in(provider, auth_outcome::REFUSED);
+            tracing::info!(
+                target: "auth",
+                event = "auth.sign_in_refused",
+                provider = provider.as_str(),
+                brand,
+                reason = reason.as_str(),
+            );
+        }
+    }
+}
+
+/// Increment the browser sign-in counter. An unconfigured OpenTelemetry
+/// global provider is a no-op.
+pub fn record_auth_sign_in(provider: AuthProvider, outcome: &str) {
+    let meter = opentelemetry::global::meter(AUTH_METER);
+    record_auth_sign_in_with_meter(&meter, provider, outcome);
+}
+
+fn record_auth_sign_in_with_meter(meter: &Meter, provider: AuthProvider, outcome: &str) {
+    let counter = meter.u64_counter(AUTH_SIGN_IN).build();
+    counter.add(
+        1,
+        &[
+            KeyValue::new("provider", provider.as_str().to_string()),
+            KeyValue::new("outcome", outcome.to_string()),
+        ],
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Cross-service trace propagation (W3C `traceparent`).
 //
@@ -979,8 +1122,9 @@ pub fn set_span_parent(span: &tracing::Span, traceparent: Option<&str>, tracesta
 mod tests {
     use super::{
         build_export_providers, current_trace_context_headers, normalize_endpoint,
-        otlp_export_config, parent_context_from, trace_context_headers, FunnelChannel, FunnelEvent,
-        OtlpExportConfig, SanitizingSubscriber,
+        otlp_export_config, parent_context_from, trace_context_headers, AuthEvent, AuthProvider,
+        AuthSignInReason, FunnelChannel, FunnelEvent, OtlpExportConfig, SanitizingSubscriber,
+        AUTH_SIGN_IN,
     };
 
     #[test]
@@ -1105,6 +1249,139 @@ mod tests {
         assert!(rendered.contains("value: 1"), "counter value: {rendered}");
         assert!(
             rendered.contains("step") && rendered.contains("funnel.review_entered"),
+            "counter attributes: {rendered}"
+        );
+        provider.shutdown().expect("metric provider shuts down");
+    }
+
+    #[test]
+    fn auth_events_have_the_declared_fields_and_no_identity_fields() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt::MakeWriter;
+
+        #[derive(Clone)]
+        struct Buffer(Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for Buffer {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture lock")
+                    .extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl<'a> MakeWriter<'a> for Buffer {
+            type Writer = Buffer;
+
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(Buffer(output.clone()))
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            super::record_auth_event(AuthEvent::SignedIn {
+                person_id: "00000000-0000-0000-0000-000000000001",
+                provider: AuthProvider::Google,
+                brand: "neon",
+                first_link: true,
+            });
+            for reason in [
+                AuthSignInReason::NoSubjectMatchNoEmail,
+                AuthSignInReason::EmailUnmatched,
+                AuthSignInReason::NotAdmitted,
+                AuthSignInReason::TokenInvalid,
+            ] {
+                super::record_auth_event(AuthEvent::SignInRefused {
+                    provider: AuthProvider::Apple,
+                    brand: "neon",
+                    reason,
+                });
+            }
+        });
+
+        let rendered = String::from_utf8(output.lock().expect("capture lock").clone())
+            .expect("capture is UTF-8");
+        let lines: Vec<serde_json::Value> = rendered
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("auth event is JSON"))
+            .collect();
+        assert_eq!(lines.len(), 5);
+        for line in &lines {
+            let fields = line
+                .get("fields")
+                .and_then(serde_json::Value::as_object)
+                .expect("JSON formatter nests event fields");
+            for key in fields.keys() {
+                let key = key.to_ascii_lowercase();
+                assert!(
+                    !["email", "name", "sub", "subject", "address"]
+                        .iter()
+                        .any(|forbidden| key.contains(forbidden)),
+                    "forbidden field key in {line}"
+                );
+            }
+        }
+        assert!(rendered.contains("auth.signed_in"));
+        assert!(rendered.contains("auth.sign_in_refused"));
+        assert!(rendered.contains("no_subject_match_no_email"));
+        assert!(rendered.contains("email_unmatched"));
+        assert!(rendered.contains("not_admitted"));
+        assert!(rendered.contains("token_invalid"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn auth_metric_registers_and_increments_with_provider_and_outcome_attributes() {
+        use opentelemetry::metrics::MeterProvider as _;
+        use opentelemetry_sdk::metrics::{
+            data::AggregatedMetrics, InMemoryMetricExporter, SdkMeterProvider,
+        };
+
+        let exporter = InMemoryMetricExporter::default();
+        let provider = SdkMeterProvider::builder()
+            .with_periodic_exporter(exporter.clone())
+            .build();
+        let meter = provider.meter(super::AUTH_METER);
+
+        super::record_auth_sign_in_with_meter(
+            &meter,
+            AuthProvider::Microsoft,
+            super::auth_outcome::REFUSED,
+        );
+        provider.force_flush().expect("metric flush");
+
+        let metrics = exporter
+            .get_finished_metrics()
+            .expect("metric export succeeds");
+        let metric = metrics
+            .iter()
+            .flat_map(opentelemetry_sdk::metrics::data::ResourceMetrics::scope_metrics)
+            .flat_map(opentelemetry_sdk::metrics::data::ScopeMetrics::metrics)
+            .find(|metric| metric.name() == AUTH_SIGN_IN)
+            .expect("auth metric is registered");
+        let AggregatedMetrics::U64(sum) = metric.data() else {
+            panic!("auth metric is not a sum");
+        };
+        let rendered = format!("{sum:?}");
+        assert!(rendered.contains("value: 1"), "counter value: {rendered}");
+        assert!(
+            rendered.contains("provider")
+                && rendered.contains("microsoft")
+                && rendered.contains("outcome")
+                && rendered.contains("refused"),
             "counter attributes: {rendered}"
         );
         provider.shutdown().expect("metric provider shuts down");

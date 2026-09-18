@@ -127,6 +127,16 @@ impl ProviderId {
         }
     }
 
+    /// The bounded provider value written to sign-in telemetry.
+    #[must_use]
+    const fn telemetry_provider(self) -> telemetry::AuthProvider {
+        match self {
+            Self::Primary => telemetry::AuthProvider::Google,
+            Self::Microsoft => telemetry::AuthProvider::Microsoft,
+            Self::Apple => telemetry::AuthProvider::Apple,
+        }
+    }
+
     /// Parse a slug back. `None` for anything unrecognised, which the route
     /// turns into a 404 rather than silently falling back to a provider the
     /// caller did not ask for.
@@ -2081,7 +2091,22 @@ async fn complete_callback(s: AuthState, cookies: Cookies, q: CallbackQuery) -> 
     };
     let claims = match verify_id_token(cfg, token, &pre.nonce).await {
         Ok(claims) => claims,
-        Err(e) => return render(e),
+        Err(e) => {
+            let provider = pre.provider.telemetry_provider();
+            let brand = views::brand::brand_key().as_str();
+            telemetry::record_auth_event(telemetry::AuthEvent::SignInRefused {
+                provider,
+                brand,
+                reason: telemetry::AuthSignInReason::TokenInvalid,
+            });
+            tracing::warn!(
+                provider = provider.as_str(),
+                brand,
+                reason = telemetry::AuthSignInReason::TokenInvalid.as_str(),
+                "auth: sign-in refused",
+            );
+            return render(e);
+        }
     };
     complete_sign_in(&s, &cookies, Some(pre.provider), claims, &pre.return_to).await
 }
@@ -2304,6 +2329,7 @@ async fn complete_sign_in(
     mut claims: IdTokenClaims,
     return_to: &str,
 ) -> Response {
+    let auth_provider = provider.map(ProviderId::telemetry_provider);
     // Normalise the address a `persons` row will be matched on, per provider.
     // Doing it here — once, before any lookup — means every downstream step
     // (the resolve, the email-confirm gate, the welcome workflow, the session
@@ -2331,17 +2357,28 @@ async fn complete_sign_in(
     .await
     {
         Ok(t) => t,
-        Err(ResolveError::NotPreSeeded | ResolveError::NotAdmitted) => {
+        Err(error @ (ResolveError::NotPreSeeded | ResolveError::NotAdmitted)) => {
+            let reason = refusal_reason(&claims, matches!(error, ResolveError::NotAdmitted));
             // No session is minted when there is no admitted person row to
-            // log in. `sub` is the IdP's opaque subject, which correlates the
-            // attempt without carrying an address; the email itself stays
-            // out, because a sign-in refusal is exactly the line where an
-            // unprovisioned or withdrawn person's address would otherwise be
-            // recorded.
-            tracing::info!(
-                sub = %claims.sub,
-                "auth: no admitted persons row for the supplied identity; returning 403",
-            );
+            // log in. The event and log carry only the provider, brand, and
+            // bounded reason, so an unprovisioned or withdrawn identity does
+            // not cross the telemetry boundary.
+            if let Some(provider) = auth_provider {
+                let brand = views::brand::brand_key().as_str();
+                telemetry::record_auth_event(telemetry::AuthEvent::SignInRefused {
+                    provider,
+                    brand,
+                    reason,
+                });
+                tracing::info!(
+                    provider = provider.as_str(),
+                    brand,
+                    reason = reason.as_str(),
+                    "auth: sign-in refused",
+                );
+            } else {
+                tracing::info!("auth: sign-in refused");
+            }
             // Still a 403, but its own page: sign-up here is operator-mediated,
             // so this visitor is not misconfigured — they have not engaged the
             // firm yet, and the generic "not authorized" wording reads as a
@@ -2374,6 +2411,8 @@ async fn complete_sign_in(
         let email = claims.email.clone().unwrap_or_default();
         return crate::email_confirm::gate_unverified(s, cookies, person_id, &name, &email).await;
     }
+
+    let first_link = first_link_for_auth_event(fresh.as_ref());
 
     // Falling through the gate above means the address is verified (or
     // there is no admin config to gate against), so materialize that onto
@@ -2424,6 +2463,15 @@ async fn complete_sign_in(
         s.sessions.encode(&session),
         s.secure_cookies,
     ));
+    if let Some(provider) = auth_provider {
+        let person_id = person_id.to_string();
+        telemetry::record_auth_event(telemetry::AuthEvent::SignedIn {
+            person_id: &person_id,
+            provider,
+            brand: views::brand::brand_key().as_str(),
+            first_link,
+        });
+    }
     Redirect::to(&landing).into_response()
 }
 
@@ -2546,6 +2594,24 @@ fn self_signup_enabled(value: Option<&str>) -> bool {
 pub struct NewSignup {
     pub email: String,
     pub name: String,
+}
+
+/// The current resolver exposes `NewSignup` as the only caller-visible proof
+/// that the provider subject was persisted during this sign-in. Keep this
+/// seam separate so the linkage path can provide an explicit first-link bit
+/// without moving telemetry into the store write.
+fn first_link_for_auth_event(fresh: Option<&NewSignup>) -> bool {
+    fresh.is_some()
+}
+
+fn refusal_reason(claims: &IdTokenClaims, not_admitted: bool) -> telemetry::AuthSignInReason {
+    if not_admitted {
+        telemetry::AuthSignInReason::NotAdmitted
+    } else if claims.email.is_some() {
+        telemetry::AuthSignInReason::EmailUnmatched
+    } else {
+        telemetry::AuthSignInReason::NoSubjectMatchNoEmail
+    }
 }
 
 /// Resolve the `persons` row that corresponds to the IdP claims.

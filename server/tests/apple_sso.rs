@@ -14,15 +14,73 @@ use p256::elliptic_curve::Generate;
 use p256::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use portal::{AppState, OAuthConfig, SessionStore};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
 use store::persons::Role;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
+use tracing_subscriber::fmt::MakeWriter;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const APPLE_CLIENT_ID: &str = "test-services-id";
 const APPLE_TEAM_ID: &str = "test-team-id";
 const APPLE_KEY_ID: &str = "test-key-id";
+
+#[derive(Clone)]
+struct TraceBuffer(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for TraceBuffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("trace capture lock")
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> MakeWriter<'a> for TraceBuffer {
+    type Writer = TraceBuffer;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+fn signed_in_fields(output: &Arc<Mutex<Vec<u8>>>) -> serde_json::Map<String, Value> {
+    let rendered = String::from_utf8(output.lock().expect("trace capture lock").clone())
+        .expect("trace capture is UTF-8");
+    rendered
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find_map(|line| {
+            let fields = line.get("fields")?.as_object()?;
+            (fields.get("event")?.as_str()? == "auth.signed_in").then(|| fields.clone())
+        })
+        .expect("successful callback emits auth.signed_in")
+}
+
+async fn traced_response(
+    app: axum::Router,
+    request: Request<Body>,
+) -> (axum::http::Response<Body>, Arc<Mutex<Vec<u8>>>) {
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .without_time()
+        .with_ansi(false)
+        .with_writer(TraceBuffer(output.clone()))
+        .finish();
+    let guard = tracing::subscriber::set_default(subscriber);
+    let response = app.oneshot(request).await.unwrap();
+    drop(guard);
+    (response, output)
+}
 
 #[derive(Debug, Deserialize)]
 struct AppleClientSecretClaims {
@@ -252,7 +310,7 @@ async fn apple_login_redirect_carries_client_id_and_pkce() {
 /// cross-site request. A GET-only callback returns 405 here and a `SameSite=Lax`
 /// cookie is never sent at all, which is why the sibling test above cannot
 /// stand in for this one.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn apple_completes_a_sign_in_through_the_form_post_callback() {
     let mock = MockServer::start().await;
     let fixture = AppleFixture::generated();
@@ -282,25 +340,31 @@ async fn apple_completes_a_sign_in_through_the_form_post_callback() {
         .append_pair("state", &state)
         .append_pair("user", r#"{"name":{"firstName":"Test"}}"#)
         .finish();
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/auth/callback")
-                .header("cookie", &cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let (response, output) = traced_response(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri("/auth/callback")
+            .header("cookie", &cookie)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from(body))
+            .unwrap(),
+    )
+    .await;
 
     assert_eq!(
         response.status(),
         StatusCode::SEE_OTHER,
         "the form_post callback must complete the sign-in"
     );
+    let fields = signed_in_fields(&output);
+    assert_eq!(
+        fields.get("provider").and_then(|v| v.as_str()),
+        Some("apple")
+    );
+    assert_eq!(fields.get("brand").and_then(|v| v.as_str()), Some("neon"));
+    assert!(fields.get("person_id").is_some_and(Value::is_string));
+    assert!(fields.get("first_link").is_some_and(Value::is_boolean));
     let session_cookie = response
         .headers()
         .get_all("set-cookie")

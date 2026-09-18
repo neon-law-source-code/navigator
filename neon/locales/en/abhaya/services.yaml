@@ -1,0 +1,129 @@
+head_title: "Immigration services — {site_name}"
+meta_description: >-
+  Immigration work from Abhaya Immigration, a practice of Shook Law PLLC.
+  Family petitions, employment visas, green cards, naturalization, and
+  consular processing. This is an attorney advertisement.
+title: Immigration services
+hero_mark: gavel
+tagline: Flat fees, quoted first
+hero_lines:
+  - text: Help with your case
+    accent_words: 2
+  - text: from a licensed attorney
+    accent_words: 0
+hero_lead: >-
+  We tell you our fee before we start. USCIS fees are set by the government
+  and are separate. Shook Law PLLC is the law firm you would retain.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: cards
+    anchor: work
+    overline: The work
+    heading: What we handle
+    description: ""
+    items:
+      - title: Family petitions
+        body:
+          - - text: >-
+                Filing for a husband, wife, parent, child, or sibling. Who
+                you can file for, and how long it takes, depends on your
+                status and their relationship to you.
+      - title: Employment visas
+        body:
+          - - text: >-
+                Work visas, including cases where an employer files for you.
+                We will tell you what the employer has to do.
+      - title: Green cards
+        body:
+          - - text: >-
+                Applying for permanent residence, whether you are inside the
+                United States or applying from abroad.
+      - title: Naturalization
+        body:
+          - - text: >-
+                Becoming a citizen. We check whether you are eligible before
+                you file, because filing when you are not can cause harm.
+      - title: Consular processing
+        body:
+          - - text: >-
+                Cases finished at a United States consulate abroad, including
+                preparing for the interview.
+  - kind: cards
+    anchor: fees
+    overline: Fees
+    heading: What it costs
+    description: >-
+      Our fee is flat and agreed in writing before work begins. USCIS filing
+      fees are set by the government, are separate from our fee, and are paid
+      to the government rather than to us.
+    items:
+      - title: Our fee
+        body:
+          - - text: >-
+                One flat amount for the case we agree to handle. We tell you
+                the amount first. If the case changes, we tell you before we
+                do more work.
+      - title: Government fees
+        body:
+          - - text: >-
+                USCIS sets its own filing fees and can change them. We will
+                tell you the current amount. These are not our fees and we do
+                not keep them.
+      - title: What we do not promise
+        body:
+          - - text: >-
+                We do not promise that a case will be approved. We do not
+                promise how long USCIS will take. USCIS decides both.
+  - kind: cards
+    anchor: privacy
+    overline: Privacy
+    heading: What we store, and what we do not
+    description: >-
+      Your immigration information is sensitive. Here is what happens to it.
+    items:
+      - title: This website
+        body:
+          - - text: >-
+                This site loads no third-party analytics and no third-party
+                fonts. Nothing on this page reports your visit to another
+                company. The fonts are served from our own site.
+      - title: What we keep
+        body:
+          - - text: >-
+                If you write to us, we keep your message and the documents
+                you send, because a law firm has to keep a file. We keep them
+                in the firm's own systems.
+      - title: What we do not do
+        body:
+          - - text: >-
+                We do not sell your information. We do not share your file
+                with anyone outside the firm except as the law requires or
+                your case needs, and we will tell you when that happens.
+  - kind: cards
+    anchor: about
+    overline: About
+    heading: Why Abhaya
+    description: ""
+    items:
+      - title: The name
+        body:
+          - - text: >-
+                Abhaya means "without fear" in Sanskrit. The abhaya mudra is
+                a gesture of protection and reassurance. The name is for what
+                the work should feel like.
+      - title: The firm
+        body:
+          - - text: >-
+                Abhaya Immigration is a trade name of Shook Law PLLC, a
+                Nevada professional limited liability company. Shook Law PLLC
+                is the firm you would retain.
+  - kind: cta
+    heading: Tell us about your case
+    body: >-
+      Write to us. Say who you are, who you are filing for, and where they
+      are now. We will tell you whether we can help and what it costs.
+    email: "{firm_email}"
+    email_subject: Immigration case

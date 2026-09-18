@@ -1,0 +1,108 @@
+head_title: "Injury claims — {site_name}"
+meta_description: >-
+  Injury claims from Misericordia Injury Law, a practice of Shook Law PLLC.
+  Car, truck, motorcycle, pedestrian, premises, and wrongful death. Free
+  consultation, contingency fee. This is an attorney advertisement.
+title: Injury claims
+hero_mark: scales
+tagline: Free consultation
+hero_lines:
+  - text: Call +1 510 800 2080
+    accent_words: 1
+  - text: The first conversation is free
+    accent_words: 0
+hero_lead: >-
+  We handle injury claims. There is no fee to speak with us, and no fee
+  unless we recover something for you. Shook Law PLLC is the law firm you
+  would retain.
+hero_cta:
+  href: "tel:+15108002080"
+  label: Call now
+skin: practice
+bands:
+  - kind: cards
+    anchor: cases
+    overline: Case types
+    heading: What we handle
+    description: ""
+    items:
+      - title: Car and truck collisions
+        body:
+          - - text: >-
+                Claims after a collision, including ones where the other
+                driver's insurer has already called you.
+      - title: Motorcycle and pedestrian
+        body:
+          - - text: >-
+                Claims where the injuries are usually worse and the fault
+                argument is usually harder.
+      - title: Premises
+        body:
+          - - text: >-
+                Injuries on someone else's property, where the question is
+                what the owner knew and what they did about it.
+      - title: Wrongful death
+        body:
+          - - text: >-
+                Claims brought by a family after someone has died. Who may
+                bring one, and within what time, is set by statute.
+  - kind: cards
+    anchor: fees
+    overline: Fees
+    heading: How we are paid
+    description: >-
+      We are paid a percentage of what we recover for you, agreed in writing
+      before we start. If we recover nothing, you owe us no attorney's fee.
+    items:
+      - title: The fee
+        body:
+          - - text: >-
+                A percentage of what we recover. The percentage is written
+                into the agreement you sign, and we explain it before you
+                sign it. It can differ depending on how far the case goes.
+      - title: Case costs are separate
+        body:
+          - - text: >-
+                Costs are not the same as the fee. Filing fees, records,
+                experts, and depositions are spent as the case runs. We will
+                tell you who advances them and what happens to them at the
+                end.
+      - title: If we lose
+        body:
+          - - text: >-
+                You owe no attorney's fee. Your agreement will say plainly
+                whether you owe case costs, and we will go through that with
+                you before you sign rather than after.
+  - kind: cards
+    anchor: about
+    overline: About
+    heading: Why Misericordia
+    description: ""
+    items:
+      - title: The name
+        body:
+          - - text: >-
+                Misericordia means mercy. The Archconfraternity of the
+                Misericordia was founded in Florence in 1244 to carry the
+                sick and the injured through the streets — the ancestor of
+                ambulance service. The name is for what the work is about,
+                and that is all it is.
+      - title: The firm
+        body:
+          - - text: >-
+                Misericordia Injury Law is a trade name of Shook Law PLLC, a
+                Nevada professional limited liability company. Shook Law PLLC
+                is the firm you would retain.
+      - title: What we do not promise
+        body:
+          - - text: >-
+                We do not promise a result. No lawyer can. What a claim is
+                worth depends on the injuries, the evidence, the insurance,
+                and the law that applies.
+  - kind: cta
+    heading: Talk to a lawyer
+    body: >-
+      Call +1 510 800 2080, or write to us and say what happened and when.
+      The first conversation is free.
+    email: "{firm_email}"
+    email_subject: Injury claim

@@ -1,0 +1,110 @@
+head_title: "Collection defense — {site_name}"
+meta_description: >-
+  Collection defense from DeleteYourDebt.com, a practice of Shook Law PLLC.
+  Collection-lawsuit defense, FDCPA claims, validation demands, and
+  credit-report disputes. This is an attorney advertisement.
+title: Collection defense
+hero_mark: scales
+tagline: We defend, we do not settle
+hero_lines:
+  - text: We defend you
+    accent_words: 2
+  - text: against debt collectors
+    accent_words: 0
+hero_lead: >-
+  Collection-lawsuit defense, FDCPA claims, validation demands, and
+  credit-report disputes. We do not settle debts or negotiate balances.
+  Shook Law PLLC is the law firm you would retain.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: cards
+    anchor: work
+    overline: The work
+    heading: What we do
+    description: ""
+    items:
+      - title: Collection-lawsuit defense
+        body:
+          - - text: >-
+                A collector has sued you. We file a response before the
+                deadline and defend the case, including making the collector
+                prove it owns the debt and that the amount is right.
+      - title: Validation demands
+        body:
+          - - text: >-
+                Before a lawsuit, we can require a collector to validate the
+                debt in writing. Collectors that cannot document what they
+                bought often stop.
+      - title: FDCPA claims
+        body:
+          - - text: >-
+                The Fair Debt Collection Practices Act limits what a
+                collector may do. Where a collector has broken those rules,
+                the statute gives you a claim against it.
+      - title: Credit-report disputes
+        body:
+          - - text: >-
+                Disputing what a collector or furnisher reported about you,
+                and pursuing it when the report is not corrected.
+  - kind: cards
+    anchor: not
+    overline: Scope
+    heading: What this is not
+    description: >-
+      Said plainly, because the difference decides whether we are the right
+      firm for you.
+    items:
+      - title: Not debt settlement
+        body:
+          - - text: >-
+                We do not negotiate your balance down, enroll you in a
+                payment plan, or take a fee to reduce what you owe. That is a
+                different service under different rules, and we do not offer
+                it.
+      - title: Not credit repair
+        body:
+          - - text: >-
+                We dispute what is inaccurate. We do not promise to remove
+                accurate information from your report, and a firm that
+                promises that is describing something else.
+      - title: Not a promise
+        body:
+          - - text: >-
+                The name says what the practice is for. It is not a
+                guarantee about any case. Every result depends on the facts,
+                the documents, and the law.
+  - kind: cards
+    anchor: fees
+    overline: Fees
+    heading: What it costs
+    description: >-
+      Our fee is agreed in writing before work begins. Court filing fees are
+      set by the court and are separate from our fee.
+    items:
+      - title: Our fee
+        body:
+          - - text: >-
+                A flat fee for the matter we agree to handle, quoted before
+                any work begins. If the matter changes, we tell you before we
+                do more work.
+      - title: Court costs
+        body:
+          - - text: >-
+                Filing and service fees are set by the court, are separate
+                from our fee, and are paid to the court rather than to us.
+      - title: FDCPA fee-shifting
+        body:
+          - - text: >-
+                The FDCPA allows a court to order a collector that broke the
+                rules to pay attorney's fees. Whether that happens is the
+                court's decision, not ours, and we will not promise it.
+  - kind: cta
+    heading: Have you been served?
+    body: >-
+      Write to us with the date you were served and the name of the company
+      suing you. Deadlines to respond are short.
+    email: "{firm_email}"
+    email_subject: Collection defense

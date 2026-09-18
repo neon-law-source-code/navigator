@@ -182,6 +182,59 @@ Issuance is asynchronous (Let's Encrypt validates through the DNSimple-delegated
 `--redirect-apex-to-www` flag writes the `URL` record and prints this same certificate reminder — it does not issue the
 certificate for you.
 
+### Reconciling a family of domains in one run
+
+`--domain` is repeatable, so a set of sibling domains that share a record shape is one reviewable run rather than four
+near-identical ones:
+
+```bash
+navigator ops dns setup \
+  --domain first-domain.example --domain second-domain.example \
+  --gateway-ip "$NAVIGATOR_GATEWAY_IP" --host www --host staging \
+  --redirect-apex-to-www --dry-run
+```
+
+Each zone is reconciled independently, in the order given, under one heading so a `(root)` line can be traced to the
+apex it belongs to. They are separate zones rather than one transaction: a failure on the third names that zone and
+leaves the first two applied, so the fix is to correct that zone and re-run — which is safe, because the command is
+idempotent. A domain repeated on one command line is rejected rather than applied twice, since reconciling a zone twice
+in one run would double every create.
+
+The apex `URL` record always targets **its own** `www`, derived per zone. That is the copy-paste failure this form
+exists to remove: four hand-edited invocations differing only in the domain are exactly where one brand's apex ends up
+redirecting to another brand's site.
+
+### The apex redirect is not done when the `URL` record lands
+
+A `URL` record with no certificate behind it is the failure this trips over most, because it **passes a casual check**.
+The redirector answers port 80 immediately, so `curl -I http://<zone>` returns the 301 you were looking for and the
+record looks finished. Browsers and pasted links default to HTTPS, where the same host fails the TLS handshake outright
+— so the first person to find it is a visitor, not the operator.
+
+Two things must both be true before the apex is actually reachable, and neither implies the other:
+
+1. The account is on **Teams or higher**. HTTPS redirects are a Teams-tier feature; below it the redirector serves port
+   80 only, and no certificate changes that.
+2. A **certificate exists for that domain**. Teams does not issue one for a `URL` record, and `--redirect-apex-to-www`
+   does not either — it only prints the reminder.
+
+Check the tier once per account and the certificate once per domain, since a single account holding several domains will
+have certificates for some and not others:
+
+```bash
+curl -s -H "Authorization: Bearer $DNS_SIMPLE" -H "Accept: application/json" \
+  https://api.dnsimple.com/v2/accounts                                  # → plan_identifier
+curl -s -H "Authorization: Bearer $DNS_SIMPLE" -H "Accept: application/json" \
+  "https://api.dnsimple.com/v2/$DNS_ACCT/domains/$DNS_ZONE/certificates"  # → [] means HTTP only
+```
+
+Verify **both** schemes, never just one — checking only `http://` is what lets the broken state ship:
+
+```bash
+curl -sI "http://$DNS_ZONE"  | head -1   # → 301
+curl -sI "https://$DNS_ZONE" | head -1   # → 301, not a TLS error
+```
+
 **Migrating an existing domain** whose apex still points at another redirect (e.g. a set of apex `A`/`AAAA` forwarding
 records) requires deleting those apex records first. `ops dns setup` is additive and never deletes, and a `URL` record
 cannot coexist with address records on the same name, so the command **refuses to run** — `conflicting records at the

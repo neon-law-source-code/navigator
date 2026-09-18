@@ -10,12 +10,6 @@ use webapp::marketing_page::PageContent;
 
 use crate::locales;
 
-/// `/personal` — the firm's consumer legal plan. See
-/// `locales/en/neon/personal-plan.yaml`.
-pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
-    locales::personal_plan(branding)
-}
-
 /// `/navigator` — the platform the firms the firm serves work on. See
 /// `locales/en/neon/navigator.yaml`.
 pub fn navigator(branding: &views::brand::Branding) -> PageContent {
@@ -506,13 +500,10 @@ mod firm_copy_tests {
             .expect("the family plan is a Notation package");
         assert_eq!(family_plan.fee, "$5,000");
         assert_eq!(family_plan.period, "per package");
-        assert_eq!(
-            family_plan.plan_price,
-            Some(webapp::services_search::PlanPrice {
-                amount: "$2,000".to_string(),
-                plan: "Personal plan".to_string(),
-            })
-        );
+        // No plan price: it quoted against the retired consumer plan, so the
+        // package now publishes its a la carte fee alone rather than a
+        // discount nobody can obtain.
+        assert_eq!(family_plan.plan_price, None);
         let setup = schedule
             .services
             .iter()

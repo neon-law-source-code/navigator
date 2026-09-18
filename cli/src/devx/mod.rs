@@ -414,14 +414,22 @@ pub enum DnsCmd {
     /// `DNS_SIMPLE` (`DNSIMPLE_API_TOKEN` is a legacy alias). The per-domain `SendGrid` / Google secrets are
     /// flags — never invented. Full recipe: `docs/dns.md`.
     Setup {
-        /// Domain to configure; defaults to `DNS_ZONE`.
-        #[arg(long, env = "DNS_ZONE")]
-        domain: Option<String>,
+        /// Domain to configure (repeatable); defaults to `DNS_ZONE`.
+        ///
+        /// Repeat it to reconcile a whole family of domains from one
+        /// reviewable run. Each zone is reconciled independently and in the
+        /// order given, so a failure on the third names that zone and leaves
+        /// the first two applied rather than rolling anything back — these
+        /// are separate zones, not one transaction.
+        #[arg(long = "domain")]
+        domains: Vec<String>,
         /// Selected host `A` records → this gateway IP. Falls back to
         /// `NAVIGATOR_GATEWAY_IP` from the deployment config.
         #[arg(long, env = "NAVIGATOR_GATEWAY_IP")]
         gateway_ip: Option<String>,
-        /// Extra `A` host label → gateway IP (repeatable; default `www`, `workflows`).
+        /// Extra `A` host label → gateway IP (repeatable; default `www`,
+        /// `workflows`). Use `@` for the apex — an empty `--host ""` does not
+        /// survive the command line.
         #[arg(long = "host")]
         hosts: Vec<String>,
         /// Apex `URL` record → `https://www.<domain>` (301 apex → www, via `DNSimple`'s redirector).
@@ -987,7 +995,7 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             dry_run,
         ),
         crate::Command::Ops(crate::OpsCmd::Dns(DnsCmd::Setup {
-            domain,
+            domains,
             gateway_ip,
             hosts,
             redirect_apex_to_www,
@@ -1001,7 +1009,7 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             dmarc_rua,
             dry_run,
         })) => dns_setup(
-            domain,
+            domains,
             &dns::DnsSetupConfig {
                 gateway_ip,
                 hosts,
@@ -1037,20 +1045,10 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
 /// `DNSimple`. Zone from `--domain` / `DNS_ZONE`; auth from the provider's
 /// `DNS_ACCT` + `DNS_SIMPLE` (or legacy `DNSIMPLE_API_TOKEN`). Builds a private Tokio runtime
 /// because the DNS provider is async.
-fn dns_setup(domain: Option<String>, config: &dns::DnsSetupConfig, dry_run: bool) -> Result<()> {
+fn dns_setup(domains: Vec<String>, config: &dns::DnsSetupConfig, dry_run: bool) -> Result<()> {
     tracing_subscriber::fmt::try_init().ok();
-    let zone = domain
-        .filter(|z| !z.trim().is_empty())
-        .context("no domain: pass --domain or set DNS_ZONE")?;
+    let zones = dns_zones(domains)?;
     config.validate().map_err(|msg| anyhow::anyhow!(msg))?;
-    let desired = dns::desired_records(&zone, config);
-    if desired.is_empty() {
-        eprintln!(
-            "no record groups selected — pass flags such as --gateway-ip / --redirect-apex-to-www / \
-             --google-workspace / --sendgrid (see `ops dns setup --help`)"
-        );
-        return Ok(());
-    }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1060,24 +1058,45 @@ fn dns_setup(domain: Option<String>, config: &dns::DnsSetupConfig, dry_run: bool
         if dry_run {
             provider = provider.with_dry_run();
         }
-        let report = dns::run_setup(&provider, &zone, &desired).await?;
-        for entry in &report {
-            eprintln!(
-                "==> {:5} {:20} {} : {:?}",
-                entry.record_type.as_str(),
-                if entry.name.is_empty() {
-                    "(root)"
-                } else {
-                    entry.name.as_str()
-                },
-                entry.content,
-                entry.outcome,
-            );
+        for zone in &zones {
+            let desired = dns::desired_records(zone, config);
+            if desired.is_empty() {
+                eprintln!(
+                    "no record groups selected — pass flags such as --gateway-ip / \
+                     --redirect-apex-to-www / --google-workspace / --sendgrid (see \
+                     `ops dns setup --help`)"
+                );
+                return Ok(());
+            }
+            // Name the zone on every run, not only the multi-zone one: a
+            // reviewer reading the output of a four-domain run has to be able
+            // to tell which apex a `(root)` line belongs to.
+            eprintln!("\n=== {zone} ===");
+            let report = dns::run_setup(&provider, zone, &desired)
+                .await
+                .with_context(|| format!("reconcile {zone}"))?;
+            for entry in &report {
+                eprintln!(
+                    "==> {:5} {:20} {} : {:?}",
+                    entry.record_type.as_str(),
+                    if entry.name.is_empty() {
+                        "(root)"
+                    } else {
+                        entry.name.as_str()
+                    },
+                    entry.content,
+                    entry.outcome,
+                );
+            }
+            if config.redirect_apex_to_www {
+                eprintln!("\nApex redirect certificate guidance is available.");
+            }
         }
         if dry_run {
             eprintln!(
-                "--- dry run: {} call(s) would be made ---",
-                provider.recorded_calls().len()
+                "\n--- dry run: {} call(s) would be made across {} zone(s) ---",
+                provider.recorded_calls().len(),
+                zones.len(),
             );
             for call in provider.recorded_calls() {
                 eprintln!("{} {}", call.method, call.url);
@@ -1086,19 +1105,42 @@ fn dns_setup(domain: Option<String>, config: &dns::DnsSetupConfig, dry_run: bool
                 }
             }
         }
-        if config.redirect_apex_to_www {
-            eprintln!("\n{}", apex_redirect_certificate_notice(&zone));
-        }
         Ok::<(), anyhow::Error>(())
     })
 }
 
-fn apex_redirect_certificate_notice(zone: &str) -> String {
-    format!(
-        "note: the apex→www redirect serves HTTPS only once a certificate covers the \
-         apex. DNSimple does not auto-issue one for a URL record — issue an auto-renewing \
-         Let's Encrypt certificate for {zone} (see docs/dns.md)."
-    )
+/// The zones one `ops dns setup` run reconciles, in the order given.
+///
+/// `--domain` repeated wins; otherwise `DNS_ZONE` supplies the single zone,
+/// which keeps the one-domain invocation and its env-var form working
+/// unchanged. Blank entries are dropped rather than sent to the provider as
+/// an empty zone, and a duplicate is rejected instead of being reconciled
+/// twice — a repeated `--domain` in a four-domain command line is a typo, and
+/// silently applying that zone twice would double every create.
+fn dns_zones(domains: Vec<String>) -> Result<Vec<String>> {
+    let mut zones: Vec<String> = domains
+        .into_iter()
+        .map(|zone| zone.trim().to_string())
+        .filter(|zone| !zone.is_empty())
+        .collect();
+    if zones.is_empty() {
+        let from_env = std::env::var("DNS_ZONE").unwrap_or_default();
+        let from_env = from_env.trim();
+        if !from_env.is_empty() {
+            zones.push(from_env.to_string());
+        }
+    }
+    anyhow::ensure!(
+        !zones.is_empty(),
+        "no domain: pass --domain (repeatable) or set DNS_ZONE"
+    );
+    for (index, zone) in zones.iter().enumerate() {
+        anyhow::ensure!(
+            !zones[..index].contains(zone),
+            "--domain {zone} given more than once"
+        );
+    }
+    Ok(zones)
 }
 
 /// `devx gcp iap audience`: print the IAP audience string for
@@ -2291,15 +2333,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn apex_redirect_certificate_notice_names_zone_and_certificate_step() {
-        let notice = apex_redirect_certificate_notice("neonlaw.com");
-        assert!(notice.contains("neonlaw.com"));
-        assert!(notice.contains("URL record"));
-        assert!(notice.contains("auto-renewing Let's Encrypt certificate"));
-        assert!(notice.contains("docs/dns.md"));
-    }
-
     // The deploy workflow's "stub public assets" step generates
     // the placeholder `/public/img/...` and `/public/fonts/...` bytes the KIND
     // `assets verify` gate requires and removes the matching `.dockerignore`
@@ -3193,5 +3226,118 @@ mod tests {
             rendered.lines().count(),
             COMMITTED_KIND_CONFIG.lines().count()
         );
+    }
+
+    // --- ENG-743: one reviewable run over a family of zones ---------------
+
+    /// Repeated `--domain` reconciles each zone, in the order given. Order is
+    /// asserted because the run's output is the artifact a reviewer reads.
+    #[test]
+    fn repeated_domain_flags_reconcile_every_zone_in_order() {
+        let zones = dns_zones(vec![
+            "vestaestateplanning.com".to_string(),
+            "misericordialaw.com".to_string(),
+            "abhayaimmigration.com".to_string(),
+            "deleteyourdebt.com".to_string(),
+        ])
+        .expect("four distinct zones");
+        assert_eq!(
+            zones,
+            [
+                "vestaestateplanning.com",
+                "misericordialaw.com",
+                "abhayaimmigration.com",
+                "deleteyourdebt.com",
+            ]
+        );
+    }
+
+    /// A zone repeated on one command line is a typo, not an instruction to
+    /// reconcile it twice. Left alone it would double every create in the
+    /// run, which at an apex is exactly the duplicate this command exists to
+    /// avoid.
+    #[test]
+    fn a_repeated_zone_is_rejected_rather_than_reconciled_twice() {
+        let err = dns_zones(vec![
+            "vestaestateplanning.com".to_string(),
+            "misericordialaw.com".to_string(),
+            "vestaestateplanning.com".to_string(),
+        ])
+        .expect_err("a duplicate zone is an error");
+        assert!(
+            err.to_string().contains("vestaestateplanning.com"),
+            "the error names the offending zone: {err}"
+        );
+    }
+
+    /// Blank entries never reach the provider as an empty zone.
+    #[test]
+    fn blank_domains_are_dropped() {
+        let zones = dns_zones(vec![
+            "  ".to_string(),
+            " deleteyourdebt.com ".to_string(),
+            String::new(),
+        ])
+        .expect("one real zone");
+        assert_eq!(zones, ["deleteyourdebt.com"]);
+    }
+
+    /// No `--domain` and no `DNS_ZONE` fails with a message naming both ways
+    /// in, rather than reconciling an empty zone.
+    #[test]
+    fn no_domain_anywhere_is_an_error_naming_both_inputs() {
+        // `DNS_ZONE` is read inside, so only assert the message when the
+        // ambient environment does not supply one — an operator shell often
+        // does, and this test must not depend on that.
+        if std::env::var("DNS_ZONE").is_ok_and(|zone| !zone.trim().is_empty()) {
+            return;
+        }
+        let err = dns_zones(Vec::new()).expect_err("no zone anywhere");
+        let message = err.to_string();
+        assert!(message.contains("--domain"), "{message}");
+        assert!(message.contains("DNS_ZONE"), "{message}");
+    }
+
+    /// Every brand apex asks for the same three records, and the apex `URL`
+    /// record points at that zone's own `www` rather than a shared host.
+    ///
+    /// The copy-paste failure this guards is real: four near-identical
+    /// invocations differing only in the domain are exactly where one apex
+    /// ends up redirecting to another brand's site.
+    #[test]
+    fn each_brand_apex_redirects_to_its_own_www() {
+        let config = dns::DnsSetupConfig {
+            gateway_ip: Some("203.0.113.10".to_string()),
+            hosts: vec!["www".to_string(), "staging".to_string()],
+            redirect_apex_to_www: true,
+            ..dns::DnsSetupConfig::default()
+        };
+        for zone in [
+            "vestaestateplanning.com",
+            "misericordialaw.com",
+            "abhayaimmigration.com",
+            "deleteyourdebt.com",
+        ] {
+            let desired = dns::desired_records(zone, &config);
+
+            let apex = desired
+                .iter()
+                .find(|record| record.record_type == dns::RecordType::Url)
+                .expect("the apex URL record");
+            assert_eq!(apex.name, "", "the apex is the empty name, never `@`");
+            assert_eq!(apex.content, format!("https://www.{zone}"));
+            assert_eq!(apex.ttl, 300, "low TTL while iterating");
+
+            for host in ["www", "staging"] {
+                assert!(
+                    desired.iter().any(|record| {
+                        record.record_type == dns::RecordType::A
+                            && record.name == host
+                            && record.content == "203.0.113.10"
+                    }),
+                    "{zone} points {host} at the gateway: {desired:?}"
+                );
+            }
+        }
     }
 }

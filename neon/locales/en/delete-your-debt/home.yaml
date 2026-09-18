@@ -1,0 +1,54 @@
+head_title: "{site_name} | Home"
+meta_description: >-
+  DeleteYourDebt.com is a practice of Shook Law PLLC. We defend people
+  against debt collectors: collection lawsuits, FDCPA claims, validation
+  demands, and credit-report disputes. This is an attorney advertisement.
+heading: We defend you against debt collectors.
+lead: >-
+  DeleteYourDebt.com is a practice of Shook Law PLLC. We defend collection
+  lawsuits, make collectors prove the debt, stop unlawful collection
+  conduct, and fix credit-report errors. We do not settle debts and we do
+  not negotiate balances. Nothing here is legal advice without a signed
+  retainer for an active project.
+contact_label: Contact us
+service:
+  heading: What this practice does
+  body:
+    - - text: >-
+          This is collection defense. If a collector is calling you, or you
+          have been served with a lawsuit, we act for you against them. A
+          licensed attorney handles the work. Shook Law PLLC is the law firm
+          you would retain.
+    - - text: >-
+          The name is a brand, not a promise. We do not make debts disappear,
+          and nobody can. What we do is make the collector prove its case,
+          defend the lawsuit, hold it to the rules it has to follow, and
+          correct what it reported about you.
+    - - text: >-
+          If you have been served, there is a deadline to respond, and it is
+          short. Missing it can mean a judgment against you without a
+          hearing. Write to us with the date you were served.
+    - - text: >-
+          We are not a debt settlement or debt relief company. We do not
+          take a fee to negotiate your balance down or to enroll you in a
+          payment program.
+    - - text: "Write to "
+      - text: "{firm_email}"
+        href: "mailto:{firm_email}"
+      - text: >-
+          . Tell us who is contacting you, and whether you have been served
+          with anything.
+practices_heading: The work
+practices:
+  - mark: scales
+    heading: Collection lawsuit defense
+    body: >-
+      You have been sued by a collector. We respond and defend. This is an
+      attorney advertisement.
+    href: /services
+  - mark: gavel
+    heading: FDCPA and credit reports
+    body: >-
+      Claims against collectors that break the rules, and disputes over what
+      they reported about you.
+    href: /services

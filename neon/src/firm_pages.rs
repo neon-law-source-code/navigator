@@ -501,14 +501,29 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     ));
     // The platform page. It carries a commercial offer, so it sits with the
     // firm's own pages.
-    // The consumer legal plan. A marketing page like the platform page beside
-    // it: estate planning, tax filing, privacy protection, and credit
-    // monitoring (beta) on one flat annual or daily fee.
-    routers.push(dioxus_app::marketing_page_router(
-        dioxus_app::FIRM_PERSONAL_PLAN_PATH,
-        firm_copy::personal_plan(branding),
-        state.sessions.clone(),
-        portal::secure_cookies(state),
+    // The retired consumer plan. The firm speaks to emerging technology
+    // companies now, so the page is gone — but its URL was published, and a
+    // published URL outlives the page behind it. A permanent redirect keeps
+    // every inbound link and search result resolving instead of stranding it
+    // on a 404.
+    //
+    // 301 rather than axum's `Redirect::permanent`, which is a 308. Both are
+    // permanent, but 308 additionally promises the method is preserved —
+    // a guarantee about request semantics that a retired marketing page has
+    // no need to make, and that the older crawlers and link checkers reading
+    // this URL understand least well. 301 is what a moved marketing page has
+    // always answered.
+    routers.push(Router::new().route(
+        dioxus_app::FIRM_RETIRED_PERSONAL_PATH,
+        axum::routing::get(|| async {
+            (
+                StatusCode::MOVED_PERMANENTLY,
+                [(
+                    axum::http::header::LOCATION,
+                    dioxus_app::FIRM_RETIRED_PERSONAL_TARGET,
+                )],
+            )
+        }),
     ));
     routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_NAVIGATOR_PATH,
@@ -640,7 +655,12 @@ fn resolve_firm_contact_content(
              Attorney advertisement. Nothing here is legal advice without a signed retainer for \
              an active project."
         ),
-        BrandKey::LawyerShook => format!(
+        BrandKey::LawyerShook
+        | BrandKey::Vesta
+        | BrandKey::Misericordia
+        | BrandKey::Abhaya
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Summons => format!(
             "Reach {firm_name}, a practice of Shook Law PLLC, about legal services. \
              Attorney advertisement. Nothing here is legal advice without a signed retainer for \
              an active project."

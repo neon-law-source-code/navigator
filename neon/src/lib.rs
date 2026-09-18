@@ -40,6 +40,14 @@ pub use firm_pages::firm_public_dioxus_routers;
 pub const PUBLIC_PATHS: &[&str] = &[
     // --- The firm ---------------------------------------------------------
     "/",
+    // Answers a 301 to the data-removal practice, not a page. The consumer
+    // plan it served is retired; the path stays declared because it is still
+    // a route this site answers, and its published links must resolve.
+    //
+    // It is deliberately absent from `sitemap_paths`, which is a different
+    // question: this table is what the app answers, a sitemap is what we ask
+    // a crawler to index, and a redirect belongs in the first but not the
+    // second.
     "/personal",
     "/services",
     "/start/{service_id}",
@@ -94,7 +102,13 @@ pub const PUBLIC_PATHS: &[&str] = &[
 #[must_use]
 pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
     match key {
-        BrandKey::DeleteYourData => ["/", "/services", "/contact"]
+        // Every practice brand publishes the same three paths it answers.
+        BrandKey::DeleteYourData
+        | BrandKey::Vesta
+        | BrandKey::Misericordia
+        | BrandKey::Abhaya
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Summons => ["/", "/services", "/contact"]
             .iter()
             .map(|path| (*path).to_string())
             .collect(),
@@ -103,7 +117,6 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
         BrandKey::Neon => {
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
-                "/personal",
                 "/services",
                 "/disputes",
                 "/business",
@@ -137,6 +150,34 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
     }
 }
 
+/// The `llms.txt` index for a practice brand: the two pages it serves,
+/// described in its own compiled `Branding`.
+///
+/// Lifted out of [`llms_txt`] because every practice brand answers this the
+/// same way — the arm would otherwise repeat once per brand, and the five of
+/// them pushed that function past its length limit.
+fn practice_brand_llms_txt(key: BrandKey) -> portal::LlmsTxt {
+    let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+    let mark = branding.firm.site_name;
+    portal::LlmsTxt {
+        title: mark.to_string(),
+        summary: branding.mission_description.to_string(),
+        pages: vec![
+            portal::LlmsTxtLink {
+                title: mark.to_string(),
+                path: "/".to_string(),
+                description: branding.mission_description.to_string(),
+            },
+            portal::LlmsTxtLink {
+                title: "Services".to_string(),
+                path: "/services".to_string(),
+                description: branding.service_description.to_string(),
+            },
+        ],
+        sections: Vec::new(),
+    }
+}
+
 /// The site's `/llms.txt`: what a crawler has reached at `neonlaw.com`, and the
 /// pages it may read there.
 ///
@@ -152,6 +193,14 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
 #[must_use]
 pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
     match key {
+        // Each practice brand indexes the two pages it serves, from its own
+        // compiled `Branding` — the descriptions are the brand's own words,
+        // never another brand's.
+        key @ (BrandKey::Vesta
+        | BrandKey::Misericordia
+        | BrandKey::Abhaya
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Summons) => practice_brand_llms_txt(key),
         BrandKey::DeleteYourData => {
             let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
             let mark = branding.firm.site_name;
@@ -249,12 +298,6 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             "/",
             "The firm's practice — flat-fee consumer legal work, litigation on both sides of \
                  the v., and company counsel for emerging technology companies.",
-        ),
-        page(
-            "Personal Plan",
-            "/personal",
-            "The firm's consumer legal plan: tax filing, privacy protection, and credit \
-                 monitoring (beta), on one flat annual or daily fee.",
         ),
         page(
             "Legal Services and fees",

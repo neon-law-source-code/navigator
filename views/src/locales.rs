@@ -27,7 +27,6 @@ pub const KNOWN_PAGES: &[&str] = &[
     "home",
     "litigation",
     "navigator",
-    "personal-plan",
     "services",
 ];
 
@@ -419,7 +418,7 @@ pub enum BandCopy {
     },
 }
 
-/// A marketing page (`/navigator`, `/personal`, `/services`).
+/// A marketing page (`/navigator`, `/services`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MarketingPageCopy {
     pub head_title: String,
@@ -462,7 +461,7 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "home" => Some(LocalePageKind::Home),
         "litigation" => Some(LocalePageKind::Litigation),
         "fractional-gc" => Some(LocalePageKind::Transactional),
-        "navigator" | "personal-plan" | "services" => Some(LocalePageKind::Marketing),
+        "navigator" | "services" => Some(LocalePageKind::Marketing),
         shared::SHARED_CATALOG_STEM => Some(LocalePageKind::Shared),
         services::SERVICES_CATALOG_STEM => Some(LocalePageKind::ServicesCatalog),
         _ => None,
@@ -591,9 +590,9 @@ service:
 practices_heading: Our complementary practice
 practices:
   - mark: technology
-    heading: Personal Plan
-    body: We protect your personal legal matters.
-    href: /personal
+    heading: Individual services
+    body: We handle one-time matters at a published fee.
+    href: /services
 "#,
         )
         .expect("home catalog");

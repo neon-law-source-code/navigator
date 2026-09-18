@@ -17,22 +17,17 @@ bands:
   - kind: statement
     heading: "{shared:services.subscriptions_heading}"
     lead: >-
-      Choose a plan for ongoing help with your business or personal legal
-      needs. Individual services are also available when you need help with
-      one thing.
+      Choose a plan for ongoing help with your company. Individual services
+      are also available when you need help with one thing.
     body:
       - - text: "See the "
         - text: Business plan
           href: /business
-        - text: " or "
-        - text: Personal plan
-          href: /personal
         - text: >-
-            . Business-plan access is $50 a day, and Personal-plan access is
-            $5 a day. Each plan has its own minimum retainer. Notation
-            packages show an a la carte price and a lower plan price. Every
-            plan price shown is at least half off the a la carte price.
-            Government fees are separate.
+            . Business-plan access is $50 a day, with its own minimum
+            retainer. Notation packages show an a la carte price and a lower
+            plan price. Every plan price shown is at least half off the a la
+            carte price. Government fees are separate.
       - - text: >-
             Each Notation has an agreed scope and price before work begins.
             Plan access and its daily charge are separate from the package

@@ -30,13 +30,23 @@ const SHARED_CATALOG_YAML: &str = include_str!("../locales/en/shared.yaml");
 const NEON_HOME_YAML: &str = include_str!("../locales/en/neon/home.yaml");
 const NEON_LITIGATION_YAML: &str = include_str!("../locales/en/neon/litigation.yaml");
 const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractional-gc.yaml");
-const NEON_PERSONAL_PLAN_YAML: &str = include_str!("../locales/en/neon/personal-plan.yaml");
 const NEON_NAVIGATOR_YAML: &str = include_str!("../locales/en/neon/navigator.yaml");
 const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
 const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
+const VESTA_HOME_YAML: &str = include_str!("../locales/en/vesta/home.yaml");
+const VESTA_SERVICES_YAML: &str = include_str!("../locales/en/vesta/services.yaml");
+const MISERICORDIA_HOME_YAML: &str = include_str!("../locales/en/misericordia/home.yaml");
+const MISERICORDIA_SERVICES_YAML: &str = include_str!("../locales/en/misericordia/services.yaml");
+const ABHAYA_HOME_YAML: &str = include_str!("../locales/en/abhaya/home.yaml");
+const ABHAYA_SERVICES_YAML: &str = include_str!("../locales/en/abhaya/services.yaml");
+const DELETE_YOUR_DEBT_HOME_YAML: &str = include_str!("../locales/en/delete-your-debt/home.yaml");
+const DELETE_YOUR_DEBT_SERVICES_YAML: &str =
+    include_str!("../locales/en/delete-your-debt/services.yaml");
+const SUMMONS_HOME_YAML: &str = include_str!("../locales/en/summons/home.yaml");
+const SUMMONS_SERVICES_YAML: &str = include_str!("../locales/en/summons/services.yaml");
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
 const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shook/services.yaml");
@@ -63,9 +73,18 @@ pub fn shared_catalog() -> &'static views::locales::shared::SharedCatalog {
 pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
     match (key, page) {
         (BrandKey::Neon, "home") => Some(NEON_HOME_YAML),
+        (BrandKey::Vesta, "home") => Some(VESTA_HOME_YAML),
+        (BrandKey::Vesta, "services") => Some(VESTA_SERVICES_YAML),
+        (BrandKey::Misericordia, "home") => Some(MISERICORDIA_HOME_YAML),
+        (BrandKey::Misericordia, "services") => Some(MISERICORDIA_SERVICES_YAML),
+        (BrandKey::Abhaya, "home") => Some(ABHAYA_HOME_YAML),
+        (BrandKey::Abhaya, "services") => Some(ABHAYA_SERVICES_YAML),
+        (BrandKey::DeleteYourDebt, "home") => Some(DELETE_YOUR_DEBT_HOME_YAML),
+        (BrandKey::DeleteYourDebt, "services") => Some(DELETE_YOUR_DEBT_SERVICES_YAML),
+        (BrandKey::Summons, "home") => Some(SUMMONS_HOME_YAML),
+        (BrandKey::Summons, "services") => Some(SUMMONS_SERVICES_YAML),
         (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
         (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
-        (BrandKey::Neon, "personal-plan") => Some(NEON_PERSONAL_PLAN_YAML),
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
@@ -715,11 +734,6 @@ pub fn fractional_gc(
     }
 }
 
-/// `/personal`, from this brand's `personal-plan.yaml`.
-pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "personal-plan"), None, branding)
-}
-
 /// `/navigator`, from this brand's `navigator.yaml`.
 pub fn navigator(branding: &views::brand::Branding) -> PageContent {
     marketing_page(load_page(branding, "navigator"), None, branding)
@@ -894,13 +908,8 @@ mod tests {
             .expect("estate-package is a Notation package");
         assert_eq!(quote.members.len(), 3);
         assert_eq!(family_plan.fee, "$5,000");
-        assert_eq!(
-            family_plan.plan_price,
-            Some(webapp::services_search::PlanPrice {
-                amount: "$2,000".to_string(),
-                plan: "Personal plan".to_string(),
-            })
-        );
+        // The retired consumer plan's discount is gone with the plan.
+        assert_eq!(family_plan.plan_price, None);
     }
 
     /// The search finds services by the words a reader would actually type,
@@ -949,7 +958,7 @@ mod tests {
             content.contact_href,
             format!("mailto:{}", views::brand::firm_email())
         );
-        assert_eq!(content.heading, "What is your legal need?");
+        assert_eq!(content.heading, "What does your technology company need?");
         assert!(content
             .service
             .as_ref()
@@ -961,11 +970,44 @@ mod tests {
                 .map(|practice| practice.heading.as_str())
                 .collect::<Vec<_>>(),
             [
-                "Business plan",
-                "Personal plan",
+                "Fractional general counsel",
                 "Individual services",
                 "Disputes",
-            ]
+            ],
+            "the plan chooser leads with the counsel relationship and no \
+             longer offers a consumer plan"
+        );
+    }
+
+    /// The firm's own site markets to emerging technology companies alone.
+    ///
+    /// This is the "Done when" of retiring `/personal`, and it is asserted on
+    /// the rendered copy rather than on the routing table, because the page
+    /// can be unreachable while the words that sold it survive in the hero,
+    /// the plan chooser, or a link — which is exactly what happened on
+    /// `DeleteYourData`, whose own pages went on offering the retired plan.
+    #[test]
+    fn the_home_page_no_longer_markets_to_individuals() {
+        let content = home(&views::brand::DEFAULT_BRANDING);
+        let mut text = vec![content.heading.clone(), content.lead.clone()];
+        if let Some(service) = content.service.as_ref() {
+            text.extend(service.body.iter().flatten().map(|run| run.text.clone()));
+        }
+        for practice in &content.practices {
+            text.push(practice.heading.clone());
+            text.push(practice.body.clone());
+        }
+        let text = text.join(" ");
+
+        for gone in ["Personal plan", "Personal Plan", "your family", "/personal"] {
+            assert!(
+                !text.contains(gone),
+                "{gone:?} still on the home page: {text}"
+            );
+        }
+        assert!(
+            text.contains("technology"),
+            "and the audience is named: {text}"
         );
     }
 
@@ -1024,61 +1066,22 @@ mod tests {
             .join(" ");
         assert_eq!(content.cta_label, "Request a free consultation");
         assert!(content.lead.contains("free consultation"));
-        assert!(text.contains("do not need a subscription"));
+        assert!(text.contains("do not need a plan"));
         assert!(text.contains("what it costs before you decide"));
         assert!(!text.contains("Navigator"));
-    }
-
-    /// `/personal` publishes its one flat fee as a $5-a-day plan.
-    #[test]
-    fn personal_plan_publishes_its_five_dollar_day_rate() {
-        let content = personal_plan(&views::brand::DEFAULT_BRANDING);
-        let plan = content
-            .bands
-            .iter()
-            .find_map(|band| match band {
-                webapp::marketing_page::Band::Cards {
-                    items,
-                    pricing_style,
-                    ..
-                } if *pricing_style => items.first(),
-                _ => None,
-            })
-            .expect("the Personal plan offer");
-        assert_eq!(plan.chips.first().map(String::as_str), Some("$5"));
-        assert_eq!(plan.cadence.as_deref(), Some("/day"));
-        assert!(plan
-            .features
-            .contains(&"Optional credit monitoring".to_string()));
-        assert!(plan
-            .features
-            .iter()
-            .any(|feature| feature.contains("$2,000 minimum retainer")));
-        assert!(plan
-            .features
-            .iter()
-            .any(|feature| feature.contains("Notations starting at $50")));
-        assert!(plan
-            .features
-            .iter()
-            .any(|feature| feature.contains("60 days before daily credits run out")));
+        // Scoped to company disputes, and saying so — without it the page
+        // keeps drawing individual matters through a different door.
+        for named in [
+            "intellectual property",
+            "employment",
+            "investor",
+            "We do not take personal injury",
+        ] {
+            assert!(text.contains(named), "disputes names {named:?}: {text}");
+        }
         assert!(
-            plan.body
-                .iter()
-                .flat_map(|paragraph| paragraph.iter())
-                .any(|run| run.text.contains("Abraham Lincoln")),
-            "the Personal plan gives the requested daily-price reference"
-        );
-        assert_eq!(
-            plan.day_rate.as_ref().map(|badge| badge.amount),
-            Some(5),
-            "the Personal plan renders the matching $5 bill mark"
-        );
-        assert!(
-            plan.day_rate
-                .as_ref()
-                .is_some_and(|badge| badge.image_src.ends_with("five-dollar-bill.jpg")),
-            "the Personal plan uses the published $5 bill asset"
+            text.contains("We do not promise a result"),
+            "no outcome promise: {text}"
         );
     }
 
@@ -1306,12 +1309,18 @@ mod tests {
         )
     }
 
-    /// The `DeleteYourData` home and services pages both publish the flat
-    /// removal-request fee and the Neon Law Personal Plan as the way to get
-    /// it at no added cost, and neither page still tells a reader every
-    /// request is quoted — the pre-existing framing this fee contradicted.
+    /// The `DeleteYourData` home and services pages publish the flat
+    /// removal-request fee, and neither still tells a reader every request is
+    /// quoted — the pre-existing framing that fee contradicted.
+    ///
+    /// They also no longer offer the request "at no added cost" to a Neon Law
+    /// Personal plan member. That plan is retired, so the clause described an
+    /// offer nobody could take up — and it is asserted absent here because it
+    /// was *this brand's* published price, not a stale link: a dead
+    /// cross-brand offer is a pricing defect, and it would have survived a
+    /// link check.
     #[test]
-    fn delete_your_data_publishes_its_flat_fee_and_the_personal_plan_link() {
+    fn delete_your_data_publishes_its_flat_fee_without_the_retired_plan_offer() {
         let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
         let home_content = home(branding);
         let services_content = legal_services(branding);
@@ -1328,19 +1337,17 @@ mod tests {
             home_text.contains("$10"),
             "the home page states the fee: {home_text}"
         );
-        let personal_plan_run = home_service
-            .body
-            .iter()
-            .flatten()
-            .find(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal"))
-            .expect("a run links the Neon Law Personal Plan");
-        assert_eq!(personal_plan_run.text, "Neon Law Personal Plan");
-        // The linked run's own text carries no leading/trailing run-boundary
-        // artifact — the bug this test would have caught twice while this
-        // paragraph was drafted.
         assert!(
-            !home_text.contains("Planmember"),
-            "run boundaries: {home_text}"
+            !home_service
+                .body
+                .iter()
+                .flatten()
+                .any(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal")),
+            "the retired plan is not linked: {home_text}"
+        );
+        assert!(
+            !home_text.contains("Personal Plan"),
+            "nor named: {home_text}"
         );
 
         let practice_bodies = home_content
@@ -1359,8 +1366,8 @@ mod tests {
             "the services page states the fee: {services_text}"
         );
         assert!(
-            services_text.contains("Personal Plan"),
-            "the services page names the Personal Plan alternative: {services_text}"
+            !services_text.contains("Personal Plan"),
+            "the services page no longer offers the retired plan: {services_text}"
         );
         assert!(
             !services_text
@@ -1383,5 +1390,273 @@ mod tests {
             })
             .expect("the Removal Request card");
         assert_eq!(removal_request.chips, vec!["$10".to_string()]);
+    }
+
+    // --- ENG-744…749: the practice brands, and the lines that bind them ---
+
+    /// Every word a practice brand publishes, home and services together, so
+    /// a constraint is checked against the whole site rather than one page.
+    fn brand_text(key: views::brand::BrandKey) -> String {
+        let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+        let home = home(branding);
+        let mut text = vec![
+            home.head_title.clone(),
+            home.meta_description.clone(),
+            home.heading.clone(),
+            home.lead.clone(),
+        ];
+        if let Some(service) = home.service.as_ref() {
+            text.extend(service.body.iter().flatten().map(|run| run.text.clone()));
+        }
+        for practice in &home.practices {
+            text.push(practice.heading.clone());
+            text.push(practice.body.clone());
+        }
+        text.push(dyd_page_text(&legal_services(branding)));
+        text.push(branding.mission_description.to_string());
+        text.push(branding.service_description.to_string());
+        text.join(" ")
+    }
+
+    const PRACTICE_BRANDS: &[views::brand::BrandKey] = &[
+        views::brand::BrandKey::Vesta,
+        views::brand::BrandKey::Misericordia,
+        views::brand::BrandKey::Abhaya,
+        views::brand::BrandKey::DeleteYourDebt,
+        views::brand::BrandKey::Summons,
+    ];
+
+    /// Every practice brand loads both catalogs it declares. A missing file
+    /// is a test failure here rather than a panic on a visitor's first
+    /// request.
+    #[test]
+    fn every_practice_brand_publishes_the_pages_it_declares() {
+        for key in PRACTICE_BRANDS {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            assert_eq!(
+                key.catalog_pages(),
+                ["home", "services"],
+                "{}",
+                key.as_str()
+            );
+            assert!(
+                !home(branding).heading.is_empty(),
+                "{} home renders",
+                key.as_str()
+            );
+            assert!(
+                !dyd_page_text(&legal_services(branding)).is_empty(),
+                "{} services renders",
+                key.as_str()
+            );
+        }
+    }
+
+    /// No brand promises a result, anywhere. Attorney advertising rules make
+    /// this the one claim none of these sites may make, whatever the
+    /// practice area.
+    #[test]
+    fn no_practice_brand_promises_an_outcome() {
+        for key in PRACTICE_BRANDS {
+            let text = brand_text(*key).to_lowercase();
+            for promise in [
+                "we guarantee",
+                "guaranteed result",
+                "we will win",
+                "you will win",
+                "we always win",
+                "guarantee that",
+            ] {
+                assert!(
+                    !text.contains(promise),
+                    "{} promises an outcome: {promise:?}",
+                    key.as_str()
+                );
+            }
+        }
+    }
+
+    /// **18 U.S.C. § 706.** The Misericordia of Florence carried a red cross,
+    /// and that emblem later became the protected symbol of medical care. It
+    /// is not available to this firm, in any form — so the brand's words
+    /// never reach for it either, which is where it would creep back in once
+    /// the palette is settled.
+    #[test]
+    fn misericordia_never_reaches_for_the_red_cross() {
+        let text = brand_text(views::brand::BrandKey::Misericordia).to_lowercase();
+        for emblem in ["red cross", "redcross", "cross symbol", "crimson cross"] {
+            assert!(!text.contains(emblem), "Misericordia names {emblem:?}");
+        }
+    }
+
+    /// No case results and no dollar figures on Misericordia. A headline
+    /// number is not cured by the advertising disclaimer beneath it, so the
+    /// fee page explains the contingency in words and publishes no amount.
+    #[test]
+    fn misericordia_publishes_no_recovery_figures() {
+        let text = brand_text(views::brand::BrandKey::Misericordia);
+        assert!(
+            !text.contains('$'),
+            "Misericordia publishes a dollar figure: {text}"
+        );
+        // Boasts, not the word "recover": describing *how the fee works* —
+        // a percentage of what is recovered — is the honest disclosure this
+        // practice owes. What is banned is a past result offered as a
+        // prediction, which the advertising disclaimer does not cure.
+        for boast in [
+            "we have recovered",
+            "we've recovered",
+            "million",
+            "verdict",
+            "record settlement",
+            "results speak",
+            "won over",
+        ] {
+            assert!(
+                !text.to_lowercase().contains(boast),
+                "Misericordia publishes a case result: {boast:?}"
+            );
+        }
+        // What it must say instead: the contingency, honestly, including the
+        // losing case.
+        assert!(text.contains("no fee unless we recover") || text.contains("owe us no attorney"));
+    }
+
+    /// Abhaya may never imply it can secure or speed a USCIS decision.
+    #[test]
+    fn abhaya_never_implies_it_controls_uscis() {
+        let text = brand_text(views::brand::BrandKey::Abhaya).to_lowercase();
+        for claim in [
+            "we can get you a visa",
+            "guaranteed approval",
+            "fast-track",
+            "expedite your case",
+            "we can speed",
+            "approval is certain",
+        ] {
+            assert!(!text.contains(claim), "Abhaya implies {claim:?}");
+        }
+        assert!(
+            text.contains("cannot promise"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// `DeleteYourDebt` is collection defense. Settlement framing pulls in a
+    /// different regulatory regime — the FTC Telemarketing Sales Rule's
+    /// advance-fee provisions and state debt-adjuster licensing — whose
+    /// attorney exemption is narrower than it is usually assumed to be.
+    ///
+    /// The banned phrases are allowed only inside an explicit denial, which
+    /// is how the site tells a reader it is *not* that service. So this
+    /// asserts on sentences, not on the page: a phrase may appear only where
+    /// "not" or "do not" appears with it.
+    #[test]
+    fn delete_your_debt_only_names_settlement_to_disclaim_it() {
+        let text = brand_text(views::brand::BrandKey::DeleteYourDebt);
+        for sentence in text.split('.') {
+            let lowered = sentence.to_lowercase();
+            let claims_settlement = [
+                "settle your debt",
+                "reduce what you owe",
+                "negotiate your balance",
+                "pennies on the dollar",
+                "eliminate your debt",
+            ]
+            .iter()
+            .any(|phrase| lowered.contains(phrase));
+            if claims_settlement {
+                assert!(
+                    lowered.contains("not") || lowered.contains("do not"),
+                    "settlement framing outside a denial: {sentence:?}"
+                );
+            }
+        }
+        assert!(
+            text.contains("We do not settle debts")
+                || text.contains("does not settle debts")
+                || text.contains("We are not a debt settlement"),
+            "and the disclaimer is actually present: {text}"
+        );
+    }
+
+    /// The NYC summons practice must not read as the tribunal it appears
+    /// before. OATH runs a free Help Center, so an implied affiliation is a
+    /// Rule 7.1 problem rather than a trademark one — and the domain carries
+    /// the agency's name, which is exactly why the line has to be in the
+    /// copy rather than left to the domain.
+    #[test]
+    fn the_summons_practice_disclaims_affiliation_with_the_city() {
+        let branding =
+            views::brand::BrandKey::Summons.resolve_branding(&views::brand::DEFAULT_BRANDING);
+
+        // On the home page and the services page, not merely somewhere.
+        let home_text = {
+            let home = home(branding);
+            let mut parts = vec![home.lead.clone(), home.meta_description.clone()];
+            if let Some(service) = home.service.as_ref() {
+                parts.extend(service.body.iter().flatten().map(|run| run.text.clone()));
+            }
+            parts.join(" ")
+        };
+        assert!(
+            home_text.contains("not affiliated with the City of New York"),
+            "home: {home_text}"
+        );
+        let services_text = dyd_page_text(&legal_services(branding));
+        assert!(
+            services_text.contains("not affiliated with"),
+            "services: {services_text}"
+        );
+
+        // New York Rule 7.5(b) bars a trade name for private practice, so the
+        // masthead is the firm itself rather than a brand.
+        assert_eq!(branding.firm.site_name, "Shook Law PLLC");
+    }
+
+    /// Every brand that wears a name other than the firm's says whose
+    /// practice it is. That disclosure is what keeps a Nevada trade name from
+    /// being misleading, so it is derived from the brand rather than listed.
+    #[test]
+    fn a_trade_name_brand_names_the_firm_behind_it() {
+        for key in views::brand::BrandKey::ALL {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            assert_eq!(
+                branding.firm.legal_entity,
+                "Shook Law PLLC",
+                "{} names the firm",
+                key.as_str()
+            );
+            // A brand whose masthead already *is* the firm needs no further
+            // disclosure; every other one is owed the footer's "A practice
+            // of Shook Law PLLC". That line is derived from exactly this
+            // comparison in `webapp::public_chrome`, and asserted there —
+            // what this test pins is that the comparison has a stable
+            // answer, i.e. every brand agrees on who the firm is.
+            if branding.firm.site_name == branding.firm.legal_entity {
+                assert_eq!(
+                    key.as_str(),
+                    "summons",
+                    "only the NY practice wears the firm's own name"
+                );
+            }
+        }
+    }
+
+    /// Nothing in this family loads a third-party font or analytics host.
+    #[test]
+    fn no_practice_brand_copy_references_a_third_party_host() {
+        for key in PRACTICE_BRANDS {
+            let text = brand_text(*key).to_lowercase();
+            for host in [
+                "fonts.googleapis.com",
+                "fonts.gstatic.com",
+                "google-analytics",
+                "googletagmanager",
+                "facebook.net",
+            ] {
+                assert!(!text.contains(host), "{} references {host}", key.as_str());
+            }
+        }
     }
 }

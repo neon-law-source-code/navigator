@@ -424,6 +424,22 @@ fn record(
     }
 }
 
+/// Translate the operator's spelling of the apex into the provider's.
+///
+/// DNSimple names the apex with the **empty** string, but an empty
+/// `--host ""` does not survive the command line — the shell and clap
+/// between them drop it, so the run silently produced no record at all
+/// rather than an error. `@` is how a zone file and every DNS tool spells
+/// the apex, so that is what the flag accepts, and it is translated here so
+/// the internal model keeps the provider's own convention.
+fn apex_label(host: &str) -> &str {
+    if host == "@" {
+        ""
+    } else {
+        host
+    }
+}
+
 /// Build the full desired record set for `zone` from `config`. The order
 /// mirrors the groups in the module table; only enabled groups appear.
 #[must_use]
@@ -439,7 +455,13 @@ pub fn desired_records(zone: &str, config: &DnsSetupConfig) -> Vec<DesiredRecord
             &config.hosts
         };
         for host in hosts {
-            out.push(record(RecordType::A, host, ip.clone(), None, 300));
+            out.push(record(
+                RecordType::A,
+                apex_label(host),
+                ip.clone(),
+                None,
+                300,
+            ));
         }
     }
 
@@ -847,6 +869,38 @@ mod tests {
             dmarc: Some(DmarcPolicy::None),
             ..Default::default()
         }
+    }
+
+    /// `@` reaches the provider as the empty apex name.
+    ///
+    /// The bug this pins is a silent one: `--host ""` is dropped between the
+    /// shell and clap, so the run reported success and created nothing at
+    /// all. `@` is the spelling every zone file uses, and it has to arrive
+    /// as `""`, because that is what DNSimple calls the apex.
+    #[test]
+    fn an_apex_host_is_spelled_at_sign_and_arrives_empty() {
+        let config = DnsSetupConfig {
+            gateway_ip: Some("203.0.113.10".to_string()),
+            hosts: vec!["@".to_string(), "www".to_string()],
+            ..DnsSetupConfig::default()
+        };
+        let desired = desired_records("example.test", &config);
+
+        let apex = desired
+            .iter()
+            .find(|record| record.record_type == RecordType::A && record.name.is_empty())
+            .expect("the apex A record");
+        assert_eq!(apex.content, "203.0.113.10");
+        assert!(
+            !desired.iter().any(|record| record.name == "@"),
+            "`@` must never reach the provider verbatim"
+        );
+        assert!(
+            desired
+                .iter()
+                .any(|record| record.record_type == RecordType::A && record.name == "www"),
+            "an ordinary label is untouched"
+        );
     }
 
     #[test]

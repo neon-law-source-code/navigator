@@ -236,9 +236,6 @@ services:
           amount: "$3,000"
         - name: Your wishes for medical care and who can make decisions for you
           amount: "$3,000"
-    plan_price:
-      amount: "$2,000"
-      plan: Personal plan
     includes:
       - A will
       - A document naming someone to handle your finances

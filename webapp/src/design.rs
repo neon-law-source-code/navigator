@@ -592,11 +592,13 @@ fn FirmFooterShowcase() -> Element {
                             label: "Neon Law".to_string(),
                             href: String::new(),
                             current: true,
+                            byline: "flat-fee legal services for emerging tech".to_string(),
                         },
                         crate::firm_footer::FirmFooterBrand {
                             label: "DeleteYourData.com".to_string(),
                             href: "https://www.deleteyourdata.com".to_string(),
                             current: false,
+                            byline: "protect your personal information".to_string(),
                         },
                     ],
                     memberships: demo_memberships()
@@ -629,21 +631,37 @@ fn demo_memberships() -> Vec<FooterMembership> {
 /// The three house brands, as the deployed footer's "Our Family" row lists
 /// them on the firm's own host: the firm current and unlinked, the other two
 /// linking their production homes.
+// Literal rather than read from `views::brand::BrandKey::family_byline`:
+// this module is not behind the `server` feature, so it compiles into the
+// wasm client, where `views` is not linked. The gallery is a fixture of what
+// the footer looks like, not a second source of truth for the copy.
 fn demo_family() -> Vec<FooterBrandLink> {
     [
-        ("Neon Law", "https://www.neonlaw.com", true),
+        (
+            "Neon Law",
+            "https://www.neonlaw.com",
+            true,
+            "flat-fee legal services for emerging tech",
+        ),
         (
             "DeleteYourData.com",
             "https://www.deleteyourdata.com",
             false,
+            "protect your personal information",
         ),
-        ("Lawyer Shook", "https://www.lawyershook.com", false),
+        (
+            "Lawyer Shook",
+            "https://www.lawyershook.com",
+            false,
+            "Nicholas Shook",
+        ),
     ]
     .into_iter()
-    .map(|(label, href, current)| FooterBrandLink {
+    .map(|(label, href, current, byline)| FooterBrandLink {
         label: label.to_string(),
         href: href.to_string(),
         current,
+        byline: byline.to_string(),
     })
     .collect()
 }

@@ -1,7 +1,7 @@
 head_title: "{site_name} | Disputes"
 meta_description: >-
-  Start with a free consultation to talk about a dispute, what happened, what
-  you need, and any deadline.
+  Commercial, intellectual property, employment, and investor disputes for
+  emerging technology companies. Start with a free consultation.
 eyebrow: "{shared:litigation.eyebrow}"
 heading:
   text: "{shared:litigation.title}"
@@ -10,10 +10,18 @@ lead: "{shared:litigation.lede}"
 cta_label: "{shared:litigation.cta}"
 body:
   - - text: >-
-        If you want to sue someone or someone is suing you, tell us your story.
-        We will talk about what you want to change and whether we can help. You
-        do not need a subscription for this first conversation.
+        We handle disputes for emerging technology companies: commercial
+        contract, intellectual property, employment, and investor disputes. If
+        your company wants to bring a claim, or someone has brought one against
+        it, tell us your story. We will talk about what you want to change and
+        whether we can help. You do not need a plan for this first
+        conversation.
   - - text: "{shared:litigation.cases_help_others}"
   - - text: >-
+        This page is for company disputes. We do not take personal injury
+        matters, and we do not defend City enforcement summonses. If that is
+        what you are looking for, say so when you write and we will point you
+        somewhere useful rather than take the matter ourselves.
+  - - text: >-
         If we can take your case, we will explain what we can do and what it
-        costs before you decide.
+        costs before you decide. We do not promise a result.

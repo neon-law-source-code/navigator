@@ -54,7 +54,8 @@ async fn tokens_css(state: &AppState, key: &str) -> Response {
         primary_color.as_deref(),
         compiled,
     ) {
-        return css_response(views::brand::tokens_stylesheet(face, palette));
+        let display = compiled.and_then(views::brand::BrandKey::display_typeface);
+        return css_response(views::brand::tokens_stylesheet(face, display, palette));
     }
 
     // A runtime brand wearing a free hex primary and/or an uploaded font

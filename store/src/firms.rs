@@ -35,7 +35,16 @@ const MEMBERSHIP_SELECT: &str =
 /// against this list directly: it reads the `brand` table
 /// ([`brand_key_exists`]), which this constant seeds, so a Firm may wear
 /// any key a `brand` row now names, runtime-created ones included.
-pub const CLOSED_BRAND_KEYS: &[&str] = &["neon", "delete-your-data", "lawyer-shook"];
+pub const CLOSED_BRAND_KEYS: &[&str] = &[
+    "neon",
+    "delete-your-data",
+    "delete-your-debt",
+    "vesta",
+    "misericordia",
+    "abhaya",
+    "lawyer-shook",
+    "summons",
+];
 
 /// Whether a `brand` row exists carrying this key — the live check
 /// [`attach_brand`] replaced its closed-list `ASSERT` with (ENG-496).

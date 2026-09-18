@@ -1,0 +1,106 @@
+head_title: "Wills, trusts, and probate — {site_name}"
+meta_description: >-
+  Estate planning from Vesta Estate Planning, a practice of Shook Law PLLC.
+  Wills and living trusts from $3,000, a full estate plan at $5,000, with
+  government fees separate. This is an attorney advertisement.
+title: Wills, trusts, and probate
+hero_mark: gavel
+tagline: Say who receives what
+hero_lines:
+  - text: Say who receives what
+    accent_words: 2
+  - text: and who can act for you
+    accent_words: 0
+hero_lead: >-
+  Flat fees, quoted before any work begins. A licensed attorney prepares and
+  reviews the work. Shook Law PLLC is the law firm you would retain.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: cards
+    anchor: work
+    overline: The work
+    heading: What we prepare
+    description: ""
+    items:
+      - title: A will
+        body:
+          - - text: >-
+                Says who should receive what when you die, and who should
+                look after any children who are still minors. Starts at
+                $3,000.
+      - title: A living trust
+        body:
+          - - text: >-
+                A trust you can change during your lifetime, with a will that
+                leaves property to it and the paperwork to put one Nevada
+                property into it. Starts at $3,000.
+      - title: Powers of attorney and directives
+        body:
+          - - text: >-
+                A document naming someone to handle your finances, and a
+                record of your wishes for medical care and who can make those
+                decisions. Each is $3,000, or $5,000 together with a will.
+      - title: Probate
+        body:
+          - - text: >-
+                Help handling the estate of someone who has died, including
+                what the court requires and when. We quote this before it
+                begins, because what it takes depends on the estate.
+  - kind: cards
+    anchor: fees
+    overline: Fees
+    heading: What it costs
+    description: >-
+      Our fee is flat and agreed in writing before work begins. Court filing
+      fees, recording fees, and certified copies are set by the government,
+      are separate from our fee, and are paid to the court or the county
+      rather than to us.
+    items:
+      - title: Will
+        body:
+          - - text: "Starting at $3,000."
+      - title: Living trust
+        body:
+          - - text: "Starting at $3,000."
+      - title: Estate plan
+        body:
+          - - text: >-
+                $5,000 for a will, a document naming someone to handle your
+                finances, and your wishes for medical care.
+  - kind: cards
+    anchor: about
+    overline: About
+    heading: Why Vesta
+    description: ""
+    items:
+      - title: The name
+        body:
+          - - text: >-
+                Vesta is the Roman goddess of the hearth — the household fire
+                that was kept alight from one generation to the next. The work
+                here is the same idea in ordinary language: deciding what
+                carries on, and making it plain enough that nobody has to
+                guess.
+      - title: The firm
+        body:
+          - - text: >-
+                Vesta Estate Planning is a trade name of Shook Law PLLC, a
+                Nevada professional limited liability company. Shook Law PLLC
+                is the firm you would retain, and a licensed attorney reviews
+                every matter.
+      - title: What we do not promise
+        body:
+          - - text: >-
+                We do not promise a result. A will does not avoid probate, and
+                whether a particular estate goes through probate depends on
+                what was owned and how it was held.
+  - kind: cta
+    heading: Ready to start?
+    body: >-
+      Write to us with roughly what you would like to arrange. We will explain
+      the first step and what it costs before any work begins.
+    email: "{firm_email}"
+    email_subject: Estate planning

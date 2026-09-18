@@ -1,0 +1,67 @@
+head_title: "{site_name} | NYC summons defense"
+meta_description: >-
+  Shook Law PLLC defends New York City summonses at the OATH Hearings
+  Division for property owners, managing agents, restaurants, and
+  contractors. A private law firm, not affiliated with the City of New York
+  or OATH. This is an attorney advertisement.
+heading: We defend City summonses at OATH.
+lead: >-
+  Shook Law PLLC is a private law firm. We are not affiliated with the City
+  of New York or with the Office of Administrative Trials and Hearings. We
+  represent property owners, managing agents, restaurants, and contractors
+  with recurring summonses. Nothing here is legal advice without a signed
+  retainer for an active project.
+contact_label: Contact us
+service:
+  heading: What this practice does
+  body:
+    - - text: >-
+          The OATH Hearings Division hears summonses written by City
+          enforcement agencies, including Buildings, Sanitation,
+          Environmental Protection, Consumer and Worker Protection, Health
+          and Mental Hygiene, and the Taxi and Limousine Commission. OATH
+          does not write summonses and does not inspect. It decides them.
+    - - text: >-
+          Hearings are informal, and most are held by telephone. The hearing
+          officer may only consider what is presented at the hearing. That
+          is the whole point of being represented: the permit, the invoice,
+          the repair record, and the photographs have to actually be put in
+          front of the hearing officer, at the right time, by someone whose
+          job that is.
+    - - text: >-
+          A hearing officer can dismiss the summons, give cure credit,
+          reduce the penalty, or uphold it. Either side has thirty days to
+          appeal to the Appeals Unit, including the agency.
+    - - text: >-
+          If a hearing is missed, the summons goes into default, and
+          defaults are expensive: liens, civil judgments, Sheriff or Marshal
+          action, and exposure to losing a City license, permit, or
+          registration. A new hearing may be requested once per summons, and
+          it is granted automatically when the request is filed within 75
+          days of the missed hearing.
+    - - text: >-
+          This practice is for portfolios rather than for a single ticket.
+          OATH tells respondents they do not need a lawyer and runs a free
+          Help Center at every hearing location, and for one summons that is
+          often the right answer. We are worth paying when the summonses
+          keep coming and a licence is on the line.
+    - - text: "Write to "
+      - text: "{firm_email}"
+        href: "mailto:{firm_email}"
+      - text: >-
+          . Tell us how many open summonses you have, which agencies wrote
+          them, and whether any hearing date has already passed.
+practices_heading: The work
+practices:
+  - mark: scales
+    heading: Hearings and appeals
+    body: >-
+      Representation at OATH hearings, and appeals to the Appeals Unit
+      within thirty days. This is an attorney advertisement.
+    href: /services
+  - mark: gavel
+    heading: Missed a hearing?
+    body: >-
+      A new hearing is granted automatically if it is requested within 75
+      days of the missed date.
+    href: /services

@@ -140,7 +140,6 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
 
     for path in [
         "/",
-        "/personal",
         "/services",
         "/disputes",
         "/business",
@@ -162,64 +161,60 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
     }
 }
 
+/// The retired consumer plan's path 301s instead of 404ing.
+///
+/// The page is gone, but its URL was published, so inbound links and search
+/// results still point at it. A 404 would strand every one of them. The
+/// destination is the data-removal practice: the plan's largest block, and
+/// the only part of it with a sibling practice of its own.
+///
+/// Asserted as a redirect rather than as an absence, because "the page does
+/// not render" is also true of a 404 — which is the failure this guards.
 #[tokio::test]
-async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
-    // The firm's consumer legal plan: taxes, privacy protection, and credit
-    // monitoring (beta) on one flat daily fee — the personal-side
-    // counterpart to Fractional GC, and it publishes a real figure.
+async fn the_retired_personal_plan_path_redirects_instead_of_404ing() {
     let app = site_app().await;
     let resp = anon_get(&app, "/personal").await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    assert!(
-        body.contains("<title>Neon Law | Personal"),
-        "the page titles itself Personal: {body}"
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::MOVED_PERMANENTLY,
+        "a retired marketing URL is a permanent move, not a temporary one"
     );
-    assert!(
-        body.contains("fm-hero__title"),
-        "the page states its offering in an h1: {body}"
+    assert_eq!(
+        resp.headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok()),
+        Some("https://www.deleteyourdata.com/"),
     );
-    for figure in ["$5", "/day", "$2,000 minimum retainer", "$50"] {
-        assert!(body.contains(figure), "{figure} must publish: {body}");
-    }
-    assert!(
-        body.contains("pricing-card"),
-        "the plan renders with the shared pricing-card styling: {body}"
-    );
-    for included in [
-        "Taxes",
-        "Personal information",
-        "Optional credit monitoring",
-    ] {
-        assert!(body.contains(included), "missing {included}: {body}");
-    }
-    assert!(
-        !body.contains("Estate planning"),
-        "estate planning belongs to /services, not the personal plan: {body}"
-    );
-    assert!(
-        body.contains(r#"href="/business""#),
-        "the header nav still reaches the company-side counterpart: {body}"
-    );
-    assert!(
-        body.contains("mailto:"),
-        "the page carries a contact CTA: {body}"
-    );
-    for promise in [
-        "Warm, clear help.",
-        "We cannot promise that every company will remove every record.",
-        "Choose whether to opt in.",
-        "$2,000 minimum retainer",
-        "60 days before your daily credits run out",
-    ] {
-        assert!(body.contains(promise), "missing {promise}: {body}");
-    }
-    for removed in ["Priced separately", "One-time matters", "flat-fee schedule"] {
-        assert!(!body.contains(removed), "the plan omits {removed}: {body}");
+}
+
+/// Nothing on the firm's own site still sells to an individual.
+///
+/// The route being gone is not the same as the marketing being gone: the
+/// words that sold the plan lived in the hero, the plan chooser, the services
+/// page's subscription band, and the services catalog's plan pricing, each of
+/// which renders independently of `/personal`. This walks the pages a visitor
+/// actually reads.
+#[tokio::test]
+async fn no_firm_page_still_markets_the_retired_consumer_plan() {
+    let app = site_app().await;
+    for path in ["/", "/services", "/business", "/disputes"] {
+        let body = body_string(anon_get(&app, path).await).await;
+        for gone in [
+            "Personal plan",
+            "Personal Plan",
+            "Personal-plan",
+            r#"href="/personal""#,
+        ] {
+            assert!(
+                !body.contains(gone),
+                "{path} still carries {gone:?}: {body}"
+            );
+        }
     }
 }
 
-/// `/personal` and `/services` wear the practice-page header.
+/// `/services` wears the practice-page header.
 ///
 /// The same five parts `/disputes` opens on: the ringed mark, the eyebrow
 /// above the statement, the statement with its opening words in the firm's own
@@ -229,7 +224,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
 #[tokio::test]
 async fn the_practice_pages_wear_the_same_header() {
     let app = site_app().await;
-    for path in ["/personal", "/services"] {
+    for path in ["/services"] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in ["site-header", "public-shell__main", "mailto:"] {
             assert!(
@@ -266,7 +261,7 @@ async fn site_host_serves_the_legal_services_page() {
     );
     for promise in [
         "A lawyer you can turn to.",
-        "Business-plan access is $50 a day, and Personal-plan access is $5 a day.",
+        "Business-plan access is $50 a day",
         "a la carte price and a lower plan price.",
         "at least half off the a la carte price.",
         "free consultation",
@@ -296,7 +291,10 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     for copy in [
         "Start with a free consultation.",
         "what happened, what you need, and whether you have a deadline",
-        "You do not need a subscription for this first conversation.",
+        "You do not need a plan for this first conversation.",
+        // The page says what it is *not* for, or it keeps drawing individual
+        // matters through a different door.
+        "We do not take personal injury",
         "We care about cases that can make life better for you and for others",
         "what we can do and what it costs before you decide.",
     ] {
@@ -646,7 +644,7 @@ async fn both_practice_pages_hoist_their_own_stylesheet() {
 #[tokio::test]
 async fn recurring_offer_pages_share_the_commitment_treatment() {
     let app = site_app().await;
-    for (path, rate) in [("/business", "$50 a day"), ("/personal", "One daily price")] {
+    for (path, rate) in [("/business", "$50 a day")] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in [
             "/public/css/commitment.css",
@@ -677,7 +675,6 @@ async fn the_firm_nav_matches_the_home_page_card_order() {
         .map(|(links, _)| links)
         .expect("the header renders its link list");
     for href in [
-        r#"href="/personal""#,
         r#"href="/services""#,
         r#"href="/disputes""#,
         r#"href="/business""#,
@@ -698,9 +695,6 @@ async fn the_firm_nav_matches_the_home_page_card_order() {
     let transactional = header
         .find(r#"href="/business""#)
         .expect("Fractional GC is in the nav");
-    let personal = header
-        .find(r#"href="/personal""#)
-        .expect("Personal Plan is in the nav");
     let services = header
         .find(r#"href="/services""#)
         .expect("Legal Services is in the nav");
@@ -708,14 +702,14 @@ async fn the_firm_nav_matches_the_home_page_card_order() {
         .find(r#"href="/disputes""#)
         .expect("Litigation is in the nav");
     assert!(
-        transactional < personal && personal < services && services < litigation,
-        "the two plans lead, then the schedule, then disputes: {header}"
+        transactional < services && services < litigation,
+        "the plan leads, then the schedule, then disputes: {header}"
     );
     assert_eq!(
         header.matches("<li").count(),
-        4,
-        "the header is the lead practice and the three engagements, and nothing \
-         else: {header}"
+        3,
+        "the header is the plan, the schedule, and disputes, and nothing \
+         else — the consumer plan is retired: {header}"
     );
     assert!(
         !header.contains(r#"href="/foundation""#),
@@ -992,7 +986,6 @@ async fn plans_and_services_publish_real_fees() {
             ],
         ),
         ("/business", vec!["$50", "$100", "$5", "$10,000"]),
-        ("/personal", vec!["$5", "$50", "$2,000"]),
     ] {
         let body = body_string(anon_get(&app, priced).await).await;
         assert!(
@@ -1460,9 +1453,9 @@ async fn home_publishes_no_amount_in_controversy_and_no_co_counsel_claim() {
 }
 
 #[tokio::test]
-async fn home_points_at_the_four_practices_from_its_foot() {
-    // The page leads with one offering, then four equal doors so litigation,
-    // company counsel, personal counsel, and one-time filings are all one
+async fn home_points_at_its_practices_from_its_foot() {
+    // The page leads with one offering, then three equal doors so litigation,
+    // company counsel, and one-time filings are all one
     // click from `/`.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
@@ -1476,7 +1469,7 @@ async fn home_points_at_the_four_practices_from_its_foot() {
         body.contains(r#"id="home-practices-heading""#),
         "the heading renders: {body}"
     );
-    for href in ["/disputes", "/business", "/personal", "/services"] {
+    for href in ["/disputes", "/business", "/services"] {
         assert!(
             body.contains(&format!(
                 r#"<a class="neon-card home-practice" href="{href}""#
@@ -1487,12 +1480,13 @@ async fn home_points_at_the_four_practices_from_its_foot() {
     assert_eq!(
         body.matches(r#"<a class="neon-card home-practice" href="#)
             .count(),
-        4,
-        "four boxes and no more: {body}"
+        3,
+        "three boxes and no more, the consumer plan card having been \
+         retired: {body}"
     );
     assert_eq!(
         body.matches(r#"class="home-practice__mark""#).count(),
-        4,
+        3,
         "one mark per box: {body}"
     );
     assert!(
@@ -1524,8 +1518,9 @@ async fn home_opens_on_the_question_with_no_photograph() {
         "the question is the first thing on the page: {body}"
     );
     assert!(
-        body.contains("What is your legal need?"),
-        "the h1 asks the question: {body}"
+        body.contains("What does your technology company need?"),
+        "the h1 asks the question, narrowed to the audience the site now \
+         speaks to: {body}"
     );
     for gone in ["<picture", "home-hero", "new-york.png"] {
         assert!(!body.contains(gone), "{gone} no longer ships: {body}");
@@ -1559,12 +1554,12 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     }
     assert!(body.contains("<title>Neon Law | Home</title>"));
     assert!(
-        body.contains("What is your legal need?"),
+        body.contains("What does your technology company need?"),
         "the statement starts with the reader's need: {body}"
     );
     assert!(
-        body.contains("contract, your business, your family, or a dispute"),
-        "the lead gives plain-language examples: {body}"
+        body.contains("software, AI, and other technology companies at an early stage"),
+        "the lead names the audience the site now speaks to: {body}"
     );
     assert!(
         body.contains("Our north star is improving access to justice."),
@@ -1604,7 +1599,7 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     // these two links distinguishable by colour alone (axe
     // `link-in-text-block`, which is how this page failed the public
     // accessibility gate on the 26.9.10 release in the dark scheme).
-    for href in ["/business", "/personal", "/services", "/disputes"] {
+    for href in ["/business", "/services", "/disputes"] {
         assert!(body.contains(href), "{href} renders: {body}");
     }
 
@@ -1878,8 +1873,7 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
         "the custom firm-services slide must replace its Markdown marker: {slides}"
     );
     for heading in [
-        "Business plan",
-        "Personal plan",
+        "Fractional general counsel",
         "Individual services",
         "Disputes",
     ] {
@@ -2842,16 +2836,6 @@ async fn every_firm_page_renders_the_shared_catalog_it_references() {
             ][..],
         ),
         (
-            "/personal",
-            &[
-                "personal_plan.eyebrow",
-                "personal_plan.title",
-                "personal_plan.price",
-                "personal_plan.included.data_removal",
-                "personal_plan.included.credit_monitoring",
-            ][..],
-        ),
-        (
             "/disputes",
             &[
                 "litigation.eyebrow",
@@ -2881,14 +2865,7 @@ async fn every_firm_page_renders_the_shared_catalog_it_references() {
 #[tokio::test]
 async fn no_firm_page_publishes_an_unresolved_placeholder() {
     let app = site_app().await;
-    for path in [
-        "/",
-        "/services",
-        "/business",
-        "/personal",
-        "/disputes",
-        "/navigator",
-    ] {
+    for path in ["/", "/services", "/business", "/disputes", "/navigator"] {
         let body = body_string(anon_get(&app, path).await).await;
         for token in ["{shared:", "{site_name}", "{firm_email}"] {
             assert!(

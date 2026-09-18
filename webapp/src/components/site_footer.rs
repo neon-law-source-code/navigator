@@ -118,6 +118,24 @@ pub struct FooterNavLink {
     pub href: String,
 }
 
+/// Entry count at which the family list splits into two columns.
+///
+/// Seven brands in one column runs longer than the rest of the footer and
+/// reads as the link dump this block replaced. The eighth entry — the NYC
+/// summons practice — is why this is a threshold rather than the list simply
+/// being styled for its current length: adding a brand stays a data change.
+pub const FAMILY_TWO_COLUMN_THRESHOLD: usize = 7;
+
+/// The family list's class, widened once the list is long enough to need it.
+#[must_use]
+pub fn family_list_class(entries: usize) -> &'static str {
+    if entries >= FAMILY_TWO_COLUMN_THRESHOLD {
+        "site-footer__family-list site-footer__family-list--two-column"
+    } else {
+        "site-footer__family-list"
+    }
+}
+
 /// One brand the current firm wears — an entry in the footer's "Our Family"
 /// row. The current brand is shown but not linked; every other entry links
 /// that brand's home host. An entry with no `href` (a runtime-created brand
@@ -127,6 +145,10 @@ pub struct FooterBrandLink {
     pub label: String,
     pub href: String,
     pub current: bool,
+    /// What this brand does, in a few words. A cold reader learns nothing
+    /// from "Vesta" or "Abhaya", so the family list is close to useless as
+    /// bare wordmarks. Empty renders the wordmark alone.
+    pub byline: String,
 }
 
 /// One association the firm belongs to — the footer's "Proud member of the
@@ -268,6 +290,19 @@ pub fn SiteFooterLegal(
     #[props(default)] offices: Vec<FooterOffice>,
     #[props(default)] attorneys: Vec<FooterAttorney>,
     #[props(default)] brand_name: String,
+    /// "A practice of Shook Law PLLC", rendered above the legal strip on a
+    /// brand site.
+    ///
+    /// This is what keeps a trade name from being misleading. Nevada permits
+    /// a firm to trade under a name that is not its own, and *disclosed
+    /// affiliation* is the thing doing that work — a visitor on
+    /// `vestaestateplanning.com` has to be able to see which licensed entity
+    /// they would actually be retaining. So it is a regulatory line, not
+    /// footer decoration, and it renders on every page rather than only the
+    /// home page. Empty on the firm's own site, where the masthead already
+    /// names the firm.
+    #[props(default)]
+    attribution: String,
     #[props(default)] home_href: String,
     #[props(default)] nav: Vec<FooterNavLink>,
     /// The house brands this firm trades under — the "Our Family" row, in
@@ -525,7 +560,7 @@ pub fn SiteFooterLegal(
                         if brands.len() > 1 {
                             nav { class: "site-footer__family", "aria-label": "Our family",
                                 h2 { class: "site-footer__family-heading", "Our Family" }
-                                ul { class: "site-footer__family-list",
+                                ul { class: family_list_class(brands.len()),
                                     for brand in brands.iter() {
                                         li { class: "site-footer__family-item", key: "{brand.label}",
                                             // The brand a reader is already on is
@@ -548,6 +583,12 @@ pub fn SiteFooterLegal(
                                                     class: "site-footer__family-link",
                                                     href: "{brand.href}",
                                                     "{brand.label}"
+                                                }
+                                            }
+                                            if !brand.byline.is_empty() {
+                                                span {
+                                                    class: "site-footer__family-byline",
+                                                    " · {brand.byline}"
                                                 }
                                             }
                                         }
@@ -597,6 +638,12 @@ pub fn SiteFooterLegal(
                     }
                 }
                 div { class: "site-footer__legal",
+                    // Above the rule, not inside it: a reader looking for who
+                    // they are dealing with should not have to parse the
+                    // copyright line to find it.
+                    if !attribution.is_empty() {
+                        p { class: "site-footer__attribution", "{attribution}" }
+                    }
                     div { class: "site-footer__legal-practice",
                         p { class: "site-footer__copyright",
                         // The site and the words on it belong to the firm's
@@ -1695,16 +1742,19 @@ mod tests {
                 label: "Neon Law".to_string(),
                 href: "https://www.neonlaw.com".to_string(),
                 current: true,
+                byline: String::new(),
             },
             FooterBrandLink {
                 label: "DeleteYourData.com".to_string(),
                 href: "https://www.deleteyourdata.com".to_string(),
                 current: false,
+                byline: String::new(),
             },
             FooterBrandLink {
                 label: "Lawyer Shook".to_string(),
                 href: "https://www.lawyershook.com".to_string(),
                 current: false,
+                byline: String::new(),
             },
         ]
     }
@@ -1798,11 +1848,13 @@ mod tests {
                             label: "Neon Law".to_string(),
                             href: "https://www.neonlaw.com".to_string(),
                             current: true,
+                            byline: String::new(),
                         },
                         FooterBrandLink {
                             label: "Acme Runtime Brand".to_string(),
                             href: String::new(),
                             current: false,
+                            byline: String::new(),
                         },
                     ],
                 }
@@ -1830,6 +1882,7 @@ mod tests {
                         label: "Neon Law".to_string(),
                         href: "https://www.neonlaw.com".to_string(),
                         current: true,
+                        byline: String::new(),
                     }],
                 }
             }
@@ -1977,5 +2030,124 @@ mod tests {
                  server/public/css/theme.css"
             );
         }
+    }
+
+    // --- ENG-741: bylines, two columns, attribution, the JTA badge --------
+
+    /// A cold reader learns nothing from "Vesta" or "Abhaya", so every entry
+    /// carries what it does — including the brand the reader is already on.
+    #[test]
+    fn family_entries_carry_their_bylines() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Shook Law PLLC".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    brands: vec![
+                        FooterBrandLink {
+                            label: "Neon Law".to_string(),
+                            href: String::new(),
+                            current: true,
+                            byline: "flat-fee legal services for emerging tech".to_string(),
+                        },
+                        FooterBrandLink {
+                            label: "Abhaya Immigration".to_string(),
+                            href: "https://www.abhayaimmigration.com".to_string(),
+                            current: false,
+                            byline: "visas, green cards, and citizenship".to_string(),
+                        },
+                    ],
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(out.contains("visas, green cards, and citizenship"), "{out}");
+        assert!(
+            out.contains("flat-fee legal services for emerging tech"),
+            "the current brand keeps its byline: {out}"
+        );
+    }
+
+    /// Six entries stay one column; seven split. The eighth brand is then a
+    /// data change rather than a layout edit.
+    #[test]
+    fn the_family_list_splits_into_two_columns_only_once_it_is_long() {
+        assert_eq!(family_list_class(6), "site-footer__family-list");
+        assert_eq!(
+            family_list_class(FAMILY_TWO_COLUMN_THRESHOLD),
+            "site-footer__family-list site-footer__family-list--two-column"
+        );
+        assert_eq!(
+            family_list_class(8),
+            "site-footer__family-list site-footer__family-list--two-column"
+        );
+    }
+
+    /// "A practice of Shook Law PLLC" is what keeps a trade name from being
+    /// misleading — disclosed affiliation is the thing Nevada's rule turns
+    /// on — so it renders on a brand host, above the legal strip.
+    #[test]
+    fn a_brand_site_renders_its_attribution_above_the_legal_strip() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Shook Law PLLC".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    attribution: "A practice of Shook Law PLLC".to_string(),
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(
+            out.contains(r#"<p class="site-footer__attribution">A practice of Shook Law PLLC</p>"#),
+            "{out}"
+        );
+        let attribution = out.find("site-footer__attribution").expect("renders");
+        let copyright = out.find("site-footer__copyright").expect("renders");
+        assert!(
+            attribution < copyright,
+            "the attribution precedes the copyright line: {out}"
+        );
+    }
+
+    /// The firm's own site names the firm in its masthead, so it carries no
+    /// attribution line and renders no empty element in its place.
+    #[test]
+    fn the_firms_own_site_renders_no_attribution_line() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Shook Law PLLC".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                }
+            }
+        }
+        assert!(!ssr(app).contains("site-footer__attribution"));
+    }
+
+    /// The Justice Technology Association membership stays a *visual badge*
+    /// carrying the association's mark. Demoting it to a bare text link is
+    /// the regression this guards: the badge is the point, and a footer
+    /// refactor that treats every membership as a link would silently drop
+    /// the image while leaving the sentence intact and the test green.
+    #[test]
+    fn the_jta_membership_renders_as_a_badge_not_a_bare_link() {
+        let out = affiliated_html();
+        assert!(
+            out.contains(r#"class="site-footer__membership-badge""#),
+            "the membership keeps its badge wrapper: {out}"
+        );
+        assert!(
+            out.contains(r#"class="site-footer__membership-logo""#)
+                && out.contains("justice-technology-association/logo.png"),
+            "the association's mark renders as an image: {out}"
+        );
+        assert!(
+            out.contains("Proud member of the Justice Technology Association"),
+            "and the sentence still names it: {out}"
+        );
     }
 }

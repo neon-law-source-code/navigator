@@ -2616,37 +2616,127 @@ async fn seed_entities(
     Ok(())
 }
 
-/// Migrate the three compiled house-brand keys into system-wide `brand` rows
+/// One compiled house brand, as `store` has to hold it.
+///
+/// `store` cannot depend on `views`, so each row copies four compiled
+/// facts: the key (`views::brand::BrandKey::as_str`), the published
+/// wordmark (`SiteBrand::site_name`, which the footer's "Our Family" list
+/// renders from the seeded row), the typeface id
+/// (`BrandKey::default_typeface`), and the light-mode primary hex
+/// (`BrandKey::default_palette`). `webapp::firm_footer`'s
+/// `every_compiled_brand_seeds_its_published_wordmark` is where that copy
+/// is held against the compiled original.
+struct CompiledBrand {
+    key: &'static str,
+    name: &'static str,
+    typeface: &'static str,
+    primary_hex: &'static str,
+}
+
+/// Every compiled house brand this deployment migrates into a system-wide
+/// `brand` row, in [`crate::firms::CLOSED_BRAND_KEYS`] order.
+///
+/// THE TWO LISTS ARE ONE FACT. `seed_practice` attaches every
+/// `CLOSED_BRAND_KEYS` entry to the firm, and `attach_brand` validates each
+/// one against the `brand` rows THIS table writes — so a key in that list
+/// with no row here fails the boot seed outright, and the pod crash-loops on
+/// `unknown brand key <key>` before it ever serves a request. That is how
+/// the five practice brands shipped: `CLOSED_BRAND_KEYS` grew and this table
+/// did not. `compiled_brands_cover_every_closed_brand_key` holds them
+/// together now.
+const COMPILED_BRANDS: &[CompiledBrand] = &[
+    CompiledBrand {
+        key: "neon",
+        name: "Neon Law",
+        typeface: "gorp-serif",
+        primary_hex: "#007c91",
+    },
+    CompiledBrand {
+        key: "delete-your-data",
+        name: "DeleteYourData.com",
+        typeface: "plus-jakarta-sans",
+        primary_hex: "#b91c1c",
+    },
+    CompiledBrand {
+        key: "delete-your-debt",
+        name: "DeleteYourDebt.com",
+        typeface: "public-sans",
+        primary_hex: "#1F6F4A",
+    },
+    CompiledBrand {
+        key: "vesta",
+        name: "Vesta Estate Planning",
+        typeface: "source-sans-3",
+        primary_hex: "#8A5A2B",
+    },
+    CompiledBrand {
+        key: "misericordia",
+        name: "Misericordia Injury Law",
+        typeface: "source-sans-3",
+        primary_hex: "#7A1F2B",
+    },
+    CompiledBrand {
+        key: "abhaya",
+        name: "Abhaya Immigration",
+        typeface: "mukta",
+        primary_hex: "#1F4E79",
+    },
+    CompiledBrand {
+        key: "lawyer-shook",
+        name: "Lawyer Shook",
+        typeface: "tinos",
+        primary_hex: "#5c5100",
+    },
+    // The NYC summons practice wears the firm's own name rather than a trade
+    // name: New York Rule 7.5(b) bars a trade name for private practice, so
+    // `SUMMONS_BRANDING` publishes `Shook Law PLLC` and this row copies it.
+    CompiledBrand {
+        key: "summons",
+        name: "Shook Law PLLC",
+        typeface: "libre-franklin",
+        primary_hex: "#4A2545",
+    },
+];
+
+/// The published wordmark [`COMPILED_BRANDS`] seeds for `key`, if it names a
+/// compiled brand. Public so a crate that can see `views` — which `store`
+/// cannot — holds this copy against the compiled `SiteBrand::site_name` the
+/// footer renders when no `brand` row answers.
+#[must_use]
+pub fn compiled_brand_name(key: &str) -> Option<&'static str> {
+    COMPILED_BRANDS
+        .iter()
+        .find(|brand| brand.key == key)
+        .map(|brand| brand.name)
+}
+
+/// Migrate every compiled house-brand key into a system-wide `brand` row
 /// (ENG-496), with the identity values their compiled `Branding` entries
-/// carry. `store` cannot depend on `views`, so these values — including each
+/// carry. `store` cannot depend on `views`, so those values — including each
 /// palette's light-mode primary hex (ENG-586: `primary_color` holds a
-/// validated hex, not a palette id) — are copied rather than read from it.
-/// The compiled brands' real presentation still renders from the existing
-/// static stylesheet path (`views::brand_presentation`'s own compiled
-/// `PALETTE`/`TYPEFACES`), not from these columns; this migration keeps the
-/// row's stored hex in step with that compiled palette so nothing renders
-/// differently on upgrade (`views::brand_presentation`'s own test asserts
-/// every compiled palette clears the same WCAG AA gate this write enforces).
+/// validated hex, not a palette id) — are copied into [`COMPILED_BRANDS`]
+/// rather than read from it. The compiled brands' real presentation still
+/// renders from the existing static stylesheet path
+/// (`views::brand_presentation`'s own compiled `PALETTE`/`TYPEFACES`), not
+/// from these columns; this migration keeps the row's stored hex in step
+/// with that compiled palette so nothing renders differently on upgrade
+/// (`views::brand_presentation`'s own test asserts every compiled palette
+/// clears the same WCAG AA gate this write enforces).
 /// Idempotent: a name or key already taken is this same migration having
 /// already run.
 async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
-    for (name, key) in [
-        ("Neon Law", "neon"),
-        ("DeleteYourData.com", "delete-your-data"),
-        ("Lawyer Shook", "lawyer-shook"),
-    ] {
-        let (typeface, hex) = compiled_brand_presentation(key);
+    for brand in COMPILED_BRANDS {
         match crate::brands::create(
             surreal,
             crate::persons::Role::Owner,
             None,
             &crate::brands::NewBrand {
-                name: name.to_string(),
-                key: key.to_string(),
+                name: brand.name.to_string(),
+                key: brand.key.to_string(),
                 is_law_firm: true,
                 legal_entity: Some(FIRM_ENTITY_NAME.to_string()),
-                typeface: Some(typeface.to_string()),
-                primary_color: Some(hex.to_string()),
+                typeface: Some(brand.typeface.to_string()),
+                primary_color: Some(brand.primary_hex.to_string()),
                 ..crate::brands::NewBrand::default()
             },
         )
@@ -2656,15 +2746,15 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
             Err(
                 crate::brands::BrandError::DuplicateName | crate::brands::BrandError::DuplicateKey,
             ) => {
-                if let Some(existing) = crate::brands::find_by_key(surreal, key).await? {
+                if let Some(existing) = crate::brands::find_by_key(surreal, brand.key).await? {
                     crate::brands::update(
                         surreal,
                         crate::persons::Role::Owner,
                         None,
                         existing.id,
                         &crate::brands::BrandEdit {
-                            typeface: Some(Some(typeface.to_string())),
-                            primary_color: Some(Some(hex.to_string())),
+                            typeface: Some(Some(brand.typeface.to_string())),
+                            primary_color: Some(Some(brand.primary_hex.to_string())),
                             ..crate::brands::BrandEdit::default()
                         },
                     )
@@ -2675,17 +2765,6 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
         }
     }
     Ok(())
-}
-
-/// The typeface id and light-mode primary hex each compiled house brand
-/// seeds — a copy of `views::brand_presentation::PALETTE`'s light scheme,
-/// since `store` cannot depend on `views`.
-fn compiled_brand_presentation(key: &str) -> (&'static str, &'static str) {
-    match key {
-        "delete-your-data" => ("plus-jakarta-sans", "#b91c1c"),
-        "lawyer-shook" => ("tinos", "#5c5100"),
-        _ => ("gorp-serif", "#007c91"),
-    }
 }
 
 /// The one practice this deployment already is: the `Shook Law PLLC` entity,
@@ -3314,7 +3393,7 @@ mod tests {
     use super::{
         normalized_body_bytes, reconcile_yaml, seed_canonical, seed_no_charge_fee_clause,
         seeded_template_codes, split_template, validate_yaml, ReconcileAction, ReconcileActor,
-        ScopeViolation, SeedModel, TemplateFrontmatter, NO_CHARGE_FEE_CLAUSE_BODY,
+        ScopeViolation, SeedModel, TemplateFrontmatter, COMPILED_BRANDS, NO_CHARGE_FEE_CLAUSE_BODY,
         SEEDED_TEMPLATES,
     };
     use crate::jurisdictions::{self, NewJurisdiction};
@@ -3322,6 +3401,38 @@ mod tests {
     use crate::question_registry::QuestionType;
     use crate::test_support::mem_surreal;
     use crate::{entities, entity_types, projects};
+
+    /// Every key a Firm is seeded wearing has a `brand` row to wear.
+    ///
+    /// `seed_practice` attaches each [`crate::firms::CLOSED_BRAND_KEYS`]
+    /// entry through `attach_brand`, which refuses a key no `brand` row
+    /// names — so a key missing from [`COMPILED_BRANDS`] fails the boot seed
+    /// and crash-loops the pod, which is what five practice brands did in
+    /// the release gate. Order is asserted too, because the two lists are
+    /// read as one registry.
+    #[test]
+    fn compiled_brands_cover_every_closed_brand_key() {
+        let seeded: Vec<&str> = COMPILED_BRANDS.iter().map(|brand| brand.key).collect();
+        assert_eq!(
+            seeded,
+            crate::firms::CLOSED_BRAND_KEYS.to_vec(),
+            "every CLOSED_BRAND_KEYS entry needs a COMPILED_BRANDS row, in the same order"
+        );
+    }
+
+    /// Each seeded brand carries a distinct name and key, because
+    /// `brand.name` and `brand.brand_key` are both UNIQUE indexes: a
+    /// repeated value would make the second row's `create` fail as a
+    /// duplicate of the first and leave that key unregistered.
+    #[test]
+    fn compiled_brand_names_and_keys_are_distinct() {
+        for (index, brand) in COMPILED_BRANDS.iter().enumerate() {
+            for other in &COMPILED_BRANDS[index + 1..] {
+                assert_ne!(brand.name, other.name, "two compiled brands share a name");
+                assert_ne!(brand.key, other.key, "two compiled brands share a key");
+            }
+        }
+    }
 
     /// An unrestricted (interactive lawyer) reconcile actor — no session
     /// scope, full authority. The baseline every unscoped test reconciles

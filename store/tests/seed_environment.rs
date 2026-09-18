@@ -637,6 +637,58 @@ async fn the_dev_portfolios_mail_survives_the_mailroom_moving_layers() {
 /// The practice this deployment already is: one entity-backed firm, both
 /// house-brand keys, every sample matter pointed at it, and membership for
 /// Admin / Lawyer / Clerk only. A second boot inserts nothing.
+/// A first boot seeds a `brand` row for every key the practice then wears.
+///
+/// This is the only test in the file that starts from the schema alone.
+/// [`mem_surreal`] pre-registers every `CLOSED_BRAND_KEYS` entry as a
+/// `brand` row, which is the state a deployment reaches *after*
+/// `seed_brands` has run — so every other test here seeds against a
+/// database where `seed_practice`'s `attach_brand` can only succeed. A real
+/// pod starts from an empty `brand` table, and that is the difference which
+/// let five practice brands join `CLOSED_BRAND_KEYS` with no row to attach:
+/// the release gate's `navigator-web` crash-looped on `seeding environment
+/// fixtures / unknown brand key delete-your-debt` and never became ready.
+#[tokio::test]
+async fn a_first_boot_registers_every_brand_key_the_practice_wears() {
+    let surreal = store::surreal::test_support::unmigrated().await;
+    store::schema::apply(&surreal).await.unwrap();
+    let storage = storage().await;
+
+    store::seed::seed_environment_with(
+        &surreal,
+        &storage,
+        DeploymentEnvironment::Dev,
+        store::seed::BrandSeed::Neon,
+    )
+    .await
+    .expect("a first boot seeds a database whose brand table starts empty");
+
+    for key in store::firms::CLOSED_BRAND_KEYS {
+        let brand = store::brands::find_by_key(&surreal, key)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("{key} is seeded as a brand row before any firm wears it"));
+        assert_eq!(&brand.key, key);
+        assert!(
+            brand.primary_color.is_some(),
+            "{key} seeds the compiled palette's primary hex"
+        );
+    }
+
+    let firms = store::firms::all(&surreal).await.unwrap();
+    assert_eq!(firms.len(), 1);
+    let brands = store::firms::brand_keys_for_firm(&surreal, firms[0].id)
+        .await
+        .unwrap();
+    assert_eq!(
+        brands,
+        store::firms::CLOSED_BRAND_KEYS
+            .iter()
+            .map(|key| (*key).to_string())
+            .collect::<Vec<_>>(),
+    );
+}
+
 #[tokio::test]
 async fn the_dev_boot_seeds_the_practice_once() {
     let surreal = mem_surreal().await;

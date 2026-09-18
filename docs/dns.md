@@ -182,6 +182,28 @@ Issuance is asynchronous (Let's Encrypt validates through the DNSimple-delegated
 `--redirect-apex-to-www` flag writes the `URL` record and prints this same certificate reminder — it does not issue the
 certificate for you.
 
+### Reconciling a family of domains in one run
+
+`--domain` is repeatable, so a set of sibling domains that share a record shape is one reviewable run rather than four
+near-identical ones:
+
+```bash
+navigator ops dns setup \
+  --domain first-domain.example --domain second-domain.example \
+  --gateway-ip "$NAVIGATOR_GATEWAY_IP" --host www --host staging \
+  --redirect-apex-to-www --dry-run
+```
+
+Each zone is reconciled independently, in the order given, under one heading so a `(root)` line can be traced to the
+apex it belongs to. They are separate zones rather than one transaction: a failure on the third names that zone and
+leaves the first two applied, so the fix is to correct that zone and re-run — which is safe, because the command is
+idempotent. A domain repeated on one command line is rejected rather than applied twice, since reconciling a zone twice
+in one run would double every create.
+
+The apex `URL` record always targets **its own** `www`, derived per zone. That is the copy-paste failure this form
+exists to remove: four hand-edited invocations differing only in the domain are exactly where one brand's apex ends up
+redirecting to another brand's site.
+
 ### The apex redirect is not done when the `URL` record lands
 
 A `URL` record with no certificate behind it is the failure this trips over most, because it **passes a casual check**.

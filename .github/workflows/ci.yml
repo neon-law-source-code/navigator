@@ -270,6 +270,20 @@ jobs:
         run: cargo build -p cli --quiet
       - name: gate the content tree with navigator
         run: "${CARGO_TARGET_DIR:-target}/debug/navigator project gate --ci"
+      # The reusable workflows and composite actions under `.github/` name this
+      # repository's OWN actions by an absolute tag, so a bump that moves
+      # `[workspace.package].version` without sweeping the pins publishes a gate
+      # no consumer can run. The `cut-release` preflight runs this same command
+      # before a bump is pushed; here it runs on the pull request, which is the
+      # last place a stale pin is still free to fix.
+      #
+      # IT BELONGS IN THIS JOB, not in `rust`. The scanned roots are `.github/`
+      # and `docs/examples/`, and none of those paths selects `rust` — a PR
+      # editing only a composite action would skip it, and the aggregate accepts
+      # a skipped `rust`. `gate` is unconditional and its result is required
+      # with no skip allowance, and it has already built the CLI above.
+      - name: do the self-referencing action pins name the workspace version
+        run: "${CARGO_TARGET_DIR:-target}/debug/navigator ops release pins"
       # `production` requires signatures on `main`. Squash-merge writes a
       # GitHub-signed commit there, which does not prove the PR head was
       # signed. Inspect the pull-request head — not the workflow merge commit —
@@ -605,16 +619,6 @@ jobs:
       #
       - name: is the workspace version a releasable one
         run: "${CARGO_TARGET_DIR:-target}/debug/navigator ops release check"
-      # The reusable workflows and composite actions under `.github/` name this
-      # repository's OWN actions by an absolute tag, so a bump that moves
-      # `[workspace.package].version` without sweeping the pins publishes a gate
-      # no consumer can run. This used to be a `git grep` in the `cut-release`
-      # preflight alone, which read `.github/workflows/` only and ran days after
-      # the pull request that broke it was still free to fix. Both callers now
-      # run this one command, so neither can hold its own idea of what a stale
-      # pin is.
-      - name: do the self-referencing action pins name the workspace version
-        run: "${CARGO_TARGET_DIR:-target}/debug/navigator ops release pins"
       # `ops notices --check` is here now. It could not be while `notices_for`
       # read "this crate's source is absent" and "this crate ships no licence
       # file" as the same empty result: `Cargo.lock` is deliberately

@@ -21,15 +21,22 @@
 //!
 //! # What counts as a pin
 //!
-//! A LITERAL tag on a `uses:` key, and nothing else. Two exclusions, each one
-//! deliberate:
+//! Every ref on a self-referencing `uses:` key is a pin, and a pin that is not
+//! [`Report::workspace_version`] is stale. Two exclusions, each one deliberate
+//! and each one narrow:
 //!
 //! - **A comment.** Every composite action documents its own caller in a
 //!   header comment, and a release that rewrote those examples would be
 //!   editing prose.
-//! - **A placeholder.** `@YY.M.D` and `@main` stand in for a version rather
-//!   than naming one. [`crate::release::is_release_version`] is what tells them
-//!   apart, so the placeholder rule and the release grammar are the same rule.
+//! - **A named placeholder**, and only the ones in [`PLACEHOLDERS`]. `@YY.M.D`
+//!   stands in for a version rather than naming one, so rewriting it would
+//!   destroy the example.
+//!
+//! EVERYTHING ELSE IS A PIN, including a ref that is not a release version at
+//! all. `@26.9`, `@1`, `@26.9.17+build`, and `@main` each name something other
+//! than the workspace version, so each is exactly the failure this check
+//! exists to catch — and a rule that recognised only well-formed versions
+//! would wave all four through while reporting a clean scan.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -57,6 +64,14 @@ const SELF_REFERENCE: &str = "neon-law-source-code/navigator/.github/";
 
 /// The quote characters YAML may wrap a `uses:` value in.
 const QUOTES: [char; 2] = ['"', '\''];
+
+/// The refs that stand in for a version rather than naming one.
+///
+/// Exhaustive on purpose. The rule is not "anything that fails to parse as a
+/// version is decoration" — a malformed ref is the most likely stale pin there
+/// is — so a new placeholder has to be named here before the check will ignore
+/// it.
+pub const PLACEHOLDERS: &[&str] = &["YY.M.D"];
 
 /// Strip the whitespace and YAML quoting that can sit around a `uses:` value.
 ///
@@ -122,11 +137,9 @@ pub fn pin_on_line(line: &str) -> Option<(&str, &str)> {
     }
 
     // A trailing comment follows whitespace, and the closing quote is YAML's.
-    // Neither is part of the tag, and a tag read with either still attached
-    // parses as a non-version and escapes the check entirely — a miss that
-    // looks exactly like a clean scan.
+    // Neither is part of the ref.
     let tag = unquote(tag.split_whitespace().next()?);
-    if !crate::release::is_release_version(tag) {
+    if tag.is_empty() || PLACEHOLDERS.contains(&tag) {
         return None;
     }
 
@@ -171,6 +184,91 @@ pub fn scan(root: &Path) -> Result<Report> {
         workspace_version,
         pins,
     })
+}
+
+/// The line with its pin moved to `version`, or `None` when the line carries
+/// no stale pin.
+///
+/// Only the ref token is replaced. The opening quote, the closing quote, and
+/// any trailing comment are the line's, not the pin's, and survive untouched.
+fn rewritten_line(line: &str, version: &str) -> Option<String> {
+    let (_, tag) = pin_on_line(line)?;
+    if tag == version {
+        return None;
+    }
+
+    let (before, after) = line.split_once(SELF_REFERENCE)?;
+    let (target, rest) = after.split_once('@')?;
+    let offset = rest.find(tag)?;
+    Some(format!(
+        "{before}{SELF_REFERENCE}{target}@{}{version}{}",
+        &rest[..offset],
+        &rest[offset + tag.len()..]
+    ))
+}
+
+/// Move every stale pin under `root` to `version`, and report what moved.
+///
+/// This is the other half of [`scan`], and the reason the bump commit can BE
+/// the sweep rather than a thing to remember alongside it: `ops release version`
+/// calls this in the same breath as it writes the manifest, so the seven pins
+/// travel with the version that made them stale instead of waiting for a human
+/// to edit seven lines across three files and a checker to notice they did not.
+///
+/// It rewrites line by line and so writes `\n` endings. Every file under the
+/// scanned roots is LF today, and only a file carrying a stale pin is written
+/// at all, so nothing is normalised in passing — but a CRLF workflow added
+/// later would come back LF.
+pub fn sweep(root: &Path, version: &str) -> Result<Vec<Pin>> {
+    let mut moved = Vec::new();
+
+    for scanned in SCANNED_ROOTS {
+        for entry in walkdir::WalkDir::new(root.join(scanned))
+            .sort_by_file_name()
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_file())
+        {
+            let Ok(source) = std::fs::read_to_string(entry.path()) else {
+                continue;
+            };
+            let file = relative(root, entry.path());
+            let mut rewritten = String::with_capacity(source.len());
+            let mut changed = false;
+
+            for (index, line) in source.lines().enumerate() {
+                match rewritten_line(line, version) {
+                    Some(new_line) => {
+                        // The OLD tag is what the report names: it is the value
+                        // the operator has to recognise as the one left behind.
+                        let (target, tag) = pin_on_line(line).expect("a rewritten line has a pin");
+                        moved.push(Pin {
+                            file: file.clone(),
+                            line: index + 1,
+                            target: target.to_string(),
+                            tag: tag.to_string(),
+                        });
+                        rewritten.push_str(&new_line);
+                        changed = true;
+                    }
+                    None => rewritten.push_str(line),
+                }
+                rewritten.push('\n');
+            }
+
+            // `lines()` drops the final terminator, so only rewrite a file that
+            // ended with one — otherwise the sweep would add a byte of its own.
+            if changed {
+                if !source.ends_with('\n') {
+                    rewritten.pop();
+                }
+                std::fs::write(entry.path(), &rewritten)
+                    .with_context(|| format!("rewrite {file}"))?;
+            }
+        }
+    }
+
+    Ok(moved)
 }
 
 /// `path` relative to `root`, spelled with `/` on every platform.
@@ -316,18 +414,61 @@ mod tests {
         }
     }
 
-    /// A placeholder stands in for a version rather than naming one, and a
-    /// release that rewrote it would destroy the example.
+    /// A named placeholder stands in for a version rather than naming one, and
+    /// a release that rewrote it would destroy the example.
     #[test]
-    fn a_placeholder_tag_is_never_a_pin() {
-        for line in [
-            "    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@YY.M.D",
-            "    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@main",
-            "    uses: neon-law-source-code/navigator/.github/actions/gate@v1",
-            "    uses: neon-law-source-code/navigator/.github/actions/gate@latest",
-        ] {
-            assert_eq!(pin_on_line(line), None, "`{line}` names no literal version");
+    fn a_named_placeholder_is_never_a_pin() {
+        for placeholder in PLACEHOLDERS {
+            let line = format!(
+                "    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@{placeholder}"
+            );
+            assert_eq!(pin_on_line(&line), None, "`{line}` names no version");
         }
+    }
+
+    /// A ref that is not a release version is the most likely stale pin there
+    /// is, so it must be REPORTED rather than waved through. A rule that
+    /// recognised only well-formed versions would ignore every one of these
+    /// and still print a clean scan: `@26.9` is a truncated bump, `@1` a
+    /// major-only ref no release ever carried, `@26.9.17+build` a version
+    /// carrying metadata an image tag cannot hold, and `@main` a moving ref
+    /// that names whatever was merged last.
+    #[test]
+    fn a_ref_that_is_not_a_release_version_is_still_a_pin() {
+        for tag in [
+            "26.9",
+            "1",
+            "26.9.17+build",
+            "main",
+            "latest",
+            "v1",
+            "26.08.17",
+        ] {
+            let line =
+                format!("      - uses: neon-law-source-code/navigator/.github/actions/gate@{tag}");
+            assert_eq!(
+                pin_on_line(&line),
+                Some(("actions/gate", tag)),
+                "`@{tag}` names something other than the workspace version and must be reported"
+            );
+        }
+    }
+
+    /// And the report treats them as stale, which is what makes the command
+    /// exit non-zero on one.
+    #[test]
+    fn a_malformed_ref_is_stale_against_the_workspace_version() {
+        let report = Report {
+            workspace_version: "26.9.17".to_string(),
+            pins: vec![Pin {
+                file: ".github/actions/gate/action.yml".to_string(),
+                line: 40,
+                target: "actions/navigator-install".to_string(),
+                tag: "26.9".to_string(),
+            }],
+        };
+
+        assert_eq!(report.stale().count(), 1);
     }
 
     /// A quoted value and a trailing comment are YAML, not part of the tag.
@@ -435,6 +576,89 @@ mod tests {
         assert_eq!(run(empty.path()), ExitCode::from(2));
     }
 
+    /// The sweep is what makes the bump commit complete. It moves the stale
+    /// pins and leaves everything else on the line alone — the quoting, the
+    /// trailing comment, the placeholders, and the comment examples that a
+    /// release rewriting them would destroy.
+    #[test]
+    fn the_sweep_moves_stale_pins_and_edits_nothing_else() {
+        let root = fixture("26.9.16");
+        let action = root.path().join(".github/actions/gate/action.yml");
+        let before = std::fs::read_to_string(&action).expect("read the fixture");
+        assert!(
+            before.contains("@YY.M.D"),
+            "the fixture carries a comment example"
+        );
+
+        let moved = sweep(root.path(), "26.9.17").expect("sweep the fixture");
+
+        assert_eq!(moved.len(), 1);
+        assert_eq!(
+            moved[0].tag, "26.9.16",
+            "the report names the tag left behind"
+        );
+
+        let after = std::fs::read_to_string(&action).expect("read the swept fixture");
+        assert!(after.contains("navigator-install@26.9.17"));
+        assert!(!after.contains("@26.9.16"));
+        assert!(
+            after.contains("# - uses: neon-law-source-code/navigator/.github/actions/gate@YY.M.D"),
+            "the comment example must survive the sweep verbatim: {after}"
+        );
+        assert!(after.ends_with('\n'), "the trailing newline is preserved");
+
+        // And the invariant now holds, which is the whole point.
+        let report = scan(root.path()).expect("re-scan the swept checkout");
+        assert_eq!(report.stale().count(), 0);
+    }
+
+    /// A sweep with nothing to do writes nothing and reports nothing, so
+    /// re-running the bump is not a source of spurious diffs.
+    #[test]
+    fn a_sweep_with_nothing_stale_is_a_no_op() {
+        let root = fixture("26.9.17");
+        let action = root.path().join(".github/actions/gate/action.yml");
+        let before = std::fs::read_to_string(&action).expect("read the fixture");
+
+        let moved = sweep(root.path(), "26.9.17").expect("sweep the fixture");
+
+        assert!(moved.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(&action).expect("re-read"),
+            before,
+            "an already-swept checkout must come back byte for byte"
+        );
+    }
+
+    /// Quoting and a trailing comment belong to the line, not the pin.
+    #[test]
+    fn the_sweep_replaces_the_ref_and_leaves_the_line_around_it() {
+        assert_eq!(
+            rewritten_line(
+                r#"      - uses: "neon-law-source-code/navigator/.github/actions/gate@26.9.16""#,
+                "26.9.17"
+            )
+            .as_deref(),
+            Some(r#"      - uses: "neon-law-source-code/navigator/.github/actions/gate@26.9.17""#)
+        );
+        assert_eq!(
+            rewritten_line(
+                "      - uses: neon-law-source-code/navigator/.github/actions/gate@26.9.16 # pinned",
+                "26.9.17"
+            )
+            .as_deref(),
+            Some("      - uses: neon-law-source-code/navigator/.github/actions/gate@26.9.17 # pinned")
+        );
+        assert_eq!(
+            rewritten_line(
+                "# - uses: neon-law-source-code/navigator/.github/actions/gate@YY.M.D",
+                "26.9.17"
+            ),
+            None,
+            "a comment example is not a pin and must not be rewritten"
+        );
+    }
+
     /// One command, two callers. The preflight must not carry its own matcher,
     /// or the release path and the pull-request path can disagree about what a
     /// stale pin is.
@@ -453,14 +677,37 @@ mod tests {
     }
 
     /// The pull request is the last place a stale pin is still free to fix, so
-    /// the same command is a required check there.
+    /// the same command is a required check there — and it has to sit in a job
+    /// that ACTUALLY RUNS on the pull requests that can break it.
+    ///
+    /// Presence in the file is not enough. `rust` is scheduled by a path
+    /// classifier that names no scanned root, and the merge aggregate accepts a
+    /// skipped `rust`, so the check would be bypassable by exactly the PR that
+    /// edits a composite action. It belongs in `gate`, which carries no `if:`.
     #[test]
-    fn ordinary_ci_runs_the_same_command() {
-        let ci = read(".github/workflows/ci.yml");
+    fn the_always_run_ci_gate_runs_the_same_command() {
+        let workflow: serde_yaml::Value =
+            serde_yaml::from_str(&read(".github/workflows/ci.yml")).expect("ci.yml parses as YAML");
+        let gate = &workflow["jobs"]["gate"];
 
         assert!(
-            ci.contains(COMMAND),
-            "ci.yml must run `{COMMAND}` alongside the other release preflight checks"
+            gate.get("if").is_none(),
+            "the `gate` job has grown an `if:`; the pin check is no longer unconditional"
+        );
+
+        let runs_it = gate["steps"]
+            .as_sequence()
+            .expect("the gate job has steps")
+            .iter()
+            .any(|step| {
+                step.get("run")
+                    .and_then(serde_yaml::Value::as_str)
+                    .is_some_and(|run| run.contains(COMMAND))
+            });
+        assert!(
+            runs_it,
+            "the always-run `gate` job must run `{COMMAND}`: a PR touching only a scanned root \
+             does not schedule `rust`, and the merge aggregate accepts a skipped `rust`"
         );
     }
 }

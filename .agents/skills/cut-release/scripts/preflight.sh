@@ -72,10 +72,12 @@ echo "    ok"
 # `navigator-install` at 26.9.16, a tag predating the action, and every job
 # needing the CLI died at action resolution.
 #
-# The rule itself lives in `cli/src/release_pins.rs`, and `ci.yml` runs this
-# same command on every pull request. That is the point: a stale pin is a red
-# pull request, days before a release cut would have been the first to see it,
-# and neither path can hold its own idea of what a stale pin is.
+# `ops release version` sweeps them as it writes the manifest, so this is a
+# verification rather than a chore: it proves the bump commit carried the pins
+# with it. The rule lives in `cli/src/release_pins.rs`, and `ci.yml` runs this
+# same command in its always-run gate, so a stale pin is a red pull request days
+# before a release cut would have been the first to see it, and neither path can
+# hold its own idea of what a stale pin is.
 echo "==> the self-referencing action pins must name this version"
 cargo run -p cli --quiet -- ops release pins
 

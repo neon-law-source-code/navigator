@@ -125,8 +125,11 @@ running sync reconciles that value through the same authorized API; the normal A
 operation. Folder conventions infer `filing` for `pleadings/`, `exhibit` for `exhibits/`, and `agreement` for
 `agreements/`; other paths use `unclassified`. Visibility defaults to `internal`.
 
-The command creates `documents/.gitignore` without overwriting an existing file. The repository gate admits that file
-and `documents/**/*.yml` only; every other file below `documents/` is rejected. Raw legal-document bytes must never be
+The command creates `documents/.gitignore` without overwriting an existing file. `scaffold` writes the same four bytes,
+and `Y014` holds them exact whenever `documents/` exists: deny everything, then re-admit subdirectories, pointer files,
+and the ignore file itself. A comment or a dropped `*` still parses, and still looks like it is working against a PDF
+the root `.gitignore` already covers, while every other extension lands. The repository gate admits that file and
+`documents/**/*.yml` only; every other file below `documents/` is rejected. Raw legal-document bytes must never be
 committed to a Project repository.
 
 **`navigator site pull` is the inverse: it materialises bytes into a checkout rather than uploading them out of one.**
@@ -593,14 +596,14 @@ navigator project gate
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `.gitattributes` pinning
 checkout text files to LF, a versioned nested `navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml`
 caller guarded by the reusable publisher's deployment configuration, `README.md`, and `AGENTS.md`. It also writes a
-`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder
-`templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing hand-copied
-`ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator project gate` requires
-that pair: `AGENTS.md` must exist, `CLAUDE.md` must deliver the same bytes (the nine-byte stub form is refused), and the
-contract must name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the
-matter repository. The same `validate` walk extracts `navigator …` invocations from the repository's Markdown and checks
-each against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit
-that introduced the rename.
+`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, `documents/.gitignore`,
+and one placeholder `templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing
+hand-copied `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator project
+gate`requires that pair:`AGENTS.md`must exist,`CLAUDE.md` must deliver the same bytes (the nine-byte stub form is
+refused), and the contract must name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a
+workaround in the matter repository. The same `validate` walk extracts `navigator …` invocations from the repository's
+Markdown and checks each against this binary's clap command tree, so a documented verb that no longer exists fails the
+gate at the commit that introduced the rename.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

@@ -72,6 +72,9 @@ Nine normal validation passes happen in this order:
 6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yml` only when the root is a Project
    repository declared by `navigator.yaml`. It checks the closed asset kind and visibility vocabularies, current
    revision metadata, revision-chain linkage, and the retained document extension without reading the network or bytes.
+   When `documents/` exists, the same Project-repository check holds `documents/.gitignore` to four exact lines (rule
+   `Y014`): deny everything, then re-admit subdirectories, pointer files, and the ignore file itself. Local `project
+   gate`rewrites drift;`--ci` reports it.
 7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`–`Y013`) runs when the root carries either manifest
    spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name` to
    `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
@@ -297,11 +300,15 @@ literally and the columns disappear.
 | `Y011` | Error | A Project manifest must not contain YAML comments. | No |
 | `Y012` | Error | A Project manifest `version` must be an exact Navigator release tag. | No |
 | `Y013` | Warning | Flat `host`/`project` shape should be replaced by the versioned nested shape. | No |
+| `Y014` | Error | `documents/.gitignore` must be the canonical four-line deny-all pointer admit. | Locally |
 
 `Y010` runs inside the Project-repository check the gate applies when the root is a Project repository. It reads each
 `templates/<code>.md` and compares any `Neon Law` spelled with a corporate suffix (`, Inc.`, `LLC`, `PLLC`, and the
 like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature instrument cannot name
 a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.
+
+`Y014` runs in the same Project-repository check whenever `documents/` exists. The four lines are shared with `scaffold`
+and `site sync` / `site pull`. Local `project gate` rewrites drift; `--ci` reports `Y014` and leaves the file.
 
 ### F-family — files the gate had to fix
 

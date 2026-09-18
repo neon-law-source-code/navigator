@@ -3407,7 +3407,7 @@ fn run_validate_scan(dir: &std::path::Path, errors_only: bool, ci: bool) -> Exit
     print_error_recap(&gate_errors);
 
     let project_layout_failed = is_project_repository(dir)
-        && projects::repository::validate_gate(dir, None) != ExitCode::SUCCESS;
+        && projects::repository::validate_gate(dir, None, false) != ExitCode::SUCCESS;
 
     if gate_errors.is_empty() && !project_layout_failed {
         ExitCode::SUCCESS
@@ -3489,7 +3489,7 @@ async fn run_gate(ci: bool) -> ExitCode {
 
     let project = is_project_repository(dir);
     let layout_failed =
-        project && projects::repository::validate_gate(dir, None) != ExitCode::SUCCESS;
+        project && projects::repository::validate_gate(dir, None, !ci) != ExitCode::SUCCESS;
 
     if !gate_errors.is_empty() || layout_failed {
         return ExitCode::from(1);

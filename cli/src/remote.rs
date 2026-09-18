@@ -743,6 +743,7 @@ pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Pa
         let zip_bytes = git_archive_zip(dir)?;
         let client = DocumentClient::connect(host, project_code).await?;
         let kind = rules::kind::Kind::ClosedRepository.as_str();
+        let slug = format!("{kind}.zip");
         let pointer = client
             .upload_bytes(
                 &format!("{project_code}-closed-repository.zip"),
@@ -753,7 +754,7 @@ pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Pa
                     "Repository archive for {project_code} at commit {commit_sha}"
                 )),
                 Some("application/zip"),
-                Some(kind),
+                Some(&slug),
                 Some(serde_json::json!({ "commit_sha": commit_sha })),
             )
             .await?;
@@ -3579,6 +3580,7 @@ mod tests {
             .expect("the upload request was made");
         let body: serde_json::Value = serde_json::from_slice(&upload.body).unwrap();
         assert_eq!(body["kind"], "closed_repository");
+        assert_eq!(body["slug"], "closed_repository.zip");
         assert_eq!(body["metadata"]["commit_sha"], commit_sha);
         assert_eq!(body["content_type"], "application/zip");
     }

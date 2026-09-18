@@ -300,19 +300,19 @@ where
         .expect("NAVIGATOR_PUBLIC_HOST is a required TABLE substitution")
         .value
         .clone();
+    let namespace = substitutions
+        .iter()
+        .find(|substitution| substitution.token == "namespace: navigator")
+        .and_then(|substitution| substitution.value.strip_prefix("namespace: "))
+        .map(str::to_owned)
+        .expect("namespace substitution is required");
     let brand_bindings = additional_brand_bindings(&public_host);
     let brand_hosts = additional_brand_hosts(&public_host);
-    // Brand certificate YAML is inserted *before* the `namespace: navigator`
-    // substitution so those documents pick up the deployment namespace the
-    // same way the checked-in cert manifests do.
-    substitutions.insert(
-        0,
-        Substitution {
-            token: BRAND_MANAGED_CERTIFICATES_TOKEN,
-            env: "views::brand::BrandKey",
-            value: brand_managed_certificate_yaml(&brand_bindings),
-        },
-    );
+    substitutions.push(Substitution {
+        token: BRAND_MANAGED_CERTIFICATES_TOKEN,
+        env: "views::brand::BrandKey",
+        value: brand_managed_certificate_yaml(&namespace, &brand_bindings),
+    });
     substitutions.push(Substitution {
         token: BRAND_CERT_KUSTOMIZE_TOKEN,
         env: "views::brand::BrandKey",
@@ -436,7 +436,10 @@ fn brand_certificate_name(key: BrandKey) -> String {
 /// One `ManagedCertificate` document per additional live brand. Each
 /// document lists exactly that family's environment host, so adding or
 /// removing a name reissues only that family's certificate.
-fn brand_managed_certificate_yaml(bindings: &[AdditionalBrandBinding]) -> String {
+fn brand_managed_certificate_yaml(
+    namespace: &str,
+    bindings: &[AdditionalBrandBinding],
+) -> String {
     use std::fmt::Write as _;
     bindings
         .iter()
@@ -450,7 +453,7 @@ fn brand_managed_certificate_yaml(bindings: &[AdditionalBrandBinding]) -> String
                 documents,
                 "apiVersion: networking.gke.io/v1\n\
                  kind: ManagedCertificate\n\
-                 metadata:\n  name: {name}\n  namespace: navigator\n\
+                 metadata:\n  name: {name}\n  namespace: {namespace}\n\
                  spec:\n  domains:\n    - {}\n",
                 binding.host
             );

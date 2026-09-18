@@ -31,6 +31,10 @@ pub const REPOSITORY_SLUG: &str = "neon-law-source-code/navigator";
 /// The repository's public web address.
 pub const REPOSITORY_HREF: &str = "https://github.com/neon-law-source-code/navigator";
 
+/// The public page describing Navigator, linked by the release label in every
+/// footer.
+pub const NAVIGATOR_HREF: &str = "https://www.neonlaw.com/navigator";
+
 #[cfg(feature = "server")]
 pub use live::{
     refresh, spawn_refresh, star_count, DEFAULT_API_BASE, GITHUB_API_BASE_ENV, REFRESH_INTERVAL,

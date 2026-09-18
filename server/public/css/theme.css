@@ -219,6 +219,12 @@ textarea {
   margin: 0;
 }
 
+.app-footer__tagline,
+.app-footer__disclaimer,
+.app-footer__trademark {
+  margin: 0;
+}
+
 /* "Our Family", centered like the lines around it: the small uppercase
    heading inline with the row of brands, the current one bold and unlinked. */
 .app-footer__family {
@@ -307,6 +313,14 @@ textarea {
 
 .app-footer__platform {
   margin: 0.25rem 0 0;
+}
+
+.app-footer__platform {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .app-footer__release {

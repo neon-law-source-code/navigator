@@ -608,8 +608,17 @@ fn FirmFooterShowcase() -> Element {
                             href: membership.href,
                         })
                         .collect(),
+                    disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.".to_string(),
+                    trademark: "NEON LAW".to_string(),
+                    trademark_registration: "6,325,650".to_string(),
+                    trademark_record_url:
+                        "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
                     copyright_year: 2026,
+                    source_repo: "neon-law-source-code/navigator".to_string(),
+                    source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
+                    source_stars: Some(4),
                     navigator_version: String::new(),
+                    navigator_href: "https://www.neonlaw.com/navigator".to_string(),
                 },
             }
         }
@@ -628,9 +637,9 @@ fn demo_memberships() -> Vec<FooterMembership> {
     }]
 }
 
-/// The three house brands, as the deployed footer's "Our Family" row lists
-/// them on the firm's own host: the firm current and unlinked, the other two
-/// linking their production homes.
+/// The currently live house brands, as the deployed footer's "Our Family" row
+/// lists them on the firm's own host: the firm current and unlinked, the other
+/// live brands linking their production homes.
 // Literal rather than read from `views::brand::BrandKey::family_byline`:
 // this module is not behind the `server` feature, so it compiles into the
 // wasm client, where `views` is not linked. The gallery is a fixture of what
@@ -1257,7 +1266,7 @@ fn SiteFooterShowcase() -> Element {
                 trademark_registration: "6,325,650".to_string(),
                 trademark_record_url:
                     "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
-                // The affiliations row: the three-brand family and the one
+                // The affiliations row: the live brand family and the one
                 // membership, so the gallery shows the row every deployed
                 // page renders — and so the accessibility audit of `/design`
                 // covers its landmark, heading, and off-site link.
@@ -1274,7 +1283,7 @@ fn SiteFooterShowcase() -> Element {
                 // the line a deployed page renders. A local `cargo run` leaves
                 // it unset and the site publishes no version.
                 navigator_version: "26.8.20".to_string(),
-                navigator_href: "/navigator".to_string(),
+                navigator_href: "https://www.neonlaw.com/navigator".to_string(),
             }
         }
     }

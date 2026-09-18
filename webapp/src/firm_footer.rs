@@ -7,10 +7,8 @@
 //! [`FirmFooter`] renders it directly for `/app`, and
 //! `crate::public_chrome::firm_public_chrome_from_context` maps its
 //! `legal_entity`/`brands` onto `crate::components::SiteFooterLegal`'s own
-//! props rather than nesting this component — that footer interleaves the
-//! copyright line with a trademark notice, per-attorney bar licenses, and the
-//! attorney-advertising disclaimer, none of which this minimal model has any
-//! business carrying. One resolver, not one piece of markup.
+//! props rather than nesting this component. One resolver, not one piece of
+//! markup.
 //!
 //! Both footers carry the same two affiliation rows: "Our Family", every
 //! house brand the Firm wears with the current one unlinked, and a "Proud
@@ -23,7 +21,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{ExternalLink, POWERED_BY_NEON_LAW_NAVIGATOR};
+use crate::components::{ExternalLink, GitHubStars, FOOTER_TAGLINE, POWERED_BY_NEON_LAW_NAVIGATOR};
 
 /// One brand the resolved Firm wears, for the footer's "Our Family" row.
 ///
@@ -64,9 +62,17 @@ pub struct FirmFooterModel {
     /// The associations the firm belongs to. Empty renders no line.
     #[serde(default)]
     pub memberships: Vec<FirmFooterMembership>,
+    pub disclaimer: String,
+    pub trademark: String,
+    pub trademark_registration: String,
+    pub trademark_record_url: String,
     pub copyright_year: i32,
+    pub source_repo: String,
+    pub source_href: String,
+    pub source_stars: Option<u64>,
     /// The published release this deployment runs. Empty under `cargo run`.
     pub navigator_version: String,
+    pub navigator_href: String,
 }
 
 /// Entry count at which the family list splits into two columns.
@@ -89,14 +95,36 @@ fn family_list_class(entries: usize) -> &'static str {
     }
 }
 
-/// The `/app` footer: the copyright naming the resolved Firm's legal entity,
-/// the "Our Family" row (a runtime-created brand listed exactly like a
-/// compiled one), the firm's membership lines, and the shared platform line.
+/// The `/app` footer: the requested legal lines, the "Our Family" row (a
+/// runtime-created brand listed exactly like a compiled one), the firm's
+/// membership lines, and the shared platform line.
 #[component]
 pub fn FirmFooter(model: FirmFooterModel) -> Element {
     rsx! {
         footer { class: "app-footer",
+            p { class: "app-footer__disclaimer", "{model.disclaimer}" }
             p { class: "app-footer__copyright", "© {model.copyright_year} {model.legal_entity}" }
+            if !model.trademark.is_empty() {
+                p { class: "app-footer__trademark",
+                    "{model.trademark}"
+                    if model.trademark_registration.is_empty() {
+                        sup { "™" }
+                        " is a common-law mark of {model.legal_entity}"
+                    } else {
+                        sup { "®" }
+                        " is a registered trademark of {model.legal_entity}, "
+                        if model.trademark_record_url.is_empty() {
+                            "U.S. Reg. No. {model.trademark_registration}"
+                        } else {
+                            ExternalLink {
+                                class: "link-secondary".to_string(),
+                                href: model.trademark_record_url.clone(),
+                                "U.S. Reg. No. {model.trademark_registration}"
+                            }
+                        }
+                    }
+                }
+            }
             // The same row the public footer renders, in the `/app` footer's
             // own quieter dress: a landmark named by its visible heading, the
             // current brand as text marked `aria-current`, a brand with no
@@ -142,11 +170,25 @@ pub fn FirmFooter(model: FirmFooterModel) -> Element {
                 }
             }
             p { class: "app-footer__platform",
-                "{POWERED_BY_NEON_LAW_NAVIGATOR}"
-                if !model.navigator_version.is_empty() {
-                    span { class: "app-footer__release", " #{model.navigator_version}" }
+                if !model.source_repo.is_empty() && !model.source_href.is_empty() {
+                    "Powered by"
+                    GitHubStars {
+                        href: model.source_href.clone(),
+                        repo: model.source_repo.clone(),
+                        stars: model.source_stars,
+                    }
+                } else {
+                    "{POWERED_BY_NEON_LAW_NAVIGATOR}"
+                }
+                if !model.navigator_version.is_empty() && !model.navigator_href.is_empty() {
+                    a {
+                        class: "app-footer__release",
+                        href: "{model.navigator_href}",
+                        "#{model.navigator_version}"
+                    }
                 }
             }
+            p { class: "app-footer__tagline", "{FOOTER_TAGLINE}" }
         }
     }
 }
@@ -232,8 +274,16 @@ pub fn compiled_firm_footer_model(
         legal_entity: branding.firm.legal_entity.to_string(),
         brands,
         memberships: firm_memberships(),
+        disclaimer: views::brand::firm_disclaimer().to_string(),
+        trademark: views::brand::firm_trademark().0.to_string(),
+        trademark_registration: views::brand::firm_trademark().1.to_string(),
+        trademark_record_url: views::brand::firm_trademark().2.to_string(),
         copyright_year,
+        source_repo: crate::source_repository::REPOSITORY_SLUG.to_string(),
+        source_href: crate::source_repository::REPOSITORY_HREF.to_string(),
+        source_stars: crate::source_repository::star_count(),
         navigator_version,
+        navigator_href: crate::source_repository::NAVIGATOR_HREF.to_string(),
     }
 }
 
@@ -315,8 +365,16 @@ pub async fn resolve_firm_footer_model(
         legal_entity: entity.name,
         brands,
         memberships: firm_memberships(),
+        disclaimer: views::brand::firm_disclaimer().to_string(),
+        trademark: views::brand::firm_trademark().0.to_string(),
+        trademark_registration: views::brand::firm_trademark().1.to_string(),
+        trademark_record_url: views::brand::firm_trademark().2.to_string(),
         copyright_year,
+        source_repo: crate::source_repository::REPOSITORY_SLUG.to_string(),
+        source_href: crate::source_repository::REPOSITORY_HREF.to_string(),
+        source_stars: crate::source_repository::star_count(),
         navigator_version,
+        navigator_href: crate::source_repository::NAVIGATOR_HREF.to_string(),
     }
 }
 
@@ -335,8 +393,17 @@ mod tests {
             legal_entity: "Shook Law PLLC".to_string(),
             brands,
             memberships: Vec::new(),
+            disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.".to_string(),
+            trademark: "NEON LAW".to_string(),
+            trademark_registration: "6,325,650".to_string(),
+            trademark_record_url:
+                "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
             copyright_year: 2026,
+            source_repo: crate::source_repository::REPOSITORY_SLUG.to_string(),
+            source_href: crate::source_repository::REPOSITORY_HREF.to_string(),
+            source_stars: None,
             navigator_version: String::new(),
+            navigator_href: crate::source_repository::NAVIGATOR_HREF.to_string(),
         }
     }
 
@@ -361,16 +428,42 @@ mod tests {
     }
 
     #[test]
-    fn the_footer_renders_the_shared_platform_line_without_a_version() {
+    fn the_footer_ends_with_the_tagline_after_all_brands_and_platform_details() {
+        let html = ssr(|| rsx! { FirmFooter { model: model(vec![]) } });
+        let disclaimer = html
+            .find("Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.")
+            .expect("the disclaimer renders");
+        let copyright = html
+            .find("© 2026 Shook Law PLLC")
+            .expect("the copyright renders");
+        let trademark = html.find("NEON LAW").expect("the trademark renders");
+        let platform = html
+            .find("app-footer__platform")
+            .expect("the platform line renders");
+        let tagline = html
+            .rfind(FOOTER_TAGLINE)
+            .expect("the final tagline renders");
+        assert!(disclaimer < copyright && copyright < trademark);
+        assert!(trademark < platform && platform < tagline);
+        assert_eq!(html.matches(FOOTER_TAGLINE).count(), 1);
+        assert!(
+            html.contains(r#"href="https://tmsearch.uspto.gov/search/search-results/90039224""#)
+        );
+        assert!(html.contains(r#"href="https://github.com/neon-law-source-code/navigator""#));
+    }
+
+    #[test]
+    fn the_footer_renders_the_source_repository_without_a_version() {
         fn app() -> Element {
             rsx! {
                 FirmFooter { model: model(vec![]) }
             }
         }
         let html = ssr(app);
+        assert!(html.contains("Powered by"), "the platform wording: {html}");
         assert!(
-            html.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
-            "the shared wording: {html}"
+            html.contains("neon-law-source-code/navigator"),
+            "the source repository: {html}"
         );
         assert!(
             !html.contains("app-footer__release"),
@@ -587,7 +680,7 @@ mod tests {
             "off-site treatment: {html}"
         );
         let member = html.find("Proud member").expect("membership");
-        let platform = html.find(POWERED_BY_NEON_LAW_NAVIGATOR).expect("platform");
+        let platform = html.find("app-footer__platform").expect("platform");
         assert!(
             member < platform,
             "membership before the platform line: {html}"

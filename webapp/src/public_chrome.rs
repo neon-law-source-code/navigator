@@ -400,7 +400,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
         navigator_version: views::brand::deployed_release()
             .unwrap_or_default()
             .to_string(),
-        navigator_href: "/navigator".to_string(),
+        navigator_href: crate::source_repository::NAVIGATOR_HREF.to_string(),
         tokens_href: crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str()),
         // The compiled family — every house brand the firm trades under, the
         // request's own key marked current — so the "Our Family" row is on

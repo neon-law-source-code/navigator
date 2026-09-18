@@ -27,6 +27,9 @@ use dioxus::prelude::*;
 /// [`crate::firm_footer::FirmFooter`] so the wording cannot drift.
 pub const POWERED_BY_NEON_LAW_NAVIGATOR: &str = "Powered by Neon Law Navigator";
 
+/// The firm's final footer line, shared by public and authenticated pages.
+pub const FOOTER_TAGLINE: &str = "Everyone Deserves to be Seen";
+
 use crate::components::{ExternalLink, GitHubStars, Icon, IconName};
 
 /// One published office — the state it sits in and its street address.
@@ -638,9 +641,10 @@ pub fn SiteFooterLegal(
                     }
                 }
                 div { class: "site-footer__legal",
-                    // Above the rule, not inside it: a reader looking for who
-                    // they are dealing with should not have to parse the
-                    // copyright line to find it.
+                    p { class: "site-footer__disclaimer", "{disclaimer}" }
+                    // Above the ownership lines, not inside them: a reader
+                    // looking for who they are dealing with should not have to
+                    // parse the copyright line to find it.
                     if !attribution.is_empty() {
                         p { class: "site-footer__attribution", "{attribution}" }
                     }
@@ -713,7 +717,6 @@ pub fn SiteFooterLegal(
                                 }
                             }
                         }
-                        p { class: "site-footer__disclaimer", "{disclaimer}" }
                     }
                     // One line names the software this page runs: "Powered
                     // by", the repository it is developed in with its stars,
@@ -747,6 +750,7 @@ pub fn SiteFooterLegal(
                             }
                         }
                     }
+                    p { class: "site-footer__tagline", "{FOOTER_TAGLINE}" }
                 }
             }
         }
@@ -790,7 +794,7 @@ mod tests {
             rsx! {
                 SiteFooterLegal {
                     copyright_holder: "Neon Law".to_string(),
-                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.".to_string(),
                     copyright_year: 2026,
                     trademark: "NEON LAW".to_string(),
                     trademark_registration: "6,325,650".to_string(),
@@ -836,6 +840,33 @@ mod tests {
             copyright < mark && mark < licences,
             "the ownership facts read together, above the bar rows: {out}"
         );
+    }
+
+    #[test]
+    fn ends_the_legal_strip_with_the_tagline_after_the_disclaimer_and_brands() {
+        let out = legal_html();
+        let legal = out
+            .split(r#"<div class="site-footer__legal">"#)
+            .nth(1)
+            .expect("the legal strip renders");
+        let disclaimer = legal
+            .find("Attorney advertisement")
+            .expect("the disclaimer renders");
+        let copyright = legal
+            .find("site-footer__copyright")
+            .expect("the copyright renders");
+        let trademark = legal
+            .find("site-footer__trademark")
+            .expect("the trademark renders");
+        let platform = legal
+            .find("site-footer__legal-platform")
+            .expect("the platform renders");
+        let tagline = legal
+            .rfind(FOOTER_TAGLINE)
+            .expect("the final tagline renders");
+        assert!(disclaimer < copyright && copyright < trademark && trademark < platform);
+        assert!(platform < tagline);
+        assert_eq!(legal.matches(FOOTER_TAGLINE).count(), 1);
     }
 
     /// A deploy holding no registration notices none, and one that cites a
@@ -918,7 +949,7 @@ mod tests {
             out.contains("1,234") && out.contains("<title>GitHub stars</title>"),
             "the star count renders under its own accessible name: {out}"
         );
-        let disclaimer = out.find("attorney advertisement").expect("the disclaimer");
+        let disclaimer = out.find("Attorney advertisement").expect("the disclaimer");
         let platform = out.find("site-footer__powered").expect("the platform line");
         assert!(
             disclaimer < platform,
@@ -1100,8 +1131,8 @@ mod tests {
             .find(r#"<p class="site-footer__disclaimer""#)
             .expect("the disclaimer renders");
         assert!(
-            legal < copyright && copyright < disclaimer,
-            "the copyright heads the strip: {out}"
+            legal < disclaimer && disclaimer < copyright,
+            "the disclaimer precedes the copyright: {out}"
         );
     }
 
@@ -1176,7 +1207,7 @@ mod tests {
                     source_repo: "neon-law-source-code/navigator".to_string(),
                     source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
                     navigator_version: "26.8.20".to_string(),
-                    navigator_href: "/navigator".to_string(),
+                    navigator_href: "https://www.neonlaw.com/navigator".to_string(),
                 }
             }
         }
@@ -1550,8 +1581,8 @@ mod tests {
     ///
     /// This is what makes a push visible end to end: the moment a new image is
     /// live, the number at the bottom of every public page changes. It links
-    /// `/navigator`, the page describing the platform, so a reader who wants to
-    /// know what the number refers to has somewhere to go.
+    /// the public Navigator page, so a reader who wants to know what the number
+    /// refers to has somewhere to go.
     #[test]
     fn publishes_the_release_it_is_running() {
         let out = contactable_html();
@@ -1560,7 +1591,9 @@ mod tests {
             "the footer names the running release: {out}"
         );
         assert!(
-            out.contains(r#"<a class="site-footer__release" href="/navigator">"#),
+            out.contains(
+                r#"<a class="site-footer__release" href="https://www.neonlaw.com/navigator">"#,
+            ),
             "linked to the page describing the platform: {out}"
         );
         let platform = out
@@ -1767,7 +1800,7 @@ mod tests {
         }]
     }
 
-    /// The legal strip plus the firm's affiliations: the three-brand family
+    /// The legal strip plus the firm's live-brand affiliations
     /// and the one association membership.
     fn affiliated_html() -> String {
         fn app() -> Element {

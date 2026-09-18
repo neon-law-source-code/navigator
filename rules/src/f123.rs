@@ -194,6 +194,70 @@ fn letter_marker(n: u32) -> String {
         )
 }
 
+/// The letter a `> **A. Label.**` block-quote subsection carries, as
+/// `(value, label)`.
+///
+/// This is the depth-2 form the engagement letters actually use — the one
+/// [`docs/notation-authoring.md`] documents and `views::harvard_outline`
+/// parses through its own `parse_bold_letter_lead` — so the rule reads it
+/// beside `### A.` rather than seeing only the heading form and letting an
+/// out-of-sequence letter through. A quoted line that does not lead with a
+/// bold single-letter marker is a pull quote, not a subsection.
+///
+/// [`docs/notation-authoring.md`]: https://github.com/neon-law-source-code/navigator/blob/main/docs/notation-authoring.md
+fn quoted_subsection_marker(line: &str) -> Option<(u32, &str)> {
+    let rest = line.trim_start().strip_prefix('>')?.trim_start();
+    let rest = rest.strip_prefix("**")?;
+    let close = rest.find("**")?;
+    let (marker, label) = rest[..close].split_once('.')?;
+    let mut chars = marker.trim().chars();
+    let letter = chars.next()?;
+    if chars.next().is_some() || !letter.is_ascii_uppercase() {
+        return None;
+    }
+    Some((u32::from(letter as u8 - b'A') + 1, label.trim()))
+}
+
+/// The lettered block-quote subsections, in sequence beneath the `## `
+/// section each one sits under.
+///
+/// A separate pass from [`outline_violations`], because a block quote is not
+/// a heading: it never enters the heading list, it cannot be mistaken for a
+/// section that lost its marker, and the execution tail — which is about the
+/// *level* a heading states — has nothing to say about it.
+fn quoted_subsection_violations(file: &SourceFile) -> Vec<Violation> {
+    let mut violations = Vec::new();
+    let mut expected = 1_u32;
+    for (line, text) in frontmatter::body_lines(&file.contents) {
+        // Lettering restarts beneath each section, the same way the `### `
+        // counter does.
+        if text.starts_with("## ") {
+            expected = 1;
+            continue;
+        }
+        let Some((value, label)) = quoted_subsection_marker(text) else {
+            continue;
+        };
+        if value != expected {
+            violations.push(violation(
+                file,
+                line,
+                format!(
+                    "`> **{} {label}**` is subsection {}; depth-2 subsections run in sequence \
+                     under their section and restart at `A.` beneath each one, so this one is {} \
+                     (expected `> **{} {label}**`)",
+                    letter_marker(value),
+                    letter_marker(value),
+                    letter_marker(expected),
+                    letter_marker(expected),
+                ),
+            ));
+        }
+        expected += 1;
+    }
+    violations
+}
+
 fn violation(file: &SourceFile, line: usize, message: String) -> Violation {
     Violation {
         code: F123HarvardOutlineRequired::CODE,
@@ -468,6 +532,7 @@ impl Rule for F123HarvardOutlineRequired {
             first_marked,
             last_marked,
         ));
+        violations.extend(quoted_subsection_violations(file));
         violations
     }
 }
@@ -532,6 +597,46 @@ mod tests {
     /// unless it is exercising the title rule itself.
     fn titled(body: &str) -> String {
         format!("# THE INSTRUMENT\n\n{body}")
+    }
+
+    #[test]
+    fn a_lettered_block_quote_subsection_runs_in_sequence() {
+        // The engagement letters write depth 2 as `> **A. Label.**`, not
+        // `### A.` — the form `docs/notation-authoring.md` documents and
+        // `views::harvard_outline` parses. Read only as headings, an
+        // out-of-sequence letter here passes unseen.
+        let body = "## I. Fees\n\n> **A. Costs.** Text.\n\n> **C. Invoices.** Text.\n";
+        let found = lint("onboarding", body);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].message.contains("is subsection C.")
+                && found[0].message.contains("expected `> **B. Invoices.**`"),
+            "{:?}",
+            found[0].message
+        );
+    }
+
+    #[test]
+    fn lettered_block_quote_subsections_restart_beneath_each_section() {
+        let body = "## I. Fees\n\n> **A. Costs.** Text.\n\n> **B. Invoices.** Text.\n\n\
+                    ## II. Contacts\n\n> **A. Ours.** Text.\n\n> **B. Yours.** Text.\n";
+        assert!(
+            lint("onboarding", body).is_empty(),
+            "{:?}",
+            lint("onboarding", body)
+        );
+    }
+
+    #[test]
+    fn ordinary_quoted_prose_is_not_a_subsection() {
+        // A block quote that does not lead with a bold letter marker is a
+        // pull quote, not a lettered subsection, and carries no sequence.
+        let body = "## I. Fees\n\n> Plain quoted prose.\n\n> **Bold but unlettered.** Text.\n";
+        assert!(
+            lint("onboarding", body).is_empty(),
+            "{:?}",
+            lint("onboarding", body)
+        );
     }
 
     #[test]

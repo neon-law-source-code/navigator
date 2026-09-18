@@ -1349,6 +1349,7 @@ deleted, so a mailbox is reusable rather than locked out.
 ```text
 ┌─ person ──────────────────────────┐
 │ id                 record         │
+│ apple_subject      option<string> │
 │ email              string         │
 │ email_confirmed    bool           │
 │ email_lower        string         │
@@ -1357,6 +1358,7 @@ deleted, so a mailbox is reusable rather than locked out.
 │ inserted_at        datetime       │
 │ is_admitted        bool           │
 │ linkedin_url       option<string> │
+│ microsoft_subject  option<string> │
 │ middle_name        option<string> │
 │ name               string         │
 │ oidc_subject       option<string> │

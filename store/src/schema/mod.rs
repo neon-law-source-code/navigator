@@ -418,6 +418,7 @@ mod tests {
         DEFINITIONS, SCHEMA_VERSION, VERSION_RECORD,
     };
     use crate::surreal::test_support::unmigrated;
+    use uuid::Uuid;
 
     /// #1145: Navigator's authorization stays above the database, so
     /// every table lands `PERMISSIONS NONE`. That is also the engine's
@@ -568,6 +569,53 @@ mod tests {
         assert!(crate::persons::is_admitted(&db, historical_id)
             .await
             .unwrap());
+    }
+
+    #[tokio::test]
+    async fn applying_preserves_a_historical_primary_subject_and_adds_provider_fields() {
+        let db = unmigrated().await;
+        let historical_id = Uuid::now_v7();
+        db.query(
+            "CREATE $id SET name = 'Historical Person', \
+             email = 'historical@example.com', role = 'client', is_admitted = true, \
+             oidc_subject = 'primary-subject', \
+             inserted_at = type::datetime('2020-01-01T00:00:00Z'), \
+             updated_at = type::datetime('2020-01-01T00:00:00Z')",
+        )
+        .bind(("id", crate::surreal::record_id("person", historical_id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        apply(&db)
+            .await
+            .expect("the provider fields converge over a historical row");
+
+        let primary: Option<String> = db
+            .query("SELECT VALUE oidc_subject FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", historical_id)))
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        let microsoft: Option<String> = db
+            .query("SELECT VALUE microsoft_subject FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", historical_id)))
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        let apple: Option<String> = db
+            .query("SELECT VALUE apple_subject FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", historical_id)))
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        assert_eq!(primary.as_deref(), Some("primary-subject"));
+        assert_eq!(microsoft, None);
+        assert_eq!(apple, None);
     }
 
     /// A row coded `closed` written before that code was reserved (simulated

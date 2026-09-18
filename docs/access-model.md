@@ -228,8 +228,9 @@ needs only the separate supervised capabilities explicitly granted to that role.
 Signing in with the IdP does not, by itself, create a `person` row. The OAuth callback resolves the IdP-authenticated
 subject against the table (`portal::oauth::resolve_person_from_claims`):
 
-- an existing **admitted** row (matched on `oidc_subject` or, case-insensitively, `email`) signs in with its stored
-  role;
+- an existing **admitted** row (matched on the presenting provider's subject — `oidc_subject` for the primary provider,
+  `microsoft_subject` for Microsoft, or `apple_subject` for Apple — or, case-insensitively, `email`) signs in with its
+  stored role;
 - the configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` is JIT-created as `owner` on first login (the carve-out that keeps a
   fresh deploy from locking its Owner out), and role-healed back to `owner` on every subsequent login;
 - **every other unknown email is refused with a `403`** — onboarding is operator-mediated by default.

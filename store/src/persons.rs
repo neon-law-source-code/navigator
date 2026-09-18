@@ -4,7 +4,7 @@
 //! # This table lives in SurrealDB
 //!
 //! Sign-in resolves against this engine: the OIDC callback looks up the
-//! row by `oidc_subject` or by email and reads `role` from it.
+//! row by the presenting provider's subject or by email and reads `role` from it.
 //!
 //! [`Role`] is the system-wide tier every authorization gate evaluates
 //! against. It is read from the database row at callback time, never
@@ -209,9 +209,13 @@ pub struct Person {
     /// The mailbox, as supplied. Matching is case-insensitive through
     /// the stored `email_lower` field — see [`find_by_email_ci`].
     pub email: String,
-    /// OIDC `sub` claim — stable identifier from the IdP (Rauthy,
-    /// Google, etc.). `None` for seeded persons not yet linked.
+    /// Primary-provider `sub` claim — stable identifier from the IdP
+    /// (Rauthy, Google, etc.). `None` for seeded persons not yet linked.
     pub oidc_subject: Option<String>,
+    /// Microsoft subject, when this Person has linked that provider.
+    pub microsoft_subject: Option<String>,
+    /// Apple subject, when this Person has linked that provider.
+    pub apple_subject: Option<String>,
     /// System-wide tier.
     pub role: Role,
     /// The contact's role at their organization (e.g. "Executive
@@ -258,6 +262,8 @@ struct PersonRow {
     middle_name: Option<String>,
     email: String,
     oidc_subject: Option<String>,
+    microsoft_subject: Option<String>,
+    apple_subject: Option<String>,
     role: String,
     title: Option<String>,
     phone: Option<String>,
@@ -293,6 +299,8 @@ impl PersonRow {
             middle_name: self.middle_name,
             email: self.email,
             oidc_subject: self.oidc_subject,
+            microsoft_subject: self.microsoft_subject,
+            apple_subject: self.apple_subject,
             role: Role::parse(&self.role)?,
             title: self.title,
             phone: self.phone,
@@ -311,7 +319,8 @@ impl PersonRow {
 /// `email_lower` is deliberately absent: it is a stored derivation of
 /// `email` that exists for the unique index, not a fact a caller needs.
 const SELECT: &str = "id, name, given_name, family_name, middle_name, email, oidc_subject, \
-                      role, title, phone, xero_contact_id, profile_image_url, linkedin_url, \
+                      microsoft_subject, apple_subject, role, title, phone, xero_contact_id, \
+                      profile_image_url, linkedin_url, \
                       email_confirmed, inserted_at, updated_at";
 
 /// Errors reading or writing a person.
@@ -328,6 +337,14 @@ pub enum PersonError {
     /// already linked to this IdP identity.
     #[error("that IdP identity is already linked to another person")]
     OidcSubjectTaken,
+    /// The write collided with `person_microsoft_subject` — another row is
+    /// already linked to this Microsoft identity.
+    #[error("that Microsoft identity is already linked to another person")]
+    MicrosoftSubjectTaken,
+    /// The write collided with `person_apple_subject` — another row is
+    /// already linked to this Apple identity.
+    #[error("that Apple identity is already linked to another person")]
+    AppleSubjectTaken,
     /// A write reported success but returned no row, or returned one
     /// this module could not read back — see [`PersonRow::into_person`].
     #[error("writing a person returned no usable row")]
@@ -350,6 +367,8 @@ fn classify_write(error: surrealdb::Error) -> PersonError {
     match crate::surreal::retry::unique_violation(&error) {
         Some("person_email_lower") => PersonError::EmailTaken,
         Some("person_oidc_subject") => PersonError::OidcSubjectTaken,
+        Some("person_microsoft_subject") => PersonError::MicrosoftSubjectTaken,
+        Some("person_apple_subject") => PersonError::AppleSubjectTaken,
         _ => PersonError::Db(error),
     }
 }
@@ -507,6 +526,8 @@ pub struct NewPerson {
     pub family_name: Option<String>,
     pub middle_name: Option<String>,
     pub oidc_subject: Option<String>,
+    pub microsoft_subject: Option<String>,
+    pub apple_subject: Option<String>,
     pub title: Option<String>,
     pub phone: Option<String>,
     pub profile_image_url: Option<String>,
@@ -679,9 +700,41 @@ pub async fn find_by_oidc_subject(
     db: &SurrealDb,
     subject: &str,
 ) -> Result<Option<Person>, PersonError> {
+    find_by_subject(db, "oidc_subject", subject).await
+}
+
+/// Resolve a person by their Microsoft `sub` claim.
+///
+/// # Errors
+///
+/// [`PersonError::Db`] if the lookup fails.
+pub async fn find_by_microsoft_subject(
+    db: &SurrealDb,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    find_by_subject(db, "microsoft_subject", subject).await
+}
+
+/// Resolve a person by their Apple `sub` claim.
+///
+/// # Errors
+///
+/// [`PersonError::Db`] if the lookup fails.
+pub async fn find_by_apple_subject(
+    db: &SurrealDb,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    find_by_subject(db, "apple_subject", subject).await
+}
+
+async fn find_by_subject(
+    db: &SurrealDb,
+    field: &str,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
     let response = db
         .query(format!(
-            "SELECT {SELECT} FROM ONLY person WHERE oidc_subject = $subject LIMIT 1"
+            "SELECT {SELECT} FROM ONLY person WHERE {field} = $subject LIMIT 1"
         ))
         .bind(("subject", subject.to_string()))
         .await
@@ -863,6 +916,8 @@ async fn write_row(db: &SurrealDb, id: Uuid, input: &NewPerson) -> Result<Person
              family_name = $family_name, \
              middle_name = $middle_name, \
              oidc_subject = $oidc_subject, \
+             microsoft_subject = $microsoft_subject, \
+             apple_subject = $apple_subject, \
              title = $title, \
              phone = $phone, \
              profile_image_url = $profile_image_url, \
@@ -877,6 +932,8 @@ async fn write_row(db: &SurrealDb, id: Uuid, input: &NewPerson) -> Result<Person
         .bind(("family_name", input.family_name.clone()))
         .bind(("middle_name", input.middle_name.clone()))
         .bind(("oidc_subject", input.oidc_subject.clone()))
+        .bind(("microsoft_subject", input.microsoft_subject.clone()))
+        .bind(("apple_subject", input.apple_subject.clone()))
         .bind(("title", input.title.clone()))
         .bind(("phone", input.phone.clone()))
         .bind(("profile_image_url", input.profile_image_url.clone()))
@@ -913,7 +970,8 @@ async fn write_row(db: &SurrealDb, id: Uuid, input: &NewPerson) -> Result<Person
 ///
 /// # Errors
 ///
-/// [`PersonError::OidcSubjectTaken`] when `input` carries an IdP identity
+/// [`PersonError::OidcSubjectTaken`], [`PersonError::MicrosoftSubjectTaken`],
+/// or [`PersonError::AppleSubjectTaken`] when `input` carries an IdP identity
 /// another person already holds — a real conflict, not a race —
 /// [`PersonError::WriteReturnedNothing`] when a claim never resolves into
 /// a readable person inside the write budget, and [`PersonError::Db`] for
@@ -1278,10 +1336,50 @@ pub async fn link_oidc_subject(
     id: Uuid,
     subject: &str,
 ) -> Result<Option<Person>, PersonError> {
+    link_subject(db, id, "oidc_subject", subject).await
+}
+
+/// Link a person to the Microsoft identity that just authenticated as them.
+/// Returns `None` when the person no longer exists.
+///
+/// # Errors
+///
+/// [`PersonError::MicrosoftSubjectTaken`] when another row already holds this
+/// `sub`, and [`PersonError::Db`] for anything else.
+pub async fn link_microsoft_subject(
+    db: &SurrealDb,
+    id: Uuid,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    link_subject(db, id, "microsoft_subject", subject).await
+}
+
+/// Link a person to the Apple identity that just authenticated as them.
+/// Returns `None` when the person no longer exists.
+///
+/// # Errors
+///
+/// [`PersonError::AppleSubjectTaken`] when another row already holds this
+/// `sub`, and [`PersonError::Db`] for anything else.
+pub async fn link_apple_subject(
+    db: &SurrealDb,
+    id: Uuid,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    link_subject(db, id, "apple_subject", subject).await
+}
+
+async fn link_subject(
+    db: &SurrealDb,
+    id: Uuid,
+    field: &str,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    let assignment = format!("{field} = $subject");
     update_one(
         db,
         id,
-        "oidc_subject = $subject",
+        &assignment,
         vec![bind("subject", subject.to_string())],
     )
     .await
@@ -1340,10 +1438,10 @@ pub async fn delete(db: &SurrealDb, id: Uuid) -> Result<(), PersonError> {
 mod tests {
     use super::{
         create, default_firm_dri, delete, edit, find_by_email_ci, find_by_id, find_by_ids,
-        find_by_oidc_subject, find_or_create, is_admitted, link_oidc_subject, list_directory,
-        retry, search, set_admitted, set_email_confirmed, set_profile_image_url, set_role,
-        set_xero_contact_id, update_contact, ContactUpdate, NewPerson, PersonEdit, PersonError,
-        Role,
+        find_by_oidc_subject, find_or_create, is_admitted, link_apple_subject, link_oidc_subject,
+        list_directory, retry, search, set_admitted, set_email_confirmed, set_profile_image_url,
+        set_role, set_xero_contact_id, update_contact, ContactUpdate, NewPerson, PersonEdit,
+        PersonError, Role,
     };
     use crate::surreal::test_support::mem;
     use crate::surreal::{record_id, SurrealDb};
@@ -1964,6 +2062,36 @@ mod tests {
         assert!(
             matches!(refused, Err(PersonError::OidcSubjectTaken)),
             "{refused:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn linking_an_apple_subject_another_person_holds_is_refused() {
+        let db = mem().await;
+        let first = person(&db, "Libra", "libra@example.com").await;
+        let second = person(&db, "Aries", "aries@example.com").await;
+        link_apple_subject(&db, first.id, "apple-subject-1")
+            .await
+            .unwrap();
+
+        let refused = link_apple_subject(&db, second.id, "apple-subject-1").await;
+        assert!(
+            matches!(refused, Err(PersonError::AppleSubjectTaken)),
+            "{refused:?}"
+        );
+        assert_eq!(
+            find_by_id(&db, first.id)
+                .await
+                .unwrap()
+                .and_then(|person| person.apple_subject),
+            Some("apple-subject-1".into())
+        );
+        assert_eq!(
+            find_by_id(&db, second.id)
+                .await
+                .unwrap()
+                .and_then(|person| person.apple_subject),
+            None
         );
     }
 

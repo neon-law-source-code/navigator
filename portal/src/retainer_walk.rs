@@ -3655,6 +3655,8 @@ Sign: {{client.signature}}";
             middle_name: None,
             email: email.to_string(),
             oidc_subject: None,
+            microsoft_subject: None,
+            apple_subject: None,
             role: store::persons::Role::Client,
             title: None,
             phone: None,

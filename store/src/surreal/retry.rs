@@ -119,6 +119,8 @@ const UNIQUE_INDEX_NAMES: &[&str] = &[
     "credential_person_jurisdiction",
     "person_email_lower",
     "person_oidc_subject",
+    "person_microsoft_subject",
+    "person_apple_subject",
     "jurisdiction_code",
     "entity_type_name",
     "entity_firm_anchor",

@@ -57,10 +57,17 @@ fn opens_fence(line: &str) -> Option<(u8, usize)> {
 }
 
 /// Whether this line closes a fence opened with `ch` repeated `len` times:
-/// the same character, a run at least as long, and nothing after it but
-/// whitespace.
+/// the same character, up to three spaces of indent, a run at least as long,
+/// and nothing after it but whitespace.
+///
+/// The indent limit is the closer's own, not the opener's. At four spaces the
+/// run is content rather than a closing fence, so the block is still open and
+/// what follows is still the sample being shown.
 fn closes_fence(line: &str, ch: u8, len: usize) -> bool {
     let rest = line.trim_start_matches(' ');
+    if line.len() - rest.len() > 3 {
+        return false;
+    }
     let run = rest.as_bytes().iter().take_while(|&&b| b == ch).count();
     run >= len && rest[run..].trim().is_empty()
 }
@@ -342,6 +349,24 @@ mod tests {
                 "fenced body must be left alone: {body:?} -> {v:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_four_space_run_does_not_close_a_fence() {
+        // CommonMark allows a closing fence up to three spaces of indent.
+        // At four it is content, not a closer, so the fence is still open
+        // and the span below it is still the sample being shown.
+        let body = "```text\nbody\n    ```\n` padded `\n```\n";
+        let v = M038NoSpaceInCode.lint(&f(body));
+        assert!(v.is_empty(), "still inside the fence, got {v:?}");
+    }
+
+    #[test]
+    fn a_closer_indented_three_spaces_still_closes() {
+        // Three is the limit, not the exclusion.
+        let v = M038NoSpaceInCode.lint(&f("```text\nbody\n   ```\n` padded `\n"));
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert_eq!(v[0].line, 4);
     }
 
     #[test]

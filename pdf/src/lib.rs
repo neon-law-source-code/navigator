@@ -57,6 +57,7 @@
 //!   original text (review-mode style; the recipient can still read
 //!   the original but it's marked for redaction).
 
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use thiserror::Error;
 
 pub mod acroform;
@@ -73,7 +74,9 @@ pub use acroform::{
     widget_annotation_count, FieldSpec, RadioMergeMember, RadioMergeSpec, ReauthorSpec,
 };
 pub use certificate::{render_certificate, CertificateParams};
-pub use format::{render_document, Closing, LetterBlocks, Letterhead, OutputFormat};
+pub use format::{
+    render_document, render_document_with_options, Closing, LetterBlocks, Letterhead, OutputFormat,
+};
 pub use markdown::to_typst;
 pub use passage::{
     locate, occurrence_count, page_count, page_render, NormalisedRect, PassageError,
@@ -123,6 +126,23 @@ pub const BRAND_FONT_STACK: &[&str] = &["GORP Serif", "Noto Serif"];
 /// `/app/team/fonts/gorp-serif.zip`). WOFF2 is a web format Typst cannot read;
 /// this directory needs the desktop OTFs.
 pub const FONT_DIR_ENV: &str = "NAVIGATOR_PDF_FONT_DIR";
+
+/// Per-render values that affect the serialized PDF.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderOptions {
+    /// Creation timestamp for a source whose Typst `document(date:)` is
+    /// `auto`. The default is the deterministic Unix epoch for inputs with
+    /// no source history.
+    pub creation_timestamp: DateTime<Utc>,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            creation_timestamp: DateTime::<Utc>::UNIX_EPOCH,
+        }
+    }
+}
 
 /// Typst set-rule making [`BRAND_FONT_STACK`] the document default.
 /// Prepended to every source by [`render`]; a caller's own `#set text`
@@ -223,6 +243,21 @@ impl RedactionStyle {
 /// or [`PdfError::Export`] if the PDF stage fails after a successful
 /// compile.
 pub fn render(source: &str) -> Result<Vec<u8>, PdfError> {
+    render_with_options(source, &RenderOptions::default())
+}
+
+/// Compile Typst source with explicit PDF serialization options.
+///
+/// The timestamp is passed to Typst's PDF exporter rather than through a
+/// process-global environment variable, so parallel renders cannot affect
+/// one another.
+///
+/// # Errors
+///
+/// Returns [`PdfError::Compile`] if the Typst source is malformed,
+/// or [`PdfError::Export`] if the PDF stage fails after a successful
+/// compile.
+pub fn render_with_options(source: &str, options: &RenderOptions) -> Result<Vec<u8>, PdfError> {
     use typst_as_lib::TypstEngine;
     use typst_layout::PagedDocument;
 
@@ -252,8 +287,40 @@ pub fn render(source: &str) -> Result<Vec<u8>, PdfError> {
         .output
         .map_err(|diags| PdfError::Compile(format_diagnostics(&diags)))?;
 
-    typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default())
-        .map_err(|diags| PdfError::Export(format_diagnostics(&diags)))
+    let timestamp = options.creation_timestamp;
+    let month = u8::try_from(timestamp.month()).map_err(|_| {
+        PdfError::Export("creation timestamp month cannot be represented by Typst".into())
+    })?;
+    let day = u8::try_from(timestamp.day()).map_err(|_| {
+        PdfError::Export("creation timestamp day cannot be represented by Typst".into())
+    })?;
+    let hour = u8::try_from(timestamp.hour()).map_err(|_| {
+        PdfError::Export("creation timestamp hour cannot be represented by Typst".into())
+    })?;
+    let minute = u8::try_from(timestamp.minute()).map_err(|_| {
+        PdfError::Export("creation timestamp minute cannot be represented by Typst".into())
+    })?;
+    let second = u8::try_from(timestamp.second()).map_err(|_| {
+        PdfError::Export("creation timestamp second cannot be represented by Typst".into())
+    })?;
+    let Some(datetime) = typst::foundations::Datetime::from_ymd_hms(
+        timestamp.year(),
+        month,
+        day,
+        hour,
+        minute,
+        second,
+    ) else {
+        return Err(PdfError::Export(
+            "creation timestamp cannot be represented by Typst".into(),
+        ));
+    };
+    let timestamp = Some(typst_pdf::Timestamp::new_utc(datetime));
+    let pdf_options = typst_pdf::PdfOptions {
+        timestamp,
+        ..Default::default()
+    };
+    typst_pdf::pdf(&doc, &pdf_options).map_err(|diags| PdfError::Export(format_diagnostics(&diags)))
 }
 
 /// Render a Typst document where one passage has been wrapped in the
@@ -300,7 +367,11 @@ fn format_diagnostics<T: std::fmt::Debug>(diags: &T) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{render, render_with_redactions, PdfError, RedactionStyle, FIRM_LOGO};
+    use super::{
+        render, render_with_options, render_with_redactions, PdfError, RedactionStyle,
+        RenderOptions, FIRM_LOGO,
+    };
+    use chrono::TimeZone;
 
     #[test]
     fn embedded_neon_law_mark_is_a_high_resolution_png() {
@@ -343,6 +414,40 @@ mod tests {
             pdf.len() > 100,
             "PDF unexpectedly tiny: {} bytes",
             pdf.len()
+        );
+    }
+
+    #[test]
+    fn explicit_timestamp_makes_auto_date_renders_repeatable_and_valid() {
+        let source = "#set document(date: auto)\nHello, world.";
+        let timestamp = chrono::Utc
+            .with_ymd_and_hms(2024, 1, 2, 3, 4, 5)
+            .single()
+            .expect("fixed test timestamp");
+        let options = RenderOptions {
+            creation_timestamp: timestamp,
+        };
+        let first = render_with_options(source, &options).expect("first render");
+        let second = render_with_options(source, &options).expect("second render");
+        assert_eq!(
+            first, second,
+            "the same timestamp must produce the same bytes"
+        );
+        super::validate_pdf(&first).expect("the deterministic output must remain a valid PDF");
+
+        let changed = render_with_options(
+            source,
+            &RenderOptions {
+                creation_timestamp: chrono::Utc
+                    .with_ymd_and_hms(2024, 1, 2, 3, 4, 6)
+                    .single()
+                    .expect("fixed test timestamp"),
+            },
+        )
+        .expect("render with changed timestamp");
+        assert_ne!(
+            first, changed,
+            "the explicit timestamp must control PDF metadata"
         );
     }
 

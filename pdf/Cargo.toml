@@ -10,6 +10,7 @@ publish.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+chrono.workspace = true
 lopdf.workspace = true
 pulldown-cmark = { workspace = true, default-features = false }
 thiserror.workspace = true
@@ -19,6 +20,7 @@ thiserror.workspace = true
 # review. Bump deliberately, together, and re-verify the geometry suite.
 typst-layout = "=0.15.1"
 typst-pdf = "=0.15.1"
+typst.workspace = true
 typst-as-lib = { version = "=0.16.0", features = ["typst-kit-fonts", "typst-kit-embed-fonts"] }
 word.workspace = true
 

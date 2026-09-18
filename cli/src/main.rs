@@ -1,7 +1,8 @@
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use chrono::TimeZone as _;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
 
@@ -283,6 +284,55 @@ mod help_tests {
         assert_eq!(
             help_headline("One two three. Four five six."),
             "One two three."
+        );
+    }
+
+    #[test]
+    fn notation_render_timestamp_uses_source_commit_or_fixed_fallback() {
+        let repository = tempfile::tempdir().expect("temporary repository");
+        let source = repository.path().join("notation.md");
+        std::fs::write(&source, "source").expect("write source");
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repository.path())
+                .args(args)
+                .output()
+                .expect("git runs");
+            assert!(
+                output.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        git(&["init", "--quiet", "--initial-branch=main"]);
+        git(&["config", "user.email", "notation-render@example.com"]);
+        git(&["config", "user.name", "notation render"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        git(&["add", "notation.md"]);
+        let commit = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repository.path())
+            .args(["commit", "--quiet", "-m", "source"])
+            .env("GIT_AUTHOR_DATE", "2024-01-02T03:04:05Z")
+            .env("GIT_COMMITTER_DATE", "2024-01-02T03:04:05Z")
+            .output()
+            .expect("git commit runs");
+        assert!(commit.status.success());
+
+        assert_eq!(
+            notation_render_timestamp(&source).timestamp(),
+            chrono::DateTime::parse_from_rfc3339("2024-01-02T03:04:05Z")
+                .expect("fixed test timestamp")
+                .timestamp()
+        );
+
+        let non_git = tempfile::tempdir().expect("temporary input directory");
+        let untracked = non_git.path().join("notation.md");
+        std::fs::write(&untracked, "source").expect("write untracked source");
+        assert_eq!(
+            notation_render_timestamp(&untracked).timestamp(),
+            NOTATION_RENDER_FALLBACK_EPOCH
         );
     }
 }
@@ -3726,7 +3776,11 @@ fn run_render(
     // Restore the plumbing here, not somewhere new, if that call changes.
     let letterhead = pdf::Letterhead::default();
     let format_debug = format!("{format:?}");
-    let bytes = match pdf::render_document(&body, format, &letterhead) {
+    let render_options = pdf::RenderOptions {
+        creation_timestamp: notation_render_timestamp(file),
+    };
+    let bytes = match pdf::render_document_with_options(&body, format, &letterhead, &render_options)
+    {
         Ok(b) => b,
         Err(e) => {
             eprintln!("navigator: render {}: {e}", file.display());
@@ -3747,6 +3801,43 @@ fn run_render(
         ))
     );
     ExitCode::SUCCESS
+}
+
+/// The fixed timestamp for notation files that have no Git history.
+///
+/// A source file outside Git still needs a stable PDF, so the renderer uses
+/// the Unix epoch rather than the wall clock. Tracked files use their latest
+/// commit timestamp, which makes the PDF follow the source's own history.
+const NOTATION_RENDER_FALLBACK_EPOCH: i64 = 0;
+
+fn notation_render_timestamp(file: &Path) -> chrono::DateTime<chrono::Utc> {
+    let timestamp = file
+        .parent()
+        .and_then(|parent| {
+            let name = file.file_name()?;
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(parent)
+                .args(["log", "-1", "--format=%ct", "--"])
+                .arg(name)
+                .output()
+                .ok()?;
+            if !output.status.success() {
+                return None;
+            }
+            String::from_utf8(output.stdout)
+                .ok()?
+                .trim()
+                .parse::<i64>()
+                .ok()
+        })
+        .and_then(|seconds| chrono::Utc.timestamp_opt(seconds, 0).single());
+    timestamp.unwrap_or_else(|| {
+        chrono::Utc
+            .timestamp_opt(NOTATION_RENDER_FALLBACK_EPOCH, 0)
+            .single()
+            .unwrap_or(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH)
+    })
 }
 
 /// Return the body of a notation file — everything after the leading

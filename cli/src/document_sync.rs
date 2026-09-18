@@ -82,10 +82,15 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
             .strip_prefix(&documents)
             .map_err(|_| anyhow!("{} is outside documents/", path.display()))?;
         let slug = slash_path(relative)?;
-        let kind = inferred_kind(relative);
         let existing_pointer = PathBuf::from(format!("{}.yml", path.display()));
-        let desired_visibility = read_pointer(&existing_pointer)?
-            .map_or_else(|| "internal".to_string(), |pointer| pointer.visibility);
+        let existing_pointer = read_pointer(&existing_pointer)?;
+        let kind = existing_pointer
+            .as_ref()
+            .map_or_else(|| inferred_kind(relative), |pointer| pointer.kind.as_str());
+        let desired_visibility = existing_pointer.as_ref().map_or_else(
+            || "internal".to_string(),
+            |pointer| pointer.visibility.clone(),
+        );
         let pointer = client
             .upload(
                 &path,

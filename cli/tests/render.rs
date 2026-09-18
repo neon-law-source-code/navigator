@@ -166,6 +166,31 @@ fn renders_a_letter_pdf_from_a_valid_template() {
 }
 
 #[test]
+fn repeated_notation_renders_are_identical_and_valid_pdfs() {
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "demand.md", VALID);
+    let first_out = work.path().join("first.pdf");
+    let second_out = work.path().join("second.pdf");
+
+    for out in [&first_out, &second_out] {
+        let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+        assert!(
+            result.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    let first = fs::read(&first_out).expect("first PDF written");
+    let second = fs::read(&second_out).expect("second PDF written");
+    assert_eq!(
+        first, second,
+        "repeated renders must be byte-for-byte equal"
+    );
+    pdf::validate_pdf(&first).expect("the repeated render must remain a valid PDF");
+}
+
+#[test]
 fn frontmatter_output_selects_the_frame_and_letterhead_is_larger_than_plain() {
     // `output:` is the template's own deliberate override, and the only
     // one: a `kind: will` template that declares none renders plain, an

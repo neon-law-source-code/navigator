@@ -79,10 +79,10 @@ pub async fn import_directory(
     let validation_rules = navigator_default_rules_with_codes(&[]);
     // Catalog seeding applies the notation rule set to every candidate `.md`.
     // Its explicit filter keeps repository prose such as `templates/README.md`
-    // and a top-level `CLAUDE.md` outside the catalog. Files with template
+    // and a top-level `AGENTS.md` outside the catalog. Files with template
     // structure still reach the rules, which report a missing `kind:`.
     let filter = DefaultFileFilter {
-        excluded_names: ["README.md", "CLAUDE.md", "CODE_OF_CONDUCT.md", "LICENSE.md"]
+        excluded_names: ["README.md", "AGENTS.md", "CODE_OF_CONDUCT.md", "LICENSE.md"]
             .into_iter()
             .map(str::to_string)
             .collect(),

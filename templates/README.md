@@ -96,7 +96,7 @@ lawyer review, and is never imported as a `templates` row. The rules it is held 
 Both files ask the same two questions before anything else. **The change surface** — `web`, `api`, `infrastructure`, or
 `form` — says what the change touches, and each value implies the gate the work has to clear; hover any of them in an
 editor to see which. It is asked identically on the issue and the pull request so the answer carries from one to the
-other. **The Engineering Council question** records whether the council convenes, because `CLAUDE.md` says councils are
+other. **The Engineering Council question** records whether the council convenes, because `AGENTS.md` says councils are
 used only when earned and that judgment should be written down rather than remembered. Beyond those two, each file asks
 for the narrative it renders: the issue states the observed problem, scope, acceptance criteria, covering tests, and
 blast radius; the pull request states what changed, the covering test, the gates that ran, and the walkthrough.

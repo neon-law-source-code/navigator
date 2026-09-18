@@ -21,7 +21,7 @@
 //!    is asked identically on the issue and the pull request — the answer
 //!    carries from one to the other.
 //! 3. **Every notation decides on the Engineering Council.** Both files
-//!    ask [`ENGINEERING_COUNCIL_STATE`]. `CLAUDE.md` says councils are used
+//!    ask [`ENGINEERING_COUNCIL_STATE`]. `AGENTS.md` says councils are used
 //!    "only when earned"; asking makes that judgment explicit and recorded
 //!    rather than a thing someone remembers to consider.
 //! 4. **Every notation carries narrative.** At least one `custom_text__*`

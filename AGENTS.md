@@ -22,25 +22,23 @@ monorepo holds one website — the firm at the root — and the delivery stack f
 **Everything you write here is published.** The no-client-data rule below is what stands between a live legal practice
 and a public tree, and it is now enforced by a test rather than by the absence of a publication path.
 
-This file is the short operating contract for agents. [`CLAUDE.md`](CLAUDE.md) is a symlink to it. The linked docs are
-authoritative: read the narrowest relevant doc before acting and keep durable detail there, not here.
+This file is the short operating contract for agents, and the only one: there is no `CLAUDE.md`, no `.claude/`, and no
+`.codex/`. The linked docs are authoritative: read the narrowest relevant doc before acting and keep durable detail
+there, not here.
 
-**Clone with `core.symlinks` on, or this file never reaches the agent reading it.** `.agents/skills/` is the one
-canonical skill catalog; every entry under `.claude/skills/` and `.codex/skills/` is a symlink into it, and `CLAUDE.md`
-is a symlink to this file. Git materialises a link only when `core.symlinks` is true, which is not the Windows default.
-With it off, each checks out as a small regular file holding its own target path: `CLAUDE.md` becomes nine bytes reading
-`AGENTS.md`, so a harness loads that string instead of this contract, and every exposed skill becomes a file where a
-directory should be. Nothing reports it - the clone succeeds and `git status` is clean. Set it once per clone, then
-re-check out the affected paths:
+**One catalog, read directly.** [`.agents/skills/`](.agents/skills) holds every skill as a plain directory with a
+`SKILL.md`, with no mirror anywhere in the tree. Harnesses differ in what they auto-register from it — Claude Code, for
+one, discovers project skills only under `.claude/skills/`, which this repository deliberately does not carry — so do
+not wait to be offered a skill. When a task matches one, read `.agents/skills/<name>/SKILL.md` and follow it, exactly as
+if it had been invoked. [`docs/index.md`](docs/index.md) and the catalog listing are how you find the right one.
 
-```bash
-git config core.symlinks true
-git checkout -- CLAUDE.md .claude/skills .codex/skills
-```
-
-Windows also needs permission to create links at all: enable Developer Mode, or run that from an elevated shell.
-[`cli/tests/agent_instruction_links.rs`](cli/tests/agent_instruction_links.rs) proves the catalogs are identical and
-rejects the broken-stub form in a temporary fixture.
+Nothing in the tree is a symlink, so a clone carries the contract and the catalog whatever `core.symlinks` is set to.
+That matters because the previous mirrored-symlink arrangement failed silently on any clone without it: `CLAUDE.md`
+checked out as nine bytes reading `AGENTS.md`, every skill became a file where a directory should be, `git status`
+stayed clean, and the whole workspace built and tested green while agents ran with no contract and no skills. It ran
+that way for a week across nine checkouts before anyone noticed.
+[`cli/tests/agent_instruction_links.rs`](cli/tests/agent_instruction_links.rs) now proves the catalog resolves and that
+no mirror has crept back.
 
 ## Architecture invariants
 
@@ -94,6 +92,14 @@ Use MCP for every supported action; use shell or UI fallbacks only when no suita
 Start with [`docs/glossary.md`](docs/glossary.md), then use [`docs/index.md`](docs/index.md) to find the narrowest
 source of truth. Read the relevant issue or PR from its first comment, the current code, and the covering tests. Do not
 plan from assumptions, a diff alone, or leftover local state. Choose the smallest change that satisfies the evidence.
+
+**Never infer the domain vocabulary from general knowledge.** The role words here do not mean what they mean elsewhere,
+and a prompt that uses one is the moment to check rather than assume. Read [`docs/glossary.md`](docs/glossary.md) and
+[`.agents/skills/authorization-model/SKILL.md`](.agents/skills/authorization-model/SKILL.md) before asserting what any
+role, notation, or participation term means. `lawyer` is the licensed-practitioner tier and `clerk` the supervised
+non-lawyer tier; `persons.role` is `CHECK`-constrained to `owner`, `admin`, `lawyer`, `clerk`, or `client`, so a value
+outside that set fails the write rather than storing a wrong tier. `attorney`, `paralegal`, and `co_counsel` are
+descriptive `person_project_roles.participation` values, and OPA does not read participation.
 
 ## Local KIND development
 
@@ -400,7 +406,7 @@ releases, and production handoff live in [`docs/gitops.md`](docs/gitops.md).
 - **Leave a slide's words alone.** A deck under `server/content/workshops/` is a script someone reads aloud, so carry
   its faces and presenter notes verbatim: reflow, lint, and fix shape, and raise any wording, title, or claim with the
   author rather than editing it. See
-  [`.claude/skills/authoring-slides/SKILL.md`](.claude/skills/authoring-slides/SKILL.md).
+  [`.agents/skills/authoring-slides/SKILL.md`](.agents/skills/authoring-slides/SKILL.md).
 - **Use councils only when earned.** Engineering Council reviews architecture and doc clarity; Legal Council reviews
   legal copy; Client Council reviews client-facing product decisions. Read the source first and use the smallest useful
   bench. See [`docs/agent-decision-councils.md`](docs/agent-decision-councils.md).

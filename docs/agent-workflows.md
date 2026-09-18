@@ -44,7 +44,7 @@ Before changing files:
    The CLI fetches `origin/main` and attaches or creates the topic branch in the current linked worktree — including
    Codex's normal detached `HEAD`. It creates `.worktrees/<topic>` only when deliberately run from the primary checkout
    outside the app workflow. Continue in this one task checkout; never create a nested worktree by hand.
-3. Read [`CLAUDE.md`](../CLAUDE.md), [`AGENTS.md`](../AGENTS.md), the narrowest docs from [`index.md`](index.md), and
+3. Read [`AGENTS.md`](../AGENTS.md), the narrowest docs from [`index.md`](index.md), and
    [`glossary.md`](glossary.md). Read [`access-model.md`](access-model.md) before touching roles, participation,
    embedded Rego, sessions, or visibility.
 4. Run `git status --short --branch`; preserve user changes.

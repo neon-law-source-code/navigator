@@ -16,7 +16,7 @@
 //!   arrow-59 schema's fields ourselves ([`arrow_schema_to_iceberg`]), so the
 //!   two arrow majors never meet at a type boundary.
 //! - **Bytes must go through `cloud::StorageService`, never a GCS SDK**
-//!   (CLAUDE.md). `iceberg`'s manifest writers only write to their own
+//!   (AGENTS.md). `iceberg`'s manifest writers only write to their own
 //!   `FileIO`, so we point them at an **in-memory** `FileIO`, read the bytes
 //!   back, and hand them to the caller to persist. The final `gs://` object
 //!   paths are passed as the in-memory output locations, so the paths embedded

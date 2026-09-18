@@ -113,9 +113,11 @@ impl FileFilter for DefaultFileFilter {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             return true;
         };
-        // `.claude/skills` and `.codex/skills` mirror `.agents/skills` through
-        // symlinks. Walk only the canonical directory so each skill is linted
-        // once, while keeping VCS, build, and other hidden output excluded.
+        // `.agents/skills` is the one skill catalog, so it is the one hidden
+        // directory worth walking. Everything else hidden is VCS, build, or
+        // harness-local output — including `.claude/worktrees`, which holds
+        // whole second copies of this tree and must never be linted as part
+        // of it.
         if name.starts_with('.') && name != ".agents" {
             return false;
         }

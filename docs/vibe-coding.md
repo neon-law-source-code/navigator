@@ -25,9 +25,9 @@ the other.
 
 | Stage | Surface | Skill |
 | --- | --- | --- |
-| 1. Build it in React | The Project repository | [`vibe-react`](../.claude/skills/vibe-react/SKILL.md) |
-| 2. Write the issue | Linear | [`author-linear-issue`](../.claude/skills/author-linear-issue/SKILL.md) |
-| 3. Ground and implement | Repository + Linear | [`implement-issue`](../.claude/skills/implement-issue/SKILL.md) |
+| 1. Build it in React | The Project repository | [`vibe-react`](../.agents/skills/vibe-react/SKILL.md) |
+| 2. Write the issue | Linear | [`author-linear-issue`](../.agents/skills/author-linear-issue/SKILL.md) |
+| 3. Ground and implement | Repository + Linear | [`implement-issue`](../.agents/skills/implement-issue/SKILL.md) |
 | 4. Land it, then keep it green | GitHub | `create-pr`, then `fix-checks` |
 
 The order is deliberate but not rigid. Vibing *first* and writing the issue *second* is the point: an issue written
@@ -66,7 +66,7 @@ grounding must reach **Still valid** before code begins.
 
 ## Stage 1 — build it in React
 
-The full authoring rules are [`vibe-react`](../.claude/skills/vibe-react/SKILL.md). The shape of the constraint, though,
+The full authoring rules are [`vibe-react`](../.agents/skills/vibe-react/SKILL.md). The shape of the constraint, though,
 belongs here, because it is what makes vibing safe:
 
 **You own the screen. You do not own the data.** A Project repository holds template and application source plus
@@ -92,7 +92,7 @@ Two hard rules survive into the repository, and both are mechanical:
 ## Stage 2 — write the issue, after you have seen it work
 
 Now that the screen exists, write the Linear issue the way
-[`author-linear-issue`](../.claude/skills/author-linear-issue/SKILL.md) requires: grounded in source, citing
+[`author-linear-issue`](../.agents/skills/author-linear-issue/SKILL.md) requires: grounded in source, citing
 `file:line`, proposing nothing that already exists.
 
 Vibing gives you an unfair advantage here. You are not predicting a blast radius, you are reading one off a working
@@ -105,7 +105,7 @@ that is three issues, because it will be three pull requests.
 
 ## Stage 3 — ground and implement it before anything lands
 
-[`implement-issue`](../.claude/skills/implement-issue/SKILL.md) begins with grounding, and the discipline it enforces is
+[`implement-issue`](../.agents/skills/implement-issue/SKILL.md) begins with grounding, and the discipline it enforces is
 worth stating plainly: **the repository is almost always further along than the backlog says.** Work written from issue
 text alone is regularly work that is already done. Grounding and implementation belong in one session; an invalid,
 shipped, duplicate, or blocked issue stops before the first edit.
@@ -128,12 +128,12 @@ There is no application list to register. A Project has one repository, named fo
 `apps/<app>/package.json` entries are its application declarations. The PR gate derives and proves each corresponding
 `/app/projects/<code>/<app>/` build. Publication and runtime authorization remain separate concerns.
 
-The deprecated [`triage-issue`](../.claude/skills/triage-issue/SKILL.md) compatibility command remains available only
+The deprecated [`triage-issue`](../.agents/skills/triage-issue/SKILL.md) compatibility command remains available only
 when the user explicitly wants a Linear plan without implementation. It posts the plan and stops before code.
 
 ## Stage 4 — land it, then keep it green
 
-Open the pull request against the Project repository's `main` with [`create-pr`](../.claude/skills/create-pr/SKILL.md),
+Open the pull request against the Project repository's `main` with [`create-pr`](../.agents/skills/create-pr/SKILL.md),
 carrying the Linear magic word in the body so the merge transitions the issue.
 
 Then the review loop takes over, and it has two distinct inputs that people tend to collapse into one:
@@ -143,7 +143,7 @@ Then the review loop takes over, and it has two distinct inputs that people tend
 - **An inline review comment** is a human or reviewing-agent finding on a specific line. Read the thread and the code at
   the pull request head, decide from evidence whether it is valid, and fix only what that comment asked for.
 
-Both are [`fix-checks`](../.claude/skills/fix-checks/SKILL.md), which is action 5 of
+Both are [`fix-checks`](../.agents/skills/fix-checks/SKILL.md), which is action 5 of
 [`agent-workflows`](agent-workflows.md) plus the comment half of action 4. The rule that keeps this loop from drifting:
 one finding, one fix, one reply carrying the proof. Bundling unrelated cleanup into a review round is how a small pull
 request becomes unreviewable.
@@ -168,7 +168,7 @@ built the prototype — it is **which surface the finished screen lives on**.
 If the screen belongs to one Project and reads that Project's data through Navigator's APIs, it belongs in that
 Project's portal and you are in the right document. If it is part of Navigator itself — a portal page, a lawyer surface,
 a marketing page, anything at a Navigator route — the React is a prototype and it will be translated to Dioxus by
-[`design-mockup-translation`](../.claude/skills/design-mockup-translation/SKILL.md).
+[`design-mockup-translation`](../.agents/skills/design-mockup-translation/SKILL.md).
 
 ## Publication boundary
 

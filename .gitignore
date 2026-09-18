@@ -1,16 +1,17 @@
 /target
 /.worktrees/
-# Agent harnesses create linked checkouts here. Each one is a whole second copy
-# of this tree, so a committed snapshot ships another branch's content — and the
-# brand guards skip any directory named `worktrees`, so nothing would catch it.
-/.claude/worktrees/
+# Claude Code state is entirely local now that the contract is AGENTS.md and the
+# catalog is /.agents/skills — nothing under here is source. It also holds the
+# linked checkouts agent harnesses create, each a whole second copy of this tree,
+# so a committed snapshot would ship another branch's content — and the brand
+# guards skip any directory named `worktrees`, so nothing would catch it.
+/.claude/
 **/*.rs.bk
 # macOS Finder metadata — never source
 .DS_Store
 /.devx/
 /navigator.sqlite
 /navigator.sqlite.stale.*
-/.claude/scheduled_tasks.lock
 # Local-only secret drop (Slack app creds, etc.) — deployed values live in
 # each deployment's SOPS-encrypted tree.
 /.slack.txt
@@ -20,10 +21,8 @@
 /.agents/*
 !/.agents/skills/
 !/.agents/skills/**
-# Local Codex state stays local, but repo skills are source.
-/.codex/*
-!/.codex/skills/
-!/.codex/skills/**
+# Local Codex state stays local; the skill catalog lives in /.agents/skills.
+/.codex/
 /.playwright-mcp/
 # Root-level screenshots taken during UI iteration (about-*.png,
 # mobile-*.png, www-neonlaw-*.png, help-page-*.png, …). Keep them

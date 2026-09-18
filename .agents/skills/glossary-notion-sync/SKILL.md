@@ -90,7 +90,7 @@ say the same thing worse.
    `<table>` block and drops the blank lines between blocks, so those differences are the round trip, not an edit.
 2. **Read every difference before applying it.** This is the step that matters: Notion is where the firm's real matters
    live, and this repository is public. A definition that arrived through Notion may name a client, a matter, or a
-   Project code. The no-client-data rule in [`CLAUDE.md`](../../../CLAUDE.md) governs the destination, not the source —
+   Project code. The no-client-data rule in [`AGENTS.md`](../../../AGENTS.md) governs the destination, not the source —
    rewrite the example as a mechanism ("a Project's publish") or use a synthetic code, and if a real code is already in
    the Notion text, say where it is and let a human decide.
 3. Apply the wording to `docs/glossary.md` in its own idiom: relative links, hard wrap at 120, the term in alphabetical

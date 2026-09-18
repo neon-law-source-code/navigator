@@ -14,7 +14,7 @@ description: >
 # Embedding screenshots in a PR body from the CLI
 
 An `<img src="/tmp/…">` in a `gh`-created body renders **broken** (resolves to `https://github.com/tmp/…` → 404), and
-the clean hosting options are all off the table per `CLAUDE.md`: don't commit the capture to the tree, don't push an
+the clean hosting options are all off the table per `AGENTS.md`: don't commit the capture to the tree, don't push an
 image-hosting branch, don't cut a release/tag just to host a PNG.
 
 The path that satisfies all of that is the tenant's own **user-attachments** store, reached with a single authenticated
@@ -87,7 +87,7 @@ gh api /markdown -X POST -f mode=gfm -f context=neon-law-source-code/navigator \
 - The token needs **push access** to `repository_id`; a `404` from the upload endpoint means the token lacks it (or the
   parameter is missing), not that the URL is wrong.
 - **Never** commit the capture, push an image-hosting branch, or create a release/tag to host it. (See [[web-preview]]
-  §6 and `CLAUDE.md`.)
+  §6 and `AGENTS.md`.)
 
 ## When a review comment asks for a walkthrough
 

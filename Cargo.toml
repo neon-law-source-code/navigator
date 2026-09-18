@@ -87,7 +87,7 @@ percent-encoding = "2"
 # `StorageService` trait). `google-cloud-auth` + `google-cloud-token`
 # are consumed by the `cli`'s `gcp setup` subcommand and by `archives`'s
 # BigQuery `REFRESH EXTERNAL TABLE` client — both talk directly to GCP
-# REST APIs. See CLAUDE.md → "Cloud: GCP only".
+# REST APIs. See AGENTS.md → "Cloud: GCP only".
 # google-cloud-storage / google-cloud-auth: held at 0.24 / 0.17 (1.x is a full API rewrite — own session).
 google-cloud-storage = { version = "0.24", default-features = false, features = ["rustls-tls", "auth"] }
 google-cloud-auth = { version = "0.17", default-features = false, features = ["rustls-tls"] }

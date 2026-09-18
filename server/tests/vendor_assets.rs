@@ -344,7 +344,7 @@ fn navigator_product_slide_keeps_its_heading_left_aligned() {
 #[test]
 fn slide_image_authoring_keeps_the_local_staging_and_production_copies_together() {
     let guide =
-        std::fs::read_to_string(repo_root().join(".claude/skills/authoring-slides/SKILL.md"))
+        std::fs::read_to_string(repo_root().join(".agents/skills/authoring-slides/SKILL.md"))
             .expect("read the slide-authoring guide");
 
     let local = guide

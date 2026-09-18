@@ -1474,6 +1474,13 @@ pub struct CallbackQuery {
     pub code: Option<String>,
     pub state: Option<String>,
     pub error: Option<String>,
+    // Apple's first `response_mode=form_post` also carries a JSON `user`
+    // field. It is deliberately absent here: the struct does not set
+    // `deny_unknown_fields`, so serde drops it, and a field that exists only
+    // to be ignored reads like one somebody may later be tempted to use. The
+    // signed id_token stays the only source of user claims —
+    // `apple_first_authorization_form_fields_are_ignored` holds that shape
+    // against this struct as it actually ships.
 }
 
 #[derive(Debug, Deserialize)]
@@ -2945,8 +2952,47 @@ mod tests {
     use crate::auth::JwksKey;
     use crate::session::{now_unix_secs, random_token_32, DEFAULT_SESSION_TTL_SECS};
     use crate::test_support::{oidc_verifier, sign_id_token, sign_id_token_with_kid};
+    use axum::extract::FromRequest;
     use jsonwebtoken::Algorithm;
     use uuid::Uuid;
+
+    /// Apple posts a browser-supplied JSON `user` field on a first
+    /// authorization, carrying a name and an email address. `CallbackQuery`
+    /// does not set `deny_unknown_fields`, so the form parses and that field
+    /// is dropped — the assertion is that `code` and `state` survive while
+    /// nothing from `user` reaches the callback, which is what keeps the
+    /// signed id_token the only source of identity.
+    #[tokio::test]
+    async fn apple_first_authorization_form_fields_are_ignored() {
+        let user =
+            r#"{"name":{"firstName":"Owner","lastName":"Example"},"email":"owner@example.test"}"#;
+        let body = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("code", "authorization-code")
+            .append_pair("state", "signed-state")
+            .append_pair("id_token", "provider-token")
+            .append_pair("user", user)
+            .finish();
+
+        let request = axum::http::Request::builder()
+            .method("POST")
+            .uri("/auth/callback")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(axum::body::Body::from(body))
+            .expect("Apple form_post request builds");
+        let axum::extract::Form(callback) =
+            axum::extract::Form::<super::CallbackQuery>::from_request(request, &())
+                .await
+                .expect("Apple's first form_post shape parses");
+
+        // Destructured exhaustively on purpose: this is the assertion that
+        // nothing the browser supplied in `user` is reachable from the parsed
+        // callback, because these three are the only fields there are. A
+        // field added later to hold `user` stops this test compiling.
+        let super::CallbackQuery { code, state, error } = callback;
+        assert_eq!(code.as_deref(), Some("authorization-code"));
+        assert_eq!(state.as_deref(), Some("signed-state"));
+        assert_eq!(error, None);
+    }
 
     /// The failure that took `www.neonlaw.com` down on 2026-08-10: a new OAuth
     /// client ID paired with the previous client's secret, which Google answers

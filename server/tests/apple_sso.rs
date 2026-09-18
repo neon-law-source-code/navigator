@@ -338,7 +338,11 @@ async fn apple_completes_a_sign_in_through_the_form_post_callback() {
     let body = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("code", "test-code")
         .append_pair("state", &state)
-        .append_pair("user", r#"{"name":{"firstName":"Test"}}"#)
+        .append_pair("id_token", "form-post-token-is-ignored")
+        .append_pair(
+            "user",
+            r#"{"name":{"firstName":"First","lastName":"Login"},"email":"different@example.test"}"#,
+        )
         .finish();
     let (response, output) = traced_response(
         app.clone(),

@@ -336,7 +336,7 @@ pub fn description_for_code(code: &str) -> &'static str {
         "N121" => "A `sent_for_signature` state must be preceded by a `generate_pdf` state",
         "N122" => "Every declared questionnaire state must be read by the template body",
         "N123" => {
-            "Agreement, will, pleading, and engagement-letter bodies must carry a Harvard \
+            "Agreement, will, pleading, and closing-letter bodies must carry a Harvard \
              outline, titled to match the frame they render in"
         }
         "N124" => {

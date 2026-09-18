@@ -47,6 +47,9 @@ no mirror has crept back.
   notation, workflows, forms, billing, storage, authorization, `store`, and the CLI. Rust owns the browser surface
   through Dioxus; generated PDFs use Typst and transactional email uses string templates. There is no Node or pnpm
   workspace. See [`docs/workspace-layout.md`](docs/workspace-layout.md).
+- **Forms render through the library.** A page module names its fields with `webapp::components::{Field, FormCard}`
+  and carries `nav-btn` on any standalone button; only `webapp/src/components/` writes `input`, `select`, `textarea`
+  or `button` elements. `control_contract` in `webapp/src/components.rs` fails the build on a raw control.
 - **English only.** Code, comments, `/docs`, portal UI, emails, and legal template bodies are English, and no page
   publishes a translated surface. Firm marketing copy lives in `neon/locales/en/<brand-key>/*.yaml`, one catalog per
   page stem, covering the home page, the practice pages, and the marketing pages — `/navigator`, `/services`, and

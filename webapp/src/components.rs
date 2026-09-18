@@ -356,3 +356,165 @@ mod leaf_contract {
         }
     }
 }
+
+#[cfg(test)]
+mod control_contract {
+    use std::path::{Path, PathBuf};
+
+    /// Page modules that still write a visible control by hand. A file may
+    /// only go down; delete its row when the page reaches zero.
+    const RAW_CONTROL_DEBT: &[(&str, usize)] = &[
+        ("catalog_slides.rs", 2),
+        ("conversation.rs", 1),
+        ("lead_capture.rs", 5),
+        ("portal_project_detail.rs", 4),
+        ("services_search.rs", 1),
+    ];
+
+    /// Read a page module as code: line comments are removed while line
+    /// numbers remain intact, so prose cannot look like an RSX opener and a
+    /// failure still points at the real source line.
+    fn code_of(path: &Path) -> String {
+        let raw = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+        raw.lines()
+            .map(|line| {
+                if line.trim_start().starts_with("//") {
+                    ""
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn collect_page_sources(directory: &Path, files: &mut Vec<PathBuf>) {
+        let entries = std::fs::read_dir(directory)
+            .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()));
+        for entry in entries {
+            let path = entry
+                .unwrap_or_else(|error| panic!("read entry in {}: {error}", directory.display()))
+                .path();
+            if path.is_dir() {
+                if path.file_name().is_none_or(|name| name != "components") {
+                    collect_page_sources(&path, files);
+                }
+            } else if path.extension().is_some_and(|extension| extension == "rs")
+                && path.file_name().is_none_or(|name| {
+                    name != "components.rs" && name != "design.rs"
+                })
+            {
+                files.push(path);
+            }
+        }
+    }
+
+    /// Every `webapp/src/**/*.rs` page source except the component library,
+    /// its root module, and the gallery.
+    fn page_sources() -> Vec<(PathBuf, String)> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut files = Vec::new();
+        collect_page_sources(&root.join("src"), &mut files);
+        files.sort();
+        files
+            .into_iter()
+            .map(|path| {
+                let source = code_of(&path);
+                (path, source)
+            })
+            .collect()
+    }
+
+    /// Find literal RSX control openers and return their complete element
+    /// bodies. Braces inside interpolation strings are paired by the RSX
+    /// source, so a small depth scan is enough and keeps this test independent
+    /// of a parser crate.
+    fn control_elements(source: &str) -> Vec<(usize, &'static str, String)> {
+        let mut controls = Vec::new();
+        let tags = ["input", "select", "textarea", "button"];
+        let lines: Vec<&str> = source.lines().collect();
+        for (line_index, line) in lines.iter().enumerate() {
+            let trimmed = line.trim_start();
+            let Some(tag) = tags.iter().find(|tag| {
+                trimmed
+                    .strip_prefix(**tag)
+                    .is_some_and(|rest| rest.trim_start().starts_with('{'))
+            }) else {
+                continue;
+            };
+            let prefix_len = source
+                .lines()
+                .take(line_index)
+                .map(|line| line.len() + 1)
+                .sum::<usize>();
+            let opener = prefix_len + line.len() - trimmed.len() + tag.len();
+            let Some(open_brace) = source[opener..].find('{').map(|offset| opener + offset)
+            else {
+                continue;
+            };
+            let mut depth = 0usize;
+            let mut end = open_brace;
+            for (offset, character) in source[open_brace..].char_indices() {
+                match character {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            end = open_brace + offset + character.len_utf8();
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            controls.push((line_index + 1, *tag, source[open_brace..end].to_string()));
+        }
+        controls
+    }
+
+    fn is_library_control(body: &str) -> bool {
+        body.contains("type: \"hidden\"") || body.contains("class: \"nav-")
+    }
+
+    #[test]
+    fn page_modules_render_controls_through_the_library() {
+        for (path, source) in page_sources() {
+            let raw: Vec<_> = control_elements(&source)
+                .into_iter()
+                .filter(|(_, _, body)| !is_library_control(body))
+                .collect();
+            let budget = RAW_CONTROL_DEBT
+                .iter()
+                .find(|(file, _)| path.ends_with(file))
+                .map_or(0, |(_, count)| *count);
+            assert!(
+                raw.len() <= budget,
+                "{}: {} raw control(s), budget {budget}. A page names the field; the library \
+                 renders the control — use `Field`/`FormCard` (components/form.rs) or carry a \
+                 `nav-*` class. First offender: line {}.",
+                path.display(),
+                raw.len(),
+                raw.first().map_or(0, |control| control.0),
+            );
+            assert!(
+                raw.len() == budget,
+                "{}: raw controls fell to {} under a budget of {budget} — lower the row in \
+                 RAW_CONTROL_DEBT (delete it at zero) so the ratchet holds.",
+                path.display(),
+                raw.len(),
+            );
+        }
+    }
+
+    #[test]
+    fn raw_control_debt_names_only_files_that_exist() {
+        let sources = page_sources();
+        for (file, _) in RAW_CONTROL_DEBT {
+            assert!(
+                sources.iter().any(|(path, _)| path.ends_with(file)),
+                "RAW_CONTROL_DEBT names missing page source {file}"
+            );
+        }
+    }
+}

@@ -70,7 +70,8 @@ parameters or referrer host classification. Do not add raw IP addresses, user ag
 URL paths, arbitrary query parameters, full query strings, or full `Referer` URLs to visitor analytics. Unknown or
 sensitive query parameters are ignored, invalid allowed values collapse to `invalid`, missing referrers collapse to
 `direct`, same-site referrers to `internal`, and unrecognized external hosts to `other`. The operational view is
-admin-only at `/app/admin/analytics`.
+admin-only at `/app/admin/analytics`. The exported counter dimensions are `http.route`, `country`, `source`, `locale`,
+and `status_class`; `http.route` is the matched template, never the resolved path.
 
 Public lead capture stores the submitted inquiry in the `lead` table through `POST /leads`; its audit event carries only
 the lead id, brand, source path, and outcome, never an email address, phone number, or form content. Conversion writes
@@ -107,6 +108,9 @@ The GET and form-post callbacks share one completion path. The pre-auth cookie i
 the event is emitted once at the session-creation or refusal boundary. `first_link` is currently true when the resolver
 creates a new Person; the named resolver seam can take an explicit subject-link result when the linkage path exposes
 one.
+
+The key set emitted by every visit, funnel, and sign-in recorder is pinned to the collector's fail-closed allow-list by
+`cli/tests/audit_fields_exported.rs`.
 
 ## Where it lands: direct OpenObserve
 

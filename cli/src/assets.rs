@@ -3405,8 +3405,8 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         keys
     }
 
-    /// Every face a brand asks a browser to fetch is delivered by a lane this
-    /// repository knows about: published by [`BUCKET_FONT_FAMILIES`], or
+    /// Every face the site can ask a browser to fetch is delivered by a lane
+    /// this repository knows about: published by [`BUCKET_FONT_FAMILIES`], or
     /// tracked under `server/public`.
     ///
     /// The analogue of `store::seed`'s `compiled_brands_cover_every_closed_brand_key`,
@@ -3414,27 +3414,45 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
     /// families while this binary's family list held two, so `assets verify`
     /// reported a clean origin over six families it never probed and
     /// `assets fonts upload` could not publish. Nothing else catches it —
-    /// `font-display: swap` renders the fallback and moves on. A ninth brand
-    /// with a new typeface fails here until it joins the table.
+    /// `font-display: swap` renders the fallback and moves on.
+    ///
+    /// Two emitters, because a face reaches a browser two ways and either can
+    /// name a family this binary cannot publish. `portal::dioxus_app`'s head
+    /// fragment is what a compiled brand's host serves; `views`'s typeface
+    /// catalog is what a *runtime* brand picks from in `/app/brands`, rendered
+    /// into its `brand-{key}-tokens.css`. A tenth typeface fails here until it
+    /// joins the table, whichever door it came in by.
     #[test]
-    fn published_font_families_cover_every_bucket_face_a_brand_emits() {
+    fn published_font_families_cover_every_bucket_face_the_site_emits() {
         let published: BTreeSet<String> = BUCKET_FONT_FAMILIES
             .iter()
             .flat_map(|family| font_family_refs(family))
             .collect();
         let tracked = std::path::Path::new(TRACKED_PUBLIC_ROOT);
 
-        let mut unpublishable = BTreeSet::new();
+        let mut emitted = BTreeSet::new();
         for key in views::brand::BrandKey::ALL {
-            for face in emitted_font_keys(portal::dioxus_app::font_head(*key)) {
-                if !published.contains(&face) && !tracked.join(&face).is_file() {
-                    unpublishable.insert(face);
-                }
+            emitted.extend(emitted_font_keys(portal::dioxus_app::font_head(*key)));
+        }
+        for face in views::brand_presentation::TYPEFACES {
+            if let Some(css) = views::brand_presentation::font_face_for(Some(face.id), None) {
+                emitted.extend(emitted_font_keys(&css));
             }
         }
         assert!(
+            emitted.len() >= 2 * BUCKET_FONT_FAMILIES.len(),
+            "the extraction found {} faces, fewer than the table publishes — \
+             it stopped seeing what the site emits: {emitted:?}",
+            emitted.len()
+        );
+
+        let unpublishable: BTreeSet<&String> = emitted
+            .iter()
+            .filter(|face| !published.contains(*face) && !tracked.join(face).is_file())
+            .collect();
+        assert!(
             unpublishable.is_empty(),
-            "these faces are emitted by a brand but neither published by \
+            "these faces are emitted by the site but neither published by \
              `assets fonts upload` nor tracked under server/public: {unpublishable:?}"
         );
     }

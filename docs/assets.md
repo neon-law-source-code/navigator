@@ -201,8 +201,10 @@ The `lawyer-shook` house brand uses Tinos under the SIL Open Font License 1.1. T
 Bold WOFF2 faces under `server/public/fonts/tinos/`; no raster mark is required because the public header and footer
 render the LAWYER SHOOK wordmark as text. `portal::dioxus_app` selects these faces for the Lawyer Shook host. It is the
 only brand served from the tracked tree rather than the bucket, so it is the one family absent from
-`BUCKET_FONT_FAMILIES`; `published_font_families_cover_every_bucket_face_a_brand_emits` accepts either lane and refuses
-a face delivered by neither.
+`BUCKET_FONT_FAMILIES`; `published_font_families_cover_every_bucket_face_the_site_emits` accepts either lane and refuses
+a face delivered by neither. That guard reads both emitters — `portal::dioxus_app`'s per-brand head fragment and
+`views::brand_presentation`'s typeface catalog, which is what a runtime brand picks from in `/app/brands` — so a face
+cannot reach a browser through either door without a way to publish it.
 
 ## Verify after shipping
 

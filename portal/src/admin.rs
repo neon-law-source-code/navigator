@@ -1172,7 +1172,7 @@ fn public_person_avatar_key(id: Uuid, stored: Option<&str>) -> Option<String> {
     let stored = stored?;
     ["png", "jpg"].into_iter().find_map(|extension| {
         let key = format!("people/{id}/avatar.{extension}");
-        (stored == views::assets::asset_url(&key)).then_some(key)
+        (stored == views::assets::bucket_asset_url(&key)).then_some(key)
     })
 }
 
@@ -1249,7 +1249,7 @@ async fn persist_person_avatar(
     }
 
     let stored = if public {
-        views::assets::asset_url(&key)
+        views::assets::bucket_asset_url(&key)
     } else {
         key.clone()
     };

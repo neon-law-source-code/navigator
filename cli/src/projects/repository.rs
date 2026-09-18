@@ -108,6 +108,7 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/cd.yml";
 /// different tools, not two schemas that happen to overlap.
 pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
 const GITATTRIBUTES: &str = "* text=auto eol=lf\n";
+const CODEOWNERS: &str = "# CODEOWNERS\n\n* @shicholas\n";
 /// Seed-shaped YAML documents for `navigator site import`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
@@ -323,6 +324,7 @@ pub fn scaffold(
     let template_stem = placeholder_template_stem();
     let files = [
         (root.join(".gitattributes"), GITATTRIBUTES.to_string()),
+        (root.join(".github/CODEOWNERS"), CODEOWNERS.to_string()),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
         (root.join("tests/README.md"), tests_readme()),
@@ -482,6 +484,7 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: 
     }
 
     let manifest_valid = validate_layout(root, &mut errors, &mut warnings);
+    validate_codeowners(root, &mut errors);
     validate_documents_gitignore(root, write_fixes, &mut errors);
     validate_skills(root, &mut errors);
     validate_documented_cli(root, &mut errors);
@@ -516,6 +519,18 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: 
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
+    }
+}
+
+fn validate_codeowners(root: &Path, errors: &mut Vec<Finding>) {
+    let path = root.join(".github/CODEOWNERS");
+    match fs::read_to_string(&path) {
+        Ok(contents) if contents == CODEOWNERS => {}
+        Ok(_) => errors.push(Finding::at(
+            &path,
+            "`.github/CODEOWNERS` must contain the canonical single-owner rule",
+        )),
+        Err(_) => errors.push(Finding::at(&path, "missing required `.github/CODEOWNERS`")),
     }
 }
 

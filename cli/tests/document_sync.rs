@@ -89,6 +89,7 @@ fn write_layout_for_the_gate(root: &Path) {
         "project: acme\nhost: staging.neonlaw.com\n",
     );
     write(root, "README.md", "# acme\n\nProject source.\n");
+    write(root, ".github/CODEOWNERS", "# CODEOWNERS\n\n* @shicholas\n");
     write_agent_contract(root);
     // The gate identifies a repository root by its `README` and `.git`, and
     // reads the files Git would carry.

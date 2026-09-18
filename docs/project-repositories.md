@@ -594,16 +594,17 @@ navigator project gate
 ```
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `.gitattributes` pinning
-checkout text files to LF, a versioned nested `navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml`
-caller guarded by the reusable publisher's deployment configuration, `README.md`, and `AGENTS.md`. It also writes a
-`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, `documents/.gitignore`,
-and one placeholder `templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing
-hand-copied `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator project
-gate`requires that pair:`AGENTS.md`must exist,`CLAUDE.md` must deliver the same bytes (the nine-byte stub form is
-refused), and the contract must name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a
-workaround in the matter repository. The same `validate` walk extracts `navigator …` invocations from the repository's
-Markdown and checks each against this binary's clap command tree, so a documented verb that no longer exists fails the
-gate at the commit that introduced the rename.
+checkout text files to LF, `.github/CODEOWNERS` with the canonical `* @shicholas` ownership rule, a versioned nested
+`navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml` caller guarded by the reusable publisher's
+deployment configuration, `README.md`, and `AGENTS.md`. It also writes a `CLAUDE.md` that delivers `AGENTS.md` (a
+relative symlink on Unix, a copy on Windows), `tests/`, `documents/.gitignore`, and one placeholder
+`templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing hand-copied
+`ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `navigator project gate` requires
+the canonical CODEOWNERS file and the instruction pair: `AGENTS.md` must exist, `CLAUDE.md` must deliver the same bytes
+(the nine-byte stub form is refused), and the contract must name the Lawyers team as where a Navigator CLI gap is filed
+rather than recorded as a workaround in the matter repository. The same `validate` walk extracts `navigator …`
+invocations from the repository's Markdown and checks each against this binary's clap command tree, so a documented verb
+that no longer exists fails the gate at the commit that introduced the rename.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

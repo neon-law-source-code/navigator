@@ -253,6 +253,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(dir.path().join("README.md").is_file());
     assert!(dir.path().join("AGENTS.md").is_file());
     assert!(dir.path().join("CLAUDE.md").is_file());
+    assert_eq!(
+        fs::read_to_string(dir.path().join(".github/CODEOWNERS")).unwrap(),
+        "# CODEOWNERS\n\n* @shicholas\n"
+    );
     let instructions = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
     assert!(instructions.contains("`apps/<app>/`"));
     assert!(instructions.contains("source grouping is not a URL segment"));
@@ -934,6 +938,24 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
     gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
+}
+
+#[test]
+fn gate_requires_the_canonical_codeowners_file() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let path = dir.path().join(".github/CODEOWNERS");
+
+    fs::remove_file(&path).unwrap();
+    gate(dir.path())
+        .failure()
+        .code(1)
+        .stderr(str::contains("missing required `.github/CODEOWNERS`"));
+
+    fs::write(&path, "* @nick\n").unwrap();
+    gate(dir.path()).failure().code(1).stderr(str::contains(
+        "must contain the canonical single-owner rule",
+    ));
 }
 
 /// `sync-skills` overwrites rather than leaving an existing file alone (unlike

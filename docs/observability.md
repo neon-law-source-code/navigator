@@ -76,6 +76,24 @@ Public lead capture stores the submitted inquiry in the `lead` table through `PO
 the lead id, brand, source path, and outcome, never an email address, phone number, or form content. Conversion writes
 the Person directory (`store::persons::create`) and points `lead.person_id` at that row.
 
+## Neon Law funnel
+
+The Neon Law funnel uses one identifier-only structured event family with the `funnel` target. Each event carries its
+event name in the bounded `step` field. The five steps and their fields are:
+
+| Event | Fields |
+| --- | --- |
+| `funnel.lead_captured` | `lead_id`, `brand`, `source_path`, `sms_consent` |
+| `funnel.started` | `person_id`, `project_id`, `notation_id`, `service_id`, `brand` |
+| `funnel.intake_complete` | `notation_id`, `project_id` |
+| `funnel.review_entered` | `notation_id`, `project_id` |
+| `funnel.sent` | `notation_id`, `project_id`, `channel` (`email` or `signature`) |
+
+The matching `navigator.funnel.step` counter carries only the `step` attribute, so Dash0 can chart conversion and
+drop-off without querying event logs. The workflow-service events are emitted from journaled Restate side effects, so a
+replay reuses the recorded side effect instead of incrementing the counter or writing a duplicate event. The signature
+send path uses its existing idempotent request record and emits only after the provider succeeds.
+
 ## Where it lands: direct OpenObserve
 
 Traces, metrics, and logs speak OTLP/gRPC directly to the OpenObserve organization and stream named in their

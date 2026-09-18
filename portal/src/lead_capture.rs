@@ -140,6 +140,12 @@ async fn submit(
         Ok(lead) => {
             let lead_id = lead.id.to_string();
             audit(brand, &source_path, &lead_id, "accepted");
+            telemetry::record_funnel_event(telemetry::FunnelEvent::LeadCaptured {
+                lead_id: &lead_id,
+                brand: brand.as_str(),
+                source_path: &source_path,
+                sms_consent: sms_consented_at.is_some(),
+            });
         }
         Err(error) => {
             tracing::error!(error = %error, brand = brand.as_str(), source_path = %source_path, "lead submission failed");
@@ -439,5 +445,23 @@ mod tests {
         );
         assert!(output.contains("lead_id="), "audit: {output}");
         assert!(!output.contains(email), "email leaked into audit: {output}");
+        assert!(output.contains("funnel.lead_captured"), "funnel: {output}");
+        assert!(output.contains("brand=\"neon\""), "funnel: {output}");
+        assert!(
+            output.contains("source_path=\"/services\""),
+            "funnel: {output}"
+        );
+        assert!(output.contains("sms_consent=false"), "funnel: {output}");
+        assert!(!output.contains("email="), "email field leaked: {output}");
+        assert!(!output.contains("phone="), "phone field leaked: {output}");
+        assert!(!output.contains("name="), "name field leaked: {output}");
+        assert!(
+            !output.contains("address="),
+            "address field leaked: {output}"
+        );
+        assert!(
+            !output.contains("project_code="),
+            "Project code field leaked: {output}"
+        );
     }
 }

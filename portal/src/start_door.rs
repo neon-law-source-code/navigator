@@ -365,6 +365,16 @@ async fn post_start(
                 brand,
                 "accepted",
             );
+            let person_id = person_id.to_string();
+            let project_id = opened.project.id.to_string();
+            let notation_id = opened.rows.notation_id.to_string();
+            telemetry::record_funnel_event(telemetry::FunnelEvent::Started {
+                person_id: &person_id,
+                project_id: &project_id,
+                notation_id: &notation_id,
+                service_id: &service_id,
+                brand: brand.as_str(),
+            });
             Redirect::to(&format!(
                 "/app/projects/{}/intake/{}?started=1",
                 opened.project.code, opened.rows.notation_id
@@ -435,11 +445,60 @@ mod tests {
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use std::future::Future;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tower::ServiceExt;
     use tower_cookies::CookieManagerLayer;
+    use tracing_subscriber::fmt::MakeWriter;
 
     const LAWYER_EMAIL: &str = "lawyer@neonlaw.com";
+
+    #[derive(Clone)]
+    struct Buffer(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Buffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("capture lock")
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Buffer {
+        type Writer = Buffer;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    async fn capture_output<F, Fut, T>(action: F) -> (T, String)
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = T>,
+    {
+        crate::test_tracing::ensure_callsite_interest();
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(Buffer(output.clone()))
+            .finish();
+        let result = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            action().await
+        };
+        let output = String::from_utf8(output.lock().expect("capture lock").clone())
+            .expect("capture is UTF-8");
+        (result, output)
+    }
 
     fn catalog() -> views::locales::services::ServicesCatalog {
         views::locales::services::ServicesCatalog::parse(include_str!(
@@ -555,13 +614,16 @@ mod tests {
             .expect("find configured lawyer")
             .expect("canonical seed includes the configured lawyer");
 
-        let response = post_direct(
-            &state,
-            catalog(),
-            session(&client),
-            "llc-file",
-            Some("onboarding__letter"),
-        )
+        let (response, output) = capture_output(|| async {
+            post_direct(
+                &state,
+                catalog(),
+                session(&client),
+                "llc-file",
+                Some("onboarding__letter"),
+            )
+            .await
+        })
         .await;
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         let location = location(&response);
@@ -601,6 +663,36 @@ mod tests {
             .expect("compute matter lifecycle sets");
         assert!(!engagements.contains(&project.id));
         assert!(!closings.contains(&project.id));
+
+        assert!(output.contains("funnel.started"), "funnel: {output}");
+        assert!(
+            output.contains(&format!("person_id=\"{}\"", client.id)),
+            "funnel: {output}"
+        );
+        assert!(
+            output.contains(&format!("project_id=\"{}\"", project.id)),
+            "funnel: {output}"
+        );
+        assert!(
+            output.contains("service_id=\"llc-file\""),
+            "funnel: {output}"
+        );
+        assert!(output.contains("brand=\"neon\""), "funnel: {output}");
+        assert!(
+            !output.contains("Start Door Client"),
+            "name leaked: {output}"
+        );
+        assert!(
+            !output.contains("start-client@example.com"),
+            "email leaked: {output}"
+        );
+        assert!(
+            !output.contains(&project.code),
+            "Project code leaked: {output}"
+        );
+        for forbidden in ["email=", "phone=", "name=", "address=", "project_code="] {
+            assert!(!output.contains(forbidden), "{forbidden} leaked: {output}");
+        }
     }
 
     #[tokio::test]

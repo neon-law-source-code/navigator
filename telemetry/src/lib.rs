@@ -34,6 +34,7 @@
 //! not.
 
 use base64::Engine as _;
+use opentelemetry::metrics::Meter;
 use opentelemetry::propagation::{Extractor, Injector};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry::KeyValue;
@@ -708,6 +709,168 @@ pub fn record_web_visit(
     );
 }
 
+/// The instrumentation scope for Neon Law funnel metrics.
+const FUNNEL_METER: &str = "navigator.funnel";
+
+/// Counter: one increment for each real Neon Law funnel step, dimensioned by
+/// the bounded step name. The event helper below emits the matching
+/// identifier-only structured event.
+pub const FUNNEL_STEP: &str = "navigator.funnel.step";
+
+/// Neon Law funnel step names. These values are both the structured event's
+/// `step` field and the metric's `step` attribute.
+pub mod funnel_step {
+    /// An anonymous lead was persisted.
+    pub const LEAD_CAPTURED: &str = "funnel.lead_captured";
+    /// A client started a service from the start door.
+    pub const STARTED: &str = "funnel.started";
+    /// A notation's questionnaire reached its terminal state.
+    pub const INTAKE_COMPLETE: &str = "funnel.intake_complete";
+    /// A notation entered the lawyer review gate.
+    pub const REVIEW_ENTERED: &str = "funnel.review_entered";
+    /// An approved notation moved into an outbound channel.
+    pub const SENT: &str = "funnel.sent";
+}
+
+/// The outbound channel for [`FunnelEvent::Sent`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunnelChannel {
+    /// The reviewed draft was handed off by email.
+    Email,
+    /// The reviewed draft was handed off for e-signature.
+    Signature,
+}
+
+impl FunnelChannel {
+    /// The bounded value written to the event and metric dimensions.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Email => "email",
+            Self::Signature => "signature",
+        }
+    }
+}
+
+/// One identifier-only event in the Neon Law funnel.
+#[derive(Debug, Clone, Copy)]
+pub enum FunnelEvent<'a> {
+    /// A public lead was accepted and persisted.
+    LeadCaptured {
+        lead_id: &'a str,
+        brand: &'a str,
+        source_path: &'a str,
+        sms_consent: bool,
+    },
+    /// A client opened a service start door successfully.
+    Started {
+        person_id: &'a str,
+        project_id: &'a str,
+        notation_id: &'a str,
+        service_id: &'a str,
+        brand: &'a str,
+    },
+    /// A questionnaire reached its terminal state.
+    IntakeComplete {
+        notation_id: &'a str,
+        project_id: &'a str,
+    },
+    /// A notation entered lawyer review.
+    ReviewEntered {
+        notation_id: &'a str,
+        project_id: &'a str,
+    },
+    /// An approved notation moved into an outbound channel.
+    Sent {
+        notation_id: &'a str,
+        project_id: &'a str,
+        channel: FunnelChannel,
+    },
+}
+
+impl FunnelEvent<'_> {
+    fn step(&self) -> &'static str {
+        match self {
+            Self::LeadCaptured { .. } => funnel_step::LEAD_CAPTURED,
+            Self::Started { .. } => funnel_step::STARTED,
+            Self::IntakeComplete { .. } => funnel_step::INTAKE_COMPLETE,
+            Self::ReviewEntered { .. } => funnel_step::REVIEW_ENTERED,
+            Self::Sent { .. } => funnel_step::SENT,
+        }
+    }
+}
+
+/// Emit one structured Neon Law funnel event and increment its counter.
+///
+/// The enum is deliberately closed so a call site can provide only the
+/// identifiers and bounded values belonging to that step. No address, email,
+/// phone, name, matter title, or Project code can enter this event family.
+pub fn record_funnel_event(event: FunnelEvent<'_>) {
+    let step = event.step();
+    record_funnel_step(step);
+    match event {
+        FunnelEvent::LeadCaptured {
+            lead_id,
+            brand,
+            source_path,
+            sms_consent,
+        } => tracing::info!(
+            target: "funnel",
+            step,
+            lead_id,
+            brand,
+            source_path,
+            sms_consent,
+        ),
+        FunnelEvent::Started {
+            person_id,
+            project_id,
+            notation_id,
+            service_id,
+            brand,
+        } => tracing::info!(
+            target: "funnel",
+            step,
+            person_id,
+            project_id,
+            notation_id,
+            service_id,
+            brand,
+        ),
+        FunnelEvent::IntakeComplete {
+            notation_id,
+            project_id,
+        } => tracing::info!(target: "funnel", step, notation_id, project_id),
+        FunnelEvent::ReviewEntered {
+            notation_id,
+            project_id,
+        } => tracing::info!(target: "funnel", step, notation_id, project_id),
+        FunnelEvent::Sent {
+            notation_id,
+            project_id,
+            channel,
+        } => tracing::info!(
+            target: "funnel",
+            step,
+            notation_id,
+            project_id,
+            channel = channel.as_str(),
+        ),
+    }
+}
+
+/// Increment the Neon Law funnel counter. Safe to call unconditionally: an
+/// unconfigured OpenTelemetry global provider is a no-op.
+pub fn record_funnel_step(step: &str) {
+    let meter = opentelemetry::global::meter(FUNNEL_METER);
+    record_funnel_step_with_meter(&meter, step);
+}
+
+fn record_funnel_step_with_meter(meter: &Meter, step: &str) {
+    let counter = meter.u64_counter(FUNNEL_STEP).build();
+    counter.add(1, &[KeyValue::new("step", step.to_string())]);
+}
+
 // ---------------------------------------------------------------------------
 // Cross-service trace propagation (W3C `traceparent`).
 //
@@ -816,9 +979,136 @@ pub fn set_span_parent(span: &tracing::Span, traceparent: Option<&str>, tracesta
 mod tests {
     use super::{
         build_export_providers, current_trace_context_headers, normalize_endpoint,
-        otlp_export_config, parent_context_from, trace_context_headers, OtlpExportConfig,
-        SanitizingSubscriber,
+        otlp_export_config, parent_context_from, trace_context_headers, FunnelChannel, FunnelEvent,
+        OtlpExportConfig, SanitizingSubscriber,
     };
+
+    #[test]
+    fn funnel_events_have_the_declared_fields_and_no_content_fields() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt::MakeWriter;
+
+        #[derive(Clone)]
+        struct Buffer(Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for Buffer {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture lock")
+                    .extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl<'a> MakeWriter<'a> for Buffer {
+            type Writer = Buffer;
+
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(Buffer(output.clone()))
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            super::record_funnel_event(FunnelEvent::LeadCaptured {
+                lead_id: "00000000-0000-0000-0000-000000000001",
+                brand: "neon",
+                source_path: "/services",
+                sms_consent: false,
+            });
+            super::record_funnel_event(FunnelEvent::Started {
+                person_id: "00000000-0000-0000-0000-000000000002",
+                project_id: "00000000-0000-0000-0000-000000000003",
+                notation_id: "00000000-0000-0000-0000-000000000004",
+                service_id: "llc-file",
+                brand: "neon",
+            });
+            super::record_funnel_event(FunnelEvent::IntakeComplete {
+                notation_id: "00000000-0000-0000-0000-000000000004",
+                project_id: "00000000-0000-0000-0000-000000000003",
+            });
+            super::record_funnel_event(FunnelEvent::ReviewEntered {
+                notation_id: "00000000-0000-0000-0000-000000000004",
+                project_id: "00000000-0000-0000-0000-000000000003",
+            });
+            super::record_funnel_event(FunnelEvent::Sent {
+                notation_id: "00000000-0000-0000-0000-000000000004",
+                project_id: "00000000-0000-0000-0000-000000000003",
+                channel: FunnelChannel::Signature,
+            });
+        });
+
+        let rendered = String::from_utf8(output.lock().expect("capture lock").clone())
+            .expect("capture is UTF-8");
+        let lines: Vec<serde_json::Value> = rendered
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("funnel event is JSON"))
+            .collect();
+        assert_eq!(lines.len(), 5);
+        for line in lines {
+            let fields = line
+                .get("fields")
+                .and_then(serde_json::Value::as_object)
+                .expect("JSON formatter nests event fields");
+            for forbidden in ["address", "email", "name", "phone", "project_code"] {
+                assert!(!fields.contains_key(forbidden), "forbidden field in {line}");
+            }
+        }
+        assert!(rendered.contains("funnel.lead_captured"));
+        assert!(rendered.contains("funnel.started"));
+        assert!(rendered.contains("funnel.intake_complete"));
+        assert!(rendered.contains("funnel.review_entered"));
+        assert!(rendered.contains("funnel.sent"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn funnel_metric_registers_and_increments_with_the_step_attribute() {
+        use opentelemetry::metrics::MeterProvider as _;
+        use opentelemetry_sdk::metrics::{
+            data::AggregatedMetrics, InMemoryMetricExporter, SdkMeterProvider,
+        };
+
+        let exporter = InMemoryMetricExporter::default();
+        let provider = SdkMeterProvider::builder()
+            .with_periodic_exporter(exporter.clone())
+            .build();
+        let meter = provider.meter(super::FUNNEL_METER);
+
+        super::record_funnel_step_with_meter(&meter, "funnel.review_entered");
+        provider.force_flush().expect("metric flush");
+
+        let metrics = exporter
+            .get_finished_metrics()
+            .expect("metric export succeeds");
+        let metric = metrics
+            .iter()
+            .flat_map(opentelemetry_sdk::metrics::data::ResourceMetrics::scope_metrics)
+            .flat_map(opentelemetry_sdk::metrics::data::ScopeMetrics::metrics)
+            .find(|metric| metric.name() == super::FUNNEL_STEP)
+            .expect("funnel metric is registered");
+        let AggregatedMetrics::U64(sum) = metric.data() else {
+            panic!("funnel metric is not a sum");
+        };
+        let rendered = format!("{sum:?}");
+        assert!(rendered.contains("value: 1"), "counter value: {rendered}");
+        assert!(
+            rendered.contains("step") && rendered.contains("funnel.review_entered"),
+            "counter attributes: {rendered}"
+        );
+        provider.shutdown().expect("metric provider shuts down");
+    }
 
     #[test]
     fn an_unset_endpoint_is_stdout_only() {

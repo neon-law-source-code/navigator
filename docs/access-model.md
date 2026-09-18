@@ -421,19 +421,21 @@ request:
 
 ```json
 {
-  "path":       ["admin", "project", "9a..."],
-  "method":     "GET",
-  "session":    {
+  "path":    ["app", "admin", "projects"],
+  "method":  "GET",
+  "session": {
     "sub":   "<idp subject>",
     "email": "libra@example.com",
     "role":  "lawyer"
-  },
-  "project_id": "9a..."
+  }
 }
 ```
 
-`project_id` is populated by the route handler when the URL is project-scoped (`/app/projects/:code` and its document
-subroutes). Routes without a project parameter leave it absent.
+Those three keys are the whole document, and the policy reads exactly them: `input.path`, `input.method`,
+`input.session`. There is no fourth. Embedded Rego cannot read the participation ledger, so **per-matter scope is never
+a Rego decision** — it belongs to the handler, through `store::access::can_see_project` and the by-id reads that
+collapse an out-of-scope resource to `404`. A rule written against a key the middleware does not send is undefined, and
+an undefined rule denies.
 
 Embedded Rego's allow rules in priority order:
 
@@ -479,9 +481,11 @@ Embedded Rego's allow rules in priority order:
    a lawyer DRI cannot grant access without a membership row, because `is_lawyer_dri` rides that membership row. The
    lawyer-only writes under this path (matter open/edit/delete, the participation forms, document upload, transcript
    intake) additionally re-check the lawyer tier in their own handlers, preserving the firm-side write boundary.
-5. **API project reads** — `/app/api/projects/:id/...` allow if there is a `person_project_role` row with
-   `person_id = session.person_id` and `project_id = input.project_id`. Embedded Rego does not check participation;
-   action-level distinctions live in the route layer.
+5. **API project reads** — `GET /app/api/projects` and its matter sub-reads (`{id}`, `{id}/participants`,
+   `{id}/notations`, at most five segments) admit any authenticated caller at the session boundary, because both a
+   client reading their own matter and the firm reach the same paths. The scoping is the handler's: `visible_projects`
+   returns only the caller's matters and a by-id read collapses an out-of-scope resource to `404`. The rule is scoped to
+   `GET`, so the write verbs on these paths keep their own tier rules.
 6. **API reads are named per resource** — there is no blanket grant on the `/app/api` prefix. The CRM directory
    (`people`, `entities`, collection and item) and the reference vocabularies (`jurisdictions`, `entity-types`) gate on
    the lawyer tier; raw Template markdown (`GET /app/api/templates/*path`) is deliberately open to any authenticated

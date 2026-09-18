@@ -159,6 +159,38 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
         );
     }
 
+    // The self-referencing action pins name an ABSOLUTE tag, so the bump that
+    // moves `[workspace.package].version` is what makes them stale. Sweeping
+    // them here is what lets the release be one version-only commit: the seven
+    // lines travel with the version that invalidated them, rather than waiting
+    // for a human to edit three files and for `ops release pins` to notice they
+    // did not. That check still runs — in `ci.yml`'s always-run gate and in the
+    // `cut-release` preflight — but it now verifies this sweep rather than
+    // standing in for it.
+    let root = manifest_path.parent().unwrap_or(Path::new("."));
+    let swept = match crate::release_pins::sweep(root, &version) {
+        Ok(swept) => swept,
+        Err(error) => {
+            eprintln!("navigator: release version: could not sweep the action pins: {error:#}");
+            return ExitCode::from(2);
+        }
+    };
+    // A COUNT, and nothing else. Both of the obvious things to say here are
+    // values CodeQL's `rust/cleartext-logging` reads as secret: `pin.file`
+    // descends from the CLI manifest path, and `version` is the `--tag` the
+    // operator passed — `Command` carries `Secrets`, so any printed field of it
+    // is a cleartext-logging sink, and a NEW one fails the scan at high
+    // severity. It is the same reason the read and write failures above name no
+    // path. Nothing is lost: the line above already named the version, a
+    // release is a version-only commit so `git show` is the per-line report,
+    // and `ops release pins` names any file and line still wrong.
+    if !swept.is_empty() {
+        println!(
+            "navigator: swept {} self-referencing action pin(s)",
+            swept.len()
+        );
+    }
+
     // `Cargo.lock` pins every workspace crate's version too, and `deploy.yml`
     // builds the release with `--locked` — in the release decision itself and in
     // all three CLI archive jobs. `--locked` refuses a lock the manifest has
@@ -191,7 +223,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    commit_bump(&version, lock_present)
+    commit_bump(&version, lock_present, &swept)
 }
 
 /// Refresh `Cargo.lock` so every workspace crate's locked version equals the one
@@ -235,7 +267,7 @@ fn cargo_update(manifest_path: &Path, offline: bool) -> Result<(), String> {
 /// Commit the bump on the current branch, refusing `main`. The commit carries the
 /// manifest and the refreshed lock together; it forms a PR, and the operator
 /// merges it and tags the merged commit.
-fn commit_bump(version: &str, lock_present: bool) -> ExitCode {
+fn commit_bump(version: &str, lock_present: bool, swept: &[crate::release_pins::Pin]) -> ExitCode {
     let branch = std::process::Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .output();
@@ -252,9 +284,18 @@ fn commit_bump(version: &str, lock_present: bool) -> ExitCode {
 
     // Both files or neither: the release builds with `--locked`, so a commit
     // carrying the manifest alone names a version its own lock refuses to build.
-    let mut paths = vec!["Cargo.toml"];
+    let mut paths = vec!["Cargo.toml".to_string()];
     if lock_present {
-        paths.push("Cargo.lock");
+        paths.push("Cargo.lock".to_string());
+    }
+    // And the files the pin sweep just rewrote. Left unstaged they are not
+    // merely missing from the commit — the `cut-release` preflight refuses a
+    // dirty tree, so the release would stop on the edits it had just made
+    // itself.
+    for pin in swept {
+        if !paths.contains(&pin.file) {
+            paths.push(pin.file.clone());
+        }
     }
     let staged = std::process::Command::new("git")
         .arg("add")
@@ -309,6 +350,23 @@ mod tests {
         assert!(
             !production.contains("release version: write {}"),
             "echoing the CLI manifest path trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
+        // Staging `pin.file` for `git add` is fine — `Command::args` is not a
+        // logging sink. PRINTING it is not: the path descends from the CLI
+        // manifest path and trips cleartext-logging the same way.
+        assert!(
+            !production.contains("navigator: moved {}"),
+            "the pin sweep must report a count, not the paths it walked: printing `pin.file` \
+             trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
+        assert!(
+            production.contains("self-referencing action pin(s)"),
+            "the sweep must still say it happened"
+        );
+        assert!(
+            !production.contains("action pin(s) to {version}"),
+            "the sweep report must not interpolate the --tag: `version` is a Command field, and \
+             Command also carries Secrets, so a new line printing it fails CodeQL"
         );
     }
 

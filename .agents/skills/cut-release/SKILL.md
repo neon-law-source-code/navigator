@@ -26,29 +26,38 @@ through a PR; merging `main` drives publication.
   dev browser-e2e`; that is the full browser and axe-core audit. If no fixture is running, do not run the browser suite
   raw — it intentionally self-skips without a harness. Report that browser E2E was skipped; do not describe it as a
   passing accessibility audit.
-- **Bump every version this repository names, not just the manifest.** `.github/workflows/project-gate.yml` and
-  `project-publish.yml` reference this repository's own composite actions by an **absolute tag**, not by the ref the
-  caller used, and `docs/examples/sample-portal-publish.yml` names two reusable workflows the same way, so a release
-  moves them only if this step does:
+- **The bump sweeps every version this repository names, and you check that it did.** The reusable workflows and
+  composite actions under `.github/` reference this repository's own actions by an **absolute tag**, not by the ref the
+  caller used, and `docs/examples/sample-portal-publish.yml` names two reusable workflows the same way. `ops release
+  version` moves all of them in the same breath as it writes the manifest, and stages them into the same version-only
+  commit — the pins are not a second step to remember. Confirm it:
 
   ```bash
-  git grep -nE 'uses: *neon-law-source-code/navigator/\.github/(actions|workflows)/[^@]+@[0-9]' -- .github/workflows/ docs/examples/
+  cargo run -p cli --quiet -- ops release pins
   ```
 
-  Every hit must name the version being cut. The `@[0-9]` is what separates the two kinds: a literal tag names a version
-  and has to move, while the `@YY.M.D` occurrences in comments and prose are placeholders standing in for one, and
-  rewriting those would destroy the example rather than update it. A pin left behind is not cosmetic.
-  `navigator-install` was added after `26.9.16` (ENG-671) while its pins still read `@26.9.16`, a tag that does not
-  carry it, so `26.9.17-rc.1` published a gate no consumer could run. Every job needing the CLI failed in about five
-  seconds, unable to resolve the action at all, and only `read-manifest` — the one job needing no CLI — stayed green.
-  Naming the version being cut is what makes a release self-consistent, since a caller only ever resolves a *published*
-  tag, by which point the tag exists. Where that is too bold for a given cut, the conservative fallback is the most
-  recent published tag that actually carries the action — never a tag predating it.
+  It walks `.github/` whole and `docs/examples/`, and every pin must name the version being cut. `ci.yml` runs the same
+  command in its always-run gate, so a stale pin is a red pull request rather than a surprise during a cut. Comments and
+  the named placeholders (`@YY.M.D`) are excluded — rewriting those would destroy the example rather than update it —
+  and **every other ref is a pin**, including one that is not a release version at all: `@26.9`, `@1`, and `@main` each
+  name something other than the version being cut, which is exactly the failure this catches.
+
+  A pin left behind is not cosmetic. `navigator-install` was added after `26.9.16` (ENG-671) while its pins still read
+  `@26.9.16`, a tag that does not carry it, so `26.9.17-rc.1` published a gate no consumer could run. Every job needing
+  the CLI failed in about five seconds, unable to resolve the action at all, and only `read-manifest` — the one job
+  needing no CLI — stayed green. Naming the version being cut is what makes a release self-consistent, since a caller
+  only ever resolves a *published* tag, by which point the tag exists.
+
+  **A prerelease cut pins the prerelease, and the stable cut sweeps it.** The pins track `[workspace.package].version`
+  and nothing else, so while the manifest reads `26.9.18-rc.1` every pin reads `26.9.18-rc.1`, and the cut that writes
+  `26.9.18` moves them in that same commit. They cannot be left resting on the release candidate afterwards: a pin that
+  disagrees with the manifest is a red pull request from the moment the bump is written. There is no publish-time sweep
+  to schedule, because the bump commit is the sweep.
 
   The example file is in that sweep because it is the same decision written a third time.
   [`docs/project-repositories.md`](../../../docs/project-repositories.md) calls it the caller the scaffold emits, so a
   reader copies it into a Project repository and inherits whatever tag it names. It sat at `26.9.14` for three releases
-  while this step watched only `.github/`.
+  while this step watched only `.github/workflows/`.
 - Make the smallest version-only commit, run the documented gate, and open the PR against `main`. **No draft PRs**: a
   release PR must open ready for review, not as a draft. Auto-merge only lands a PR that is not a draft, so a release
   cut as a draft sits published-but-unmerged until someone notices and marks it ready — take it out of draft as soon as

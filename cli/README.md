@@ -91,6 +91,21 @@ Both read matter content, so both require a firm-side participation row on the m
 included. Being Owner or Admin is not itself a key to a matter's work product: seat yourself on the matter first, or
 these answer `404`. A Clerk is not lawyer tier and gets `403`.
 
+Before cutting a release, check that this repository's self-referencing GitHub Actions pins still name
+`[workspace.package].version`. The reusable workflows and composite actions under `.github/` reference this repository's
+own actions by an absolute tag rather than by the ref the caller used, so a bump that does not sweep them publishes a
+gate no consumer can run:
+
+```bash
+navigator ops release pins
+```
+
+It takes no version — the manifest is the answer. It walks `.github/` and `docs/examples/`, exits `0` when every pin
+agrees, and exits `2` naming the file and line of each one that does not. Comments and the named placeholders
+(`@YY.M.D`) are excluded; every other ref is a pin, including one that is not a release version at all. `ops release
+version`sweeps the pins as it writes the manifest, so this verifies that bump rather than replacing it;`ci.yml` runs the
+same command in its always-run gate.
+
 ## Exit codes for `--ci` commands
 
 `navigator site import --ci` and `navigator site document verify --ci` first exchange the runner's GitHub Actions OIDC

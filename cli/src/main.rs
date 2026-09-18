@@ -31,6 +31,7 @@ mod projects;
 mod release;
 mod release_check;
 mod release_default_tag;
+mod release_pins;
 mod release_version;
 #[allow(dead_code)]
 mod remote;
@@ -1491,6 +1492,18 @@ enum ReleaseCmd {
         #[arg(long)]
         github_output: bool,
     },
+    /// Check that every self-referencing action pin names the workspace version.
+    ///
+    /// The reusable workflows and composite actions under `.github/` name this
+    /// repository's own actions by an absolute tag, so a pin left behind ships
+    /// a gate no consumer can run. `ci.yml` runs this on every pull request and
+    /// the `cut-release` preflight runs it again before the bump is pushed;
+    /// both reach the one rule in `release_pins` rather than re-deriving it.
+    Pins {
+        /// Repository root whose checked-in GitHub configuration is scanned.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
     /// Write a release version into the workspace manifest.
     Version {
         /// Release version to write, e.g. `26.8.20` or `26.8.21-hotfix.3`.
@@ -2400,6 +2413,7 @@ fn main() -> ExitCode {
                 no_fetch,
                 github_output,
             }) => release_check::run(&manifest_path, &repo, !no_fetch, github_output),
+            OpsCmd::Release(ReleaseCmd::Pins { root }) => release_pins::run(&root),
             OpsCmd::Lsp { action } => match action {
                 LspAction::Publish { dir, bucket } => lsp_publish::run_publish(&dir, bucket),
             },

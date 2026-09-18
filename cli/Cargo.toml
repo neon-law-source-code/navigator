@@ -82,6 +82,7 @@ zip.workspace = true
 assert_cmd.workspace = true
 lopdf.workspace = true
 neon.workspace = true
+telemetry.workspace = true
 predicates.workspace = true
 # `tower::ServiceExt::oneshot` drives the preview router in-process, with no
 # bind and no port.

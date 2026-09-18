@@ -206,6 +206,7 @@ pub fn routes(
             // old private keys and redirects public ones to their asset URL.
             get(admin_person_avatar_download)
                 .post(admin_person_avatar_upload)
+                .delete(admin_person_avatar_clear)
                 .layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
         .route("/app/me/avatar", get(current_viewer_avatar))
@@ -218,14 +219,18 @@ pub fn routes(
             // so a native form on that page and the browser's relative
             // resolution of a nested `avatar` action both land here.
             // Same body-limit reasoning.
-            post(profile_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
+            post(profile_avatar_upload)
+                .delete(profile_avatar_clear)
+                .layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
         .route(
             "/app/profile/avatar",
             // Same handler as `/app/avatar`. An absolute nested action on
             // `/app/profile` posts here; a relative `avatar` action posts
             // to `/app/avatar`. Both write the caller's row.
-            post(profile_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
+            post(profile_avatar_upload)
+                .delete(profile_avatar_clear)
+                .layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
         .route(
             "/app/people/{id}/avatar",
@@ -1171,6 +1176,47 @@ fn public_person_avatar_key(id: Uuid, stored: Option<&str>) -> Option<String> {
     })
 }
 
+/// Remove both canonical public representations for one Person. Storage
+/// deletion is idempotent, so a missing variant is already a successful clear.
+async fn delete_public_person_avatar(state: &AdminState, person_id: Uuid) -> Result<(), Response> {
+    for extension in ["png", "jpg"] {
+        let key = format!("people/{person_id}/avatar.{extension}");
+        if let Err(error) = state.assets_storage.delete(&key).await {
+            if matches!(error, cloud::StorageError::NotFound(_)) {
+                continue;
+            }
+            tracing::error!(
+                error = %error,
+                person_id = %person_id,
+                key = %key,
+                "avatar clear: public avatar delete failed"
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+        }
+    }
+    Ok(())
+}
+
+/// Clear the row's avatar and, only for firm-tier people, remove every
+/// canonical public object keyed by the immutable Person id.
+async fn clear_person_avatar(
+    state: &AdminState,
+    person: &store::persons::Person,
+) -> Result<(), Response> {
+    match store::persons::set_profile_image_url(&state.surreal, person.id, None).await {
+        Ok(true) => {}
+        Ok(false) => return Err(StatusCode::NOT_FOUND.into_response()),
+        Err(error) => {
+            tracing::error!(error = %error, person_id = %person.id, "avatar clear: person edit failed");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+        }
+    }
+    if person_avatar_is_public(person.role) {
+        delete_public_person_avatar(state, person.id).await?;
+    }
+    Ok(())
+}
+
 /// Write one avatar in its role-appropriate storage lane and update the
 /// singular `person.profile_image_url` field. When a firm-tier avatar changes
 /// extension, remove the superseded public object so it cannot remain
@@ -1332,6 +1378,31 @@ async fn admin_person_avatar_upload(
     }
 }
 
+/// `DELETE /app/admin/people/{id}/avatar` — clear a Person's avatar. The
+/// target role comes from the stored row, so Client clears never touch the
+/// public-assets lane.
+async fn admin_person_avatar_clear(
+    State(s): State<AdminState>,
+    Path(id): Path<Uuid>,
+    session: Option<Extension<SessionData>>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let person = match store::persons::find_by_id(&s.surreal, id).await {
+        Ok(Some(person)) => person,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, person_id = %id, "avatar clear: person read failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    match clear_person_avatar(&s, &person).await {
+        Ok(()) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
+        Err(response) => response,
+    }
+}
+
 /// `GET /app/admin/people/{id}/avatar` — redirect the Person's public avatar
 /// URL, or stream a historical private documents-bucket key. It remains
 /// Admin-gated like every other `/app/admin/people` door: embedded Rego admits
@@ -1455,6 +1526,34 @@ async fn profile_avatar_upload(
         }
     }
     match persist_person_avatar(&s, &person, &content_type, &bytes).await {
+        Ok(()) => profile_avatar_upload_accepted(&headers),
+        Err(response) => response,
+    }
+}
+
+/// `DELETE /app/avatar` and `/app/profile/avatar` — clear the authenticated
+/// viewer's avatar. The target is resolved from the signed session, never a
+/// request-supplied person id.
+async fn profile_avatar_clear(
+    State(s): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(Extension(session_data)) = session else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(id) = session_data.person_id else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let person = match store::persons::find_by_id(&s.surreal, id).await {
+        Ok(Some(person)) => person,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, person_id = %id, "profile avatar clear: person read failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    match clear_person_avatar(&s, &person).await {
         Ok(()) => profile_avatar_upload_accepted(&headers),
         Err(response) => response,
     }

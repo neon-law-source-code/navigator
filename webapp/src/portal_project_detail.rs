@@ -86,6 +86,17 @@ pub struct ReviewDocRow {
     pub status: String,
 }
 
+/// The client DRI's editable testimonial, without internal record ids or
+/// publication timestamps.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ClientTestimonialView {
+    pub quote: String,
+    pub attribution: String,
+    /// A public request is represented by client consent; publication remains
+    /// a separate lawyer/admin decision and is never client-controlled.
+    pub public_requested: bool,
+}
+
 /// The rendered matter-detail view — every field wasm-safe (plain scalars; no
 /// `store`/`SeaORM`/`cloud` type crosses to the client build).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -126,6 +137,12 @@ pub struct ProjectDetailView {
     /// current client-facing workflow still needs an answer.
     #[serde(default)]
     pub pending_intake: Option<String>,
+    /// The current client's testimonial, visible and editable only to the
+    /// project's client DRI.
+    #[serde(default)]
+    pub testimonial: Option<ClientTestimonialView>,
+    #[serde(default)]
+    pub can_edit_testimonial: bool,
 }
 
 /// Client-friendly status for a notation, derived from its workflow state,
@@ -267,6 +284,28 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     if !visible {
         return Ok(not_found(id, role, logo, csrf_token));
     }
+    let client_dri =
+        store::projects::participation_for_person(&surreal, person_id.unwrap_or_default(), id)
+            .await
+            .map_err(server_error)?
+            .filter(|row| {
+                row.is_client_dri
+                    && store::projects::PARTICIPATION_CLIENT_SIDE
+                        .contains(&row.participation.as_str())
+            });
+    let can_edit_testimonial = client_dri.is_some();
+    let testimonial = if can_edit_testimonial {
+        store::testimonials::for_person_project(&surreal, person_id.unwrap_or_default(), id)
+            .await
+            .map_err(server_error)?
+            .map(|row| ClientTestimonialView {
+                quote: row.quote,
+                attribution: row.attribution_label.unwrap_or_default(),
+                public_requested: row.consented_at.is_some(),
+            })
+    } else {
+        None
+    };
     // Queue only for a real client session. A firm member's read-only
     // client-DRI view renders the same page but must not look like client
     // activity in the firm's channel. The one-way Restate call is best-effort
@@ -351,6 +390,8 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         logo,
         tokens_href,
         pending_intake,
+        testimonial,
+        can_edit_testimonial,
     })
 }
 
@@ -557,6 +598,62 @@ pub fn ClientProjectDetail() -> Element {
             p { span { class: "status-chip", "{view.status}" } }
 
             crate::project_resources::ProjectResourcesPanel { view: view.resources.clone() }
+
+            if view.can_edit_testimonial {
+                section { class: "portal-detail__section", "aria-labelledby": "testimonial-heading",
+                    h2 { id: "testimonial-heading", "Share your experience" }
+                    p { class: "nav-muted",
+                        "You can keep this testimonial private or request that the firm consider it for the public homepage. Public use requires your consent and the firm's approval."
+                    }
+                    form {
+                        method: "post",
+                        action: "/app/projects/{view.code}/testimonial",
+                        class: "portal-form testimonial-form",
+                        input { type: "hidden", name: "_csrf", value: "{view.csrf_token}" }
+                        label { r#for: "testimonial-quote", "Quote"
+                            textarea {
+                                id: "testimonial-quote",
+                                name: "quote",
+                                required: true,
+                                maxlength: "2000",
+                                rows: "5",
+                                placeholder: "What would you tell someone considering the firm?",
+                                if let Some(testimonial) = view.testimonial.as_ref() { "{testimonial.quote}" }
+                            }
+                        }
+                        label { r#for: "testimonial-attribution", "Attribution"
+                            input {
+                                id: "testimonial-attribution",
+                                name: "attribution",
+                                value: view.testimonial.as_ref().map(|t| t.attribution.clone()).unwrap_or_default(),
+                                placeholder: "Name or title to show publicly",
+                            }
+                        }
+                        fieldset {
+                            legend { "Public use" }
+                            label {
+                                input {
+                                    type: "radio",
+                                    name: "publication",
+                                    value: "private",
+                                    checked: !view.testimonial.as_ref().is_some_and(|t| t.public_requested),
+                                }
+                                " Keep private"
+                            }
+                            label {
+                                input {
+                                    type: "radio",
+                                    name: "publication",
+                                    value: "public",
+                                    checked: view.testimonial.as_ref().is_some_and(|t| t.public_requested),
+                                }
+                                " Request public use"
+                            }
+                        }
+                        button { class: "nav-btn nav-btn--primary", type: "submit", "Save testimonial" }
+                    }
+                }
+            }
 
             if has_documents {
                 p { class: "portal-detail__actions",

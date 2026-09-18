@@ -6,15 +6,15 @@
 //! practice boxes so litigation, company counsel, technology, and one-time
 //! filings are all reachable from `/`. Every fee is quoted through `/contact`.
 //!
-//! The only state is the static copy ([`HomeContent`]), resolved by the portal
-//! router at router-build time and injected via `ServeConfig::context_providers`;
-//! the page resolves no per-request data.
+//! The marketing copy is static ([`HomeContent`]), while approved testimonials
+//! are read per request through the store's consent/publication seam.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta, THEME_STYLESHEET_HREF,
+    PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta, TestimonialCard,
+    TestimonialSection, THEME_STYLESHEET_HREF,
 };
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
@@ -166,6 +166,8 @@ pub struct InjectedHome(pub HomeContent);
 pub struct HomePageView {
     pub chrome: PublicChrome,
     pub content: HomeContent,
+    #[serde(default)]
+    pub testimonials: Vec<TestimonialCard>,
 }
 
 /// Resolve the chrome and the static home content.
@@ -175,9 +177,23 @@ pub async fn home_page_view() -> Result<HomePageView, ServerFnError> {
         crate::public_chrome::copy_from_request_or_context(consume_context::<InjectedHome>)
             .await
             .0;
+    let surreal = consume_context::<store::surreal::SurrealDb>();
+    let testimonials = store::testimonials::published_for_home(&surreal, 6)
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?
+        .into_iter()
+        .map(|testimonial| TestimonialCard {
+            quote: testimonial.quote,
+            attribution: testimonial.person_name,
+            detail: testimonial.attribution_label.or(testimonial.person_title),
+            profile_image_url: testimonial.profile_image_url,
+            product_label: Some(testimonial.project_name),
+        })
+        .collect();
     Ok(HomePageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
+        testimonials,
     })
 }
 
@@ -190,14 +206,22 @@ pub fn HomePageEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        HomePage { chrome: view.chrome, content: view.content }
+        HomePage {
+            chrome: view.chrome,
+            content: view.content,
+            testimonials: view.testimonials,
+        }
     }
 }
 
 /// The pure home page. Prop-driven, so it server-renders and unit-tests without
 /// a server future.
 #[component]
-pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
+pub fn HomePage(
+    chrome: PublicChrome,
+    content: HomeContent,
+    #[props(default)] testimonials: Vec<TestimonialCard>,
+) -> Element {
     if let Some(bare) = content.bare.clone() {
         return rsx! {
             document::Title { "{content.head_title}" }
@@ -298,6 +322,11 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
             }
             if let Some(provenance) = content.provenance.as_ref() {
                 ProvenanceBand { provenance: provenance.clone() }
+            }
+            TestimonialSection {
+                heading: "What clients say".to_string(),
+                lead: "Shared by clients who asked us to publish their experience.".to_string(),
+                cards: testimonials,
             }
             if !content.practices.is_empty() {
                 PracticeLinks {
@@ -523,6 +552,27 @@ fn PracticeLinks(heading: String, practices: Vec<PracticeLink>) -> Element {
 mod tests {
     use super::*;
 
+    fn testimonial_html() -> String {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome::default(),
+                    content: HomeContent::default(),
+                    testimonials: vec![TestimonialCard {
+                        quote: "The firm made a hard problem manageable.".into(),
+                        attribution: "Synthetic Client".into(),
+                        detail: Some("Founder".into()),
+                        profile_image_url: None,
+                        product_label: Some("Synthetic matter".into()),
+                    }],
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
+
     fn html() -> String {
         fn app() -> Element {
             rsx! {
@@ -592,6 +642,17 @@ mod tests {
             "CTA links to the firm inbox"
         );
         assert!(out.contains("Contact us"), "CTA label");
+    }
+
+    #[test]
+    fn renders_home_testimonials_when_the_store_returns_published_rows() {
+        let out = testimonial_html();
+        assert!(out.contains("testimonial-section"), "{out}");
+        assert!(
+            out.contains("The firm made a hard problem manageable."),
+            "{out}"
+        );
+        assert!(out.contains("Synthetic Client"), "{out}");
     }
 
     /// The page opens on the question, and nothing sits above it. A skyline

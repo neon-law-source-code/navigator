@@ -3811,16 +3811,21 @@ async fn inject_doc(
     }
 }
 
-/// The firm home page (`/`) — the Dioxus SSR port (#641 / #730 PR6). The static
-/// copy (`content`) is resolved brand-safely by the caller and injected via
-/// `ServeConfig::context_providers`. The page is a plain statement of the
-/// practice, so it resolves no per-request data.
-pub fn home_router(path: &str, content: webapp::home::HomeContent) -> Router {
+/// The firm home page (`/`) — the Dioxus SSR port (#641 / #730 PR6). Static
+/// copy (`content`) is resolved brand-safely by the caller; approved
+/// testimonials are read per request from the injected store handle.
+pub fn home_router(
+    path: &str,
+    content: webapp::home::HomeContent,
+    surreal: store::surreal::SurrealDb,
+) -> Router {
     let injected = webapp::home::InjectedHome(content);
-    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
-    })
-        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
+        Box::new(move || Box::new(injected.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+        Box::new(move || Box::new(surreal.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+    ]));
 
     Router::<FullstackState>::new()
         .route(

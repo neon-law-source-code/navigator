@@ -905,6 +905,91 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/projects/{id}/testimonial": {
+          "post": {
+            "summary": "Submit or edit the authenticated client's testimonial",
+            "description":
+              "Saves the current caller's testimonial for this matter. The caller's person id is \
+               derived from the authenticated session; the body cannot select a person or matter. \
+               Only the matter's client DRI may write. `request_public: true` records client consent, \
+               but does not publish the testimonial. Every edit clears prior publication approval.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true,
+                "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["quote", "request_public"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "quote": { "type": "string" },
+                    "attribution": { "type": ["string", "null"] },
+                    "request_public": { "type": "boolean" }
+                  }
+                }
+              } }
+            },
+            "responses": {
+              "200": { "description": "Saved testimonial", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/Testimonial" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No client-DRI testimonial in scope", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
+        "/app/api/testimonials/{id}/publish": {
+          "post": {
+            "summary": "Publish a consented testimonial",
+            "description": "Lawyer/admin approval sets `published_at`; the testimonial must already carry client consent and the approver must participate on the project's firm side.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true,
+                "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "responses": {
+              "200": { "description": "Published testimonial", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/Testimonial" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No testimonial in scope", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "409": { "description": "Client consent is required", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
+        "/app/api/testimonials/{id}/unpublish": {
+          "post": {
+            "summary": "Unpublish a testimonial",
+            "description": "Lawyer/admin approval removes `published_at` and therefore website visibility while preserving the client's consent record.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true,
+                "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "responses": {
+              "200": { "description": "Unpublished testimonial", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/Testimonial" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No testimonial in scope", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/projects/{id}/close": {
           "post": {
             "summary": "Open a matter's closing-letter notation",
@@ -2633,6 +2718,17 @@ pub fn document_with_base(base: &str) -> Value {
             "type": "string",
             "enum": ["owner", "admin", "lawyer", "clerk", "client"],
               "description": "System-wide authorization tier stored in `persons.role`; Lawyer is a person licensed to practice law and authorized for Navigator legal work, while Owner/Admin are organization-level operators and Clerk is a supervised non-lawyer."
+          },
+          "Testimonial": {
+            "type": "object",
+            "required": ["id", "quote", "attribution", "consented_at", "published_at"],
+            "properties": {
+              "id": { "type": "string", "format": "uuid" },
+              "quote": { "type": "string" },
+              "attribution": { "type": ["string", "null"] },
+              "consented_at": { "type": ["string", "null"] },
+              "published_at": { "type": ["string", "null"] }
+            }
           },
           "SeedRequest": {
             "type": "object",

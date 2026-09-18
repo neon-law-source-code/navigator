@@ -221,6 +221,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("GET", "/app/api/projects", get(list_projects_door)),
         ("GET", "/app/api/projects/{id}", get(get_project_door)),
         (
+            "POST",
+            "/app/api/projects/{id}/testimonial",
+            post(save_testimonial_door),
+        ),
+        (
             "GET",
             "/app/api/projects/{id}/participants",
             get(list_participants_door),
@@ -272,6 +277,16 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("PATCH", "/app/api/projects/{id}", patch(update_project)),
         ("DELETE", "/app/api/projects/{id}", delete(delete_project)),
         ("POST", "/app/api/projects/{id}/close", post(close_matter)),
+        (
+            "POST",
+            "/app/api/testimonials/{id}/publish",
+            post(publish_testimonial_door),
+        ),
+        (
+            "POST",
+            "/app/api/testimonials/{id}/unpublish",
+            post(unpublish_testimonial_door),
+        ),
         (
             "POST",
             "/app/api/projects/{id}/lifecycle",
@@ -1068,6 +1083,95 @@ async fn get_project_door(
     let payload =
         project_payload(authed.0.role, project).map_err(|error| ApiError::Db(error.to_string()))?;
     Ok((StatusCode::OK, Json(payload)).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TestimonialSubmissionInput {
+    quote: String,
+    #[serde(default)]
+    attribution: Option<String>,
+    request_public: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct TestimonialResponse {
+    id: Uuid,
+    quote: String,
+    attribution: Option<String>,
+    consented_at: Option<String>,
+    published_at: Option<String>,
+}
+
+fn testimonial_response(testimonial: store::testimonials::Testimonial) -> Response {
+    Json(TestimonialResponse {
+        id: testimonial.id,
+        quote: testimonial.quote,
+        attribution: testimonial.attribution_label,
+        consented_at: testimonial.consented_at,
+        published_at: testimonial.published_at,
+    })
+    .into_response()
+}
+
+/// `POST /app/api/projects/{id}/testimonial` — save the authenticated
+/// project's client-DRI testimonial. The body contains content only; both
+/// identity references are resolved from the session and path and are checked
+/// again by the store authorization seam.
+async fn save_testimonial_door(
+    State(state): State<ApiState>,
+    AuthedSession(session): AuthedSession,
+    Path(project_id): Path<Uuid>,
+    JsonOrForm(input): JsonOrForm<TestimonialSubmissionInput>,
+) -> Result<Response, ApiError> {
+    let person_id = session.person_id.ok_or(ApiError::NotFound)?;
+    if session.viewing_as_dri.is_some() {
+        return Err(ApiError::NotFound);
+    }
+    let result = store::testimonials::save_for_client_dri(
+        &state.surreal,
+        person_id,
+        project_id,
+        &store::testimonials::TestimonialSubmission {
+            quote: &input.quote,
+            attribution_label: input.attribution,
+            request_public: input.request_public,
+        },
+    )
+    .await?;
+    Ok(testimonial_response(result))
+}
+
+async fn publish_testimonial_door(
+    State(state): State<ApiState>,
+    LawyerSession(session): LawyerSession,
+    Path(testimonial_id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    Ok(testimonial_response(
+        store::testimonials::publish(
+            &state.surreal,
+            session.person_id,
+            session.role,
+            testimonial_id,
+        )
+        .await?,
+    ))
+}
+
+async fn unpublish_testimonial_door(
+    State(state): State<ApiState>,
+    LawyerSession(session): LawyerSession,
+    Path(testimonial_id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    Ok(testimonial_response(
+        store::testimonials::unpublish(
+            &state.surreal,
+            session.person_id,
+            session.role,
+            testimonial_id,
+        )
+        .await?,
+    ))
 }
 
 /// `GET /app/api/projects/{id}/participants` — the matter's participation ledger.
@@ -3926,6 +4030,7 @@ pub enum ApiError {
     Ingest(store::documents::IngestError),
     Revision(store::assets::RevisionError),
     Asset(store::assets::AssetError),
+    Testimonial(store::testimonials::TestimonialError),
     /// A [`JsonOrForm`] body was well-formed for its content type but failed
     /// deserialization — a missing required field, or (with a command's own
     /// `#[serde(deny_unknown_fields)]`) an unrecognized one. Carries the
@@ -3939,6 +4044,12 @@ pub enum ApiError {
 impl From<store::persons::PersonError> for ApiError {
     fn from(e: store::persons::PersonError) -> Self {
         Self::Person(e)
+    }
+}
+
+impl From<store::testimonials::TestimonialError> for ApiError {
+    fn from(e: store::testimonials::TestimonialError) -> Self {
+        Self::Testimonial(e)
     }
 }
 
@@ -4251,11 +4362,31 @@ impl IntoResponse for ApiError {
             | Self::ReviewComment(crate::review::ReviewCommentError::NotFound)
             | Self::RequestDeletion(
                 crate::expunge_request_route::RequestDeletionError::NotFound,
+            )
+            | Self::Testimonial(
+                store::testimonials::TestimonialError::NotFound
+                | store::testimonials::TestimonialError::NotAuthorized,
             ) => (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({ "error": "not_found" })),
             )
                 .into_response(),
+            Self::Testimonial(store::testimonials::TestimonialError::NotConsented) => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "consent_required",
+                    "message": "The client must request public use before publication."
+                })),
+            )
+                .into_response(),
+            Self::Testimonial(error) => {
+                tracing::error!(error = %error, "api: testimonial operation failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": "internal" })),
+                )
+                    .into_response()
+            }
             // The matter still has dependents (participations, notations): a
             // conflict the caller resolves by detaching those first, carrying
             // the database's own detail so they see which records.

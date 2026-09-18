@@ -9,25 +9,7 @@ impl M038NoSpaceInCode {
     pub const CODE: &'static str = "M038";
 }
 
-/// The backtick run a line ends without closing, which the **next** line may
-/// close.
-///
-/// A `CommonMark` code span may cross a line break inside a paragraph, and
-/// `S102`'s reflow routinely produces one: it packs to 120 columns without
-/// regard for where a span begins. Read a line at a time, that span's
-/// *closing* run looks like an opener and the prose up to the next backtick
-/// reads as a padded code span, so trimming it eats the real spaces on either
-/// side.
-///
-/// The carry is deliberately **one line**. An unmatched run is far more often
-/// a stray literal backtick or a fence marker than a span that wraps, and a
-/// state that travelled further would mute the rule for every line until a
-/// run of the same length turned up — including for genuinely padded spans of
-/// a different length. So a run that the next line does not close is spent,
-/// and that line is scanned from its start.
-type OpenRun = Option<usize>;
-
-/// One complete code span within a single line.
+/// One code span, as byte ranges into the whole document.
 struct Span {
     /// The whole span, opening run through closing run.
     outer: std::ops::Range<usize>,
@@ -36,10 +18,10 @@ struct Span {
 }
 
 /// The byte index just past the first run of exactly `ticks` backticks, or
-/// `None` when `line` holds no such run. A run of a different length is not
+/// `None` when `text` holds no such run. A run of a different length is not
 /// a closer, so it is stepped over.
-fn close_run(line: &str, ticks: usize) -> Option<usize> {
-    let bytes = line.as_bytes();
+fn close_run(text: &str, ticks: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'`' {
@@ -55,51 +37,124 @@ fn close_run(line: &str, ticks: usize) -> Option<usize> {
     None
 }
 
-/// Every complete code span on `line`, and the run the line leaves open for
-/// the next one.
-///
-/// When `incoming` names a run and this line closes it, that closing run is
-/// stepped over without being reported: whether a span that crosses a line
-/// break is padded is a property of the whole span, not of the fragment
-/// sitting on this line, and `M038` does not judge it. When this line does
-/// **not** close it, the run above was not a span opener — see [`OpenRun`] —
-/// so the line is read from its start like any other.
-fn scan_line(line: &str, incoming: OpenRun) -> (Vec<Span>, OpenRun) {
-    let bytes = line.as_bytes();
-    let mut spans = Vec::new();
-    let mut i = incoming
-        .and_then(|ticks| close_run(line, ticks))
-        .unwrap_or(0);
-    while i < bytes.len() {
-        if bytes[i] != b'`' {
-            i += 1;
-            continue;
-        }
-        let ticks = bytes[i..].iter().take_while(|&&b| b == b'`').count();
-        let start = i + ticks;
-        let Some(offset) = close_run(&line[start..], ticks) else {
-            // An unclosed run may open a span the next line closes.
-            return (spans, Some(ticks));
-        };
-        let close_end = start + offset;
-        spans.push(Span {
-            outer: i..close_end,
-            inner: start..close_end - ticks,
-        });
-        i = close_end;
+/// The delimiter character and length of the fence this line opens, if it
+/// opens one: up to three spaces of indent, then three or more backticks or
+/// tildes. A backtick fence's info string may not itself contain a backtick.
+fn opens_fence(line: &str) -> Option<(u8, usize)> {
+    let rest = line.trim_start_matches(' ');
+    if line.len() - rest.len() > 3 {
+        return None;
     }
-    (spans, None)
+    let ch = rest.as_bytes().first().copied()?;
+    if ch != b'`' && ch != b'~' {
+        return None;
+    }
+    let run = rest.as_bytes().iter().take_while(|&&b| b == ch).count();
+    if run < 3 || (ch == b'`' && rest[run..].contains('`')) {
+        return None;
+    }
+    Some((ch, run))
 }
 
-/// The line above the byte at `start`, without its line ending.
+/// Whether this line closes a fence opened with `ch` repeated `len` times:
+/// the same character, a run at least as long, and nothing after it but
+/// whitespace.
+fn closes_fence(line: &str, ch: u8, len: usize) -> bool {
+    let rest = line.trim_start_matches(' ');
+    let run = rest.as_bytes().iter().take_while(|&&b| b == ch).count();
+    run >= len && rest[run..].trim().is_empty()
+}
+
+/// The byte ranges of the prose blocks of `contents` — the runs of lines
+/// that are neither blank nor inside a fenced code block.
 ///
-/// The fix needs only its predecessor, so it is taken from the text already
-/// in hand rather than by replaying the file — a violation late in a long
-/// document costs the same as one on line two.
-fn previous_line(contents: &str, start: usize) -> Option<&str> {
-    let before = contents[..start].strip_suffix('\n')?;
-    let before = before.strip_suffix('\r').unwrap_or(before);
-    Some(before.rsplit('\n').next().unwrap_or(before))
+/// Two bounds, for two different reasons.
+///
+/// A `CommonMark` code span may cross a line break but never a blank line;
+/// the paragraph ends there. Pairing backticks within the paragraph is what
+/// keeps a stray backtick, or a fence marker, from hunting through the rest
+/// of the file for a closer of its own length and muting the rule over
+/// everything it crosses.
+///
+/// A fenced block is a sample, not prose. Its body is whatever the author
+/// wrote, and `` ` padded ` `` inside it is the thing being shown rather than
+/// a span to tighten. Excluding the block is also what keeps its delimiters
+/// from pairing with each other as if they were one enormous code span.
+fn blocks(contents: &str) -> Vec<std::ops::Range<usize>> {
+    let mut out = Vec::new();
+    let mut start: Option<usize> = None;
+    let mut offset = 0;
+    let mut fence: Option<(u8, usize)> = None;
+    for line in contents.split_inclusive('\n') {
+        let skip = if let Some((ch, len)) = fence {
+            // Inside a fence every line is skipped, the closer included.
+            if closes_fence(line, ch, len) {
+                fence = None;
+            }
+            true
+        } else {
+            fence = opens_fence(line);
+            fence.is_some() || line.trim().is_empty()
+        };
+        if skip {
+            if let Some(open) = start.take() {
+                out.push(open..offset);
+            }
+        } else if start.is_none() {
+            start = Some(offset);
+        }
+        offset += line.len();
+    }
+    if let Some(open) = start {
+        out.push(open..contents.len());
+    }
+    out
+}
+
+/// Every code span in `contents`, pairing runs across line breaks but never
+/// across a blank line. A run with no closer in its own block is a literal
+/// backtick and is stepped over rather than left open.
+///
+/// Scanning the block rather than the line is what makes a wrapped span
+/// whole. `S102`'s reflow packs prose to 120 columns without regard for
+/// where a span begins, so a span routinely straddles one line break and
+/// occasionally two. Read a line at a time, such a span's *closing* run
+/// looks like an opener and the prose up to the next backtick reads as
+/// padded code — so trimming it eats the real spaces on either side.
+fn spans(contents: &str) -> Vec<Span> {
+    let mut out = Vec::new();
+    for block in blocks(contents) {
+        let text = &contents[block.clone()];
+        let bytes = text.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] != b'`' {
+                i += 1;
+                continue;
+            }
+            let ticks = bytes[i..].iter().take_while(|&&b| b == b'`').count();
+            let start = i + ticks;
+            let Some(offset) = close_run(&text[start..], ticks) else {
+                i = start;
+                continue;
+            };
+            let close_end = start + offset;
+            out.push(Span {
+                outer: block.start + i..block.start + close_end,
+                inner: block.start + start..block.start + close_end - ticks,
+            });
+            i = close_end;
+        }
+    }
+    out
+}
+
+/// The byte offset each line starts at, for turning a span's position into
+/// the line number a violation reports.
+fn line_starts(contents: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+    starts.extend(contents.match_indices('\n').map(|(index, _)| index + 1));
+    starts
 }
 
 /// Whether a span's content carries the padding `M038` refuses. An all-space
@@ -110,32 +165,14 @@ fn is_padded(inner: &str) -> bool {
         && inner.bytes().any(|b| b != b' ')
 }
 
-/// Rebuild `line` with the inner padding of every code span removed
-/// (`` ` foo ` `` → `` `foo` ``). A span is left untouched when trimming
-/// would push a backtick up against the fence (the markdownlint
-/// backtick-padding exception, e.g. ``` `` ` `` ```), or when the span is
-/// all whitespace.
-fn strip_code_padding(line: &str, incoming: OpenRun) -> String {
-    let (spans, _) = scan_line(line, incoming);
-    let mut out = String::with_capacity(line.len());
-    let mut cursor = 0;
-    for span in spans {
-        out.push_str(&line[cursor..span.outer.start]);
-        let inner = &line[span.inner.clone()];
-        let trimmed = inner.trim_matches(' ');
-        let safe = !trimmed.starts_with('`') && !trimmed.ends_with('`');
-        if is_padded(inner) && !trimmed.is_empty() && safe {
-            let ticks = &line[span.outer.start..span.inner.start];
-            out.push_str(ticks);
-            out.push_str(trimmed);
-            out.push_str(ticks);
-        } else {
-            out.push_str(&line[span.outer.clone()]);
-        }
-        cursor = span.outer.end;
-    }
-    out.push_str(&line[cursor..]);
-    out
+/// Whether this span is one `M038` judges.
+///
+/// A span that wraps is not. Whether it is padded is a property of the whole
+/// span, and the rule speaks a line at a time — it reports one line and
+/// rewrites one line — so a wrapped span is recognized precisely so that it
+/// can be stepped over intact.
+fn judged(contents: &str, span: &Span) -> bool {
+    !contents[span.outer.clone()].contains('\n') && is_padded(&contents[span.inner.clone()])
 }
 
 impl Rule for M038NoSpaceInCode {
@@ -144,40 +181,68 @@ impl Rule for M038NoSpaceInCode {
     }
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {
-        let mut open: OpenRun = None;
-        let mut violations = Vec::new();
-        for (idx, line) in file.contents.lines().enumerate() {
-            let (spans, next) = scan_line(line, open);
-            open = next;
-            if spans.iter().any(|s| is_padded(&line[s.inner.clone()])) {
-                violations.push(Violation {
-                    code: Self::CODE,
-                    path: file.path.clone(),
-                    line: idx + 1,
-                    range: line_byte_range(&file.contents, idx + 1),
-                    message: "Inline code span must not have leading or trailing whitespace"
-                        .to_string(),
-                });
+        let contents = &file.contents;
+        let starts = line_starts(contents);
+        let mut violations: Vec<Violation> = Vec::new();
+        for span in spans(contents) {
+            if !judged(contents, &span) {
+                continue;
             }
+            let line = starts.partition_point(|&start| start <= span.outer.start);
+            // One violation per line, as the line is what gets rewritten.
+            if violations.last().is_some_and(|last| last.line == line) {
+                continue;
+            }
+            violations.push(Violation {
+                code: Self::CODE,
+                path: file.path.clone(),
+                line,
+                range: line_byte_range(contents, line),
+                message: "Inline code span must not have leading or trailing whitespace"
+                    .to_string(),
+            });
         }
         violations
     }
 
     fn fix(&self, file: &SourceFile, violation: &Violation) -> Option<TextEdit> {
-        let line = &file.contents[violation.range.clone()];
-        let incoming = previous_line(&file.contents, violation.range.start)
-            .and_then(|above| scan_line(above, None).1);
-        let fixed = strip_code_padding(line, incoming);
-        (fixed != *line).then_some(TextEdit {
-            range: violation.range.clone(),
-            new_text: fixed,
+        let contents = &file.contents;
+        let range = violation.range.clone();
+        let mut out = String::with_capacity(range.len());
+        let mut cursor = range.start;
+        // Spans arrive in document order, so the cursor only moves forward.
+        for span in spans(contents) {
+            if span.outer.start < range.start || span.outer.end > range.end {
+                continue;
+            }
+            out.push_str(&contents[cursor..span.outer.start]);
+            let inner = &contents[span.inner.clone()];
+            let trimmed = inner.trim_matches(' ');
+            // Trimming is declined when it would push a backtick up against
+            // the fence (the markdownlint backtick-padding exception, e.g.
+            // ``` `` ` `` ```), or when the span is all whitespace.
+            let safe = !trimmed.starts_with('`') && !trimmed.ends_with('`');
+            if is_padded(inner) && !trimmed.is_empty() && safe {
+                let ticks = &contents[span.outer.start..span.inner.start];
+                out.push_str(ticks);
+                out.push_str(trimmed);
+                out.push_str(ticks);
+            } else {
+                out.push_str(&contents[span.outer.clone()]);
+            }
+            cursor = span.outer.end;
+        }
+        out.push_str(&contents[cursor..range.end]);
+        (out != contents[range.clone()]).then_some(TextEdit {
+            range,
+            new_text: out,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{strip_code_padding, M038NoSpaceInCode};
+    use super::M038NoSpaceInCode;
     use crate::{Rule, SourceFile};
     use std::path::PathBuf;
     fn f(b: &str) -> SourceFile {
@@ -246,22 +311,68 @@ mod tests {
     }
 
     #[test]
-    fn an_unclosed_run_is_spent_after_one_line() {
-        // A fence opener is an unmatched run too. It must not swallow the
-        // rest of the file looking for a closer of its own length: the
-        // padded span two lines down is real and gets flagged.
-        let body = "```text\nbody\n````\nNext ` padded ` here.\n";
+    fn a_span_crossing_two_line_breaks_keeps_the_prose_after_it_intact() {
+        // The span opens on line 1 and closes on line 3, so line 2 carries
+        // no backtick at all. Its real closer must not be read as an opener,
+        // or " can confirm this — before it, " becomes padded code and loses
+        // the spaces on either side — the very corruption this rule change
+        // exists to stop, one line further out.
+        let body = "prefix `alpha\nmiddle\nomega` can confirm this — before it, `--host` was\n";
         let v = M038NoSpaceInCode.lint(&f(body));
+        assert!(v.is_empty(), "nothing here is padded, got {v:?}");
+    }
+
+    #[test]
+    fn a_fenced_sample_is_not_prose_and_is_left_alone() {
+        // The body of a fenced block is whatever the author is showing, so
+        // `` ` padded ` `` there is the subject rather than a span to
+        // tighten. Both delimiters, an info string, a blank body line, and a
+        // closer longer than its opener.
+        for body in [
+            "~~~text\n` padded `\n~~~\n",
+            "```text\n` padded `\n```\n",
+            "```\n` padded `\n```\n",
+            "```text\n\n` padded `\n```\n",
+            "```text\n` padded `\n`````\n",
+            "  ```text\n` padded `\n  ```\n",
+        ] {
+            let v = M038NoSpaceInCode.lint(&f(body));
+            assert!(
+                v.is_empty(),
+                "fenced body must be left alone: {body:?} -> {v:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn prose_after_a_fence_closes_is_still_linted() {
+        // Exempting the block must not exempt the document. A closer longer
+        // than its opener still closes, so the padded span below is prose.
+        let v = M038NoSpaceInCode.lint(&f("```text\nbody\n````\nNext ` padded ` here.\n"));
         assert_eq!(v.len(), 1, "{v:?}");
         assert_eq!(v[0].line, 4);
     }
 
     #[test]
+    fn a_lone_backtick_run_that_never_closes_is_not_a_fence() {
+        // Two backticks are an inline run, not a fence opener, so the line
+        // below stays prose and its padded span is still found.
+        let v = M038NoSpaceInCode.lint(&f("``\nThen ` padded ` here.\n"));
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert_eq!(v[0].line, 2);
+    }
+
+    #[test]
     fn fix_refuses_when_trimming_would_abut_a_backtick() {
-        // A span padded so its content is a literal backtick must keep
-        // its spaces — collapsing them would merge fences. `strip` is a
-        // no-op here, so `fix()` yields nothing to change.
-        let line = "before `` ` `` after";
-        assert_eq!(strip_code_padding(line, None), line);
+        // A span padded so its content is a literal backtick must keep its
+        // spaces — collapsing them would merge fences. The span is still
+        // reported, but the fix declines to touch it.
+        let file = f("before `` ` `` after\n");
+        let v = M038NoSpaceInCode.lint(&file);
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert!(
+            M038NoSpaceInCode.fix(&file, &v[0]).is_none(),
+            "the fix must decline rather than merge the fences"
+        );
     }
 }

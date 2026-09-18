@@ -1089,7 +1089,7 @@ fn dns_setup(domains: Vec<String>, config: &dns::DnsSetupConfig, dry_run: bool) 
                 );
             }
             if config.redirect_apex_to_www {
-                eprintln!("\n{}", apex_redirect_certificate_notice(zone));
+                eprintln!("\nApex redirect certificate guidance is available.");
             }
         }
         if dry_run {

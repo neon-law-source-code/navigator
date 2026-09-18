@@ -1,48 +1,41 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Tell Neon Law what legal help you need. Choose a Business or Personal plan,
-  ask about an individual service, or start a free consultation for a dispute.
+  Neon Law is flat-fee counsel for emerging technology companies. Name us as
+  your fractional general counsel, ask about an individual service, or start a
+  free consultation for a dispute.
 heading: "{shared:home.need_prompt}"
 lead: >-
-  Tell us whether you need help with a contract, your business, your family,
-  or a dispute. If you are not sure where to start, contact us and we will help
-  you find the next step.
+  We work with software, AI, and other technology companies at an early stage.
+  Tell us whether you need ongoing counsel, a single contract or filing, or
+  help with a dispute. If you are not sure where to start, contact us and we
+  will help you find the next step.
 contact_label: Contact us
 service:
   heading: "{shared:home.mission_heading}"
   body:
     - - text: "{shared:home.mission_north_star} {shared:home.mission_promise}"
-    - - text: "Choose the "
-      - text: Business plan
+    - - text: "Name us as your "
+      - text: fractional general counsel
         href: /business
-      - text: " for ongoing help with your company, or the "
-      - text: Personal plan
-        href: /personal
-      - text: " for help with taxes and personal information."
+      - text: " for ongoing work — contract-library access and a counsel relationship for the work we agree to handle."
     - - text: "Need one thing? See our "
       - text: individual services
         href: /services
       - text: >-
           . An unchanged template can be sent for signature for $5; a Notation
           we prepare or revise begins at $100. Government fees may be separate.
-    - - text: "If you have a dispute, start with a "
+    - - text: "If your company has a dispute, start with a "
       - text: free consultation
         href: /disputes
       - text: ". You do not need a subscription for that first conversation."
 practices_heading: Choose the help that fits.
 practices:
   - mark: handshake
-    heading: Business plan
+    heading: Fractional general counsel
     body: >-
-      Contract-library access at $10 a day, then a la carte Notations for the
+      Contract-library access at $50 a day, then a la carte Notations for the
       documents you need.
     href: /business
-  - mark: technology
-    heading: Personal plan
-    body: >-
-      Help with taxes and personal information, including optional credit
-      monitoring.
-    href: /personal
   - mark: gavel
     heading: Individual services
     body: >-
@@ -51,5 +44,6 @@ practices:
   - mark: scales
     heading: Disputes
     body: >-
-      Tell us what happened and what you need in a free consultation.
+      Commercial, IP, employment, and investor disputes. Tell us what happened
+      in a free consultation.
     href: /disputes

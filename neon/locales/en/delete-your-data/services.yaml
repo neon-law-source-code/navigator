@@ -31,12 +31,9 @@ bands:
       - - text: "A standard request is a flat "
         - text: "$10"
           emphasis: true
-        - text: " per company. It is included at no added cost for a "
-        - text: Neon Law Personal Plan
-          href: "https://www.neonlaw.com/personal"
         - text: >-
-            , as a member — alongside that plan's tax filing and credit
-            monitoring (beta).
+            per company. Work beyond a standard request is quoted before it
+            begins.
   - kind: cards
     anchor: work
     overline: The work
@@ -95,7 +92,6 @@ bands:
     heading: Ready to ask?
     body: >-
       Email the practice. Name the company and what you want deleted, if
-      you know it. A standard request is a flat $10, or included at no
-      added cost in your Neon Law Personal Plan.
+      you know it. A standard request is a flat $10.
     email: "{firm_email}"
     email_subject: Data-deletion request

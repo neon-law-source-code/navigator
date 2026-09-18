@@ -2846,10 +2846,22 @@ pub fn marketing_page_router(
 /// it, and the invitation to co-counsel a pro bono case.
 pub const FIRM_NAVIGATOR_PATH: &str = "/navigator";
 
-/// The firm's consumer legal plan: estate planning, tax filing, privacy
-/// protection, and credit monitoring (beta) on one flat annual or daily fee —
-/// the personal-side counterpart to `/business`.
-pub const FIRM_PERSONAL_PLAN_PATH: &str = "/personal";
+/// The retired consumer-plan path, kept only so its inbound links resolve.
+///
+/// The firm now speaks to emerging technology companies alone, so this page
+/// no longer exists and nothing on the site links it. It still answers,
+/// because published URLs outlive the page: a bare 404 would strand every
+/// inbound link and search result pointing at it. It 301s to
+/// [`FIRM_RETIRED_PERSONAL_TARGET`].
+pub const FIRM_RETIRED_PERSONAL_PATH: &str = "/personal";
+
+/// Where the retired consumer-plan path sends a reader.
+///
+/// The plan sold three things. Data removal is the largest and has a sibling
+/// practice of its own, so it is the least surprising single destination.
+/// Fragments never reach the server, so a per-section map is not expressible
+/// here: `/personal#included` arrives as `/personal` like every other link.
+pub const FIRM_RETIRED_PERSONAL_TARGET: &str = "https://www.deleteyourdata.com/";
 
 /// The firm's Legal Services page: the published flat-fee catalog of one-time
 /// consumer legal work — a will, a trust, a name change, a formation — each

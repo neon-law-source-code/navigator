@@ -30,7 +30,6 @@ const SHARED_CATALOG_YAML: &str = include_str!("../locales/en/shared.yaml");
 const NEON_HOME_YAML: &str = include_str!("../locales/en/neon/home.yaml");
 const NEON_LITIGATION_YAML: &str = include_str!("../locales/en/neon/litigation.yaml");
 const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractional-gc.yaml");
-const NEON_PERSONAL_PLAN_YAML: &str = include_str!("../locales/en/neon/personal-plan.yaml");
 const NEON_NAVIGATOR_YAML: &str = include_str!("../locales/en/neon/navigator.yaml");
 const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
@@ -65,7 +64,6 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "home") => Some(NEON_HOME_YAML),
         (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
         (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
-        (BrandKey::Neon, "personal-plan") => Some(NEON_PERSONAL_PLAN_YAML),
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
@@ -715,11 +713,6 @@ pub fn fractional_gc(
     }
 }
 
-/// `/personal`, from this brand's `personal-plan.yaml`.
-pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "personal-plan"), None, branding)
-}
-
 /// `/navigator`, from this brand's `navigator.yaml`.
 pub fn navigator(branding: &views::brand::Branding) -> PageContent {
     marketing_page(load_page(branding, "navigator"), None, branding)
@@ -894,13 +887,8 @@ mod tests {
             .expect("estate-package is a Notation package");
         assert_eq!(quote.members.len(), 3);
         assert_eq!(family_plan.fee, "$5,000");
-        assert_eq!(
-            family_plan.plan_price,
-            Some(webapp::services_search::PlanPrice {
-                amount: "$2,000".to_string(),
-                plan: "Personal plan".to_string(),
-            })
-        );
+        // The retired consumer plan's discount is gone with the plan.
+        assert_eq!(family_plan.plan_price, None);
     }
 
     /// The search finds services by the words a reader would actually type,
@@ -949,7 +937,7 @@ mod tests {
             content.contact_href,
             format!("mailto:{}", views::brand::firm_email())
         );
-        assert_eq!(content.heading, "What is your legal need?");
+        assert_eq!(content.heading, "What does your technology company need?");
         assert!(content
             .service
             .as_ref()
@@ -961,11 +949,44 @@ mod tests {
                 .map(|practice| practice.heading.as_str())
                 .collect::<Vec<_>>(),
             [
-                "Business plan",
-                "Personal plan",
+                "Fractional general counsel",
                 "Individual services",
                 "Disputes",
-            ]
+            ],
+            "the plan chooser leads with the counsel relationship and no \
+             longer offers a consumer plan"
+        );
+    }
+
+    /// The firm's own site markets to emerging technology companies alone.
+    ///
+    /// This is the "Done when" of retiring `/personal`, and it is asserted on
+    /// the rendered copy rather than on the routing table, because the page
+    /// can be unreachable while the words that sold it survive in the hero,
+    /// the plan chooser, or a link — which is exactly what happened on
+    /// `DeleteYourData`, whose own pages went on offering the retired plan.
+    #[test]
+    fn the_home_page_no_longer_markets_to_individuals() {
+        let content = home(&views::brand::DEFAULT_BRANDING);
+        let mut text = vec![content.heading.clone(), content.lead.clone()];
+        if let Some(service) = content.service.as_ref() {
+            text.extend(service.body.iter().flatten().map(|run| run.text.clone()));
+        }
+        for practice in &content.practices {
+            text.push(practice.heading.clone());
+            text.push(practice.body.clone());
+        }
+        let text = text.join(" ");
+
+        for gone in ["Personal plan", "Personal Plan", "your family", "/personal"] {
+            assert!(
+                !text.contains(gone),
+                "{gone:?} still on the home page: {text}"
+            );
+        }
+        assert!(
+            text.contains("technology"),
+            "and the audience is named: {text}"
         );
     }
 
@@ -1024,61 +1045,22 @@ mod tests {
             .join(" ");
         assert_eq!(content.cta_label, "Request a free consultation");
         assert!(content.lead.contains("free consultation"));
-        assert!(text.contains("do not need a subscription"));
+        assert!(text.contains("do not need a plan"));
         assert!(text.contains("what it costs before you decide"));
         assert!(!text.contains("Navigator"));
-    }
-
-    /// `/personal` publishes its one flat fee as a $5-a-day plan.
-    #[test]
-    fn personal_plan_publishes_its_five_dollar_day_rate() {
-        let content = personal_plan(&views::brand::DEFAULT_BRANDING);
-        let plan = content
-            .bands
-            .iter()
-            .find_map(|band| match band {
-                webapp::marketing_page::Band::Cards {
-                    items,
-                    pricing_style,
-                    ..
-                } if *pricing_style => items.first(),
-                _ => None,
-            })
-            .expect("the Personal plan offer");
-        assert_eq!(plan.chips.first().map(String::as_str), Some("$5"));
-        assert_eq!(plan.cadence.as_deref(), Some("/day"));
-        assert!(plan
-            .features
-            .contains(&"Optional credit monitoring".to_string()));
-        assert!(plan
-            .features
-            .iter()
-            .any(|feature| feature.contains("$2,000 minimum retainer")));
-        assert!(plan
-            .features
-            .iter()
-            .any(|feature| feature.contains("Notations starting at $50")));
-        assert!(plan
-            .features
-            .iter()
-            .any(|feature| feature.contains("60 days before daily credits run out")));
+        // Scoped to company disputes, and saying so — without it the page
+        // keeps drawing individual matters through a different door.
+        for named in [
+            "intellectual property",
+            "employment",
+            "investor",
+            "We do not take personal injury",
+        ] {
+            assert!(text.contains(named), "disputes names {named:?}: {text}");
+        }
         assert!(
-            plan.body
-                .iter()
-                .flat_map(|paragraph| paragraph.iter())
-                .any(|run| run.text.contains("Abraham Lincoln")),
-            "the Personal plan gives the requested daily-price reference"
-        );
-        assert_eq!(
-            plan.day_rate.as_ref().map(|badge| badge.amount),
-            Some(5),
-            "the Personal plan renders the matching $5 bill mark"
-        );
-        assert!(
-            plan.day_rate
-                .as_ref()
-                .is_some_and(|badge| badge.image_src.ends_with("five-dollar-bill.jpg")),
-            "the Personal plan uses the published $5 bill asset"
+            text.contains("We do not promise a result"),
+            "no outcome promise: {text}"
         );
     }
 
@@ -1306,12 +1288,18 @@ mod tests {
         )
     }
 
-    /// The `DeleteYourData` home and services pages both publish the flat
-    /// removal-request fee and the Neon Law Personal Plan as the way to get
-    /// it at no added cost, and neither page still tells a reader every
-    /// request is quoted — the pre-existing framing this fee contradicted.
+    /// The `DeleteYourData` home and services pages publish the flat
+    /// removal-request fee, and neither still tells a reader every request is
+    /// quoted — the pre-existing framing that fee contradicted.
+    ///
+    /// They also no longer offer the request "at no added cost" to a Neon Law
+    /// Personal plan member. That plan is retired, so the clause described an
+    /// offer nobody could take up — and it is asserted absent here because it
+    /// was *this brand's* published price, not a stale link: a dead
+    /// cross-brand offer is a pricing defect, and it would have survived a
+    /// link check.
     #[test]
-    fn delete_your_data_publishes_its_flat_fee_and_the_personal_plan_link() {
+    fn delete_your_data_publishes_its_flat_fee_without_the_retired_plan_offer() {
         let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
         let home_content = home(branding);
         let services_content = legal_services(branding);
@@ -1328,19 +1316,17 @@ mod tests {
             home_text.contains("$10"),
             "the home page states the fee: {home_text}"
         );
-        let personal_plan_run = home_service
-            .body
-            .iter()
-            .flatten()
-            .find(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal"))
-            .expect("a run links the Neon Law Personal Plan");
-        assert_eq!(personal_plan_run.text, "Neon Law Personal Plan");
-        // The linked run's own text carries no leading/trailing run-boundary
-        // artifact — the bug this test would have caught twice while this
-        // paragraph was drafted.
         assert!(
-            !home_text.contains("Planmember"),
-            "run boundaries: {home_text}"
+            !home_service
+                .body
+                .iter()
+                .flatten()
+                .any(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal")),
+            "the retired plan is not linked: {home_text}"
+        );
+        assert!(
+            !home_text.contains("Personal Plan"),
+            "nor named: {home_text}"
         );
 
         let practice_bodies = home_content
@@ -1359,8 +1345,8 @@ mod tests {
             "the services page states the fee: {services_text}"
         );
         assert!(
-            services_text.contains("Personal Plan"),
-            "the services page names the Personal Plan alternative: {services_text}"
+            !services_text.contains("Personal Plan"),
+            "the services page no longer offers the retired plan: {services_text}"
         );
         assert!(
             !services_text

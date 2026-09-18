@@ -142,10 +142,10 @@ impl NavLink {
 /// flat-fee schedule, then the disputes practice.
 ///
 /// `/business` (fractional general counsel) is the company-counsel plan,
-/// `/personal` the consumer legal plan, `/services` the flat-fee schedule of
-/// routine one-time matters — which now requires an active plan on one of the
-/// two — and `/disputes` the litigation practice. The two plans lead because a
-/// firm or a person reading the header is the reader those two are for.
+/// `/services` the flat-fee schedule of routine one-time matters — which
+/// requires an active plan — and `/disputes` the litigation practice. The plan
+/// leads because an emerging technology company reading the header is the
+/// reader the whole site is for.
 ///
 /// Every entry is the firm's own work, and no label here repeats in
 /// [`FIRM_FOOTER_NAV`] — see the
@@ -155,7 +155,6 @@ impl NavLink {
 /// the firm — stays in [`FIRM_FOOTER_NAV`].
 const FIRM_NAV: &[NavLink] = &[
     NavLink::leaf("Business", "/business"),
-    NavLink::leaf("Personal", "/personal"),
     NavLink::leaf("Services", "/services"),
     NavLink::leaf("Disputes", "/disputes"),
 ];
@@ -456,7 +455,7 @@ pub static DEFAULT_BRANDING: Branding = Branding {
         // client is actually engaging, which is why both are published.
         site_name: "Neon Law",
         home_href: "/",
-        tagline: "Flat-fee consumer law, with every price on the page.",
+        tagline: "Flat-fee legal services for emerging technology companies, with every price on the page.",
         // Shook Law PLLC's own box, the entity of record.
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
         // The NL mark, in teal.
@@ -1675,7 +1674,7 @@ mod tests {
     #[test]
     fn the_firm_nav_matches_the_home_page_card_order() {
         let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
-        assert_eq!(labels, ["Business", "Personal", "Services", "Disputes"]);
+        assert_eq!(labels, ["Business", "Services", "Disputes"]);
         assert_eq!(
             FIRM_BRAND.nav.first().map(|link| link.href),
             Some("/business"),

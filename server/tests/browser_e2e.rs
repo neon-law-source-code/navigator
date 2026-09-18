@@ -1694,14 +1694,7 @@ async fn public_marketing_pages_have_no_horizontal_overflow_on_mobile() {
     };
     c.set_window_size(375, 812).await.unwrap();
 
-    for path in [
-        "/",
-        "/navigator",
-        "/disputes",
-        "/business",
-        "/personal",
-        "/services",
-    ] {
+    for path in ["/", "/navigator", "/disputes", "/business", "/services"] {
         c.goto(&format!("{}{path}", base_url())).await.unwrap();
         wait_for_text(&c, "Neon Law", Duration::from_secs(10)).await;
         let widths = c

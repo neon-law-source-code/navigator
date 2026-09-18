@@ -40,6 +40,14 @@ pub use firm_pages::firm_public_dioxus_routers;
 pub const PUBLIC_PATHS: &[&str] = &[
     // --- The firm ---------------------------------------------------------
     "/",
+    // Answers a 301 to the data-removal practice, not a page. The consumer
+    // plan it served is retired; the path stays declared because it is still
+    // a route this site answers, and its published links must resolve.
+    //
+    // It is deliberately absent from `sitemap_paths`, which is a different
+    // question: this table is what the app answers, a sitemap is what we ask
+    // a crawler to index, and a redirect belongs in the first but not the
+    // second.
     "/personal",
     "/services",
     "/start/{service_id}",
@@ -103,7 +111,6 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
         BrandKey::Neon => {
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
-                "/personal",
                 "/services",
                 "/disputes",
                 "/business",
@@ -249,12 +256,6 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             "/",
             "The firm's practice — flat-fee consumer legal work, litigation on both sides of \
                  the v., and company counsel for emerging technology companies.",
-        ),
-        page(
-            "Personal Plan",
-            "/personal",
-            "The firm's consumer legal plan: tax filing, privacy protection, and credit \
-                 monitoring (beta), on one flat annual or daily fee.",
         ),
         page(
             "Legal Services and fees",

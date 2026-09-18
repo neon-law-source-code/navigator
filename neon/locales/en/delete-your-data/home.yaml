@@ -22,15 +22,11 @@ service:
     - - text: "A standard removal request is a flat "
       - text: "$10"
         emphasis: true
-      - text: " per company, paid before we send it. It is also included at no added cost for a "
-      - text: Neon Law Personal Plan
-        href: "https://www.neonlaw.com/personal"
       - text: >-
-          , as a
-          member. Whether a particular request is available, and what it
-          can achieve, depends on the company, the records, and the law
-          that applies; a request outside this standard scope is quoted
-          before any work on it begins.
+          per company, paid before we send it. Whether a particular request
+          is available, and what it can achieve, depends on the company, the
+          records, and the law that applies; a request outside this standard
+          scope is quoted before any work on it begins.
     - - text: "Write to "
       - text: "{firm_email}"
         href: "mailto:{firm_email}"

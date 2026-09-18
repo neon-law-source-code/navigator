@@ -219,6 +219,12 @@ textarea {
   margin: 0;
 }
 
+.app-footer__tagline,
+.app-footer__disclaimer,
+.app-footer__trademark {
+  margin: 0;
+}
+
 /* "Our Family", centered like the lines around it: the small uppercase
    heading inline with the row of brands, the current one bold and unlinked. */
 .app-footer__family {
@@ -253,12 +259,8 @@ textarea {
 }
 
 /*
- * Past the threshold the list stops being a wrapping row of wordmarks and
- * becomes a two-column block, one brand per line. Bylines are what force
- * this: "Vesta Estate Planning - wills, trusts, and probate" is a phrase, and
- * seven phrases wrapped inline read as a paragraph of run-together links
- * rather than a list. One column on narrow screens, where two would leave
- * neither enough room.
+ * Every multi-brand list is a two-column block on desktop, one brand per
+ * line. One column on narrow screens keeps each entry readable.
  */
 .app-footer__family-list--two-column {
   display: grid;
@@ -307,6 +309,20 @@ textarea {
 
 .app-footer__platform {
   margin: 0.25rem 0 0;
+}
+
+.app-footer__platform {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+@media (max-width: 54rem) {
+  .app-footer__platform {
+    margin-top: 0;
+  }
 }
 
 .app-footer__release {
@@ -1317,11 +1333,8 @@ a.nav-pagination__link:hover {
 }
 
 /*
- * Past the threshold the row of chips becomes a two-column block, one brand
- * per line. The bylines force it: "Misericordia Injury Law - accidents and
- * injury claims" is a phrase, and seven phrases in wrapping chips read as a
- * run-together paragraph, which is the link dump this block replaced. One
- * column on narrow screens, where two would leave neither enough room.
+ * Every multi-brand row becomes a two-column block on desktop, one brand per
+ * line. One column on narrow screens keeps each entry readable.
  */
 .site-footer__family-list--two-column {
   display: grid;
@@ -1794,6 +1807,12 @@ a.nav-pagination__link:hover {
 }
 
 @media (max-width: 54rem) {
+  /* Keep the trademark and platform attribution visually adjacent in the
+     narrow legal strip; the groups still space their own internal lines. */
+  .site-footer__legal {
+    row-gap: 0;
+  }
+
   /* The band collapses to one tile per row here, so there are no tracks left
      to line up with: the masthead stacks and drops the band's inset. */
   .site-footer__masthead {

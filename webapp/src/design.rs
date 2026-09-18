@@ -589,13 +589,13 @@ fn FirmFooterShowcase() -> Element {
                     legal_entity: "Shook Law PLLC".to_string(),
                     brands: vec![
                         crate::firm_footer::FirmFooterBrand {
-                            label: "Neon Law".to_string(),
+                            label: "Emerging Technologies Counsel".to_string(),
                             href: String::new(),
                             current: true,
                             byline: "flat-fee legal services for emerging tech".to_string(),
                         },
                         crate::firm_footer::FirmFooterBrand {
-                            label: "DeleteYourData.com".to_string(),
+                            label: "Protect your info".to_string(),
                             href: "https://www.deleteyourdata.com".to_string(),
                             current: false,
                             byline: "protect your personal information".to_string(),
@@ -608,8 +608,17 @@ fn FirmFooterShowcase() -> Element {
                             href: membership.href,
                         })
                         .collect(),
+                    disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.".to_string(),
+                    trademark: "NEON LAW".to_string(),
+                    trademark_registration: "6,325,650".to_string(),
+                    trademark_record_url:
+                        "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
                     copyright_year: 2026,
+                    source_repo: "neon-law-source-code/navigator".to_string(),
+                    source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
+                    source_stars: Some(4),
                     navigator_version: String::new(),
+                    navigator_href: "https://www.neonlaw.com/navigator".to_string(),
                 },
             }
         }
@@ -628,9 +637,9 @@ fn demo_memberships() -> Vec<FooterMembership> {
     }]
 }
 
-/// The three house brands, as the deployed footer's "Our Family" row lists
-/// them on the firm's own host: the firm current and unlinked, the other two
-/// linking their production homes.
+/// The currently live house brands, as the deployed footer's "Our Family" row
+/// lists them on the firm's own host: the firm current and unlinked, the other
+/// live brands linking their production homes.
 // Literal rather than read from `views::brand::BrandKey::family_byline`:
 // this module is not behind the `server` feature, so it compiles into the
 // wasm client, where `views` is not linked. The gallery is a fixture of what
@@ -638,13 +647,13 @@ fn demo_memberships() -> Vec<FooterMembership> {
 fn demo_family() -> Vec<FooterBrandLink> {
     [
         (
-            "Neon Law",
+            "Emerging Technologies Counsel",
             "https://www.neonlaw.com",
             true,
             "flat-fee legal services for emerging tech",
         ),
         (
-            "DeleteYourData.com",
+            "Protect your info",
             "https://www.deleteyourdata.com",
             false,
             "protect your personal information",
@@ -1257,7 +1266,7 @@ fn SiteFooterShowcase() -> Element {
                 trademark_registration: "6,325,650".to_string(),
                 trademark_record_url:
                     "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
-                // The affiliations row: the three-brand family and the one
+                // The affiliations row: the live brand family and the one
                 // membership, so the gallery shows the row every deployed
                 // page renders — and so the accessibility audit of `/design`
                 // covers its landmark, heading, and off-site link.
@@ -1274,7 +1283,7 @@ fn SiteFooterShowcase() -> Element {
                 // the line a deployed page renders. A local `cargo run` leaves
                 // it unset and the site publishes no version.
                 navigator_version: "26.8.20".to_string(),
-                navigator_href: "/navigator".to_string(),
+                navigator_href: "https://www.neonlaw.com/navigator".to_string(),
             }
         }
     }
@@ -1897,7 +1906,6 @@ mod tests {
     #[test]
     fn app_footer_showcase_renders_the_platform_line() {
         use super::FirmFooterShowcase;
-        use crate::components::POWERED_BY_NEON_LAW_NAVIGATOR;
         use dioxus::prelude::*;
 
         fn app() -> Element {
@@ -1907,8 +1915,12 @@ mod tests {
         dom.rebuild_in_place();
         let html = dioxus_ssr::render(&dom);
         assert!(
-            html.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
-            "the gallery preview shows the shared platform line: {html}"
+            html.contains("Powered by"),
+            "the platform line renders: {html}"
+        );
+        assert!(
+            html.contains("neon-law-source-code/navigator") && html.contains("GitHub stars"),
+            "the gallery preview shows the source repository attribution: {html}"
         );
     }
 }

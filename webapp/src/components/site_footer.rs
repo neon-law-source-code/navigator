@@ -27,6 +27,9 @@ use dioxus::prelude::*;
 /// [`crate::firm_footer::FirmFooter`] so the wording cannot drift.
 pub const POWERED_BY_NEON_LAW_NAVIGATOR: &str = "Powered by Neon Law Navigator";
 
+/// The firm's final footer line, shared by public and authenticated pages.
+pub const FOOTER_TAGLINE: &str = "Everyone Deserves to be Seen";
+
 use crate::components::{ExternalLink, GitHubStars, Icon, IconName};
 
 /// One published office — the state it sits in and its street address.
@@ -118,15 +121,10 @@ pub struct FooterNavLink {
     pub href: String,
 }
 
-/// Entry count at which the family list splits into two columns.
-///
-/// Seven brands in one column runs longer than the rest of the footer and
-/// reads as the link dump this block replaced. The eighth entry — the NYC
-/// summons practice — is why this is a threshold rather than the list simply
-/// being styled for its current length: adding a brand stays a data change.
-pub const FAMILY_TWO_COLUMN_THRESHOLD: usize = 7;
+/// Any multi-brand family uses two columns on desktop and one on mobile.
+pub const FAMILY_TWO_COLUMN_THRESHOLD: usize = 2;
 
-/// The family list's class, widened once the list is long enough to need it.
+/// The family list's class, widened for every multi-brand family.
 #[must_use]
 pub fn family_list_class(entries: usize) -> &'static str {
     if entries >= FAMILY_TWO_COLUMN_THRESHOLD {
@@ -638,9 +636,10 @@ pub fn SiteFooterLegal(
                     }
                 }
                 div { class: "site-footer__legal",
-                    // Above the rule, not inside it: a reader looking for who
-                    // they are dealing with should not have to parse the
-                    // copyright line to find it.
+                    p { class: "site-footer__disclaimer", "{disclaimer}" }
+                    // Above the ownership lines, not inside them: a reader
+                    // looking for who they are dealing with should not have to
+                    // parse the copyright line to find it.
                     if !attribution.is_empty() {
                         p { class: "site-footer__attribution", "{attribution}" }
                     }
@@ -713,7 +712,6 @@ pub fn SiteFooterLegal(
                                 }
                             }
                         }
-                        p { class: "site-footer__disclaimer", "{disclaimer}" }
                     }
                     // One line names the software this page runs: "Powered
                     // by", the repository it is developed in with its stars,
@@ -747,6 +745,7 @@ pub fn SiteFooterLegal(
                             }
                         }
                     }
+                    p { class: "site-footer__tagline", "{FOOTER_TAGLINE}" }
                 }
             }
         }
@@ -790,7 +789,7 @@ mod tests {
             rsx! {
                 SiteFooterLegal {
                     copyright_holder: "Neon Law".to_string(),
-                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.".to_string(),
                     copyright_year: 2026,
                     trademark: "NEON LAW".to_string(),
                     trademark_registration: "6,325,650".to_string(),
@@ -836,6 +835,33 @@ mod tests {
             copyright < mark && mark < licences,
             "the ownership facts read together, above the bar rows: {out}"
         );
+    }
+
+    #[test]
+    fn ends_the_legal_strip_with_the_tagline_after_the_disclaimer_and_brands() {
+        let out = legal_html();
+        let legal = out
+            .split(r#"<div class="site-footer__legal">"#)
+            .nth(1)
+            .expect("the legal strip renders");
+        let disclaimer = legal
+            .find("Attorney advertisement")
+            .expect("the disclaimer renders");
+        let copyright = legal
+            .find("site-footer__copyright")
+            .expect("the copyright renders");
+        let trademark = legal
+            .find("site-footer__trademark")
+            .expect("the trademark renders");
+        let platform = legal
+            .find("site-footer__legal-platform")
+            .expect("the platform renders");
+        let tagline = legal
+            .rfind(FOOTER_TAGLINE)
+            .expect("the final tagline renders");
+        assert!(disclaimer < copyright && copyright < trademark && trademark < platform);
+        assert!(platform < tagline);
+        assert_eq!(legal.matches(FOOTER_TAGLINE).count(), 1);
     }
 
     /// A deploy holding no registration notices none, and one that cites a
@@ -918,7 +944,7 @@ mod tests {
             out.contains("1,234") && out.contains("<title>GitHub stars</title>"),
             "the star count renders under its own accessible name: {out}"
         );
-        let disclaimer = out.find("attorney advertisement").expect("the disclaimer");
+        let disclaimer = out.find("Attorney advertisement").expect("the disclaimer");
         let platform = out.find("site-footer__powered").expect("the platform line");
         assert!(
             disclaimer < platform,
@@ -1100,8 +1126,8 @@ mod tests {
             .find(r#"<p class="site-footer__disclaimer""#)
             .expect("the disclaimer renders");
         assert!(
-            legal < copyright && copyright < disclaimer,
-            "the copyright heads the strip: {out}"
+            legal < disclaimer && disclaimer < copyright,
+            "the disclaimer precedes the copyright: {out}"
         );
     }
 
@@ -1176,7 +1202,7 @@ mod tests {
                     source_repo: "neon-law-source-code/navigator".to_string(),
                     source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
                     navigator_version: "26.8.20".to_string(),
-                    navigator_href: "/navigator".to_string(),
+                    navigator_href: "https://www.neonlaw.com/navigator".to_string(),
                 }
             }
         }
@@ -1550,8 +1576,8 @@ mod tests {
     ///
     /// This is what makes a push visible end to end: the moment a new image is
     /// live, the number at the bottom of every public page changes. It links
-    /// `/navigator`, the page describing the platform, so a reader who wants to
-    /// know what the number refers to has somewhere to go.
+    /// the public Navigator page, so a reader who wants to know what the number
+    /// refers to has somewhere to go.
     #[test]
     fn publishes_the_release_it_is_running() {
         let out = contactable_html();
@@ -1560,7 +1586,9 @@ mod tests {
             "the footer names the running release: {out}"
         );
         assert!(
-            out.contains(r#"<a class="site-footer__release" href="/navigator">"#),
+            out.contains(
+                r#"<a class="site-footer__release" href="https://www.neonlaw.com/navigator">"#,
+            ),
             "linked to the page describing the platform: {out}"
         );
         let platform = out
@@ -1739,13 +1767,13 @@ mod tests {
     fn three_firm_brands() -> Vec<FooterBrandLink> {
         vec![
             FooterBrandLink {
-                label: "Neon Law".to_string(),
+                label: "Emerging Technologies Counsel".to_string(),
                 href: "https://www.neonlaw.com".to_string(),
                 current: true,
                 byline: String::new(),
             },
             FooterBrandLink {
-                label: "DeleteYourData.com".to_string(),
+                label: "Protect your info".to_string(),
                 href: "https://www.deleteyourdata.com".to_string(),
                 current: false,
                 byline: String::new(),
@@ -1767,7 +1795,7 @@ mod tests {
         }]
     }
 
-    /// The legal strip plus the firm's affiliations: the three-brand family
+    /// The legal strip plus the firm's live-brand affiliations
     /// and the one association membership.
     fn affiliated_html() -> String {
         fn app() -> Element {
@@ -1800,13 +1828,13 @@ mod tests {
             family.contains(r#"<h2 class="site-footer__family-heading">Our Family</h2>"#),
             "the row is headed by the words its landmark is named with: {family}"
         );
-        let neon = family.find("Neon Law").expect("neon");
-        let dyd = family.find("DeleteYourData.com").expect("dyd");
+        let neon = family.find("Emerging Technologies Counsel").expect("neon");
+        let dyd = family.find("Protect your info").expect("dyd");
         let shook = family.find("Lawyer Shook").expect("lawyer shook");
         assert!(neon < dyd && dyd < shook, "registry order: {family}");
         assert!(
             family.contains(
-                r#"<span class="site-footer__family-current" aria-current="true">Neon Law</span>"#
+                r#"<span class="site-footer__family-current" aria-current="true">Emerging Technologies Counsel</span>"#
             ),
             "the current brand is text, marked current: {family}"
         );
@@ -1816,7 +1844,7 @@ mod tests {
         );
         assert!(
             family.contains(
-                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com">DeleteYourData.com</a>"#
+                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com">Protect your info</a>"#
             ),
             "other brands link their home host: {family}"
         );
@@ -2069,11 +2097,11 @@ mod tests {
         );
     }
 
-    /// Six entries stay one column; seven split. The eighth brand is then a
-    /// data change rather than a layout edit.
+    /// Every multi-brand family gets the desktop two-column class; the
+    /// responsive stylesheet collapses it to one column on mobile.
     #[test]
     fn the_family_list_splits_into_two_columns_only_once_it_is_long() {
-        assert_eq!(family_list_class(6), "site-footer__family-list");
+        assert_eq!(family_list_class(1), "site-footer__family-list");
         assert_eq!(
             family_list_class(FAMILY_TWO_COLUMN_THRESHOLD),
             "site-footer__family-list site-footer__family-list--two-column"

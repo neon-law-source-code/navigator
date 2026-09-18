@@ -11,13 +11,73 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use portal::{oauth, AppState, OAuthConfig, SessionStore};
 use serde_json::json;
+use std::sync::{Arc, Mutex};
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
+use tracing_subscriber::fmt::MakeWriter;
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn sessions() -> SessionStore {
     SessionStore::new("test-session-key-not-for-production")
+}
+
+#[derive(Clone)]
+struct TraceBuffer(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for TraceBuffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("trace capture lock")
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> MakeWriter<'a> for TraceBuffer {
+    type Writer = TraceBuffer;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+fn event_fields(
+    output: &Arc<Mutex<Vec<u8>>>,
+    event_name: &str,
+) -> serde_json::Map<String, serde_json::Value> {
+    let rendered = String::from_utf8(output.lock().expect("trace capture lock").clone())
+        .expect("trace capture is UTF-8");
+    rendered
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find_map(|line| {
+            let fields = line.get("fields")?.as_object()?;
+            (fields.get("event")?.as_str()? == event_name).then(|| fields.clone())
+        })
+        .unwrap_or_else(|| panic!("callback emits {event_name}"))
+}
+
+async fn traced_response(
+    app: axum::Router,
+    request: Request<Body>,
+) -> (axum::http::Response<Body>, Arc<Mutex<Vec<u8>>>) {
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .without_time()
+        .with_ansi(false)
+        .with_writer(TraceBuffer(output.clone()))
+        .finish();
+    let guard = tracing::subscriber::set_default(subscriber);
+    let response = app.oneshot(request).await.unwrap();
+    drop(guard);
+    (response, output)
 }
 
 async fn state_with_oauth(oauth_cfg: OAuthConfig, sessions_store: SessionStore) -> AppState {
@@ -190,7 +250,7 @@ async fn callback_rejects_request_without_pre_auth_cookie() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn callback_round_trip_sets_session_cookie_and_redirects_to_return_to() {
     let mock = MockServer::start().await;
     let sessions_store = sessions();
@@ -264,17 +324,28 @@ async fn callback_round_trip_sets_session_cookie_and_redirects_to_return_to() {
         .await;
 
     // Step 2 — /auth/callback?code=...&state=... with the cookie set.
-    let cb = app
-        .oneshot(
-            Request::builder()
-                .uri(format!("/auth/callback?code=any-code&state={state_param}"))
-                .header("cookie", cookie_value)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let (cb, output) = traced_response(
+        app,
+        Request::builder()
+            .uri(format!("/auth/callback?code=any-code&state={state_param}"))
+            .header("cookie", cookie_value)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
     assert_eq!(cb.status(), StatusCode::SEE_OTHER);
+    let fields = event_fields(&output, "auth.signed_in");
+    assert_eq!(
+        fields.get("provider").and_then(|v| v.as_str()),
+        Some("google")
+    );
+    assert_eq!(fields.get("brand").and_then(|v| v.as_str()), Some("neon"));
+    assert!(fields
+        .get("person_id")
+        .is_some_and(serde_json::Value::is_string));
+    assert!(fields
+        .get("first_link")
+        .is_some_and(serde_json::Value::is_boolean));
     assert_eq!(
         cb.headers().get("location").unwrap().to_str().unwrap(),
         "/app/admin/entities"
@@ -293,7 +364,7 @@ async fn callback_round_trip_sets_session_cookie_and_redirects_to_return_to() {
         .any(|c| c.contains("navigator_pre_auth=") && c.contains("Max-Age=0")));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn callback_rejects_a_token_whose_nonce_does_not_match_the_login() {
     let mock = MockServer::start().await;
     let sessions_store = sessions();
@@ -362,17 +433,26 @@ async fn callback_rejects_a_token_whose_nonce_does_not_match_the_login() {
         .mount(&mock)
         .await;
 
-    let cb = app
-        .oneshot(
-            Request::builder()
-                .uri(format!("/auth/callback?code=any-code&state={state_param}"))
-                .header("cookie", cookie_value)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let (cb, output) = traced_response(
+        app,
+        Request::builder()
+            .uri(format!("/auth/callback?code=any-code&state={state_param}"))
+            .header("cookie", cookie_value)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
     assert_eq!(cb.status(), StatusCode::UNAUTHORIZED);
+    let fields = event_fields(&output, "auth.sign_in_refused");
+    assert_eq!(
+        fields.get("provider").and_then(|v| v.as_str()),
+        Some("google")
+    );
+    assert_eq!(fields.get("brand").and_then(|v| v.as_str()), Some("neon"));
+    assert_eq!(
+        fields.get("reason").and_then(|v| v.as_str()),
+        Some("token_invalid")
+    );
 }
 
 #[tokio::test]

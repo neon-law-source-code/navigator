@@ -94,6 +94,20 @@ drop-off without querying event logs. The workflow-service events are emitted fr
 replay reuses the recorded side effect instead of incrementing the counter or writing a duplicate event. The signature
 send path uses its existing idempotent request record and emits only after the provider succeeds.
 
+## Browser sign-in
+
+Browser OAuth callbacks emit one `auth.signed_in` event after a session is created, with `person_id`, `provider`
+(`google`, `microsoft`, or `apple`), `brand`, and `first_link`. A callback that cannot resolve an admitted Person, or
+whose token fails verification, emits `auth.sign_in_refused` with `provider`, `brand`, and one of
+`no_subject_match_no_email`, `email_unmatched`, `not_admitted`, or `token_invalid`. The matching
+`navigator.auth.sign_in` counter carries only `provider` and `outcome` (`signed_in` or `refused`). These events and the
+refusal log carry identifiers and bounded values only: no email, name, address, or provider subject.
+
+The GET and form-post callbacks share one completion path. The pre-auth cookie is consumed before token processing, and
+the event is emitted once at the session-creation or refusal boundary. `first_link` is currently true when the resolver
+creates a new Person; the named resolver seam can take an explicit subject-link result when the linkage path exposes
+one.
+
 ## Where it lands: direct OpenObserve
 
 Traces, metrics, and logs speak OTLP/gRPC directly to the OpenObserve organization and stream named in their

@@ -91,9 +91,9 @@ workflow:
 This naturalization engagement (the "Engagement") prepares and files Form N-400, Application for Naturalization, with
 U.S. Citizenship and Immigration Services ("USCIS") on behalf of `{{person__client.name}}` (the "Applicant").
 
-The Applicant was born on `{{custom_datetime__date_of_birth}}` in `{{country__of_birth.name}}`, is a citizen or
-national of `{{country__of_citizenship.name}}`, and became a lawful permanent resident on
-`{{custom_datetime__lpr_since}}`. The Applicant is `{{custom_single_choice__marital_status}}` and applies under the
+The Applicant was born on `{{custom_datetime__date_of_birth}}` in `{{country__of_birth.name}}`, is a citizen or national
+of `{{country__of_citizenship.name}}`, and became a lawful permanent resident on `{{custom_datetime__lpr_since}}`. The
+Applicant is `{{custom_single_choice__marital_status}}` and applies under the
 `{{custom_single_choice__eligibility_basis}}` path to naturalization.
 
 This summary records what the Applicant told the firm at intake so it can be reviewed before anything is filed. It is
@@ -105,8 +105,8 @@ After the Applicant signs, the firm files the Form N-400 with USCIS and stays wi
 follows: the biometrics appointment, the interview and civics test, and the oath ceremony. The Engagement concludes when
 USCIS issues the Applicant's Certificate of Naturalization (Form N-550) — the lifelong proof of U.S. citizenship.
 
-Appointment notices and confirmations are sent to the Applicant at `{{person__client.email}}`, and the firm reaches
-the Applicant by phone at `{{custom_phone__daytime_phone}}`. The Applicant reported roughly
+Appointment notices and confirmations are sent to the Applicant at `{{person__client.email}}`, and the firm reaches the
+Applicant by phone at `{{custom_phone__daytime_phone}}`. The Applicant reported roughly
 `{{custom_text__time_outside_us}}` days outside the United States in the last five years; the attorney reviews the exact
 travel dates against the continuous-residence requirement before filing.
 

@@ -70,8 +70,8 @@ Its officers, as reported on the Initial List:
 `{{people__corporate_officers}}`
 
 The corporation is authorized to issue `{{custom_text__shares_authorized}}` shares at a par value of
-\$`{{custom_text__par_value}}` per share. The
-first director listed signs the Articles of Incorporation as the Incorporator.
+\$`{{custom_text__par_value}}` per share. The first director listed signs the Articles of Incorporation as the
+Incorporator.
 
 Your answers above are placed onto the Secretary of State's own formation packet — the same official form the state
 publishes — and a licensed Neon Law attorney reviews the **filled packet** before anything is signed or filed. Nothing

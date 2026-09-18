@@ -34,8 +34,8 @@ __Eighth Judicial District Court, Clark County, Nevada__
 
 __Case No.:__ A-26-874219-C __Dept. No.:__ XVII
 
-__{{person__client}}, an individual,__ Plaintiff, vs. __Wendell Prine, an individual; and DOES I through X,
-inclusive,__ Defendants.
+__{{person__client}}, an individual,__ Plaintiff, vs. __Wendell Prine, an individual; and DOES I through X, inclusive,__
+Defendants.
 
 __Date issued:__ {{custom_datetime__issuance_date}}
 
@@ -56,20 +56,20 @@ service, you must do both of the following:
 - Serve a copy of your written response upon the plaintiff's attorney, whose name and address are stated at the foot
   of this summons.
 
-If you were served outside the State of Nevada, the time within which you must file and serve your written response
-is thirty days after service, rather than twenty.
+If you were served outside the State of Nevada, the time within which you must file and serve your written response is
+thirty days after service, rather than twenty.
 
 ## 2. What happens if you do not respond
 
-Unless you respond, your default will be entered on the plaintiff's application, and this Court may then enter
-judgment against you for the relief demanded in the complaint, which could result in a money judgment or an order
-affecting your property, without any further notice to you.
+Unless you respond, your default will be entered on the plaintiff's application, and this Court may then enter judgment
+against you for the relief demanded in the complaint, which could result in a money judgment or an order affecting your
+property, without any further notice to you.
 
 ## 3. Where to get help
 
-If you cannot afford an attorney, you may be eligible for free legal services from a legal services program. A list
-of these programs is available at the Clerk's office named above. Contact information for the State Bar of Nevada is
-also available at the Clerk's office.
+If you cannot afford an attorney, you may be eligible for free legal services from a legal services program. A list of
+these programs is available at the Clerk's office named above. Contact information for the State Bar of Nevada is also
+available at the Clerk's office.
 
 ## 4. Issuance
 

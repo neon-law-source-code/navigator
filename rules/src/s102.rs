@@ -29,6 +29,8 @@
 //!   underlines (a line of only `=` or only `-`)
 //! - lines ending in a markdown hard break (two trailing spaces or
 //!   trailing backslash) — those breaks are intentional
+//! - lines opening or closing a notation block directive (`{{#for …}}`,
+//!   `{{/for}}`), whose line breaks are the block's structure
 //! - pairs whose two lines have different leading whitespace (the
 //!   next line belongs to a different block)
 //! - cases where the next line begins a new list item (`-`, `*`, `+`,
@@ -577,6 +579,15 @@ fn is_non_prose(line: &str) -> bool {
     if s.starts_with("```") || s.starts_with("~~~") {
         return true;
     }
+    // A notation block directive opens or closes a region of the body
+    // (`{{#for m in people__members}}` … `{{/for}}`). The line break
+    // around it is the block's structure, so packing `{{/for}}` up onto
+    // the loop's last line silently changes what the template renders.
+    // Bare `{{placeholder}}` substitutions are ordinary inline prose and
+    // stay reflowable; only the `#`/`/` block forms are held back.
+    if s.starts_with("{{#") || s.starts_with("{{/") {
+        return true;
+    }
     is_reference_definition(s)
         || html_block_start(s).is_some()
         || is_setext_underline(s)
@@ -860,6 +871,25 @@ mod tests {
     #[test]
     fn fix_leaves_a_heading_and_its_following_line_apart() {
         assert_eq!(fixed("# Title\nBody line.\n"), "# Title\nBody line.\n");
+    }
+
+    /// LAW-30: turning S102 on for notation templates surfaced this —
+    /// the rule wanted to pack a loop's terminator onto the loop body,
+    /// which changes what the template renders rather than how it wraps.
+    #[test]
+    fn fix_never_packs_a_notation_block_directive() {
+        let body = "{{#for m in people__members}}- {{m.name}} from {{m.city}}\n{{/for}}\n";
+        assert_eq!(fixed(body), body);
+    }
+
+    /// The guard is narrow: a bare substitution is inline prose and still
+    /// reflows, so the rule keeps working on ordinary notation bodies.
+    #[test]
+    fn fix_still_packs_prose_around_a_bare_placeholder() {
+        assert_eq!(
+            fixed("Payment is due\nfrom {{client.name}}\non the first.\n"),
+            "Payment is due from {{client.name}} on the first.\n"
+        );
     }
 
     #[test]

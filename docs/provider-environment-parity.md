@@ -78,9 +78,9 @@ An organization owner must sign up for or create all three organizations in the 
 2. Confirm the **private**, organization-owned GitHub App in the matrix remains installed only in that organization.
 3. Grant the repository permissions Navigator actually exercises: Administration read/write and Contents read/write. Do
    not grant access to an unrelated organization.
-4. Generate a private key and capture the numeric App ID. Store `NAVIGATOR_GITHUB_ORG`, `NAVIGATOR_GITHUB_APP_ID`, and
-   the discovered `NAVIGATOR_GITHUB_INSTALLATION_ID` in only the matching `config.toml`, and
-   `NAVIGATOR_GITHUB_APP_PRIVATE_KEY` in that deployment's `secrets.enc.yaml`.
+4. Generate a private key and capture the numeric App ID. Store `NAVIGATOR_GITHUB_ORG` and
+   `NAVIGATOR_GITHUB_APP_ID` in only the matching `config.toml`, and `NAVIGATOR_GITHUB_APP_PRIVATE_KEY` in that
+   deployment's `secrets.enc.yaml`.
 5. Set `NAVIGATOR_FORGE_BACKEND=github`, run `ops secrets apply --deployment <name>`, create a synthetic Project, and
    verify that its private repository appears in the matching organization and nowhere else.
 

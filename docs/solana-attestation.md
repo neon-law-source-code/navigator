@@ -79,8 +79,7 @@ This ripples into the retainer / e-signature test suite (the tests that assert `
 "It's written in Rust" chose the SDK; it did not answer any of these. Each gates production:
 
 - **Firm key custody.** The `SolanaAttestor` signs and pays fees from a firm wallet. That keypair belongs in KMS /
-  Secret Manager with rotation — never `SOLANA_SIGNER_SECRET` as a path on disk. `.env.example` holds a *reference*, not
-  the key.
+  Secret Manager with rotation — never a path on disk.
 - **Client wallet.** The retainer promises "the client's wallet." Do we collect a client public key at intake (a new
   questionnaire field — none exists today) or mint a custodial one? This is a product decision with a UX cost.
 - **Public-chain confidentiality.** Only the hash + two public keys + a timestamp go on-chain, never content — but a
@@ -91,9 +90,8 @@ This ripples into the retainer / e-signature test suite (the tests that assert `
 
 ## Configuration
 
-`NAVIGATOR_ONCHAIN_BACKEND` selects the backend (`null` default). When the `SolanaAttestor` ships it reads
-`SOLANA_RPC_URL`, `SOLANA_PROGRAM_ID`, and a KMS reference for the signer. See `.env.example` for the committed
-contract.
+`NAVIGATOR_ONCHAIN_BACKEND` selects the backend (`null` default). Selecting `solana` remains an explicit startup error
+until the `SolanaAttestor` is implemented; there is no deployable Solana configuration contract yet.
 
 ## Pointers
 

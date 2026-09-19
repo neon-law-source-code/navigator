@@ -1098,7 +1098,7 @@ an explicit capability choice, not evidence that an invoice reached the ledger.
 | Mounted Git writer | `NAVIGATOR_GIT_REPO_ROOT` |
 | Forge coordinate, both required | `NAVIGATOR_GIT_HOST` (default `github.com`), `NAVIGATOR_GITHUB_ORG` (no default) |
 | GitHub App identity | `NAVIGATOR_GITHUB_APP_ID` |
-| GitHub App proof | `NAVIGATOR_GITHUB_APP_PRIVATE_KEY`, `NAVIGATOR_GITHUB_INSTALLATION_ID` |
+| GitHub App proof | `NAVIGATOR_GITHUB_APP_PRIVATE_KEY` |
 | GitHub endpoint | `NAVIGATOR_GITHUB_API_BASE` |
 | GitHub webhook receiver | `NAVIGATOR_GITHUB_WEBHOOK_SECRET`, `NAVIGATOR_GITHUB_CANONICAL_REPOSITORY` |
 | Receiver identity and Restate submit | `NAVIGATOR_GITHUB_APP_LOGIN`, `RESTATE_INGRESS_URL`, `RESTATE_AUTH_TOKEN` |
@@ -1112,7 +1112,7 @@ an explicit capability choice, not evidence that an invoice reached the ledger.
 | Harness worktree/cache | `NAVIGATOR_WORKTREE_PATH`, `NAVIGATOR_CHROME_CACHE_DIR` |
 | Vertex coordinates | `NAVIGATOR_GCP_PROJECT_ID`, `NAVIGATOR_GCP_LOCATION`, `GOOGLE_METADATA_URL` |
 | Contract reviewer | `NAVIGATOR_CONTRACT_REVIEW_MODEL` plus the same GCP project, location, and metadata variables |
-| On-chain attestation | `NAVIGATOR_ONCHAIN_BACKEND`, `SOLANA_RPC_URL`, `SOLANA_PROGRAM_ID`, `SOLANA_SIGNER_SECRET` |
+| On-chain attestation | `NAVIGATOR_ONCHAIN_BACKEND` |
 | Billing export | `BILLING_EXPORT_TABLE`, `BIGQUERY_PROJECT` |
 | Billing notices | `BILLING_CANARY_NOTIFY_EMAIL` |
 | Billing digest | `BILLING_DIGEST_NOTIFY_EMAIL`, `BILLING_DIGEST_WINDOW_DAYS` |
@@ -1523,8 +1523,8 @@ For each organization, a GitHub owner must:
    bootstrap invitation, then handle two-factor enforcement and any approved recovery owner in a separate access review;
 2. confirm the private, organization-owned GitHub App in the table is installed only in that organization;
 3. grant repository Contents and Issues read/write;
-4. put that row's organization, App ID, and private key in `NAVIGATOR_GITHUB_ORG`, `NAVIGATOR_GITHUB_APP_ID`,
-   `NAVIGATOR_GITHUB_APP_PRIVATE_KEY`, and optionally pin the discovered `NAVIGATOR_GITHUB_INSTALLATION_ID`.
+4. put that row's organization, App ID, and private key in `NAVIGATOR_GITHUB_ORG`, `NAVIGATOR_GITHUB_APP_ID`, and
+   `NAVIGATOR_GITHUB_APP_PRIVATE_KEY`.
 
 The Apps own no Project repositories: Navigator provisions none. What is left is the `neon-law-source-code/navigator`
 webhook and the DevX Restate services, which are the `neon-law-stg` singleton.

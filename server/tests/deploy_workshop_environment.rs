@@ -108,12 +108,6 @@ const INTENTIONAL_ENV_ALLOWLIST: &[&str] = &[
     "SLACK_OPS_MENTION",
     // RUST_LOG is consumed by the tracing subscriber rather than Navigator configuration code.
     "RUST_LOG",
-    // SOLANA_RPC_URL is read by the optional on-chain integration outside the startup path.
-    "SOLANA_RPC_URL",
-    // SOLANA_PROGRAM_ID is read by the optional on-chain integration outside the startup path.
-    "SOLANA_PROGRAM_ID",
-    // SOLANA_SIGNER_SECRET is read by the optional on-chain integration outside the startup path.
-    "SOLANA_SIGNER_SECRET",
 ];
 
 fn committed_environment_reads(keys: &BTreeSet<String>) -> BTreeSet<String> {
@@ -289,7 +283,6 @@ const DEPLOYED_RUNTIME_VARS: &[&str] = &[
     "NAVIGATOR_GITHUB_ORG",
     "NAVIGATOR_GITHUB_APP_ID",
     "NAVIGATOR_GITHUB_APP_PRIVATE_KEY",
-    "NAVIGATOR_GITHUB_INSTALLATION_ID",
     "NAVIGATOR_GITHUB_API_BASE",
     "OTEL_SERVICE_NAME",
     "RUST_LOG",
@@ -304,9 +297,6 @@ const DEPLOYED_RUNTIME_VARS: &[&str] = &[
     "NAVIGATOR_CONTRACT_REVIEW_MODEL",
     "GOOGLE_METADATA_URL",
     "NAVIGATOR_ONCHAIN_BACKEND",
-    "SOLANA_RPC_URL",
-    "SOLANA_PROGRAM_ID",
-    "SOLANA_SIGNER_SECRET",
     "BILLING_EXPORT_TABLE",
     "BIGQUERY_PROJECT",
     "BILLING_CANARY_NOTIFY_EMAIL",

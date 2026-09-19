@@ -99,8 +99,8 @@ records that, and the parity gate reads the same list, so the two cannot drift.
 Not everything on the Secret rail is boot-required, and the ones that are not are the ones worth checking by hand. A key
 absent from `WEB_REQUIREMENTS` fails no gate, so if the pod reads it with a default, the loss is silent rather than
 loud. `DOCUSIGN_SIGNER_EMAIL` is the worked example: unset, `portal::retainer_walk` falls back to `support@neonlaw.com`
-and envelopes keep going out addressed to the firm's shared mailbox rather than the deployment's signer. It and
-`NAVIGATOR_GITHUB_INSTALLATION_ID` are projected for that reason, not because any invariant demands them.
+and envelopes keep going out addressed to the firm's shared mailbox rather than the deployment's signer. It is projected
+for that reason, not because any invariant demands it.
 
 ## Provision a deployment's key
 

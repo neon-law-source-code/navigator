@@ -73,7 +73,6 @@ NAVIGATOR_FORGE_BACKEND = "github"
 NAVIGATOR_GITHUB_ORG = "neon-law-source-code"
 NAVIGATOR_GIT_HOST = "github.com"
 NAVIGATOR_GITHUB_APP_ID = "100000"
-NAVIGATOR_GITHUB_INSTALLATION_ID = "200000"
 
 # --- SurrealDB -------------------------------------------------------------
 # Coordinates, deliberately plaintext; the root credentials are key material.

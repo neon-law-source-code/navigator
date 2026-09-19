@@ -530,14 +530,14 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     firm_trademark: "",
     firm_trademark_registration: "",
     firm_trademark_record_url: "",
-    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    consultation_url: "https://calendar.notion.so/meet/shicholas/or15n4yy7",
     terms_url: "/terms",
     privacy_url: "/privacy",
     base_url: "",
     primary_domain: "deleteyourdata.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "DeleteYourData.com is a practice of Shook Law PLLC. A licensed attorney helps a person ask a company to delete personal data it holds about them. A standard request is a flat $10, and other work is quoted before it begins. This is an attorney advertisement, not a promise about a result.",
-    service_description: "Data-deletion request work from DeleteYourData.com, a practice of Shook Law PLLC. A licensed attorney reviews the work. A standard request is a flat $10, and other work is quoted before it begins.",
+    mission_description: "DeleteYourData.com is a practice of Shook Law PLLC. A licensed attorney helps a person ask a company to delete personal data it holds about them. $50 for a year of data removal and privacy protection. Gift cards are available. Privacy and credit monitoring are opt-in. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Data-deletion request work from DeleteYourData.com, a practice of Shook Law PLLC. A licensed attorney reviews the work. $50 for a year of data removal and privacy protection. Gift cards are available. Privacy and credit monitoring are opt-in.",
     portal_only: false,
     brand_key: BrandKey::DeleteYourData,
 };
@@ -926,7 +926,7 @@ impl BrandKey {
                 path.trim_end_matches('/'),
                 "/business" | "/services" | "/disputes"
             ),
-            Self::DeleteYourData => matches!(path, "/" | "/services" | "/contact"),
+            Self::DeleteYourData => matches!(path, "/" | "/contact"),
             Self::LawyerShook => path == "/",
             Self::Vesta
             | Self::Misericordia
@@ -2372,10 +2372,8 @@ mod tests {
         assert!(branding
             .mission_description
             .contains("attorney advertisement"));
-        assert!(branding.service_description.contains("flat $10"));
-        assert!(branding
-            .service_description
-            .contains("quoted before it begins"));
+        assert!(branding.service_description.contains("$50 for a year"));
+        assert!(branding.service_description.contains("opt-in"));
         assert!(branding.firm_trademark.is_empty());
         assert!(branding.firm_trademark_registration.is_empty());
         assert!(branding.firm_trademark_record_url.is_empty());
@@ -2399,7 +2397,7 @@ mod tests {
         );
         assert_eq!(BrandKey::LawyerShook.catalog_pages(), &["home", "services"]);
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/"));
-        assert!(BrandKey::DeleteYourData.publishes_firm_path("/services"));
+        assert!(!BrandKey::DeleteYourData.publishes_firm_path("/services"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/contact"));
         assert!(!BrandKey::DeleteYourData.publishes_firm_path("/disputes"));
         assert!(BrandKey::LawyerShook.publishes_firm_path("/"));

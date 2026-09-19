@@ -38,7 +38,7 @@ DeleteYourData.com (`delete-your-data/`):
 | File | Page |
 | --- | --- |
 | `neon/locales/en/delete-your-data/home.yaml` | `/` |
-| `neon/locales/en/delete-your-data/services.yaml` | `/services` |
+| `neon/locales/en/delete-your-data/services.yaml` | Router copy; `/services` returns 404 |
 
 Lawyer Shook (`lawyer-shook/`):
 
@@ -62,9 +62,9 @@ Vesta is registered by the canonical brand seed on each deployment boot, includi
 Its page and SVG ship with the application. The disposable estate fixture belongs to Vesta when the sample portfolio is
 explicitly seeded; a staging restart does not recreate that portfolio.
 
-Which stems a key ships is [`BrandKey::catalog_pages`](../views/src/brand.rs). DeleteYourData.com answers only those
-pages plus `/contact` (addresses, not a YAML stem); Lawyer Shook answers `/` alone. Other firm paths 404 on that host
-rather than rendering Neon's words.
+Which stems a key ships is [`BrandKey::catalog_pages`](../views/src/brand.rs). DeleteYourData.com publishes its annual
+product on `/` and office details at `/contact`; `/services` returns 404. Its services catalog is loaded when the shared
+router builds its brand map. Lawyer Shook answers `/` alone. Other firm paths 404 on that host.
 
 `views::locales` is the typed schema. `navigator project gate` deserializes each file as the page its stem names, so a
 missing field or an unknown stem fails the gate before a brand crate can load it. The advertising guards in
@@ -143,10 +143,14 @@ for determinism, digest coverage, tamper detection, and the refusals;
 [`server/tests/firm_routes.rs`](../server/tests/firm_routes.rs) proves each served page renders the sentence the catalog
 authors, and that no page leaks an unresolved placeholder.
 
-A home catalog may carry an optional `provenance` block — the flow a request follows, a ledger illustration, three
-tiles, and notes — which `webapp::home` renders as one animated card between the service prose and the practice boxes.
-Only `neon/locales/en/delete-your-data/home.yaml` publishes one; a brand that keeps no such record omits the block and
-renders no section.
+A home catalog may carry an optional `provenance` block with a request flow, ledger illustration, tiles, and notes. The
+generic home renderer supports it; the current practice catalogs omit it.
+
+DeleteYourData's `privacy` block presents one $50 annual product, gift cards, and privacy and credit monitoring that
+requires opt-in at enrollment. Signup and gift-card links use the same Notion booking calendar as Neon and Vesta. Plus
+Jakarta Sans is used throughout the page and footer. The cloak crossing an internet grid is decorative; its checkbox
+pauses motion and reduced-motion preferences disable animation. The Solana section carries the approved request-record
+and litigation copy. The page uses the same footer treatment as Neon and Vesta.
 
 The Neon home page's `company` block presents membership, notation drafting and review, litigation, employee support,
 and Navigator, with consultation booking as the next step. Its `practices` list is empty: Neon publishes one offer on

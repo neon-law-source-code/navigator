@@ -14,6 +14,8 @@ mod company;
 pub use company::CompanyContent;
 mod estate;
 pub use estate::EstateContent;
+mod privacy;
+pub use privacy::PrivacyContent;
 
 /// The self-contained home stylesheet, hoisted alongside `theme.css`.
 pub const HOME_STYLESHEET_HREF: &str = "/public/css/home.css";
@@ -141,6 +143,9 @@ pub struct HomeContent {
     /// The lifetime estate-planning offer, authored in the brand catalog.
     #[serde(default)]
     pub estate: Option<EstateContent>,
+    /// The annual privacy product, authored in the brand catalog.
+    #[serde(default)]
+    pub privacy: Option<PrivacyContent>,
 }
 
 /// The firm's notice and sign-in. When [`HomeContent::bare`] is set, this
@@ -311,11 +316,16 @@ pub fn HomePage(
         if content.estate.is_some() {
             document::Stylesheet { href: "/public/css/vesta.css" }
         }
+        if content.privacy.is_some() {
+            document::Stylesheet { href: "/public/css/privacy.css" }
+        }
         PublicShell { header, footer,
             if let Some(company) = content.company.as_ref() {
                 company::CompanyHome { content: content.clone(), company: company.clone() }
             } else if let Some(estate) = content.estate.as_ref() {
                 estate::EstateHome { content: content.clone(), estate: estate.clone() }
+            } else if let Some(privacy) = content.privacy.as_ref() {
+                privacy::PrivacyHome { content: content.clone(), privacy: privacy.clone() }
             } else {
             // The page opens on the question. No photograph above it and no
             // glow behind it: the question is the page, so it is the first
@@ -632,6 +642,7 @@ mod tests {
                             ],
                         }),
                         provenance: None,
+                        privacy: None,
                         company: None,
                         bare: None,
                         estate: None,

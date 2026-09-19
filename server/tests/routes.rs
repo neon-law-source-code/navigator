@@ -9689,7 +9689,7 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
     assert_eq!(delete_your_data_resp.status(), StatusCode::OK);
     let delete_your_data_body = body_string(delete_your_data_resp).await;
     assert!(
-        delete_your_data_body.contains("Ask companies to delete your data."),
+        delete_your_data_body.contains("Your Life. Less Exposed."),
         "{delete_your_data_body}"
     );
     assert!(
@@ -9706,7 +9706,7 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
     );
     assert!(neon_body.contains("company-pricing"));
     assert!(!delete_your_data_body.contains("company-pricing"));
-    assert!(delete_your_data_body.contains(r#"aria-labelledby="home-service-heading""#));
+    assert!(delete_your_data_body.contains(r#"aria-labelledby="privacy-benefits-title""#));
 
     let litigation = app
         .oneshot(

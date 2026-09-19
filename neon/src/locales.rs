@@ -668,6 +668,30 @@ fn estate_content(copy: views::locales::EstateCopy) -> webapp::home::EstateConte
     }
 }
 
+fn privacy_content(copy: views::locales::PrivacyCopy) -> webapp::home::PrivacyContent {
+    webapp::home::PrivacyContent {
+        eyebrow: copy.eyebrow,
+        price: copy.price,
+        price_term: copy.price_term,
+        offer_note: copy.offer_note,
+        gift_link: copy.gift_link,
+        animation_label: copy.animation_label,
+        animation_note: copy.animation_note,
+        pause_label: copy.pause_label,
+        benefits_heading: copy.benefits_heading,
+        record_label: copy.record_label,
+        record_heading: copy.record_heading,
+        record_body: copy.record_body,
+        gift_heading: copy.gift_heading,
+        gift_body: copy.gift_body,
+        gift_cta: copy.gift_cta,
+        gift_card_label: copy.gift_card_label,
+        gift_card_term: copy.gift_card_term,
+        closing_heading: copy.closing_heading,
+        benefits: copy.benefits,
+    }
+}
+
 /// The firm home page, resolved from this brand's `home.yaml`.
 pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     let copy: HomeCopy = load_page(branding, "home");
@@ -676,7 +700,10 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
         meta_description: copy.meta_description,
         heading: copy.heading,
         lead: copy.lead,
-        contact_href: if branding.brand_key == BrandKey::Vesta {
+        contact_href: if matches!(
+            branding.brand_key,
+            BrandKey::Vesta | BrandKey::DeleteYourData
+        ) {
             branding.consultation_url.to_string()
         } else {
             format!("mailto:{}", branding.firm_email)
@@ -751,6 +778,7 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
         // Lawyer Shook's resolver supplies its firm notice over this catalog.
         bare: None,
         estate: copy.estate.map(estate_content),
+        privacy: copy.privacy.map(privacy_content),
     }
 }
 
@@ -1178,146 +1206,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn delete_your_data_home_catalog_names_its_own_heading() {
-        let content = home(&views::brand::DELETE_YOUR_DATA_BRANDING);
-        assert!(content
-            .head_title
-            .contains(views::brand::DELETE_YOUR_DATA_BRANDING.firm.site_name));
-        assert_eq!(content.heading, "Ask companies to delete your data.");
-        assert!(content.lead.contains("Shook Law PLLC"));
-        assert!(!content.heading.contains("Everyone deserves to be seen."));
-        assert_eq!(
-            content
-                .practices
-                .iter()
-                .map(|practice| practice.heading.as_str())
-                .collect::<Vec<_>>(),
-            ["Data-deletion requests"]
-        );
-    }
-
-    /// Every word the provenance section publishes, for the advertising checks.
-    fn provenance_text(provenance: &webapp::home::ProvenanceSection) -> String {
-        let steps = provenance
-            .steps
-            .iter()
-            .map(|step| format!("{} {}", step.label, step.detail))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let pillars = provenance
-            .pillars
-            .iter()
-            .map(|pillar| format!("{} {}", pillar.heading, pillar.body))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let notes = provenance
-            .notes
-            .iter()
-            .flatten()
-            .map(|run| run.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
-        format!(
-            "{} {} {} {steps} {} {pillars} {notes}",
-            provenance.heading,
-            provenance.heading_accent,
-            provenance.lead,
-            provenance.ledger_caption
-        )
-        .to_lowercase()
-    }
-
-    /// The `DeleteYourData` home says what happens to a request after a lawyer
-    /// verifies it — a record uploaded to Solana — and what the lawyer-attested
-    /// nodes are for. The other two brands keep no such record and publish no
-    /// such section.
-    #[test]
-    fn delete_your_data_home_carries_the_solana_provenance_section() {
-        let content = home(&views::brand::DELETE_YOUR_DATA_BRANDING);
-        let provenance = content
-            .provenance
-            .expect("the DeleteYourData home publishes its provenance section");
-        assert_eq!(
-            provenance
-                .steps
-                .iter()
-                .map(|step| step.mark)
-                .collect::<Vec<_>>(),
-            [
-                webapp::home::ProvenanceMark::Request,
-                webapp::home::ProvenanceMark::Attorney,
-                webapp::home::ProvenanceMark::Chain,
-            ],
-            "request, verify, record — in that order"
-        );
-        assert!(!provenance.ledger.is_empty(), "the ledger has rows to draw");
-        let text = provenance_text(&provenance);
-        assert!(
-            text.contains("verif"),
-            "the request is verified first: {text}"
-        );
-        assert!(text.contains("solana"), "the record goes to Solana: {text}");
-        assert!(
-            text.contains("lawyer-attested nodes") && text.contains("provenance"),
-            "the nodes are named as long-term provenance: {text}"
-        );
-        assert!(
-            text.contains("attorney advertisement"),
-            "the section carries the advertising notice: {text}"
-        );
-        assert!(
-            home(&views::brand::DEFAULT_BRANDING).provenance.is_none(),
-            "Neon keeps no removal record and publishes no section"
-        );
-        // Lawyer Shook's `/` no longer loads through this catalog loader at
-        // all (it is a hardcoded bare statement — see
-        // `firm_pages::lawyer_shook_holding_content`), so this checks the
-        // resolved page rather than `home()` directly.
-        assert!(
-            crate::firm_pages::resolve_firm_home_content(&views::brand::LAWYER_SHOOK_BRANDING)
-                .provenance
-                .is_none(),
-            "Lawyer Shook keeps no removal record and publishes no section"
-        );
-    }
-
-    /// The three tiles say what the record is for — privacy, security, and the
-    /// federated work of the nodes — and, like the rest of the section, make no
-    /// claim a lawyer cannot defend: a record that a request was made is not a
-    /// promise about what the company did with it, and the chain is described
-    /// without the superlatives a chain's own front page reaches for.
-    #[test]
-    fn the_provenance_section_upsells_without_an_indefensible_claim() {
-        let provenance = home(&views::brand::DELETE_YOUR_DATA_BRANDING)
-            .provenance
-            .expect("the DeleteYourData home publishes its provenance section");
-        let headings = provenance
-            .pillars
-            .iter()
-            .map(|pillar| pillar.heading.to_lowercase())
-            .collect::<Vec<_>>();
-        for pillar in ["privacy", "security", "federated"] {
-            assert!(
-                headings.iter().any(|heading| heading.contains(pillar)),
-                "a {pillar:?} tile: {headings:?}"
-            );
-        }
-        let text = provenance_text(&provenance);
-        for banned in [
-            "guarantee",
-            "certified",
-            "permanent",
-            "tamper-proof",
-            "immutable",
-            "leading",
-            "fastest",
-            "world's",
-        ] {
-            assert!(!text.contains(banned), "no {banned:?} claim: {text}");
-        }
-    }
-
     /// The services catalog remains brand-safe even though the route is
     /// gated off by `BrandKey::publishes_firm_path`.
     #[test]
@@ -1400,87 +1288,25 @@ mod tests {
         )
     }
 
-    /// The `DeleteYourData` home and services pages publish the flat
-    /// removal-request fee, and neither still tells a reader every request is
-    /// quoted — the pre-existing framing that fee contradicted.
-    ///
-    /// They also no longer offer the request "at no added cost" to a Neon Law
-    /// Personal plan member. That plan is retired, so the clause described an
-    /// offer nobody could take up — and it is asserted absent here because it
-    /// was *this brand's* published price, not a stale link: a dead
-    /// cross-brand offer is a pricing defect, and it would have survived a
-    /// link check.
     #[test]
-    fn delete_your_data_publishes_its_flat_fee_without_the_retired_plan_offer() {
+    fn privacy_offer_is_annual_and_monitoring_is_optional() {
         let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
-        let home_content = home(branding);
-        let services_content = legal_services(branding);
-
-        let home_service = home_content.service.expect("the home service section");
-        let home_text = home_service
-            .body
+        let content = home(branding);
+        let privacy = content.privacy.expect("privacy offer");
+        assert_eq!(privacy.price, "$50");
+        assert_eq!(privacy.price_term, "/ year");
+        assert!(privacy
+            .benefits
             .iter()
-            .flatten()
-            .map(|run| run.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
-        assert!(
-            home_text.contains("$10"),
-            "the home page states the fee: {home_text}"
-        );
-        assert!(
-            !home_service
-                .body
-                .iter()
-                .flatten()
-                .any(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal")),
-            "the retired plan is not linked: {home_text}"
-        );
-        assert!(
-            !home_text.contains("Personal Plan"),
-            "nor named: {home_text}"
-        );
-
-        let practice_bodies = home_content
-            .practices
-            .iter()
-            .map(|practice| practice.body.as_str())
-            .collect::<Vec<_>>();
-        assert!(
-            practice_bodies.iter().any(|body| body.contains("$10")),
-            "the practice box states the fee: {practice_bodies:?}"
-        );
-
-        let services_text = dyd_page_text(&services_content);
-        assert!(
-            services_text.contains("$10"),
-            "the services page states the fee: {services_text}"
-        );
-        assert!(
-            !services_text.contains("Personal Plan"),
-            "the services page no longer offers the retired plan: {services_text}"
-        );
-        assert!(
-            !services_text
-                .to_lowercase()
-                .contains("fees are quoted before work begins"),
-            "the blanket quoted-only claim is gone now that a flat fee is published: {services_text}"
-        );
-
-        // The `$10` chip on the Removal Request card is the one this page
-        // already shipped (PR #358); the surrounding prose must agree with
-        // it rather than call every request a bespoke quote.
-        let removal_request = services_content
-            .bands
-            .iter()
-            .find_map(|band| match band {
-                Band::Cards { items, .. } => {
-                    items.iter().find(|card| card.title == "Removal Request")
-                }
-                _ => None,
-            })
-            .expect("the Removal Request card");
-        assert_eq!(removal_request.chips, vec!["$10".to_string()]);
+            .any(|item| item[1].contains("Choose whether to opt in")));
+        assert!(content.practices.is_empty());
+        assert!(content.service.is_none());
+        let text = serde_yaml::to_string(&privacy).expect("privacy copy serializes");
+        assert!(!text.contains("$10"));
+        assert!(!text.contains("we guarantee"));
+        assert!(home(&views::brand::DEFAULT_BRANDING).privacy.is_none());
+        assert!(home(&views::brand::VESTA_BRANDING).privacy.is_none());
+        assert!(!dyd_page_text(&legal_services(branding)).contains("$10"));
     }
 
     // --- ENG-744…749: the practice brands, and the lines that bind them ---

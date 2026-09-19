@@ -5580,4 +5580,21 @@ filename*=UTF-8''signed%20intake.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\
              repository/Drive provisioning"
         );
     }
+
+    #[test]
+    fn testimonial_save_body_rejects_consent_and_publication_fields() {
+        assert!(serde_json::from_str::<super::TestimonialSubmissionInput>(
+            r#"{"quote":"quote","request_public":true,"consented_at":"2026-01-01T00:00:00Z"}"#
+        )
+        .is_err());
+        assert!(serde_json::from_str::<super::TestimonialSubmissionInput>(
+            r#"{"quote":"quote","request_public":true,"published_at":"2026-01-01T00:00:00Z"}"#
+        )
+        .is_err());
+        let accepted: super::TestimonialSubmissionInput = serde_json::from_str(
+            r#"{"quote":"quote","attribution":"Founder","request_public":true}"#,
+        )
+        .unwrap();
+        assert!(accepted.request_public);
+    }
 }

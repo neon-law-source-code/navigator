@@ -274,9 +274,16 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // + 3 for client testimonial submission: Client admitted, Lawyer and
     // Clerk denied. The handler resolves the named Project participation.
     // 471 + 3 = 474.
+    //
+    // + 8 for the remaining testimonial matrix: Owner/Admin route-admission
+    // bypass on the API save (handler/store still refuse), anonymous save
+    // denial, authenticated vs anonymous native-form admission under
+    // `/app/projects`, lawyer-tier publish/unpublish, and Client, Clerk, and
+    // anonymous publish denials.
+    // 474 + 8 = 482.
     assert_eq!(
         test_names.len(),
-        474,
+        482,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

@@ -575,6 +575,51 @@ test_clerk_denied_saving_a_client_testimonial if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "testimonial"], "method": "POST", "session": clerk_session}
 }
 
+# Owner and Admin reach this door through the route-admission bypass. The
+# handler and store still require the client DRI and refuse those tiers.
+test_owner_and_admin_reach_client_testimonial_save if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "testimonial"], "method": "POST", "session": owner_session}
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "testimonial"], "method": "POST", "session": admin_session}
+}
+
+test_anonymous_denied_saving_a_client_testimonial if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "testimonial"], "method": "POST", "session": null}
+}
+
+# The native form sits under `/app/projects`, so every authenticated tier is
+# admitted here. The handler's client-DRI check is the write gate.
+test_authenticated_reaches_project_testimonial_form if {
+	authz.allow with input as {"path": ["app", "projects", "sample-litigation", "testimonial"], "method": "POST", "session": client_session}
+	authz.allow with input as {"path": ["app", "projects", "sample-litigation", "testimonial"], "method": "POST", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "projects", "sample-litigation", "testimonial"], "method": "POST", "session": admin_session}
+}
+
+test_anonymous_denied_project_testimonial_form if {
+	not authz.allow with input as {"path": ["app", "projects", "sample-litigation", "testimonial"], "method": "POST", "session": null}
+}
+
+# ---------- /app/api/testimonials/{id}/publish|unpublish (lawyer-tier door) ----------
+
+test_lawyer_tier_can_publish_or_unpublish_a_testimonial if {
+	authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "publish"], "method": "POST", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "unpublish"], "method": "POST", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "publish"], "method": "POST", "session": admin_session}
+	authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "publish"], "method": "POST", "session": owner_session}
+}
+
+test_client_denied_publishing_a_testimonial if {
+	not authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "publish"], "method": "POST", "session": client_session}
+	not authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "unpublish"], "method": "POST", "session": client_session}
+}
+
+test_clerk_denied_publishing_a_testimonial if {
+	not authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "publish"], "method": "POST", "session": clerk_session}
+}
+
+test_anonymous_denied_publishing_a_testimonial if {
+	not authz.allow with input as {"path": ["app", "api", "testimonials", "t1", "publish"], "method": "POST", "session": null}
+}
+
 test_client_can_upload_contract_review if {
 	authz.allow with input as {"path": ["app", "api", "projects", "p1", "contract-review"], "method": "POST", "session": client_session}
 }

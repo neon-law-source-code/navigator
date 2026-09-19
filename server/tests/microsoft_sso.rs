@@ -662,14 +662,14 @@ async fn logout_redirects_to_the_end_session_endpoint_of_the_signing_provider() 
         .starts_with("https://primary.test/logout?"),);
 }
 
-/// The pre-seed gate is provider-agnostic: an Entra identity from an
-/// allowlisted tenant with no `persons` row still gets the operator-mediated
-/// 403, not a session. Authentication is not provisioning, and adding a
-/// provider does not change who may sign in.
+/// The first-sign-in rule is provider-agnostic: an Entra identity from an
+/// allowlisted tenant with no `persons` row becomes a client, just as it does
+/// through the primary provider.
 #[tokio::test]
-async fn entra_login_for_an_unprovisioned_person_is_still_forbidden() {
+async fn entra_login_for_an_unprovisioned_person_creates_a_client() {
     let mock = MockServer::start().await;
     let state = state_with_both_providers(&mock, sessions()).await;
+    let surreal = state.surreal.clone();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     let (state_param, nonce, cookie) = begin_microsoft_login(&app, "/app/projects").await;
@@ -683,7 +683,17 @@ async fn entra_login_for_an_unprovisioned_person_is_still_forbidden() {
         None,
     );
     let cb = finish_microsoft_callback(&app, &mock, &state_param, &cookie, token).await;
-    assert_eq!(cb.status(), StatusCode::FORBIDDEN);
+    assert_eq!(cb.status(), StatusCode::SEE_OTHER);
+    assert_eq!(cb.headers().get("location").unwrap(), "/app/projects");
+    let person = store::persons::find_by_email_ci(&surreal, "nobody@clientfirm.test")
+        .await
+        .unwrap()
+        .expect("the first Entra login creates a client");
+    assert_eq!(person.role, store::persons::Role::Client);
+    assert_eq!(
+        person.microsoft_subject.as_deref(),
+        Some("stranger-subject")
+    );
 }
 
 /// The pre-auth cookie is the disambiguator, so it has to be tamper-proof.

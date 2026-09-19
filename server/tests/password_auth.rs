@@ -87,15 +87,6 @@ async fn state_with_password(endpoint: Option<String>) -> (AppState, store::surr
     (state, surreal)
 }
 
-async fn seed_person(surreal: &store::surreal::SurrealDb, email: &str, role: store::persons::Role) {
-    store::persons::create(
-        surreal,
-        &store::persons::NewPerson::with_role(email, email, role),
-    )
-    .await
-    .expect("seed person");
-}
-
 /// Mount an Identity-Toolkit `signInWithPassword` stand-in that returns
 /// `status` with `body`.
 async fn mount_identity_platform(status: u16, body: serde_json::Value) -> MockServer {
@@ -198,8 +189,6 @@ async fn valid_password_mints_the_standard_session_cookie() {
     )
     .await;
     let (state, surreal) = state_with_password(Some(idp.uri())).await;
-    // Sign-up stays operator-mediated: the row must already exist.
-    seed_person(&surreal, "client@example.org", store::persons::Role::Lawyer).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     let (csrf_cookie, csrf_token) = open_login_form(&app).await;
@@ -222,11 +211,12 @@ async fn valid_password_mints_the_standard_session_cookie() {
         has_session,
         "a valid password mints the navigator_session cookie"
     );
-    // The pre-seeded row was promoted (linked), not duplicated.
+    // The verified password response creates the first-sign-in Client.
     let rows = store::persons::list_directory(&surreal, "", "", &[])
         .await
         .unwrap();
     assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].role, store::persons::Role::Client);
     assert_eq!(rows[0].oidc_subject.as_deref(), Some("fb-uid-1"));
 }
 

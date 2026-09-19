@@ -101,8 +101,10 @@ Browser OAuth callbacks emit one `auth.signed_in` event after a session is creat
 (`google`, `microsoft`, or `apple`), `brand`, and `first_link`. A callback that cannot resolve an admitted Person, or
 whose token fails verification, emits `auth.sign_in_refused` with `provider`, `brand`, and one of
 `no_subject_match_no_email`, `email_unmatched`, `not_admitted`, or `token_invalid`. The matching
-`navigator.auth.sign_in` counter carries only `provider` and `outcome` (`signed_in` or `refused`). These events and the
-refusal log carry identifiers and bounded values only: no email, name, address, or provider subject.
+`navigator.auth.sign_in` counter carries only `provider` and `outcome` (`signed_in`, `refused`, or `failed`). A store
+failure during Person resolution remains an HTTP 500 and emits `auth.sign_in_failed` with `provider`, `brand`, and the
+bounded `error_class=store`. These events and logs carry identifiers and bounded values only: no email, name, address,
+provider subject, or raw store error.
 
 A sign-in that converges a Person row written before sign-in identifiers were split per provider also emits
 `auth.legacy_subject_relinked` with `provider` and nothing else. It is a migration signal, not a sign-in outcome, so it
@@ -111,9 +113,8 @@ at most once — see ["Legacy convergence"](oidc.md#legacy-convergence) — so t
 condition ENG-783 waits on before removing the branch that emits it.
 
 The GET and form-post callbacks share one completion path. The pre-auth cookie is consumed before token processing, and
-the event is emitted once at the session-creation or refusal boundary. `first_link` is currently true when the resolver
-creates a new Person; the named resolver seam can take an explicit subject-link result when the linkage path exposes
-one.
+the event is emitted once at the session-creation or refusal boundary. `first_link` is true when the sign-in creates a
+Person or links the presenting provider to an existing Person, and false on a repeat login through that provider.
 
 The key set emitted by every visit, funnel, and sign-in recorder is pinned to the collector's fail-closed allow-list by
 `cli/tests/audit_fields_exported.rs`.

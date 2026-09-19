@@ -970,18 +970,11 @@ pub struct AuthState {
     /// when a fresh `persons` row appears.
     pub workflow_runtime: std::sync::Arc<dyn workflows::StateMachineRuntime>,
     /// Email address that is "always admin" — JIT-created on first
-    /// sign-in, role-healed if cleared. `None` disables the carve-out
-    /// (every sign-in then strictly requires a pre-seeded row). Loaded
+    /// sign-in, role-healed if cleared. `None` leaves ordinary first sign-ins
+    /// as Clients. Loaded
     /// from `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` in `bootstrap`; threaded
     /// here so tests can opt in/out without mutating process env.
     pub bootstrap_owner_email: Option<String>,
-    /// Self-signup capability, a global toggle that is **off by default**.
-    /// Off: an IdP-authenticated email with no pre-seeded `persons` row gets
-    /// 403 (today's behavior). On: the first login for an unknown verified
-    /// email JIT-creates a `client` with an empty portfolio. Loaded from
-    /// `NAVIGATOR_SELF_SIGNUP_ENABLED` in `bootstrap`; threaded here (not
-    /// read from env in the handler) so tests can opt in/out.
-    pub self_signup_enabled: bool,
     /// Email/password front door, delegated to **GCP Identity
     /// Platform**. Present only when `NAVIGATOR_IDENTITY_PLATFORM_API_KEY`
     /// is set. `None` keeps `/auth/login` as the pure OIDC redirect, so
@@ -2351,16 +2344,15 @@ async fn complete_sign_in(
     }
     // The IdP owns identity (`sub`); our `persons` table owns the rest —
     // name, memberships, billing, and the system-wide tier. The lookup is
-    // strict: a person must be pre-seeded (matched on this provider's subject
-    // or `email`) for sign-in to succeed. The only exception is the
-    // configured bootstrap Owner, JIT-created with the `Owner` role so a
-    // fresh deployment can never lock its operator out.
-    let (person_id, role, fresh) = match resolve_person_from_claims(
+    // lookup resolves an existing Person by this provider's subject or email,
+    // or creates a Client on the first verified sign-in. The configured
+    // bootstrap Owner is JIT-created with the Owner role so a fresh deployment
+    // can never lock its operator out.
+    let (person_id, role, resolution) = match resolve_person_from_claims(
         &s.surreal,
         provider,
         &claims,
         s.bootstrap_owner_email.as_deref(),
-        s.self_signup_enabled,
     )
     .await
     {
@@ -2387,9 +2379,9 @@ async fn complete_sign_in(
             } else {
                 tracing::info!("auth: sign-in refused");
             }
-            // Still a 403, but its own page: sign-up here is operator-mediated,
-            // so this visitor is not misconfigured — they have not engaged the
-            // firm yet, and the generic "not authorized" wording reads as a
+            // Still a 403, but its own page: the provider did not supply an
+            // address for an unknown identity, or an existing Person is not
+            // admitted. The generic "not authorized" wording reads as a
             // broken account rather than telling them what to do next.
             return (
                 StatusCode::FORBIDDEN,
@@ -2398,6 +2390,13 @@ async fn complete_sign_in(
                 .into_response();
         }
         Err(ResolveError::Db(e)) => {
+            if let Some(provider) = auth_provider {
+                telemetry::record_auth_event(telemetry::AuthEvent::SignInFailed {
+                    provider,
+                    brand: views::brand::brand_key().as_str(),
+                    error_class: telemetry::AuthSignInFailure::Store,
+                });
+            }
             tracing::warn!(error = %e, "auth: person lookup failed");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -2420,7 +2419,7 @@ async fn complete_sign_in(
         return crate::email_confirm::gate_unverified(s, cookies, person_id, &name, &email).await;
     }
 
-    let first_link = first_link_for_auth_event(fresh.as_ref());
+    let first_link = resolution.first_link;
 
     // Falling through the gate above means the address is verified (or
     // there is no admin config to gate against), so materialize that onto
@@ -2433,11 +2432,10 @@ async fn complete_sign_in(
         tracing::warn!(error = %e, person_id = %person_id, "auth: set_email_confirmed failed");
     }
 
-    // First-time signup → drive the `onboarding__welcome` workflow,
+    // First identity creation → drive the `onboarding__welcome` workflow,
     // fire-and-forget so the redirect doesn't wait on the broker. The
-    // bootstrap-Owner JIT path and, where enabled, a self-signup client
-    // produce a `NewSignup`.
-    if let Some(NewSignup { email, name }) = fresh {
+    // bootstrap-Owner and ordinary Client creation produce a `NewSignup`.
+    if let Some(NewSignup { email, name }) = resolution.fresh {
         let runtime = s.workflow_runtime.clone();
         let pid = person_id;
         tokio::spawn(async move {
@@ -2487,9 +2485,9 @@ async fn complete_sign_in(
 /// `persons` row.
 #[derive(Debug, thiserror::Error)]
 enum ResolveError {
-    /// No row matched on this provider's subject or `email`. The
-    /// caller renders a 403; sign-up is operator-mediated.
-    #[error("no pre-seeded persons row for the IdP-supplied email")]
+    /// No row matched on the provider's subject, and the claims carried no
+    /// email from which to create a Person. The caller renders a 403.
+    #[error("no known persons row for an IdP token without email")]
     NotPreSeeded,
     /// A retained person row was deliberately withdrawn from sign-in
     /// admission. The caller renders the same non-enumerating 403.
@@ -2500,9 +2498,9 @@ enum ResolveError {
 }
 
 /// Read `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` once at boot. `None` is a
-/// hard-fail mode: every sign-in then strictly requires a pre-seeded
-/// row. Some-value is the carve-out path — that single address is
-/// JIT-created with the `Owner` role on first sign-in and healed
+/// standard first-sign-in mode: unknown verified emails create Clients.
+/// Some-value is the carve-out path — that single address is JIT-created with
+/// the `Owner` role on first sign-in and healed
 /// back to `Owner` on every subsequent sign-in even if a UI edit
 /// cleared the role. An absent or blank value disables the carve-out.
 #[must_use]
@@ -2575,26 +2573,6 @@ pub async fn reconcile_bootstrap_owner(
     Ok(())
 }
 
-/// Read the global self-signup toggle from `NAVIGATOR_SELF_SIGNUP_ENABLED`
-/// once at boot. **Off by default**: only `1`, `true`, `yes`, or `on`
-/// (case-insensitive) enable it; anything else — including an unset or blank
-/// value — keeps the operator-mediated 403 behavior.
-#[must_use]
-pub fn self_signup_enabled_from_env() -> bool {
-    self_signup_enabled(
-        std::env::var("NAVIGATOR_SELF_SIGNUP_ENABLED")
-            .ok()
-            .as_deref(),
-    )
-}
-
-fn self_signup_enabled(value: Option<&str>) -> bool {
-    matches!(
-        value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
-        Some("1" | "true" | "yes" | "on")
-    )
-}
-
 /// Returned alongside the person id when the OAuth callback inserts
 /// a brand-new row — the seam that triggers the welcome email. `None`
 /// means the row already existed (either linked by the presenting provider's
@@ -2605,12 +2583,30 @@ pub struct NewSignup {
     pub name: String,
 }
 
-/// The current resolver exposes `NewSignup` as the only caller-visible proof
-/// that the provider subject was persisted during this sign-in. Keep this
-/// seam separate so the linkage path can provide an explicit first-link bit
-/// without moving telemetry into the store write.
-fn first_link_for_auth_event(fresh: Option<&NewSignup>) -> bool {
-    fresh.is_some()
+/// The resolution facts the sign-in completion path needs after a Person row
+/// has been found or created.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolutionMetadata {
+    /// A newly created Person triggers welcome work exactly once.
+    fresh: Option<NewSignup>,
+    /// This sign-in created or persisted the presenting provider identity.
+    first_link: bool,
+}
+
+impl ResolutionMetadata {
+    const fn existing() -> Self {
+        Self {
+            fresh: None,
+            first_link: false,
+        }
+    }
+
+    fn linked(fresh: Option<NewSignup>) -> Self {
+        Self {
+            first_link: true,
+            fresh,
+        }
+    }
 }
 
 fn refusal_reason(claims: &IdTokenClaims, not_admitted: bool) -> telemetry::AuthSignInReason {
@@ -2632,31 +2628,25 @@ fn refusal_reason(claims: &IdTokenClaims, not_admitted: bool) -> telemetry::Auth
 ///      linked to this provider yet, promote it (existing seeded person
 ///      logging in for the first time — the row keeps its pre-assigned role —
 ///      but only when its admission decision is on).
-///   3. **No match** → return `ResolveError::NotPreSeeded`, *except*
-///      when the email matches the configured bootstrap Owner address.
-///      That single carve-out JIT-creates an `Owner` row so a fresh
-///      deployment can never lock its operator out.
-///
-/// Sign-up is operator-mediated by design. New rows can only be
-/// seeded by writing to the `persons` table (or, equivalently,
-/// editing `store/seeds/Person.yaml` and re-running the seed
-/// loader); the IdP token never grants access by itself.
+///   3. **No match with an email** → JIT-create a `client` with no Project
+///      participation, or an `Owner` when the email is the configured
+///      bootstrap identity. A claim without an email remains refused because
+///      it cannot safely identify a new Person.
 ///
 /// If the resolved row belongs to the bootstrap Owner email, the `Owner`
 /// role is force-set on the returned value AND persisted back to the
 /// database — so even an accidental demotion in the `/app/admin/people`
 /// UI heals on the next sign-in.
 ///
-/// Path 3 (bootstrap Owner JIT) is the only path that returns
-/// `Some(NewSignup)` — promotion is intentionally NOT treated as a
-/// fresh signup because the row was already seeded by an operator.
+/// A newly-created client or bootstrap Owner returns `Some(NewSignup)`;
+/// promotion is intentionally NOT treated as fresh because the row was
+/// already seeded by an operator.
 async fn resolve_person_from_claims(
     surreal: &store::surreal::SurrealDb,
     provider: Option<ProviderId>,
     claims: &IdTokenClaims,
     bootstrap_owner_email: Option<&str>,
-    self_signup_enabled: bool,
-) -> Result<(Uuid, Role, Option<NewSignup>), ResolveError> {
+) -> Result<(Uuid, Role, ResolutionMetadata), ResolveError> {
     use store::persons;
 
     let bootstrap_owner = bootstrap_owner_email.map(str::to_lowercase);
@@ -2675,7 +2665,7 @@ async fn resolve_person_from_claims(
             role = Role::Owner;
             persons::set_role(surreal, existing.id, Role::Owner).await?;
         }
-        return Ok((existing.id, role, None));
+        return Ok((existing.id, role, ResolutionMetadata::existing()));
     }
 
     let Some(email) = claims.email.clone() else {
@@ -2690,7 +2680,7 @@ async fn resolve_person_from_claims(
             // The bootstrap-Owner carve-out is keyed on the email claim, and
             // this branch runs only when there is none, so the row's stored
             // role stands as-is.
-            return Ok((existing.id, existing.role, None));
+            return Ok((existing.id, existing.role, ResolutionMetadata::linked(None)));
         }
         // We refuse to mint a session for an unknown identifier — operators
         // must seed before sign-in.
@@ -2706,27 +2696,29 @@ async fn resolve_person_from_claims(
             return Err(ResolveError::NotAdmitted);
         }
         let mut role = existing.role;
-        if subject_for_provider(&existing, provider).is_none() {
+        let first_link = subject_for_provider(&existing, provider).is_none();
+        if first_link {
             link_provider_subject(surreal, provider, existing.id, &claims.sub).await?;
         }
         if is_bootstrap_owner && role != Role::Owner {
             role = Role::Owner;
             persons::set_role(surreal, existing.id, Role::Owner).await?;
         }
-        return Ok((existing.id, role, None));
+        return Ok((
+            existing.id,
+            role,
+            if first_link {
+                ResolutionMetadata::linked(None)
+            } else {
+                ResolutionMetadata::existing()
+            },
+        ));
     }
 
     if !is_bootstrap_owner {
-        if !self_signup_enabled {
-            // Sign-up is operator-mediated: an unknown email is refused.
-            return Err(ResolveError::NotPreSeeded);
-        }
-        // Self-signup (a global capability, default off, on only where a
-        // deployment opts in): the first login for an unknown verified email
-        // JIT-creates a `client` with NO `person_project_roles` rows — an
-        // empty portfolio until an admin assigns participation. embedded Rego policy and the
-        // role-tier model are untouched. A fresh client is a real signup, so
-        // it drives the welcome workflow like the bootstrap-Owner path.
+        // A supported provider's verified unknown email creates a client with
+        // no Project participation. Identity admission is distinct from
+        // opening a Project, which still requires its own lawyer DRI gate.
         let name = claims.name.clone().unwrap_or_else(|| email.clone());
         let new = new_person_with_provider_subject(
             provider,
@@ -2736,7 +2728,11 @@ async fn resolve_person_from_claims(
             Role::Client,
         );
         return match store::persons::create(surreal, &new).await {
-            Ok(created) => Ok((created.id, Role::Client, Some(NewSignup { email, name }))),
+            Ok(created) => Ok((
+                created.id,
+                Role::Client,
+                ResolutionMetadata::linked(Some(NewSignup { email, name })),
+            )),
             // Two concurrent first logins for the same identity can both
             // pass the subject and email lookups above before either insert
             // runs; one wins and the loser trips the unique provider-subject
@@ -2746,7 +2742,7 @@ async fn resolve_person_from_claims(
             Err(insert_err) => {
                 match resolve_existing_after_race(surreal, provider, &claims.sub, &email).await? {
                     Some(existing) if persons::is_admitted(surreal, existing.id).await? => {
-                        Ok((existing.id, existing.role, None))
+                        Ok((existing.id, existing.role, ResolutionMetadata::existing()))
                     }
                     Some(_) => Err(ResolveError::NotAdmitted),
                     None => Err(ResolveError::Db(insert_err)),
@@ -2769,13 +2765,17 @@ async fn resolve_person_from_claims(
         ),
     )
     .await?;
-    Ok((new.id, Role::Owner, Some(NewSignup { email, name })))
+    Ok((
+        new.id,
+        Role::Owner,
+        ResolutionMetadata::linked(Some(NewSignup { email, name })),
+    ))
 }
 
 /// Re-resolve an existing `persons` row by the presenting provider's subject,
 /// then by case-insensitive email — the same order
 /// [`resolve_person_from_claims`] uses. Called after a JIT insert loses a
-/// first-login race so concurrent self-signups converge on the row the winner
+/// first-login race so concurrent sign-ins converge on the row the winner
 /// committed instead of mapping the unique-index violation to a 500.
 async fn resolve_existing_after_race(
     surreal: &store::surreal::SurrealDb,
@@ -3037,10 +3037,9 @@ mod tests {
         decode_unverified_payload, default_return_to, fetch_discovery, login_notice,
         oauth_error_fields, pkce_challenge, pkce_verifier, post_login_landing,
         reconcile_bootstrap_owner, resolve_existing_after_race, resolve_person_from_claims,
-        self_signup_enabled, session_cookie, urlencode, AppleClientSecret, AppleClientSecretClaims,
-        IdTokenClaims, IdTokenError, IdTokenVerifier, IdentityPasswordConfig, IssuerPolicy,
-        JwksDocument, NoticeText, OAuthConfig, PreAuth, ProviderId, ResolveError,
-        APPLE_CLIENT_SECRET_TTL_SECS,
+        session_cookie, urlencode, AppleClientSecret, AppleClientSecretClaims, IdTokenClaims,
+        IdTokenError, IdTokenVerifier, IdentityPasswordConfig, IssuerPolicy, JwksDocument,
+        NoticeText, OAuthConfig, PreAuth, ProviderId, ResolveError, APPLE_CLIENT_SECRET_TTL_SECS,
     };
     use super::{pre_auth_cookie, token_endpoint_is_confidential, SameSite};
     use crate::auth::JwksKey;
@@ -3206,35 +3205,6 @@ mod tests {
             bootstrap_owner_email(Some(" owner@example.com ")),
             Some("owner@example.com".into()),
         );
-    }
-
-    #[test]
-    fn self_signup_toggle_is_off_unless_explicitly_affirmative() {
-        // Off by default: unset, blank, and negative values all stay 403.
-        for off in [
-            None,
-            Some(""),
-            Some("  "),
-            Some("0"),
-            Some("false"),
-            Some("no"),
-            Some("off"),
-        ] {
-            assert!(
-                !self_signup_enabled(off),
-                "{off:?} must not enable self-signup"
-            );
-        }
-        // Only the affirmative words (case-insensitive) enable it.
-        for on in [
-            Some("1"),
-            Some("true"),
-            Some("TRUE"),
-            Some("Yes"),
-            Some(" on "),
-        ] {
-            assert!(self_signup_enabled(on), "{on:?} must enable self-signup");
-        }
     }
 
     fn unknown_claims(email: &str) -> IdTokenClaims {
@@ -3677,23 +3647,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn self_signup_off_refuses_an_unknown_email() {
+    async fn an_unknown_verified_email_creates_a_client() {
         let surreal = mem_surreal().await;
         let claims = unknown_claims("stranger@example.com");
-        // Default off, no bootstrap-Owner carve-out: an unknown email is 403.
-        let err =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, false)
+        let (person_id, role, resolution) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None)
                 .await
-                .expect_err("an unknown email must be refused when self-signup is off");
-        assert!(matches!(err, ResolveError::NotPreSeeded));
-        // And no persons row was created.
-        assert!(
-            store::persons::find_by_email_ci(&surreal, "stranger@example.com")
-                .await
-                .unwrap()
-                .is_none(),
-            "the 403 path must not create a person",
-        );
+                .expect("an unknown verified email creates a client");
+        assert_eq!(role, Role::Client);
+        assert!(resolution.fresh.is_some());
+        assert!(resolution.first_link);
+        let person = store::persons::find_by_email_ci(&surreal, "stranger@example.com")
+            .await
+            .unwrap()
+            .expect("the client row exists");
+        assert_eq!(person.id, person_id);
     }
 
     #[tokio::test]
@@ -3711,12 +3679,14 @@ mod tests {
         let mut claims = unknown_claims("person@example.com");
         claims.sub = "apple-subject".into();
 
-        let (resolved_id, _, _) =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+        let (resolved_id, _, first_resolution) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
                 .await
                 .expect("the admitted email match resolves");
 
         assert_eq!(resolved_id, person.id);
+        assert!(first_resolution.first_link);
+        assert!(first_resolution.fresh.is_none());
         let stored = store::persons::find_by_id(&surreal, person.id)
             .await
             .unwrap()
@@ -3724,6 +3694,13 @@ mod tests {
         assert_eq!(stored.oidc_subject.as_deref(), Some("primary-subject"));
         assert_eq!(stored.apple_subject.as_deref(), Some("apple-subject"));
         assert_eq!(stored.microsoft_subject, None);
+
+        let (_, _, repeat_resolution) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
+                .await
+                .expect("the linked Apple subject resolves on repeat sign-in");
+        assert!(!repeat_resolution.first_link);
+        assert!(repeat_resolution.fresh.is_none());
     }
 
     #[tokio::test]
@@ -3743,7 +3720,7 @@ mod tests {
         claims.email = None;
 
         let (resolved_id, _, _) =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
                 .await
                 .expect("the stored Apple subject resolves without email");
 
@@ -3778,14 +3755,15 @@ mod tests {
         claims.sub = "apple-sub".into();
         claims.email = None;
 
-        let (resolved_id, _, fresh) =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+        let (resolved_id, _, resolution) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
                 .await
                 .expect("a pre-split Apple row resolves without an email claim");
 
         assert_eq!(resolved_id, person.id);
         // Not a signup: the row was already there, it only converged.
-        assert!(fresh.is_none());
+        assert!(resolution.fresh.is_none());
+        assert!(resolution.first_link);
         let stored = store::persons::find_by_id(&surreal, person.id)
             .await
             .unwrap()
@@ -3816,7 +3794,7 @@ mod tests {
 
         for _ in 0..2 {
             let (resolved_id, _, _) =
-                resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+                resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
                     .await
                     .expect("both sign-ins resolve the same row");
             assert_eq!(resolved_id, person.id);
@@ -3848,7 +3826,7 @@ mod tests {
         claims.email = None;
 
         let (resolved_id, _, _) =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, false)
+            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None)
                 .await
                 .expect("the primary subject resolves through its own lookup");
 
@@ -3860,11 +3838,11 @@ mod tests {
         assert_eq!(stored.oidc_subject.as_deref(), Some("primary-sub"));
     }
 
-    /// A claim that carries an email keeps the email path's answer, including
-    /// its refusal. Letting the legacy branch run here would give an address
-    /// the deployment does not recognise a second way into a row.
+    /// A claim that carries an email creates its own client when the email is
+    /// unknown. Letting the legacy branch run here would instead attach that
+    /// address to a different existing row through a historical subject.
     #[tokio::test]
-    async fn a_claim_with_an_unmatched_email_is_refused_rather_than_reaching_the_legacy_slot() {
+    async fn a_claim_with_an_unmatched_email_creates_a_client_without_reaching_the_legacy_slot() {
         let surreal = mem_surreal().await;
         let person = store::persons::create(
             &surreal,
@@ -3878,12 +3856,15 @@ mod tests {
         let mut claims = unknown_claims("someone-else@privaterelay.appleid.com");
         claims.sub = "apple-sub".into();
 
-        let refused =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+        let (created_id, role, resolution) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
                 .await
-                .expect_err("an unmatched email must stay a refusal");
+                .expect("an unmatched email creates its own client");
 
-        assert!(matches!(refused, ResolveError::NotPreSeeded));
+        assert_eq!(role, Role::Client);
+        assert!(resolution.fresh.is_some());
+        assert!(resolution.first_link);
+        assert_ne!(created_id, person.id);
         let stored = store::persons::find_by_id(&surreal, person.id)
             .await
             .unwrap()
@@ -3912,10 +3893,9 @@ mod tests {
         claims.sub = "legacy-sub".into();
         claims.email = None;
 
-        let refused =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
-                .await
-                .expect_err("an already-linked row is not a convergence candidate");
+        let refused = resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
+            .await
+            .expect_err("an already-linked row is not a convergence candidate");
 
         assert!(matches!(refused, ResolveError::NotPreSeeded));
         let stored = store::persons::find_by_id(&surreal, person.id)
@@ -3951,16 +3931,15 @@ mod tests {
         claims.sub = "apple-sub".into();
         claims.email = None;
 
-        let refused =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
-                .await
-                .expect_err("a row that is not admitted cannot sign in");
+        let refused = resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
+            .await
+            .expect_err("a row that is not admitted cannot sign in");
 
         assert!(matches!(refused, ResolveError::NotAdmitted));
     }
 
     #[tokio::test]
-    async fn an_unmatched_apple_relay_email_is_refused_without_persisting_a_subject() {
+    async fn an_unmatched_apple_relay_email_creates_a_client_with_its_subject() {
         let surreal = mem_surreal().await;
         let person = store::persons::create(
             &surreal,
@@ -3971,16 +3950,21 @@ mod tests {
         let mut claims = unknown_claims("person@privaterelay.appleid.com");
         claims.sub = "unknown-apple-subject".into();
 
-        let refused =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+        let (created_id, role, resolution) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None)
                 .await
-                .expect_err("an unmatched relay email must be refused");
-        assert!(matches!(refused, ResolveError::NotPreSeeded));
-        assert!(
-            store::persons::find_by_email_ci(&surreal, "person@privaterelay.appleid.com")
-                .await
-                .unwrap()
-                .is_none()
+                .expect("an unmatched relay email creates a client");
+        assert_eq!(role, Role::Client);
+        assert!(resolution.fresh.is_some());
+        assert!(resolution.first_link);
+        let created = store::persons::find_by_email_ci(&surreal, "person@privaterelay.appleid.com")
+            .await
+            .unwrap()
+            .expect("the relay client row exists");
+        assert_eq!(created.id, created_id);
+        assert_eq!(
+            created.apple_subject.as_deref(),
+            Some("unknown-apple-subject")
         );
         let stored = store::persons::find_by_id(&surreal, person.id)
             .await
@@ -4014,7 +3998,7 @@ mod tests {
         claims.email = None;
 
         let (resolved_id, _, _) =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, false)
+            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None)
                 .await
                 .expect("the historical primary-provider subject still resolves");
 
@@ -4048,24 +4032,27 @@ mod tests {
             .await
             .expect("withdraw person");
 
-        let err =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, true)
-                .await
-                .expect_err("an unadmitted linked row must not resolve");
+        let err = resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None)
+            .await
+            .expect_err("an unadmitted linked row must not resolve");
         assert!(matches!(err, ResolveError::NotAdmitted));
     }
 
     #[tokio::test]
-    async fn self_signup_on_creates_a_client_with_an_empty_portfolio() {
+    async fn a_new_client_has_an_empty_portfolio() {
         let surreal = mem_surreal().await;
         let claims = unknown_claims("trainee@example.com");
-        let (person_id, role, fresh) =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, true)
+        let (person_id, role, resolution) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None)
                 .await
-                .expect("self-signup on creates the person");
+                .expect("first sign-in creates the person");
         // A client, treated as a fresh signup (drives the welcome workflow).
         assert_eq!(role, Role::Client);
-        assert!(fresh.is_some(), "a self-signup client is a fresh signup");
+        assert!(
+            resolution.fresh.is_some(),
+            "a newly created client is a fresh signup"
+        );
+        assert!(resolution.first_link);
         let person = store::persons::find_by_email_ci(&surreal, "trainee@example.com")
             .await
             .unwrap()
@@ -4077,29 +4064,24 @@ mod tests {
             .await
             .unwrap()
             .len();
-        assert_eq!(
-            participations, 0,
-            "a new self-signup client has an empty portfolio"
-        );
+        assert_eq!(participations, 0, "a new client has an empty portfolio");
     }
 
     #[tokio::test]
-    async fn bootstrap_owner_is_created_even_with_self_signup_off() {
+    async fn bootstrap_owner_is_created() {
         let surreal = mem_surreal().await;
         let claims = unknown_claims("boss@example.com");
-        // The bootstrap-Owner carve-out is independent of the self-signup
-        // toggle: it JIT-creates an Owner even when self-signup is off.
-        let (_, role, fresh) = resolve_person_from_claims(
+        let (_, role, resolution) = resolve_person_from_claims(
             &surreal,
             Some(ProviderId::Primary),
             &claims,
             Some("boss@example.com"),
-            false,
         )
         .await
         .expect("bootstrap Owner is always JIT-created");
         assert_eq!(role, Role::Owner);
-        assert!(fresh.is_some());
+        assert!(resolution.fresh.is_some());
+        assert!(resolution.first_link);
     }
 
     #[tokio::test]
@@ -4173,9 +4155,9 @@ mod tests {
         let claims = unknown_claims("racer@example.com");
         // Seed the row the "winning" request would have committed.
         let (person_id, _, _) =
-            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, true)
+            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None)
                 .await
-                .expect("self-signup on creates the person");
+                .expect("first sign-in creates the person");
 
         // Matches on the provider subject (the first lookup the recovery tries).
         let by_subject = resolve_existing_after_race(
@@ -4217,7 +4199,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn concurrent_self_signup_converges_on_one_client_without_a_500() {
+    async fn concurrent_first_sign_in_converges_on_one_client_without_a_500() {
         let surreal = mem_surreal().await;
 
         // Fire several identical first logins at once (`unknown_claims` is
@@ -4232,8 +4214,7 @@ mod tests {
             let surreal = surreal.clone();
             handles.push(tokio::spawn(async move {
                 let claims = unknown_claims("stampede@example.com");
-                resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, true)
-                    .await
+                resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None).await
             }));
         }
 
@@ -4242,7 +4223,7 @@ mod tests {
             let (person_id, role, _) = handle
                 .await
                 .expect("the resolve task must not panic")
-                .expect("a concurrent self-signup must never 500");
+                .expect("a concurrent first sign-in must never 500");
             assert_eq!(role, Role::Client);
             ids.push(person_id);
         }

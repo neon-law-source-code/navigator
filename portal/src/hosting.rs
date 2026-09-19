@@ -413,7 +413,6 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         sendgrid_events_public_key,
         bootstrap_owner_email: crate::oauth::bootstrap_owner_email_from_env(),
         on_call_lawyer_email: crate::oauth::on_call_lawyer_email_from_env(),
-        self_signup_enabled: crate::oauth::self_signup_enabled_from_env(),
         // Opt-in email/password sign-in via GCP Identity Platform; `None`
         // unless `NAVIGATOR_IDENTITY_PLATFORM_API_KEY` is set.
         identity_password: crate::oauth::IdentityPasswordConfig::from_env(),

@@ -153,7 +153,6 @@ pub async fn app_state(surreal: store::surreal::SurrealDb) -> AppState {
         sendgrid_events_public_key: None,
         bootstrap_owner_email: None,
         on_call_lawyer_email: None,
-        self_signup_enabled: false,
         identity_password: None,
         identity_admin: None,
         a2a_router: None,

@@ -194,6 +194,7 @@ data:
           # --- sign-in and funnel enums and opaque ids ---
           - provider
           - reason
+          - error_class
           - brand
           - first_link
           - channel

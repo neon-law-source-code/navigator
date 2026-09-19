@@ -940,6 +940,7 @@ pub const AUTH_EVENT_ATTRIBUTE_KEYS: &[&str] = &[
     "brand",
     "first_link",
     "reason",
+    "error_class",
 ];
 
 /// Attribute keys emitted by the `navigator.auth.sign_in` counter.
@@ -951,6 +952,8 @@ pub mod auth_outcome {
     pub const SIGNED_IN: &str = "signed_in";
     /// A provider callback was refused.
     pub const REFUSED: &str = "refused";
+    /// A provider callback could not resolve a Person because the store failed.
+    pub const FAILED: &str = "failed";
 }
 
 /// The provider values allowed in sign-in telemetry.
@@ -1002,6 +1005,23 @@ impl AuthSignInReason {
     }
 }
 
+/// The bounded classes of failures resolving a Person during sign-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthSignInFailure {
+    /// A read or write against the Person store failed.
+    Store,
+}
+
+impl AuthSignInFailure {
+    /// The bounded value written to the failed sign-in event and log.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Store => "store",
+        }
+    }
+}
+
 /// One identifier-only browser sign-in outcome.
 #[derive(Debug, Clone, Copy)]
 pub enum AuthEvent<'a> {
@@ -1024,6 +1044,15 @@ pub enum AuthEvent<'a> {
         brand: &'a str,
         /// The bounded refusal reason.
         reason: AuthSignInReason,
+    },
+    /// A provider callback could not resolve a Person because the store failed.
+    SignInFailed {
+        /// The provider that issued the callback token.
+        provider: AuthProvider,
+        /// The resolved house brand.
+        brand: &'a str,
+        /// The bounded store failure class.
+        error_class: AuthSignInFailure,
     },
     /// A Person row written before sign-in identifiers were split per
     /// provider converged: the identifier it held in the generic slot moved
@@ -1071,6 +1100,20 @@ pub fn record_auth_event(event: AuthEvent<'_>) {
                 provider = provider.as_str(),
                 brand,
                 reason = reason.as_str(),
+            );
+        }
+        AuthEvent::SignInFailed {
+            provider,
+            brand,
+            error_class,
+        } => {
+            record_auth_sign_in(provider, auth_outcome::FAILED);
+            tracing::warn!(
+                target: "auth",
+                event = "auth.sign_in_failed",
+                provider = provider.as_str(),
+                brand,
+                error_class = error_class.as_str(),
             );
         }
         AuthEvent::LegacySubjectRelinked { provider } => {
@@ -1401,6 +1444,11 @@ mod tests {
                     reason,
                 });
             }
+            super::record_auth_event(AuthEvent::SignInFailed {
+                provider: AuthProvider::Apple,
+                brand: "neon",
+                error_class: super::AuthSignInFailure::Store,
+            });
             super::record_auth_event(AuthEvent::LegacySubjectRelinked {
                 provider: AuthProvider::Apple,
             });
@@ -1412,7 +1460,7 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).expect("auth event is JSON"))
             .collect();
-        assert_eq!(lines.len(), 6);
+        assert_eq!(lines.len(), 7);
         for line in &lines {
             let fields = line
                 .get("fields")
@@ -1430,11 +1478,13 @@ mod tests {
         }
         assert!(rendered.contains("auth.signed_in"));
         assert!(rendered.contains("auth.sign_in_refused"));
+        assert!(rendered.contains("auth.sign_in_failed"));
         assert!(rendered.contains("auth.legacy_subject_relinked"));
         assert!(rendered.contains("no_subject_match_no_email"));
         assert!(rendered.contains("email_unmatched"));
         assert!(rendered.contains("not_admitted"));
         assert!(rendered.contains("token_invalid"));
+        assert!(rendered.contains("store"));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

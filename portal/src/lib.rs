@@ -449,12 +449,6 @@ pub struct AppState {
     /// The admitted lawyer DRI for client-initiated service starts. Read once
     /// at boot so a request never observes a changing process environment.
     pub on_call_lawyer_email: Option<String>,
-    /// Global self-signup capability, **off by default**. Off: an unknown
-    /// verified email gets 403 (operator-mediated onboarding). On: the first
-    /// login for an unknown email JIT-creates a `client` with an empty
-    /// portfolio. Sourced from `NAVIGATOR_SELF_SIGNUP_ENABLED`; injected into
-    /// `oauth::AuthState` so the handler never reads env. See #738.
-    pub self_signup_enabled: bool,
     /// Opt-in email/password front door, delegated to GCP Identity
     /// Platform. `None` (the default) keeps `/auth/login` a pure OIDC
     /// redirect. Sourced from `NAVIGATOR_IDENTITY_PLATFORM_API_KEY` in
@@ -1244,9 +1238,6 @@ pub fn bootstrap(
             email: state.email.clone(),
             workflow_runtime: state.workflow_runtime.clone(),
             bootstrap_owner_email: bootstrap_owner.clone(),
-            // Global self-signup toggle (default off), injected from AppState
-            // so the callback never reads env. See #738.
-            self_signup_enabled: state.self_signup_enabled,
             // Opt-in email/password front door via GCP Identity Platform;
             // `None` (the default) keeps `/auth/login` a pure OIDC redirect.
             // Threaded from `AppState` (not read from env here) so tests can

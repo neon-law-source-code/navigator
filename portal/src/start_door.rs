@@ -128,10 +128,9 @@ async fn inject_start_content(
         return StatusCode::NOT_FOUND.into_response();
     };
     let brand = views::brand::brand_key();
-    let can_start = state.app.self_signup_enabled
-        && configured_lawyer(&state.app, brand, &service_id)
-            .await
-            .is_some()
+    let can_start = configured_lawyer(&state.app, brand, &service_id)
+        .await
+        .is_some()
         && store::firms::firm_id_for_brand_key(&state.app.surreal, brand.as_str())
             .await
             .ok()
@@ -292,17 +291,6 @@ async fn post_start(
     if session.role != store::persons::Role::Client {
         audit(&session, None, None, &service_id, brand, "rejected_role");
         return (StatusCode::FORBIDDEN, catalog.start.refusal.clone()).into_response();
-    }
-    if !state.app.self_signup_enabled {
-        audit(
-            &session,
-            None,
-            None,
-            &service_id,
-            brand,
-            "rejected_self_signup_configuration",
-        );
-        return (StatusCode::OK, catalog.start.refusal.clone()).into_response();
     }
     let Some(person_id) = session.person_id else {
         audit(&session, None, None, &service_id, brand, "rejected_person");
@@ -547,7 +535,6 @@ mod tests {
             .await
             .expect("admit configured lawyer");
         let mut state = state;
-        state.self_signup_enabled = true;
         state.on_call_lawyer_email = Some(LAWYER_EMAIL.to_string());
         (state, surreal)
     }

@@ -633,7 +633,6 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         sendgrid_events_public_key: None,
         bootstrap_owner_email: None,
         on_call_lawyer_email: None,
-        self_signup_enabled: false,
         identity_password: None,
         identity_admin: None,
         a2a_router: None,
@@ -9133,7 +9132,6 @@ async fn door_opened_client_matter_shows_continue_intake() {
         portal::session::SESSION_COOKIE_NAME,
         test_sessions().encode(&session)
     );
-    state.self_signup_enabled = true;
     state.on_call_lawyer_email = Some(lawyer.email);
     let app = catalog_router(state);
     let response = app
@@ -11074,7 +11072,6 @@ async fn api_people_delete_blocks_bootstrap_owner() {
     let (base, surreal) = state_with_engines().await;
     let state = AppState {
         bootstrap_owner_email: Some("owner@neonlaw.com".into()),
-        self_signup_enabled: false,
         ..base
     };
     let boss = store::persons::create(

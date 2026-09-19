@@ -11,10 +11,10 @@ a session. It defaults to `true` for ordinary and historical rows. Discarding a 
 the retained client row has no remaining Project participation; it does not change the person's role, participation
 history, or conflict record.
 
-The client-initiated service start is one path where a self-signed-up client gains Project participation. It is safe
-because the handler accepts only the signed-in session's own Person, adds the configured lawyer DRI, and keeps the same
-conflict and lawyer-review gates as every other intake path. Compensation on a refused start removes the new Project and
-its notation without withdrawing admission from that already admitted client.
+The client-initiated service start is one path where a client gains Project participation. It is safe because the
+handler accepts only the signed-in session's own Person, adds the configured lawyer DRI, and keeps the same conflict and
+lawyer-review gates as every other intake path. Compensation on a refused start removes the new Project and its notation
+without withdrawing admission from that already admitted client.
 
 The stored columns:
 
@@ -225,8 +225,8 @@ needs only the separate supervised capabilities explicitly granted to that role.
 
 ## How a `person` row is created
 
-Signing in with the IdP does not, by itself, create a `person` row. The OAuth callback resolves the IdP-authenticated
-subject against the table (`portal::oauth::resolve_person_from_claims`):
+The OAuth callback resolves the IdP-authenticated subject against the table
+(`portal::oauth::resolve_person_from_claims`):
 
 - an existing **admitted** row (matched on the presenting provider's subject — `oidc_subject` for the primary provider,
   `microsoft_subject` for Microsoft, or `apple_subject` for Apple — or, case-insensitively, `email`, or, for a row
@@ -234,20 +234,15 @@ subject against the table (`portal::oauth::resolve_person_from_claims`):
   convergence](oidc.md#legacy-convergence)) signs in with its stored role;
 - the configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` is JIT-created as `owner` on first login (the carve-out that keeps a
   fresh deploy from locking its Owner out), and role-healed back to `owner` on every subsequent login;
-- **every other unknown email is refused with a `403`** — onboarding is operator-mediated by default.
+- every other supported, verified provider identity with an email JIT-creates a `client` with no
+  `person_project_role` rows — an empty portfolio until an admin assigns participation.
+
+An unrecognised provider subject without an email remains refused: Navigator cannot safely create a Person without an
+address. Existing linked subjects still resolve without an email claim.
 
 Owner and Admin can also create a Client from a [Lead](glossary.md#lead) at `/app/admin/leads/{id}`:
 `store::leads::convert` calls `store::persons::create` with the submitted mailbox and phone. A mailbox that already
 belongs to a Person is refused and the queue offers a link to that row instead.
-
-### Self-signup (global toggle, default off)
-
-`NAVIGATOR_SELF_SIGNUP_ENABLED` is a deployment-wide capability that is **off unless explicitly set** (affirmative
-values: `1`, `true`, `yes`, `on`). Off is byte-for-byte the `403` behavior above. When on, the first login for an
-unknown verified email JIT-creates a `client` with **no `person_project_role` rows** — an empty portfolio until an admin
-assigns participation. Embedded Rego and the role/participation model are untouched; self-signup only changes whether an
-unknown email becomes a scopeless `client` or a `403`. The bootstrap-Owner carve-out is independent of this toggle. A
-training deployment turns this on when trainings open; production keeps it off. See #738.
 
 Client-initiated service starts also require an admitted lawyer-tier DRI. `NAVIGATOR_ON_CALL_LAWYER_EMAIL` is optional:
 when it is unset or blank, the Start door uses the admitted bootstrap Owner named by `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL`

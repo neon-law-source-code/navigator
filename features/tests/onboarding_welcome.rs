@@ -57,10 +57,9 @@ impl WelcomeWorld {
     }
 }
 
-/// The system's bootstrap Owner email. Sign-up is operator-mediated,
-/// so the callback JIT-creates exactly one identity — this one — and
-/// fires the welcome once. The row it creates carries the highest
-/// `owner` role. Every other unseeded identity is rejected with 403.
+/// The system's bootstrap Owner email. The callback creates this identity as
+/// `owner`, rather than the ordinary first-sign-in `client`, and fires the
+/// welcome once.
 const BOOTSTRAP_OWNER_EMAIL: &str = "nick@neonlaw.com";
 
 async fn build_app(world: &mut WelcomeWorld, idp_uri: &str) {

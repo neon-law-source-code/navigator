@@ -852,6 +852,18 @@ a.nav-pagination__link:hover {
   text-decoration: none;
 }
 
+/* `link-secondary` is the muted verification link — a trademark registration
+   number, a bar licence number — and it is always spoken mid-sentence in fine
+   print ("… is a registered trademark of X, U.S. Reg. No. 6,325,650"). The cue
+   travels with the class rather than with the pages that use it, because the
+   class *is* the "quiet link inside a sentence" case: the chrome opt-out above
+   deliberately cannot reach it, since these footers really are prose. */
+.nav-theme a.link-secondary {
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.14em;
+}
+
 /* Blog index — the `/blog` listing: newest post first, each a title link over
    a muted date and one-line description. */
 .blog-index__posts {
@@ -2171,8 +2183,11 @@ a.nav-pagination__link:hover {
   flex: 0 0 auto;
 }
 
+/* A `<p>`, so the shared inline-prose underline reaches a link inside the help
+   line without naming this container. Its block margins are ours, not the
+   browser's 1em default. */
 .nav-field__help {
-  margin-top: 0.25rem;
+  margin: 0.25rem 0 0;
   font-size: 0.875rem;
   color: var(--nav-color-text-muted);
 }

@@ -597,7 +597,7 @@ impl Field {
                 div { class: "nav-field__error", id: "{error_id}", role: "alert", "{e}" }
             }
             if let Some(runs) = help_runs {
-                div { class: "nav-field__help", id: "{help_id}",
+                p { class: "nav-field__help", id: "{help_id}",
                     for run in runs.iter() {
                         if let Some(href) = run.href.as_ref() {
                             a { href: "{href}", "{run.text}" }
@@ -609,7 +609,7 @@ impl Field {
                     }
                 }
             } else if let Some(h) = help {
-                div { class: "nav-field__help", id: "{help_id}", "{h}" }
+                p { class: "nav-field__help", id: "{help_id}", "{h}" }
             }
         };
 
@@ -1205,6 +1205,23 @@ mod tests {
         assert!(html.contains(r#"autocomplete="email""#), "{html}");
         assert!(html.contains(r#"maxlength="254""#), "{html}");
         assert!(html.contains(r#"href="/privacy""#), "{html}");
+        // The help line is a paragraph holding a class-less anchor, which is
+        // exactly what the shared inline-prose rule underlines. As a `<div>`
+        // holding the same link, the cue was colour alone and axe failed
+        // `link-in-text-block` on `/design`.
+        assert!(
+            html.contains(r#"<p class="nav-field__help""#),
+            "help text is prose, so the WCAG 1.4.1 underline can reach it: {html}"
+        );
+        let help = html
+            .split(r#"<p class="nav-field__help""#)
+            .nth(1)
+            .expect("the help paragraph");
+        assert!(
+            help.contains(r#"<a href="/privacy""#),
+            "the help link stays class-less, so `:is(p, li) > a:not([class])` \
+             matches it: {help}"
+        );
         assert_forms_accessible(&html, "embedded form");
     }
 
@@ -1421,7 +1438,7 @@ mod tests {
         let html = ssr(app);
         assert!(html.contains(r#"aria-describedby="kind-help""#), "{html}");
         assert!(
-            html.contains(r#"<div class="nav-field__help" id="kind-help">Optional."#),
+            html.contains(r#"<p class="nav-field__help" id="kind-help">Optional."#),
             "{html}"
         );
     }

@@ -632,6 +632,68 @@ fn inline_prose_links_are_underlined_without_an_allow_list_of_pages() {
     }
 }
 
+/// The muted verification link carries its cue on the class, not on a page.
+///
+/// `link-secondary` is the fine-print anchor around a trademark registration
+/// or a bar licence number, and it is always read mid-sentence: "… is a
+/// registered trademark of Shook Law PLLC, U.S. Reg. No. 6,325,650". It had no
+/// stylesheet rule at all, so `.nav-theme a { text-decoration: none }` left it
+/// distinguishable by colour alone and axe failed `link-in-text-block` on
+/// `/design` — in the `/app` footer and, undecidably, in the public one.
+///
+/// The cue rides the class because that is what the class means. Pinning it
+/// here keeps the rule from being re-expressed as the list of footers that
+/// happen to use it today.
+#[test]
+fn the_muted_verification_link_is_not_distinguished_by_colour_alone() {
+    let theme = std::fs::read_to_string(public_dir().join("css/theme.css"))
+        .expect("read the shared theme stylesheet");
+
+    let selector = ".nav-theme a.link-secondary";
+    let rule = theme
+        .split_once(&format!("{selector} {{"))
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map_or_else(
+            || panic!("theme.css must carry the non-colour link rule at `{selector}`"),
+            |(declarations, _)| declarations,
+        );
+    assert!(
+        rule.contains("text-decoration: underline;"),
+        "{selector} is read inside a sentence, so colour cannot be its only \
+         cue: {rule}"
+    );
+    assert!(
+        rule.contains("text-underline-offset: 0.14em;"),
+        "{selector} must use the shared in-copy underline offset: {rule}"
+    );
+}
+
+/// A field's help line is prose, and its block margins are the theme's.
+///
+/// The help text is rendered as a `<p>` so the shared
+/// `.nav-theme :is(p, li) > a:not([class])` rule underlines a link inside it —
+/// the contact form's "We'll only use this to reply. Privacy Policy" is the
+/// case axe caught. A `<p>` brings the browser's 1em block margins with it, so
+/// the rule must state its own, or every helped field grows a gap.
+#[test]
+fn the_field_help_paragraph_states_its_own_block_margins() {
+    let theme = std::fs::read_to_string(public_dir().join("css/theme.css"))
+        .expect("read the shared theme stylesheet");
+
+    let rule = theme
+        .split_once(".nav-field__help {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map_or_else(
+            || panic!("theme.css must carry the `.nav-field__help` rule"),
+            |(declarations, _)| declarations,
+        );
+    assert!(
+        rule.contains("margin: 0.25rem 0 0;"),
+        "`.nav-field__help` is a `<p>`: it must zero the browser's default \
+         block margins rather than set `margin-top` alone: {rule}"
+    );
+}
+
 #[test]
 fn gallery_and_application_footer_links_keep_a_non_colour_cue() {
     let theme = std::fs::read_to_string(public_dir().join("css/theme.css"))

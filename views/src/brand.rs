@@ -918,8 +918,16 @@ impl BrandKey {
     /// only the pages it has a catalog for (plus `/contact`, which is
     /// addresses rather than a YAML stem). Lawyer Shook keeps its holding
     /// notice and practice cards on `/`; other firm paths 404 on that host
-    /// rather than rendering another brand's words.
+    /// rather than rendering another brand's words. The four unlaunched
+    /// practices answer their "Coming Soon" landing page and nothing else.
     #[must_use]
+    // Lawyer Shook and the four unlaunched practices both answer `/` alone,
+    // for unrelated reasons: one is a launched brand that deliberately
+    // publishes a single page, the others are holding pages whose arm
+    // disappears at launch. Merging them would tie a launched brand's
+    // published surface to an unlaunched one's and hide which arm a launch
+    // is supposed to edit.
+    #[allow(clippy::match_same_arms)]
     pub fn publishes_firm_path(self, path: &str) -> bool {
         match self {
             Self::Neon => !matches!(
@@ -928,11 +936,12 @@ impl BrandKey {
             ),
             Self::DeleteYourData => matches!(path, "/" | "/contact"),
             Self::LawyerShook => path == "/",
-            Self::Vesta
-            | Self::Misericordia
-            | Self::Abhaya
-            | Self::DeleteYourDebt
-            | Self::Summons => matches!(path, "/" | "/services" | "/contact"),
+            Self::Vesta => matches!(path, "/" | "/services" | "/contact"),
+            // The four unlaunched practices answer one landing page and
+            // nothing else. Their `/services` and `/contact` copy still ships
+            // and still loads; reopening those paths is this line, not a
+            // rewrite. See `neon::firm_pages::coming_soon_content`.
+            Self::Misericordia | Self::Abhaya | Self::DeleteYourDebt | Self::Summons => path == "/",
         }
     }
 

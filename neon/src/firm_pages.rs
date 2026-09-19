@@ -686,13 +686,67 @@ fn resolve_firm_contact_content(
 ///
 /// Neon presents membership, notation packages, and booking on one page.
 /// Other house brands resolve their own home catalogs.
+///
+/// The four unlaunched practices answer a "Coming Soon" holding page instead
+/// of their catalogs. Their copy still ships and is still loaded — see
+/// [`coming_soon_content`] for why the catalog stays and what relaunching
+/// costs.
 pub(crate) fn resolve_firm_home_content(
     branding: &views::brand::Branding,
 ) -> webapp::home::HomeContent {
-    if branding.brand_key == BrandKey::LawyerShook {
-        return lawyer_shook_holding_content(branding);
+    match branding.brand_key {
+        BrandKey::LawyerShook => lawyer_shook_holding_content(branding),
+        BrandKey::Misericordia
+        | BrandKey::Abhaya
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Summons => coming_soon_content(branding),
+        BrandKey::Neon | BrandKey::DeleteYourData | BrandKey::Vesta => locales::home(branding),
     }
-    locales::home(branding)
+}
+
+/// A "Coming Soon" holding page over the shared footer, for a practice whose
+/// domain is registered but whose site has not launched.
+///
+/// **The brand's authored copy is not deleted by this.** Each of these keys
+/// still ships `home` and `services` catalogs, still lists them in
+/// [`BrandKey::catalog_pages`], and those files are still loaded and covered
+/// by the locale tests — this function simply does not render them yet.
+/// Launching is removing the key from the match arm in
+/// [`resolve_firm_home_content`] and reopening its paths in
+/// [`BrandKey::publishes_firm_path`]; no copy has to be rewritten.
+///
+/// The statement borrows the brand's own `tagline` rather than authoring a
+/// second description of the practice. That line is already the reviewed
+/// one-sentence account of what the practice does and which firm renders it,
+/// and for these four that review is load-bearing: the NYC practice must not
+/// imply a City affiliation, and the debt practice must read as collection
+/// defence rather than debt settlement. A holding page is exactly where a fresh
+/// paraphrase would slip past the review that wording already had.
+///
+/// The bare-statement variant carries the shared footer, so the attorney
+/// advertisement disclaimer, the firm's address, and its registered agent
+/// still appear under the notice — a holding page for a law practice is
+/// still attorney advertising.
+fn coming_soon_content(branding: &views::brand::Branding) -> webapp::home::HomeContent {
+    let site_name = branding.firm.site_name;
+    let tagline = branding.firm.tagline;
+    webapp::home::HomeContent {
+        head_title: format!("{site_name} | Coming Soon"),
+        meta_description: tagline.to_string(),
+        bare: Some(webapp::home::BareStatement {
+            heading: "Coming Soon".to_string(),
+            paragraph: tagline.to_string(),
+            // No sign-in line: unlike Lawyer Shook's holding page, these
+            // practices have no active clients to let back in.
+            sign_in: Vec::new(),
+        }),
+        // One landing page and nothing under it. The catalogued practice
+        // cards would link the sibling brands' sites from a page that is
+        // itself not launched.
+        practices: Vec::new(),
+        practices_heading: String::new(),
+        ..webapp::home::HomeContent::default()
+    }
 }
 
 /// The firm's notice and sign-in line, followed by the practice cards from
@@ -735,6 +789,101 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
             ],
         }),
         ..locales::home(branding)
+    }
+}
+
+#[cfg(test)]
+mod coming_soon_page_tests {
+    use super::coming_soon_content;
+    use views::brand::BrandKey;
+
+    /// Every unlaunched practice answers the same bare notice, wearing its
+    /// own name and its own reviewed one-liner.
+    #[test]
+    fn each_unlaunched_practice_renders_a_bare_coming_soon_notice() {
+        for key in [
+            BrandKey::Misericordia,
+            BrandKey::Abhaya,
+            BrandKey::DeleteYourDebt,
+            BrandKey::Summons,
+        ] {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            let content = coming_soon_content(branding);
+            let bare = content
+                .bare
+                .clone()
+                .unwrap_or_else(|| panic!("{key:?} renders the bare-statement variant"));
+
+            assert_eq!(bare.heading, "Coming Soon", "{key:?}");
+            assert_eq!(bare.paragraph, branding.firm.tagline, "{key:?}");
+            assert_eq!(
+                content.head_title,
+                format!("{} | Coming Soon", branding.firm.site_name),
+                "{key:?}"
+            );
+            assert!(
+                bare.sign_in.is_empty(),
+                "{key:?} has no clients to sign in yet"
+            );
+        }
+    }
+
+    /// One landing page: the holding notice carries no practice cards, so it
+    /// cannot advertise a sibling brand's site from a page of its own that has
+    /// not launched.
+    #[test]
+    fn the_coming_soon_page_publishes_nothing_under_the_notice() {
+        for key in [
+            BrandKey::Misericordia,
+            BrandKey::Abhaya,
+            BrandKey::DeleteYourDebt,
+            BrandKey::Summons,
+        ] {
+            let content =
+                coming_soon_content(key.resolve_branding(&views::brand::DEFAULT_BRANDING));
+            assert!(content.practices.is_empty(), "{key:?} lists no practices");
+            assert!(content.practices_heading.is_empty(), "{key:?}");
+            assert!(content.service.is_none(), "{key:?} publishes no offer yet");
+            assert!(content.estate.is_none(), "{key:?}");
+            assert!(content.company.is_none(), "{key:?}");
+            assert!(content.provenance.is_none(), "{key:?}");
+        }
+    }
+
+    /// The notice reuses the brand's reviewed tagline rather than a fresh
+    /// paraphrase. For these two the wording is a compliance position, not a
+    /// style choice: a trade name or a City affiliation must not appear on the
+    /// NYC host, and the debt practice must read as defence, not settlement.
+    #[test]
+    fn the_notice_keeps_the_wording_each_practice_was_reviewed_with() {
+        let summons = coming_soon_content(&views::brand::SUMMONS_BRANDING);
+        let summons_bare = summons.bare.expect("bare");
+        assert!(
+            summons_bare
+                .paragraph
+                .contains("not affiliated with the City of New York"),
+            "the NYC notice still disclaims a City affiliation: {}",
+            summons_bare.paragraph
+        );
+        assert_eq!(
+            summons.head_title, "Shook Law PLLC | Coming Soon",
+            "New York bars a trade name for private practice"
+        );
+
+        let debt = coming_soon_content(&views::brand::DELETE_YOUR_DEBT_BRANDING);
+        let debt_bare = debt.bare.expect("bare");
+        assert!(
+            debt_bare.paragraph.contains("Collection defense"),
+            "the debt notice reads as collection defence: {}",
+            debt_bare.paragraph
+        );
+        for settlement in ["settle", "reduce", "negotiate"] {
+            assert!(
+                !debt_bare.paragraph.to_lowercase().contains(settlement),
+                "{settlement:?} describes debt settlement, a different regulated activity: {}",
+                debt_bare.paragraph
+            );
+        }
     }
 }
 

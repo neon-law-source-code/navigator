@@ -485,10 +485,10 @@ mod tests {
         .unwrap()
         .id;
 
-        let attached = upsert(&db, &mirror(us, "xero-us", "IOLTA US — Trust")).await;
+        let attached = upsert(&db, &mirror(us, "IOLTA US — Trust", "IOLTA US — Trust")).await;
         assert!(
             matches!(attached, Err(IoltaAccountError::NotAState { .. })),
-            "got {attached:?}"
+            "expected NotAState error"
         );
     }
 

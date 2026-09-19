@@ -100,11 +100,7 @@ pub fn owner_home_body(view: &OwnerHomeView) -> Element {
     let role = view.role;
     let firm_name = view.firm_name.clone();
     let cards = view.firms.iter().map(|firm| {
-        let brands = if firm.brand_keys.is_empty() {
-            "No house brands attached.".to_string()
-        } else {
-            firm.brand_keys.join(", ")
-        };
+        let brands = crate::brand_website::attached_lines(&firm.brand_keys);
         let detail_href = format!("{}/{}", crate::firm_show::FIRM_SHOW_PATH, firm.id);
         rsx! {
             article {
@@ -176,7 +172,10 @@ mod tests {
         }]);
         assert!(html.contains("Shook Law PLLC"), "{html}");
         assert!(html.contains("Entity: Shook Law PLLC"), "{html}");
-        assert!(html.contains("neon, delete-your-data"), "{html}");
+        assert!(
+            html.contains("neon (www.neonlaw.com), delete-your-data (www.deleteyourdata.com)"),
+            "{html}"
+        );
         assert!(html.contains(r#"id="owner-home""#), "{html}");
     }
 

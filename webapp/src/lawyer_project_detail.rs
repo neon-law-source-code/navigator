@@ -643,6 +643,7 @@ pub fn LawyerProjectDetail() -> Element {
         view.lawyer_dris.is_empty() && view.role.is_lawyer_tier(),
     );
     let may_govern_client_side = view.role.is_lawyer_tier();
+    let brand_disp = crate::brand_website::BrandWebsite::from_key(&view.brand).attached_line();
 
     rsx! {
         document::Title { "{view.name} — Project" }
@@ -658,7 +659,7 @@ pub fn LawyerProjectDetail() -> Element {
                 p { class: "nav-muted",
                     "Code: " code { "{view.code}" }
                     " · Status: {view.status}"
-                    " · Brand: {view.brand}"
+                    " · Brand: {brand_disp}"
                     " · Entity: {entity_disp}"
                     if let Some(entity_id) = view.entity_id.as_ref() {
                         " · "

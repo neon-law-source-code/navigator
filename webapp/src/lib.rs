@@ -26,6 +26,7 @@ pub mod auth_pages;
 pub mod blog_index;
 pub mod blog_post;
 pub mod brand_style;
+pub mod brand_website;
 pub mod brands_edit;
 pub mod brands_home;
 pub mod brands_new;

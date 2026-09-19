@@ -300,11 +300,7 @@ pub fn firm_show_body(view: &FirmShowView) -> Element {
         };
     };
 
-    let brands = if fields.brand_keys.is_empty() {
-        "No house brands attached.".to_string()
-    } else {
-        fields.brand_keys.join(", ")
-    };
+    let brands = crate::brand_website::attached_lines(&fields.brand_keys);
 
     rsx! {
         document::Title { "{title}" }
@@ -431,6 +427,7 @@ mod tests {
             ..Default::default()
         }));
         assert!(html.contains("Nick Shook (nick@neonlaw.com)"), "{html}");
+        assert!(html.contains("neon (www.neonlaw.com)"), "{html}");
         assert!(html.contains("Pat Lawyer"), "{html}");
         assert!(html.contains(r#"id="firm-show""#), "{html}");
         assert!(

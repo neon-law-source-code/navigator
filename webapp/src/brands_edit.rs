@@ -312,6 +312,9 @@ pub fn brands_edit_body(view: &BrandsEditView) -> Element {
             logo: view.logo.clone(),
         }
         main { id: "brands-edit", class: "nav-theme",
+            p { class: "page-subtitle", id: "brand-website",
+                "{crate::brand_website::BrandWebsite::from_key(&view.key).host_line()}"
+            }
             match &view.fields {
                 Some(fields) => rsx! {
                     {presentation_form(view, fields)}
@@ -384,6 +387,7 @@ mod tests {
         assert!(html.contains(r#"name="primary_color""#), "{html}");
         assert!(html.contains(r##"value="#007c91""##), "{html}");
         assert!(!html.contains(r#"name="palette""#), "{html}");
+        assert!(html.contains("www.neonlaw.com"), "{html}");
     }
 
     #[test]

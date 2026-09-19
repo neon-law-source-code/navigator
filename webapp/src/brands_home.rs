@@ -31,9 +31,9 @@ pub struct BrandCard {
     /// The typeface catalog id, or the uploaded font's family name.
     pub font_label: String,
     pub has_logo: bool,
-    /// The live production host (`www.deleteyourdata.com`), when this key is
-    /// a launched compiled brand. Held-out and runtime-only rows have none.
-    pub public_host: Option<String>,
+    /// Production website line: a compiled `www` host, with `(not live)` when
+    /// that key is not yet launched, or `No public host` for a runtime row.
+    pub website: String,
     pub edit_href: String,
 }
 
@@ -102,9 +102,6 @@ pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
                 .map_err(|error| ServerFnError::new(error.to_string()))?
                 .map_or_else(|| "Unknown firm".to_string(), |firm| firm.name),
         };
-        let public_host = views::brand::BrandKey::parse(&brand.key)
-            .filter(|key| key.is_live())
-            .map(|key| key.canonical_host().to_string());
         cards.push(BrandCard {
             key: brand.key.clone(),
             name: brand.name.clone(),
@@ -112,7 +109,7 @@ pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
             primary_color: brand.primary_color.clone(),
             font_label: font_label(&brand),
             has_logo: brand.logo_object_key.is_some(),
-            public_host,
+            website: crate::brand_website::BrandWebsite::from_key(&brand.key).host_line(),
             edit_href: format!("{}/{}/edit", crate::app_chrome::APP_BRANDS_HREF, brand.key),
         });
     }
@@ -170,13 +167,7 @@ pub fn brands_home_body(view: &BrandsHomeView) -> Element {
                     span { class: "brands-home__swatch", style: "{style}" }
                 }
                 p { class: "brands-home__card-family", "{c.font_label}" }
-                p { class: "brands-home__card-host",
-                    if let Some(host) = &c.public_host {
-                        "{host}"
-                    } else {
-                        "No live public host"
-                    }
-                }
+                p { class: "brands-home__card-host", "{c.website}" }
                 p { class: "brands-home__card-logo",
                     if c.has_logo { "Logo uploaded" } else { "No logo uploaded" }
                 }
@@ -245,7 +236,7 @@ mod tests {
             primary_color: Some("#007c91".to_string()),
             font_label: "gorp-serif".to_string(),
             has_logo: false,
-            public_host: Some("www.neonlaw.com".to_string()),
+            website: "www.neonlaw.com".to_string(),
             edit_href: "/app/admin/brands/neon/edit".to_string(),
         }]);
         assert!(html.contains(r#"id="brand-card-neon""#), "{html}");
@@ -261,6 +252,24 @@ mod tests {
     }
 
     #[test]
+    fn a_held_out_compiled_brand_names_its_www_host_as_not_live() {
+        let html = render(vec![BrandCard {
+            key: "vesta".to_string(),
+            name: "Vesta Estate Planning".to_string(),
+            owner_label: "System-wide".to_string(),
+            primary_color: None,
+            font_label: "eb-garamond".to_string(),
+            has_logo: false,
+            website: crate::brand_website::BrandWebsite::from_key("vesta").host_line(),
+            edit_href: "/app/admin/brands/vesta/edit".to_string(),
+        }]);
+        assert!(
+            html.contains("www.vestaestateplanning.com (not live)"),
+            "{html}"
+        );
+    }
+
+    #[test]
     fn a_firm_scoped_brand_names_its_owning_firm() {
         let html = render(vec![BrandCard {
             key: "acme-brand".to_string(),
@@ -269,12 +278,12 @@ mod tests {
             primary_color: None,
             font_label: "Custom Sans".to_string(),
             has_logo: true,
-            public_host: None,
+            website: "No public host".to_string(),
             edit_href: "/app/admin/brands/acme-brand/edit".to_string(),
         }]);
         assert!(html.contains("Acme Practice"), "{html}");
         assert!(html.contains("Logo uploaded"), "{html}");
-        assert!(html.contains("No live public host"), "{html}");
+        assert!(html.contains("No public host"), "{html}");
     }
 
     #[test]

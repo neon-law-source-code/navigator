@@ -879,16 +879,26 @@ impl BrandKey {
 
     /// English catalog stems this key ships under `locales/en/<key>/`.
     ///
-    /// A brand lists only the catalog stems it actually serves; a missing file
-    /// is a loader-test failure, not a first-request panic. Lawyer Shook's `/`
-    /// is a hardcoded bare statement rather than a YAML page (there is no
-    /// marketing copy to edit), so `home` is absent from its list even though
-    /// `/services` still builds from a catalog file — the route is gated off by
+    /// This is the list of *files a key ships*, not the list of paths it
+    /// answers: [`Self::publishes_firm_path`] is the route gate. Neon still
+    /// ships every stem in [`crate::locales::KNOWN_PAGES`] — `fractional-gc`,
+    /// `litigation` and `services` remain authored, and remain the only
+    /// readers of their `{shared:…}` keys — even though the firm now
+    /// consolidates its offer on `/` and answers none of those three paths.
+    /// Dropping a stem here while the file still ships would strand its shared
+    /// copy, which `shared_copy_is_consumed_by_pages_or_the_exported_home_contract`
+    /// fails on.
+    ///
+    /// A house brand ships only the stems it actually serves; a missing file is
+    /// a loader-test failure, not a first-request panic. Lawyer Shook's `/` is a
+    /// hardcoded bare statement rather than a YAML page (there is no marketing
+    /// copy to edit), so `home` is absent from its list even though `/services`
+    /// still builds from a catalog file — the route is gated off by
     /// [`Self::publishes_firm_path`], not the file removed.
     #[must_use]
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
-            Self::Neon => &["home", "navigator"],
+            Self::Neon => crate::locales::KNOWN_PAGES,
             Self::LawyerShook => &["services"],
             // Every practice brand publishes the two stems it actually
             // serves; a missing file is a loader-test failure rather than a

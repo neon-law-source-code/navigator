@@ -1914,6 +1914,154 @@ fn gate_flags_a_contract_numbered_like_motion_practice() {
         .stdout(str::contains("expected `## I. Representation concluded`"));
 }
 
+/// `N125` — a subsection written as a flush-left bold-led paragraph renders
+/// as body prose, so it must be a lettered block quote.
+///
+/// Driven through the real binary on the shipped closing letter, the same
+/// way the `N123` tests above are: a rule that only ever saw a synthetic
+/// fixture has not been shown to reach a document the firm sends. The
+/// unmodified letter is clean; a `**Costs.** …` paragraph under its first
+/// numbered section is the drift, and the identical sentence quoted and
+/// lettered is the hand fix.
+#[test]
+fn gate_flags_a_flush_left_bold_led_subsection_and_accepts_the_quoted_form() {
+    let rel = "templates/notations/neon_law/offboarding.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    let section = "## I. Representation concluded\n";
+    assert!(
+        source.contains("kind: offboarding") && source.contains(section),
+        "the fixture must be the `offboarding` letter this test adds a subsection to",
+    );
+
+    let drifted = TempDir::new().unwrap();
+    write(
+        drifted.path(),
+        rel,
+        &source.replace(
+            section,
+            &format!("{section}\n**Costs.** Nothing further is owed on this matter.\n"),
+        ),
+    );
+    drifted_gate_output(drifted.path());
+
+    // The same sentence as a lettered block quote: the construct the message
+    // asks for, and the only one `pdf::markdown::to_typst` indents.
+    let quoted = TempDir::new().unwrap();
+    write(
+        quoted.path(),
+        rel,
+        &source.replace(
+            section,
+            &format!("{section}\n> **A. Costs.** Nothing further is owed on this matter.\n"),
+        ),
+    );
+    gate(quoted.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+}
+
+/// The failing half of the pair above, split out so the assertion chain
+/// stays readable.
+fn drifted_gate_output(root: &Path) {
+    gate(root)
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("N125"))
+        .stdout(str::contains("expected `> **A. Costs.** …`"));
+}
+
+/// The letter a quoted subsection carries stays `N123`'s to check. `N125`
+/// reports the construct; once the drafter quotes the paragraph, an
+/// out-of-sequence letter is the outline rule's report, not a second one
+/// from this rule.
+#[test]
+fn gate_leaves_the_subsection_letter_sequence_to_the_outline_rule() {
+    let rel = "templates/notations/neon_law/offboarding.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    let section = "## I. Representation concluded\n";
+
+    let skipped = TempDir::new().unwrap();
+    write(
+        skipped.path(),
+        rel,
+        &source.replace(
+            section,
+            &format!(
+                "{section}\n> **A. Costs.** Nothing further is owed.\n\n\
+                 > **C. Invoices.** The final invoice has been sent.\n"
+            ),
+        ),
+    );
+    let assertion = gate(skipped.path()).assert().failure().code(1);
+    let stdout = String::from_utf8(assertion.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("N123"), "{stdout}");
+    assert!(stdout.contains("is subsection C."), "{stdout}");
+    assert!(
+        !stdout.contains("N125"),
+        "the quoted form is the construct N125 asks for: {stdout}"
+    );
+}
+
+/// A bold-led paragraph in a document with no outline to hold it is prose.
+/// `N125` binds the kinds `N123` binds and no others, so a `kind: onboarding`
+/// letter — exempt from the outline since it renders on letterhead — keeps
+/// its bold lead-ins.
+#[test]
+fn gate_exempts_a_letter_kind_from_the_subsection_check() {
+    let rel = "templates/notations/neon_law/onboarding.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    let section = "## I. Scope\n";
+    assert!(
+        source.contains("kind: onboarding") && source.contains(section),
+        "the fixture must be the `onboarding` letter this test adds a paragraph to",
+    );
+
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        rel,
+        &source.replace(
+            section,
+            &format!("{section}\n**Costs.** Nothing further is owed on this matter.\n"),
+        ),
+    );
+    gate(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains("found 0 error(s)"));
+}
+
+/// Validation is a pure read: running the gate twice over one unchanged tree
+/// reports the same `N125` both times, and the first run leaves nothing
+/// behind that changes the second.
+#[test]
+fn gate_reports_the_same_subsection_drift_on_a_repeated_run() {
+    let rel = "templates/notations/neon_law/offboarding.md";
+    let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        rel,
+        &source.replace(
+            "## I. Representation concluded\n",
+            "## I. Representation concluded\n\n**Costs.** Nothing further is owed on this \
+             matter.\n",
+        ),
+    );
+
+    let first = gate(dir.path()).assert().failure().code(1);
+    let first = String::from_utf8(first.get_output().stdout.clone()).unwrap();
+    let second = gate(dir.path()).assert().failure().code(1);
+    let second = String::from_utf8(second.get_output().stdout.clone()).unwrap();
+    assert!(first.contains("N125"), "{first}");
+    assert_eq!(
+        first, second,
+        "a repeated gate run must report the same tree"
+    );
+}
+
 /// `kind: onboarding` is a letter at the render path. N123 must not bind it,
 /// or the scaffold cannot ship a stub that declares the kind it is.
 #[test]

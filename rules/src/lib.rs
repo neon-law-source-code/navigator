@@ -36,6 +36,7 @@ pub mod f120;
 pub mod f121;
 pub mod f122;
 pub mod f123;
+pub mod f125;
 pub mod frontmatter;
 pub mod kind;
 pub mod links;
@@ -133,6 +134,7 @@ pub use f120::F120BodyStateGrounding;
 pub use f121::F121GeneratePdfPrecedesSignature;
 pub use f122::F122QuestionnaireStateIsRead;
 pub use f123::F123HarvardOutlineRequired;
+pub use f125::F125OutlineSubsectionIsQuoted;
 pub use kind::Kind;
 pub use m001::M001HeadingIncrement;
 pub use m003::M003HeadingStyle;
@@ -341,6 +343,10 @@ pub fn description_for_code(code: &str) -> &'static str {
         }
         "N124" => {
             "A services catalog template reference must name a notation under `templates/notations/`"
+        }
+        "N125" => {
+            "A subsection under a numbered section must be a lettered block quote, not a \
+             flush-left bold-led paragraph"
         }
         "E001" => "Event must declare both a `starts_at` timestamp and a `timezone`",
         "E002" => "A file is either an event or a notation template, never both",

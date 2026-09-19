@@ -1,6 +1,8 @@
 Privacy is a fundamental human right. This policy explains what we collect, why we collect it, who we share it with, and
 the choices you have.
 
+Effective 2026-09-18
+
 ## Who We Are
 
 **Neon Law** (Shook Law PLLC) or its affiliate lawyers are legal providers that render services through this site.
@@ -21,14 +23,35 @@ we do not share it with third parties for their own marketing.
 
 ## Text Messaging (SMS)
 
-When you give us your mobile phone number — for example on our contact form or when you become a client — you consent to
-exchange text messages (SMS) with Neon Law about your legal matter. This includes messages you send us and messages we
-send you, such as appointment reminders, document requests, and case updates. **Message frequency varies, and message
-and data rates may apply.** Reply STOP at any time to opt out, or HELP for help.
+Neon Law (Shook Law PLLC) runs a text-messaging program so that people who contact us, and clients, can reach the firm
+and hear back from it by text. This section is the complete terms of that program.
+
+**How you join.** You agree to receive texts from us in one of three ways: by checking the text-message box on a contact
+form on one of our sites, which covers texts about that inquiry; by texting us first, which covers our replies to you;
+or by agreeing to texts when you become a client, which covers your matter. Giving us your number without one of those
+steps does not enroll you. **Agreeing to texts is never a condition of hiring the firm or of buying anything.**
+
+**What we send.** Replies to your inquiry, appointment reminders, document requests, case-status updates, and answers to
+your questions. Some messages may be sent by automated systems. **Message frequency varies.**
+
+**What it costs.** **Message and data rates may apply.** Your mobile carrier sets those rates, not us.
+
+**How to stop.** **Reply STOP to any message.** We send one text confirming you have opted out and nothing after it.
+Plain words like "stop", "cancel", "unsubscribe", "quit", or "end" work too, and so does emailing or calling us. We
+honor every opt-out within ten business days and usually the same day.
+
+**Help.** **Reply HELP to any message,** or contact us at [contact@neonlaw.com](mailto:contact@neonlaw.com) or the phone
+number in the Contact Us section below.
+
+**Delivery.** **Carriers are not liable for any delayed or undelivered messages.**
+
+**What we keep.** When you check the box, we record the time, the page you were on, the number you gave, and the exact
+wording you agreed to, and we keep that record for as long as we keep your inquiry. We keep it so we can show that you
+asked us to text you.
 
 **We do not share or sell your mobile phone number or your SMS consent to any third parties or affiliates, and we never
-share them for anyone's marketing or promotional purposes.** We use them only to communicate with you as described here.
-Our full text-messaging program terms are in our [Terms of Service](/terms).
+share them for anyone's marketing or promotional purposes.** Text-messaging opt-in data and consent are excluded from
+every category of sharing described in this policy. We use them only to communicate with you as described here.
 
 ## AI Assistance (Navigator)
 

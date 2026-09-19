@@ -627,6 +627,7 @@ pub fn lead_capture(branding: &views::brand::Branding) -> LeadCaptureCopy {
     LeadCaptureCopy {
         consent_sentence: copy("lead.consent"),
         phone_helper: copy("lead.phone_helper"),
+        sms_label: copy("lead.sms_label"),
     }
 }
 
@@ -810,7 +811,11 @@ mod tests {
             .collect();
         // Lead copy is consumed by the shared form component rather than a
         // page YAML document, so account for that typed catalog reader here.
-        referenced.extend(["lead.consent".to_string(), "lead.phone_helper".to_string()]);
+        referenced.extend([
+            "lead.consent".to_string(),
+            "lead.phone_helper".to_string(),
+            "lead.sms_label".to_string(),
+        ]);
         for key in shared_catalog().keys() {
             assert!(
                 referenced.contains(key),

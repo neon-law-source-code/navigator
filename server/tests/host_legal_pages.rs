@@ -207,11 +207,8 @@ async fn the_registration_links_to_the_uspto_record_on_the_page_and_in_the_terms
     );
 }
 
-/// The firm publishes an SMS program (clients text the firm about their
-/// matter), so its legal copy must carry the A2P 10DLC disclosures a carrier
-/// campaign review requires. The privacy policy names the two the reviewer
-/// flagged as missing — the message-frequency and the rates disclosures — and
-/// commits that the mobile number and its consent are not shared onward.
+/// The firm publishes an SMS program, so its Privacy Policy must carry the
+/// point-of-consent and carrier disclosures from the shared legal copy.
 #[tokio::test]
 async fn the_firm_privacy_policy_discloses_the_sms_program() {
     let app = app().await;
@@ -219,57 +216,42 @@ async fn the_firm_privacy_policy_discloses_the_sms_program() {
     assert_eq!(status, StatusCode::OK);
     let collapsed = html.split_whitespace().collect::<Vec<_>>().join(" ");
 
-    assert!(
-        collapsed.contains("Message frequency varies"),
-        "the privacy policy must disclose message frequency: {collapsed}"
-    );
-    assert!(
-        collapsed.contains("message and data rates may apply"),
-        "the privacy policy must carry the rates disclosure: {collapsed}"
-    );
-    // The mobile-information sharing commitment the carrier registry requires.
-    assert!(
-        collapsed.contains("do not share or sell your mobile phone number or your SMS consent"),
-        "the privacy policy must promise not to share the SMS opt-in: {collapsed}"
-    );
-}
-
-/// The full SMS program terms the campaign review listed: a named program, the
-/// use case, message frequency, the rates line, STOP and HELP instructions, a
-/// customer-care contact, a privacy-policy link, and the carrier-liability
-/// disclaimer. Each is a discrete registry requirement, so each is asserted.
-#[tokio::test]
-async fn the_firm_terms_carry_the_sms_program_disclosures() {
-    let app = app().await;
-    let (status, html) = get(&app, "/terms").await;
-    assert_eq!(status, StatusCode::OK);
-    let collapsed = html.split_whitespace().collect::<Vec<_>>().join(" ");
-
     for required in [
-        // The messaging use case and the frequency.
-        "text-messaging (SMS) program",
+        "Text Messaging (SMS)",
+        "one of three ways",
+        "never a condition of hiring the firm",
+        "Some messages may be sent by automated systems",
         "Message frequency varies",
-        // Costs.
         "Message and data rates may apply",
-        // Opt-out and help.
-        "Reply STOP",
-        "Reply HELP",
-        // Customer-care contact. Read from the branding constant the footer
-        // publishes rather than written out here, so the disclosure and the
-        // number a reader would dial cannot drift apart.
-        views::brand::firm_phone(),
-        // Carrier-liability disclaimer, verbatim as the registry expects it.
+        "Reply STOP to any message",
+        "Reply HELP to any message",
+        "within ten business days and usually the same day",
         "Carriers are not liable for any delayed or undelivered messages",
+        "for as long as we keep your inquiry",
+        "do not share or sell your mobile phone number or your SMS consent",
+        "Effective 2026-09-18",
+        // The customer-care voice line the HELP disclosure points at, read
+        // from the branding constant rather than written out here, so the
+        // number a reader would dial cannot drift from the one the firm
+        // publishes elsewhere.
+        views::brand::firm_phone(),
     ] {
         assert!(
             collapsed.contains(required),
-            "the Terms must carry the SMS disclosure `{required}`: {collapsed}"
+            "the Privacy Policy must carry `{required}`: {collapsed}"
         );
     }
-    // The program terms link back to the privacy policy.
+}
+
+/// The Terms page points to the single source of SMS wording.
+#[tokio::test]
+async fn the_terms_point_to_the_sms_policy_section() {
+    let app = app().await;
+    let (status, html) = get(&app, "/terms").await;
+    assert_eq!(status, StatusCode::OK);
     assert!(
-        html.contains(r#"href="/privacy""#),
-        "the SMS terms must link the privacy policy: {html}"
+        html.contains(r#"href="/privacy#text-messaging-sms""#),
+        "the Terms must point to the anchored SMS section: {html}"
     );
 }
 

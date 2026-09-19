@@ -9,11 +9,13 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// One run of prose. `emphasis` renders it as `<strong>`; everything else is
-/// plain text, so no page has to accept raw HTML to keep the typography.
+/// plain text, so no page has to accept raw HTML to keep the typography. A run
+/// may also carry an injected same-origin link.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct CopyRun {
     pub text: String,
     pub emphasis: bool,
+    pub href: Option<String>,
 }
 
 /// Map the owned `(text, emphasis)` pairs a content module hands a `#[server]`
@@ -21,7 +23,11 @@ pub struct CopyRun {
 #[must_use]
 pub fn wire_runs(runs: Vec<(String, bool)>) -> Vec<CopyRun> {
     runs.into_iter()
-        .map(|(text, emphasis)| CopyRun { text, emphasis })
+        .map(|(text, emphasis)| CopyRun {
+            text,
+            emphasis,
+            href: None,
+        })
         .collect()
 }
 
@@ -32,7 +38,9 @@ pub fn RunParagraph(class: String, runs: Vec<CopyRun>) -> Element {
     rsx! {
         p { class: "{class}",
             for run in runs.iter() {
-                if run.emphasis {
+                if let Some(href) = run.href.as_ref() {
+                    a { href: "{href}", "{run.text}" }
+                } else if run.emphasis {
                     strong { "{run.text}" }
                 } else {
                     "{run.text}"

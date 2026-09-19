@@ -1922,7 +1922,6 @@ async fn app_admin_leads_is_admin_tier_and_masks_the_phone() {
             source_path: "/contact".to_string(),
             consent_version: "By sending this, you agree.".to_string(),
             consented_at: chrono::Utc::now(),
-            sms_consented_at: None,
         },
     )
     .await
@@ -1991,7 +1990,6 @@ async fn app_admin_lead_status_logs_omit_the_mailbox() {
             source_path: "/contact".to_string(),
             consent_version: "By sending this, you agree.".to_string(),
             consented_at: chrono::Utc::now(),
-            sms_consented_at: None,
         },
     )
     .await

@@ -38,7 +38,7 @@ struct LeadForm {
     sms_consent: Option<String>,
     #[serde(default)]
     website: String,
-    #[serde(default)]
+    #[serde(default, alias = "_csrf")]
     csrf_token: String,
     #[serde(default)]
     source_path: String,
@@ -115,6 +115,7 @@ async fn submit(
 
     let email = form.email.trim();
     let phone = form.phone.trim();
+    let sms_requested = form.sms_consent.as_deref() == Some("on");
     if !valid_email(email)
         || !valid_phone(phone)
         || form.consent_version.trim().is_empty()
@@ -125,18 +126,27 @@ async fn submit(
     }
 
     let phone = (!phone.is_empty()).then(|| phone.to_string());
-    let sms_consented_at =
-        (form.sms_consent.as_deref() == Some("on") && phone.is_some()).then(Utc::now);
+    let sms_opt_in = sms_requested && phone.is_some();
+    let event_time = Utc::now();
     let new_lead = store::leads::NewLead {
         email: email.to_string(),
-        phone,
+        phone: phone.clone(),
         brand_key: brand.as_str().to_string(),
         source_path: source_path.clone(),
         consent_version: form.consent_version,
-        consented_at: Utc::now(),
-        sms_consented_at,
+        consented_at: event_time,
     };
-    match store::leads::record(&state.surreal, &new_lead).await {
+    let consent_event = store::leads::NewConsentEvent {
+        consented_at: event_time,
+        phone,
+        source_path: source_path.clone(),
+        sms_consent_version: webapp::lead_capture::server_sms_consent_version(
+            views::brand::FIRM_BRAND.site_name,
+        ),
+        sms_policy_version: webapp::lead_capture::SMS_POLICY_VERSION.to_string(),
+        sms_opt_in,
+    };
+    match store::leads::record_consent_event(&state.surreal, &new_lead, &consent_event).await {
         Ok(lead) => {
             let lead_id = lead.id.to_string();
             audit(brand, &source_path, &lead_id, "accepted");
@@ -144,7 +154,7 @@ async fn submit(
                 lead_id: &lead_id,
                 brand: brand.as_str(),
                 source_path: &source_path,
-                sms_consent: sms_consented_at.is_some(),
+                sms_consent: sms_opt_in,
             });
         }
         Err(error) => {
@@ -204,7 +214,6 @@ mod tests {
     use tower_cookies::CookieManagerLayer;
 
     const CONSENT: &str = "By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.";
-
     fn encoded(fields: &[(&str, &str)]) -> String {
         let mut serializer = url::form_urlencoded::Serializer::new(String::new());
         serializer.extend_pairs(fields.iter().copied());
@@ -315,8 +324,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
-        let leads = store::leads::list(&db).await.unwrap();
-        assert!(leads[0].sms_consented_at.is_some());
+        let lead = store::leads::list(&db).await.unwrap().remove(0);
+        let events = store::leads::consent_history(&db, lead.id).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(events[0].sms_opt_in);
+        assert_eq!(
+            events[0].sms_consent_version,
+            webapp::lead_capture::server_sms_consent_version("Neon Law")
+        );
+        assert_eq!(
+            events[0].sms_policy_version,
+            webapp::lead_capture::SMS_POLICY_VERSION
+        );
 
         let db = store::test_support::mem_surreal().await;
         let (app, sessions) = test_app(db.clone(), RateLimit::disabled()).await;
@@ -328,8 +347,41 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
-        let leads = store::leads::list(&db).await.unwrap();
-        assert!(leads[0].sms_consented_at.is_none());
+        let lead = store::leads::list(&db).await.unwrap().remove(0);
+        let events = store::leads::consent_history(&db, lead.id).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(!events[0].sms_opt_in);
+        assert_eq!(events[0].phone.as_deref(), Some("+ ()"));
+    }
+
+    #[tokio::test]
+    async fn derives_sms_evidence_server_side_and_ignores_tampered_fields() {
+        let db = store::test_support::mem_surreal().await;
+        let (app, sessions) = test_app(db.clone(), RateLimit::disabled()).await;
+        let token = "tampered-sms-csrf";
+        let body = format!(
+            "{}&sms_consent_version=attacker-wording&sms_policy_version=attacker-policy",
+            body(token, "sms@example.com", "+1 555 010 0100", true)
+        );
+        let response = app
+            .oneshot(request(body, Some(csrf_cookie(&sessions, token))))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let lead = store::leads::list(&db).await.unwrap().remove(0);
+        let event = store::leads::consent_history(&db, lead.id)
+            .await
+            .unwrap()
+            .remove(0);
+        let rendered = webapp::lead_capture::LeadCaptureCopy {
+            consent_sentence: CONSENT.to_string(),
+            phone_helper: "Optional. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Our Privacy Policy and texting terms explain how we text and what we keep.".to_string(),
+            sms_label: "Yes, Neon Law may send me text messages about this inquiry at this number, including automated texts. Texting is not a condition of hiring the firm.".to_string(),
+        };
+        assert_eq!(event.sms_consent_version, rendered.sms_consent_version());
+        assert_eq!(event.sms_policy_version, "2026-09-18");
+        assert_ne!(event.sms_consent_version, "attacker-wording");
+        assert_ne!(event.sms_policy_version, "attacker-policy");
     }
 
     #[tokio::test]

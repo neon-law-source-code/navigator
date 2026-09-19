@@ -32,9 +32,9 @@ use serde::{Deserialize, Serialize};
 use crate::components::{
     wire_runs, Accordion, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb, Card,
     CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
-    CodeBlock, Column, ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney,
+    CodeBlock, Column, ConfirmDelete, CopyRun, DataTable, ExternalLink, Field, FooterAttorney,
     FooterBarLicense, FooterBrandLink, FooterMembership, FooterNavLink, FooterOffice, FormCard,
-    GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName, LawyerPortalBreadcrumb,
+    GitHubStars, Hero, HeroAlign, HeroLevel, Honeypot, Icon, IconName, LawyerPortalBreadcrumb,
     LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter, NavigatorFooterLink,
     NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs, PersonChoice, PersonPicker,
     PricingCard, PricingSection, Progress, PublicShell, QuestionStage, RowActions, RunParagraph,
@@ -1504,7 +1504,21 @@ fn FormShowcase() -> Element {
     };
     let fields = vec![
         Field::text("Full name", "name", "").required(),
-        Field::email("Email", "email", "").help("We'll only use this to reply."),
+        Field::email("Email", "email", "")
+            .autocomplete("email")
+            .maxlength(254)
+            .help_runs(vec![
+                CopyRun {
+                    text: "We'll only use this to reply. ".to_string(),
+                    emphasis: false,
+                    href: None,
+                },
+                CopyRun {
+                    text: "Privacy Policy".to_string(),
+                    emphasis: false,
+                    href: Some("/privacy".to_string()),
+                },
+            ]),
         Field::select(
             "Practice area",
             "area",
@@ -1591,6 +1605,17 @@ fn FormShowcase() -> Element {
                         required: true,
                     }
                 }),
+            }
+            h3 { "Embedded form" }
+            p { "A form may keep its accessible name while the surrounding CTA owns the visible heading." }
+            FormCard {
+                title: "Hidden heading form".to_string(),
+                action: "/design".to_string(),
+                method: "get".to_string(),
+                submit_label: "Send".to_string(),
+                heading: crate::components::Heading::Hidden,
+                fields: vec![Field::text("Example", "example", "")],
+                extra_fields: Some(rsx! { Honeypot { name: "website".to_string() } }),
             }
         }
     }
@@ -1872,6 +1897,7 @@ mod tests {
             "DataTable",
             "LegalBlueprintDisclaimer",
             "FormCard",
+            "Honeypot",
             "GitHubStars",
             "Icon",
             "ExternalLink",

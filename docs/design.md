@@ -86,6 +86,15 @@ ships green and renders unstyled. Every migrated surface adds its chrome rules i
 5. Render it in `webapp/src/design.rs`; `gallery_source_mentions_every_exported_component` fails the build otherwise.
 6. `cargo nextest run -p webapp --lib && cargo nextest run -p portal --lib`.
 
+## Forms
+
+Page modules name fields with `webapp::components::{Field, FormCard}`; the component library renders the controls and
+the page carries `nav-btn` on any standalone button. Hidden inputs are wiring and remain the page's responsibility. The
+executable source contract is `webapp::components::control_contract` in `webapp/src/components.rs`: it scans page
+modules for raw `input`, `select`, `textarea`, and `button` RSX openers, allows existing debt only while it is
+explicitly pinned, and requires that debt to ratchet down. Add a primitive to the library and show it in `/design`
+instead of adding another page-local control.
+
 ## Accessibility
 
 The public sites are a legal-services front door:

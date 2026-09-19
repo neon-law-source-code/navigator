@@ -272,7 +272,6 @@ DEFINE FIELD OVERWRITE brand_key ON lead TYPE string;
 DEFINE FIELD OVERWRITE source_path ON lead TYPE string;
 DEFINE FIELD OVERWRITE consent_version ON lead TYPE string;
 DEFINE FIELD OVERWRITE consented_at ON lead TYPE datetime;
-DEFINE FIELD OVERWRITE sms_consented_at ON lead TYPE option<datetime>;
 DEFINE FIELD OVERWRITE status ON lead TYPE string ASSERT $value IN
     ['new', 'contacted', 'converted', 'declined', 'unsubscribed'] DEFAULT 'new';
 DEFINE FIELD OVERWRITE unsubscribed_at ON lead TYPE option<datetime>;
@@ -281,6 +280,21 @@ DEFINE FIELD OVERWRITE submissions ON lead TYPE int DEFAULT 1 ASSERT $value >= 1
 DEFINE FIELD OVERWRITE inserted_at ON lead TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON lead TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE lead_email_lower ON lead FIELDS email_lower;
+
+-- `lead_consent` is the evidence ledger for every public SMS-consent choice.
+-- The tuple is append-only: each field is READONLY so a later contact-data
+-- update cannot rewrite the time, page, phone, wording, policy, or opt-in
+-- state that belonged to an earlier submission. `store::leads` exposes only
+-- append and chronological reads for this table.
+DEFINE TABLE IF NOT EXISTS lead_consent SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE lead_id ON lead_consent TYPE record<lead> READONLY;
+DEFINE FIELD OVERWRITE consented_at ON lead_consent TYPE datetime READONLY;
+DEFINE FIELD OVERWRITE phone ON lead_consent TYPE option<string> READONLY;
+DEFINE FIELD OVERWRITE source_path ON lead_consent TYPE string READONLY;
+DEFINE FIELD OVERWRITE sms_consent_version ON lead_consent TYPE string READONLY;
+DEFINE FIELD OVERWRITE sms_policy_version ON lead_consent TYPE string READONLY;
+DEFINE FIELD OVERWRITE sms_opt_in ON lead_consent TYPE bool READONLY;
+DEFINE INDEX OVERWRITE lead_consent_lead ON lead_consent FIELDS lead_id;
 
 -- `persons`: the directory of human contacts. Record ids are UUIDs, so
 -- references preserve the ids used throughout the application.

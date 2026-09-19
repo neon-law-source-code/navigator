@@ -2150,6 +2150,11 @@ a.nav-pagination__link:hover {
   font-weight: 400;
 }
 
+.nav-checkbox {
+  accent-color: var(--nav-color-primary);
+  flex: 0 0 auto;
+}
+
 .nav-field__help {
   margin-top: 0.25rem;
   font-size: 0.875rem;

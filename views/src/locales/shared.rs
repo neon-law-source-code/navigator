@@ -51,6 +51,7 @@ pub const REQUIRED_KEYS: &[&str] = &[
     "home.need_prompt",
     "lead.consent",
     "lead.phone_helper",
+    "lead.sms_label",
     "litigation.cta",
     "litigation.eyebrow",
     "litigation.lede",

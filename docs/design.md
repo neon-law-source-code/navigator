@@ -22,6 +22,18 @@ set -a; source .devx/env; set +a
 cargo run -p neon   # then open /design after signing in
 ```
 
+For automatic rebuilds and browser refresh, run `cargo run -p cli -- dev serve` after the worktree environment is up. It
+loads `.devx/env`, requires a development environment and a loopback URL, and starts the real `neon` server. Rust and
+catalog edits rebuild the application; static-asset edits refresh the browser directly. A failed build leaves the
+previous server running until the next edit. Ctrl-C stops the watcher and its server. The dependency tier remains owned
+by `dev worktree-env`.
+
+The browser refresh middleware exists only in debug builds, is explicitly enabled by this command, and binds the preview
+to loopback. It serves its script from the same origin without relaxing CSP. This is rebuild-and-refresh, not
+preservation of application state across Rust changes. It uses the same separation as [Tower
+LiveReload](https://docs.rs/tower-livereload/latest/tower_livereload/): a source watcher rebuilds the application and a
+browser client reloads it. Navigator keeps that orchestration inside its Rust CLI.
+
 ## The leaf contract
 
 A navigable component takes an `href` and renders a plain `<a>`. Nothing in the module imports a router, which is what

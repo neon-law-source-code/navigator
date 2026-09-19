@@ -537,7 +537,7 @@ async fn the_public_shell_passes_a_full_document_audit() {
         let Some(c) = session_in_scheme(scheme, &base_url()).await else {
             return;
         };
-        for path in ["/", "/services", "/navigator"] {
+        for path in ["/", "/navigator"] {
             assert_route_passes_axe(&c, path, DOCUMENT_AXE_SCOPE, scheme).await;
             assert_public_shell(&c).await;
         }
@@ -816,7 +816,7 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
 
     assert_public_shell(&c).await;
     let cta = c
-        .find(Locator::Css("a.home-statement__cta"))
+        .find(Locator::Css(".company-hero a.nav-btn--primary"))
         .await
         .expect("the home page has its contact call to action");
     let href = cta

@@ -570,9 +570,21 @@ pub async fn run(brand: Site) -> anyhow::Result<()> {
         host_dioxus,
     )?;
 
+    #[cfg(debug_assertions)]
+    let reload = crate::dev_reload::enabled();
+    #[cfg(not(debug_assertions))]
+    let reload = false;
+    #[cfg(debug_assertions)]
+    let router = if reload {
+        router.layer(axum::middleware::from_fn(crate::dev_reload::refresh))
+    } else {
+        router
+    };
+
     let mut listeners = Vec::new();
     for port in bind_ports(rt.config.port, extra_ports) {
-        let addr = SocketAddr::from(([0, 0, 0, 0], port));
+        let ip = if reload { [127, 0, 0, 1] } else { [0, 0, 0, 0] };
+        let addr = SocketAddr::from((ip, port));
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .with_context(|| format!("binding {addr}"))?;

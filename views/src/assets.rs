@@ -72,6 +72,9 @@ pub const WIDTHS: [u32; 3] = [400, 800, 1200];
 /// `srcset` support, and the resource the preload scanner fetches).
 pub const FALLBACK_WIDTH: u32 = 1200;
 
+/// Stable object key for the replaceable firm home presentation.
+pub const HOME_PRESENTATION_KEY: &str = "img/neon-home/neon-home-presentation.mp4";
+
 /// Base URL every photo path resolves against. Read once: production
 /// sets it via env, dev/test/OSS fall back to the crate-bundled
 /// `/public` mount. Only responsive photos route through this seam;

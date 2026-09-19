@@ -1,13 +1,4 @@
-//! The firm home page (`/`) — the statement of the offering the firm leads
-//! with, then the four practices as equal doors.
-//!
-//! The page publishes no service catalog and no price. It leads with one
-//! statement (impact litigation, an open docket, a team), then a grid of
-//! practice boxes so litigation, company counsel, technology, and one-time
-//! filings are all reachable from `/`. Every fee is quoted through `/contact`.
-//!
-//! The marketing copy is static ([`HomeContent`]), while approved testimonials
-//! are read per request through the store's consent/publication seam.
+//! Brand home pages and the company counsel offering.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -19,6 +10,8 @@ use crate::components::{
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 pub use crate::components::PracticeMark;
+mod company;
+pub use company::CompanyContent;
 
 /// The self-contained home stylesheet, hoisted alongside `theme.css`.
 pub const HOME_STYLESHEET_HREF: &str = "/public/css/home.css";
@@ -136,6 +129,9 @@ pub struct HomeContent {
     /// that keeps no such record says nothing about one.
     #[serde(default)]
     pub provenance: Option<ProvenanceSection>,
+    /// Company counsel presentation; absent for other house brands.
+    #[serde(default)]
+    pub company: Option<CompanyContent>,
     /// When set, the page renders nothing but this statement over the shared
     /// footer — no header, CTA, or practice boxes. A house brand that is a
     /// bare holding notice rather than an active marketing site (Lawyer
@@ -305,6 +301,9 @@ pub fn HomePage(
         document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
         document::Stylesheet { href: HOME_STYLESHEET_HREF }
         PublicShell { header, footer,
+            if let Some(company) = content.company.as_ref() {
+                company::CompanyHome { content: content.clone(), company: company.clone() }
+            } else {
             // The page opens on the question. No photograph above it and no
             // glow behind it: the question is the page, so it is the first
             // thing under the header and set large enough to read as such.
@@ -333,6 +332,7 @@ pub fn HomePage(
                     heading: content.practices_heading.clone(),
                     practices: content.practices.clone(),
                 }
+            }
             }
         }
     }
@@ -619,6 +619,7 @@ mod tests {
                             ],
                         }),
                         provenance: None,
+                        company: None,
                         bare: None,
                     },
                 }
@@ -1130,6 +1131,7 @@ mod tests {
                                 href: None,
                             }]],
                         }),
+                        company: None,
                         provenance: Some(ProvenanceSection {
                             overline: "How the record works".to_string(),
                             heading: "Verified by a lawyer,".to_string(),

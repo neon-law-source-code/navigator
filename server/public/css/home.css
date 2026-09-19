@@ -1,11 +1,4 @@
-/* Home page (`/`) layout: the question, the mission in prose, and the four
-   practice boxes. The brand layer (`brand-firm.css`) owns the palette, the
-   serif, the card, and the motion; this file only places them.
-
-   The page publishes no services catalog and no price. It opens on one
-   question — "What is your legal need?" — with nothing above it, then shows
-   the whole firm as four equal doors so plans, individual services, and
-   disputes are not a leftover row. */
+/* Home layouts. Brand-specific sections are scoped to their page variant. */
 
 /* ---- The question --------------------------------------------------- */
 
@@ -951,3 +944,133 @@
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
 }
+
+/* Company counsel: the offering leads, and the work moves through a quiet
+   exhibition. All colours follow the brand tokens in both colour schemes. */
+.public-shell:has(.company-home) { overflow-x: clip; }
+.public-shell:has(.company-home) .public-shell__main { width: min(100%, 80rem); padding: 0 2.5rem; }
+.company-home { --company-line: var(--nav-color-border); --company-accent: var(--nav-color-primary); }
+.company-home h1, .company-home h2, .company-home h3, .company-price {
+  font-family: var(--nav-font-family); font-weight: 700; letter-spacing: -.045em;
+}
+.company-home h2 { font-size: clamp(2.25rem, 4.2vw, 3.6rem); line-height: 1.08; margin: 0 0 1.35rem; text-wrap: balance; }
+.company-home h3 { font-size: 1.65rem; line-height: 1.2; margin: 0 0 1.25rem; letter-spacing: -.025em; }
+.company-home p { line-height: 1.65; }
+.company-hero { padding: clamp(4rem, 8vw, 7rem) 0 3.5rem; text-align: center; }
+.company-hero h1 { font-size: clamp(4.5rem, 11.6vw, 10rem); line-height: .95; margin: 0 0 1.5rem; }
+.company-hero__lead { font-size: clamp(1.15rem, 2vw, 1.5rem); margin: 0 0 2rem; }
+.company-hero__terms { font: .75rem/1.5 ui-monospace, monospace; margin: 1.5rem 0 0; color: var(--nav-color-text-muted); }
+.company-actions { display: flex; align-items: center; justify-content: center; gap: 2rem; flex-wrap: wrap; }
+.company-home .nav-btn { border-radius: 3px; padding: .9rem 1.35rem; font-weight: 600; }
+.nav-theme .company-home a.company-text-link { color: var(--nav-color-text); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .35em; font-weight: 600; }
+.nav-theme .company-home a.company-text-link:hover { color: var(--company-accent); }
+.deal-exhibition { position: relative; margin: 0 0 6rem; }
+.deal-exhibition__scene { position: relative; height: 410px; overflow: hidden; isolation: isolate; background: color-mix(in oklab, var(--company-accent) 9%, var(--nav-color-surface)); border: 1px solid var(--company-line); }
+.deal-exhibition__grid { position: absolute; inset: -80%; opacity: .4; background-image: linear-gradient(var(--firm-brand-edge) 1px, transparent 1px), linear-gradient(90deg, var(--firm-brand-edge) 1px, transparent 1px); background-size: 54px 54px; transform: perspective(800px) rotateX(58deg) rotateZ(-14deg); }
+.deal-exhibition__belt { position: absolute; width: 150%; left: -25%; height: 76px; transform: rotate(-7deg); background: repeating-linear-gradient(90deg, var(--firm-brand-edge) 0 1px, transparent 1px 19px); border-block: 1px solid var(--company-accent); }
+.deal-exhibition__belt--back { top: 155px; opacity: .3; }
+.deal-exhibition__belt--front { top: 287px; height: 55px; background-color: color-mix(in oklab, var(--company-accent) 7%, var(--nav-color-surface)); box-shadow: 0 17px 0 var(--firm-brand-tint), 0 18px 0 var(--firm-brand-edge); }
+.deal-exhibition__track { display: flex; gap: 86px; width: max-content; position: absolute; left: 0; top: 175px; transform-origin: 0 0; transform: rotate(-7deg); animation: deal-conveyor 21s linear infinite; }
+.deal-package { position: relative; width: 190px; height: 185px; flex: 0 0 190px; transform: rotate(7deg); filter: drop-shadow(15px 22px 10px color-mix(in oklab, var(--nav-color-text) 8%, transparent)); }
+.deal-package__face { position: absolute; inset: 0; padding: 20px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid var(--company-accent); background: var(--nav-color-surface); box-sizing: border-box; }
+.deal-package:nth-child(3n + 1) .deal-package__face { background: var(--company-accent); color: var(--nav-color-on-brand); }
+.deal-package__top { position: absolute; top: -25px; left: 0; width: 100%; height: 25px; transform: skewX(-48deg); transform-origin: bottom; background: color-mix(in oklab, var(--company-accent) 25%, var(--nav-color-surface)); border: 1px solid var(--company-accent); box-sizing: border-box; }
+.deal-package__side { position: absolute; top: 0; right: -28px; width: 28px; height: 100%; transform: skewY(-42deg); transform-origin: left; background: color-mix(in oklab, var(--company-accent) 18%, var(--nav-color-surface)); border: 1px solid var(--company-accent); box-sizing: border-box; }
+.deal-package__number { font: .6rem ui-monospace, monospace; letter-spacing: .15em; opacity: .8; }
+.deal-package strong { font: 700 1.6rem/1.1 var(--nav-font-family); margin-top: 22px; letter-spacing: -.045em; }
+.deal-package__lines { width: 48px; height: 15px; margin-top: 15px; background: repeating-linear-gradient(0deg, currentColor 0 1px, transparent 1px 5px); opacity: .4; }
+.deal-package__seal { position: absolute; bottom: 16px; right: 16px; border: 1px solid currentColor; border-radius: 50%; padding: 7px 5px; font: 700 .7rem var(--nav-font-family); }
+.deal-exhibition__scanner { position: absolute; left: 57%; top: 35px; width: 115px; height: 300px; border: 2px solid var(--company-accent); border-radius: 48% 48% 0 0; box-shadow: 10px -5px 0 var(--firm-brand-edge); pointer-events: none; }
+.deal-exhibition__scanner span:first-child { position: absolute; left: 50%; top: 8%; bottom: 0; width: 1px; background: var(--company-accent); box-shadow: 0 0 25px 9px var(--firm-brand-glow); animation: deal-scan 3s ease-in-out infinite; }
+.deal-exhibition__scanner span:last-child { position: absolute; width: 7px; height: 7px; top: 8px; left: 50%; border-radius: 50%; background: var(--company-accent); }
+.deal-exhibition__pause { position: absolute; top: 17px; right: 123px; z-index: 3; accent-color: var(--company-accent); width: 14px; height: 14px; }
+.deal-exhibition__control { position: absolute; right: 18px; top: 11px; padding-block: 6px; z-index: 3; font: 600 .8rem/20px var(--nav-font-family); cursor: pointer; }
+.company-home:has(#pause-deal-flow:checked) * { animation-play-state: paused !important; }
+.company-pricing { scroll-margin-top: 3rem; margin-bottom: 7rem; }
+.company-pricing__grid { display: grid; grid-template-columns: .9fr 1.3fr; border-top: 1px solid var(--company-line); border-bottom: 1px solid var(--company-line); }
+.company-membership, .company-review { padding: 2.5rem 0; }
+.company-membership { padding-right: 3.5rem; }
+.company-review { padding-left: 3.5rem; border-left: 1px solid var(--company-line); }
+.company-home .company-price { font-size: clamp(4rem, 6vw, 6rem); line-height: 1; margin: 1.5rem 0; }
+.company-price span { font: 400 1rem var(--nav-font-family); letter-spacing: 0; margin-left: .7rem; }
+.company-membership ul { padding: 0; margin: 1.5rem 0; list-style: none; }
+.company-membership li { padding: .7rem 0; border-bottom: 1px solid var(--company-line); }
+.company-membership li::before { content: '+'; color: var(--company-accent); margin-right: .75rem; }
+.company-home .company-note { font-size: .8rem; line-height: 1.6; color: var(--nav-color-text-muted); }
+.company-membership .company-text-link { display: inline-block; margin-top: 1rem; }
+.company-review table { border-collapse: collapse; width: 100%; margin: 2rem 0 1rem; }
+.company-review th, .company-review td { text-align: right; padding: 1.1rem .25rem; border-bottom: 1px solid var(--company-line); font-variant-numeric: tabular-nums; }
+.company-review tr > :first-child { text-align: left; }
+.company-review thead th { font-size: .73rem; font-weight: 400; color: var(--nav-color-text-muted); }
+.company-review tbody td { font-size: 1.35rem; font-weight: 600; }
+.company-review tbody th { font-size: .9rem; font-weight: 400; }
+.company-table-caption { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
+.company-home .company-drafting { font-size: .9rem; margin: 1.5rem 0 0; }
+.company-litigation { display: grid; grid-template-columns: 1.2fr 1fr; gap: 6rem; padding: 4rem; background: var(--nav-color-surface-subtle); border: 1px solid var(--company-line); }
+.company-litigation > div:last-child { border-left: 1px solid var(--company-line); padding-left: 3rem; }
+.company-litigation .company-price { margin-top: 0; }
+.company-litigation .company-text-link { display: inline-block; margin-top: 1rem; }
+.company-navigator { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 6rem; padding: 6rem 0; }
+.company-navigator > div > p { max-width: 32rem; }
+.company-source { margin-top: 2rem; }
+.company-network { position: relative; height: 340px; }
+.company-network__orbit { position: absolute; width: 290px; height: 290px; left: calc(50% - 145px); top: 25px; border: 1px solid var(--firm-brand-edge); border-radius: 50%; }
+.company-network__orbit::after { content: ''; position: absolute; width: 9px; height: 9px; background: var(--company-accent); border-radius: 50%; left: calc(50% - 4px); top: -4px; }
+.company-network__orbit { animation: deal-orbit 18s linear infinite; }
+.company-network__orbit--inner { width: 190px; height: 190px; left: calc(50% - 95px); top: 75px; animation-direction: reverse; animation-duration: 12s; }
+.company-network__center { position: absolute; width: 96px; height: 96px; top: 122px; left: calc(50% - 48px); display: grid; place-items: center; background: var(--company-accent); color: var(--nav-color-on-brand); border-radius: 50%; font: 700 3rem var(--nav-font-family); }
+.company-network__node { position: absolute; padding: .5rem .9rem; background: var(--nav-color-surface); border: 1px solid var(--firm-brand-edge); font: .7rem ui-monospace, monospace; }
+.company-network__node--0 { left: 8%; top: 48px; }
+.company-network__node--1 { right: 6%; top: 93px; }
+.company-network__node--2 { left: 3%; bottom: 85px; }
+.company-network__node--3 { right: 13%; bottom: 26px; }
+.company-people { border-block: 1px solid var(--company-line); padding: 3rem 0; display: grid; grid-template-columns: 1.4fr 1fr; gap: 4rem; }
+.company-people h2 { font-size: 2rem; }
+.company-people p { max-width: 33rem; color: var(--nav-color-text-muted); }
+.company-people__links { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1.6rem; }
+.company-closing { padding: 6rem 0; display: flex; justify-content: space-between; align-items: center; gap: 2rem; }
+.company-closing h2 { margin: 0; }
+@keyframes deal-conveyor { from { transform: rotate(-7deg) translateX(0); } to { transform: rotate(-7deg) translateX(-828px); } }
+@keyframes deal-scan { 0%, 100% { opacity: .25; } 50% { opacity: .85; } }
+@keyframes deal-orbit { to { rotate: 360deg; } }
+@media (max-width: 760px) {
+  .public-shell:has(.company-home) .public-shell__main { padding-inline: 1.25rem; }
+  .company-hero { padding-top: 4rem; }
+  .company-hero h1 { font-size: clamp(4.2rem, 14vw, 6.5rem); }
+  .deal-exhibition { margin-bottom: 3rem; }
+  .deal-exhibition__scene { height: 330px; }
+  .deal-exhibition__track { top: 145px; }
+  .deal-exhibition__belt--front { top: 260px; }
+  .deal-exhibition__scanner { top: 30px; height: 260px; }
+  .company-pricing__grid, .company-litigation, .company-navigator, .company-people { grid-template-columns: 1fr; }
+  .company-pricing { margin-bottom: 3rem; }
+  .company-membership, .company-review { padding: 2rem 0; border-left: 0; }
+  .company-review { border-top: 1px solid var(--company-line); }
+  .company-litigation { padding: 2rem; gap: 2rem; }
+  .company-litigation > div:last-child { padding: 2rem 0 0; border-left: 0; border-top: 1px solid var(--company-line); }
+  .company-navigator { gap: 2rem; padding: 3rem 0; }
+  .company-network { order: 2; }
+  .company-people { gap: 1rem; }
+  .company-closing { flex-direction: column; align-items: flex-start; padding-block: 4rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .company-home *, .company-home *::before, .company-home *::after { animation: none !important; transition: none !important; }
+}
+
+.company-packages { margin: 0 0 6rem; }
+.company-packages__grid { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--company-line); }
+.company-packages__grid article { padding: 2rem; }
+.company-packages__grid article:first-child { padding-left: 0; }
+.company-packages__grid article + article { border-left: 1px solid var(--company-line); }
+.company-home .company-package-price { font-size: 3rem; line-height: 1; margin: 1.5rem 0; }
+.company-packages__grid article > p:last-child { font-size: .9rem; color: var(--nav-color-text-muted); }
+.company-network__center { background: transparent; border-radius: 0; object-fit: contain; }
+@media (max-width: 760px) {
+  .company-packages { margin-bottom: 3rem; }
+  .company-packages__grid { grid-template-columns: 1fr; }
+  .company-packages__grid article { padding: 2rem 0; }
+  .company-packages__grid article + article { border-left: 0; border-top: 1px solid var(--company-line); }
+}
+
+.company-closing h2 span { display: block; }
+.company-video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 540px; margin-bottom: 4rem; box-sizing: border-box; background: #000; border: 1px solid var(--company-line); object-fit: contain; }

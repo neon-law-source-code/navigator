@@ -97,6 +97,9 @@ pub struct HomeCopy {
     /// a brand that keeps no such record publishes nothing about one.
     #[serde(default)]
     pub provenance: Option<ProvenanceSectionCopy>,
+    /// Company counsel pricing and the illustrative notation flow.
+    #[serde(default)]
+    pub company: Option<CompanyCopy>,
 }
 
 /// The home page's provenance section: the flow a request follows, the
@@ -789,4 +792,47 @@ bands:
             );
         }
     }
+}
+
+/// The company-counsel home page, authored entirely in the home catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CompanyCopy {
+    pub booking_href: String,
+    pub pricing_link: String,
+    pub hero_note: String,
+    pub flow_caption: String,
+    pub flow_steps: Vec<String>,
+    pub packages: Vec<String>,
+    pub pause_label: String,
+    pub pricing_heading: String,
+    pub video_label: String,
+    pub membership_label: String,
+    pub membership_price: String,
+    pub membership_unit: String,
+    pub membership_body: String,
+    pub membership_features: Vec<String>,
+    pub review_heading: String,
+    pub review_body: String,
+    pub review_columns: [String; 3],
+    pub review_rows: Vec<[String; 3]>,
+    pub review_note: String,
+    pub drafting_heading: String,
+    pub drafting_packages: Vec<[String; 3]>,
+    pub closing_heading: String,
+    pub closing_body: String,
+    pub litigation_heading: String,
+    pub litigation_link: String,
+    pub litigation_price: String,
+    pub litigation_unit: String,
+    pub litigation_body: String,
+    pub litigation_note: String,
+    pub people_heading: String,
+    pub people_body: String,
+    pub immigration_label: String,
+    pub estate_label: String,
+    pub navigator_heading: String,
+    pub navigator_body: String,
+    pub navigator_link: String,
+    pub source_label: String,
+    pub source_note: String,
 }

@@ -121,34 +121,13 @@ async fn the_firm_llms_txt_advertises_only_documents_the_firm_host_serves() {
     }
 }
 
-/// The `/services` entry claims no dollar figure the page does not carry.
-///
-/// The firm indexes its published fees only when `/services` renders them.
-/// This keeps the crawler summary aligned with the public schedule instead of
-/// promising amounts the page does not carry.
 #[tokio::test]
-async fn the_services_entry_does_not_overclaim_published_prices() {
-    let app = app().await;
-    let (status, services_body) = get(&app, "/services").await;
-    assert_eq!(status, StatusCode::OK, "{services_body}");
-    let services_publishes_a_price = services_body.contains("fm-chips");
-
-    let llms_txt = document(&app).await;
-    let services_line = llms_txt
-        .lines()
-        .find(|line| line.contains("](") && line.contains("/services)"))
-        .expect("the /services entry is in the index");
-
-    if !services_publishes_a_price {
-        assert!(
-            !services_line.contains('$'),
-            "the index promises a dollar figure the page does not carry: {services_line}"
-        );
-        assert!(
-            !services_line.to_lowercase().contains("in dollars"),
-            "the index promises a dollar figure the page does not carry: {services_line}"
-        );
+async fn retired_service_pages_are_absent_from_the_index() {
+    let body = document(&app().await).await;
+    for path in ["/services)", "/business)", "/disputes)"] {
+        assert!(!body.contains(path));
     }
+    assert!(body.contains("$50 a day"));
 }
 
 /// The index advertises the firm's pages.
@@ -158,9 +137,6 @@ async fn the_index_advertises_the_firms_pages() {
 
     for firm_page in [
         "/",
-        "/services",
-        "/disputes",
-        "/business",
         "/navigator",
         "/notations",
         "/contact",

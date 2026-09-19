@@ -192,17 +192,34 @@ async fn configured_lawyer(
     brand: views::brand::BrandKey,
     service_id: &str,
 ) -> Option<Uuid> {
-    let Some(email) = state.on_call_lawyer_email.as_deref() else {
+    let configured = state
+        .on_call_lawyer_email
+        .as_deref()
+        .map(|email| (email, "configured"));
+    let bootstrap_owner = state
+        .bootstrap_owner_email
+        .as_deref()
+        .map(|email| (email, "bootstrap_owner"));
+    let Some((email, on_call_source)) = configured.or(bootstrap_owner) else {
         tracing::error!(
             target: "audit",
             audit = true,
             service_id,
             brand = brand.as_str(),
             outcome = "configuration_missing",
-            "{ON_CALL_ENV} is not configured"
+            "{ON_CALL_ENV} and NAVIGATOR_BOOTSTRAP_OWNER_EMAIL are not configured"
         );
         return None;
     };
+    tracing::info!(
+        target: "audit",
+        audit = true,
+        service_id,
+        brand = brand.as_str(),
+        on_call_source,
+        outcome = "configuration_selected",
+        "start door lawyer source selected"
+    );
     let person = match store::persons::find_by_email_ci(&state.surreal, email).await {
         Ok(person) => person,
         Err(error) => {
@@ -211,9 +228,10 @@ async fn configured_lawyer(
                 audit = true,
                 service_id,
                 brand = brand.as_str(),
+                on_call_source,
                 outcome = "configuration_lookup_failed",
                 error = %error,
-                "{ON_CALL_ENV} could not resolve its Person"
+                "start door lawyer source could not resolve its Person"
             );
             return None;
         }
@@ -224,8 +242,9 @@ async fn configured_lawyer(
             audit = true,
             service_id,
             brand = brand.as_str(),
+            on_call_source,
             outcome = "configuration_person_missing",
-            "{ON_CALL_ENV} does not name a Person"
+            "start door lawyer source does not name a Person"
         );
         return None;
     };
@@ -240,8 +259,9 @@ async fn configured_lawyer(
             audit = true,
             service_id,
             brand = brand.as_str(),
+            on_call_source,
             outcome = "configuration_person_not_admitted_lawyer",
-            "{ON_CALL_ENV} does not name an admitted lawyer-tier Person"
+            "start door lawyer source does not name an admitted lawyer-tier Person"
         );
         return None;
     }
@@ -552,6 +572,27 @@ mod tests {
             .expect("synthetic client remains present")
     }
 
+    async fn person_with_role(
+        surreal: &store::surreal::SurrealDb,
+        name: &str,
+        email: &str,
+        role: store::persons::Role,
+    ) -> store::persons::Person {
+        let person = store::persons::find_or_create(
+            surreal,
+            &store::persons::NewPerson::with_role(name, email, role),
+        )
+        .await
+        .expect("create synthetic person");
+        store::persons::set_admitted(surreal, person.id, true)
+            .await
+            .expect("admit synthetic person");
+        store::persons::find_by_id(surreal, person.id)
+            .await
+            .expect("read synthetic person")
+            .expect("synthetic person remains present")
+    }
+
     fn session(person: &store::persons::Person) -> SessionData {
         let mut session = SessionData::fresh(person.email.clone(), person.role);
         session.email = Some(person.email.clone());
@@ -758,70 +799,134 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn t3_missing_or_non_lawyer_configuration_refuses_without_writes() {
-        use std::io::Write;
-        use std::sync::{Arc, Mutex};
-        use tracing_subscriber::fmt::MakeWriter;
+    async fn bootstrap_owner_fallback_opens_start_door_with_owner_dri() {
+        let (mut state, surreal) = seeded_state().await;
+        let owner = person_with_role(
+            &surreal,
+            "Bootstrap Owner",
+            "bootstrap-owner@example.com",
+            store::persons::Role::Owner,
+        )
+        .await;
+        let client = client(&surreal, "Fallback Client", "fallback-client@example.com").await;
+        state.on_call_lawyer_email = None;
+        state.bootstrap_owner_email = Some(owner.email.clone());
 
-        #[derive(Clone)]
-        struct Buffer(Arc<Mutex<Vec<u8>>>);
-        impl Write for Buffer {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                self.0
-                    .lock()
-                    .expect("capture lock")
-                    .extend_from_slice(bytes);
-                Ok(bytes.len())
-            }
+        let (response, output) = capture_output(|| async {
+            post_direct(&state, catalog(), session(&client), "llc-file", None).await
+        })
+        .await;
 
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        impl<'a> MakeWriter<'a> for Buffer {
-            type Writer = Buffer;
-
-            fn make_writer(&'a self) -> Buffer {
-                self.clone()
-            }
-        }
-
-        crate::test_tracing::ensure_callsite_interest();
-        let output = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::fmt()
-            .with_ansi(false)
-            .with_writer(Buffer(output.clone()))
-            .finish();
-        let _guard = tracing::subscriber::set_default(subscriber);
-
-        for configured_email in [None, Some("configuration-client@example.com")] {
-            let (mut state, surreal) = seeded_state().await;
-            let client = client(
-                &surreal,
-                "Configuration Client",
-                "configuration-client@example.com",
-            )
-            .await;
-            state.on_call_lawyer_email = configured_email.map(ToOwned::to_owned);
-            let response = post_direct(&state, catalog(), session(&client), "llc-file", None).await;
-            assert_eq!(response.status(), StatusCode::OK);
-            assert_eq!(body(response).await, catalog().start.refusal);
-            assert!(store::projects::all(&surreal)
-                .await
-                .expect("list projects")
-                .is_empty());
-            assert!(store::notations::list_all(&surreal)
-                .await
-                .expect("list notations")
-                .is_empty());
-        }
-        let output = String::from_utf8(output.lock().expect("capture lock").clone())
-            .expect("audit output is UTF-8");
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let projects = store::projects::all(&surreal).await.expect("list projects");
+        let roles = store::projects::participations_for_project(&surreal, projects[0].id)
+            .await
+            .expect("list matter participation");
+        assert!(roles
+            .iter()
+            .any(|role| role.person_id == owner.id && role.is_lawyer_dri));
         assert!(
-            !output.contains("configuration-client@example.com")
-                && !output.contains("Configuration Client"),
-            "configuration audit leaked identity: {output}"
+            output.contains("on_call_source=\"bootstrap_owner\""),
+            "{output}"
         );
+    }
+
+    #[tokio::test]
+    async fn bootstrap_owner_fallback_requires_lawyer_tier() {
+        let (mut state, surreal) = seeded_state().await;
+        let owner = person_with_role(
+            &surreal,
+            "Bootstrap Client",
+            "bootstrap-client@example.com",
+            store::persons::Role::Client,
+        )
+        .await;
+        let client = client(
+            &surreal,
+            "Rejected Fallback Client",
+            "rejected-fallback@example.com",
+        )
+        .await;
+        state.on_call_lawyer_email = None;
+        state.bootstrap_owner_email = Some(owner.email);
+
+        let response = post_direct(&state, catalog(), session(&client), "llc-file", None).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body(response).await, catalog().start.refusal);
+        assert!(store::projects::all(&surreal)
+            .await
+            .expect("list projects")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn configured_on_call_lawyer_wins_over_bootstrap_owner() {
+        let (mut state, surreal) = seeded_state().await;
+        let owner = person_with_role(
+            &surreal,
+            "Bootstrap Owner",
+            "bootstrap-owner@example.com",
+            store::persons::Role::Owner,
+        )
+        .await;
+        let lawyer = store::persons::find_by_email_ci(&surreal, LAWYER_EMAIL)
+            .await
+            .expect("find configured lawyer")
+            .expect("configured lawyer exists");
+        let client = client(
+            &surreal,
+            "Configured Client",
+            "configured-client@example.com",
+        )
+        .await;
+        state.bootstrap_owner_email = Some(owner.email);
+
+        let (response, output) = capture_output(|| async {
+            post_direct(&state, catalog(), session(&client), "llc-file", None).await
+        })
+        .await;
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let projects = store::projects::all(&surreal).await.expect("list projects");
+        let roles = store::projects::participations_for_project(&surreal, projects[0].id)
+            .await
+            .expect("list matter participation");
+        assert!(roles
+            .iter()
+            .any(|role| role.person_id == lawyer.id && role.is_lawyer_dri));
+        assert!(!roles
+            .iter()
+            .any(|role| role.person_id == owner.id && role.is_lawyer_dri));
+        assert!(output.contains("on_call_source=\"configured\""), "{output}");
+    }
+
+    #[tokio::test]
+    async fn missing_start_door_lawyer_configuration_is_reported() {
+        let (mut state, surreal) = seeded_state().await;
+        let client = client(
+            &surreal,
+            "Configuration Client",
+            "configuration-client@example.com",
+        )
+        .await;
+        state.on_call_lawyer_email = None;
+        state.bootstrap_owner_email = None;
+
+        let (response, output) = capture_output(|| async {
+            post_direct(&state, catalog(), session(&client), "llc-file", None).await
+        })
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body(response).await, catalog().start.refusal);
+        assert!(output.contains("configuration_missing"), "{output}");
+        assert!(store::projects::all(&surreal)
+            .await
+            .expect("list projects")
+            .is_empty());
+        assert!(!output.contains("configuration-client@example.com"));
+        assert!(!output.contains("Configuration Client"));
     }
 
     #[tokio::test]

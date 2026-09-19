@@ -24,7 +24,6 @@ pub struct Testimonial {
 pub struct PublishedTestimonial {
     pub id: Uuid,
     pub project_id: Uuid,
-    pub project_name: String,
     pub person_id: Uuid,
     pub person_name: String,
     pub person_title: Option<String>,
@@ -347,23 +346,10 @@ pub async fn published_for_home(
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     let rows: Vec<TestimonialRow> = response.take(0)?;
-    let project_ids: Vec<Uuid> = rows
-        .iter()
-        .filter_map(|row| record_uuid(&row.project_id))
-        .collect();
     let person_ids: Vec<Uuid> = rows
         .iter()
         .filter_map(|row| record_uuid(&row.person_id))
         .collect();
-    let projects: std::collections::HashMap<Uuid, projects::Project> = {
-        let mut result = std::collections::HashMap::new();
-        for id in project_ids {
-            if let Some(project) = projects::find_by_id(surreal, id).await? {
-                result.insert(id, project);
-            }
-        }
-        result
-    };
     let people: std::collections::HashMap<Uuid, crate::persons::Person> =
         persons::find_by_ids(surreal, &person_ids)
             .await?
@@ -376,12 +362,10 @@ pub async fn published_for_home(
             let id = record_uuid(&row.id)?;
             let project_id = record_uuid(&row.project_id)?;
             let person_id = record_uuid(&row.person_id)?;
-            let project = projects.get(&project_id)?;
             let person = people.get(&person_id)?;
             Some(PublishedTestimonial {
                 id,
                 project_id,
-                project_name: project.name.clone(),
                 person_id,
                 person_name: person.name.clone(),
                 person_title: person.title.clone(),
@@ -463,7 +447,10 @@ mod tests {
         let rows = published_for_home(&surreal, 10).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].quote, "Published quote.");
-        assert_eq!(rows[0].project_name, "Published matter");
+        assert!(
+            !format!("{:?}", rows[0]).contains("Published matter"),
+            "public testimonial data must not carry its matter title"
+        );
         assert_eq!(rows[0].person_title.as_deref(), Some("Founder"));
     }
 

@@ -184,7 +184,7 @@ pub async fn home_page_view() -> Result<HomePageView, ServerFnError> {
             attribution: testimonial.person_name,
             detail: testimonial.attribution_label.or(testimonial.person_title),
             profile_image_url: testimonial.profile_image_url,
-            product_label: Some(testimonial.project_name),
+            product_label: None,
         })
         .collect();
     Ok(HomePageView {

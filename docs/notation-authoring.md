@@ -308,7 +308,7 @@ added once, not twice. To add a step kind with a worker side effect:
 Keep the `ctx.run` boundary in the worker, never inside `dispatch_step`: a registry that journaled its own side effect
 would reintroduce the duplicate-effect bug on replay.
 
-## Documents and PDFs
+## Documents, PDFs, and Word
 
 **What we have.** A dedicated `pdf` crate renders a Typst document to PDF bytes in pure Rust (no shell-out), in the firm
 typeface Noto Serif, with a redaction helper. Preview, offline rendering, form-fill, and final document generation share
@@ -320,13 +320,14 @@ threads the evaluated Typst source to the **worker** as a `DocumentPayload` on t
 durability. `web` reads the PDF back from storage to hand to the signature provider. This is one-directional: template →
 fresh PDF.
 
-**Rendering a template to PDF offline — `navigator notations render`.** For an ad-hoc PDF outside the durable workflow
-(a demand letter to send by hand, a draft for review), `navigator notations render <template.md> --out <file.pdf>` takes
-any validation-passing notation template and compiles it in pure Rust. Because templates are authored in **Markdown**
-but the `pdf` crate compiles **Typst**, the body is converted by `pdf::markdown::to_typst` (headings, emphasis, lists,
-block quotes, inline code, links) before rendering. The command validates the file against the same rule set as
-`navigator project gate`, refuses to render a template with any violation, and fills placeholders through the same
-notation evaluator used by preview and final PDF generation.
+**Rendering a template offline — `navigator notations render`.** For an ad-hoc artifact outside the durable workflow (a
+demand letter to send by hand, a draft for review), `navigator notations render <template.md> --out <file.pdf>` or
+`--out <file.docx>` takes any validation-passing notation template and compiles it in pure Rust. The output extension
+selects the format; any other extension is refused. PDF rendering converts the Markdown body to Typst. Word rendering
+writes editable OOXML with native heading styles, US Letter geometry, and page fields; a notation whose frame is
+`letter` receives the same firm identity as its PDF plus separate first-page and running headers. Both formats validate
+the file against the same rule set as `navigator project gate`, fill placeholders through the same notation evaluator,
+and produce byte-identical output when the source revision and answers are unchanged.
 
 ### Harvard outline
 

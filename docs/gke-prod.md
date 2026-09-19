@@ -43,7 +43,7 @@ Deployment decisions are summarized here and in [`cloud-operations.md`](cloud-op
 | --- | --- | --- |
 | Compute | GKE Autopilot | (cluster, no manifest) |
 | Edge LB | Global External ALB (legacy GKE Ingress) | `examples/deploy/k8s/gke/ingress/ingress.yaml` |
-| TLS | Google-managed certificate | `examples/deploy/k8s/gke/ingress/managed-certificate.yaml` |
+| TLS | Google-managed certificates, one per hostname family | `examples/deploy/k8s/gke/ingress/` |
 | Store | Hosted SurrealDB | (out-of-cluster; PSC endpoint) |
 | Object storage | GCS | (out-of-cluster; `-assets`, `-documents`, `-exports`, `-logs` buckets per deployment) |
 | OIDC | Identity Platform | (out-of-cluster; issuer URL) |
@@ -77,7 +77,14 @@ and with `ops ship` removed as a competing manifest owner.
 A `ManagedCertificate` is authorized **by the load balancer**, not by DNS: Google issues it only after the hostname
 already resolves to the ingress address. That ordering is forced and it costs a TLS gap — while the certificate
 validates, the host answers `308` on port 80 and returns an empty TLS handshake on 443, so it is neither the old site
-nor the new one. Plan the cutover as a short outage rather than a swap:
+nor the new one. A Google-managed certificate also reissues as a whole when `spec.domains` changes, so each hostname
+family (`NAVIGATOR_PUBLIC_HOST`, each additional live brand, and the workflows host) has its own `ManagedCertificate` on
+the shared Ingress. Adding a name to one family does not retire another family's certificate. The apex of a brand zone
+is not one of those families: it stays a DNS `URL` record that 301s to `www`, and it must not appear on a
+`ManagedCertificate` while that record stands — the name never resolves to the load balancer, so the certificate never
+leaves `Provisioning`.
+
+Plan the cutover as a short outage rather than a swap:
 
 1. Point the `A` records at `NAVIGATOR_GATEWAY_IP` (`navigator ops dns setup --domain <zone> --gateway-ip <ip>` — with
    no `--host`, it covers `www` and `workflows`). Dry-run first; the command never deletes a record.

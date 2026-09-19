@@ -11,12 +11,12 @@
 //!
 //! A describable present costs replayable history, which is why
 //! [`SCHEMA_VERSION`] exists. Applying the file converges a database's
-//! *definitions*, but it cannot perform a data change (a backfill, a
-//! column split), and `DEFINE TABLE IF NOT EXISTS` deliberately leaves
-//! an existing table's rows alone. The version record is what lets a
-//! process notice it is looking at a database some other version of
-//! the code prepared, rather than discovering it one confusing query
-//! at a time. Backfills stay explicit one-shot jobs (#1093).
+//! *definitions*. `apply` may also run narrowly-scoped, idempotent,
+//! guarded backfills when convergence must materialize a write-time default
+//! on rows that predate the field. `DEFINE TABLE IF NOT EXISTS` deliberately
+//! leaves an existing table's rows alone. The version record is what lets a
+//! process notice it is looking at a database some other version of the
+//! code prepared, rather than discovering it one confusing query at a time.
 //!
 //! Bump [`SCHEMA_VERSION`] in the same change that edits the `.surql`
 //! file.
@@ -44,6 +44,11 @@ const VERSION_RECORD: &str = "schema_version:current";
 /// deployed binary carries its own schema and cannot be pointed at a
 /// stale copy on a volume.
 const DEFINITIONS: &str = include_str!("navigator.surql");
+const PERSON_DEFAULTS_BACKFILL: &str = "\
+    UPDATE person SET \
+        email_confirmed = IF email_confirmed IS NONE THEN false ELSE email_confirmed END, \
+        is_admitted = IF is_admitted IS NONE THEN true ELSE is_admitted END \
+    WHERE (email_confirmed IS NONE OR is_admitted IS NONE);";
 const PROJECT_BRAND_BACKFILL: &str = "\
     UPDATE project SET brand = 'neon' WHERE brand IS NONE;\
     DEFINE FIELD OVERWRITE brand ON project TYPE string;";
@@ -277,6 +282,19 @@ async fn backfill_project_brand(db: &SurrealDb) -> Result<(), SchemaError> {
     Ok(())
 }
 
+/// Materialize the historical defaults for the two required person flags.
+///
+/// Surreal validates every field on a row update, so both fields must be
+/// filled in one guarded statement when an old row is missing both. Existing
+/// values are preserved, and a second apply is a no-op.
+async fn backfill_person_defaults(db: &SurrealDb) -> Result<(), SchemaError> {
+    db.query(PERSON_DEFAULTS_BACKFILL)
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    Ok(())
+}
+
 /// Apply the schema, guard historical Project brands, and record [`SCHEMA_VERSION`].
 ///
 /// Idempotent: running it against an already-prepared database
@@ -296,6 +314,7 @@ pub async fn apply(db: &SurrealDb) -> Result<(), SchemaError> {
     guard_no_reserved_project_codes(db).await?;
 
     backfill_project_brand(db).await?;
+    backfill_person_defaults(db).await?;
 
     db.query(format!(
         "UPSERT {VERSION_RECORD} SET version = $version, applied_at = time::now()"
@@ -508,14 +527,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn applying_leaves_email_confirmation_absent_on_a_historical_person() {
+    async fn applying_backfills_historical_person_defaults_for_typed_sign_in_reads() {
         let db = unmigrated().await;
+        let historical_id = uuid::Uuid::now_v7();
         db.query(
-            "CREATE person:historical SET name = 'Historical Person', \
-             email = 'historical@example.com', role = 'client', is_admitted = true, \
+            "CREATE $id SET name = 'Historical Person', \
+             email = 'historical@example.com', oidc_subject = 'historical-subject', \
+             role = 'client', \
              inserted_at = type::datetime('2020-01-01T00:00:00Z'), \
              updated_at = type::datetime('2020-01-01T00:00:00Z')",
         )
+        .bind(("id", crate::surreal::record_id("person", historical_id)))
         .await
         .unwrap()
         .check()
@@ -523,13 +545,29 @@ mod tests {
 
         apply(&db).await.unwrap();
 
-        let confirmed: Option<bool> = db
-            .query("SELECT VALUE email_confirmed FROM person:historical")
+        let confirmed: Vec<bool> = db
+            .query("SELECT VALUE email_confirmed FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", historical_id)))
             .await
             .unwrap()
             .take(0)
             .unwrap();
-        assert_eq!(confirmed, None);
+        assert_eq!(confirmed, vec![false]);
+
+        let person = crate::persons::find_by_id(&db, historical_id)
+            .await
+            .unwrap()
+            .expect("the historical row remains readable through PersonRow");
+        assert!(!person.email_confirmed);
+
+        let resolved = crate::persons::find_by_oidc_subject(&db, "historical-subject")
+            .await
+            .unwrap()
+            .expect("the sign-in subject lookup resolves the historical row");
+        assert_eq!(resolved.id, historical_id);
+        assert!(crate::persons::is_admitted(&db, historical_id)
+            .await
+            .unwrap());
     }
 
     /// A row coded `closed` written before that code was reserved (simulated

@@ -941,13 +941,14 @@ impl BrandKey {
         }
     }
 
-    /// The naked domain this key answers for, which 301s to its own `www`.
+    /// The naked domain this key owns, which the DNS provider 301s to its own
+    /// `www` host.
     ///
-    /// Serving the apex ourselves is what removes the dependency on a DNS
-    /// provider's redirector — and with it that provider's certificate, since
-    /// the apex then rides the same managed certificate as `www`. One
-    /// certificate system instead of two, and the redirect becomes behaviour
-    /// this repository tests rather than a record in someone's control panel.
+    /// The apex deliberately stays off GKE Ingress and its
+    /// `ManagedCertificate`: its DNS `URL` record does not resolve to the load
+    /// balancer, so listing it there would leave that certificate in
+    /// `Provisioning`. [`Self::canonical_host`] supplies the redirect target
+    /// that DNS setup derives for this key.
     ///
     /// It is deliberately *not* in [`Self::hosts`]. A host listed there is
     /// one this key **serves**, and an apex that served the page would
@@ -985,12 +986,12 @@ impl BrandKey {
     /// separates the two, and it has two consequences that must not drift
     /// apart.
     ///
-    /// **It gates the certificate.** `cli::devx::ship` derives the managed
-    /// certificate and Ingress entries from this registry. A Google
-    /// `ManagedCertificate` does not provision per-domain: listing a
-    /// hostname whose DNS does not point at the load balancer holds the
-    /// whole certificate in `Provisioning`, so one unreachable brand would
-    /// take the firm's own certificate down with it.
+    /// **It gates the certificate.** `cli::devx::ship` derives a
+    /// `ManagedCertificate` and an Ingress host per live family from this
+    /// registry. An unpointed hostname on its own certificate sits in
+    /// `Provisioning` without taking another family's certificate down;
+    /// it still must not appear on Ingress or in the footer until DNS
+    /// points at the load balancer.
     ///
     /// **It gates the footer.** "Our Family" is a set of links. Listing a
     /// brand whose host serves nothing advertises a practice a reader cannot

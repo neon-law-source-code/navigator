@@ -19,11 +19,10 @@ PLLC.
 
 ## Conflicts of Interest
 
-**One firm, one conflicts check.** We are a small firm and we run conflicts across the whole firm: if taking your matter
-would conflict with any current or former client of any of our attorneys, we will tell you and decline the matter rather
-than screen it internally. To do this, our attorneys share incoming-matter information with one another. Contacting us
-does not create an attorney–client relationship, and we keep what you send us confidential whether or not we end up
-representing you.
+If taking your matter would conflict with any current or former client of any of our attorneys, we will tell you and
+decline the matter rather than screen it internally. To do this, our attorneys share incoming-matter information with
+one another. Contacting us does not create an attorney–client relationship, and we keep what you send us confidential
+whether or not we end up representing you.
 
 ## Use of Services
 

@@ -2381,6 +2381,15 @@ fn mount_brand_assets(
     router
 }
 
+/// Probe requests do not render a footer or an application navbar, so they do
+/// not need the store-backed request context. Keeping them outside this
+/// middleware also means a kubelet abandoning a short probe request cannot
+/// drop a store query future while the remote engine is still delivering it.
+#[must_use]
+fn is_probe_path(path: &str) -> bool {
+    matches!(path, "/health" | "/readyz" | "/app/health" | "/app/readyz")
+}
+
 /// Resolve store-backed request extensions for the Firm that wears this
 /// request's brand: the [`webapp::firm_footer::FirmFooterModel`] every
 /// footer (`/app`'s and the public chrome's) draws from, and the
@@ -2395,6 +2404,10 @@ async fn inject_resolved_firm_context(
     mut request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    if is_probe_path(request.uri().path()) {
+        return next.run(request).await;
+    }
+
     let current = request
         .extensions()
         .get::<views::brand::BrandKey>()
@@ -2416,6 +2429,108 @@ async fn inject_resolved_firm_context(
     request.extensions_mut().insert(model);
     request.extensions_mut().insert(mark);
     next.run(request).await
+}
+
+#[cfg(test)]
+mod probe_context_tests {
+    use super::{inject_resolved_firm_context, is_probe_path};
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use axum::middleware;
+    use axum::routing::get;
+    use axum::Router;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use tower::ServiceExt;
+    use tracing_subscriber::fmt::MakeWriter;
+
+    #[derive(Clone)]
+    struct LogBuffer(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for LogBuffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("probe log buffer is not poisoned")
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for LogBuffer {
+        type Writer = LogBuffer;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    async fn probe(request: Request) -> StatusCode {
+        if request
+            .extensions()
+            .get::<webapp::firm_footer::FirmFooterModel>()
+            .is_some()
+        {
+            StatusCode::INTERNAL_SERVER_ERROR
+        } else {
+            StatusCode::OK
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn probes_bypass_store_context_before_a_short_client_timeout() {
+        super::test_tracing::ensure_callsite_interest();
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_target(true)
+            .with_writer(LogBuffer(bytes.clone()))
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let db = store::surreal::test_support::mem().await;
+        let app = Router::new()
+            .route("/health", get(probe))
+            .route("/readyz", get(probe))
+            .route("/app/health", get(probe))
+            .route("/app/readyz", get(probe))
+            .layer(middleware::from_fn_with_state(
+                db,
+                inject_resolved_firm_context,
+            ));
+
+        for _ in 0..8 {
+            for path in ["/health", "/readyz", "/app/health", "/app/readyz"] {
+                let response = tokio::time::timeout(
+                    Duration::from_millis(100),
+                    app.clone().oneshot(
+                        axum::http::Request::builder()
+                            .uri(path)
+                            .body(Body::empty())
+                            .expect("build probe request"),
+                    ),
+                )
+                .await
+                .expect("probe must answer before its client timeout")
+                .expect("probe router must answer");
+                assert_eq!(response.status(), StatusCode::OK, "probe path {path}");
+                assert!(is_probe_path(path));
+            }
+        }
+
+        let output = String::from_utf8(bytes.lock().expect("probe log buffer").clone())
+            .expect("probe logs are UTF-8");
+        assert!(
+            !output.contains("SendError"),
+            "probe requests emitted a query-result SendError: {output}"
+        );
+    }
 }
 
 /// Scope the request's resolved brand for the life of the request. `state`

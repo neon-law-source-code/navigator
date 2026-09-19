@@ -11,6 +11,25 @@ fn expected_gallery_placeholders() -> usize {
     GALLERY.len() * WIDTHS.len() * 3
 }
 
+/// Both faces of every `cli::assets::BUCKET_FONT_FAMILIES` entry. Spelled out
+/// because `cli` ships no library target an integration test could read the
+/// table from; the in-crate `published_asset_refs_names_both_faces_of_every_font_family`
+/// holds the table itself to this same number.
+const EXPECTED_FONT_PLACEHOLDERS: usize = 16;
+
+/// Every stubbed face under `out`, so the assertion follows the table instead
+/// of naming families a second time.
+fn stubbed_faces(out: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut faces = Vec::new();
+    for family in fs::read_dir(out.join("fonts")).unwrap() {
+        for face in fs::read_dir(family.unwrap().path()).unwrap() {
+            faces.push(face.unwrap().path());
+        }
+    }
+    faces.sort();
+    faces
+}
+
 #[test]
 fn stub_referenced_writes_the_gallery_and_licensed_fonts_without_content_images() {
     // The gallery and faces are stubbed on every run, not only when content
@@ -31,20 +50,23 @@ fn stub_referenced_writes_the_gallery_and_licensed_fonts_without_content_images(
         .success()
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + 4
+            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS
         )));
 
-    for face in ["GORPSerif-Regular.woff2", "GORPSerif-Bold.woff2"] {
-        let woff2 = fs::read(out.path().join("fonts/gorp-serif").join(face)).unwrap();
-        assert_eq!(&woff2[..4], b"wOF2", "{face} must be a real WOFF2");
-    }
-
-    for face in [
-        "PlusJakartaSans-Regular.woff2",
-        "PlusJakartaSans-Bold.woff2",
-    ] {
-        let woff2 = fs::read(out.path().join("fonts/plus-jakarta-sans").join(face)).unwrap();
-        assert_eq!(&woff2[..4], b"wOF2", "{face} must be a real WOFF2");
+    let faces = stubbed_faces(out.path());
+    assert_eq!(
+        faces.len(),
+        EXPECTED_FONT_PLACEHOLDERS,
+        "every published family needs both faces stubbed: {faces:?}"
+    );
+    for face in faces {
+        let woff2 = fs::read(&face).unwrap();
+        assert_eq!(
+            &woff2[..4],
+            b"wOF2",
+            "{} must be a real WOFF2",
+            face.display()
+        );
     }
 
     let gallery = GALLERY.first().expect("the public gallery is non-empty");
@@ -83,11 +105,11 @@ fn stub_referenced_writes_valid_placeholder_files_at_content_paths() {
         .arg(out.path())
         .assert()
         .success()
-        // Four content images, every gallery variant, plus four licensed faces
-        // (two GORP, two Plus Jakarta Sans).
+        // Four content images, every gallery variant, plus both faces of every
+        // bucket-served family.
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + 8
+            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 4
         )));
 
     let png = fs::read(out.path().join("img/demo/hero.png")).unwrap();

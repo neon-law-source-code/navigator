@@ -202,6 +202,43 @@ fn every_agent_authorization_field_survives_the_export_boundary() {
 }
 
 #[test]
+fn every_telemetry_recorder_field_survives_the_export_boundary() {
+    let root = workspace_root();
+    let collector = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    let allowed = allowed_keys(&collector);
+    let contracts = [
+        ("record_web_visit", telemetry::WEB_VISIT_ATTRIBUTE_KEYS),
+        (
+            "record_funnel_event",
+            telemetry::FUNNEL_EVENT_ATTRIBUTE_KEYS,
+        ),
+        (
+            "record_funnel_step_with_meter",
+            telemetry::FUNNEL_STEP_ATTRIBUTE_KEYS,
+        ),
+        ("record_auth_event", telemetry::AUTH_EVENT_ATTRIBUTE_KEYS),
+        (
+            "record_auth_sign_in_with_meter",
+            telemetry::AUTH_SIGN_IN_ATTRIBUTE_KEYS,
+        ),
+    ];
+    let missing: Vec<(&str, &str)> = contracts
+        .iter()
+        .flat_map(|(recorder, keys)| {
+            keys.iter()
+                .filter(|key| !allowed.contains(**key))
+                .map(move |key| (*recorder, *key))
+        })
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "the collector's fail-closed allow-list deletes telemetry recorder fields before export: \
+         {missing:?}; add each key to `allowed_keys` in {COLLECTOR}"
+    );
+}
+
+#[test]
 fn caller_context_is_not_exported_but_server_task_id_is_required() {
     let root = workspace_root();
     let collector = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");

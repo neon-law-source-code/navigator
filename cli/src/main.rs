@@ -789,8 +789,8 @@ enum NotationsCmd {
         /// Template file to validate, persist, and walk in an ephemeral store.
         file: PathBuf,
     },
-    /// Render a single notation template to a PDF, framed by the render
-    /// profile its declared `kind:` selects.
+    /// Render a single notation template to PDF or editable Word, framed by
+    /// the render profile its declared `kind:` selects.
     ///
     /// The file is validated against the same notation rule set as
     /// `validate` first — a template with any violation is refused.
@@ -811,13 +811,13 @@ enum NotationsCmd {
     /// resolved here, and a jurisdiction with no calibration is refused
     /// rather than quietly rendered on the plain frame.
     ///
-    /// Markdown is converted to Typst and compiled in pure Rust (no
-    /// shell-out). `{{placeholder}}` tokens render verbatim unless filled
-    /// with `--answer code=value`.
+    /// The output extension selects PDF (`.pdf`) or Word (`.docx`). Both are
+    /// compiled in pure Rust (no shell-out). `{{placeholder}}` tokens render
+    /// verbatim unless filled with `--answer code=value`.
     Render {
         /// Path to the notation template (`.md`).
         file: PathBuf,
-        /// Where to write the rendered PDF.
+        /// Where to write the rendered PDF or Word document (`.pdf` or `.docx`).
         #[arg(long)]
         out: PathBuf,
         /// Fill a `{{code}}` placeholder with `value`. Repeatable:
@@ -1745,10 +1745,14 @@ enum AssetsAction {
     },
 }
 
-/// Which licensed web font family `assets fonts upload` publishes. Each
-/// variant names a distinct [`assets::FontFamily`] — its own Regular/Bold
-/// filenames and its own bucket prefix — so a second brand's font is a new
-/// variant here plus a new constant in `assets.rs`, never a second command.
+/// Which web font family `assets fonts upload` publishes. Each variant names
+/// one entry of [`assets::BUCKET_FONT_FAMILIES`] — its own bucket directory
+/// and filename stem — so a brand's typeface is a new variant here plus a new
+/// row in that table, never a second command.
+///
+/// `font_family_arg_names_every_bucket_family` holds the two together: a
+/// family the table publishes and verifies but `--family` cannot name is one
+/// an operator has no way to upload.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum FontFamilyArg {
     /// The firm's licensed serif, from `TrashType`.
@@ -1756,6 +1760,23 @@ enum FontFamilyArg {
     /// DeleteYourData.com's OFL-1.1 sans, self-hosted on the same
     /// operator-upload lane as GORP's licensed delivery.
     PlusJakartaSans,
+    /// Vesta Estate Planning's display face.
+    EbGaramond,
+    /// The body face Vesta and Misericordia Injury Law share.
+    // Both `Source` values are spelled out because clap's derivation drops the
+    // hyphen before a trailing digit, and the value has to equal the bucket
+    // directory.
+    #[value(name = "source-sans-3")]
+    SourceSans3,
+    /// Misericordia Injury Law's display face.
+    #[value(name = "source-serif-4")]
+    SourceSerif4,
+    /// Abhaya Immigration's face.
+    Mukta,
+    /// DeleteYourDebt.com's face.
+    PublicSans,
+    /// The NYC summons practice's face.
+    LibreFranklin,
 }
 
 impl FontFamilyArg {
@@ -1763,6 +1784,12 @@ impl FontFamilyArg {
         match self {
             Self::GorpSerif => &assets::GORP_SERIF,
             Self::PlusJakartaSans => &assets::PLUS_JAKARTA_SANS,
+            Self::EbGaramond => &assets::EB_GARAMOND,
+            Self::SourceSans3 => &assets::SOURCE_SANS_3,
+            Self::SourceSerif4 => &assets::SOURCE_SERIF_4,
+            Self::Mukta => &assets::MUKTA,
+            Self::PublicSans => &assets::PUBLIC_SANS,
+            Self::LibreFranklin => &assets::LIBRE_FRANKLIN,
         }
     }
 }
@@ -3633,11 +3660,11 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
 
 const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, unclassified.";
 
-/// Render one notation template to a PDF. Validates the file against the
+/// Render one notation template to PDF or editable Word. Validates the file against the
 /// notation rule set, resolves the render frame (`output:` frontmatter →
 /// the `kind:`-derived default → plain), fills
 /// any `{{code}}` placeholders from `answers`, and writes the compiled
-/// PDF to `out`.
+/// document to `out` according to its extension.
 /// The render profile a template selects by declaring no `output:` and no
 /// `kind:` with a frame of its own. Never a declarable `output:` value —
 /// omitting the key is how a template selects it.
@@ -3653,6 +3680,10 @@ fn run_render(
     out: &std::path::Path,
     answers: &[(String, String)],
 ) -> ExitCode {
+    let Some(output_extension) = render_extension(out) else {
+        eprintln!("navigator: output extension must be `.pdf` or `.docx`");
+        return ExitCode::from(2);
+    };
     let contents = match std::fs::read_to_string(file) {
         Ok(c) => c,
         Err(e) => {
@@ -3794,14 +3825,11 @@ fn run_render(
     // Restore the plumbing here, not somewhere new, if that call changes.
     let letterhead = pdf::Letterhead::default();
     let format_debug = format!("{format:?}");
-    let render_options = pdf::RenderOptions {
-        creation_timestamp: notation_render_timestamp(file),
-    };
-    let bytes = match pdf::render_document_with_options(&body, format, &letterhead, &render_options)
+    let bytes = match render_notation_artifact(file, &body, &output_extension, format, &letterhead)
     {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("navigator: render {}: {e}", file.display());
+        Ok(bytes) => bytes,
+        Err(_error) => {
+            eprintln!("navigator: render failed");
             return ExitCode::from(2);
         }
     };
@@ -3821,11 +3849,73 @@ fn run_render(
     ExitCode::SUCCESS
 }
 
+fn render_extension(out: &Path) -> Option<String> {
+    out.extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .map(str::to_ascii_lowercase)
+        .filter(|extension| matches!(extension.as_str(), "pdf" | "docx"))
+}
+
+fn render_notation_artifact(
+    file: &Path,
+    body: &str,
+    output_extension: &str,
+    format: pdf::OutputFormat,
+    letterhead: &pdf::Letterhead,
+) -> Result<Vec<u8>, String> {
+    if output_extension == "docx" {
+        let word_letterhead =
+            matches!(&format, pdf::OutputFormat::Letter(_)).then(|| word::RenderLetterhead {
+                name: &letterhead.name,
+                phone: &letterhead.phone,
+                email: &letterhead.email,
+                web: &letterhead.web,
+                logo_png: pdf::firm_logo_png(),
+            });
+        let source_revision = notation_render_revision(file);
+        return word::render_notation(
+            body,
+            word_letterhead.as_ref(),
+            &word::RenderOptions {
+                source_revision: source_revision.as_deref(),
+            },
+        )
+        .map_err(|error| format!("render Word document: {error}"));
+    }
+
+    pdf::render_document_with_options(
+        body,
+        format,
+        letterhead,
+        &pdf::RenderOptions {
+            creation_timestamp: notation_render_timestamp(file),
+        },
+    )
+    .map_err(|error| format!("render {}: {error}", file.display()))
+}
+
+fn notation_render_revision(file: &Path) -> Option<String> {
+    let parent = file.parent()?;
+    let name = file.file_name()?;
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(parent)
+        .args(["log", "-1", "--format=%H", "--"])
+        .arg(name)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|revision| !revision.is_empty())
+}
+
 /// The fixed timestamp for notation files that have no Git history.
 ///
-/// A source file outside Git still needs a stable PDF, so the renderer uses
+/// A source file outside Git still needs a stable artifact, so the renderer uses
 /// the Unix epoch rather than the wall clock. Tracked files use their latest
-/// commit timestamp, which makes the PDF follow the source's own history.
+/// commit timestamp, which makes the artifact follow the source's own history.
 const NOTATION_RENDER_FALLBACK_EPOCH: i64 = 0;
 
 fn notation_render_timestamp(file: &Path) -> chrono::DateTime<chrono::Utc> {

@@ -12,6 +12,7 @@ pub mod notation;
 pub mod outline;
 mod preflight;
 pub mod protocol;
+mod render;
 
 pub use adapter::{AdapterError, ManagedAdapter, WordAdapter};
 pub use model::{
@@ -27,6 +28,7 @@ pub use outline::{
     MARKER_GROUPS, MAX_DEPTH,
 };
 pub use preflight::is_docx_filename;
+pub use render::{render_notation, RenderError, RenderLetterhead, RenderOptions};
 
 /// The only protocol version currently understood by both sides of the local
 /// boundary. A version mismatch is terminal rather than best-effort: a lossy

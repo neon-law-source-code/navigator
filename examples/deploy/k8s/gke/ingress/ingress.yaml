@@ -20,9 +20,11 @@
 #   alignment work that's deferred).
 # - `networking.gke.io/managed-certificates` — comma-separated list
 #   of `ManagedCertificate` CRs that Google's cert-issuer flips to
-#   Active once DNS resolves to this LB's IP. One cert per
-#   hostname; both share this single LB because DNS for both
-#   hostnames already resolves to `navigator-ingress-ip`.
+#   Active once DNS resolves to this LB's IP. One cert per domain
+#   family (the default public host, each additional live brand,
+#   and the workflows host) sharing this single LB. `ops ship`
+#   rewrites the annotation so a brand added to the registry gets
+#   its own certificate attached here.
 # - `networking.gke.io/v1beta1.FrontendConfig` — opts the LB into
 #   HTTP->HTTPS redirect with a 308 once the cert is provisioned.
 # - `cloud.google.com/neg: '{"ingress": true}'` annotation on the

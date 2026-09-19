@@ -28,17 +28,32 @@ Load-bearing rules from those docs:
 - Start every change in a Codex or Claude **New Worktree**, then run `navigator dev worktree-env up --branch <topic>`
   once. The CLI names that linked worktree's PR branch in place, and creates a sibling only when deliberately started
   from the primary checkout outside the app workflow.
-- Run the matching gate first, and open the PR from a green tree. For a Markdown change, validate the file; for Rust,
-  run the workspace gate:
+- Run the matching gate first, and open the PR from a green tree. **The gate follows the diff, not the habit.** Every
+  PR owes the tree-wide gate:
 
   ```bash
   cargo run -p cli -- project gate
+  ```
+
+  A PR that touches Rust scope owes the cargo gate on top of it:
+
+  ```bash
   cargo fmt
   cargo clippy --workspace --all-targets -- -D warnings
   cargo nextest run --workspace && cargo test -p features
   ```
 
   Total line coverage stays ≥ 90.6%, and the default nextest profile prints failures only.
+- **Let CI's own scope test decide what "touches Rust" means.** The `changes` job in
+  [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) classifies the diff and skips `cargo test (workspace)`
+  outright when nothing matches: `*.rs`, `*.surql`, `*.feature`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`,
+  `.cargo/`, `.config/nextest.toml`, `features/`, or `ci.yml` itself. A pure Markdown, YAML, or asset PR therefore never
+  runs the Rust suite in CI, so running it locally proves nothing that CI will check — run `project gate` and push. Read
+  that job's globs rather than guessing; it fails open, so an unreadable diff runs Rust anyway.
+- **A content change can still be a Rust change.** Prose compiled into the binary is asserted by tests —
+  `neon/content/*.md` by [`server/tests/host_legal_pages.rs`](../../../server/tests/host_legal_pages.rs), locale
+  catalogs by `views::locales`. Before calling a Markdown PR Markdown-only, `git grep` a distinctive phrase you removed;
+  a hit in a `.rs` file means the diff now carries Rust and takes the full cargo gate.
 - **Measure coverage before pushing** — a green `cargo test` reports pass/fail; coverage is a separate read, taken by
   `cargo llvm-cov --fail-under-lines 90.6` inside the `cargo test (workspace)` check. CI's coverage pass skips
   harness-gated tests (`new_client_or_skip`, anything needing the KIND stack), so code covered *only* by those counts as

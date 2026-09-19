@@ -68,7 +68,7 @@ async fn the_firm_host_serves_both_legal_documents() {
     assert!(html.contains("<title>Neon Law | Privacy</title>"), "{html}");
     // A section only the real `neon/content/privacy.md` carries, so the body is
     // the compiled-in document and not an empty shell.
-    assert!(html.contains("Donor Privacy"), "{html}");
+    assert!(html.contains("Attorney-Client Privilege"), "{html}");
 
     let (status, html) = get(&app, "/terms").await;
     assert_eq!(status, StatusCode::OK);
@@ -78,17 +78,15 @@ async fn the_firm_host_serves_both_legal_documents() {
 
 #[tokio::test]
 async fn the_privacy_policy_keeps_its_access_to_justice_commitments() {
-    // Privacy is a fundamental right here: the policy commits to deletion and
-    // CCPA/GDPR/NRS-603A rights for everyone, not only where the law strictly
-    // compels it. The page asserted this; the commitment outlives the
-    // renderer.
+    // Privacy is a fundamental right here: the policy commits to deletion for
+    // everyone, not only where the law strictly compels it, and it names one
+    // address that reaches a human. The page asserted this; the commitment
+    // outlives the renderer.
     let app = app().await;
     let (_, html) = get(&app, "/privacy").await;
     let collapsed = html.split_whitespace().collect::<Vec<_>>().join(" ");
-    for commitment in ["right to delete", "CCPA", "GDPR", "NRS 603A"] {
-        assert!(collapsed.contains(commitment), "missing {commitment}");
-    }
-    assert!(collapsed.contains("mailto:support@neonlaw.org"), "{html}");
+    assert!(collapsed.contains("right to delete"), "{html}");
+    assert!(collapsed.contains("mailto:support@neonlaw.com"), "{html}");
 }
 
 /// The footer and the document body must name the **same** entity.

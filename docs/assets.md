@@ -143,8 +143,43 @@ The directory must hold `PlusJakartaSans-Regular.woff2` and `PlusJakartaSans-Bol
 `fonts/plus-jakarta-sans/` in the public assets bucket (`--family gorp-serif`, the default, is unchanged). Local
 development and tests resolve the same fallback `/public/fonts/plus-jakarta-sans/` path GORP's faces use when
 `NAVIGATOR_ASSET_BASE_URL` is unset. `portal::dioxus_app` injects a preload and the `@font-face` block for each brand's
-own family: GORP for Neon, Plus Jakarta Sans for DeleteYourData.com, and Tinos for Lawyer Shook. The generated
-`brand-{key}-tokens.css` declares the same faces alongside the brand's `--nav-font-family`.
+own family. The generated `brand-{key}-tokens.css` declares the same faces alongside the brand's `--nav-font-family`.
+
+### The practice brands' typefaces
+
+The five practice brands wear six more OFL-1.1 families on the same lane. `cli::assets::BUCKET_FONT_FAMILIES` is the one
+list all of it reads: `--family` names an entry, `assets verify` probes every entry's two faces, and the orphan scan
+spares them. A family joins those three at once rather than one and not the others, which is what went wrong — the five
+brands shipped while a hand-written two-entry list stayed at two, so `assets verify` reported a clean origin over six
+families it never probed.
+
+| `--family` | Family | Brands |
+| --- | --- | --- |
+| `gorp-serif` | GORP Serif | Neon Law |
+| `plus-jakarta-sans` | Plus Jakarta Sans | DeleteYourData.com |
+| `eb-garamond` | EB Garamond | Vesta Estate Planning (display) |
+| `source-sans-3` | Source Sans 3 | Vesta, Misericordia Injury Law (body) |
+| `source-serif-4` | Source Serif 4 | Misericordia Injury Law (display) |
+| `mukta` | Mukta | Abhaya Immigration |
+| `public-sans` | Public Sans | DeleteYourDebt.com |
+| `libre-franklin` | Libre Franklin | the summons practice |
+
+Each value is spelled as the bucket directory it publishes to, and the directory holds `<Stem>-Regular.woff2` and
+`<Stem>-Bold.woff2` — the same `<dir>/<stem>` pair `portal::dioxus_app`'s `bucket_font_head` splits, so the operator
+lane and the browser surface derive the object key identically:
+
+```bash
+cargo run -p cli -- ops assets fonts upload --family eb-garamond \
+  --dir '/path/to/eb-garamond/woff2'
+```
+
+We redistribute these bytes from our own buckets, so each family's grant travels with it:
+`server/public/fonts/<family>/OFL.txt` carries the upstream notice verbatim, tracked even though the faces are not.
+Lawyer Shook's Tinos is the one family whose faces are tracked instead — see below.
+
+The published faces are latin subsets. That is right while the English-only invariant holds, but `views` chose Mukta for
+Abhaya specifically for its Devanagari coverage: a Hindi surface would need those faces taken from the upstream release
+and converted, not from a latin-subset endpoint.
 
 Publication is not verified by CI. `deploy.yml` builds and publishes images, and its local KIND gate proves only the
 placeholder image. A full or image-only `ops ship` run verifies the selected deployment's public asset origin after the
@@ -157,27 +192,31 @@ cargo run -p cli -- ops assets verify --base-url https://staging.neonlaw.com/ass
 ```
 
 `verify` probes the same key set `orphans` treats as reachable — every markdown `](img/…)` reference, every
-`views::assets::GALLERY` variant, and both licensed GORP faces — and exits `2` naming whatever the origin does not
-serve.
+`views::assets::GALLERY` variant, and both faces of every `BUCKET_FONT_FAMILIES` entry — and exits `2` naming whatever
+the origin does not serve.
 
 ### Lawyer Shook's Tinos
 
 The `lawyer-shook` house brand uses Tinos under the SIL Open Font License 1.1. The repository carries the Regular and
 Bold WOFF2 faces under `server/public/fonts/tinos/`; no raster mark is required because the public header and footer
-render the LAWYER SHOOK wordmark as text. `portal::dioxus_app` selects these faces for the Lawyer Shook host, while the
-Neon Law and DeleteYourData faces retain their existing head fragments.
+render the LAWYER SHOOK wordmark as text. `portal::dioxus_app` selects these faces for the Lawyer Shook host. It is the
+only brand served from the tracked tree rather than the bucket, so it is the one family absent from
+`BUCKET_FONT_FAMILIES`; `published_font_families_cover_every_bucket_face_the_site_emits` accepts either lane and refuses
+a face delivered by neither. That guard reads both emitters — `portal::dioxus_app`'s per-brand head fragment and
+`views::brand_presentation`'s typeface catalog, which is what a runtime brand picks from in `/app/brands` — so a face
+cannot reach a browser through either door without a way to publish it.
 
 ## Verify after shipping
 
 A live deployment can serve a 404 hero when the bucket is missing bytes — the rendered-HTML test only checks the `src`
 string, not that the object exists. `assets verify` closes that gap: it walks image refs under `server/content`, every
-responsive gallery variant and both licensed webfont families, then fetches each one from the public origin (auth-free
-`HEAD` against `NAVIGATOR_ASSET_BASE_URL`, exactly as a browser would). It exits non-zero listing whatever the origin
-does not serve. `ops ship` invokes the same verifier after a full or image-only roll. From a deploy-only tree — a
-`--deployments-dir` checkout that carries `deployments/` and no `server/content` — it probes the same origin for the
-references the binary embeds instead: the workshop markdown, every gallery variant, and both font families. It says so
-on stderr, because the blog's references are the one set that lane cannot see; run `assets verify` from a source
-checkout to cover them.
+responsive gallery variant and both faces of all eight bucket-served webfont families, then fetches each one from the
+public origin (auth-free `HEAD` against `NAVIGATOR_ASSET_BASE_URL`, exactly as a browser would). It exits non-zero
+listing whatever the origin does not serve. `ops ship` invokes the same verifier after a full or image-only roll. From a
+deploy-only tree — a `--deployments-dir` checkout that carries `deployments/` and no `server/content` — it probes the
+same origin for the references the binary embeds instead: the workshop markdown, every gallery variant, and every font
+family. It says so on stderr, because the blog's references are the one set that lane cannot see; run `assets verify`
+from a source checkout to cover them.
 
 ```bash
 NAVIGATOR_ASSET_BASE_URL=https://staging.neonlaw.com/assets cargo run -p cli -- ops assets verify

@@ -166,6 +166,12 @@ spec:
               value: YOUR_SLACK_GENERAL_CHANNEL_ID
             - name: OTEL_SERVICE_NAME
               value: workflows-service
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(POD_NAME),service.instance.id=$(POD_NAME)
           envFrom:
             # Collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) — the worker
             # emits the workflow-step traces + the `start_workflow` metric

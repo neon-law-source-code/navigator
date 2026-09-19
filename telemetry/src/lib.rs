@@ -107,6 +107,8 @@ impl Drop for TelemetryGuard {
 /// the same way — the tests exercise this without touching the process-global
 /// subscriber, which can only be installed once.
 struct ExportProviders {
+    #[cfg(test)]
+    resource: Resource,
     tracer: SdkTracerProvider,
     meter: SdkMeterProvider,
     logger: SdkLoggerProvider,
@@ -169,9 +171,14 @@ impl SafetyVisitor {
                 | "tax_id"
         );
 
+        let unsafe_source_path = name == "source_path"
+            && value
+                .chars()
+                .any(|character| matches!(character, '?' | '@' | '='));
         self.unsafe_value = self.unsafe_value
             || identity_like
             || (body_like && !value.is_empty())
+            || unsafe_source_path
             || contains_sensitive_text(value)
             || (name == "message" && looks_like_document_body(value));
     }
@@ -452,7 +459,9 @@ fn build_export_providers(
     // which release emitted it. This is the headless
     // counterpart to `web`'s `GET /version`: the worker and the trigger
     // CronJobs have no HTTP surface, but they self-report their release here.
-    let mut builder = Resource::builder().with_service_name(service_name.to_string());
+    let mut builder = Resource::builder()
+        .with_service_name(service_name.to_string())
+        .with_attributes(resource_attributes_from_env());
     if let Some(release) = release {
         builder = builder.with_attribute(KeyValue::new("service.version", release.to_string()));
     }
@@ -493,14 +502,35 @@ fn build_export_providers(
         .expect("build OTLP log exporter");
     let logger = SdkLoggerProvider::builder()
         .with_batch_exporter(log_exporter)
-        .with_resource(resource)
+        .with_resource(resource.clone())
         .build();
 
     ExportProviders {
+        #[cfg(test)]
+        resource: resource.clone(),
         tracer,
         meter,
         logger,
     }
+}
+
+/// Merge `OTEL_RESOURCE_ATTRIBUTES` explicitly because `Resource::builder()`
+/// does not run the SDK's environment detector. The deployment supplies pod
+/// identity here; malformed or empty entries are ignored rather than turning
+/// a telemetry identity hint into a boot failure.
+fn resource_attributes_from_env() -> Vec<KeyValue> {
+    std::env::var("OTEL_RESOURCE_ATTRIBUTES")
+        .ok()
+        .into_iter()
+        .flat_map(|attributes| attributes.split(',').map(str::to_owned).collect::<Vec<_>>())
+        .filter_map(|entry| {
+            let (key, value) = entry.split_once('=')?;
+            let key = key.trim();
+            let value = value.trim();
+            (!key.is_empty() && !value.is_empty())
+                .then(|| KeyValue::new(key.to_string(), value.to_string()))
+        })
+        .collect()
 }
 
 /// Initialize the global `tracing` subscriber and, when configured, OTLP
@@ -580,6 +610,7 @@ pub fn init(default_service_name: &str) -> TelemetryGuard {
         tracer,
         meter,
         logger,
+        ..
     } = build_export_providers(&config, &service_name, release.as_deref());
 
     opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
@@ -681,9 +712,15 @@ const WEB_VISIT_METER: &str = "navigator.web.visit";
 /// full URL, referrer URL, session id, or person id is ever attached.
 pub const WEB_VISIT_COUNT: &str = "navigator.web.visit.count";
 
+/// Attribute keys emitted by [`record_web_visit`]. Keep this beside the
+/// recorder so the collector pinning test reads the source contract rather
+/// than carrying a second hand-maintained list.
+pub const WEB_VISIT_ATTRIBUTE_KEYS: &[&str] =
+    &["http.route", "country", "source", "locale", "status_class"];
+
 /// Record one public website visit. Safe to call unconditionally: when OTLP is
 /// not configured the global meter is a no-op, so this costs nothing in dev.
-/// `route` is the matched route pattern, `country` is a trusted edge-supplied
+/// `http.route` is the matched route pattern, `country` is a trusted edge-supplied
 /// region/country code or `ZZ`, `source` is a bounded UTM/ref/referrer source
 /// bucket, `locale` is a bounded route-derived language bucket, and
 /// `status_class` is a coarse HTTP status family.
@@ -700,7 +737,7 @@ pub fn record_web_visit(
     counter.add(
         1,
         &[
-            KeyValue::new("route", route.to_string()),
+            KeyValue::new("http.route", route.to_string()),
             KeyValue::new("country", country.to_string()),
             KeyValue::new("source", source.to_string()),
             KeyValue::new("locale", locale.to_string()),
@@ -716,6 +753,23 @@ const FUNNEL_METER: &str = "navigator.funnel";
 /// the bounded step name. The event helper below emits the matching
 /// identifier-only structured event.
 pub const FUNNEL_STEP: &str = "navigator.funnel.step";
+
+/// Attribute keys emitted by [`record_funnel_event`].
+pub const FUNNEL_EVENT_ATTRIBUTE_KEYS: &[&str] = &[
+    "step",
+    "lead_id",
+    "brand",
+    "source_path",
+    "sms_consent",
+    "person_id",
+    "project_id",
+    "notation_id",
+    "service_id",
+    "channel",
+];
+
+/// Attribute keys emitted by the `navigator.funnel.step` counter.
+pub const FUNNEL_STEP_ATTRIBUTE_KEYS: &[&str] = &["step"];
 
 /// Neon Law funnel step names. These values are both the structured event's
 /// `step` field and the metric's `step` attribute.
@@ -877,6 +931,19 @@ const AUTH_METER: &str = "navigator.auth";
 /// Counter for completed browser sign-in callbacks, dimensioned by provider
 /// and bounded outcome.
 pub const AUTH_SIGN_IN: &str = "navigator.auth.sign_in";
+
+/// Attribute keys emitted by [`record_auth_event`].
+pub const AUTH_EVENT_ATTRIBUTE_KEYS: &[&str] = &[
+    "event",
+    "person_id",
+    "provider",
+    "brand",
+    "first_link",
+    "reason",
+];
+
+/// Attribute keys emitted by the `navigator.auth.sign_in` counter.
+pub const AUTH_SIGN_IN_ATTRIBUTE_KEYS: &[&str] = &["provider", "outcome"];
 
 /// Bounded outcome values for [`AUTH_SIGN_IN`].
 pub mod auth_outcome {
@@ -1557,6 +1624,11 @@ mod tests {
     /// the flush task make progress while shutdown blocks.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn export_providers_build_all_three_signals_offline() {
+        let previous_resource_attributes = std::env::var_os("OTEL_RESOURCE_ATTRIBUTES");
+        std::env::set_var(
+            "OTEL_RESOURCE_ATTRIBUTES",
+            "k8s.pod.name=telemetry-test-pod,service.instance.id=telemetry-test-pod",
+        );
         let config = otlp_export_config(
             Some("http://127.0.0.1:5081".to_string()),
             Some("root@example.com".to_string()),
@@ -1567,11 +1639,22 @@ mod tests {
         .expect("complete test config is valid")
         .expect("test endpoint enables export");
         let providers = build_export_providers(&config, "telemetry-test", Some("26.6.23"));
+        assert_eq!(
+            providers
+                .resource
+                .get(&opentelemetry::Key::new("k8s.pod.name"))
+                .map(|value| value.to_string()),
+            Some("telemetry-test-pod".to_string())
+        );
         // All three signals are present; shutting down flushes (no-op here,
         // nothing batched) without panicking or requiring a live OpenObserve.
         let _ = providers.tracer.shutdown();
         let _ = providers.meter.shutdown();
         let _ = providers.logger.shutdown();
+        match previous_resource_attributes {
+            Some(value) => std::env::set_var("OTEL_RESOURCE_ATTRIBUTES", value),
+            None => std::env::remove_var("OTEL_RESOURCE_ATTRIBUTES"),
+        }
     }
 
     /// The same three providers build from the plain collector contract.
@@ -1708,6 +1791,18 @@ mod tests {
         tracing::info!(
             person_id = "opaque-person-id",
             outcome = "accepted",
+            source_path = "/services?utm_source=campaign",
+            "unsafe source path must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            source_path = "/services",
+            "safe source path survives unchanged"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
             "CONFIDENTIAL CLIENT AGREEMENT: the party shall indemnify the client."
         );
         tracing::info!(
@@ -1722,6 +1817,8 @@ mod tests {
         assert!(!rendered.contains("212"));
         assert!(!rendered.contains("123-45-6789"));
         assert!(!rendered.contains("CONFIDENTIAL CLIENT AGREEMENT"));
+        assert!(!rendered.contains("unsafe source path must not be exported"));
+        assert!(rendered.contains("safe source path survives unchanged"));
         assert!(rendered.contains("opaque-person-id"));
         assert!(rendered.contains("accepted"));
         assert!(rendered.contains("approved telemetry survives unchanged"));

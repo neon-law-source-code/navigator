@@ -33,15 +33,45 @@ use workflows::notify::{Notifier, SlackNotifier};
 /// picked up once the week elapses.
 const ASSET_CACHE_CONTROL: &str = "public, max-age=604800";
 
-/// One licensed web font family: its Regular/Bold WOFF2 filenames and the
-/// bucket prefix they publish under. `upload_font_family` and
-/// `font_family_refs` are generic over this so a second brand's font is a new
-/// constant, not a second copy of the upload/verify machinery.
+/// One web font family the deployment serves from its public assets bucket:
+/// the directory it publishes under and the filename stem its two faces
+/// carry. `upload_font_family` and `font_family_refs` are generic over this,
+/// so a brand's typeface is a row in [`BUCKET_FONT_FAMILIES`] rather than a
+/// second copy of the upload/verify machinery.
+///
+/// `dir` and `stem` are the same pair `portal::dioxus_app`'s
+/// `bucket_font_head` splits out of its `"<dir>/<stem>"` argument, and the two
+/// derive the object key the same way — so the only thing the operator lane
+/// and the browser surface can disagree about is which families exist, which
+/// is what `published_font_families_cover_every_bucket_face_a_brand_emits`
+/// holds.
 pub struct FontFamily {
     /// Human-readable name for CLI output (e.g. "GORP", "Plus Jakarta Sans").
     label: &'static str,
-    files: &'static [&'static str],
-    prefix: &'static str,
+    /// Directory under `fonts/`, matching the brand's typeface id.
+    dir: &'static str,
+    /// Filename stem both faces share (e.g. `EBGaramond`).
+    stem: &'static str,
+}
+
+impl FontFamily {
+    /// The two weights every brand head preloads. A face is a Regular or a
+    /// Bold; a browser synthesises nothing else, and `upload_font_family`
+    /// refuses a delivery missing either.
+    const WEIGHTS: [&'static str; 2] = ["Regular", "Bold"];
+
+    /// The bucket prefix this family's objects publish under.
+    fn prefix(&self) -> String {
+        format!("fonts/{}", self.dir)
+    }
+
+    /// The WOFF2 filenames the operator's delivery directory must hold, which
+    /// are also the object basenames.
+    fn files(&self) -> impl Iterator<Item = String> + '_ {
+        Self::WEIGHTS
+            .iter()
+            .map(|weight| format!("{}-{weight}.woff2", self.stem))
+    }
 }
 
 /// The initial GORP Serif faces the web design system serves. The licensed
@@ -49,12 +79,10 @@ pub struct FontFamily {
 /// deliberately never committed to this repository. That mattered when the tree
 /// was private and matters more now that it is public: the Firm's GORP licence
 /// covers the Firm's deployments, not redistribution to everyone who clones.
-const GORP_FONT_FILES: [&str; 2] = ["GORPSerif-Regular.woff2", "GORPSerif-Bold.woff2"];
-const GORP_FONT_PREFIX: &str = "fonts/gorp-serif";
 pub const GORP_SERIF: FontFamily = FontFamily {
     label: "GORP",
-    files: &GORP_FONT_FILES,
-    prefix: GORP_FONT_PREFIX,
+    dir: "gorp-serif",
+    stem: "GORPSerif",
 };
 
 /// DeleteYourData.com's Plus Jakarta Sans faces. Unlike GORP, the font itself
@@ -63,16 +91,77 @@ pub const GORP_SERIF: FontFamily = FontFamily {
 /// the same operator-upload lane as GORP's anyway, so a fresh clone needs no
 /// font bytes at all and every deployment's font delivery goes through one
 /// mechanism rather than two.
-const PLUS_JAKARTA_SANS_FONT_FILES: [&str; 2] = [
-    "PlusJakartaSans-Regular.woff2",
-    "PlusJakartaSans-Bold.woff2",
-];
-const PLUS_JAKARTA_SANS_FONT_PREFIX: &str = "fonts/plus-jakarta-sans";
 pub const PLUS_JAKARTA_SANS: FontFamily = FontFamily {
     label: "Plus Jakarta Sans",
-    files: &PLUS_JAKARTA_SANS_FONT_FILES,
-    prefix: PLUS_JAKARTA_SANS_FONT_PREFIX,
+    dir: "plus-jakarta-sans",
+    stem: "PlusJakartaSans",
 };
+
+/// Vesta Estate Planning's display face, paired with [`SOURCE_SANS_3`].
+pub const EB_GARAMOND: FontFamily = FontFamily {
+    label: "EB Garamond",
+    dir: "eb-garamond",
+    stem: "EBGaramond",
+};
+
+/// The body face Vesta and Misericordia Injury Law both read in — one family,
+/// two brands, one upload.
+pub const SOURCE_SANS_3: FontFamily = FontFamily {
+    label: "Source Sans 3",
+    dir: "source-sans-3",
+    stem: "SourceSans3",
+};
+
+/// Misericordia Injury Law's display face.
+pub const SOURCE_SERIF_4: FontFamily = FontFamily {
+    label: "Source Serif 4",
+    dir: "source-serif-4",
+    stem: "SourceSerif4",
+};
+
+/// Abhaya Immigration's single face. The bucket holds latin instances while
+/// the English-only invariant holds; `views::brand_presentation` chose Mukta
+/// for its Devanagari coverage, so a future Hindi surface has to take these
+/// bytes from the upstream release rather than from a latin-subset endpoint.
+pub const MUKTA: FontFamily = FontFamily {
+    label: "Mukta",
+    dir: "mukta",
+    stem: "Mukta",
+};
+
+/// DeleteYourDebt.com's single face.
+pub const PUBLIC_SANS: FontFamily = FontFamily {
+    label: "Public Sans",
+    dir: "public-sans",
+    stem: "PublicSans",
+};
+
+/// The NYC summons practice's single face.
+pub const LIBRE_FRANKLIN: FontFamily = FontFamily {
+    label: "Libre Franklin",
+    dir: "libre-franklin",
+    stem: "LibreFranklin",
+};
+
+/// Every family this binary publishes and verifies — the one list both halves
+/// of the font lane read.
+///
+/// `--family` names an entry, `verify` probes every entry's faces, and the
+/// orphan scan spares them, so a family joins all three at once instead of
+/// one and not the others. That is the whole defect this table replaces: the
+/// five practice brands shipped six bucket-served families while two
+/// hand-written `refs.extend` lines named two, and `assets verify` reported a
+/// clean origin over a deployment serving none of the other six.
+pub const BUCKET_FONT_FAMILIES: &[&FontFamily] = &[
+    &GORP_SERIF,
+    &PLUS_JAKARTA_SANS,
+    &EB_GARAMOND,
+    &SOURCE_SANS_3,
+    &SOURCE_SERIF_4,
+    &MUKTA,
+    &PUBLIC_SANS,
+    &LIBRE_FRANKLIN,
+];
 
 /// Slide markdown is embedded in the release binary so `ops ship` can discover
 /// every presentation/workshop `](img/…)` key without depending on an operator
@@ -292,9 +381,10 @@ pub fn run_upload(dir: &Path, bucket: Option<String>) -> ExitCode {
     })
 }
 
-/// Entry point for `navigator ops assets fonts upload`. Licensed font files use the
-/// same public assets bucket as images, but a separate `fonts/gorp-serif/`
-/// prefix so the private tree never carries proprietary WOFF2 bytes.
+/// Entry point for `navigator ops assets fonts upload`. Font files use the
+/// same public assets bucket as images, under a `fonts/<dir>/` prefix per
+/// family, so the tree never carries WOFF2 bytes — proprietary in GORP's case
+/// and merely redundant in the rest.
 pub fn run_upload_fonts(dir: &Path, bucket: Option<String>, family: &FontFamily) -> ExitCode {
     let bucket = match bucket.or_else(|| std::env::var("NAVIGATOR_ASSETS_BUCKET").ok()) {
         Some(b) if !b.trim().is_empty() => b,
@@ -329,7 +419,8 @@ pub fn run_upload_fonts(dir: &Path, bucket: Option<String>, family: &FontFamily)
             Ok(n) => {
                 println!(
                     "navigator: uploaded {n} {} face(s) to gs://{bucket}/{}",
-                    family.label, family.prefix
+                    family.label,
+                    family.prefix()
                 );
                 ExitCode::SUCCESS
             }
@@ -619,8 +710,9 @@ fn published_asset_refs(content_root: &Path) -> anyhow::Result<BTreeSet<String>>
     let mut refs = reachable_image_keys(content_root)?;
     // The licensed faces are published by `assets fonts upload`, never by a
     // build step, so they are exactly as droppable as an unuploaded hero.
-    refs.extend(font_family_refs(&GORP_SERIF));
-    refs.extend(font_family_refs(&PLUS_JAKARTA_SANS));
+    for family in BUCKET_FONT_FAMILIES {
+        refs.extend(font_family_refs(family));
+    }
     Ok(refs)
 }
 
@@ -714,18 +806,15 @@ fn parse_image_refs(markdown: &str) -> Vec<String> {
 }
 
 /// The public asset keys the design system loads from Rust rather than from
-/// markdown: `family`'s licensed faces, which `views::layout` (GORP) or the
-/// `delete-your-data` brand tokens (Plus Jakarta Sans) preload on every page
-/// that brand wears. [`parse_image_refs`] only ever sees `](img/…)` in
-/// content, so without these the gate reports success while every page
-/// silently falls back to its system font — `font-display: swap` means a
-/// missing face degrades quietly rather than erroring, so nothing else
-/// catches it.
+/// markdown: `family`'s two faces, which `portal::dioxus_app` preloads in the
+/// head of every page the brands wearing them serve. [`parse_image_refs`]
+/// only ever sees `](img/…)` in content, so without these the gate reports
+/// success while every page silently falls back to its system font —
+/// `font-display: swap` means a missing face degrades quietly rather than
+/// erroring, so nothing else catches it.
 fn font_family_refs(family: &FontFamily) -> impl Iterator<Item = String> + '_ {
-    family
-        .files
-        .iter()
-        .map(|file| format!("{}/{file}", family.prefix))
+    let prefix = family.prefix();
+    family.files().map(move |file| format!("{prefix}/{file}"))
 }
 
 /// Join a public asset base URL with a repo-relative `img/…` key, the
@@ -1010,8 +1099,9 @@ pub(crate) fn verify_public_asset_origin(content_dir: &Path, base_url: &str) -> 
 pub(crate) fn embedded_asset_refs() -> BTreeSet<String> {
     let mut refs = bundled_slide_asset_keys();
     refs.extend(gallery_variant_keys());
-    refs.extend(font_family_refs(&GORP_SERIF));
-    refs.extend(font_family_refs(&PLUS_JAKARTA_SANS));
+    for family in BUCKET_FONT_FAMILIES {
+        refs.extend(font_family_refs(family));
+    }
     refs
 }
 
@@ -1570,8 +1660,8 @@ async fn upload_font_family(
         family.label,
         dir.display()
     );
-    for file in family.files {
-        let path = dir.join(file);
+    for file in family.files() {
+        let path = dir.join(&file);
         anyhow::ensure!(
             path.is_file(),
             "required {} font `{}` is missing",
@@ -1579,17 +1669,20 @@ async fn upload_font_family(
             path.display()
         );
     }
-    for file in family.files {
-        let path = dir.join(file);
+    let prefix = family.prefix();
+    let mut uploaded = 0;
+    for file in family.files() {
+        let path = dir.join(&file);
         let bytes = std::fs::read(&path).with_context(|| format!("read `{}`", path.display()))?;
-        let key = format!("{}/{file}", family.prefix);
+        let key = format!("{prefix}/{file}");
         storage
             .put_cached(&key, &bytes, "font/woff2", ASSET_CACHE_CONTROL)
             .await
             .with_context(|| format!("upload `{key}`"))?;
         println!("  → {key} (font/woff2, {} bytes)", bytes.len());
+        uploaded += 1;
     }
-    Ok(family.files.len())
+    Ok(uploaded)
 }
 
 /// Package every `.otf` face in `dir` into one deflate-compressed ZIP.
@@ -1758,8 +1851,8 @@ mod tests {
         upload_font_family, upload_gorp_otf_zip, verify_bundled_slide_assets,
         verify_bundled_slide_assets_bucket, verify_content, verify_public_asset_origin,
         verify_public_asset_origin_embedded, verify_refs, verify_storage_refs, AssetProbe,
-        FetchReport, VerifyReport, ASSET_CACHE_CONTROL, GORP_OTF_ZIP_KEY, GORP_SERIF,
-        PLUS_JAKARTA_SANS,
+        FetchReport, VerifyReport, ASSET_CACHE_CONTROL, BUCKET_FONT_FAMILIES, GORP_OTF_ZIP_KEY,
+        GORP_SERIF,
     };
     use cloud::{FsStorage, ObjectListing, StorageError, StorageService, StoredObject};
     use std::collections::BTreeSet;
@@ -2382,7 +2475,10 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
     /// Publish the licensed faces on `server`. `verify_content` probes them on
     /// every run, so any case that expects success must serve them.
     async fn mount_published_fonts(server: &MockServer) {
-        for rel in font_family_refs(&GORP_SERIF).chain(font_family_refs(&PLUS_JAKARTA_SANS)) {
+        for rel in BUCKET_FONT_FAMILIES
+            .iter()
+            .flat_map(|family| font_family_refs(family))
+        {
             Mock::given(method("HEAD"))
                 .and(path(format!("/{rel}")))
                 .respond_with(ResponseTemplate::new(200))
@@ -2446,6 +2542,41 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         assert_eq!(verify_content(dir.path(), Some(server.uri())).await, 2);
     }
 
+    /// The defect this issue names, at the gate: an origin that serves every
+    /// image and both original families but is missing one practice brand's
+    /// face must fail, not pass. Before the table this probe did not exist
+    /// for six of the eight families, so a deployment could serve half the
+    /// site's typefaces and report a clean origin.
+    #[tokio::test]
+    async fn verify_content_fails_when_one_practice_brand_face_is_not_published() {
+        let server = MockServer::start().await;
+        mount_published_gallery(&server).await;
+        let withheld = "fonts/mukta/Mukta-Bold.woff2".to_string();
+        let published: BTreeSet<String> = BUCKET_FONT_FAMILIES
+            .iter()
+            .flat_map(|family| font_family_refs(family))
+            .collect();
+        assert!(
+            published.contains(&withheld),
+            "the withheld key must be one the table publishes"
+        );
+        for rel in published.iter().filter(|rel| **rel != withheld) {
+            Mock::given(method("HEAD"))
+                .and(path(format!("/{rel}")))
+                .respond_with(ResponseTemplate::new(200))
+                .mount(&server)
+                .await;
+        }
+        Mock::given(method("HEAD"))
+            .and(path(format!("/{withheld}")))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("blog")).unwrap();
+        assert_eq!(verify_content(dir.path(), Some(server.uri())).await, 2);
+    }
+
     #[test]
     fn verify_and_orphan_agree_on_the_reachable_image_keys() {
         // THE guard against the two halves drifting apart again. `orphan` asks
@@ -2464,7 +2595,10 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         for key in gallery_variant_keys() {
             assert!(refs.contains(&key), "verify must probe `{key}`");
         }
-        for key in font_family_refs(&GORP_SERIF) {
+        for key in BUCKET_FONT_FAMILIES
+            .iter()
+            .flat_map(|family| font_family_refs(family))
+        {
             assert!(refs.contains(&key), "verify must probe `{key}`");
         }
     }
@@ -2578,7 +2712,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         );
         assert!(slides.is_subset(&refs));
         assert!(gallery_variant_keys().is_subset(&refs));
-        for family in [&GORP_SERIF, &PLUS_JAKARTA_SANS] {
+        for family in BUCKET_FONT_FAMILIES {
             for rel in font_family_refs(family) {
                 assert!(refs.contains(&rel), "missing font key {rel}");
             }
@@ -3189,59 +3323,215 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
             .is_err());
     }
 
-    /// DeleteYourData.com's Plus Jakarta Sans faces upload the same way GORP's
-    /// do — a second licensed (OFL-1.1) web font, its own bucket prefix, and
-    /// the same all-or-nothing delivery guarantee — proving `upload_font_family`
-    /// actually generalizes to `upload_font_family` rather than staying a
-    /// GORP-only helper with a second copy beside it.
+    /// Every family in the table publishes both faces under its own prefix as
+    /// `font/woff2` — the acceptance test for `--family <name>`, run over the
+    /// whole table rather than over one family, because a row that names a
+    /// directory or a stem the brand does not use publishes objects no page
+    /// ever fetches.
     #[tokio::test]
-    async fn upload_font_family_publishes_plus_jakarta_sans_under_its_own_prefix() {
-        let source = TempDir::new().unwrap();
-        fs::write(
-            source.path().join("PlusJakartaSans-Regular.woff2"),
-            b"regular",
-        )
-        .unwrap();
-        fs::write(source.path().join("PlusJakartaSans-Bold.woff2"), b"bold").unwrap();
+    async fn upload_font_family_publishes_every_table_family_under_its_own_prefix() {
+        for family in BUCKET_FONT_FAMILIES {
+            let source = TempDir::new().unwrap();
+            for (index, file) in family.files().enumerate() {
+                fs::write(
+                    source.path().join(&file),
+                    format!("face-{index}").as_bytes(),
+                )
+                .unwrap();
+            }
 
-        let bucket = TempDir::new().unwrap();
-        let storage = FsStorage::new(bucket.path().to_path_buf()).await.unwrap();
-        assert_eq!(
-            upload_font_family(&storage, source.path(), &PLUS_JAKARTA_SANS)
-                .await
-                .unwrap(),
-            2
+            let bucket = TempDir::new().unwrap();
+            let storage = FsStorage::new(bucket.path().to_path_buf()).await.unwrap();
+            assert_eq!(
+                upload_font_family(&storage, source.path(), family)
+                    .await
+                    .unwrap(),
+                2,
+                "{} publishes a Regular and a Bold",
+                family.label
+            );
+
+            for (index, key) in font_family_refs(family).enumerate() {
+                let object = storage.get(&key).await.unwrap();
+                assert_eq!(object.bytes, format!("face-{index}").as_bytes());
+                assert_eq!(object.content_type, "font/woff2", "{key}");
+            }
+        }
+    }
+
+    /// `published_asset_refs` must name both faces of every family in the
+    /// table, or `assets verify` reports success on a deployment that never
+    /// uploaded them — the silent-fallback gap `font_family_refs`'s own doc
+    /// comment warns about, and the one six families sat inside.
+    #[test]
+    fn published_asset_refs_names_both_faces_of_every_font_family() {
+        let content = TempDir::new().unwrap();
+        let refs = published_asset_refs(content.path()).unwrap();
+        let mut probed = 0;
+        for family in BUCKET_FONT_FAMILIES {
+            for key in font_family_refs(family) {
+                assert!(refs.contains(&key), "verify must probe `{key}`: {refs:?}");
+                probed += 1;
+            }
+        }
+        assert_eq!(probed, 16, "eight families, a Regular and a Bold each");
+    }
+
+    /// The tracked half of the font lane: faces whose WOFF2 bytes ship in
+    /// this repository rather than through an operator upload (Tinos today).
+    /// A brand's face is legitimate if it is delivered by one of the two
+    /// lanes, so the guard below has to see both.
+    const TRACKED_PUBLIC_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../server/public");
+
+    /// Pull every `fonts/…woff2` key out of a rendered head fragment — both
+    /// the preload `href` and the `@font-face` `src` resolve to the same
+    /// object, so the set is what that brand actually asks a browser to
+    /// fetch, whatever asset origin this process is configured with.
+    fn emitted_font_keys(fragment: &str) -> BTreeSet<String> {
+        const SUFFIX: &str = ".woff2";
+        let mut keys = BTreeSet::new();
+        let mut cursor = 0;
+        while let Some(hit) = fragment[cursor..].find("fonts/") {
+            let start = cursor + hit;
+            let Some(end) = fragment[start..]
+                .find(SUFFIX)
+                .map(|o| start + o + SUFFIX.len())
+            else {
+                break;
+            };
+            keys.insert(fragment[start..end].to_string());
+            cursor = end;
+        }
+        keys
+    }
+
+    /// Every face the site can ask a browser to fetch is delivered by a lane
+    /// this repository knows about: published by [`BUCKET_FONT_FAMILIES`], or
+    /// tracked under `server/public`.
+    ///
+    /// The analogue of `store::seed`'s `compiled_brands_cover_every_closed_brand_key`,
+    /// and for the same reason: five practice brands landed six bucket-served
+    /// families while this binary's family list held two, so `assets verify`
+    /// reported a clean origin over six families it never probed and
+    /// `assets fonts upload` could not publish. Nothing else catches it —
+    /// `font-display: swap` renders the fallback and moves on.
+    ///
+    /// Two emitters, because a face reaches a browser two ways and either can
+    /// name a family this binary cannot publish. `portal::dioxus_app`'s head
+    /// fragment is what a compiled brand's host serves; `views`'s typeface
+    /// catalog is what a *runtime* brand picks from in `/app/brands`, rendered
+    /// into its `brand-{key}-tokens.css`. A tenth typeface fails here until it
+    /// joins the table, whichever door it came in by.
+    #[test]
+    fn published_font_families_cover_every_bucket_face_the_site_emits() {
+        let published: BTreeSet<String> = BUCKET_FONT_FAMILIES
+            .iter()
+            .flat_map(|family| font_family_refs(family))
+            .collect();
+        let tracked = std::path::Path::new(TRACKED_PUBLIC_ROOT);
+
+        let mut emitted = BTreeSet::new();
+        for key in views::brand::BrandKey::ALL {
+            emitted.extend(emitted_font_keys(portal::dioxus_app::font_head(*key)));
+        }
+        for face in views::brand_presentation::TYPEFACES {
+            if let Some(css) = views::brand_presentation::font_face_for(Some(face.id), None) {
+                emitted.extend(emitted_font_keys(&css));
+            }
+        }
+        assert!(
+            emitted.len() >= 2 * BUCKET_FONT_FAMILIES.len(),
+            "the extraction found {} faces, fewer than the table publishes — \
+             it stopped seeing what the site emits: {emitted:?}",
+            emitted.len()
         );
 
-        let regular = storage
-            .get("fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2")
-            .await
-            .unwrap();
-        assert_eq!(regular.bytes, b"regular");
-        assert_eq!(regular.content_type, "font/woff2");
-        assert_eq!(
-            storage
-                .get("fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2")
-                .await
-                .unwrap()
-                .bytes,
-            b"bold"
+        let unpublishable: BTreeSet<&String> = emitted
+            .iter()
+            .filter(|face| !published.contains(*face) && !tracked.join(face).is_file())
+            .collect();
+        assert!(
+            unpublishable.is_empty(),
+            "these faces are emitted by the site but neither published by \
+             `assets fonts upload` nor tracked under server/public: {unpublishable:?}"
         );
     }
 
-    /// `published_asset_refs` must name the Plus Jakarta Sans keys too, or
-    /// `assets verify` would report success on a deployment that never
-    /// uploaded DeleteYourData.com's font — the same silent-Georgia-fallback
-    /// gap `font_family_refs`'s own doc comment warns about.
+    /// Every family the table publishes is one `--family` can name, under the
+    /// directory it publishes to.
+    ///
+    /// The upload half of the same registry the guard above holds the verify
+    /// half of: a row nothing can select is a family an operator has no way
+    /// to publish, which is how six of these families came to be filled out
+    /// of band. Spelling the value as the bucket directory means the command
+    /// an operator types and the prefix it writes to are one string.
     #[test]
-    fn published_asset_refs_names_every_licensed_font_family() {
-        let content = TempDir::new().unwrap();
-        let refs = published_asset_refs(content.path()).unwrap();
-        for file in PLUS_JAKARTA_SANS.files {
+    fn font_family_arg_names_every_bucket_family() {
+        use clap::ValueEnum as _;
+
+        let selectable: BTreeSet<String> = crate::FontFamilyArg::value_variants()
+            .iter()
+            .map(|arg| {
+                let value = arg
+                    .to_possible_value()
+                    .expect("every --family variant is selectable")
+                    .get_name()
+                    .to_string();
+                assert_eq!(
+                    format!("fonts/{value}"),
+                    arg.resolve().prefix(),
+                    "`--family {value}` must be spelled as its bucket directory"
+                );
+                value
+            })
+            .collect();
+        let published: BTreeSet<String> = BUCKET_FONT_FAMILIES
+            .iter()
+            .map(|family| family.dir.to_string())
+            .collect();
+        assert_eq!(
+            selectable, published,
+            "every BUCKET_FONT_FAMILIES row needs a --family variant, and vice versa"
+        );
+    }
+
+    /// Every family's licence notice is tracked even though its bytes are
+    /// not.
+    ///
+    /// We redistribute these faces from our own buckets, so the grant has to
+    /// travel with them; the notice is the one part of a bucket-served family
+    /// that belongs in this tree. Each file is the upstream text verbatim —
+    /// some name the family in their copyright line and some (Mukta, the
+    /// Source families) name only the foundry, so the directory is what ties
+    /// a notice to its faces.
+    #[test]
+    fn every_bucket_font_family_tracks_its_licence_notice() {
+        for family in BUCKET_FONT_FAMILIES {
+            let dir = std::path::Path::new(TRACKED_PUBLIC_ROOT).join(family.prefix());
+            let notice = ["OFL.txt", "LICENSE.txt"]
+                .iter()
+                .map(|name| dir.join(name))
+                .find(|path| path.is_file())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{} is served from our bucket with no licence notice under {}",
+                        family.label,
+                        dir.display()
+                    )
+                });
+            let text = fs::read_to_string(&notice).unwrap();
             assert!(
-                refs.contains(&format!("{}/{file}", PLUS_JAKARTA_SANS.prefix)),
-                "missing Plus Jakarta Sans ref for {file}: {refs:?}"
+                text.to_lowercase().contains("copyright"),
+                "{} carries no copyright line",
+                notice.display()
             );
+            if notice.ends_with("OFL.txt") {
+                assert!(
+                    text.contains("SIL Open Font License, Version 1.1"),
+                    "{} must be the OFL 1.1 grant itself, not a pointer to it",
+                    notice.display()
+                );
+            }
         }
     }
 

@@ -6,6 +6,13 @@
 # from the moment DNS resolves to the LB's IP; subsequent renewals
 # are silent.
 #
+# This object covers only `NAVIGATOR_PUBLIC_HOST`. Additional live
+# brands each get their own `ManagedCertificate` (see
+# `brand-managed-certificates.yaml`) because a Google-managed
+# certificate reissues as a whole when `spec.domains` changes —
+# bundling families together takes every name on the object down
+# together.
+#
 # The HTTP-01 challenge runs against `http://NAVIGATOR_PUBLIC_HOST/
 # .well-known/acme-challenge/<token>`. The challenge server expects
 # the LB to serve the token on HTTP — so DON'T turn on the
@@ -20,9 +27,3 @@ metadata:
 spec:
   domains:
     - NAVIGATOR_PUBLIC_HOST
-    # `ops ship` replaces this comment with one `- <host>` entry per other
-    # brand host this deployment's environment serves, derived from
-    # `views::brand::BrandKey::ALL` — not a hand-maintained coordinate, so a
-    # brand added to the registry gets a cert automatically. Renders to
-    # nothing when this environment serves no other brand.
-    # NAVIGATOR_BRAND_HOST_CERT_DOMAINS

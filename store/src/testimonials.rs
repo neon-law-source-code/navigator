@@ -603,98 +603,89 @@ mod tests {
         other_project: projects::Project,
     }
 
+    async fn person_with_role(
+        surreal: &SurrealDb,
+        name: &str,
+        email: &str,
+        role: persons::Role,
+    ) -> persons::Person {
+        persons::create(
+            surreal,
+            &crate::persons::NewPerson {
+                role,
+                ..crate::persons::NewPerson::new(name, email)
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    async fn matter(surreal: &SurrealDb, code: &str, name: &str) -> projects::Project {
+        create(
+            surreal,
+            &NewProject {
+                code: code.into(),
+                name: name.into(),
+                status: "open".into(),
+                entity_id: Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
     async fn boundary_fixture() -> BoundaryFixture {
         let surreal = mem_surreal().await;
-        let client = persons::create(
+        let client = person_with_role(
             &surreal,
-            &crate::persons::NewPerson::new(
-                "Boundary Client",
-                "testimonial-boundary-client@example.com",
-            ),
+            "Boundary Client",
+            "testimonial-boundary-client@example.com",
+            persons::Role::Client,
         )
-        .await
-        .unwrap();
-        let other_client = persons::create(
+        .await;
+        let other_client = person_with_role(
             &surreal,
-            &crate::persons::NewPerson::new(
-                "Boundary Other Client",
-                "testimonial-boundary-other@example.com",
-            ),
+            "Boundary Other Client",
+            "testimonial-boundary-other@example.com",
+            persons::Role::Client,
         )
-        .await
-        .unwrap();
-        let lawyer = persons::create(
+        .await;
+        let lawyer = person_with_role(
             &surreal,
-            &crate::persons::NewPerson {
-                role: persons::Role::Lawyer,
-                ..crate::persons::NewPerson::new(
-                    "Boundary Lawyer",
-                    "testimonial-boundary-lawyer@example.com",
-                )
-            },
+            "Boundary Lawyer",
+            "testimonial-boundary-lawyer@example.com",
+            persons::Role::Lawyer,
         )
-        .await
-        .unwrap();
-        let clerk = persons::create(
+        .await;
+        let clerk = person_with_role(
             &surreal,
-            &crate::persons::NewPerson {
-                role: persons::Role::Clerk,
-                ..crate::persons::NewPerson::new(
-                    "Boundary Clerk",
-                    "testimonial-boundary-clerk@example.com",
-                )
-            },
+            "Boundary Clerk",
+            "testimonial-boundary-clerk@example.com",
+            persons::Role::Clerk,
         )
-        .await
-        .unwrap();
-        let admin = persons::create(
+        .await;
+        let admin = person_with_role(
             &surreal,
-            &crate::persons::NewPerson {
-                role: persons::Role::Admin,
-                ..crate::persons::NewPerson::new(
-                    "Boundary Admin",
-                    "testimonial-boundary-admin@example.com",
-                )
-            },
+            "Boundary Admin",
+            "testimonial-boundary-admin@example.com",
+            persons::Role::Admin,
         )
-        .await
-        .unwrap();
-        let owner = persons::create(
+        .await;
+        let owner = person_with_role(
             &surreal,
-            &crate::persons::NewPerson {
-                role: persons::Role::Owner,
-                ..crate::persons::NewPerson::new(
-                    "Boundary Owner",
-                    "testimonial-boundary-owner@example.com",
-                )
-            },
+            "Boundary Owner",
+            "testimonial-boundary-owner@example.com",
+            persons::Role::Owner,
         )
-        .await
-        .unwrap();
-        let project = create(
+        .await;
+        let project = matter(&surreal, "testimonial-boundary", "Boundary matter").await;
+        let other_project = matter(
             &surreal,
-            &NewProject {
-                code: "testimonial-boundary".into(),
-                name: "Boundary matter".into(),
-                status: "open".into(),
-                entity_id: Uuid::now_v7(),
-                ..Default::default()
-            },
+            "testimonial-boundary-other",
+            "Other boundary matter",
         )
-        .await
-        .unwrap();
-        let other_project = create(
-            &surreal,
-            &NewProject {
-                code: "testimonial-boundary-other".into(),
-                name: "Other boundary matter".into(),
-                status: "open".into(),
-                entity_id: Uuid::now_v7(),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
+        .await;
         designate_dri_in_surreal(&surreal, project.id, client.id, DriSide::Client)
             .await
             .unwrap();

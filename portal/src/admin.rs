@@ -3831,7 +3831,7 @@ mod tests {
     ) {
         let client = store::persons::create(
             surreal,
-            &store::persons::NewPerson::new("Form Client", &format!("{code}-client@example.com")),
+            &store::persons::NewPerson::new("Form Client", format!("{code}-client@example.com")),
         )
         .await
         .unwrap();
@@ -3841,7 +3841,7 @@ mod tests {
                 role: Role::Lawyer,
                 ..store::persons::NewPerson::new(
                     "Form Lawyer",
-                    &format!("{code}-lawyer@example.com"),
+                    format!("{code}-lawyer@example.com"),
                 )
             },
         )

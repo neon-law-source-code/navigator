@@ -47,6 +47,46 @@ async fn person(
     .unwrap()
 }
 
+async fn seeded_project(
+    surreal: &store::surreal::SurrealDb,
+    name: &str,
+) -> store::projects::Project {
+    let id = store::test_support::seed_project_surreal(surreal, name).await;
+    store::projects::find_by_id(surreal, id)
+        .await
+        .unwrap()
+        .expect("seeded project")
+}
+
+async fn designate(
+    surreal: &store::surreal::SurrealDb,
+    project_id: uuid::Uuid,
+    person_id: uuid::Uuid,
+    side: store::projects::DriSide,
+) {
+    store::projects::designate_dri_in_surreal(surreal, project_id, person_id, side)
+        .await
+        .unwrap();
+}
+
+async fn api_router(surreal: store::surreal::SurrealDb) -> Router {
+    let state = portal::test_support::app_state(surreal).await;
+    portal::api::routes().with_state(ApiState {
+        surreal: state.surreal.clone(),
+        email: state.email.clone(),
+        bootstrap_owner_email: state.bootstrap_owner_email.clone(),
+        bootstrap_company: "Synthetic Firm".into(),
+        questionnaire_runtime: state.questionnaire_runtime.clone(),
+        storage: state.storage.clone(),
+        workflow_runtime: state.workflow_runtime.clone(),
+        assets_storage: state.assets_storage.clone(),
+        forms_registry: state.forms_registry.clone(),
+        signature_provider: state.signature_provider.clone(),
+        contract_reviewer: state.contract_reviewer.clone(),
+        integration_providers: state.integration_providers.clone(),
+    })
+}
+
 async fn fixture() -> Fixture {
     let surreal = mem_surreal().await;
     let client = person(
@@ -91,49 +131,36 @@ async fn fixture() -> Fixture {
         Role::Owner,
     )
     .await;
-    let project_id = store::test_support::seed_project_surreal(&surreal, "route-testimonial").await;
-    let other_project_id =
-        store::test_support::seed_project_surreal(&surreal, "route-testimonial-other").await;
-    let project = store::projects::find_by_id(&surreal, project_id)
-        .await
-        .unwrap()
-        .expect("seeded project");
-    let other_project = store::projects::find_by_id(&surreal, other_project_id)
-        .await
-        .unwrap()
-        .expect("seeded other project");
-    store::projects::designate_dri_in_surreal(
+    let project = seeded_project(&surreal, "route-testimonial").await;
+    let other_project = seeded_project(&surreal, "route-testimonial-other").await;
+    designate(
         &surreal,
         project.id,
         client.id,
         store::projects::DriSide::Client,
     )
-    .await
-    .unwrap();
-    store::projects::designate_dri_in_surreal(
+    .await;
+    designate(
         &surreal,
         project.id,
         lawyer.id,
         store::projects::DriSide::Lawyer,
     )
-    .await
-    .unwrap();
-    store::projects::designate_dri_in_surreal(
+    .await;
+    designate(
         &surreal,
         other_project.id,
         other_client.id,
         store::projects::DriSide::Client,
     )
-    .await
-    .unwrap();
-    store::projects::designate_dri_in_surreal(
+    .await;
+    designate(
         &surreal,
         other_project.id,
         lawyer.id,
         store::projects::DriSide::Lawyer,
     )
-    .await
-    .unwrap();
+    .await;
     for (person_id, participation) in [
         (clerk.id, "clerk"),
         (admin.id, "admin"),
@@ -144,24 +171,10 @@ async fn fixture() -> Fixture {
             .unwrap();
     }
 
-    let state = portal::test_support::app_state(surreal.clone()).await;
-    let api_state = ApiState {
-        surreal: state.surreal.clone(),
-        email: state.email.clone(),
-        bootstrap_owner_email: state.bootstrap_owner_email.clone(),
-        bootstrap_company: "Synthetic Firm".into(),
-        questionnaire_runtime: state.questionnaire_runtime.clone(),
-        storage: state.storage.clone(),
-        workflow_runtime: state.workflow_runtime.clone(),
-        assets_storage: state.assets_storage.clone(),
-        forms_registry: state.forms_registry.clone(),
-        signature_provider: state.signature_provider.clone(),
-        contract_reviewer: state.contract_reviewer.clone(),
-        integration_providers: state.integration_providers.clone(),
-    };
+    let app = api_router(surreal.clone()).await;
     Fixture {
         surreal,
-        app: portal::api::routes().with_state(api_state),
+        app,
         project,
         other_project,
         client,

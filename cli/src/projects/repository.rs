@@ -166,6 +166,47 @@ const ALLOWED_ROOTS: &[&str] = &[
     // harness-specific mirror beside it is what this repository retired.
     ".agents",
 ];
+/// The harness-specific agent-instruction mirrors this layout retired, paired
+/// with what to do about one that comes back.
+///
+/// `AGENTS.md` is the contract and `.agents/skills/` the catalog: one file and
+/// one directory, read directly by whichever harness is pointed at the tree. A
+/// `CLAUDE.md`, a `.claude/`, or a `.codex/` beside them is the same
+/// instructions under a name only one harness reads, and keeping two copies in
+/// sync is the job nobody does — the mirrored-symlink arrangement Navigator
+/// itself retired failed silently, checking out on a clone without symlink
+/// support as a nine-byte `CLAUDE.md` whose *contents* were the string
+/// `AGENTS.md`.
+///
+/// Named here rather than left to [`ALLOWED_ROOTS`] because that list catches
+/// only a first component that is the *whole* path: a root `CLAUDE.md` fell
+/// through it as an anonymous unenumerated root, and a committed
+/// `.claude/skills/` or `.codex/skills/` was not examined at all. Matched on
+/// any path component, like [`FORBIDDEN_COMPONENTS`], so an
+/// `apps/portal/CLAUDE.md` does not walk around a root-only rule — and over
+/// the same git-visible files every other layout rule reads, so a developer's
+/// own untracked, ignored `.claude/` — harness-local state, and where a
+/// worktree checkout lives — is not this gate's business.
+const RETIRED_AGENT_MIRRORS: &[(&str, &str)] = &[
+    (
+        "CLAUDE.md",
+        "`CLAUDE.md` is a retired agent-instruction mirror; `AGENTS.md` is the \
+         whole contract for this repository, so delete it rather than keep a \
+         second copy in sync",
+    ),
+    (
+        ".claude",
+        "`.claude/` is a retired agent-instruction mirror; `.agents/skills/` is \
+         the whole catalog, so delete it and run `navigator project repository \
+         sync-skills`",
+    ),
+    (
+        ".codex",
+        "`.codex/` is a retired agent-instruction mirror; `.agents/skills/` is \
+         the whole catalog, so delete it and run `navigator project repository \
+         sync-skills`",
+    ),
+];
 const FORBIDDEN_COMPONENTS: &[&str] = &[
     "answers",
     "build",
@@ -609,6 +650,45 @@ fn layout_entries(root: &Path, errors: &mut Vec<Finding>) -> Option<Vec<(PathBuf
     }
 }
 
+/// Report one path that sits under a [`RETIRED_AGENT_MIRRORS`] entry, and say
+/// whether it did.
+///
+/// Matched at any depth, like [`FORBIDDEN_COMPONENTS`]: an
+/// `apps/portal/CLAUDE.md` is the same mirror as a root one, and a rule that
+/// only reads the root is one an application directory walks around.
+///
+/// `seen` carries the mirrors already reported, so the finding is one per
+/// mirror, anchored at the mirror itself: a `.claude/skills/` holds a file per
+/// skill, and a directory that should not exist is one thing to delete, not
+/// nine. A `true` return also suppresses the generic unenumerated-root
+/// finding, which would otherwise say something vaguer about the same file.
+fn retired_mirror(
+    root: &Path,
+    components: &[String],
+    seen: &mut Vec<PathBuf>,
+    errors: &mut Vec<Finding>,
+) -> bool {
+    let Some((depth, message)) = components
+        .iter()
+        .enumerate()
+        .find_map(|(depth, component)| {
+            RETIRED_AGENT_MIRRORS
+                .iter()
+                .copied()
+                .find(|(mirror, _)| *mirror == component.as_str())
+                .map(|(_, message)| (depth, message))
+        })
+    else {
+        return false;
+    };
+    let mirror = root.join(components[..=depth].iter().collect::<PathBuf>());
+    if !seen.contains(&mirror) {
+        seen.push(mirror.clone());
+        errors.push(Finding::at(mirror, message));
+    }
+    true
+}
+
 fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {
     if !root.join("README.md").is_file() {
         errors.push(Finding::at(
@@ -639,6 +719,7 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Fi
         return manifest_valid;
     };
 
+    let mut retired_mirrors: Vec<PathBuf> = Vec::new();
     for (path, is_file) in entries {
         let Ok(relative) = path.strip_prefix(root) else {
             continue;
@@ -653,7 +734,8 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Fi
         let Some(first) = components.first() else {
             continue;
         };
-        if components.len() == 1 && !ALLOWED_ROOTS.contains(&first.as_str()) {
+        let mirrored = retired_mirror(root, &components, &mut retired_mirrors, errors);
+        if !mirrored && components.len() == 1 && !ALLOWED_ROOTS.contains(&first.as_str()) {
             errors.push(Finding::at(
                 &path,
                 "path is outside the source-only Project repository layout",
@@ -1366,6 +1448,10 @@ fn agents(project_code: &str) -> String {
          Derive every in-app path from `import.meta.env.BASE_URL` rather than writing an absolute path by hand.\n\n\
          A Vite base rewrites module and asset URLs and never an `href` in source.\n\n\
          A root `portal/` is also accepted while repositories move that workspace to `apps/portal/`.\n\n\
+         ## One contract, one catalog\n\n\
+         This file is the whole agent contract here, and `.agents/skills/` is the whole skill catalog.\n\n\
+         A `CLAUDE.md`, `.claude/`, or `.codex/` beside them is a retired mirror and fails `navigator project gate`.\n\n\
+         Whichever harness you are, read this file: there is no second copy under another name to keep in sync.\n\n\
          ## Project codes are client identifiers\n\n\
          A Project code names a matter and its repository. It identifies a client, so it is client data.\n\n\
          The one legitimate use here is this repository naming itself, as in `navigator.yaml`, its paths, and its portal mount.\n\n\
@@ -1793,28 +1879,131 @@ jobs:
         );
     }
 
-    /// `AGENTS.md` is the contract, so a `CLAUDE.md` beside it is an
-    /// unenumerated root rather than a second copy to keep in sync. Refusing it
-    /// is what stops the mirror — and the symlink stub it used to check out as —
-    /// coming back one repository at a time.
+    /// `AGENTS.md` is the contract, so a `CLAUDE.md` beside it is a retired
+    /// mirror rather than a second copy to keep in sync. Refusing it by name —
+    /// not as one more anonymous unenumerated root — is what tells the person
+    /// reading CI which file to delete and which one survives.
     #[test]
-    fn a_claude_md_is_refused_as_an_unknown_root() {
+    fn a_claude_md_is_refused_as_a_retired_mirror() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         std::fs::write(root.path().join("CLAUDE.md"), "AGENTS.md").unwrap();
 
-        // Asserted on the finding's path: every unenumerated root reports the
-        // same message, so the message alone would not say which file was
-        // refused, and this test would keep passing if `CLAUDE.md` were
-        // re-admitted while some other stray file carried the finding.
+        // Asserted on the path as well as the message: the message alone would
+        // not say which file carried the finding, and the path alone would keep
+        // passing if `CLAUDE.md` fell back to the generic unenumerated-root
+        // wording this test exists to replace.
         let mut errors: Vec<Finding> = Vec::new();
         let mut warnings = Vec::new();
         validate_layout(root.path(), &mut errors, &mut warnings);
         assert!(
             errors
                 .iter()
-                .any(|finding| finding.path.ends_with("CLAUDE.md")),
+                .any(|finding| finding.path.ends_with("CLAUDE.md")
+                    && finding.message.contains("retired agent-instruction mirror")
+                    && finding
+                        .message
+                        .contains("`AGENTS.md` is the whole contract")),
             "{errors:?}"
+        );
+    }
+
+    /// A committed `.claude/` or `.codex/` is the same mirror one directory
+    /// deep, and it is the half that used to pass: nothing checked a path below
+    /// its first component against [`ALLOWED_ROOTS`], so a mirrored `skills/`
+    /// was admitted in full while a root `CLAUDE.md` was refused.
+    #[test]
+    fn a_committed_mirror_directory_is_refused_once() {
+        for mirror in [".claude", ".codex"] {
+            let root = tempfile::tempdir().unwrap();
+            scaffold_minimal(root.path());
+            for skill in ["council", "legal-council"] {
+                let path = root.path().join(mirror).join("skills").join(skill);
+                std::fs::create_dir_all(&path).unwrap();
+                std::fs::write(path.join("SKILL.md"), "# mirror\n").unwrap();
+            }
+
+            let mut errors: Vec<Finding> = Vec::new();
+            let mut warnings = Vec::new();
+            validate_layout(root.path(), &mut errors, &mut warnings);
+            let mirrored: Vec<&Finding> = errors
+                .iter()
+                .filter(|finding| finding.message.contains("retired agent-instruction mirror"))
+                .collect();
+            assert_eq!(
+                mirrored.len(),
+                1,
+                "one directory to delete, not one finding per skill: {errors:?}"
+            );
+            assert!(mirrored[0].path.ends_with(mirror), "{mirrored:?}");
+            assert!(
+                mirrored[0].message.contains("sync-skills"),
+                "the finding must name how the catalog is repopulated: {mirrored:?}"
+            );
+        }
+    }
+
+    /// A developer's own `.claude/` is harness-local state — this very
+    /// repository checks worktrees out under it — so the gate reads what Git
+    /// would carry, not what happens to sit on disk. An ignored one is not a
+    /// committed mirror and is not a finding.
+    #[test]
+    fn an_ignored_claude_directory_is_left_alone() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::write(root.path().join(".gitignore"), ".claude/\n").unwrap();
+        std::fs::create_dir_all(root.path().join(".claude/worktrees")).unwrap();
+        std::fs::write(root.path().join(".claude/settings.json"), "{}\n").unwrap();
+
+        let found = layout_findings(root.path());
+        assert!(
+            !found
+                .iter()
+                .any(|message| message.contains("retired agent-instruction mirror")),
+            "{found:?}"
+        );
+    }
+
+    /// A mirror inside an application directory is the same mirror. The root
+    /// is where one is written by hand today, but `apps/<app>/` is a whole
+    /// workspace with its own tooling, and a rule that reads only the root is
+    /// one an application walks around.
+    #[test]
+    fn a_mirror_inside_an_application_is_refused_where_it_sits() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        let application = root.path().join("apps/portal");
+        std::fs::create_dir_all(&application).unwrap();
+        std::fs::write(application.join("CLAUDE.md"), "AGENTS.md").unwrap();
+
+        let mut errors: Vec<Finding> = Vec::new();
+        let mut warnings = Vec::new();
+        validate_layout(root.path(), &mut errors, &mut warnings);
+        assert!(
+            errors
+                .iter()
+                .any(|finding| finding.path.ends_with("apps/portal/CLAUDE.md")
+                    && finding.message.contains("retired agent-instruction mirror")),
+            "the finding is anchored where the mirror sits, not at the root: {errors:?}"
+        );
+    }
+
+    /// The catalog that survives is still accepted: this is a rename of the
+    /// mirror check, not a refusal of agent tooling.
+    #[test]
+    fn the_canonical_agents_directory_is_not_a_retired_mirror() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        let path = root.path().join(".agents/skills/council");
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join("SKILL.md"), "# council\n").unwrap();
+
+        let found = layout_findings(root.path());
+        assert!(
+            !found
+                .iter()
+                .any(|message| message.contains("retired agent-instruction mirror")),
+            "{found:?}"
         );
     }
 

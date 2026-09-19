@@ -599,12 +599,14 @@ checkout text files to LF, `.github/CODEOWNERS` with the canonical `* @shicholas
 deployment configuration, `README.md`, and `AGENTS.md`. It also writes `tests/`, `documents/.gitignore`, and one
 placeholder `templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing
 hand-copied `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `AGENTS.md` is the
-only contract file — there is no `CLAUDE.md` mirror to keep in sync, and a `CLAUDE.md` committed beside it is refused as
-an unenumerated root. `navigator project gate` requires the canonical CODEOWNERS file and that `AGENTS.md` exist and
-name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the matter
-repository. The same `validate` walk extracts `navigator …` invocations from the repository's Markdown and checks each
-against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit that
-introduced the rename.
+only contract file and `.agents/skills/` the only skill catalog. A committed `CLAUDE.md`, `.claude/`, or `.codex/` is a
+retired mirror, and the gate names it: the finding carries the surviving path and the remedy rather than the anonymous
+unenumerated-root wording. The match is on any path component, so a `.claude/skills/` — which the root-only rule never
+looked below at all — and an `apps/<app>/CLAUDE.md` are both refused where they sit. `navigator project gate` requires
+the canonical CODEOWNERS file and that `AGENTS.md` exist and name the Lawyers team as where a Navigator CLI gap is filed
+rather than recorded as a workaround in the matter repository. The same `validate` walk extracts `navigator …`
+invocations from the repository's Markdown and checks each against this binary's clap command tree, so a documented verb
+that no longer exists fails the gate at the commit that introduced the rename.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

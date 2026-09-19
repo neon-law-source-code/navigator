@@ -230,6 +230,11 @@ async fn the_firm_privacy_policy_discloses_the_sms_program() {
         "for as long as we keep your inquiry",
         "do not share or sell your mobile phone number or your SMS consent",
         "Effective 2026-09-18",
+        // The customer-care voice line the HELP disclosure points at, read
+        // from the branding constant rather than written out here, so the
+        // number a reader would dial cannot drift from the one the firm
+        // publishes elsewhere.
+        views::brand::firm_phone(),
     ] {
         assert!(
             collapsed.contains(required),

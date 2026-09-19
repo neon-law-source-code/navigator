@@ -26,6 +26,68 @@ async fn storage() -> Arc<dyn cloud::StorageService> {
     Arc::new(cloud::FsStorage::new(dir).await.unwrap())
 }
 
+/// Staging uses the persistent runtime profile. A roll must register Vesta
+/// without requiring the disposable sample portfolio to run.
+#[tokio::test]
+async fn persistent_boot_registers_vesta_idempotently() {
+    let surreal = store::surreal::test_support::unmigrated().await;
+    store::schema::apply(&surreal).await.unwrap();
+    let storage = storage().await;
+    let mut brand_id = None;
+    for _ in 0..2 {
+        store::seed::seed_environment_with(
+            &surreal,
+            &storage,
+            DeploymentEnvironment::Production,
+            store::seed::BrandSeed::Neon,
+        )
+        .await
+        .unwrap();
+        let vesta = store::brands::find_by_key(&surreal, "vesta")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(vesta.name, "Vesta Estate Planning");
+        assert_eq!(vesta.primary_color.as_deref(), Some("#8A5A2B"));
+        if let Some(id) = brand_id {
+            assert_eq!(vesta.id, id);
+        }
+        brand_id = Some(vesta.id);
+        let firms = store::firms::all(&surreal).await.unwrap();
+        assert!(store::firms::brand_keys_for_firm(&surreal, firms[0].id)
+            .await
+            .unwrap()
+            .contains(&"vesta".to_string()));
+        assert!(projects::all(&surreal).await.unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn sample_estate_reseeding_uses_vesta_and_preserves_the_project_id() {
+    let surreal = mem_surreal().await;
+    let storage = storage().await;
+    let mut project_id = None;
+    for _ in 0..2 {
+        store::seed::seed_environment_with(
+            &surreal,
+            &storage,
+            DeploymentEnvironment::Dev,
+            store::seed::BrandSeed::Neon,
+        )
+        .await
+        .unwrap();
+        let estate = projects::find_by_code(&surreal, store::seed::SAMPLE_ESTATE_CODE)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(estate.brand, "vesta");
+        if let Some(id) = project_id {
+            assert_eq!(estate.id, id);
+        }
+        project_id = Some(estate.id);
+    }
+}
+
 /// A deployment holding real client files carries no invented ones, and no
 /// fixture people either. The production profile is the whole predicate:
 /// `NAVIGATOR_SIMULATED_MATTERS` cannot widen this, because it decides only
@@ -639,7 +701,7 @@ async fn the_dev_portfolios_mail_survives_the_mailroom_moving_layers() {
 /// Admin / Lawyer / Clerk only. A second boot inserts nothing.
 /// A first boot seeds a `brand` row for every key the practice then wears.
 ///
-/// This is the only test in the file that starts from the schema alone.
+/// This test starts from the schema alone.
 /// [`mem_surreal`] pre-registers every `CLOSED_BRAND_KEYS` entry as a
 /// `brand` row, which is the state a deployment reaches *after*
 /// `seed_brands` has run — so every other test here seeds against a

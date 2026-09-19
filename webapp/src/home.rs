@@ -1,4 +1,4 @@
-//! Brand home pages and the company counsel offering.
+//! Brand home pages, company counsel, and lifetime estate planning.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ use crate::public_chrome::{PublicChrome, PublicFooter};
 pub use crate::components::PracticeMark;
 mod company;
 pub use company::CompanyContent;
+mod estate;
 
 /// The self-contained home stylesheet, hoisted alongside `theme.css`.
 pub const HOME_STYLESHEET_HREF: &str = "/public/css/home.css";
@@ -132,18 +133,17 @@ pub struct HomeContent {
     /// Company counsel presentation; absent for other house brands.
     #[serde(default)]
     pub company: Option<CompanyContent>,
-    /// When set, the page renders nothing but this statement over the shared
-    /// footer — no header, CTA, or practice boxes. A house brand that is a
-    /// bare holding notice rather than an active marketing site (Lawyer
-    /// Shook).
+    /// The firm's notice and sign-in, followed by any catalogued practice
+    /// cards and the shared footer, without the marketing header.
     #[serde(default)]
     pub bare: Option<BareStatement>,
+    /// The lifetime estate-planning offer, authored in the brand catalog.
+    #[serde(default)]
+    pub estate: Option<views::locales::EstateCopy>,
 }
 
-/// A brand's entire home page, collapsed to a title and one paragraph. Used
-/// when [`HomeContent::bare`] is set: [`HomePage`] then renders none of its
-/// usual header, CTA, or practice boxes — only the statement and the one
-/// shared footer under it.
+/// The firm's notice and sign-in. When [`HomeContent::bare`] is set, this
+/// leads into any practice cards and the shared footer.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct BareStatement {
     pub heading: String,
@@ -235,6 +235,7 @@ pub fn HomePage(
             document::Stylesheet { href: THEME_STYLESHEET_HREF }
             document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
             document::Stylesheet { href: HOME_STYLESHEET_HREF }
+            document::Stylesheet { href: "/public/css/vesta.css" }
             document::Stylesheet { href: "{chrome.tokens_href}" }
             // The theme root without `PublicShell`'s own marker: the holding
             // page is deliberately not a public marketing page (no header,
@@ -256,6 +257,12 @@ pub fn HomePage(
                                     "{run.text}"
                                 }
                             }
+                        }
+                    }
+                    if !content.practices.is_empty() {
+                        PracticeLinks {
+                            heading: content.practices_heading.clone(),
+                            practices: content.practices.clone(),
                         }
                     }
                 }
@@ -300,9 +307,14 @@ pub fn HomePage(
         }
         document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
         document::Stylesheet { href: HOME_STYLESHEET_HREF }
+        if content.estate.is_some() {
+            document::Stylesheet { href: "/public/css/vesta.css" }
+        }
         PublicShell { header, footer,
             if let Some(company) = content.company.as_ref() {
                 company::CompanyHome { content: content.clone(), company: company.clone() }
+            } else if let Some(estate) = content.estate.as_ref() {
+                estate::EstateHome { content: content.clone(), estate: estate.clone() }
             } else {
             // The page opens on the question. No photograph above it and no
             // glow behind it: the question is the page, so it is the first
@@ -621,6 +633,7 @@ mod tests {
                         provenance: None,
                         company: None,
                         bare: None,
+                        estate: None,
                     },
                 }
             }

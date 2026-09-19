@@ -9,6 +9,10 @@ megabytes of binaries) without making the local test harness depend on a runtime
 
 ## The four commands
 
+Vesta's mark is the [public-domain Vesta symbol](https://commons.wikimedia.org/wiki/File:4_Vesta_(1).svg), vectorized by
+Carnby after Urhixidur. `server/public/brand/vesta.svg` adds a scalable view box and the brand's bronze fill. This small
+SVG ships with the other tracked brand marks and needs no bucket upload.
+
 The `navigator ops assets` subcommands form a build → publish → restore → verify loop. For responsive photos, the
 `views::assets::GALLERY` manifest and the width set (`WIDTHS = [400, 800, 1200]`) are the single source of truth shared
 with the view layer, so adding a photo is a manifest edit plus a JPEG — never a code change. Standalone blog,

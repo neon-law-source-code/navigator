@@ -44,10 +44,22 @@ Lawyer Shook (`lawyer-shook/`):
 
 | File | Page |
 | --- | --- |
+| `neon/locales/en/lawyer-shook/home.yaml` | `/` practice cards beneath the firm's notice |
 | `neon/locales/en/lawyer-shook/services.yaml` | `/services` (kept valid; the route is not published on that host) |
 
-Lawyer Shook's `/` is not a catalog page. It is a bare holding notice for Shook Law PLLC, written in Rust
-(`neon::firm_pages::lawyer_shook_holding_content`), because the page carries no marketing copy to edit.
+Lawyer Shook's `/` combines the firm notice and client sign-in written in Rust
+(`neon::firm_pages::lawyer_shook_holding_content`) with Neon Law and Vesta practice cards from its home catalog. It uses
+the shared footer.
+
+Vesta's `home.yaml` carries the `estate` block: a $5,000 lifetime plan with unlimited edits, a three-step explanation,
+and an optional $5 blockchain record marked coming soon. The booking link uses Vesta's `consultation_url`, matching the
+Notion calendar for Neon Law. Its existing services page describes the same offer. Blockchain recording remains
+unavailable while the backend in [`solana-attestation`](solana-attestation.md) is unshipped; a record does not replace
+required signing or notarization.
+
+Vesta is registered by the canonical brand seed on each deployment boot, including staging's persistent runtime profile.
+Its page and SVG ship with the application. The disposable estate fixture belongs to Vesta when the sample portfolio is
+explicitly seeded; a staging restart does not recreate that portfolio.
 
 Which stems a key ships is [`BrandKey::catalog_pages`](../views/src/brand.rs). DeleteYourData.com answers only those
 pages plus `/contact` (addresses, not a YAML stem); Lawyer Shook answers `/` alone. Other firm paths 404 on that host

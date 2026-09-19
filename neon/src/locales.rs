@@ -37,6 +37,7 @@ const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml"
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
 const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
 const VESTA_HOME_YAML: &str = include_str!("../locales/en/vesta/home.yaml");
+const LAWYER_SHOOK_HOME_YAML: &str = include_str!("../locales/en/lawyer-shook/home.yaml");
 const VESTA_SERVICES_YAML: &str = include_str!("../locales/en/vesta/services.yaml");
 const MISERICORDIA_HOME_YAML: &str = include_str!("../locales/en/misericordia/home.yaml");
 const MISERICORDIA_SERVICES_YAML: &str = include_str!("../locales/en/misericordia/services.yaml");
@@ -74,6 +75,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
     match (key, page) {
         (BrandKey::Neon, "home") => Some(NEON_HOME_YAML),
         (BrandKey::Vesta, "home") => Some(VESTA_HOME_YAML),
+        (BrandKey::LawyerShook, "home") => Some(LAWYER_SHOOK_HOME_YAML),
         (BrandKey::Vesta, "services") => Some(VESTA_SERVICES_YAML),
         (BrandKey::Misericordia, "home") => Some(MISERICORDIA_HOME_YAML),
         (BrandKey::Misericordia, "services") => Some(MISERICORDIA_SERVICES_YAML),
@@ -639,7 +641,11 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
         meta_description: copy.meta_description,
         heading: copy.heading,
         lead: copy.lead,
-        contact_href: format!("mailto:{}", branding.firm_email),
+        contact_href: if branding.brand_key == BrandKey::Vesta {
+            branding.consultation_url.to_string()
+        } else {
+            format!("mailto:{}", branding.firm_email)
+        },
         contact_label: copy.contact_label,
         service: copy.service.map(|ServiceSectionCopy { heading, body }| {
             webapp::home::ServiceSection {
@@ -707,10 +713,9 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
             source_label: copy.source_label,
             source_note: copy.source_note,
         }),
-        // Every brand that loads a `home.yaml` publishes an ordinary
-        // marketing page; only Lawyer Shook's hardcoded holding statement
-        // (`neon::firm_pages::lawyer_shook_holding_content`) sets `bare`.
+        // Lawyer Shook's resolver supplies its firm notice over this catalog.
         bare: None,
+        estate: copy.estate,
     }
 }
 
@@ -1278,10 +1283,8 @@ mod tests {
         }
     }
 
-    /// Lawyer Shook's `/` is no longer a catalog page (see
-    /// [`crate::firm_pages::lawyer_shook_holding_content`]), so this only
-    /// covers `/services` — still a real YAML catalog page even though the
-    /// route itself is gated off by `BrandKey::publishes_firm_path`.
+    /// The services catalog remains brand-safe even though the route is
+    /// gated off by `BrandKey::publishes_firm_path`.
     #[test]
     fn lawyer_shook_services_catalog_is_brand_keyed_and_attributed() {
         let branding = &views::brand::LAWYER_SHOOK_BRANDING;
@@ -1460,6 +1463,9 @@ mod tests {
         ];
         if let Some(service) = home.service.as_ref() {
             text.extend(service.body.iter().flatten().map(|run| run.text.clone()));
+        }
+        if let Some(estate) = home.estate.as_ref() {
+            text.push(serde_yaml::to_string(estate).expect("estate copy serializes"));
         }
         for practice in &home.practices {
             text.push(practice.heading.clone());

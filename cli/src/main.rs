@@ -3828,8 +3828,8 @@ fn run_render(
     let bytes = match render_notation_artifact(file, &body, &output_extension, format, &letterhead)
     {
         Ok(bytes) => bytes,
-        Err(error) => {
-            eprintln!("navigator: {error}");
+        Err(_error) => {
+            eprintln!("navigator: render failed");
             return ExitCode::from(2);
         }
     };

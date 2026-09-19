@@ -32,6 +32,7 @@ pub mod redirect;
 pub mod s3;
 pub mod slack;
 pub mod speech;
+pub mod vertex;
 pub mod workspace;
 
 pub use audio::{decode_to_mono_pcm16, AudioError, DecodedAudio};
@@ -63,6 +64,11 @@ pub use slack::{
     SlackMemberId, SlackService, SLACK_STAGING_MARK,
 };
 pub use speech::{GoogleSpeechConfig, GoogleSpeechTranscriptProvider, SpeechError};
+pub use vertex::{
+    ClaudeVertexAdapter, GeminiVertexAdapter, MetadataTokenSource, StaticTokenSource, VertexError,
+    VertexRequest, VertexResponse, VertexTokenSource, DEFAULT_CLAUDE_SUMMARY_LOCATION,
+    DEFAULT_CLAUDE_SUMMARY_MODEL, DEFAULT_GEMINI_SUMMARY_LOCATION, DEFAULT_GEMINI_SUMMARY_MODEL,
+};
 pub use workspace::{
     documents_prefix, is_navigator_repository, is_valid_slug, DeploymentWorkspace,
     DriveCoordinates, GoogleWorkspace, WorkspaceConfig, WorkspaceConfigError, WorkspaceCustomer,

@@ -143,6 +143,7 @@ const UNIQUE_INDEX_NAMES: &[&str] = &[
     "playbook_entity_name",
     "email_conversation_token",
     "communication_channel_source_ref",
+    "email_receipt_identity",
     "visitor_route_count_bucket",
 ];
 

@@ -20,7 +20,7 @@ use crate::mailrooms::{self, MailroomError};
 use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 
 /// The table these rows live in.
-const TABLE: &str = "letter";
+pub(crate) const TABLE: &str = "letter";
 /// The table `mailroom_id` links into.
 const MAILROOM_TABLE: &str = "mailroom";
 
@@ -139,11 +139,23 @@ where
 /// [`LetterError::Db`] if the insert fails, including the schema
 /// `ASSERT` when `direction` is neither `incoming` nor `outgoing`.
 pub async fn record(db: &SurrealDb, new: &NewLetter) -> Result<Letter, LetterError> {
+    record_with_id(db, Uuid::now_v7(), new).await
+}
+
+/// Record a letter at a caller-selected id.
+///
+/// The inbound summary lane uses a digest-derived id so a retry after a
+/// partial archive/database failure can finish the same letter without
+/// allocating a second one.
+pub async fn record_with_id(
+    db: &SurrealDb,
+    id: Uuid,
+    new: &NewLetter,
+) -> Result<Letter, LetterError> {
     if mailrooms::find_by_id(db, new.mailroom_id).await?.is_none() {
         return Err(LetterError::NoSuchMailroom(new.mailroom_id));
     }
 
-    let id = Uuid::now_v7();
     let mut response = writing(|| {
         db.query(format!(
             "CREATE $id SET \

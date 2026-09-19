@@ -75,6 +75,7 @@ fn inbound(from: &str, to: &str, subject: &str, text: &str) -> InboundEmail {
     InboundEmail {
         from: from.to_string(),
         to: to.to_string(),
+        envelope: None,
         subject: subject.to_string(),
         text: text.to_string(),
         raw: text.as_bytes().to_vec(),

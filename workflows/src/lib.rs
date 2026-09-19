@@ -22,6 +22,7 @@ pub mod compliance;
 pub mod dispatch;
 pub mod document;
 pub mod email;
+pub mod email_summary;
 pub mod guardrail;
 pub mod intake;
 pub mod integrations;
@@ -50,6 +51,11 @@ pub use email::{
     dispatch_state, parse_slug, template_for_slug, CapturingEmail, DispatchError, EmailError,
     EmailPayload, EmailService, OutboundEmail, SendGridEmail, SendReceipt, Template,
     DEFAULT_FROM_EMAIL,
+};
+pub use email_summary::{
+    build_prompt, normalize_email, parse_summary, EmailSummary, EmailSummaryRunConfig,
+    NormalizedEmail, SummaryError, SummaryProvider, DEFAULT_MAX_INPUT_CHARS,
+    DEFAULT_MAX_OUTPUT_TOKENS, SUMMARY_PROMPT_VERSION,
 };
 pub use guardrail::{lawyer_review_gates_filing, lawyer_review_precedes_submission, GateViolation};
 pub use intake::{

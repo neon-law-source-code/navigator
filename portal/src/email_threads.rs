@@ -1611,6 +1611,7 @@ mod tests {
         InboundEmail {
             from: from.into(),
             to: to.into(),
+            envelope: None,
             subject: subject.into(),
             text: text.into(),
             raw: Vec::new(),

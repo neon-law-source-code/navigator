@@ -170,6 +170,7 @@ pub async fn app_state_with_email(
         email,
         attachment_scanner: Arc::new(portal::attachment_scanner::FakeAttachmentScanner::clean()),
         inbound_email_secret: None,
+        summary_intake: None,
         email_events_secret: None,
         sendgrid_events_public_key: None,
         bootstrap_owner_email: None,

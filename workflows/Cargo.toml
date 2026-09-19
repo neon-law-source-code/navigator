@@ -11,6 +11,7 @@ async-trait.workspace = true
 base64.workspace = true
 chrono.workspace = true
 cloud.workspace = true
+mail-parser.workspace = true
 pdf.workspace = true
 # We talk to the Restate broker over plain HTTP — admin API at
 # :9070 and ingress at :8080 — so reqwest is the only dependency

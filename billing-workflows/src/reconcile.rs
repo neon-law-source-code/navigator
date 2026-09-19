@@ -40,6 +40,13 @@ pub struct ReconcileReport {
     pub checked: usize,
     /// How many of those actually changed (status or amount paid).
     pub updated: usize,
+    /// Xero bank accounts whose name declared a state (`IOLTA NV …`) and
+    /// whose pooled balance was mirrored onto `iolta_account`.
+    pub iolta_accounts: usize,
+    /// Listed bank accounts that declared no state, or a state this
+    /// deployment does not carry. No row is written — the firm's operating
+    /// and payroll accounts land here, and so does a typo.
+    pub iolta_unscoped: usize,
 }
 
 /// Service registered with the Restate endpoint. Holds a SurrealDB clone (the
@@ -107,12 +114,62 @@ pub async fn reconcile_once(
         )
         .await?;
     }
+    let (iolta_accounts, iolta_unscoped) = mirror_iolta_accounts(provider, surreal).await?;
     Ok(ReconcileReport {
         ingested,
         unscoped,
         checked: rows.len(),
         updated,
+        iolta_accounts,
+        iolta_unscoped,
     })
+}
+
+/// Refresh the mirrored balance of each state's pooled IOLTA account.
+///
+/// Read-only in both directions: Xero lists its bank accounts, Navigator
+/// keeps the one row per state that `store::iolta_accounts` allows, and
+/// nothing is ever written back to Xero. An account whose name does not
+/// declare a state (`IOLTA NV — Trust`) is counted as unscoped rather than
+/// attached to one — the firm's operating account is in the same list.
+///
+/// A refused write for one account does not abandon the rest: a second Xero
+/// account claiming a state that is already mirrored is reported as unscoped
+/// and the run continues, because one bookkeeping mistake should not stop
+/// every other state's balance from refreshing.
+async fn mirror_iolta_accounts(
+    provider: &dyn BillingProvider,
+    surreal: &SurrealDb,
+) -> anyhow::Result<(usize, usize)> {
+    let listed = provider.list_bank_accounts().await?;
+    let mirrored_at = chrono::Utc::now();
+    let mut mirrored = 0;
+    let mut unscoped = 0;
+    for account in listed {
+        let Some(jurisdiction_id) =
+            store::iolta_accounts::resolve_jurisdiction_scope(surreal, &account.name).await?
+        else {
+            unscoped += 1;
+            continue;
+        };
+        let upsert = store::iolta_accounts::UpsertIoltaAccount {
+            jurisdiction_id,
+            xero_account_id: account.account_id.clone(),
+            xero_account_code: account.code.clone(),
+            name: account.name.clone(),
+            currency: account.currency.clone(),
+            balance_cents: account.balance_cents,
+            mirrored_at,
+        };
+        match store::iolta_accounts::upsert(surreal, &upsert).await {
+            Ok(_) => mirrored += 1,
+            Err(store::iolta_accounts::IoltaAccountError::JurisdictionTaken { .. }) => {
+                unscoped += 1;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok((mirrored, unscoped))
 }
 
 fn skip_listed_status(status: &str) -> bool {
@@ -165,7 +222,7 @@ async fn ingest_listed(
 #[cfg(test)]
 mod tests {
     use super::reconcile_once;
-    use billing::{InvoiceStatus, ReceivableInvoice, StubBillingProvider};
+    use billing::{InvoiceStatus, ReceivableInvoice, StubBillingProvider, TrustBankAccount};
     use chrono::{TimeZone, Utc};
 
     async fn seed_mirror(
@@ -416,5 +473,110 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    async fn seed_state(surreal: &store::surreal::SurrealDb, name: &str, code: &str) -> uuid::Uuid {
+        store::jurisdictions::create(
+            surreal,
+            &store::jurisdictions::NewJurisdiction::new(name, code, "state"),
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    fn bank(account_id: &str, name: &str, balance_cents: i64) -> TrustBankAccount {
+        TrustBankAccount {
+            account_id: account_id.into(),
+            code: Some("090".into()),
+            name: name.into(),
+            currency: "USD".into(),
+            balance_cents,
+        }
+    }
+
+    /// ENG-801: two states are two mirrored pooled accounts, and the firm's
+    /// own accounts — listed by the same Xero read — are counted as unscoped
+    /// rather than turned into a trust pool.
+    #[tokio::test]
+    async fn the_nightly_run_mirrors_one_pooled_account_per_state() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        let california = seed_state(&surreal, "California", "CA").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![
+            bank("xero-nv", "IOLTA NV — Trust", 1_250_000),
+            bank("xero-ca", "IOLTA CA — Trust", 400_000),
+            bank("xero-op", "Business Checking", 9_000_000),
+        ]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.iolta_accounts, 2);
+        assert_eq!(report.iolta_unscoped, 1, "the operating account is skipped");
+
+        let nv = store::iolta_accounts::for_jurisdiction(&surreal, nevada)
+            .await
+            .unwrap()
+            .expect("Nevada is mirrored");
+        assert_eq!(nv.xero_account_id, "xero-nv");
+        assert_eq!(nv.balance_cents, 1_250_000);
+        assert!(nv.mirrored_at.is_some(), "the read stamps when it happened");
+        assert_eq!(
+            store::iolta_accounts::for_jurisdiction(&surreal, california)
+                .await
+                .unwrap()
+                .map(|a| a.balance_cents),
+            Some(400_000)
+        );
+    }
+
+    /// A second Xero account claiming a state that already has one is
+    /// reported, not applied — and it does not stop the other states in the
+    /// same run from refreshing.
+    #[tokio::test]
+    async fn a_duplicate_state_account_is_counted_and_the_run_continues() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        seed_state(&surreal, "California", "CA").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![
+            bank("xero-nv", "IOLTA NV — Trust", 1_000_000),
+            bank("xero-nv-2", "IOLTA NV — Second", 7),
+            bank("xero-ca", "IOLTA CA — Trust", 500_000),
+        ]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.iolta_accounts, 2, "NV once, CA once");
+        assert_eq!(report.iolta_unscoped, 1, "the second NV account is refused");
+        assert_eq!(
+            store::iolta_accounts::for_jurisdiction(&surreal, nevada)
+                .await
+                .unwrap()
+                .map(|a| a.xero_account_id),
+            Some("xero-nv".to_string()),
+            "the incumbent is not replaced"
+        );
+    }
+
+    /// A second night refreshes the balance in place rather than adding a
+    /// second master balance for the same state.
+    #[tokio::test]
+    async fn re_running_the_mirror_refreshes_rather_than_duplicates() {
+        let surreal = store::surreal::test_support::mem().await;
+        seed_state(&surreal, "Nevada", "NV").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 100_000)]);
+        reconcile_once(&stub, &surreal).await.unwrap();
+
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 250_000)]);
+        let second = reconcile_once(&stub, &surreal).await.unwrap();
+
+        assert_eq!(second.iolta_accounts, 1);
+        let accounts = store::iolta_accounts::all(&surreal).await.unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].balance_cents, 250_000);
     }
 }

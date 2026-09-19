@@ -78,6 +78,22 @@ pub struct ReceivableInvoice {
     pub due_at: Option<DateTime<Utc>>,
 }
 
+/// One bank account as listed from the provider, read-only. The firm's
+/// pooled IOLTA account for a state is one of these; which state it serves
+/// is a Navigator mapping (`store::iolta_accounts`), not something Xero
+/// knows. Money is minor units.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustBankAccount {
+    /// Xero `AccountID` (a GUID) — the stable identity.
+    pub account_id: String,
+    /// Xero's short chart-of-accounts `Code` (`"090"`), when set.
+    pub code: Option<String>,
+    pub name: String,
+    pub currency: String,
+    /// The balance Xero reports for the account, in minor units.
+    pub balance_cents: i64,
+}
+
 /// One line on an invoice. Money is carried in **minor units (cents)** —
 /// never a float — and rendered to a decimal string only at the wire
 /// boundary. Quantity is whole units (a flat-fee matter bills quantity 1).
@@ -153,6 +169,12 @@ pub trait BillingProvider: Send + Sync {
     /// mirror yet. Pagination is the provider's problem; the caller sees
     /// one complete vec.
     async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError>;
+
+    /// List the provider's bank accounts. Read-only, and read for exactly
+    /// one purpose: refreshing the mirrored balance of the pooled IOLTA
+    /// account each state's matters draw on. Navigator never opens, closes,
+    /// or writes to an account — Xero is the books.
+    async fn list_bank_accounts(&self) -> Result<Vec<TrustBankAccount>, BillingError>;
 }
 
 /// In-process stub. Records every call and hands back synthetic
@@ -167,6 +189,8 @@ pub struct StubBillingProvider {
     /// Canned `list_receivable_invoices` rows. Empty until a test seeds
     /// them — ingest is a no-op against a fresh stub.
     listed_invoices: Mutex<Vec<ReceivableInvoice>>,
+    /// Canned `list_bank_accounts` rows. Empty until a test seeds them.
+    listed_bank_accounts: Mutex<Vec<TrustBankAccount>>,
 }
 
 impl StubBillingProvider {
@@ -188,6 +212,15 @@ impl StubBillingProvider {
     /// can simulate invoices already raised in Xero.
     pub fn set_listed_invoices(&self, invoices: Vec<ReceivableInvoice>) {
         *self.listed_invoices.lock().expect("stub provider lock") = invoices;
+    }
+
+    /// Pre-seed what `list_bank_accounts` returns, so an IOLTA mirror test
+    /// can simulate the firm's pooled trust accounts in Xero.
+    pub fn set_listed_bank_accounts(&self, accounts: Vec<TrustBankAccount>) {
+        *self
+            .listed_bank_accounts
+            .lock()
+            .expect("stub provider lock") = accounts;
     }
 
     /// Snapshot of every call so far. Cheap clone — callers can hold onto
@@ -249,6 +282,14 @@ impl BillingProvider for StubBillingProvider {
     async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError> {
         Ok(self
             .listed_invoices
+            .lock()
+            .expect("stub provider lock")
+            .clone())
+    }
+
+    async fn list_bank_accounts(&self) -> Result<Vec<TrustBankAccount>, BillingError> {
+        Ok(self
+            .listed_bank_accounts
             .lock()
             .expect("stub provider lock")
             .clone())
@@ -712,6 +753,36 @@ impl BillingProvider for XeroBillingProvider {
         })
     }
 
+    async fn list_bank_accounts(&self) -> Result<Vec<TrustBankAccount>, BillingError> {
+        let url = format!("{}/Accounts", self.base_url.trim_end_matches('/'));
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(self.bearer_token().await?)
+            .header("Xero-Tenant-Id", &self.tenant_id)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .query(&[("where", r#"Type=="BANK""#)])
+            .send()
+            .await
+            .map_err(|e| BillingError::Provider(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(BillingError::Provider(format!(
+                "xero responded {status}: {body}"
+            )));
+        }
+        let parsed: AccountsResponse = resp
+            .json()
+            .await
+            .map_err(|e| BillingError::Provider(e.to_string()))?;
+        Ok(parsed
+            .accounts
+            .into_iter()
+            .map(AccountSummary::into_bank_account)
+            .collect())
+    }
+
     async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError> {
         let mut invoices = Vec::new();
         let mut page = 1_u32;
@@ -728,6 +799,43 @@ impl BillingProvider for XeroBillingProvider {
             page = page.saturating_add(1);
         }
         Ok(invoices)
+    }
+}
+
+/// Xero's `GET /Accounts` response.
+#[derive(Deserialize)]
+struct AccountsResponse {
+    #[serde(rename = "Accounts", default)]
+    accounts: Vec<AccountSummary>,
+}
+
+/// One bank account as Xero reports it. Only the fields the IOLTA mirror
+/// reads; Xero returns many more.
+#[derive(Deserialize)]
+struct AccountSummary {
+    #[serde(rename = "AccountID")]
+    account_id: String,
+    #[serde(rename = "Code", default)]
+    code: Option<String>,
+    #[serde(rename = "Name", default)]
+    name: Option<String>,
+    #[serde(rename = "CurrencyCode", default)]
+    currency_code: Option<String>,
+    /// Xero omits this on accounts it has no balance for; absent reads as
+    /// zero rather than failing the whole nightly mirror.
+    #[serde(rename = "Balance", default)]
+    balance: Option<f64>,
+}
+
+impl AccountSummary {
+    fn into_bank_account(self) -> TrustBankAccount {
+        TrustBankAccount {
+            account_id: self.account_id,
+            code: self.code,
+            name: self.name.unwrap_or_default(),
+            currency: self.currency_code.unwrap_or_else(|| "USD".to_string()),
+            balance_cents: self.balance.map(dollars_to_cents).unwrap_or_default(),
+        }
     }
 }
 

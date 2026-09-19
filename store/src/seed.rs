@@ -2100,6 +2100,9 @@ async fn ensure_dev_project(
         brand: brand.to_string(),
         entity_id,
         firm_id: None,
+        // A dev matter's governing jurisdiction is a lawyer's call, so the
+        // seed leaves it unset rather than asserting one.
+        jurisdiction_id: None,
         description: Some(description.to_string()),
     };
     let row = match crate::projects::find_by_code(surreal, code).await? {

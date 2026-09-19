@@ -46,7 +46,14 @@ use uuid::Uuid;
 use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 
 /// The table these rows live in.
-const TABLE: &str = "jurisdiction";
+pub(crate) const TABLE: &str = "jurisdiction";
+
+/// A US state or DC — the `jurisdiction_type` IOLTA pools by, so
+/// `store::iolta_accounts` names it rather than spelling the token again.
+pub const JURISDICTION_TYPE_STATE: &str = "state";
+/// A federal sovereign. Named beside its sibling so the closed set the
+/// schema ASSERTs reads as a pair in Rust too.
+pub const JURISDICTION_TYPE_COUNTRY: &str = "country";
 
 /// One jurisdiction.
 ///

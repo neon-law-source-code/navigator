@@ -79,7 +79,8 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 
 ## Billing, trust, and e-signature
 
-- [`trust-accounting.md`](trust-accounting.md) — the client trust (IOLTA) ledger.
+- [`trust-accounting.md`](trust-accounting.md) — the client trust (IOLTA) mirror: one pooled account per state,
+  each matter's held balance, and one withdrawal split across the invoices it settles.
 - [`xero-billing.md`](xero-billing.md) — Xero billing setup, invoice flow, and production cutover.
 - [`docusign-esignature.md`](docusign-esignature.md) — DocuSign e-signature setup and signing flow.
 

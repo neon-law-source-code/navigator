@@ -1,11 +1,14 @@
 # Xero billing — setup, invoice flow, and production cutover
 
 **All accounting originates in Xero.** Navigator does not compute, discount, or raise money: lawyers agree a matter's
-price with the client and raise the invoice in Xero directly. This page covers how Navigator reads that ledger — how a
-Xero invoice's paid-status is reconciled back into the portal, and how **one custom connection per organisation** keeps
-test activity off the live ledger. Local sandbox values use a gitignored `.env`; production values live in that
-deployment's `secrets.enc.yaml` per [`deployment-secrets.md`](deployment-secrets.md). The environment-variable
-convention is in [`third-party-integrations.md`](third-party-integrations.md). This page is the Xero specifics.
+price with the client and raise the invoice in Xero directly. This page covers the **receivables** side — how a Xero
+invoice reaches the portal and how its paid-status is reconciled back — and how **one custom connection per
+organisation** keeps test activity off the live ledger. The **client-trust** side of the same integration, where Xero is
+equally the books, is [`trust-accounting.md`](trust-accounting.md).
+
+Local sandbox values use a gitignored `.env`; production values live in that deployment's `secrets.enc.yaml` per
+[`deployment-secrets.md`](deployment-secrets.md). The environment-variable convention is in
+[`third-party-integrations.md`](third-party-integrations.md). This page is the Xero specifics.
 
 The billing seam lives in [`billing/src/lib.rs`](../billing/src/lib.rs) (the `BillingProvider` trait + the
 `XeroBillingProvider` and `StubBillingProvider` impls), client-credentials auth in
@@ -49,8 +52,13 @@ code>`. The nightly ingest lists `ACCREC` invoices, upserts each that resolves t
 DELETED, and any invoice whose reference does not match a Project (counted as unscoped — no row). That mirror backs the
 per-project invoice list in the portal and the Firm trailing-30-day graphs, so nobody has to open Xero to see whether a
 matter is paid. Navigator **never holds client funds, card data, or bank credentials** — Xero reconciles against the
-firm's bank itself. The integration boundary is the Xero Accounting API and nothing beyond it. IOLTA deposits are not
-`xero_invoice` rows.
+firm's bank itself. The integration boundary is the Xero Accounting API and nothing beyond it.
+
+**A trust receipt is not an invoice.** A client's deposit into the firm's IOLTA account is a bank transaction on a
+pooled trust account, not an `ACCREC` invoice, and the ingest never writes one into `xero_invoice`. What connects the
+two is the **withdrawal**: when the firm draws earned fees out of trust, its allocation lines name the invoices it
+settles, and each matter's share posts against that matter's trust ledger. See
+[`trust-accounting.md`](trust-accounting.md).
 
 ## Where the price comes from: the matter, agreed per client
 
@@ -58,8 +66,9 @@ There is no catalog and no published price. Every engagement is bespoke: lawyers
 that matter and raise the invoice in Xero directly. What was actually billed is the Xero invoice, mirrored read-only
 into `xero_invoice` — nothing in Navigator computes, quotes, or anchors a price.
 
-An invoice line that would once have carried a catalog field now takes the firm-wide default. Tagging invoices to a
-project is the `Reference` convention above; IOLTA state accounts are a separate model.
+An invoice line carries the firm-wide default account code. Tagging invoices to a project is the `Reference` convention
+above; the pooled IOLTA account a matter's client funds sit in is derived from the matter's jurisdiction instead, and is
+described in [`trust-accounting.md`](trust-accounting.md).
 
 ## Authentication: client-credentials grant (preferred)
 
@@ -71,7 +80,9 @@ it itself, so there is no 30-minute token to rotate by hand. Set the client-cred
   creation).
 - `XERO_TENANT_ID` — the connected org's GUID (`Xero-Tenant-Id` header). Optional for the live test, which can
   auto-discover it from the `/connections` endpoint since a custom connection binds to one org.
-- `XERO_SCOPE` — optional; defaults to `accounting.contacts accounting.invoices`.
+- `XERO_SCOPE` — optional; defaults to `accounting.contacts accounting.invoices accounting.settings.read
+  accounting.transactions.read`. The two `.read` scopes are what the IOLTA mirror needs to read the pooled trust bank
+  accounts and the transactions that move through them — and no more, so a leaked token cannot move client funds.
 
 A static `XERO_ACCESS_TOKEN` is accepted as a fallback for a quick local smoke test, but Xero expires it in ~30 minutes
 and it is ignored when the client-credentials pair is set. The real provider activates when `XERO_TENANT_ID` is present
@@ -86,7 +97,8 @@ together with **either** the client-credentials pair **or** a static access toke
 3. **Create a custom connection.** In My Apps → **New app** → choose **Custom connection** (the machine-to-machine,
    client-credentials app type). Name it (e.g. `Neon Law Navigator (demo)`), and add the **integrator** email that will
    authorise it.
-4. **Select scopes.** Grant exactly `accounting.contacts` and `accounting.invoices`. A custom connection offers only
+4. **Select scopes.** Grant exactly `accounting.contacts`, `accounting.invoices`, `accounting.settings.read`, and
+   `accounting.transactions.read` — the last two for the IOLTA mirror, both read-only. A custom connection offers only
    granular scopes — the legacy parent `accounting.transactions` is **not** offered, and requesting it fails token
    minting with `invalid_scope`.
 5. **Authorise the connection against the demo company.** The integrator opens the authorisation link Xero generates and
@@ -121,8 +133,13 @@ The invoice is raised in Xero. The nightly `ReconcileInvoices` workflow (worker-
 [`billing-workflows`](../billing-workflows/)) first **lists** `ACCREC` invoices and upserts each Project-scoped row into
 `xero_invoice`, folding `Status` and `AmountPaid` from that list so a first-night Paid invoice already shows Paid. It
 then calls `get_invoice` for each mirrored invoice still open (`AUTHORISED`, not `PAID`/`VOIDED`) and folds Xero's
-paid-status into the mirror. The portal never calls Xero live. This workflow only ever *reads* from Xero. Like every
-workflow, it is hosted by `workflows-service` — no per-workflow worker pod.
+paid-status into the mirror. The portal never calls Xero live.
+
+The same nightly run then refreshes the IOLTA side: the pooled bank account mirrored for each state, the client deposits
+and refunds that moved through it, and any withdrawal that settles invoices. Its report counts what it posted and what
+it refused — an invoice with no matter reference, a deposit that does not sit on its matter's pool, a withdrawal whose
+lines do not add up. This workflow only ever *reads* from Xero. Like every workflow, it is hosted by `workflows-service`
+— no per-workflow worker pod.
 
 ## Production cutover
 
@@ -136,6 +153,7 @@ workflow, it is hosted by `workflows-service` — no per-workflow worker pod.
 
 ## Related
 
+- [`trust-accounting.md`](trust-accounting.md) — the client-trust (IOLTA) side of this integration.
 - [`third-party-integrations.md`](third-party-integrations.md) — the per-environment vendor-account convention and the
   full integration catalog.
 - [`docusign-esignature.md`](docusign-esignature.md) — the sibling e-signature integration (one app, two environments).

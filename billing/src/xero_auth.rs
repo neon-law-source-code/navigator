@@ -28,16 +28,20 @@ const DEFAULT_TOKEN_URL: &str = "https://identity.xero.com/connect/token";
 /// conservatively in case a token response omits `expires_in`.
 const DEFAULT_EXPIRES_IN: u64 = 1800;
 
-/// Scopes a billing integration needs: create/read invoices and resolve
-/// (or create) the billed contact. These are the **granular** scopes a
-/// Xero custom connection grants today — the legacy parent
-/// `accounting.transactions` is not offered in the connection scope
-/// picker, so requesting it fails token minting with `invalid_scope`.
-/// `accounting.invoices` is exactly the scope an `ACCREC` invoice POST
-/// needs. `offline_access` is deliberately absent — client-credentials
-/// issues no refresh token; the provider just re-mints. These scopes
-/// must also be granted on the custom connection in the developer portal.
-const DEFAULT_SCOPE: &str = "accounting.contacts accounting.invoices";
+/// Scopes a billing integration needs: create/read invoices, resolve (or
+/// create) the billed contact, and **read** the IOLTA side — the pooled
+/// trust bank accounts and the deposits, refunds, and withdrawals that move
+/// through them. These are the **granular** scopes a Xero custom connection
+/// grants today — the legacy parent `accounting.transactions` is not offered
+/// in the connection scope picker, so requesting it fails token minting with
+/// `invalid_scope`. `accounting.invoices` is exactly the scope an `ACCREC`
+/// invoice POST needs; the two `.read` scopes are exactly what the IOLTA
+/// mirror needs and no more, so a leaked token cannot move client funds.
+/// `offline_access` is deliberately absent — client-credentials issues no
+/// refresh token; the provider just re-mints. These scopes must also be
+/// granted on the custom connection in the developer portal.
+const DEFAULT_SCOPE: &str = "accounting.contacts accounting.invoices \
+                             accounting.settings.read accounting.transactions.read";
 
 /// Build the HTTP Basic `Authorization` header value the token request
 /// carries (`Basic base64(client_id:client_secret)`). Pure — exposed so

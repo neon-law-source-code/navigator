@@ -12,25 +12,28 @@
 //! bank or payment processor computes for us — so they live here, as pure,
 //! provider- and asset-agnostic logic.
 //!
-//! # What this is NOT (the deferred banking seam)
+//! # What this is NOT (the bank)
 //!
-//! Navigator does **not** custody funds. A real banking/trust-ledger provider
-//! (Modern Treasury / Increase / Column) will own USD settlement and the
-//! bank-statement leg of the IOLTA three-way reconciliation; on-chain rails
-//! own crypto settlement. This module owns only the *legal-meaning overlay*:
-//! which engagement a movement belongs to, what it means (deposit / earned
-//! draw / refund), and the running trust position per matter.
+//! Navigator does **not** custody funds. **Xero is the books**: the firm's
+//! bookkeeper records every deposit, refund, and withdrawal there, against a
+//! real pooled trust account, and Navigator reads. It opens no account, moves
+//! no money, and writes nothing back. This module owns only the
+//! *legal-meaning overlay*: which engagement a movement belongs to, what it
+//! means (deposit / earned draw / refund), and the running trust position per
+//! matter.
 //!
-//! Because the provider — and whether a client pays in USD, USDC, or BTC — is
-//! not chosen yet, we commit to **no financial schema**. Each movement is
-//! recorded as an immutable JSON event on the existing append-only
-//! [`notation_events`](crate::notation_events) journal (append-only by the
-//! module's own shape — see its header — which makes it tamper-evident) under a
-//! [`MACHINE_TRUST_LEDGER`] machine-kind, anchored to the engagement's
-//! retainer notation (which already carries the `project_id` / `person_id` /
-//! `entity_id` links). When a provider lands, its posting id / on-chain tx
-//! hash mirrors into [`Movement::external_ref`] and these postings replay onto
-//! the provider's ledger — no migration to unwind.
+//! Each movement is recorded as an immutable JSON event on the existing
+//! append-only [`notation_events`](crate::notation_events) journal (append-only
+//! at its command seam — see its header) under a [`MACHINE_TRUST_LEDGER`]
+//! machine-kind, anchored to a notation of the matter it belongs to (which
+//! already carries the `project_id` / `person_id` / `entity_id` links). The
+//! settling Xero `BankTransactionID` lands in [`Movement::external_ref`],
+//! which is what makes a re-read of the same night post nothing.
+//!
+//! The pooled account per state, and the split of one withdrawal across the
+//! invoices it settles, live beside this module in
+//! [`crate::iolta_accounts`] and [`crate::iolta_withdrawals`] — facts about
+//! the bank, where this module holds facts about a matter.
 //!
 //! # Double-entry
 //!

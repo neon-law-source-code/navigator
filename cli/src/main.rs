@@ -722,6 +722,30 @@ enum SurfacesAction {
 
 #[derive(Subcommand)]
 enum ProjectRepositoryAction {
+    /// Gate, push, open or adopt, arm auto-merge, and watch a Project PR.
+    Deliver {
+        /// Topic branch to create or use. `main` is never delivered directly.
+        #[arg(long)]
+        branch: String,
+        /// Conventional Commit title used when a pull request must be opened.
+        #[arg(long)]
+        title: String,
+        /// Markdown file used as the pull-request body.
+        #[arg(long)]
+        body_file: Option<PathBuf>,
+        /// Forge repository as `owner/name`. Inferred from a GitHub origin when omitted.
+        #[arg(long)]
+        repository: Option<String>,
+        /// Repository root. Defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        /// Maximum time to wait for a merge or named stop condition.
+        #[arg(long, default_value_t = 900)]
+        timeout_seconds: u64,
+        /// Delay between forge status reads.
+        #[arg(long, default_value_t = 5)]
+        poll_seconds: u64,
+    },
     /// Create the reviewed, source-only Project repository scaffold.
     Scaffold {
         /// Stable Project code. This becomes the repository name.
@@ -2589,6 +2613,26 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             projects::doctor::run(host.host.as_deref(), project.as_deref())
         }
         ProjectsCmd::Repository { action } => match action {
+            ProjectRepositoryAction::Deliver {
+                branch,
+                title,
+                body_file,
+                repository,
+                dir,
+                timeout_seconds,
+                poll_seconds,
+            } => {
+                projects::repository_delivery::run(
+                    &dir,
+                    &branch,
+                    &title,
+                    body_file.as_deref(),
+                    repository.as_deref(),
+                    std::time::Duration::from_secs(timeout_seconds),
+                    std::time::Duration::from_secs(poll_seconds),
+                )
+                .await
+            }
             ProjectRepositoryAction::Scaffold {
                 project_code,
                 dir,

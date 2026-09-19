@@ -930,6 +930,7 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
         "client-council",
         "human-readable",
         "stay-in-repo",
+        "project-pr-delivery",
     ] {
         let path = dir
             .path()
@@ -940,6 +941,31 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
         assert!(!fs::read_to_string(&path).unwrap().is_empty());
     }
 
+    gate(dir.path())
+        .success()
+        .stdout(str::contains("0 error(s)"));
+}
+
+#[test]
+fn scaffold_and_sync_keep_the_project_delivery_skill_canonical() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let skill = dir
+        .path()
+        .join(".agents/skills/project-pr-delivery/SKILL.md");
+    let scaffolded = fs::read_to_string(&skill).expect("scaffolded delivery skill");
+    assert!(
+        scaffolded.contains("navigator project repository deliver"),
+        "{scaffolded}"
+    );
+
+    fs::write(&skill, "drifted\n").unwrap();
+    gate(dir.path()).failure().stderr(str::contains(
+        "synced skill `project-pr-delivery` has drifted",
+    ));
+
+    sync_skills(dir.path()).success();
+    assert_eq!(fs::read_to_string(&skill).unwrap(), scaffolded);
     gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
@@ -1132,17 +1158,18 @@ fn gate_fails_on_a_drifted_synced_skill() {
         .stderr(str::contains("sync-skills"));
 }
 
-/// A repository with no `.agents/` directory is not failed for having no
-/// skills. It has not adopted agent tooling, and the catalog is a statement
-/// about what an agent working here must be told — which is nothing at all if
-/// no agent works here.
+/// A newly scaffolded repository has the complete canonical catalog, including
+/// the command that owns delivery, so its first gate does not depend on a
+/// separate synchronization step.
 #[test]
-fn gate_passes_when_no_skills_have_been_synced() {
+fn gate_passes_with_the_scaffolded_skill_catalog() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     assert!(
-        !dir.path().join(".agents").exists(),
-        "scaffold must not create `.agents/`, or this asserts the wrong branch"
+        dir.path()
+            .join(".agents/skills/project-pr-delivery/SKILL.md")
+            .is_file(),
+        "scaffold must include the governed delivery command"
     );
 
     gate(dir.path())
@@ -1163,7 +1190,8 @@ fn gate_passes_when_no_skills_have_been_synced() {
 fn gate_fails_when_agents_exists_without_the_catalog() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
-    fs::create_dir_all(dir.path().join(".agents")).unwrap();
+    fs::remove_dir_all(dir.path().join(".agents/skills/portal-chrome")).unwrap();
+    fs::remove_dir_all(dir.path().join(".agents/skills/server")).unwrap();
 
     gate(dir.path())
         .failure()

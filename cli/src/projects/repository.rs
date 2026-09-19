@@ -278,6 +278,10 @@ const SYNCED_SKILLS: &[(&str, &str)] = &[
         "server",
         include_str!("../../../.agents/skills/server/SKILL.md"),
     ),
+    (
+        "project-pr-delivery",
+        include_str!("../../../.agents/skills/project-pr-delivery/SKILL.md"),
+    ),
 ];
 
 #[derive(Debug)]
@@ -406,6 +410,11 @@ pub fn scaffold(
         println!("created   {}", path.display());
     }
 
+    if let Err(error) = write_canonical_skills(root, false) {
+        eprintln!("navigator: scaffold canonical skills: {error}");
+        return ExitCode::from(2);
+    }
+
     // Do not interpolate the CLI root here: `Command` also carries `Secrets`,
     // and CodeQL treats any printed Command field as cleartext logging.
     println!("\nCheck with: navigator project gate");
@@ -446,19 +455,9 @@ pub fn sync_skills(root: &Path) -> ExitCode {
         }
     }
 
-    for (name, contents) in SYNCED_SKILLS {
-        let path = canonical_skills.join(name).join("SKILL.md");
-        if let Some(parent) = path.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                eprintln!("navigator: create {}: {error}", parent.display());
-                return ExitCode::from(2);
-            }
-        }
-        if let Err(error) = fs::write(&path, contents) {
-            eprintln!("navigator: write {}: {error}", path.display());
-            return ExitCode::from(2);
-        }
-        println!("synced    {}", path.display());
+    if let Err(error) = write_canonical_skills(root, true) {
+        eprintln!("navigator: sync canonical skills: {error}");
+        return ExitCode::from(2);
     }
 
     if legacy_skills.exists() {
@@ -486,6 +485,22 @@ pub fn sync_skills(root: &Path) -> ExitCode {
         );
     }
     ExitCode::SUCCESS
+}
+
+fn write_canonical_skills(root: &Path, overwrite: bool) -> io::Result<()> {
+    for (name, contents) in SYNCED_SKILLS {
+        let path = root.join(".agents/skills").join(name).join("SKILL.md");
+        if path.exists() && !overwrite {
+            println!("exists    {} (left alone)", path.display());
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, contents)?;
+        println!("synced    {}", path.display());
+    }
+    Ok(())
 }
 
 #[derive(Debug)]

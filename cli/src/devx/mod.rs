@@ -42,7 +42,7 @@ mod runtime;
 mod sample_project;
 mod serve;
 mod ship;
-mod signed_commits;
+pub(crate) mod signed_commits;
 mod staging;
 mod surreal;
 mod webapp;

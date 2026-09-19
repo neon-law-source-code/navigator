@@ -113,9 +113,8 @@ at most once — see ["Legacy convergence"](oidc.md#legacy-convergence) — so t
 condition ENG-783 waits on before removing the branch that emits it.
 
 The GET and form-post callbacks share one completion path. The pre-auth cookie is consumed before token processing, and
-the event is emitted once at the session-creation or refusal boundary. `first_link` is currently true when the resolver
-creates a new Person; the named resolver seam can take an explicit subject-link result when the linkage path exposes
-one.
+the event is emitted once at the session-creation or refusal boundary. `first_link` is true when the sign-in creates a
+Person or links the presenting provider to an existing Person, and false on a repeat login through that provider.
 
 The key set emitted by every visit, funnel, and sign-in recorder is pinned to the collector's fail-closed allow-list by
 `cli/tests/audit_fields_exported.rs`.

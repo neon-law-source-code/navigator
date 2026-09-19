@@ -211,9 +211,10 @@ pub async fn resolve_brand_and_enforce_host(
     // letting it answer here would send `vestaestateplanning.com` to the
     // firm's site instead of Vesta's.
     //
-    // Serving this ourselves is what lets the apex ride the same managed
-    // certificate as `www`, and removes the DNS provider's redirector — and
-    // its separate certificate — from the picture entirely.
+    // GKE does not route the live apex here: DNS keeps it on the provider's
+    // URL redirect service and certificate. Retaining the middleware branch
+    // keeps direct and local requests canonical without putting the apex on
+    // the deployment's Ingress or ManagedCertificate.
     if resolved.is_none() {
         if let Some(key) = raw_host
             .map(strip_port)

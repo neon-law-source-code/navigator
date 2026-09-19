@@ -247,6 +247,12 @@ assigns participation. Embedded Rego and the role/participation model are untouc
 unknown email becomes a scopeless `client` or a `403`. The bootstrap-Owner carve-out is independent of this toggle. A
 training deployment turns this on when trainings open; production keeps it off. See #738.
 
+Client-initiated service starts also require an admitted lawyer-tier DRI. `NAVIGATOR_ON_CALL_LAWYER_EMAIL` is optional:
+when it is unset or blank, the Start door uses the admitted bootstrap Owner named by `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL`
+as the default DRI. If neither value is configured, or the selected Person is not an admitted lawyer-tier row, the door
+refuses the start. Keep the bootstrap Owner address in its secret configuration; do not repeat it in a plaintext
+`config.toml`.
+
 ## Concrete people in the seed data
 
 - **Nick** (`nick@neonlaw.com`, lowercase) — the primary administrator and lawyer. Role `admin`; sees every project. The

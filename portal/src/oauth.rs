@@ -2506,8 +2506,9 @@ pub fn bootstrap_owner_email_from_env() -> Option<String> {
     )
 }
 
-/// Read the configured lawyer who receives client-initiated service starts
-/// once at boot. A blank value disables the online start door.
+/// Read the optional explicit lawyer override for client-initiated service
+/// starts once at boot. A blank value leaves the start door to use the
+/// bootstrap owner as its DRI.
 #[must_use]
 pub fn on_call_lawyer_email_from_env() -> Option<String> {
     std::env::var("NAVIGATOR_ON_CALL_LAWYER_EMAIL")

@@ -26,7 +26,7 @@ use anyhow::{Context, Result};
 pub fn run(out: &Path, force: bool) -> Result<()> {
     let (written, skipped) = export(out, force)?;
 
-    eprintln!("==> wrote {written} file(s) to {}", out.display());
+    eprintln!("==> wrote {written} file(s)");
     if skipped > 0 {
         eprintln!("    {skipped} left in place; --force overwrites them");
     }

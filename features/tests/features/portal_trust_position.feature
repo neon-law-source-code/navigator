@@ -50,3 +50,18 @@ Feature: /app/projects/:code — a client sees their own trust funds and no one 
     Then the response status is 200
     And the response body contains "$1,111.00"
     And the response body does not contain "$9,999.00"
+
+  Scenario: One pooled withdrawal, and each client sees only their own share
+    Given a seeded person "libra@example.com" with role "client"
+    And a project "Libra Matter" with "libra@example.com" as a participant
+    And a trust deposit of 700000 cents is mirrored for "Libra Matter"
+    And a seeded person "pisces@example.com" with role "client"
+    And a project "Pisces Matter" with "pisces@example.com" as a participant
+    And a trust deposit of 700000 cents is mirrored for "Pisces Matter"
+    And one pooled withdrawal settles 600000 cents for "Libra Matter" and 400000 cents for "Pisces Matter"
+    When "libra@example.com" opens the detail page for "Libra Matter"
+    Then the response status is 200
+    And the response body contains "How your funds were applied"
+    And the response body contains "$6,000.00"
+    And the response body does not contain "$4,000.00"
+    And the response body does not contain "$10,000.00"

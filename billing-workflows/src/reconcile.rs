@@ -56,11 +56,15 @@ pub struct ReconcileReport {
     /// matter that does not sit on the account the money moved through, or a
     /// matter with no notation to anchor a posting to.
     pub trust_unscoped: usize,
-    /// Money out of a pooled account that settles invoices rather than
-    /// refunding a client. Counted, not posted: the allocated withdrawal is
-    /// mirrored by its own pass, which knows how to split one bank transfer
-    /// across several matters' invoices.
-    pub trust_deferred: usize,
+    /// Pooled withdrawals mirrored this run: one bank transfer out of a
+    /// state's IOLTA account, split across the invoices it settles, with one
+    /// earned draw posted per matter.
+    pub iolta_withdrawals: usize,
+    /// Pooled withdrawals refused whole and left for a human — lines that do
+    /// not sum to the transfer, a line naming an unmirrored invoice, a
+    /// matter on another state's pool, or a matter drawn beyond what it
+    /// holds. Nothing of a refused withdrawal is written.
+    pub iolta_withdrawals_refused: usize,
 }
 
 /// Service registered with the Restate endpoint. Holds a SurrealDB clone (the
@@ -140,7 +144,8 @@ pub async fn reconcile_once(
         trust_deposits: trust.deposits,
         trust_refunds: trust.refunds,
         trust_unscoped: trust.unscoped,
-        trust_deferred: trust.deferred,
+        iolta_withdrawals: trust.withdrawals,
+        iolta_withdrawals_refused: trust.withdrawals_refused,
     })
 }
 
@@ -150,7 +155,55 @@ struct TrustMirrorTally {
     deposits: usize,
     refunds: usize,
     unscoped: usize,
-    deferred: usize,
+    withdrawals: usize,
+    withdrawals_refused: usize,
+}
+
+/// What one pooled withdrawal did.
+enum WithdrawalOutcome {
+    Applied,
+    /// Mirrored on an earlier night; nothing written.
+    AlreadyApplied,
+    /// Refused whole, with the reason a human needs to reconcile it in Xero.
+    Refused(String),
+}
+
+/// Mirror one pooled withdrawal and its allocations.
+///
+/// A refusal is a *reported* outcome rather than an error that abandons the
+/// night: one bookkeeping mistake in one transfer must not stop the rest of
+/// the run. Only a database or ledger failure propagates.
+async fn apply_withdrawal(
+    surreal: &SurrealDb,
+    transaction: &billing::TrustBankTransaction,
+) -> anyhow::Result<WithdrawalOutcome> {
+    let input = store::iolta_withdrawals::WithdrawalInput {
+        xero_transaction_id: transaction.transaction_id.clone(),
+        xero_account_id: transaction.account_id.clone(),
+        total_cents: transaction.amount_cents,
+        currency: transaction.currency.clone(),
+        occurred_at: transaction.occurred_at,
+        lines: transaction
+            .line_items
+            .iter()
+            .filter_map(|line| {
+                line.invoice_reference.as_ref().map(|reference| {
+                    store::iolta_withdrawals::AllocationInput {
+                        invoice_reference: reference.clone(),
+                        amount_cents: line.amount_cents,
+                    }
+                })
+            })
+            .collect(),
+    };
+    match store::iolta_withdrawals::apply(surreal, &input).await {
+        Ok(store::iolta_withdrawals::Applied::Posted { .. }) => Ok(WithdrawalOutcome::Applied),
+        Ok(store::iolta_withdrawals::Applied::AlreadyApplied) => {
+            Ok(WithdrawalOutcome::AlreadyApplied)
+        }
+        Err(store::iolta_withdrawals::IoltaWithdrawalError::Db(error)) => Err(error.into()),
+        Err(refusal) => Ok(WithdrawalOutcome::Refused(refusal.to_string())),
+    }
 }
 
 /// Whether a spend settles invoices — the pooled withdrawal — rather than
@@ -185,7 +238,18 @@ async fn mirror_trust_movements(
         if matches!(transaction.kind, billing::TrustTransactionKind::Spend)
             && settles_invoices(&transaction)
         {
-            tally.deferred += 1;
+            match apply_withdrawal(surreal, &transaction).await? {
+                WithdrawalOutcome::Applied => tally.withdrawals += 1,
+                WithdrawalOutcome::Refused(reason) => {
+                    tracing::warn!(
+                        transaction_id = %transaction.transaction_id,
+                        reason = %reason,
+                        "IOLTA withdrawal refused; nothing written"
+                    );
+                    tally.withdrawals_refused += 1;
+                }
+                WithdrawalOutcome::AlreadyApplied => {}
+            }
             continue;
         }
         let Some(project_id) =
@@ -822,10 +886,11 @@ mod tests {
     }
 
     /// Money out of the pooled account that names no invoice is a refund of
-    /// unearned funds; one that settles invoices is the pooled withdrawal and
-    /// is left to its own pass.
+    /// unearned funds; one that settles invoices is the pooled withdrawal,
+    /// and a withdrawal naming an invoice the mirror does not carry is
+    /// refused whole rather than posted against a guessed matter.
     #[tokio::test]
-    async fn a_refund_posts_and_an_allocated_withdrawal_is_deferred() {
+    async fn a_refund_posts_and_an_unmirrored_withdrawal_is_refused() {
         let surreal = store::surreal::test_support::mem().await;
         let nevada = seed_state(&surreal, "Nevada", "NV").await;
         let project_id = seed_matter_in(&surreal, nevada).await;
@@ -867,14 +932,21 @@ mod tests {
         let report = reconcile_once(&stub, &surreal).await.unwrap();
         assert_eq!(report.trust_deposits, 1);
         assert_eq!(report.trust_refunds, 1);
-        assert_eq!(report.trust_deferred, 1, "the allocated withdrawal waits");
+        assert_eq!(
+            report.iolta_withdrawals_refused, 1,
+            "INV-001 is not mirrored, so the withdrawal explains nothing"
+        );
+        assert_eq!(report.iolta_withdrawals, 0);
 
         let position = store::trust::position_for_project(&surreal, project_id)
             .await
             .unwrap();
         assert_eq!(position.deposited_cents, 500_000);
         assert_eq!(position.refunded_cents, 120_000);
-        assert_eq!(position.earned_cents, 0, "no draw is posted by this pass");
+        assert_eq!(
+            position.earned_cents, 0,
+            "a refused withdrawal posts no draw"
+        );
         assert_eq!(position.held_cents(), 380_000);
     }
 

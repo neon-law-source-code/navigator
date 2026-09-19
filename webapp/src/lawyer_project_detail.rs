@@ -327,7 +327,12 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     let position = store::trust::position_for_project(&surreal, id)
         .await
         .map_err(server_error)?;
-    let trust = crate::portal_project_detail::trust_view(&position);
+    let trust = crate::portal_project_detail::trust_view(
+        &position,
+        &store::iolta_withdrawals::for_project(&surreal, id)
+            .await
+            .map_err(server_error)?,
+    );
 
     let xero_invoice_url = store::xero_invoices::for_projects(&surreal, &[id])
         .await
@@ -709,6 +714,19 @@ pub fn LawyerProjectDetail() -> Element {
                         li { "Paid in: {view.trust.deposited}" }
                         li { "Earned and drawn: {view.trust.drawn}" }
                         li { "Refunded: {view.trust.refunded}" }
+                    }
+                    if !view.trust.allocations.is_empty() {
+                        p { class: "nav-muted",
+                            "Drawn against this matter's invoices. The pooled transfer \
+                             these lines were part of is not a matter-level fact."
+                        }
+                        ul {
+                            for line in view.trust.allocations.iter() {
+                                li {
+                                    "{line.amount} to {line.invoice_reference} on {line.occurred_on}"
+                                }
+                            }
+                        }
                     }
                 }
             }

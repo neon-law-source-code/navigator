@@ -69,6 +69,28 @@ pub struct TrustView {
     /// not rendered otherwise, so a matter that never held client funds says
     /// nothing rather than showing four zeroes.
     pub any: bool,
+    /// How this matter's funds left trust, newest first. Only this matter's
+    /// lines: the pooled transfer they were part of is a firm-side number.
+    #[serde(default)]
+    pub allocations: Vec<TrustAllocationView>,
+}
+
+/// One line of a pooled withdrawal that belonged to **this** matter: how
+/// much of the firm's transfer out of trust settled which of this matter's
+/// invoices.
+///
+/// The bank made one transfer covering several matters. What is rendered
+/// here is only the part funded by this client's money — never the pooled
+/// total, never another matter's share, and never the Xero ids behind
+/// either.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct TrustAllocationView {
+    /// The invoice this settled, by its human reference.
+    pub invoice_reference: String,
+    /// This matter's share, e.g. `"$600.00"`.
+    pub amount: String,
+    /// The date the money left trust, `YYYY-MM-DD`.
+    pub occurred_on: String,
 }
 
 /// Render one matter's [`store::trust::Position`] as the client-safe view
@@ -77,7 +99,10 @@ pub struct TrustView {
 /// matter.
 #[cfg(feature = "server")]
 #[must_use]
-pub fn trust_view(position: &store::trust::Position) -> TrustView {
+pub fn trust_view(
+    position: &store::trust::Position,
+    allocations: &[store::iolta_withdrawals::IoltaAllocation],
+) -> TrustView {
     TrustView {
         deposited: format_usd(position.deposited_cents),
         held: format_usd(position.held_cents()),
@@ -86,6 +111,14 @@ pub fn trust_view(position: &store::trust::Position) -> TrustView {
         any: position.deposited_cents != 0
             || position.earned_cents != 0
             || position.refunded_cents != 0,
+        allocations: allocations
+            .iter()
+            .map(|line| TrustAllocationView {
+                invoice_reference: line.invoice_reference.clone(),
+                amount: format_usd(line.amount_cents),
+                occurred_on: line.occurred_at.format("%Y-%m-%d").to_string(),
+            })
+            .collect(),
     }
 }
 
@@ -411,6 +444,9 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     // this one matter's postings.
     let trust = trust_view(
         &store::trust::position_for_project(&surreal, id)
+            .await
+            .map_err(server_error)?,
+        &store::iolta_withdrawals::for_project(&surreal, id)
             .await
             .map_err(server_error)?,
     );
@@ -761,6 +797,16 @@ pub fn ClientProjectDetail() -> Element {
                             div { class: "portal-card__meta", "Earned and drawn: {view.trust.drawn}" }
                             if view.trust.refunded != "$0.00" {
                                 div { class: "portal-card__meta", "Refunded: {view.trust.refunded}" }
+                            }
+                        }
+                    }
+                    if !view.trust.allocations.is_empty() {
+                        p { class: "nav-muted", "How your funds were applied" }
+                        ul {
+                            for line in view.trust.allocations.iter() {
+                                li {
+                                    "{line.amount} to {line.invoice_reference} on {line.occurred_on}"
+                                }
                             }
                         }
                     }

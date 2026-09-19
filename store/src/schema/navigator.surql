@@ -223,6 +223,52 @@ DEFINE FIELD OVERWRITE updated_at ON iolta_account TYPE datetime DEFAULT time::n
 -- jurisdiction is a refused write, not a silent second master balance.
 DEFINE INDEX OVERWRITE iolta_account_jurisdiction ON iolta_account FIELDS jurisdiction_id UNIQUE;
 
+-- `iolta_withdrawal` + `iolta_allocation`: one bank transfer out of a state's
+-- pooled IOLTA account, and how it splits across the invoices it settles.
+--
+-- The bank sees one transfer. The clients whose money funded it each see only
+-- their own share, which is why the split is modelled rather than inferred: a
+-- pooled withdrawal of $10,000 that settles four matters' invoices is one
+-- `iolta_withdrawal` row and four `iolta_allocation` rows, and a client's
+-- matter page renders only the rows carrying their `project_id`.
+--
+-- Xero is the books: the firm's bookkeeper records the transfer there and
+-- Navigator mirrors it. The record id is the Xero `BankTransactionID`, so a
+-- re-read of the same transfer lands on the row it already wrote.
+DEFINE TABLE IF NOT EXISTS iolta_withdrawal SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE xero_transaction_id ON iolta_withdrawal TYPE string;
+-- The state pool the money left. Links to the jurisdiction rather than to
+-- `iolta_account` so the withdrawal survives a re-mirrored Xero account id.
+DEFINE FIELD OVERWRITE jurisdiction_id ON iolta_withdrawal TYPE record<jurisdiction>;
+-- The whole transfer, minor units. The allocations must sum to exactly this;
+-- `store::iolta_withdrawals` refuses the apply otherwise, so a partially
+-- explained withdrawal never becomes durable.
+DEFINE FIELD OVERWRITE total_cents ON iolta_withdrawal TYPE int;
+DEFINE FIELD OVERWRITE currency ON iolta_withdrawal TYPE string;
+DEFINE FIELD OVERWRITE occurred_at ON iolta_withdrawal TYPE datetime;
+DEFINE FIELD OVERWRITE inserted_at ON iolta_withdrawal TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON iolta_withdrawal TYPE datetime DEFAULT time::now();
+
+-- One line of that split: this much of the transfer settled this invoice for
+-- this matter. `project_id` is copied from the invoice it settles rather than
+-- supplied alongside it, so a line can never name a matter the invoice does
+-- not bill.
+DEFINE TABLE IF NOT EXISTS iolta_allocation SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE withdrawal_id ON iolta_allocation TYPE string;
+DEFINE FIELD OVERWRITE xero_invoice_id ON iolta_allocation TYPE string;
+DEFINE FIELD OVERWRITE project_id ON iolta_allocation TYPE record<project>;
+DEFINE FIELD OVERWRITE invoice_reference ON iolta_allocation TYPE string;
+DEFINE FIELD OVERWRITE amount_cents ON iolta_allocation TYPE int;
+DEFINE FIELD OVERWRITE occurred_at ON iolta_allocation TYPE datetime;
+DEFINE FIELD OVERWRITE inserted_at ON iolta_allocation TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON iolta_allocation TYPE datetime DEFAULT time::now();
+-- The client read: every line belonging to one matter.
+DEFINE INDEX OVERWRITE iolta_allocation_project ON iolta_allocation FIELDS project_id;
+-- One line per (withdrawal, invoice). A re-read of the same transfer updates
+-- its lines in place instead of doubling the matter's drawn total.
+DEFINE INDEX OVERWRITE iolta_allocation_line ON iolta_allocation
+    FIELDS withdrawal_id, xero_invoice_id UNIQUE;
+
 DEFINE TABLE IF NOT EXISTS person_project_role SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON person_project_role TYPE record<person>;
 DEFINE FIELD OVERWRITE project_id ON person_project_role TYPE record<project>;

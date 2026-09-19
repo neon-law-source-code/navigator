@@ -62,7 +62,7 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                 p { class: "company-hero__terms", "{company.hero_note}" }
             }
             section { class: "deal-exhibition", "aria-label": "{company.flow_caption}",
-                input { id: "pause-deal-flow", class: "deal-exhibition__pause", r#type: "checkbox" }
+                input { id: "pause-deal-flow", class: "nav-checkbox deal-exhibition__pause", r#type: "checkbox" }
                 label { class: "deal-exhibition__control", r#for: "pause-deal-flow", "{company.pause_label}" }
                 div { class: "deal-exhibition__scene", "aria-hidden": "true",
                     div { class: "deal-exhibition__grid" }

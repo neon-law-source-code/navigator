@@ -15357,6 +15357,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "cloud",
+ "mail-parser",
  "opentelemetry",
  "opentelemetry_sdk",
  "pdf",

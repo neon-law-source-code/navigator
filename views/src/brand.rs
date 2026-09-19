@@ -899,7 +899,6 @@ impl BrandKey {
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
             Self::Neon => crate::locales::KNOWN_PAGES,
-            Self::LawyerShook => &["services"],
             // Every practice brand publishes the two stems it actually
             // serves; a missing file is a loader-test failure rather than a
             // first-request panic.
@@ -917,10 +916,9 @@ impl BrandKey {
     ///
     /// Neon consolidates its services on `/`. DeleteYourData answers
     /// only the pages it has a catalog for (plus `/contact`, which is
-    /// addresses rather than a YAML stem). Lawyer Shook is a bare holding
-    /// notice for Shook Law PLLC, not a marketing site: it answers `/` alone.
-    /// Other firm paths 404 on that host rather than rendering another
-    /// brand's words.
+    /// addresses rather than a YAML stem). Lawyer Shook keeps its holding
+    /// notice and practice cards on `/`; other firm paths 404 on that host
+    /// rather than rendering another brand's words.
     #[must_use]
     pub fn publishes_firm_path(self, path: &str) -> bool {
         match self {

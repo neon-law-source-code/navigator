@@ -13,6 +13,7 @@ pub use crate::components::PracticeMark;
 mod company;
 pub use company::CompanyContent;
 mod estate;
+pub use estate::EstateContent;
 
 /// The self-contained home stylesheet, hoisted alongside `theme.css`.
 pub const HOME_STYLESHEET_HREF: &str = "/public/css/home.css";
@@ -139,7 +140,7 @@ pub struct HomeContent {
     pub bare: Option<BareStatement>,
     /// The lifetime estate-planning offer, authored in the brand catalog.
     #[serde(default)]
-    pub estate: Option<views::locales::EstateCopy>,
+    pub estate: Option<EstateContent>,
 }
 
 /// The firm's notice and sign-in. When [`HomeContent::bare`] is set, this

@@ -1,10 +1,44 @@
 //! The lifetime estate plan, with an optional future record of a signed version.
 use super::HomeContent;
 use dioxus::prelude::*;
-use views::locales::EstateCopy;
+use serde::{Deserialize, Serialize};
+
+/// Copy loaded from the brand home catalog.
+///
+/// This mirrors `views::locales::EstateCopy` rather than naming it, for the
+/// same reason [`super::CompanyContent`] does: `views` is gated behind the
+/// `server` feature, and this type is a field of [`HomeContent`], which the
+/// wasm client build compiles. `neon::locales::home` maps the catalog shape
+/// onto this one at the one seam that already reads the YAML.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EstateContent {
+    pub eyebrow: String,
+    pub process_link: String,
+    pub plan_label: String,
+    pub price: String,
+    pub price_term: String,
+    pub features: Vec<String>,
+    pub fee_note: String,
+    pub video_label: String,
+    pub video_src: String,
+    pub transcript_label: String,
+    pub video_transcript: String,
+    pub process_label: String,
+    pub process_heading: String,
+    pub steps: Vec<[String; 2]>,
+    pub record_label: String,
+    pub record_price: String,
+    pub record_unit: String,
+    pub record_status: String,
+    pub record_heading: String,
+    pub record_body: String,
+    pub record_note: String,
+    pub closing_heading: String,
+    pub closing_body: String,
+}
 
 #[component]
-pub(super) fn EstateHome(content: HomeContent, estate: EstateCopy) -> Element {
+pub(super) fn EstateHome(content: HomeContent, estate: EstateContent) -> Element {
     rsx! {
         div { class: "vesta-home",
             section { class: "vesta-hero", "aria-labelledby": "vesta-title",

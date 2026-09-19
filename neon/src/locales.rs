@@ -633,6 +633,41 @@ pub fn lead_capture(branding: &views::brand::Branding) -> LeadCaptureCopy {
     }
 }
 
+/// The lifetime estate offer, mapped from the catalog onto the page type.
+///
+/// `webapp::home::EstateContent` mirrors `views::locales::EstateCopy` because
+/// `views` is server-gated and the page type is compiled for the wasm client
+/// too, so this is the seam that carries one onto the other.
+fn estate_content(copy: views::locales::EstateCopy) -> webapp::home::EstateContent {
+    webapp::home::EstateContent {
+        eyebrow: copy.eyebrow,
+        process_link: copy.process_link,
+        plan_label: copy.plan_label,
+        price: copy.price,
+        price_term: copy.price_term,
+        features: copy.features,
+        fee_note: copy.fee_note,
+        video_label: copy.video_label,
+        // The catalog authors the object key; the page needs the URL it
+        // resolves to in this deployment.
+        video_src: views::assets::asset_url(&copy.video_src),
+        transcript_label: copy.transcript_label,
+        video_transcript: copy.video_transcript,
+        process_label: copy.process_label,
+        process_heading: copy.process_heading,
+        steps: copy.steps,
+        record_label: copy.record_label,
+        record_price: copy.record_price,
+        record_unit: copy.record_unit,
+        record_status: copy.record_status,
+        record_heading: copy.record_heading,
+        record_body: copy.record_body,
+        record_note: copy.record_note,
+        closing_heading: copy.closing_heading,
+        closing_body: copy.closing_body,
+    }
+}
+
 /// The firm home page, resolved from this brand's `home.yaml`.
 pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     let copy: HomeCopy = load_page(branding, "home");
@@ -715,10 +750,7 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
         }),
         // Lawyer Shook's resolver supplies its firm notice over this catalog.
         bare: None,
-        estate: copy.estate.map(|mut estate| {
-            estate.video_src = views::assets::asset_url(&estate.video_src);
-            estate
-        }),
+        estate: copy.estate.map(estate_content),
     }
 }
 

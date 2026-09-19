@@ -2,18 +2,21 @@
 //!
 //! Every request's `Host:` header resolves to a [`views::brand::BrandKey`]
 //! through the compiled registry
-//! ([`views::brand::registered_brand_key`]). A host the registry names
-//! passes through carrying its own resolved brand, whatever `CANONICAL_HOST`
-//! says. The deployment's own configured host — `CANONICAL_HOST`, whatever
-//! literal value that deployment names — also passes through as the default
-//! brand even when it is not itself a registry entry, which is what keeps an
-//! arbitrary test host or a not-yet-registered deployment host working.
-//! Every other host is permanently redirected to the same path on the
-//! configured host, except `/health`: kubelet and load-balancer probes
+//! ([`views::brand::registered_brand_key`]). A host a *live* key claims
+//! passes through carrying that brand, whatever `CANONICAL_HOST` says. A
+//! compiled-but-held-out host is unregistered for admission: the same
+//! [`BrandKey::LIVE`] set drives this resolver, crawler bases, certificates,
+//! and Ingress. The deployment's own configured host — `CANONICAL_HOST`,
+//! whatever literal value that deployment names — also passes through as the
+//! default brand even when it is not itself a registry entry, which is what
+//! keeps an arbitrary test host or a not-yet-registered deployment host
+//! working. Every other host is permanently redirected to the same path on
+//! the configured host, except `/health`: kubelet and load-balancer probes
 //! address a backend rather than its public hostname. When `CANONICAL_HOST`
 //! is unset (the default), enforcement is a pass-through and every host still
-//! resolves to its registered brand (or the default brand for an
-//! unregistered one) — useful for local development and integration tests.
+//! resolves to its live brand (or the default brand for an unregistered
+//! one) — useful for local development and integration tests. Held-out
+//! brands still preview on their local ports.
 //!
 //! When browser OAuth is configured, `/app` and sign-in entry points first
 //! redirect to the callback origin, before any authentication cookie is issued.
@@ -272,16 +275,15 @@ mod tests {
 
     // --- The apex redirect ------------------------------------------------
 
-    /// Every brand's naked domain resolves to that brand, and to no other.
+    /// Every live brand's naked domain resolves to that brand, and to no other.
     ///
     /// The failure this guards is the one a single deployment-wide
-    /// `CANONICAL_HOST` produces: `vestaestateplanning.com` sending a reader
-    /// to the firm's site rather than Vesta's. A registry that mapped two
-    /// brands to one apex, or a brand to another brand's apex, would do the
-    /// same thing more quietly.
+    /// `CANONICAL_HOST` produces: a live apex sending a reader to the firm's
+    /// site rather than that brand's `www`. Held-out apexes stay unresolved
+    /// until launch, so they cannot advertise an unopened host.
     #[test]
-    fn each_apex_resolves_to_its_own_brand() {
-        for key in BrandKey::ALL {
+    fn each_live_apex_resolves_to_its_own_brand() {
+        for key in BrandKey::LIVE {
             assert_eq!(
                 views::brand::brand_key_for_apex(key.apex()),
                 Some(*key),
@@ -346,8 +348,8 @@ mod tests {
     #[test]
     fn apex_lookup_ignores_host_case() {
         assert_eq!(
-            views::brand::brand_key_for_apex("VestaEstatePlanning.com"),
-            Some(BrandKey::Vesta)
+            views::brand::brand_key_for_apex("DeleteYourData.com"),
+            Some(BrandKey::DeleteYourData)
         );
     }
 

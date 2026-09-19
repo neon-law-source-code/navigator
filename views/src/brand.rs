@@ -1068,22 +1068,26 @@ impl BrandKey {
     }
 }
 
-/// The key whose *apex* this host is, if any. `None` for a host that is
-/// either served (see [`registered_brand_key`]) or unknown.
+/// The live key whose *apex* this host is, if any. `None` for a host that is
+/// either served (see [`registered_brand_key`]), unknown, or compiled but
+/// not yet launched — a held-out apex must not 301 onto an unopened `www`.
 #[must_use]
 pub fn brand_key_for_apex(host: &str) -> Option<BrandKey> {
-    BrandKey::ALL
+    BrandKey::LIVE
         .iter()
         .copied()
         .find(|key| key.apex().eq_ignore_ascii_case(host))
 }
 
-/// Look up which key, if any, is registered to serve `host` (already
-/// port-stripped). `None` means the host answers to no brand in the
-/// registry.
+/// Look up which live key, if any, is admitted to serve `host` (already
+/// port-stripped). `None` means the host answers to no launched brand:
+/// unknown hosts and compiled-but-held-out hosts share that answer, so the
+/// middleware, robots/sitemap base, certificates, and Ingress all consult
+/// one set ([`BrandKey::LIVE`]). Local preview still binds a held-out key
+/// through [`BrandKey::local_port_env_var`], which never reads this function.
 #[must_use]
 pub fn registered_brand_key(host: &str) -> Option<BrandKey> {
-    BrandKey::ALL
+    BrandKey::LIVE
         .iter()
         .copied()
         .find(|key| key.hosts().contains(&host))
@@ -2226,17 +2230,54 @@ mod tests {
 
     use super::{registered_brand_key, BrandKey, DELETE_YOUR_DATA_BRANDING, LAWYER_SHOOK_BRANDING};
 
-    /// Every host a key claims resolves back to that same key.
+    /// Live hosts admit; held-out compiled hosts do not. Certificates,
+    /// Ingress, the footer, and this resolver share [`BrandKey::LIVE`].
     #[test]
-    fn every_registered_host_maps_to_its_key() {
+    fn only_live_hosts_admit_through_the_registry() {
         for key in BrandKey::ALL {
             for host in key.hosts() {
                 assert_eq!(
                     registered_brand_key(host),
-                    Some(*key),
-                    "{host} should resolve to {key:?}"
+                    key.is_live().then_some(*key),
+                    "{host} admission must follow is_live for {key:?}"
                 );
             }
+        }
+    }
+
+    /// A held-out apex is not a moved address until that brand is live.
+    #[test]
+    fn a_held_out_apex_does_not_resolve() {
+        for key in BrandKey::ALL.iter().copied().filter(|key| !key.is_live()) {
+            assert_eq!(
+                super::brand_key_for_apex(key.apex()),
+                None,
+                "{} must not redirect its apex until launch",
+                key.as_str()
+            );
+        }
+    }
+
+    /// Every compiled brand's public face carries the attorney-advertising
+    /// label and names the legal person, whether or not that host is live.
+    #[test]
+    fn every_compiled_brand_carries_the_attorney_advertisement_and_legal_entity() {
+        for key in BrandKey::ALL {
+            let branding = key.resolve_branding(&super::DEFAULT_BRANDING);
+            assert!(
+                branding
+                    .firm_disclaimer
+                    .starts_with("Attorney advertisement."),
+                "{} disclaimer: {}",
+                key.as_str(),
+                branding.firm_disclaimer
+            );
+            assert_eq!(
+                branding.firm.legal_entity,
+                "Shook Law PLLC",
+                "{} names the practice",
+                key.as_str()
+            );
         }
     }
 

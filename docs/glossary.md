@@ -226,9 +226,14 @@ white-label deploy needs to rebrand in the reader's eyes.
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local
-mechanism a mounted white-label bundle already used to scope its own `Branding`. An unregistered host redirects to the
-deployment's own configured host (`CANONICAL_HOST`); the `/app/health` and `/app/readyz` probes answer on every host,
-unredirected.
+mechanism a mounted white-label bundle already used to scope its own `Branding`. Admission consults
+[`BrandKey::LIVE`](../views/src/brand.rs) — Neon, DeleteYourData, and LawyerShook — the same set that drives
+certificates, Ingress, crawler bases, and the footer's "Our Family" links. A compiled-but-held-out host (`vesta`,
+`misericordia`, `abhaya`, `delete-your-debt`, `summons`) is unregistered until launch; with `CANONICAL_HOST` set it
+redirects to the deployment host, and locally a held-out brand still previews on its dedicated port. An unregistered
+host redirects to the deployment's own configured host (`CANONICAL_HOST`); the `/app/health` and `/app/readyz` probes
+answer on every host, unredirected. A live brand's public URL is its `www` host (`www.deleteyourdata.com`); the naked
+apex only redirects.
 
 Distinct from [`portal::hosting::Site`](../portal/src/hosting.rs) (formerly named `Brand`, renamed to end the collision
 once "brand" came to mean the per-request identity above): a `Site` is what one brand *crate*'s `main` hands the shared

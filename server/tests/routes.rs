@@ -2494,6 +2494,36 @@ async fn crawler_discovery_ignores_internal_request_host_when_canonical_host_is_
     );
 }
 
+/// A held-out compiled host is not a crawler base. With no canonical host
+/// the fallback is the deployment-neutral example host; the unlaunched
+/// name never appears in robots or the sitemap.
+#[tokio::test]
+async fn crawler_discovery_does_not_advertise_a_held_out_brand_host() {
+    let app = server::neon_router(
+        empty_state_with_canonical_host(CanonicalHost::new(None)).await,
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    for path in ["/robots.txt", "/sitemap.xml"] {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header(header::HOST, "staging.vestaestateplanning.com")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+        let body = body_string(resp).await;
+        assert!(
+            !body.contains("vestaestateplanning.com"),
+            "{path} must not name the held-out host: {body}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     let mut state =
@@ -7213,6 +7243,38 @@ async fn the_apex_redirect_keeps_the_path_and_query() {
             .and_then(|value| value.to_str().ok()),
         Some("https://www.neonlaw.com/services?ref=card"),
     );
+}
+
+/// A compiled-but-held-out host is unregistered: with a canonical host
+/// configured it redirects there rather than rendering the unlaunched brand.
+#[tokio::test]
+async fn a_held_out_brand_host_redirects_to_the_canonical_host() {
+    let default_host = "www.neonlaw.com";
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for host in [
+        "staging.vestaestateplanning.com",
+        "www.vestaestateplanning.com",
+        "vestaestateplanning.com",
+        "staging.misericordialaw.com",
+        "www.summonsdefense.nyc",
+    ] {
+        let resp = get_on_host(&app, "/", host).await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::MOVED_PERMANENTLY,
+            "{host} must not admit a held-out brand"
+        );
+        assert_eq!(
+            resp.headers()
+                .get(header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("https://www.neonlaw.com/"),
+            "{host}"
+        );
+    }
 }
 
 #[tokio::test]

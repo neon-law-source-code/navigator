@@ -29,7 +29,8 @@ Index
   [Deployment Operator](#deployment-operator) · [`devx`](#devx) · [Directly Responsible Individual
   (DRI)](#directly-responsible-individual-dri) · [Disclosure](#disclosure) · [Docket Entry](#docket-entry) ·
   [Document](#document) · [Document Drafts](#document-drafts) · [Document Identity](#document-identity) · [Document
-  Intake](#document-intake) · [Document Open](#document-open) · [Durable execution](#durable-execution)
+  Intake](#document-intake) · [Document Open](#document-open) · [Draft](#draft) · [Durable
+  execution](#durable-execution)
 - **E** — [E-Filing](#e-filing) · [Email Send](#email-send) · [Engagement / Retainer](#engagement--retainer) ·
   [Entity](#entity) · [Entity Type](#entity-type) · [External System Identity](#external-system-identity) ·
   [Extract](#extract)
@@ -731,6 +732,30 @@ through the shared document-ingestion path. See
 The workflow prefix `generate_pdf` renders a template body into a Blob-backed document for the Project. See
 [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
+
+## Draft
+
+A **[Template](#template)** in the lawyer's English. The same authored Markdown file, under the noun said out loud in
+the office: reusable source carrying all four parts — **metadata**, **questionnaire**, **workflow**, and **body** — that
+a [Notation](notation.md#notation) is created from. *"Send me the engagement draft"* and *"send me the engagement
+Template"* name one file and one row. The full anatomy is taught in [`notation`](notation.md#template).
+
+A Draft is versioned by append rather than by edit, exactly as a Template is: `templates.is_current` marks the live
+revision, a change adds a row, and every Notation pins the row it was created from. That is a different mechanism from
+the asset lane's [Document Identity](#document-identity) slug, where a re-upload adds a revision to a living document;
+authored source is never re-uploaded over.
+
+Capitalized Draft is that reusable authored source. Three narrower lowercase uses of "draft" are not this noun and keep
+their own meanings:
+
+- The Notation workflow `state` value `draft` — one state in a running Notation's lifetime, beside `lawyer_review` and
+  `signed`. A Notation exists through intake and drafting and holds its identity through review and signature; signing
+  advances the same Notation rather than creating a second one.
+- The [Document Drafts](#document-drafts) workflow prefix `document_drafts__*`, a system wait state for web-rendered
+  review-document rows.
+- `review_document.status`, whose default is `draft` — the status of one attorney-reviewed instrument a client reads,
+  not of the authored source it was rendered from. Schema: [`review_document` in
+  `navigator.surql`](../store/src/schema/navigator.surql).
 
 ## Durable execution
 
@@ -1998,7 +2023,7 @@ accountability actions is reserved to the [Lawyer DRI](#directly-responsible-ind
 
 The authored Markdown file under `templates/` that a Notation is created from — the firm's drafted text together with
 the machine that gathers what the text needs. It has four parts: **metadata**, **questionnaire**, **workflow**, and
-**body**.
+**body**. A lawyer calls the same file a **[Draft](#draft)**; the two nouns name one thing.
 
 **Metadata is a conceptual grouping, not a literal nested YAML key.** It names the frontmatter keys that classify the
 file — `kind:`, `code:`, jurisdiction, respondent — which sit at the top level of the frontmatter block. A template that

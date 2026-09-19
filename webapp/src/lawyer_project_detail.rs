@@ -706,7 +706,7 @@ pub fn LawyerProjectDetail() -> Element {
                 section { class: "lawyer-detail__section",
                     h2 { "Client trust" }
                     p { class: "nav-muted",
-                        "Held for this matter in the firm's pooled client trust account, \
+                        "Held for this Project in the firm's pooled client trust account, \
                          mirrored from Xero. Xero is the books."
                     }
                     ul {
@@ -717,8 +717,8 @@ pub fn LawyerProjectDetail() -> Element {
                     }
                     if !view.trust.allocations.is_empty() {
                         p { class: "nav-muted",
-                            "Drawn against this matter's invoices. The pooled transfer \
-                             these lines were part of is not a matter-level fact."
+                            "Drawn against this Project's invoices. The pooled transfer \
+                             these lines were part of is not a Project-level fact."
                         }
                         ul {
                             for line in view.trust.allocations.iter() {

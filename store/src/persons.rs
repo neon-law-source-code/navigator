@@ -1369,6 +1369,64 @@ pub async fn link_apple_subject(
     link_subject(db, id, "apple_subject", subject).await
 }
 
+/// Move a pre-split identifier out of `oidc_subject` into the Microsoft
+/// column. Returns `None` when the person no longer exists.
+///
+/// See [`adopt_legacy_oidc_subject_as_apple`] for why the move is a single
+/// write.
+///
+/// # Errors
+///
+/// [`PersonError::MicrosoftSubjectTaken`] when another row already holds this
+/// `sub`, and [`PersonError::Db`] for anything else.
+pub async fn adopt_legacy_oidc_subject_as_microsoft(
+    db: &SurrealDb,
+    id: Uuid,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    adopt_legacy_oidc_subject(db, id, "microsoft_subject", subject).await
+}
+
+/// Move a pre-split identifier out of `oidc_subject` into the Apple column.
+/// Returns `None` when the person no longer exists.
+///
+/// Rows written before sign-in identifiers were split per provider hold
+/// whichever provider authenticated first in `oidc_subject`, with nothing
+/// recording which provider issued it. Converging such a row is a *move*, not
+/// a copy: the identifier is written to the provider's own column and
+/// `oidc_subject` is cleared in the same statement, so the row converges once
+/// and stops being a candidate for the resolver's legacy lookup. Doing both in
+/// one `UPDATE` is what makes that true — two writes could leave a row holding
+/// the same identifier in two columns if the second one failed.
+///
+/// # Errors
+///
+/// [`PersonError::AppleSubjectTaken`] when another row already holds this
+/// `sub`, and [`PersonError::Db`] for anything else.
+pub async fn adopt_legacy_oidc_subject_as_apple(
+    db: &SurrealDb,
+    id: Uuid,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    adopt_legacy_oidc_subject(db, id, "apple_subject", subject).await
+}
+
+async fn adopt_legacy_oidc_subject(
+    db: &SurrealDb,
+    id: Uuid,
+    field: &str,
+    subject: &str,
+) -> Result<Option<Person>, PersonError> {
+    let assignment = format!("{field} = $subject, oidc_subject = NONE");
+    update_one(
+        db,
+        id,
+        &assignment,
+        vec![bind("subject", subject.to_string())],
+    )
+    .await
+}
+
 async fn link_subject(
     db: &SurrealDb,
     id: Uuid,
@@ -1437,8 +1495,9 @@ pub async fn delete(db: &SurrealDb, id: Uuid) -> Result<(), PersonError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        create, default_firm_dri, delete, edit, find_by_email_ci, find_by_id, find_by_ids,
-        find_by_oidc_subject, find_or_create, is_admitted, link_apple_subject, link_oidc_subject,
+        adopt_legacy_oidc_subject_as_apple, create, default_firm_dri, delete, edit,
+        find_by_apple_subject, find_by_email_ci, find_by_id, find_by_ids, find_by_oidc_subject,
+        find_or_create, is_admitted, link_apple_subject, link_microsoft_subject, link_oidc_subject,
         list_directory, retry, search, set_admitted, set_email_confirmed, set_profile_image_url,
         set_role, set_xero_contact_id, update_contact, ContactUpdate, NewPerson, PersonEdit,
         PersonError, Role,
@@ -2092,6 +2151,87 @@ mod tests {
                 .unwrap()
                 .and_then(|person| person.apple_subject),
             None
+        );
+    }
+
+    #[tokio::test]
+    async fn adopting_a_legacy_subject_moves_it_and_empties_the_generic_slot() {
+        let db = mem().await;
+        let row = person(&db, "Libra", "libra@example.com").await;
+        link_oidc_subject(&db, row.id, "legacy-sub").await.unwrap();
+
+        let adopted = adopt_legacy_oidc_subject_as_apple(&db, row.id, "legacy-sub")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // The identifier moved: it answers as Apple's and no longer answers as
+        // the primary provider's, so the resolver's legacy lookup cannot match
+        // this row a second time.
+        assert_eq!(adopted.apple_subject.as_deref(), Some("legacy-sub"));
+        assert_eq!(adopted.oidc_subject, None);
+        assert_eq!(
+            find_by_apple_subject(&db, "legacy-sub")
+                .await
+                .unwrap()
+                .map(|person| person.id),
+            Some(row.id)
+        );
+        assert!(find_by_oidc_subject(&db, "legacy-sub")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn adopting_a_legacy_subject_leaves_the_rest_of_the_row_alone() {
+        let db = mem().await;
+        let row = person(&db, "Libra", "libra@example.com").await;
+        link_oidc_subject(&db, row.id, "legacy-sub").await.unwrap();
+        link_microsoft_subject(&db, row.id, "microsoft-sub")
+            .await
+            .unwrap();
+
+        let adopted = adopt_legacy_oidc_subject_as_apple(&db, row.id, "legacy-sub")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Clearing the generic slot is scoped to that one column: a link this
+        // row already holds for another provider survives the convergence.
+        assert_eq!(adopted.microsoft_subject.as_deref(), Some("microsoft-sub"));
+        assert_eq!(adopted.email, row.email);
+        assert_eq!(adopted.name, row.name);
+        assert_eq!(adopted.role, row.role);
+    }
+
+    #[tokio::test]
+    async fn adopting_a_legacy_subject_another_person_holds_is_refused() {
+        let db = mem().await;
+        let first = person(&db, "Libra", "libra@example.com").await;
+        let second = person(&db, "Aries", "aries@example.com").await;
+        link_apple_subject(&db, first.id, "shared-sub")
+            .await
+            .unwrap();
+        link_oidc_subject(&db, second.id, "shared-sub")
+            .await
+            .unwrap();
+
+        let refused = adopt_legacy_oidc_subject_as_apple(&db, second.id, "shared-sub").await;
+
+        // The unique index still arbitrates. A convergence that would hand one
+        // provider identity to two rows is refused, and the row it would have
+        // written keeps the value it had.
+        assert!(
+            matches!(refused, Err(PersonError::AppleSubjectTaken)),
+            "{refused:?}"
+        );
+        assert_eq!(
+            find_by_id(&db, second.id)
+                .await
+                .unwrap()
+                .and_then(|person| person.oidc_subject),
+            Some("shared-sub".into())
         );
     }
 

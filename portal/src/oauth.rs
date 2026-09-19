@@ -2678,8 +2678,21 @@ async fn resolve_person_from_claims(
     }
 
     let Some(email) = claims.email.clone() else {
-        // No email on the token. We refuse to mint a session for an
-        // unknown identifier — operators must seed before sign-in.
+        // No email on the token. Before refusing, consult the pre-split
+        // generic slot — this is the only path on which a row written before
+        // per-provider linkage can still be recognised. See
+        // `relink_legacy_subject` for why the branch is shaped this way.
+        if let Some(existing) = relink_legacy_subject(surreal, provider, &claims.sub).await? {
+            if !persons::is_admitted(surreal, existing.id).await? {
+                return Err(ResolveError::NotAdmitted);
+            }
+            // The bootstrap-Owner carve-out is keyed on the email claim, and
+            // this branch runs only when there is none, so the row's stored
+            // role stands as-is.
+            return Ok((existing.id, existing.role, None));
+        }
+        // We refuse to mint a session for an unknown identifier — operators
+        // must seed before sign-in.
         return Err(ResolveError::NotPreSeeded);
     };
 
@@ -2773,6 +2786,86 @@ async fn resolve_existing_after_race(
         return Ok(Some(existing));
     }
     store::persons::find_by_email_ci(surreal, email).await
+}
+
+/// Converge one Person row written before sign-in identifiers were split per
+/// provider, and return it when this sign-in belongs to it.
+///
+/// Rows created before the split hold whichever provider authenticated first
+/// in `oidc_subject`, and nothing records which provider issued it. A row whose
+/// stored identifier came from Apple therefore has no `apple_subject` to match;
+/// Apple omits `email` on a repeat authorization, so the email lookup has
+/// nothing to work with either, and that person is refused on every subsequent
+/// sign-in. Nothing was deleted — the identifier is still in the row — but no
+/// lookup reads it for the provider that issued it.
+///
+/// Three conditions keep this from becoming a general widening of subject
+/// matching, which is the seam this module otherwise closes:
+///
+/// * **The presenting provider is not [`ProviderId::Primary`].** The primary
+///   slot is the one column whose meaning did not change, so reading it for
+///   its own provider is the ordinary lookup above, not a fallback.
+/// * **The claim carries no email.** When an email is present the email lookup
+///   is the correct and safer path, and a miss there has to stay a refusal —
+///   otherwise an address the deployment does not recognise could reach a row
+///   through this branch instead.
+/// * **The matched row holds no subject for the presenting provider yet.** A
+///   row already linked to this provider under a different identifier is a
+///   different identity, never a convergence candidate.
+///
+/// What remains is that an identifier issued by one provider could equal one
+/// issued by another. Neither value is caller-chosen — both are opaque,
+/// high-entropy strings minted by the IdP — and the match must be exact, so
+/// that is a collision rather than an attack surface. It is bounded further by
+/// the move: [`store::persons::adopt_legacy_oidc_subject_as_apple`] writes the
+/// provider's own column and clears `oidc_subject` in one statement, so each
+/// row passes through here at most once and the population this branch can see
+/// only shrinks. ENG-783 retires the branch once the emitted event has been
+/// quiet for four weeks on every deployment.
+///
+/// A row whose identifier really was primary-issued and is consumed here still
+/// signs in: that provider supplies an email on every authorization, so the
+/// email lookup resolves the row and re-links the primary slot.
+async fn relink_legacy_subject(
+    surreal: &store::surreal::SurrealDb,
+    provider: Option<ProviderId>,
+    subject: &str,
+) -> Result<Option<store::persons::Person>, store::persons::PersonError> {
+    let provider = provider.unwrap_or_default();
+    if provider == ProviderId::Primary {
+        return Ok(None);
+    }
+    let Some(existing) = store::persons::find_by_oidc_subject(surreal, subject).await? else {
+        return Ok(None);
+    };
+    if subject_for_provider(&existing, Some(provider)).is_some() {
+        return Ok(None);
+    }
+
+    let adopted = match provider {
+        ProviderId::Microsoft => {
+            store::persons::adopt_legacy_oidc_subject_as_microsoft(surreal, existing.id, subject)
+                .await?
+        }
+        ProviderId::Apple => {
+            store::persons::adopt_legacy_oidc_subject_as_apple(surreal, existing.id, subject)
+                .await?
+        }
+        // Refused above; repeated here so a fourth provider cannot reach the
+        // convergence write by inheriting a default.
+        ProviderId::Primary => return Ok(None),
+    };
+
+    if adopted.is_some() {
+        // Emitted here rather than threaded back through the resolver's return
+        // type: this is a migration signal about the row, not the sign-in
+        // outcome, and the outcome's own event is the caller's to emit.
+        // ENG-784 owns widening that return value.
+        telemetry::record_auth_event(telemetry::AuthEvent::LegacySubjectRelinked {
+            provider: provider.telemetry_provider(),
+        });
+    }
+    Ok(adopted)
 }
 
 fn subject_for_provider(
@@ -3660,6 +3753,209 @@ mod tests {
             .expect("the Person row remains present");
         assert_eq!(stored.apple_subject.as_deref(), Some("apple-subject"));
         assert_eq!(stored.oidc_subject, None);
+    }
+
+    /// The reproducer from the review that found this: seed the row exactly as
+    /// the pre-split code wrote it — Apple's identifier in the generic slot —
+    /// and present the repeat Apple claim that carries no email. Before the
+    /// legacy branch this was `NotPreSeeded`, rendered as the "no account
+    /// found" page, which a visitor cannot tell apart from never having been
+    /// provisioned.
+    #[tokio::test]
+    async fn an_apple_first_row_written_before_the_split_still_resolves_without_email() {
+        let surreal = mem_surreal().await;
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                oidc_subject: Some("apple-sub".into()),
+                ..store::persons::NewPerson::new("Admitted Person", "person@example.com")
+            },
+        )
+        .await
+        .expect("seed a person carrying an Apple subject in the generic slot");
+        let mut claims = unknown_claims("person@example.com");
+        claims.sub = "apple-sub".into();
+        claims.email = None;
+
+        let (resolved_id, _, fresh) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+                .await
+                .expect("a pre-split Apple row resolves without an email claim");
+
+        assert_eq!(resolved_id, person.id);
+        // Not a signup: the row was already there, it only converged.
+        assert!(fresh.is_none());
+        let stored = store::persons::find_by_id(&surreal, person.id)
+            .await
+            .unwrap()
+            .expect("the Person row remains present");
+        assert_eq!(stored.apple_subject.as_deref(), Some("apple-sub"));
+        assert_eq!(stored.oidc_subject, None);
+    }
+
+    /// The convergence is one-way: once the identifier has moved, the row is
+    /// out of the legacy branch's reach and resolves through the ordinary
+    /// per-provider lookup. This is what bounds the branch and what ENG-783
+    /// waits on before deleting it.
+    #[tokio::test]
+    async fn a_converged_row_resolves_through_the_provider_column_on_the_next_sign_in() {
+        let surreal = mem_surreal().await;
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                oidc_subject: Some("apple-sub".into()),
+                ..store::persons::NewPerson::new("Admitted Person", "person@example.com")
+            },
+        )
+        .await
+        .expect("seed a person carrying an Apple subject in the generic slot");
+        let mut claims = unknown_claims("person@example.com");
+        claims.sub = "apple-sub".into();
+        claims.email = None;
+
+        for _ in 0..2 {
+            let (resolved_id, _, _) =
+                resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+                    .await
+                    .expect("both sign-ins resolve the same row");
+            assert_eq!(resolved_id, person.id);
+        }
+
+        assert!(store::persons::find_by_oidc_subject(&surreal, "apple-sub")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    /// The primary slot's meaning did not change, so reading it for a primary
+    /// sign-in is the ordinary lookup — the legacy branch must not fire there
+    /// and must never clear that column.
+    #[tokio::test]
+    async fn the_legacy_branch_does_not_fire_for_the_primary_provider() {
+        let surreal = mem_surreal().await;
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                oidc_subject: Some("primary-sub".into()),
+                ..store::persons::NewPerson::new("Admitted Person", "person@example.com")
+            },
+        )
+        .await
+        .expect("seed a primary-linked person");
+        let mut claims = unknown_claims("person@example.com");
+        claims.sub = "primary-sub".into();
+        claims.email = None;
+
+        let (resolved_id, _, _) =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Primary), &claims, None, false)
+                .await
+                .expect("the primary subject resolves through its own lookup");
+
+        assert_eq!(resolved_id, person.id);
+        let stored = store::persons::find_by_id(&surreal, person.id)
+            .await
+            .unwrap()
+            .expect("the Person row remains present");
+        assert_eq!(stored.oidc_subject.as_deref(), Some("primary-sub"));
+    }
+
+    /// A claim that carries an email keeps the email path's answer, including
+    /// its refusal. Letting the legacy branch run here would give an address
+    /// the deployment does not recognise a second way into a row.
+    #[tokio::test]
+    async fn a_claim_with_an_unmatched_email_is_refused_rather_than_reaching_the_legacy_slot() {
+        let surreal = mem_surreal().await;
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                oidc_subject: Some("apple-sub".into()),
+                ..store::persons::NewPerson::new("Admitted Person", "person@example.com")
+            },
+        )
+        .await
+        .expect("seed a person carrying an Apple subject in the generic slot");
+        let mut claims = unknown_claims("someone-else@privaterelay.appleid.com");
+        claims.sub = "apple-sub".into();
+
+        let refused =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+                .await
+                .expect_err("an unmatched email must stay a refusal");
+
+        assert!(matches!(refused, ResolveError::NotPreSeeded));
+        let stored = store::persons::find_by_id(&surreal, person.id)
+            .await
+            .unwrap()
+            .expect("the Person row remains present");
+        assert_eq!(stored.oidc_subject.as_deref(), Some("apple-sub"));
+        assert_eq!(stored.apple_subject, None);
+    }
+
+    /// A row already linked to the presenting provider under a different
+    /// identifier is a different identity. The legacy branch must leave it
+    /// alone rather than overwrite the link it holds.
+    #[tokio::test]
+    async fn the_legacy_branch_skips_a_row_already_linked_to_the_presenting_provider() {
+        let surreal = mem_surreal().await;
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                oidc_subject: Some("legacy-sub".into()),
+                apple_subject: Some("a-different-apple-sub".into()),
+                ..store::persons::NewPerson::new("Admitted Person", "person@example.com")
+            },
+        )
+        .await
+        .expect("seed a person linked to Apple under another subject");
+        let mut claims = unknown_claims("person@example.com");
+        claims.sub = "legacy-sub".into();
+        claims.email = None;
+
+        let refused =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+                .await
+                .expect_err("an already-linked row is not a convergence candidate");
+
+        assert!(matches!(refused, ResolveError::NotPreSeeded));
+        let stored = store::persons::find_by_id(&surreal, person.id)
+            .await
+            .unwrap()
+            .expect("the Person row remains present");
+        assert_eq!(stored.oidc_subject.as_deref(), Some("legacy-sub"));
+        assert_eq!(
+            stored.apple_subject.as_deref(),
+            Some("a-different-apple-sub")
+        );
+    }
+
+    /// Admission is decided on the row, not on how it was found. A converged
+    /// row that is not admitted is refused as `NotAdmitted`, the same as any
+    /// other path.
+    #[tokio::test]
+    async fn a_converged_row_that_is_not_admitted_is_still_refused() {
+        let surreal = mem_surreal().await;
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                oidc_subject: Some("apple-sub".into()),
+                ..store::persons::NewPerson::new("Barred Person", "barred@example.com")
+            },
+        )
+        .await
+        .expect("seed a person carrying an Apple subject in the generic slot");
+        store::persons::set_admitted(&surreal, person.id, false)
+            .await
+            .expect("withdraw admission");
+        let mut claims = unknown_claims("barred@example.com");
+        claims.sub = "apple-sub".into();
+        claims.email = None;
+
+        let refused =
+            resolve_person_from_claims(&surreal, Some(ProviderId::Apple), &claims, None, false)
+                .await
+                .expect_err("a row that is not admitted cannot sign in");
+
+        assert!(matches!(refused, ResolveError::NotAdmitted));
     }
 
     #[tokio::test]

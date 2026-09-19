@@ -1025,6 +1025,19 @@ pub enum AuthEvent<'a> {
         /// The bounded refusal reason.
         reason: AuthSignInReason,
     },
+    /// A Person row written before sign-in identifiers were split per
+    /// provider converged: the identifier it held in the generic slot moved
+    /// into the presenting provider's own column.
+    ///
+    /// This is a migration signal, not a sign-in outcome — the sign-in that
+    /// triggered it emits its own [`Self::SignedIn`]. Each legacy row can
+    /// produce this at most once, so the event going quiet across every
+    /// deployment is the evidence that the resolver's legacy branch has no
+    /// rows left to heal and can be retired (ENG-783).
+    LegacySubjectRelinked {
+        /// The provider that adopted the identifier.
+        provider: AuthProvider,
+    },
 }
 
 /// Emit one structured browser sign-in event and increment its counter.
@@ -1058,6 +1071,16 @@ pub fn record_auth_event(event: AuthEvent<'_>) {
                 provider = provider.as_str(),
                 brand,
                 reason = reason.as_str(),
+            );
+        }
+        AuthEvent::LegacySubjectRelinked { provider } => {
+            // No counter: `navigator.auth.sign_in` charts sign-in outcomes,
+            // and a convergence is not one of them. The sign-in it rode in on
+            // increments that counter on its own.
+            tracing::info!(
+                target: "auth",
+                event = "auth.legacy_subject_relinked",
+                provider = provider.as_str(),
             );
         }
     }
@@ -1378,6 +1401,9 @@ mod tests {
                     reason,
                 });
             }
+            super::record_auth_event(AuthEvent::LegacySubjectRelinked {
+                provider: AuthProvider::Apple,
+            });
         });
 
         let rendered = String::from_utf8(output.lock().expect("capture lock").clone())
@@ -1386,7 +1412,7 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).expect("auth event is JSON"))
             .collect();
-        assert_eq!(lines.len(), 5);
+        assert_eq!(lines.len(), 6);
         for line in &lines {
             let fields = line
                 .get("fields")
@@ -1404,6 +1430,7 @@ mod tests {
         }
         assert!(rendered.contains("auth.signed_in"));
         assert!(rendered.contains("auth.sign_in_refused"));
+        assert!(rendered.contains("auth.legacy_subject_relinked"));
         assert!(rendered.contains("no_subject_match_no_email"));
         assert!(rendered.contains("email_unmatched"));
         assert!(rendered.contains("not_admitted"));

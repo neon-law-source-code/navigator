@@ -735,10 +735,11 @@ mod tests {
             ]
         );
         // The flat-fee letter labels its parts with bold run-ins rather than
-        // the lettered blockquotes the hourly letter carried, so every unit
-        // sits at depth 1. `stage_html_nests_a_lettered_subsection` holds the
-        // depth-2 rendering.
-        assert!(doc.units.iter().all(|u| u.depth == 1));
+        // the lettered blockquotes the hourly letter carried, so no unit sits
+        // deeper than 1. Preamble before § I is depth 0.
+        // `stage_html_nests_a_lettered_subsection` holds the depth-2 rendering.
+        assert!(doc.units.iter().any(|u| u.depth == 0));
+        assert!(doc.units.iter().all(|u| u.depth <= 1));
         let html = stage_html(&doc);
         assert!(html.contains("data-harvard-outline"));
         assert!(html.contains("data-harvard-path=\"I\""));

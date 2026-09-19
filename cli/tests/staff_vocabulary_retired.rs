@@ -41,6 +41,9 @@ const ALLOWED: &[&str] = &[
     // `server/tests/project_participation_management.rs` — "ordinary staffing
     // changes", the personnel sense again, contrasted with a DRI reassignment.
     "staffing",
+    // `templates/notations/neon_law/onboarding.md` — personnel the firm may
+    // use on a matter, not the retired role vocabulary.
+    "paralegals, staff, and outside vendors",
 ];
 
 /// Directories the walk never descends into: build output, VCS metadata, and

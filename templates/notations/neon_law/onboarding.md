@@ -151,8 +151,9 @@ notice and subject to any approval a court requires. Suspension does not affect 
 ## IV. Staffing
 
 **Your directly responsible individual is {{person__lawyer_dri.name}}**, reachable at {{person__lawyer_dri.email}} and
-through our web portal. We may use other lawyers, contract lawyers, paralegals, staff, and outside vendors where that
-suits the work. We protect your confidences as the law and the applicable professional rules require.
+through our web portal. Write to contact@neonlaw.com; that address is always open to you. We may use other lawyers,
+contract lawyers, paralegals, staff, and outside vendors where that suits the work. We protect your confidences as the
+law and the applicable professional rules require.
 
 ## V. Response times
 

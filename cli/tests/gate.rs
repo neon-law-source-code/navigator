@@ -1922,8 +1922,7 @@ fn gate_exempts_onboarding_from_the_outline_check() {
         fs::read_to_string(workspace_root().join("templates/notations/neon_law/onboarding.md"))
             .unwrap();
     assert!(
-        source.contains("kind: onboarding")
-            && source.contains("## I. Client and scope of the engagement"),
+        source.contains("kind: onboarding") && source.contains("## I. Scope"),
         "the fixture must be the Roman-numbered `onboarding` this test renumbers",
     );
 
@@ -1931,10 +1930,7 @@ fn gate_exempts_onboarding_from_the_outline_check() {
     write(
         dir.path(),
         "templates/notations/neon_law/onboarding.md",
-        &source.replace(
-            "## I. Client and scope of the engagement",
-            "## 1. Client and scope of the engagement",
-        ),
+        &source.replace("## I. Scope", "## 1. Scope"),
     );
     gate(dir.path())
         .assert()

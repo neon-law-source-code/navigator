@@ -498,7 +498,7 @@ mod tests {
         let attached = upsert(&db, &mirror(Uuid::now_v7(), "xero-x", "IOLTA XX")).await;
         assert!(
             matches!(attached, Err(IoltaAccountError::NoSuchJurisdiction(_))),
-            "got {attached:?}"
+            "expected NoSuchJurisdiction error"
         );
     }
 

@@ -3592,7 +3592,7 @@ mod tests {
     use super::{
         admin_gated_message, bootstrap_company_from_lookup, can_submit_testimonial,
         encode_query_value, is_admin, open_matter_form_error, participation_people,
-        project_participation_access, ProjectInput, TestimonialForm,
+        project_participation_access, project_testimonial_save, ProjectInput, TestimonialForm,
     };
     use crate::session::SessionData;
     use store::persons::Role;
@@ -3813,5 +3813,214 @@ mod tests {
             crate::csrf::extract_csrf_field("_csrf=token&quote=quote").as_deref(),
             Some("token")
         );
+    }
+
+    fn session_for(person: &store::persons::Person) -> SessionData {
+        let mut session = SessionData::fresh(person.email.clone(), person.role);
+        session.person_id = Some(person.id);
+        session
+    }
+
+    async fn seed_testimonial_matter(
+        surreal: &store::surreal::SurrealDb,
+        code: &str,
+    ) -> (
+        store::persons::Person,
+        store::persons::Person,
+        store::projects::Project,
+    ) {
+        let client = store::persons::create(
+            surreal,
+            &store::persons::NewPerson::new("Form Client", format!("{code}-client@example.com")),
+        )
+        .await
+        .unwrap();
+        let lawyer = store::persons::create(
+            surreal,
+            &store::persons::NewPerson {
+                role: Role::Lawyer,
+                ..store::persons::NewPerson::new(
+                    "Form Lawyer",
+                    format!("{code}-lawyer@example.com"),
+                )
+            },
+        )
+        .await
+        .unwrap();
+        let project = store::projects::create(
+            surreal,
+            &store::projects::NewProject {
+                code: code.into(),
+                name: "Form testimonial matter".into(),
+                status: "open".into(),
+                entity_id: Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        store::projects::designate_dri_in_surreal(
+            surreal,
+            project.id,
+            client.id,
+            store::projects::DriSide::Client,
+        )
+        .await
+        .unwrap();
+        store::projects::designate_dri_in_surreal(
+            surreal,
+            project.id,
+            lawyer.id,
+            store::projects::DriSide::Lawyer,
+        )
+        .await
+        .unwrap();
+        (client, lawyer, project)
+    }
+
+    fn testimonial_form(quote: &str, publication: &str) -> TestimonialForm {
+        TestimonialForm {
+            _csrf_token: None,
+            quote: quote.into(),
+            attribution: "Founder".into(),
+            publication: publication.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_form_route_refuses_non_client_tiers_and_leaves_state_unchanged() {
+        let surreal = store::surreal::test_support::mem().await;
+        let (client, lawyer, project) = seed_testimonial_matter(&surreal, "form-non-client").await;
+        let admin = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                role: Role::Admin,
+                ..store::persons::NewPerson::new("Form Admin", "form-non-client-admin@example.com")
+            },
+        )
+        .await
+        .unwrap();
+        store::projects::add_participation(&surreal, project.id, admin.id, "admin")
+            .await
+            .unwrap();
+        let clerk = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                role: Role::Clerk,
+                ..store::persons::NewPerson::new("Form Clerk", "form-non-client-clerk@example.com")
+            },
+        )
+        .await
+        .unwrap();
+        store::projects::add_participation(&surreal, project.id, clerk.id, "clerk")
+            .await
+            .unwrap();
+
+        for person in [&lawyer, &admin, &clerk] {
+            let response = project_testimonial_save(
+                axum::extract::State(surreal.clone()),
+                Some(axum::extract::Extension(session_for(person))),
+                axum::extract::Path(project.code.clone()),
+                axum::Form(testimonial_form("Firm-written quote.", "public")),
+            )
+            .await;
+            assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+            assert!(
+                store::testimonials::for_person_project(&surreal, person.id, project.id)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(
+            store::testimonials::for_person_project(&surreal, client.id, project.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_form_route_refuses_the_wrong_project_and_leaves_state_unchanged() {
+        let surreal = store::surreal::test_support::mem().await;
+        let (client, _, project) = seed_testimonial_matter(&surreal, "form-right-matter").await;
+        let (_, _, other_project) = seed_testimonial_matter(&surreal, "form-wrong-matter").await;
+        store::testimonials::save_for_client_dri(
+            &surreal,
+            client.id,
+            project.id,
+            &store::testimonials::TestimonialSubmission {
+                quote: "Kept quote.",
+                attribution_label: Some("Founder".into()),
+                request_public: true,
+            },
+        )
+        .await
+        .unwrap();
+        let before = store::testimonials::for_person_project(&surreal, client.id, project.id)
+            .await
+            .unwrap();
+
+        let response = project_testimonial_save(
+            axum::extract::State(surreal.clone()),
+            Some(axum::extract::Extension(session_for(&client))),
+            axum::extract::Path(other_project.code.clone()),
+            axum::Form(testimonial_form("Wrong matter.", "public")),
+        )
+        .await;
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+        assert_eq!(
+            store::testimonials::for_person_project(&surreal, client.id, project.id)
+                .await
+                .unwrap(),
+            before
+        );
+        assert!(
+            store::testimonials::for_person_project(&surreal, client.id, other_project.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_form_route_clears_publication_when_the_client_revokes_consent() {
+        let surreal = store::surreal::test_support::mem().await;
+        let (client, lawyer, project) = seed_testimonial_matter(&surreal, "form-revoke").await;
+        let saved = store::testimonials::save_for_client_dri(
+            &surreal,
+            client.id,
+            project.id,
+            &store::testimonials::TestimonialSubmission {
+                quote: "Public quote.",
+                attribution_label: Some("Founder".into()),
+                request_public: true,
+            },
+        )
+        .await
+        .unwrap();
+        store::testimonials::publish(&surreal, Some(lawyer.id), Role::Lawyer, saved.id)
+            .await
+            .unwrap();
+
+        let response = project_testimonial_save(
+            axum::extract::State(surreal.clone()),
+            Some(axum::extract::Extension(session_for(&client))),
+            axum::extract::Path(project.code.clone()),
+            axum::Form(testimonial_form("Now private.", "private")),
+        )
+        .await;
+        assert_eq!(response.status(), axum::http::StatusCode::SEE_OTHER);
+        let current = store::testimonials::for_person_project(&surreal, client.id, project.id)
+            .await
+            .unwrap()
+            .expect("the client still owns the row");
+        assert_eq!(current.quote, "Now private.");
+        assert!(current.consented_at.is_none());
+        assert!(current.published_at.is_none());
+        assert!(store::testimonials::published_for_home(&surreal, 10)
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

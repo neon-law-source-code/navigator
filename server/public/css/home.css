@@ -986,8 +986,8 @@
 .deal-exhibition__pause { position: absolute; top: 17px; right: 123px; z-index: 3; accent-color: var(--company-accent); width: 14px; height: 14px; }
 .deal-exhibition__control { position: absolute; right: 18px; top: 11px; padding-block: 6px; z-index: 3; font: 600 .8rem/20px var(--nav-font-family); cursor: pointer; }
 .company-home:has(#pause-deal-flow:checked) * { animation-play-state: paused !important; }
-.company-pricing { scroll-margin-top: 3rem; margin-bottom: 7rem; }
-.company-pricing__grid { display: grid; grid-template-columns: .9fr 1.3fr; border-top: 1px solid var(--company-line); border-bottom: 1px solid var(--company-line); }
+.company-pricing { margin-bottom: 7rem; }
+.company-pricing__grid { scroll-margin-top: 3rem; display: grid; grid-template-columns: .9fr 1.3fr; border-top: 1px solid var(--company-line); border-bottom: 1px solid var(--company-line); }
 .company-membership, .company-review { padding: 2.5rem 0; }
 .company-membership { padding-right: 3.5rem; }
 .company-review { padding-left: 3.5rem; border-left: 1px solid var(--company-line); }
@@ -1029,7 +1029,7 @@
 .company-people p { max-width: 33rem; color: var(--nav-color-text-muted); }
 .company-people__links { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1.6rem; }
 .company-closing { padding: 6rem 0; display: flex; justify-content: space-between; align-items: center; gap: 2rem; }
-.company-closing h2 { margin: 0; }
+.company-closing h2 { margin: 0; line-height: 1.22; }
 @keyframes deal-conveyor { from { transform: rotate(-7deg) translateX(0); } to { transform: rotate(-7deg) translateX(-828px); } }
 @keyframes deal-scan { 0%, 100% { opacity: .25; } 50% { opacity: .85; } }
 @keyframes deal-orbit { to { rotate: 360deg; } }
@@ -1055,6 +1055,15 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .company-home *, .company-home *::before, .company-home *::after { animation: none !important; transition: none !important; }
+}
+/* "See pricing" is an in-page jump, so it glides to the membership card
+   instead of teleporting and leaving the reader to work out where they
+   landed. `scroll-behavior` belongs on the scrolling element, which is the
+   document, so the page scopes it with `:has()` rather than setting it for
+   every page that loads this sheet. Readers who ask for reduced motion keep
+   the instant jump. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.company-home) { scroll-behavior: smooth; }
 }
 
 .company-packages { margin: 0 0 6rem; }

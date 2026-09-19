@@ -113,13 +113,16 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                     div { class: "deal-exhibition__scanner", span {} span {} }
                 }
             }
-            section { id: "pricing", class: "company-pricing", "aria-labelledby": "company-pricing-title",
+            section { class: "company-pricing", "aria-labelledby": "company-pricing-title",
                 h2 { id: "company-pricing-title", class: "nav-visually-hidden", "{company.pricing_heading}" }
                 video { class: "company-video", controls: true, preload: "metadata", playsinline: true,
                     "aria-label": "{company.video_label}",
                     source { src: "{company.video_src}", r#type: "video/mp4" }
                 }
-                div { class: "company-pricing__grid",
+                // The hero's "See pricing" link means the prices, not the
+                // presentation video that opens this section, so the anchor
+                // sits on the grid where the membership card begins.
+                div { id: "pricing", class: "company-pricing__grid",
                     article { class: "company-membership",
                         h3 { "{company.membership_label}" }
                         p { class: "company-price", "{company.membership_price}" span { "{company.membership_unit}" } }

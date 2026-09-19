@@ -832,7 +832,9 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
         assert!(body.contains(text), "missing {text}: {body}");
     }
     assert!(body.contains(r##"href="#pricing""##));
-    assert!(body.contains(r#"id="pricing""#));
+    // The anchor rides the pricing grid, not the section that opens with the
+    // presentation video, so "See pricing" lands on the membership card.
+    assert!(body.contains(r#"id="pricing" class="company-pricing__grid""#));
     assert!(body.contains(r#"for="pause-deal-flow""#));
     assert!(body.contains(r#"id="pause-deal-flow""#));
     assert!(body.contains(r#"class="deal-exhibition__scene" aria-hidden="true""#));

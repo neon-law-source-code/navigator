@@ -63,6 +63,9 @@ pub struct LeadDetail {
     pub consent_version: String,
     pub consented_at: String,
     pub sms_consented_at: String,
+    pub sms_opt_in: String,
+    pub sms_consent_phone: String,
+    pub sms_consent_source_path: String,
     pub sms_consent_version: String,
     pub sms_policy_version: String,
     pub status: String,
@@ -115,6 +118,54 @@ fn format_optional_time(value: Option<chrono::DateTime<chrono::Utc>>) -> String 
     value.map_or_else(|| "—".to_string(), format_time)
 }
 
+#[cfg(feature = "server")]
+fn consent_detail(
+    event: Option<store::leads::ConsentEvent>,
+) -> (String, String, String, String, String, String) {
+    let Some(event) = event else {
+        return (
+            "—".to_string(),
+            "—".to_string(),
+            "—".to_string(),
+            "—".to_string(),
+            "—".to_string(),
+            "—".to_string(),
+        );
+    };
+    (
+        format_time(event.consented_at),
+        event.sms_opt_in.to_string(),
+        event.phone.unwrap_or_else(|| "—".to_string()),
+        event.source_path,
+        event.sms_consent_version,
+        event.sms_policy_version,
+    )
+}
+
+#[cfg(feature = "server")]
+async fn latest_consent(
+    surreal: &store::surreal::SurrealDb,
+    lead_id: uuid::Uuid,
+) -> Result<Option<store::leads::ConsentEvent>, ServerFnError> {
+    store::leads::latest_consent_event(surreal, lead_id)
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))
+}
+
+#[cfg(feature = "server")]
+async fn existing_person_id(
+    surreal: &store::surreal::SurrealDb,
+    lead: &store::leads::Lead,
+) -> Result<Option<String>, ServerFnError> {
+    if lead.person_id.is_some() {
+        return Ok(None);
+    }
+    Ok(store::persons::find_by_email_ci(surreal, &lead.email)
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?
+        .map(|person| person.id.to_string()))
+}
+
 /// Load the queue: Owner/Admin only, newest first, phones masked.
 #[server]
 pub async fn leads_list_view() -> Result<LeadsListView, ServerFnError> {
@@ -136,32 +187,42 @@ pub async fn leads_list_view() -> Result<LeadsListView, ServerFnError> {
         .into_iter()
         .map(|person| (person.id, person))
         .collect();
-    let rows = leads
-        .into_iter()
-        .map(|lead| {
-            let person = lead.person_id.and_then(|id| people.get(&id));
-            LeadListRow {
-                id: lead.id.to_string(),
-                email: person
-                    .map(|person| person.email.clone())
-                    .unwrap_or(lead.email),
-                phone_masked: store::leads::mask_phone(
-                    person
-                        .and_then(|person| person.phone.as_deref())
-                        .or(lead.phone.as_deref()),
-                ),
-                brand_key: lead.brand_key,
-                source_path: lead.source_path,
-                consent_version: lead.consent_version,
-                consented_at: format_time(lead.consented_at),
-                sms_consented_at: format_optional_time(lead.sms_consented_at),
-                status: lead.status,
-                submissions: lead.submissions.to_string(),
-                person_id: person.map(|person| person.id.to_string()),
-                person_name: person.map(|person| person.name.clone()),
-            }
-        })
-        .collect();
+    let mut rows = Vec::with_capacity(leads.len());
+    for lead in leads {
+        let person = lead.person_id.and_then(|id| people.get(&id));
+        let latest_consent = store::leads::latest_consent_event(&surreal, lead.id)
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?;
+        rows.push(LeadListRow {
+            id: lead.id.to_string(),
+            email: person
+                .map(|person| person.email.clone())
+                .unwrap_or(lead.email),
+            phone_masked: store::leads::mask_phone(
+                person
+                    .and_then(|person| person.phone.as_deref())
+                    .or(lead.phone.as_deref()),
+            ),
+            brand_key: lead.brand_key,
+            source_path: lead.source_path,
+            consent_version: lead.consent_version,
+            consented_at: format_time(lead.consented_at),
+            sms_consented_at: latest_consent.as_ref().map_or_else(
+                || "—".to_string(),
+                |event| {
+                    format!(
+                        "{} ({})",
+                        format_time(event.consented_at),
+                        if event.sms_opt_in { "yes" } else { "no" }
+                    )
+                },
+            ),
+            status: lead.status,
+            submissions: lead.submissions.to_string(),
+            person_id: person.map(|person| person.id.to_string()),
+            person_name: person.map(|person| person.name.clone()),
+        });
+    }
     Ok(LeadsListView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
         role,
@@ -220,14 +281,16 @@ pub async fn lead_show_view() -> Result<LeadShowView, ServerFnError> {
     } else {
         None
     };
-    let existing_person_id = if lead.person_id.is_none() {
-        store::persons::find_by_email_ci(&surreal, &lead.email)
-            .await
-            .map_err(|error| ServerFnError::new(error.to_string()))?
-            .map(|person| person.id.to_string())
-    } else {
-        None
-    };
+    let existing_person_id = existing_person_id(&surreal, &lead).await?;
+    let latest_consent = latest_consent(&surreal, lead.id).await?;
+    let (
+        sms_consented_at,
+        sms_opt_in,
+        sms_consent_phone,
+        sms_consent_source_path,
+        sms_consent_version,
+        sms_policy_version,
+    ) = consent_detail(latest_consent);
 
     Ok(LeadShowView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
@@ -251,9 +314,12 @@ pub async fn lead_show_view() -> Result<LeadShowView, ServerFnError> {
             source_path: lead.source_path,
             consent_version: lead.consent_version,
             consented_at: format_time(lead.consented_at),
-            sms_consented_at: format_optional_time(lead.sms_consented_at),
-            sms_consent_version: lead.sms_consent_version.unwrap_or_else(|| "—".to_string()),
-            sms_policy_version: lead.sms_policy_version.unwrap_or_else(|| "—".to_string()),
+            sms_consented_at,
+            sms_opt_in,
+            sms_consent_phone,
+            sms_consent_source_path,
+            sms_consent_version,
+            sms_policy_version,
             status: lead.status,
             submissions: lead.submissions.to_string(),
             unsubscribed_at: format_optional_time(lead.unsubscribed_at),
@@ -440,6 +506,7 @@ pub fn lead_show_body(view: &LeadShowView) -> Element {
                 dd { "{lead.consented_at}" }
                 dt { "SMS consented" }
                 dd { "{lead.sms_consented_at}" }
+                {sms_consent_facts(&lead)}
                 dt { "SMS consent version" }
                 dd { "{lead.sms_consent_version}" }
                 dt { "SMS policy version" }
@@ -500,6 +567,17 @@ fn conversion_controls(lead: &LeadDetail, csrf: &str) -> Element {
             input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
             button { class: "nav-btn nav-btn--primary", r#type: "submit", "Create Person" }
         }
+    }
+}
+
+fn sms_consent_facts(lead: &LeadDetail) -> Element {
+    rsx! {
+        dt { "SMS opt-in" }
+        dd { "{lead.sms_opt_in}" }
+        dt { "SMS consent phone" }
+        dd { "{lead.sms_consent_phone}" }
+        dt { "SMS consent source" }
+        dd { "{lead.sms_consent_source_path}" }
     }
 }
 
@@ -569,6 +647,9 @@ mod tests {
                 consent_version: "By sending this, you agree.".to_string(),
                 consented_at: "2026-01-01T00:00:00Z".to_string(),
                 sms_consented_at: "—".to_string(),
+                sms_opt_in: "—".to_string(),
+                sms_consent_phone: "—".to_string(),
+                sms_consent_source_path: "—".to_string(),
                 sms_consent_version: "—".to_string(),
                 sms_policy_version: "—".to_string(),
                 status: "new".to_string(),
@@ -611,6 +692,9 @@ mod tests {
                 consent_version: "By sending this, you agree.".to_string(),
                 consented_at: "2026-01-01T00:00:00Z".to_string(),
                 sms_consented_at: "—".to_string(),
+                sms_opt_in: "—".to_string(),
+                sms_consent_phone: "—".to_string(),
+                sms_consent_source_path: "—".to_string(),
                 sms_consent_version: "—".to_string(),
                 sms_policy_version: "—".to_string(),
                 status: "new".to_string(),
@@ -648,6 +732,9 @@ mod tests {
                 consent_version: "By sending this, you agree.".to_string(),
                 consented_at: "2026-01-01T00:00:00Z".to_string(),
                 sms_consented_at: "—".to_string(),
+                sms_opt_in: "—".to_string(),
+                sms_consent_phone: "—".to_string(),
+                sms_consent_source_path: "—".to_string(),
                 sms_consent_version: "—".to_string(),
                 sms_policy_version: "—".to_string(),
                 status: "converted".to_string(),

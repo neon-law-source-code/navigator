@@ -368,6 +368,7 @@ mod control_contract {
     const RAW_CONTROL_DEBT: &[(&str, usize)] = &[
         ("catalog_slides.rs", 2),
         ("conversation.rs", 1),
+        ("auth_pages.rs", 5),
         ("portal_project_detail.rs", 4),
         ("services_search.rs", 1),
     ];
@@ -436,41 +437,56 @@ mod control_contract {
         let tags = ["input", "select", "textarea", "button"];
         let lines: Vec<&str> = source.lines().collect();
         for (line_index, line) in lines.iter().enumerate() {
-            let trimmed = line.trim_start();
-            let Some(tag) = tags.iter().find(|tag| {
-                trimmed
-                    .strip_prefix(**tag)
-                    .is_some_and(|rest| rest.trim_start().starts_with('{'))
-            }) else {
-                continue;
-            };
             let prefix_len = source
                 .lines()
                 .take(line_index)
                 .map(|line| line.len() + 1)
                 .sum::<usize>();
-            let opener = prefix_len + line.len() - trimmed.len() + tag.len();
-            let Some(open_brace) = source[opener..].find('{').map(|offset| opener + offset) else {
-                continue;
-            };
-            let mut depth = 0usize;
-            let mut end = open_brace;
-            for (offset, character) in source[open_brace..].char_indices() {
-                match character {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth = depth.saturating_sub(1);
-                        if depth == 0 {
-                            end = open_brace + offset + character.len_utf8();
-                            break;
-                        }
-                    }
-                    _ => {}
+            for (tag_start, _) in line.char_indices() {
+                let Some(tag) = tags.iter().find(|tag| line[tag_start..].starts_with(**tag)) else {
+                    continue;
+                };
+                let before = line[..tag_start].chars().next_back();
+                if before.is_some_and(|character| character.is_alphanumeric() || character == '_') {
+                    continue;
                 }
+                let after_tag = &line[tag_start + tag.len()..];
+                if !after_tag.trim_start().starts_with('{') {
+                    continue;
+                }
+                let opener = prefix_len + tag_start + tag.len();
+                let Some(open_brace) = source[opener..].find('{').map(|offset| opener + offset)
+                else {
+                    continue;
+                };
+                let mut depth = 0usize;
+                let mut end = open_brace;
+                for (offset, character) in source[open_brace..].char_indices() {
+                    match character {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth = depth.saturating_sub(1);
+                            if depth == 0 {
+                                end = open_brace + offset + character.len_utf8();
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                controls.push((line_index + 1, *tag, source[open_brace..end].to_string()));
             }
-            controls.push((line_index + 1, *tag, source[open_brace..end].to_string()));
         }
         controls
+    }
+
+    #[test]
+    fn raw_control_scanner_finds_an_inline_nested_control() {
+        let controls =
+            control_elements(r#"rsx! { label { \"Email\" input { r#type: \"email\" } } }"#);
+        assert_eq!(controls.len(), 1);
+        assert_eq!(controls[0].0, 1);
+        assert_eq!(controls[0].1, "input");
     }
 
     fn is_library_control(body: &str) -> bool {

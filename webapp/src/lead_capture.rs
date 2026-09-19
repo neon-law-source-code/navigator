@@ -12,12 +12,23 @@ use crate::components::{CopyRun, Field, FormCard, Heading, Honeypot};
 /// The effective-date identifier carried with the linked SMS policy.
 pub const SMS_POLICY_VERSION: &str = "2026-09-18";
 
+const SMS_PHONE_HELPER: &str = "Optional. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Our Privacy Policy and texting terms explain how we text and what we keep.";
+const SMS_LABEL: &str = "Yes, {site_name} may send me text messages about this inquiry at this number, including automated texts. Texting is not a condition of hiring the firm.";
+
 /// The copy the brand shows next to a lead form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct LeadCaptureCopy {
     pub consent_sentence: String,
     pub phone_helper: String,
     pub sms_label: String,
+}
+
+impl LeadCaptureCopy {
+    /// The exact SMS wording the form renders, as one evidence value.
+    #[must_use]
+    pub fn sms_consent_version(&self) -> String {
+        format!("{}\n{}", self.phone_helper, self.sms_label)
+    }
 }
 
 /// The per-request values the portal supplies to a public page.
@@ -27,10 +38,22 @@ pub struct LeadCaptureContext {
     pub source_path: String,
 }
 
+/// Derive the current SMS evidence from server-owned copy and policy data.
+///
+/// The public form receives its copy from the same catalog values. This
+/// server-side seam is what the submission handler uses; no requester field is
+/// accepted as evidence.
+#[must_use]
+pub fn server_sms_consent_version(site_name: &str) -> String {
+    format!(
+        "{SMS_PHONE_HELPER}\n{}",
+        SMS_LABEL.replace("{site_name}", site_name)
+    )
+}
+
 /// Render a public lead form beside the page's ordinary mail action.
 #[component]
 pub fn LeadCaptureForm(copy: LeadCaptureCopy, context: LeadCaptureContext) -> Element {
-    let sms_consent_version = format!("{}\n{}", copy.phone_helper, copy.sms_label);
     rsx! {
         FormCard {
             title: "Lead capture".to_string(),
@@ -62,8 +85,6 @@ pub fn LeadCaptureForm(copy: LeadCaptureCopy, context: LeadCaptureContext) -> El
                 Honeypot { name: "website".to_string() }
                 input { r#type: "hidden", name: "source_path", value: "{context.source_path}" }
                 input { r#type: "hidden", name: "consent_version", value: "{copy.consent_sentence}" }
-                input { r#type: "hidden", name: "sms_consent_version", value: "{sms_consent_version}" }
-                input { r#type: "hidden", name: "sms_policy_version", value: "{SMS_POLICY_VERSION}" }
             }),
         }
     }
@@ -143,13 +164,13 @@ mod tests {
             "class=\"nav-input\"",
             "class=\"nav-checkbox\"",
             "class=\"nav-btn nav-btn--primary\"",
-            "name=\"sms_consent_version\"",
-            "name=\"sms_policy_version\"",
             ">Send<",
         ] {
             assert!(html.contains(expected), "missing {expected}: {html}");
         }
         assert!(html.contains(r#"aria-label="Lead capture""#), "{html}");
+        assert!(!html.contains("sms_consent_version"), "{html}");
+        assert!(!html.contains("sms_policy_version"), "{html}");
         assert_forms_accessible(&html, "lead form");
     }
 }

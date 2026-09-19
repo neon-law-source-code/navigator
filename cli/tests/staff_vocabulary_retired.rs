@@ -22,9 +22,11 @@
 //!
 //! The list shrinks as the prose does. Retiring the nonprofit's public surface
 //! took its marketing copy with it, and four entries here described phrases only
-//! that copy used — so they were dropped rather than kept as an exemption
-//! matching nothing, which is what this file's own
-//! `every_allowed_phrase_still_occurs` test insists on.
+//! that copy used; consolidating the agent contract onto `AGENTS.md` deleted
+//! `.claude/settings.json`, and with it the prompt hook whose trigger
+//! alternation was the sole reason `|staff|` was allowed. Each was dropped
+//! rather than kept as an exemption matching nothing, which is what this file's
+//! own `every_allowed_phrase_still_occurs` test insists on.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -39,11 +41,6 @@ const ALLOWED: &[&str] = &[
     // `server/tests/project_participation_management.rs` — "ordinary staffing
     // changes", the personnel sense again, contrasted with a DRI reassignment.
     "staffing",
-    // `.claude/settings.json` — the retired word has to stay in the prompt
-    // hook's *trigger* alternation, because someone still saying "staff" is
-    // exactly who needs the vocabulary reminder. Allowed only in the
-    // pipe-delimited regex form, so prose saying `staff` still fails.
-    "|staff|",
 ];
 
 /// Directories the walk never descends into: build output, VCS metadata, and

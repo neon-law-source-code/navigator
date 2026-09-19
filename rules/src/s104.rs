@@ -118,7 +118,7 @@ impl Rule for S104MissingKind {
 /// The files a `templates/` tree carries that are not templates: its own
 /// README and the agent contract. Neither is a notation and neither has a
 /// kind to declare.
-const TEMPLATE_LANE_FURNITURE: &[&str] = &["README.md", "AGENTS.md", "CLAUDE.md"];
+const TEMPLATE_LANE_FURNITURE: &[&str] = &["README.md", "AGENTS.md"];
 
 /// Whether `path` sits inside a templates tree — Navigator's own
 /// `templates/` catalog or a Project repository's `templates/` root, which
@@ -384,7 +384,7 @@ mod tests {
     fn template_lane_repository_furniture_is_exempt() {
         // A templates tree carries its own README and agent contract.
         // Neither is a notation, and neither has a kind to declare.
-        for name in ["README.md", "AGENTS.md", "CLAUDE.md"] {
+        for name in ["README.md", "AGENTS.md"] {
             assert!(
                 S104MissingKind
                     .lint(&file_at(&format!("templates/{name}"), "# Templates\n"))

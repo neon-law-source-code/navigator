@@ -14,7 +14,7 @@ silently unreadable archive, and this lake holds binding legal records. Two fric
 - **Arrow major mismatch.** `iceberg` 0.10 targets **arrow 58**; the workspace is on **arrow 59**. We never hand the
   crate an arrow value — `arrow_schema_to_iceberg` derives the Iceberg schema from the arrow-59 field names/types
   directly, so the two arrow majors never meet at a type boundary.
-- **Storage rule.** Bytes must flow through `cloud::StorageService`, never a GCS SDK (CLAUDE.md). `iceberg`'s manifest
+- **Storage rule.** Bytes must flow through `cloud::StorageService`, never a GCS SDK (AGENTS.md). `iceberg`'s manifest
   writers only write to their own `FileIO`, so the writer points them at an **in-memory** `FileIO`, passing the final
   `gs://` object URIs as the output paths (the memory backend treats them as opaque keys, so the paths embedded in the
   manifest list and snapshot are the real ones), then reads the bytes back and returns them for the caller to persist.
@@ -109,7 +109,7 @@ gs://<project>-exports/application/<table>/
 `telemetry/<table>/` mirrors the same shape.
 
 Bytes stay in `cloud::StorageService` (GCS in prod, `FsStorage` in dev) — the writer goes through the trait, never the
-GCS SDK directly, per [CLAUDE.md](../CLAUDE.md).
+GCS SDK directly, per [AGENTS.md](../AGENTS.md).
 
 ## Catalog + BigQuery wiring — **operator decision required**
 

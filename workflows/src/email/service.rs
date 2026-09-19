@@ -13,7 +13,7 @@
 //! - [`SendGridEmail`] — production backend that POSTs to
 //!   SendGrid's v3 REST API. Picked because GCP has no managed
 //!   transactional-email service; SendGrid is the path of least
-//!   resistance for a "GCP only" workspace (see `CLAUDE.md`).
+//!   resistance for a "GCP only" workspace (see `AGENTS.md`).
 //!   We hit the API directly with `reqwest` rather than pulling a
 //!   sendgrid SDK — the surface we need is one POST.
 //!

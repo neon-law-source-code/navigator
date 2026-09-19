@@ -430,7 +430,7 @@ the one skip it treats as success, so a copy-only PR still posts `ci`.
 `deploy.yml` no longer has a `pull_request` trigger. It previously ran its KIND integration job against UI-scoped PRs so
 Dioxus/browser changes got production-shaped proof before merge; that coupled every PR to the release workflow's script
 and image builds. UI and browser changes are instead verified locally before opening a PR — see [Local KIND
-development](../CLAUDE.md#local-kind-development) and the `web-preview` / `kind-local-dev` skills — and a tagged release
+development](../AGENTS.md#local-kind-development) and the `web-preview` / `kind-local-dev` skills — and a tagged release
 (or a `kind-ci/**` branch push, below) remains the CI-side KIND proof.
 
 ### One workflow owns publishing — `deploy.yml`

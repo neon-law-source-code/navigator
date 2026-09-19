@@ -252,12 +252,15 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
 
     assert!(dir.path().join("README.md").is_file());
     assert!(dir.path().join("AGENTS.md").is_file());
-    assert!(dir.path().join("CLAUDE.md").is_file());
+    assert!(
+        !dir.path().join("CLAUDE.md").exists(),
+        "the scaffold writes one contract file, and it is AGENTS.md"
+    );
     assert_eq!(
         fs::read_to_string(dir.path().join(".github/CODEOWNERS")).unwrap(),
         "# CODEOWNERS\n\n* @shicholas\n"
     );
-    let instructions = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
+    let instructions = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
     assert!(instructions.contains("`apps/<app>/`"));
     assert!(instructions.contains("source grouping is not a URL segment"));
     assert!(instructions.contains("root `portal/` is also"));
@@ -513,43 +516,42 @@ fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
         .stderr(str::contains("claim the same application route"));
 }
 
-/// `CLAUDE.md` must deliver the bytes of `AGENTS.md` on every platform.
+/// The scaffold writes one contract file and no harness mirror.
 ///
-/// Stated in resolved content rather than link type, the way
-/// `cli/tests/agent_instruction_links.rs` states it for Navigator's own tree:
-/// on Unix the scaffold writes a relative symlink, on Windows a copy, and a
-/// harness reading either sees the same contract. The release archive for
+/// `AGENTS.md` is read directly by every harness pointed at the tree, so there
+/// is nothing to keep in sync and nothing to materialise. That matters most on
+/// Windows: the mirror this replaced was a symlink on Unix and a copy
+/// elsewhere, and a clone without `core.symlinks` received a nine-byte stub
+/// holding its own target path — silently, with a clean `git status`. A file
+/// that is only ever a file cannot fail that way. The release archive for
 /// Windows compiles this path, so this is also the test that runs it.
 #[test]
-fn the_scaffold_makes_claude_md_deliver_the_agents_contract() {
+fn the_scaffold_writes_one_contract_and_no_mirror() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project")
-        .success()
-        .stdout(str::contains("CLAUDE.md ("));
+    scaffold(dir.path(), "example-project").success();
 
     let agents = fs::read(dir.path().join("AGENTS.md")).unwrap();
-    let claude = fs::read(dir.path().join("CLAUDE.md")).unwrap();
     assert!(!agents.is_empty());
-    assert_eq!(claude, agents, "CLAUDE.md does not resolve to AGENTS.md");
+    assert!(
+        !dir.path().join("CLAUDE.md").exists(),
+        "a CLAUDE.md mirror is what this layout retired"
+    );
 }
 
-/// The contract `CLAUDE.md` delivers is the `AGENTS.md` on disk, not the
-/// template: `scaffold` leaves an existing `AGENTS.md` alone, and a symlink
-/// resolves to that file, so the copy written where links are unavailable
-/// must be taken from it too or the two platforms diverge silently.
+/// `scaffold` leaves an existing `AGENTS.md` alone rather than overwriting the
+/// contract a repository already wrote for itself.
 #[test]
-fn the_scaffold_links_claude_md_to_an_existing_agents_md() {
+fn the_scaffold_leaves_an_existing_agents_md_alone() {
     let dir = TempDir::new().unwrap();
-    let hand_written = "# A contract this repository already had
-";
+    let hand_written = "# A contract this repository already had\n";
     fs::write(dir.path().join("AGENTS.md"), hand_written).unwrap();
 
     scaffold(dir.path(), "example-project")
         .success()
         .stdout(str::contains("AGENTS.md (left alone)"));
 
-    let claude = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
-    assert_eq!(claude, hand_written);
+    let agents = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
+    assert_eq!(agents, hand_written);
 }
 
 /// ENG-674: `verify` no longer generates a per-application bash loop — it
@@ -907,7 +909,7 @@ fn sync_skills(dir: &Path) -> assert_cmd::assert::Assert {
         .assert()
 }
 
-/// ENG-383: a Project repository can carry `.claude/skills/` without the
+/// ENG-383: a Project repository can carry `.agents/skills/` without the
 /// layout gate refusing it as an unexpected root, and `sync-skills` is what
 /// populates it from Navigator's own compiled-in copies.
 #[test]
@@ -928,7 +930,7 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
     ] {
         let path = dir
             .path()
-            .join(".claude/skills")
+            .join(".agents/skills")
             .join(skill)
             .join("SKILL.md");
         assert!(path.is_file(), "expected {} to exist", path.display());
@@ -968,7 +970,7 @@ fn sync_skills_overwrites_a_hand_edited_copy() {
     scaffold(dir.path(), "example-project").success();
     sync_skills(dir.path()).success();
 
-    let path = dir.path().join(".claude/skills/council/SKILL.md");
+    let path = dir.path().join(".agents/skills/council/SKILL.md");
     let canonical = fs::read_to_string(&path).unwrap();
     fs::write(&path, "hand-edited drift").unwrap();
 
@@ -986,7 +988,7 @@ fn gate_fails_on_a_drifted_synced_skill() {
     sync_skills(dir.path()).success();
 
     fs::write(
-        dir.path().join(".claude/skills/council/SKILL.md"),
+        dir.path().join(".agents/skills/council/SKILL.md"),
         "drifted content",
     )
     .unwrap();
@@ -998,7 +1000,7 @@ fn gate_fails_on_a_drifted_synced_skill() {
         .stderr(str::contains("sync-skills"));
 }
 
-/// A repository with no `.claude/` directory is not failed for having no
+/// A repository with no `.agents/` directory is not failed for having no
 /// skills. It has not adopted agent tooling, and the catalog is a statement
 /// about what an agent working here must be told — which is nothing at all if
 /// no agent works here.
@@ -1007,8 +1009,8 @@ fn gate_passes_when_no_skills_have_been_synced() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     assert!(
-        !dir.path().join(".claude").exists(),
-        "scaffold must not create `.claude/`, or this asserts the wrong branch"
+        !dir.path().join(".agents").exists(),
+        "scaffold must not create `.agents/`, or this asserts the wrong branch"
     );
 
     gate(dir.path())
@@ -1016,7 +1018,7 @@ fn gate_passes_when_no_skills_have_been_synced() {
         .stdout(str::contains("0 error(s)"));
 }
 
-/// `.claude/` is the opt-in, and it opts into the whole catalog.
+/// `.agents/` is the opt-in, and it opts into the whole catalog.
 ///
 /// The moment a repository has one, an agent is working in it under whatever
 /// skills it happens to find, and the ones it does not find are precisely the
@@ -1026,10 +1028,10 @@ fn gate_passes_when_no_skills_have_been_synced() {
 /// that violated it, in sixteen repositories, claiming a fleet-wide
 /// uniformity that had already broken in two directions.
 #[test]
-fn gate_fails_when_claude_exists_without_the_catalog() {
+fn gate_fails_when_agents_exists_without_the_catalog() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
-    fs::create_dir_all(dir.path().join(".claude")).unwrap();
+    fs::create_dir_all(dir.path().join(".agents")).unwrap();
 
     gate(dir.path())
         .failure()
@@ -1043,10 +1045,10 @@ fn gate_fails_when_claude_exists_without_the_catalog() {
 /// once `sync-skills` has run. A check whose only remedy is deleting the
 /// directory that triggered it would just teach people to delete it.
 #[test]
-fn gate_passes_when_claude_exists_and_the_catalog_is_synced() {
+fn gate_passes_when_agents_exists_and_the_catalog_is_synced() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
-    fs::create_dir_all(dir.path().join(".claude")).unwrap();
+    fs::create_dir_all(dir.path().join(".agents")).unwrap();
     sync_skills(dir.path()).success();
 
     gate(dir.path())

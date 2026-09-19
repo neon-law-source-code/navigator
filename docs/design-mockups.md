@@ -25,7 +25,7 @@ good at.
 
 ## What to reference while you prototype
 
-The repository's skills, under `.claude/skills/`, are readable on GitHub and are the best short description of how this
+The repository's skills, under `.agents/skills/`, are readable on GitHub and are the best short description of how this
 product behaves. The useful ones before you design:
 
 - `authorization-model` — who can see what. A screen that shows a client something only lawyers may see cannot be built

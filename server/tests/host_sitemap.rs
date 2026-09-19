@@ -181,9 +181,6 @@ async fn the_sitemap_advertises_the_firms_pages() {
 
     for firm_page in [
         "/",
-        "/services",
-        "/disputes",
-        "/business",
         "/navigator",
         "/notations",
         "/contact",

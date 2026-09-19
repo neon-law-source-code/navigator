@@ -824,9 +824,9 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
         .await
         .expect("the home call to action has an href")
         .expect("the home call to action has an href");
-    assert!(
-        href.starts_with("mailto:"),
-        "the home call to action writes the firm inbox directly: {href}"
+    assert_eq!(
+        href, "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+        "the home call to action opens the consultation calendar"
     );
 
     c.goto(&format!("{site_base_url}/blog/thanks-apple"))

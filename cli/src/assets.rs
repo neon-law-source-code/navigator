@@ -1100,6 +1100,7 @@ pub(crate) fn verify_public_asset_origin(content_dir: &Path, base_url: &str) -> 
 pub(crate) fn embedded_asset_refs() -> BTreeSet<String> {
     let mut refs = bundled_slide_asset_keys();
     refs.extend(gallery_variant_keys());
+    refs.insert(views::assets::HOME_PRESENTATION_KEY.to_owned());
     for family in BUCKET_FONT_FAMILIES {
         refs.extend(font_family_refs(family));
     }
@@ -2499,6 +2500,11 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
                 .mount(server)
                 .await;
         }
+        Mock::given(method("HEAD"))
+            .and(path(format!("/{}", views::assets::HOME_PRESENTATION_KEY)))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(server)
+            .await;
     }
 
     #[tokio::test]
@@ -2714,6 +2720,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         );
         assert!(slides.is_subset(&refs));
         assert!(gallery_variant_keys().is_subset(&refs));
+        assert!(refs.contains(views::assets::HOME_PRESENTATION_KEY));
         for family in BUCKET_FONT_FAMILIES {
             for rel in font_family_refs(family) {
                 assert!(refs.contains(&rel), "missing font key {rel}");

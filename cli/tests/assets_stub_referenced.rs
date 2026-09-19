@@ -50,7 +50,7 @@ fn stub_referenced_writes_the_gallery_and_licensed_fonts_without_content_images(
         .success()
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS
+            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 1
         )));
 
     let faces = stubbed_faces(out.path());
@@ -77,6 +77,10 @@ fn stub_referenced_writes_the_gallery_and_licensed_fonts_without_content_images(
             "img/{slug}/{slug}-{width}w.avif",
             slug = gallery.slug
         ))
+        .is_file());
+    assert!(out
+        .path()
+        .join("img/neon-home/neon-home-presentation.mp4")
         .is_file());
 }
 
@@ -109,7 +113,7 @@ fn stub_referenced_writes_valid_placeholder_files_at_content_paths() {
         // bucket-served family.
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 4
+            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 5
         )));
 
     let png = fs::read(out.path().join("img/demo/hero.png")).unwrap();

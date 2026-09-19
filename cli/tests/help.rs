@@ -337,6 +337,7 @@ fn dev_help_lists_local_loop_members() {
             "logs",
             "sample-project",
             "sendgrid-openapi",
+            "serve",
             "staging",
             "status",
             "undeploy",

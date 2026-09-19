@@ -218,7 +218,7 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
     assert!(body.contains("Book Consultation"));
     assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("Equity") && body.contains("$5,000"));
-    assert!(body.contains("W-2 onboarding and offboarding"));
+    assert!(body.contains("Employee onboarding and offboarding, IP assignment, and bonus compensation."));
     assert!(body.contains("Equity and investor relations."));
     assert!(body.contains("Your master services agreement for your company to sell."));
     assert!(body.contains("img/neon-home/neon-home-presentation.mp4"));
@@ -1125,13 +1125,6 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
         slides.contains("workshop-product-slide") && slides.contains("What our firm does"),
         "the custom firm-services slide must replace its Markdown marker: {slides}"
     );
-    for heading in [
-        "Fractional general counsel",
-        "Individual services",
-        "Disputes",
-    ] {
-        assert!(slides.contains(heading), "missing {heading}: {slides}");
-    }
     assert!(
         slides.contains("workshop-navigator-slide")
             && slides.contains(r#"data-practice-mark="helm""#)

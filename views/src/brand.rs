@@ -879,17 +879,16 @@ impl BrandKey {
 
     /// English catalog stems this key ships under `locales/en/<key>/`.
     ///
-    /// Neon publishes every page in [`crate::locales::KNOWN_PAGES`]. A house
-    /// brand ships only the stems it actually serves; a missing file is a
-    /// loader-test failure, not a first-request panic. Lawyer Shook's `/` is
-    /// a hardcoded bare statement rather than a YAML page (there is no
-    /// marketing copy to edit), so `home` is absent from its list even
-    /// though `/services` still builds from a catalog file — the route is
-    /// gated off by [`Self::publishes_firm_path`], not the file removed.
+    /// A brand lists only the catalog stems it actually serves; a missing file
+    /// is a loader-test failure, not a first-request panic. Lawyer Shook's `/`
+    /// is a hardcoded bare statement rather than a YAML page (there is no
+    /// marketing copy to edit), so `home` is absent from its list even though
+    /// `/services` still builds from a catalog file — the route is gated off by
+    /// [`Self::publishes_firm_path`], not the file removed.
     #[must_use]
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
-            Self::Neon => crate::locales::KNOWN_PAGES,
+            Self::Neon => &["home", "navigator"],
             Self::LawyerShook => &["services"],
             // Every practice brand publishes the two stems it actually
             // serves; a missing file is a loader-test failure rather than a

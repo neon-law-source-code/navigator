@@ -596,17 +596,18 @@ navigator project gate
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `.gitattributes` pinning
 checkout text files to LF, `.github/CODEOWNERS` with the canonical `* @shicholas` ownership rule, a versioned nested
 `navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml` caller guarded by the reusable publisher's
-deployment configuration, `README.md`, and `AGENTS.md`. It also writes `tests/`, `documents/.gitignore`, and one
-placeholder `templates/onboarding.md`, a stub replaced with the notation the Project actually opens on. Existing
-hand-copied `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed. `AGENTS.md` is the
-only contract file and `.agents/skills/` the only skill catalog. A committed `CLAUDE.md`, `.claude/`, or `.codex/` is a
-retired mirror, and the gate names it: the finding carries the surviving path and the remedy rather than the anonymous
-unenumerated-root wording. The match is on any path component, so a `.claude/skills/` — which the root-only rule never
-looked below at all — and an `apps/<app>/CLAUDE.md` are both refused where they sit. `navigator project gate` requires
-the canonical CODEOWNERS file and that `AGENTS.md` exist and name the Lawyers team as where a Navigator CLI gap is filed
-rather than recorded as a workaround in the matter repository. The same `validate` walk extracts `navigator …`
-invocations from the repository's Markdown and checks each against this binary's clap command tree, so a documented verb
-that no longer exists fails the gate at the commit that introduced the rename.
+deployment configuration, `README.md`, `AGENTS.md`, and the canonical `.agents/skills/` catalog. It also writes
+`tests/`, `documents/.gitignore`, and one placeholder `templates/onboarding.md`, a stub replaced with the notation the
+Project actually opens on. Existing hand-copied `ci.yml` files of 268 lines or more are left alone unless
+`--replace-gate` is passed. `AGENTS.md` is the only contract file and `.agents/skills/` the only skill catalog. A
+committed `CLAUDE.md`, `.claude/`, or `.codex/` is a retired mirror, and the gate names it: the finding carries the
+surviving path and the remedy rather than the anonymous unenumerated-root wording. The match is on any path component,
+so a `.claude/skills/` — which the root-only rule never looked below at all — and an `apps/<app>/CLAUDE.md` are both
+refused where they sit. `navigator project gate` requires the canonical CODEOWNERS file and that `AGENTS.md` exist and
+name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the matter
+repository. The same `validate` walk extracts `navigator …` invocations from the repository's Markdown and checks each
+against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit that
+introduced the rename.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that
@@ -624,6 +625,27 @@ rules.
 
 `validate` accepts templates, applications, either, or both, and reports a repository carrying neither distinctly rather
 than failing it. A Project may legitimately open before either half exists.
+
+`navigator project repository sync-skills` also migrates a repository that still carries `.claude/skills/`. It checks
+the complete destination first, refuses any same-path file whose bytes differ, copies repository-local skills alongside
+the canonical catalog, and removes only the relocated `skills/` tree. Other ignored `.claude/` state remains in place.
+After a successful migration, rerunning the command is a no-op apart from restoring the canonical skill bytes.
+
+### Delivering a Project pull request
+
+`navigator project repository deliver` owns the forge-changing half of a Project repository's delivery. Give it a topic
+branch and Conventional Commit title from a clean checkout whose change is already committed and signed. The command
+runs `navigator project gate --ci`, fetches `origin/main`, verifies every topic commit carries a signature, pushes the
+branch, and opens or adopts its pull request. It then explicitly arms squash auto-merge and reads the pull request back;
+a successful mutation with no live auto-merge request is a failure, not a promise that the merge queue will repair
+later.
+
+The watcher reads the base branch's current required-check contexts from the forge. For a scaffolded Project caller the
+required context is `ci / ci`, because GitHub reports the caller job and reusable-workflow job together; a bare `ci` or
+an optional `publish` result is not substituted for it. The watch is bounded and returns one exact outcome: merged,
+failed required checks, required review, a branch behind `main`, auto-merge not armed, or timed out with the pending
+required checks named. The synced `project-pr-delivery` skill calls this verb rather than carrying forge commands in
+each repository.
 
 The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
 Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds the shared catalog

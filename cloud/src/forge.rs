@@ -34,6 +34,8 @@ pub const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 /// instance points it at their own tenant. See the same note on
 /// `webapp::source_repository::GITHUB_API_BASE_ENV`.
 pub const GITHUB_API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
+/// Override the GraphQL endpoint independently of the REST API base.
+pub const GITHUB_GRAPHQL_API_ENV: &str = "NAVIGATOR_GITHUB_GRAPHQL_API";
 /// Public GitHub's REST API base.
 pub const DEFAULT_API_BASE: &str = "https://api.github.com";
 const API_VERSION: &str = "2022-11-28";
@@ -79,11 +81,64 @@ pub enum ForgeError {
     },
     #[error("forge API response while {action} did not include a repository URL")]
     MissingUrl { action: &'static str },
+    #[error("forge API returned an unexpected response shape while {action}")]
+    ResponseShape { action: &'static str },
+    #[error("forge GraphQL returned an error while {action}: {message}")]
+    Graphql {
+        action: &'static str,
+        message: String,
+    },
+    #[error("repository coordinate must be `owner/name`, not `{0}`")]
+    InvalidRepository(String),
     #[error(
         "repository {name} is not private after provisioning; a policy regression or a \
          deliberate visibility change happened underneath, and both need a human, not a retry"
     )]
     NotPrivate { name: String },
+}
+
+/// A forge pull request opened by the Project-repository delivery lane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForgePullRequest {
+    pub number: u64,
+    pub node_id: String,
+    pub url: String,
+}
+
+/// One check run attached to a pull request's head commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForgeCheck {
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+}
+
+/// The live facts needed to decide whether delivery merged or stopped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForgePullRequestStatus {
+    pub merged: bool,
+    pub auto_merge_armed: bool,
+    pub merge_state: String,
+    pub review_decision: Option<String>,
+    pub checks: Vec<ForgeCheck>,
+}
+
+/// Pull-request operations kept behind the forge boundary.
+#[async_trait]
+pub trait PullRequestForge: Send + Sync {
+    async fn open_or_adopt_pull_request(
+        &self,
+        branch: &str,
+        base: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<ForgePullRequest, ForgeError>;
+    async fn enable_auto_merge(&self, pull_request_node_id: &str) -> Result<(), ForgeError>;
+    async fn pull_request_status(
+        &self,
+        pull_request_number: u64,
+    ) -> Result<ForgePullRequestStatus, ForgeError>;
+    async fn required_checks(&self, base: &str) -> Result<Vec<String>, ForgeError>;
 }
 
 /// Create or adopt one private repository named for a Project code.
@@ -481,6 +536,366 @@ impl GitHubForge {
             .await
             .map_err(|source| ForgeError::Response { action, source })?;
         Ok(Some(commit))
+    }
+}
+
+/// GitHub's implementation of the Project pull-request delivery boundary.
+pub struct GitHubPullRequestForge {
+    api_base: String,
+    graphql_api: String,
+    owner: String,
+    repository: String,
+    token: String,
+    http: reqwest::Client,
+}
+
+impl std::fmt::Debug for GitHubPullRequestForge {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GitHubPullRequestForge")
+            .field("api_base", &self.api_base)
+            .field("graphql_api", &self.graphql_api)
+            .field("owner", &self.owner)
+            .field("repository", &self.repository)
+            .field("token", &"[redacted]")
+            .finish_non_exhaustive()
+    }
+}
+
+impl GitHubPullRequestForge {
+    /// Build a pull-request backend for one `owner/name` repository.
+    pub fn new(
+        repository: &str,
+        token: String,
+        api_base: &str,
+        graphql_api: &str,
+    ) -> Result<Self, ForgeError> {
+        let Some((owner, name)) = repository.split_once('/') else {
+            return Err(ForgeError::InvalidRepository(repository.to_string()));
+        };
+        if owner.is_empty() || name.is_empty() || name.contains('/') {
+            return Err(ForgeError::InvalidRepository(repository.to_string()));
+        }
+        Ok(Self {
+            api_base: api_base.trim_end_matches('/').to_string(),
+            graphql_api: graphql_api.trim_end_matches('/').to_string(),
+            owner: owner.to_string(),
+            repository: name.to_string(),
+            token,
+            http: reqwest::Client::new(),
+        })
+    }
+
+    /// Resolve credentials and API endpoints from the process environment.
+    pub fn from_env(repository: &str) -> Result<Self, ForgeError> {
+        let token = std::env::var(NAVIGATOR_GITHUB_TOKEN_ENV)
+            .ok()
+            .or_else(|| std::env::var(GITHUB_TOKEN_ENV).ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or(ForgeError::MissingConfig(NAVIGATOR_GITHUB_TOKEN_ENV))?;
+        let api_base = std::env::var(GITHUB_API_BASE_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_API_BASE.to_string());
+        let graphql_api = std::env::var(GITHUB_GRAPHQL_API_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| graphql_endpoint(&api_base));
+        Self::new(repository, token, &api_base, &graphql_api)
+    }
+
+    fn pulls_url(&self) -> String {
+        format!(
+            "{}/repos/{}/{}/pulls",
+            self.api_base, self.owner, self.repository
+        )
+    }
+
+    fn branch_rules_url(&self, base: &str) -> String {
+        format!(
+            "{}/repos/{}/{}/rules/branches/{base}",
+            self.api_base, self.owner, self.repository
+        )
+    }
+
+    fn checked(
+        response: Result<reqwest::Response, reqwest::Error>,
+        action: &'static str,
+    ) -> Result<reqwest::Response, ForgeError> {
+        GitHubForge::checked(response, action)
+    }
+
+    async fn graphql(
+        &self,
+        operation: &'static str,
+        query: &'static str,
+        variables: serde_json::Value,
+    ) -> Result<serde_json::Value, ForgeError> {
+        let response = Self::checked(
+            self.http
+                .post(&self.graphql_api)
+                .bearer_auth(&self.token)
+                .header(reqwest::header::USER_AGENT, USER_AGENT)
+                .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+                .timeout(REQUEST_TIMEOUT)
+                .json(&serde_json::json!({
+                    "operationName": operation,
+                    "query": query,
+                    "variables": variables,
+                }))
+                .send()
+                .await,
+            operation,
+        )?;
+        let value = response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|source| ForgeError::Response {
+                action: operation,
+                source,
+            })?;
+        if let Some(message) = value
+            .get("errors")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|errors| errors.first())
+            .and_then(|error| error.get("message"))
+            .and_then(serde_json::Value::as_str)
+        {
+            return Err(ForgeError::Graphql {
+                action: operation,
+                message: message.to_string(),
+            });
+        }
+        Ok(value)
+    }
+}
+
+fn graphql_endpoint(api_base: &str) -> String {
+    let base = api_base.trim_end_matches('/');
+    base.strip_suffix("/api/v3").map_or_else(
+        || format!("{base}/graphql"),
+        |enterprise| format!("{enterprise}/api/graphql"),
+    )
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubPullRequestBody {
+    number: u64,
+    node_id: String,
+    html_url: String,
+}
+
+#[derive(Serialize)]
+struct CreatePullRequest<'a> {
+    title: &'a str,
+    body: &'a str,
+    head: &'a str,
+    base: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepositoryRule {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    parameters: Option<RequiredStatusCheckParameters>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RequiredStatusCheckParameters {
+    #[serde(default)]
+    required_status_checks: Vec<RequiredStatusCheck>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RequiredStatusCheck {
+    context: String,
+}
+
+#[async_trait]
+impl PullRequestForge for GitHubPullRequestForge {
+    async fn open_or_adopt_pull_request(
+        &self,
+        branch: &str,
+        base: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<ForgePullRequest, ForgeError> {
+        let action = "finding pull request";
+        let head = format!("{}:{branch}", self.owner);
+        let response = Self::checked(
+            self.http
+                .get(self.pulls_url())
+                .bearer_auth(&self.token)
+                .header(reqwest::header::USER_AGENT, USER_AGENT)
+                .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+                .timeout(REQUEST_TIMEOUT)
+                .query(&[("state", "open"), ("head", head.as_str()), ("base", base)])
+                .send()
+                .await,
+            action,
+        )?;
+        let mut existing = response
+            .json::<Vec<GitHubPullRequestBody>>()
+            .await
+            .map_err(|source| ForgeError::Response { action, source })?;
+        let pull_request = if let Some(existing) = existing.pop() {
+            existing
+        } else {
+            let action = "opening pull request";
+            let response = Self::checked(
+                self.http
+                    .post(self.pulls_url())
+                    .bearer_auth(&self.token)
+                    .header(reqwest::header::USER_AGENT, USER_AGENT)
+                    .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+                    .timeout(REQUEST_TIMEOUT)
+                    .json(&CreatePullRequest {
+                        title,
+                        body,
+                        head: branch,
+                        base,
+                    })
+                    .send()
+                    .await,
+                action,
+            )?;
+            response
+                .json::<GitHubPullRequestBody>()
+                .await
+                .map_err(|source| ForgeError::Response { action, source })?
+        };
+        Ok(ForgePullRequest {
+            number: pull_request.number,
+            node_id: pull_request.node_id,
+            url: pull_request.html_url,
+        })
+    }
+
+    async fn enable_auto_merge(&self, pull_request_node_id: &str) -> Result<(), ForgeError> {
+        const QUERY: &str = "mutation EnableAutoMerge($id: ID!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { pullRequest { id } } }";
+        self.graphql(
+            "EnableAutoMerge",
+            QUERY,
+            serde_json::json!({ "id": pull_request_node_id }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn pull_request_status(
+        &self,
+        pull_request_number: u64,
+    ) -> Result<ForgePullRequestStatus, ForgeError> {
+        const ACTION: &str = "PullRequestStatus";
+        const QUERY: &str = "query PullRequestStatus($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { merged autoMergeRequest { enabledAt } mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion } ... on StatusContext { context state } } } } } } } } } }";
+        let value = self
+            .graphql(
+                ACTION,
+                QUERY,
+                serde_json::json!({
+                    "owner": self.owner,
+                    "name": self.repository,
+                    "number": pull_request_number,
+                }),
+            )
+            .await?;
+        let pull_request = value
+            .pointer("/data/repository/pullRequest")
+            .ok_or(ForgeError::ResponseShape { action: ACTION })?;
+        let merged = pull_request
+            .get("merged")
+            .and_then(serde_json::Value::as_bool)
+            .ok_or(ForgeError::ResponseShape { action: ACTION })?;
+        let merge_state = pull_request
+            .get("mergeStateStatus")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(ForgeError::ResponseShape { action: ACTION })?
+            .to_string();
+        let review_decision = pull_request
+            .get("reviewDecision")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let auto_merge_armed = pull_request
+            .get("autoMergeRequest")
+            .is_some_and(|request| !request.is_null());
+        let mut checks = Vec::new();
+        if let Some(nodes) = pull_request
+            .pointer("/commits/nodes/0/commit/statusCheckRollup/contexts/nodes")
+            .and_then(serde_json::Value::as_array)
+        {
+            for node in nodes {
+                match node.get("__typename").and_then(serde_json::Value::as_str) {
+                    Some("CheckRun") => {
+                        if let (Some(name), Some(status)) = (
+                            node.get("name").and_then(serde_json::Value::as_str),
+                            node.get("status").and_then(serde_json::Value::as_str),
+                        ) {
+                            checks.push(ForgeCheck {
+                                name: name.to_string(),
+                                status: status.to_string(),
+                                conclusion: node
+                                    .get("conclusion")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_string),
+                            });
+                        }
+                    }
+                    Some("StatusContext") => {
+                        if let (Some(name), Some(state)) = (
+                            node.get("context").and_then(serde_json::Value::as_str),
+                            node.get("state").and_then(serde_json::Value::as_str),
+                        ) {
+                            checks.push(ForgeCheck {
+                                name: name.to_string(),
+                                status: state.to_string(),
+                                conclusion: Some(state.to_string()),
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(ForgePullRequestStatus {
+            merged,
+            auto_merge_armed,
+            merge_state,
+            review_decision,
+            checks,
+        })
+    }
+
+    async fn required_checks(&self, base: &str) -> Result<Vec<String>, ForgeError> {
+        let action = "reading required checks";
+        let response = Self::checked(
+            self.http
+                .get(self.branch_rules_url(base))
+                .bearer_auth(&self.token)
+                .header(reqwest::header::USER_AGENT, USER_AGENT)
+                .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+                .timeout(REQUEST_TIMEOUT)
+                .send()
+                .await,
+            action,
+        )?;
+        let rules = response
+            .json::<Vec<RepositoryRule>>()
+            .await
+            .map_err(|source| ForgeError::Response { action, source })?;
+        let mut checks = rules
+            .into_iter()
+            .filter(|rule| rule.kind == "required_status_checks")
+            .filter_map(|rule| rule.parameters)
+            .flat_map(|parameters| parameters.required_status_checks)
+            .map(|check| check.context)
+            .collect::<Vec<_>>();
+        checks.sort();
+        checks.dedup();
+        Ok(checks)
     }
 }
 

@@ -21,4 +21,5 @@ pub mod gate;
 pub mod manifest;
 pub mod origin;
 pub mod repository;
+pub mod repository_delivery;
 pub mod surfaces;

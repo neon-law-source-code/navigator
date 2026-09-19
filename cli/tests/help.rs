@@ -223,7 +223,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
     );
     assert_eq!(
         command_names(&help(&["project", "repository", "--help"])),
-        vec!["scaffold", "sync-skills", "help"]
+        vec!["deliver", "scaffold", "sync-skills", "help"]
     );
     assert_eq!(
         command_names(&help(&["project", "surfaces", "--help"])),

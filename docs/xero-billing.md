@@ -42,19 +42,15 @@ the **`ACCREC`** (accounts-receivable) invoice **in Xero directly**. No Navigato
 one, and no Navigator code applies a discount or otherwise computes what a client owes. Navigator's job is to record the
 legal work.
 
-What Navigator does hold is a **read-only mirror**: the `xero_invoice` table
-carries the Xero `InvoiceID`, reference, amount, dates, and paid-status for
-**every** invoice tagged to a matter. The row is keyed on the Xero invoice id;
-several invoices may share one `project_id`. Lawyers set Xero `Reference` to
-`Matter <project uuid>` or `Matter <project code>`. The nightly ingest lists
-`ACCREC` invoices, upserts each that resolves to a live Project, and skips
-DRAFT, DELETED, and any invoice whose reference does not match a Project
-(counted as unscoped — no row). That mirror backs the per-project invoice
-list in the portal and the Firm trailing-30-day graphs, so nobody has to open
-Xero to see whether a matter is paid. Navigator **never holds client funds,
-card data, or bank credentials** — Xero reconciles against the firm's bank
-itself. The integration boundary is the Xero Accounting API and nothing beyond
-it. IOLTA deposits are not `xero_invoice` rows.
+What Navigator does hold is a **read-only mirror**: the `xero_invoice` table carries the Xero `InvoiceID`, reference,
+amount, dates, and paid-status for **every** invoice tagged to a matter. The row is keyed on the Xero invoice id;
+several invoices may share one `project_id`. Lawyers set Xero `Reference` to `Matter <project uuid>` or `Matter <project
+code>`. The nightly ingest lists `ACCREC` invoices, upserts each that resolves to a live Project, and skips DRAFT,
+DELETED, and any invoice whose reference does not match a Project (counted as unscoped — no row). That mirror backs the
+per-project invoice list in the portal and the Firm trailing-30-day graphs, so nobody has to open Xero to see whether a
+matter is paid. Navigator **never holds client funds, card data, or bank credentials** — Xero reconciles against the
+firm's bank itself. The integration boundary is the Xero Accounting API and nothing beyond it. IOLTA deposits are not
+`xero_invoice` rows.
 
 ## Where the price comes from: the matter, agreed per client
 
@@ -122,9 +118,9 @@ it without separate sandbox vars.
 ## Nightly ingest and paid-status reconciliation
 
 The invoice is raised in Xero. The nightly `ReconcileInvoices` workflow (worker-side, in
-[`billing-workflows`](../billing-workflows/)) first **lists** `ACCREC` invoices and upserts each Project-scoped row
-into `xero_invoice`, folding `Status` and `AmountPaid` from that list so a first-night Paid invoice already shows Paid.
-It then calls `get_invoice` for each mirrored invoice still open (`AUTHORISED`, not `PAID`/`VOIDED`) and folds Xero's
+[`billing-workflows`](../billing-workflows/)) first **lists** `ACCREC` invoices and upserts each Project-scoped row into
+`xero_invoice`, folding `Status` and `AmountPaid` from that list so a first-night Paid invoice already shows Paid. It
+then calls `get_invoice` for each mirrored invoice still open (`AUTHORISED`, not `PAID`/`VOIDED`) and folds Xero's
 paid-status into the mirror. The portal never calls Xero live. This workflow only ever *reads* from Xero. Like every
 workflow, it is hosted by `workflows-service` — no per-workflow worker pod.
 

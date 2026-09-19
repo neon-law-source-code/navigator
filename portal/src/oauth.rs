@@ -2398,6 +2398,13 @@ async fn complete_sign_in(
                 .into_response();
         }
         Err(ResolveError::Db(e)) => {
+            if let Some(provider) = auth_provider {
+                telemetry::record_auth_event(telemetry::AuthEvent::SignInFailed {
+                    provider,
+                    brand: views::brand::brand_key().as_str(),
+                    error_class: telemetry::AuthSignInFailure::Store,
+                });
+            }
             tracing::warn!(error = %e, "auth: person lookup failed");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,

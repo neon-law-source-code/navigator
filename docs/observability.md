@@ -101,8 +101,10 @@ Browser OAuth callbacks emit one `auth.signed_in` event after a session is creat
 (`google`, `microsoft`, or `apple`), `brand`, and `first_link`. A callback that cannot resolve an admitted Person, or
 whose token fails verification, emits `auth.sign_in_refused` with `provider`, `brand`, and one of
 `no_subject_match_no_email`, `email_unmatched`, `not_admitted`, or `token_invalid`. The matching
-`navigator.auth.sign_in` counter carries only `provider` and `outcome` (`signed_in` or `refused`). These events and the
-refusal log carry identifiers and bounded values only: no email, name, address, or provider subject.
+`navigator.auth.sign_in` counter carries only `provider` and `outcome` (`signed_in`, `refused`, or `failed`). A store
+failure during Person resolution remains an HTTP 500 and emits `auth.sign_in_failed` with `provider`, `brand`, and the
+bounded `error_class=store`. These events and logs carry identifiers and bounded values only: no email, name, address,
+provider subject, or raw store error.
 
 A sign-in that converges a Person row written before sign-in identifiers were split per provider also emits
 `auth.legacy_subject_relinked` with `provider` and nothing else. It is a migration signal, not a sign-in outcome, so it

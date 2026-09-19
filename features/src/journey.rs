@@ -106,7 +106,6 @@ impl Journey {
             store::persons::set_admitted(&surreal, lawyer.id, true)
                 .await
                 .expect("admit configured lawyer");
-            state.self_signup_enabled = true;
             state.on_call_lawyer_email = Some("lawyer@neonlaw.com".to_string());
         }
         // Blank government forms live only in the assets bucket, sha-

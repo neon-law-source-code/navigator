@@ -268,8 +268,8 @@ async fn callback_round_trip_sets_session_cookie_and_redirects_to_return_to() {
         "c",
     );
     let state = state_with_oauth(cfg.clone(), sessions_store.clone()).await;
-    // The IdP-supplied email must already exist in the persons table
-    // for sign-in to succeed — sign-up is operator-mediated.
+    // Pre-seed an Admin so the callback preserves the privileged role rather
+    // than taking the ordinary first-sign-in Client path.
     seed_person(
         &state.surreal,
         "nick@neonlaw.com",

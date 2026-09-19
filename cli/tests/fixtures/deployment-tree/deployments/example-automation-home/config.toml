@@ -89,7 +89,6 @@ NAVIGATOR_GITHUB_ORG = "neon-law-source-code"
 NAVIGATOR_GIT_HOST = "github.com"
 NAVIGATOR_GITHUB_CANONICAL_REPOSITORY = "neon-law-source-code/navigator"
 NAVIGATOR_GITHUB_APP_ID = "100001"
-NAVIGATOR_GITHUB_INSTALLATION_ID = "200001"
 
 # --- Signatures ------------------------------------------------------------
 # Declaring DocuSign is what makes every DocuSign requirement apply, and this

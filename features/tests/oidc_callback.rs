@@ -136,15 +136,6 @@ async fn callback_lands_on(world: &mut OidcWorld, expected: String) {
     );
 }
 
-#[then("the callback is rejected with 403")]
-async fn callback_rejected(world: &mut OidcWorld) {
-    assert_eq!(
-        world.callback_status,
-        Some(StatusCode::FORBIDDEN),
-        "an unseeded identity must be rejected — sign-up is operator-mediated",
-    );
-}
-
 /// Every row this scenario's identity owns.
 ///
 /// Scoped to the issued email rather than reading the whole table: the

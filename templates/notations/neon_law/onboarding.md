@@ -76,202 +76,190 @@ workflow:
 {{entity.name}}\
 {{address__principal_office}}
 
-Attn: {{person__client.name}}
-
-Re: Engagement to Provide Legal Services — {{project__engagement.name}}
+Re: Engagement for legal services — {{project__engagement.name}}
 
 Dear {{person__client.name}}:
 
-Thank you for engaging the Firm. This letter (the "Onboarding Letter") sets out the terms on which the Firm will
-represent {{entity.name}} (the "Client" or "you") in the matter described below. This says what we are doing now, who is
-accountable on each side, how you reach us, how we bill, and how we resolve a disagreement if one arises. Everything
-particular to your matter is agreed in writing as we go, and each of those writings sits on top of this letter rather
-than replacing it.
+Thank you for engaging Shook Law PLLC ("Neon Law"). This letter sets out what we do for you, what we charge, and how
+either of us ends the engagement.
 
-If these terms are acceptable, please sign below and return a copy.
+We charge flat, pre-approved fees. We do not bill by the hour.
 
-## I. Client and scope of the engagement
+## I. Scope
 
-For this engagement the Firm's client is {{entity.name}}. Unless the Firm agrees in a separate signed writing, this
-engagement does not make any affiliate, stockholder, investor, officer, director, employee, or other related person or
-entity a client of the Firm.
+**Our client is {{entity.name}}**, not its people, including you.
 
-The Firm will represent the Client in the following matter (the "Matter"):
+**The base engagement.** We act as your base attorney: you can list us publicly, we can become your registered agent in
+certain jurisdictions, and you can call us in an exigent emergency.
+
+**Litigation.** Defending a civil action brought against you, or bringing one on your behalf, for as long as the action
+runs, including an appeal arising from it. Each case is engaged separately. A matter in which you already have counsel
+of record is outside this engagement unless we are separately retained as co-counsel in writing. If a case reaches a
+trial setting, an appeal, or class allegations, we may propose a revised fee under Section VII.
+
+**Drafting.** A master service agreement, an employment agreement, or anything else bespoke.
+
+**Negotiation.** Negotiating an instrument with a counterparty on your behalf to best protect your interests.
+
+The work we are starting with:
 
 > {{custom_text__engagement_scope}}
 
-**That is the floor, not the ceiling.** The Firm's representation is limited to the work described above and anything
-the Firm and the Client later agree to in writing. Work outside it — a new matter, a dispute, a proceeding, an appeal —
-requires a separate written engagement or a written amendment to this one signed by both of us. We would rather add
-scope in a two-line email exchange than have you assume we are already handling something we are not.
-
-This letter serves the Matter whether it is transactional or litigation. **Where the Matter is transactional**, the
-scope covers the drafting, negotiation, review, and counseling the description above calls for. **Where the Matter is a
-dispute**, the scope covers the ordinary work of prosecuting or defending it as described above — strategy, pleadings,
-discovery, ordinary motion practice, settlement negotiation, and coordination with any co-counsel or vendors the Client
-authorizes — and the fee writing described in Section II states which litigation events, such as an evidentiary-hearing
-day or a trial day, carry their own fee.
-
-Unless separately agreed in writing, this engagement does not include tax, accounting, financial, investment, valuation,
-insurance-coverage, or public-relations advice, and does not extend to a matter unrelated to the Matter described above.
+We advise on federal law and the law of the jurisdictions where our lawyers are admitted. Anything else is added under
+Section VII.
 
 {{custom_clauses}}
 
-## II. Fees, costs, and invoices
+## II. Fees
 
-Fees for this engagement are set in a writing the Firm and the Client agree to — a flat monthly fee, an hourly rate, a
-contingency, per-day fees for named litigation events such as an evidentiary hearing or a trial day, or a combination —
-and that writing controls the fee. **The Firm will not begin work before that writing is signed**, so you always know
-the basis on which you are being charged before anything is billed. Where a fee is contingent on a recovery, the rate is
-not set by law and is negotiable between the Firm and the Client, and the contingency is written out in its own signed
-fee agreement stating the percentage, how the recovery is defined and the fee calculated — including how consideration
-received other than in cash is handled — and how litigation costs affect what you ultimately owe. Advance fees are
-handled under the applicable client-trust rules, and any unearned portion is refundable if the representation ends or
-the agreed services are not completed.
+These fees apply, and no others.
 
-> **A. Costs.** Fees do not include filing fees, expert fees, mediator fees, court reporter and transcript costs,
-> e-discovery and vendor costs, travel expenses, or other third-party costs. Those are passed through at cost and are
-> the Client's responsibility when incurred with the Client's authorization or reasonably necessary for the engagement.
-> The Firm seeks advance approval for a material outside cost when that is practical.
->
-> **B. Every invoice carries its own payment instructions.** The Firm invoices by email, and the instructions for paying
-> an invoice are printed on that invoice. Read them there rather than reusing instructions from an earlier invoice,
-> because they can legitimately change from one invoice to the next. Before acting on any change in payment instructions
-> that reaches you by email — including a message that appears to come from the Firm — verify it by telephone with your
-> lawyer at a number you already know to be genuine. The Firm will never be annoyed by that call.
+| Work | Fee |
+| --- | --- |
+| Base Membership | $50 per day |
+| Litigation | $5,000 per case, per month |
+| Master service agreement, drafted | $5,000 per instrument |
+| Employment agreement, drafted | $1,000 per instrument |
+| Negotiating with a counterparty | $500 per counterparty, per month |
+| Sending a library agreement for signature | $5 per send |
 
-If the work required falls outside the agreed scope, the Firm and you will discuss the additional scope and the fee
-arrangement before the Firm undertakes that work.
+Base Membership is the day rate; every other fee in the price sheet is charged in addition to it. The sheet carries no
+financing line, so work on a financing round is new work, quoted and agreed under Section VII.
 
-## III. Staffing, and who is accountable on each side
+The day rate runs from the date of this letter until the engagement ends. We bill it monthly, for the days in the month.
 
-Every matter the Firm opens names **one person on each side who answers for it** — one lawyer here, one person at the
-Client. We call each of them the directly responsible individual, or DRI. Other people work on the matter; these two
-answer for it, so you always know who to ask where things stand. Neither name changes except in writing.
+A negotiation month is charged only when we work on that counterparty in it. A negotiation that goes quiet costs nothing
+until it resumes. Drafting the instrument being negotiated is separate work, priced above and payable on delivery.
 
-> **A. The Firm's directly responsible individual is {{person__lawyer_dri.name}}**, reachable at
-> {{person__lawyer_dri.email}}. That lawyer is principally responsible for this engagement — for the work, for the
-> schedule, and for telling you candidly where the Matter stands.
->
-> **B. The Client's directly responsible individual is {{person__client.name}}.** The Client DRI is the person the
-> Firm takes instructions from, asks when a decision is needed, and sends advice to on the Client's behalf. Where the
-> Client is an organization, the Client DRI speaks for the organization on this Matter and the Firm may rely on that.
-> Other people at the Client may sign this letter or be copied on the work; the Client DRI is who we call.
+We require payment in advance, which we hold in our client trust account. We agree the opening deposit in writing before
+we start, and you replenish it when it falls below half. We draw on it as we earn a fee or incur a cost, we apply it to
+each invoice when we issue one, and we refund whatever we have not earned when the engagement ends.
 
-The Firm may use lawyers, contract lawyers, paralegals, administrative personnel, or outside vendors where that is
-appropriate, and remains responsible for their work and for protecting your confidences as law and the applicable
-professional rules require.
+## III. Costs and payment
 
-## IV. Reaching us, and reading your own files
+For litigation matters, you are responsible for filing and appearance fees, service and discovery costs, court reporter
+and transcript fees, expert and witness fees, and other similar charges. We do not advance them.
 
-> **A. Write to contact@neonlaw.com.** That address is always open to you, for anything, at any point in the
-> engagement — a question, a document, a complaint about how the Matter is going, or a request for a status update. It
-> reaches the Firm rather than one inbox, so it does not go stale when someone is in a hearing or on leave. Writing to
-> your lawyer directly is fine too; contact@neonlaw.com is the address that always works.
->
-> **B. Your documents are available to you at www.neonlaw.com.** Sign in there and you can read and download the
-> documents the Firm has shared with you on this Matter — the letters, the agreements, and the filings — for the life of
-> the engagement. Not everything in the Firm's file is posted there: our internal notes and drafts are working papers,
-> so the portal is a convenience and not the file itself. **You may ask for a copy of anything in your file at any time,
-> without explaining why**, and Section VII says how long the Firm keeps it.
+We invoice through Xero. Each invoice arrives by email with a secure link that takes a bank payment or a card payment. A
+card payment carries a processing surcharge.
 
-You consent to electronic communication, and to electronic delivery of invoices and correspondence about the Matter, at
-the addresses the Client DRI gives the Firm.
+Invoices are due thirty days from the invoice date, and an invoice unpaid after that carries interest at the lesser of
+one percent per month and the maximum rate the law allows. If one is unpaid thirty days past its due date, or you do not
+replenish the deposit, we may suspend work on every matter under this letter and withdraw from any of them, on written
+notice and subject to any approval a court requires. Suspension does not affect any billed work.
 
-## V. Conflicts, other clients, and advance waiver
+## IV. Staffing
 
-The Firm represents and may in the future represent other clients. If a potential conflict arises, the Firm addresses it
-under the applicable rules of professional conduct. Unless you are accepted as a client in a specific additional matter
-by a signed writing, the Firm is not agreeing to represent you in every matter or against every potential adverse party.
+**Your directly responsible individual is {{person__lawyer_dri.name}}**, reachable at {{person__lawyer_dri.email}} and
+through our web portal. We may use other lawyers, contract lawyers, paralegals, staff, and outside vendors where that
+suits the work. We protect your confidences as the law and the applicable professional rules require.
 
-The Firm treats a conflict for any one of its lawyers as a conflict for the whole firm. Before taking on a new matter we
-check it against our current and former matters. If that check turns up a conflict we cannot properly take on, we tell
-you promptly, decline the matter rather than wall it off internally, refer you to outside counsel, and return any
-materials you shared with us. The Firm neither pays nor accepts a referral fee on a matter it refers out. By engaging us
-you acknowledge that our lawyers share matter information among themselves for this purpose.
+## V. Response times
 
-> **A. Advance waiver — transactional matters only.** You agree that the Firm may represent other clients — including
-> clients whose interests are adverse to you or your affiliates — in transactional, corporate, commercial, licensing,
-> regulatory, counseling, and other non-litigation matters, provided that (i) the matter is not substantially related to
-> this engagement or the Matter, and (ii) the Firm protects your confidential information as the applicable professional
-> rules require. By signing this letter you give informed written consent to those transactional representations, and
-> you acknowledge that you have had the opportunity to consult independent counsel about this waiver.
->
-> **B. No litigation waiver.** This advance waiver is limited to transactional and other non-litigation matters. You do
-> not waive, and the Firm does not request, advance consent for litigation, arbitration, or any other contested
-> adversarial proceeding. The Firm will not appear adverse to you in any litigation, arbitration, or contested
-> proceeding while it represents you unless you separately give informed written consent at that time under the
-> applicable rules of professional conduct.
+We respond to your requests within three business days — a business day being any day other than a Saturday, a Sunday,
+or a United States federal holiday. That is a commitment to respond, not to finish, though we work to finish. It does
+not run while work is suspended under Section III.
 
-## VI. What we each do
+## VI. The contract library
 
-You agree to provide accurate and complete information, respond to reasonable requests, and make the decisions the
-representation needs. Where the Matter is in litigation or a dispute is reasonably anticipated, you also agree to
-preserve potentially relevant documents and information, and to appear for depositions and other proceedings the Matter
-requires. The Client agrees to pay fees and authorized expenses when due. The Firm's advice depends on the information
-available to it when the advice is given.
+We maintain an up-to-date library of generic and common agreements. They are unreviewed forms, not drafted for your
+transaction or your counterparty. Before using them, you must make a judgment call whether they're in the best interests
+of your business. If you have any questions, please contact us. Sending one for signature on your instruction is
+administrative and is not our approval of it.
 
-The Firm has not made and cannot make any promise, assurance, or guarantee about the outcome of any matter, negotiation,
-proceeding, settlement, or business objective.
+If you need a bespoke customization, we will draft it for you for a pre-defined fee.
 
-## VII. Confidentiality, your file, and technology
+## VII. Adding to the scope
 
-The Firm maintains your confidences as law and the applicable professional rules require. That duty does not vary with
-the kind of Matter: what you tell us in a negotiation is held as closely as what you tell us in a dispute.
+We add new work by written agreement, after a conflicts check and a flat-fee quote you accept. We do not start until
+then. An instruction to start work is not itself an engagement, and we may decline a matter we cannot take.
 
-The Firm may use secure cloud, document-management, research, communication, automation, and artificial-intelligence
-tools in providing legal services, subject to its professional obligations, attorney supervision, and commercially
-reasonable security and confidentiality safeguards. Where a technology vendor offers the option, the Firm selects
-settings that do not permit your information to be used to train the vendor's public or generally available models. No
-AI output substitutes for counsel's professional judgment: a lawyer reviews material AI-assisted work before it is
-relied on for legal advice, a filing, or a substantive external communication. The Firm remains responsible for the
-accuracy, confidentiality, and professional review of its work. Your consent to that use waives no privilege and does
-not release the Firm from responsibility for selecting, configuring, supervising, or using the technology.
+## VIII. Your responsibilities
 
-The Firm keeps your complete matter file — every document, signed agreement, and the privileged correspondence we
-exchange with you — for ten years after your matter closes. You may request a copy at any point in that period. After
-ten years the Firm securely destroys the file and its contents.
+You give us the documents and information a matter needs, complete and accurate, and tell us promptly when something
+material changes — a deadline, a demand, a filing received, a counterparty's position, or a financing you are raising.
+We rely on what you tell us.
 
-## VIII. Governing law, and arbitration of disputes
+Once you reasonably anticipate a dispute, you preserve the documents, messages, and other material that bear on it, and
+you follow any litigation hold we send you. A court can sanction you for material destroyed after that duty attaches.
 
-This letter is governed by the law of {{custom_single_choice__governing_law}}. If a dispute arises out of or relates to
-this engagement or this letter, you and the Firm agree to resolve it by final and binding arbitration before a single
-arbitrator administered by the **American Arbitration Association** under its Commercial Arbitration Rules — or, where
-the amount in controversy qualifies, its Expedited Procedures — conducted confidentially and decided under the law of
-{{custom_single_choice__governing_law}}. Each party bears its share of the AAA fees as those rules provide, and judgment
-on the award may be entered in any court of competent jurisdiction. The arbitrator applies the same law and may award
-the same remedies a court could; this clause selects the forum for a dispute and does **not** limit, cap, or waive the
-Firm's responsibility for its own work.
+We do not guarantee any outcome. Our advice is for your use and is not to be relied on by anyone else.
 
-> **A. Your fee-arbitration rights are preserved.** Nothing above waives or overrides any non-waivable statutory right
-> you have to arbitration of a fee dispute — including, in California, the Mandatory Fee Arbitration Act (Bus. & Prof.
-> Code § 6200 et seq.); in New York, the Attorney-Client Fee Dispute Resolution Program (22 NYCRR Part 137); and the
-> corresponding fee-dispute programs of the State Bar of Nevada and the Washington State Bar Association. You keep
-> those rights in full.
+## IX. Confidentiality, privilege, and technology
 
-By signing this letter you and the Firm each give up the right to a jury trial and to have a covered dispute decided in
-court. Because this is an agreement about how future disputes are handled, you have the right to consult independent
-counsel of your own choosing before you agree to it.
+Our work on this engagement is confidential and, where the law provides it, privileged. Privilege is lost by disclosure
+and cannot be recovered afterwards, so do not forward our advice to people who do not need it.
 
-## IX. Ending the engagement
+We use cloud storage, document management, legal research, communication, and artificial-intelligence tools in this
+work, including the Neon Law portal, and by signing you consent to that. Where a vendor offers the setting, we choose
+the one that keeps your data out of its generally available training models. No third-party system can be made
+risk-free. A lawyer reviews what these tools produce before it becomes advice to you or goes into a filing.
 
-You may end this engagement at any time by telling us. The Firm may withdraw as law and the applicable professional
-rules permit or require — including for nonpayment, a conflict, a failure to cooperate, or other good cause — and
-subject to the rules governing a lawyer's withdrawal from a pending matter. Fees and authorized expenses incurred before
-that point remain due.
+When the engagement ends, we retain or return your files as the law and the applicable professional rules require, and
+we destroy what remains of the file five years afterwards unless you ask otherwise.
 
-## X. Signatures
+## X. Changing rates and technology
 
-The Client and the Firm sign this letter electronically as of the dates below.
+We may raise any fee in this letter and change the technologies we use. Either way, we give you at least ninety days'
+written notice first, and you may end this engagement within that period under Section XIII.
 
-{{client.signature}}
+## XI. Conflicts
 
-{{client.date}}
+We have checked our records against the work described above and are aware of no conflict that prevents us from acting.
+We tell you promptly if that changes.
 
-By initialing here, the Client acknowledges that this engagement covers the scope described in Section I and nothing
-else, and that additional work requires a separate written engagement or a written amendment signed by both of us:
-{{client.initials}}
+You agree we may act for another client on a non-litigation matter unrelated to yours, including a competitor, so long
+as we do not use your confidential information against you. That consent does not reach a contested proceeding against
+you. On a financing we act for the company alone.
 
-{{firm.signature}}
+## XII. Governing law and arbitration of disputes
 
-{{firm.date}}
+The law of {{custom_single_choice__governing_law}} governs this letter.
+
+Except for a fee dispute you elect to arbitrate under a statutory fee-arbitration right that cannot be waived — in
+California, the Mandatory Fee Arbitration Act; in Nevada and Washington, the fee-dispute programs of the State Bar of
+Nevada and the Washington State Bar Association — any controversy or claim arising out of or relating to this engagement
+or its breach, including any claim of professional negligence, malpractice, or breach of fiduciary duty, shall be
+settled by final and binding arbitration administered by the American Arbitration Association under its Commercial
+Arbitration Rules, before a single arbitrator, seated in {{custom_single_choice__governing_law}}, and conducted
+confidentially. The AAA's rules and fee schedule govern administrative fees and arbitrator compensation, and judgment on
+the award may be entered in any court of competent jurisdiction.
+
+The arbitrator applies the same law and may award the same remedies a court would. This clause picks the forum for a
+dispute; it does not limit, cap, or waive our responsibility for our own work, and it does not override a right the law
+makes non-waivable.
+
+By signing, you and we each give up the right to a jury trial and to have a covered dispute decided in court, including
+a claim that we did our work negligently. Because this section governs how a future dispute between you and your lawyers
+is handled, you may consult independent counsel before agreeing to it.
+
+## XIII. Ending the engagement
+
+Either of us may end this engagement at any time, in writing, subject to any approval a court requires to withdraw from
+a pending action. If you are acquired, either of us may end it. You remain responsible for fees and costs incurred up to
+that point, including the prorated day rate, the monthly fee on any case then pending, and the negotiation fee for any
+month then running. You sign a substitution of attorney promptly where one is needed. On request, we return your files,
+cooperate in an orderly handover to replacement counsel, and you appoint a replacement registered agent where we were
+acting as yours.
+
+Sections II, III, IX, and XII survive.
+
+## XIV. Acceptance
+
+Please confirm your agreement by signing below and returning a copy. Electronic signatures and counterparts are
+acceptable.
+
+Sincerely,
+
+**Shook Law PLLC**, trading as **Neon Law**
+
+By: {{firm.signature}}\
+Date: {{firm.date}}
+
+**Agreed and accepted:**
+
+**{{entity.name}}**
+
+By: {{client.signature}}\
+{{person__client.name}}, for {{entity.name}}\
+Date: {{client.date}}

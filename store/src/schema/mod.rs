@@ -284,9 +284,14 @@ async fn backfill_project_brand(db: &SurrealDb) -> Result<(), SchemaError> {
 
 /// Materialize the historical defaults for the two required person flags.
 ///
-/// Surreal validates every field on a row update, so both fields must be
-/// filled in one guarded statement when an old row is missing both. Existing
-/// values are preserved, and a second apply is a no-op.
+/// Typed reads already tolerate a missing value: `PersonRow.email_confirmed`
+/// is `Option<bool>` and collapses to `false`, and `is_admitted` reads
+/// `Option<bool>` then `.unwrap_or(true)`. A full-record `UPDATE` does not.
+/// Surreal validates every field of the row on any update, including fields
+/// the query never mentions, so `link_oidc_subject` fails coercion on a
+/// historical row until both flags exist. `is_admitted` is in this statement
+/// for that validation, not because its reader was broken. Existing values
+/// are preserved, and a second apply is a no-op.
 async fn backfill_person_defaults(db: &SurrealDb) -> Result<(), SchemaError> {
     db.query(PERSON_DEFAULTS_BACKFILL)
         .await
@@ -527,6 +532,9 @@ mod tests {
         assert_eq!(state(&db).await.unwrap(), SchemaState::InSync);
     }
 
+    /// Typed reads and the raw default after `apply`. The sign-in write
+    /// that fails without this backfill is covered by
+    /// `schema_apply_backfills_historical_person_writes`.
     #[tokio::test]
     async fn applying_backfills_historical_person_defaults_for_typed_sign_in_reads() {
         let db = unmigrated().await;

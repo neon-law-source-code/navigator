@@ -107,6 +107,15 @@ const TINOS_BOLD_ITALIC: &[u8] = include_bytes!("../assets/fonts/Tinos/Tinos-Bol
 /// references via `#image(..)`.
 const FIRM_LOGO: &[u8] = include_bytes!("../assets/brand/logo-neon-law.png");
 
+/// The canonical firm mark used by document renderers.
+///
+/// PDF and Word output share these exact bytes so the two governed render
+/// paths cannot drift onto different letterheads.
+#[must_use]
+pub fn firm_logo_png() -> &'static [u8] {
+    FIRM_LOGO
+}
+
 /// The virtual path the embedded [`FIRM_LOGO`] is resolvable at inside
 /// Typst markup — kept in one place so [`format`] and [`render`] agree.
 pub(crate) const LOGO_PATH: &str = "logo-neon-law.png";

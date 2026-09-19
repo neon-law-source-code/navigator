@@ -47,6 +47,7 @@ fn write_project_shell(dir: &Path, code: &str) {
         &format!("host: staging.neonlaw.com\nproject: {code}\n"),
     );
     write(dir, "README.md", &format!("# {code}\n\nProject source.\n"));
+    write(dir, ".github/CODEOWNERS", "# CODEOWNERS\n\n* @shicholas\n");
     write_agent_contract(dir, code);
     write(
         dir,

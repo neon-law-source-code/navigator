@@ -166,6 +166,44 @@ fn renders_a_letter_pdf_from_a_valid_template() {
 }
 
 #[test]
+fn renders_a_word_document_when_the_output_extension_is_docx() {
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "demand.md", VALID);
+    let out = work.path().join("demand.docx");
+    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let bytes = fs::read(&out).expect("DOCX written");
+    assert_eq!(
+        &bytes[..4],
+        b"PK\x03\x04",
+        "output is not an Open XML package"
+    );
+}
+
+#[test]
+fn refuses_an_output_extension_the_renderer_does_not_support() {
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "demand.md", VALID);
+    let out = work.path().join("demand.txt");
+    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    assert!(
+        !result.status.success(),
+        "unsupported output must be refused"
+    );
+    assert!(
+        String::from_utf8_lossy(&result.stderr)
+            .contains("output extension must be `.pdf` or `.docx`"),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(!out.exists(), "a refused render must not write a file");
+}
+
+#[test]
 fn repeated_notation_renders_are_identical_and_valid_pdfs() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", VALID);

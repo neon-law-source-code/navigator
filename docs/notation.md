@@ -21,6 +21,10 @@ and no workflow has run.
 
 Identified by a stable `code` like `nv__llc_formation` or `onboarding__letter`.
 
+**Draft** is the same noun in the lawyer's English: a Draft *is* a Template, and either spelling names this file and its
+four parts. The [Draft](glossary.md#draft) glossary entry holds the synonym and separates it from the lowercase `draft`
+workflow state a running Notation carries, described below.
+
 ### The four parts
 
 Every Template has exactly four parts. Three of them live in the YAML frontmatter block and the fourth is the prose

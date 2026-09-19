@@ -200,6 +200,7 @@ trailing backslash — is left alone, which is what a signature block is built f
 | `N122` | Error | Every declared questionnaire state must be read by the template body. | No |
 | `N123` | Error | An outlined kind's body must be a Harvard outline, titled to match its frame. | No |
 | `N124` | Error | A services catalog template reference must name a notation under `templates/notations/`. | No |
+| `N125` | Error | A subsection under a numbered section must be a lettered block quote. | No |
 
 ### E-family — events
 

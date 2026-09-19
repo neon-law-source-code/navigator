@@ -49,7 +49,7 @@ use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
 
 /// How a kind numbers its depth-1 sections.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Scheme {
+pub(crate) enum Scheme {
     Roman,
     Arabic,
 }
@@ -106,6 +106,15 @@ const OUTLINED_KINDS: &[(&str, Scheme, Title)] = &[
     ("will", Scheme::Roman, Title::Required),
 ];
 
+/// Whether `kind` is one of the kinds [`OUTLINED_KINDS`] binds.
+///
+/// `N125` scopes itself to the same set: a subsection rule that bound a
+/// different list of kinds than the outline rule it serves would flag a
+/// subsection in a document with no outline to hold it.
+pub(crate) fn is_outlined(kind: &str) -> bool {
+    OUTLINED_KINDS.iter().any(|(name, _, _)| *name == kind)
+}
+
 pub struct F123HarvardOutlineRequired;
 
 impl F123HarvardOutlineRequired {
@@ -147,7 +156,7 @@ fn roman_value(token: &str) -> Option<u32> {
 /// the marker is the token before the first `.`, and `title` is the text
 /// after it. The title comes back so a message can suggest the corrected
 /// heading without re-appending the marker it is replacing.
-fn depth_one_marker(heading_text: &str) -> Option<(Scheme, u32, &str)> {
+pub(crate) fn depth_one_marker(heading_text: &str) -> Option<(Scheme, u32, &str)> {
     let (marker, rest) = heading_text.split_once('.')?;
     // A bare `## Scope` has no marker; a `## 1.2 Scope` is not one either,
     // because the text after the dot must be the title, not more number.

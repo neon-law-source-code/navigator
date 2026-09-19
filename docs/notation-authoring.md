@@ -344,6 +344,12 @@ form outside the rule. A `letter`, an `onboarding` letter, and a `filing` are ex
 engagement is often a single page of prose with no sections, and a filing's body is an intake summary beside a
 government `AcroForm`. `####` and below stay the parser's and the renderer's business.
 
+**`N125` reports a subsection that never became one.** A subsection written as a flush-left bold-led paragraph —
+`**Costs.** …` or `**(a) No Present Conflict.** …` — looks like an outline in Markdown and renders as body prose,
+because a block quote is the only construct in the supported subset that indents. `N125` binds the same kinds `N123`
+does and names the drift; it letters nothing, since the sequence stays `N123`'s once the paragraph is quoted. It writes
+no fix: whether a bold lead-in is a subsection or an emphasized clause is the drafter's call.
+
 **A body that renders without chrome must name itself.** `agreement`, `pleading`, and `will` carry exactly one `#`
 document title, and it opens the body above the first numbered section — nothing else supplies one, since a `will`
 renders with no frame at all and the contract and pleading frames print no name. `onboarding` and `offboarding` are the

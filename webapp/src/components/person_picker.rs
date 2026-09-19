@@ -163,7 +163,7 @@ pub fn PersonPicker(
                 div { class: "nav-field__error", id: "{error_id}", role: "alert", "{error}" }
             }
             if let Some(help) = help {
-                div { class: "nav-field__help", id: "{help_id}", "{help}" }
+                p { class: "nav-field__help", id: "{help_id}", "{help}" }
             }
         }
     }

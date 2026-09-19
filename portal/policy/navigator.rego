@@ -519,6 +519,19 @@ allow if {
     is_authenticated(input.session)
 }
 
+# A client may save only their own testimonial under a Project. The policy
+# admits the client tier to this exact route; the handler and store resolve the
+# client's participation on the named Project and collapse a mismatch to 404.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "projects"
+    input.path[4] == "testimonial"
+    count(input.path) == 5
+    input.method == "POST"
+    input.session.role == "client"
+}
+
 # GET /app/api/notations/{id} — one notation, scoped by its matter in the handler.
 allow if {
     input.path[0] == "app"

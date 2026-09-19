@@ -270,9 +270,13 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // + 4 for the authenticated `/start/{service_id}` door: the exact path
     // shape, its client and firm-tier policy cases, and the Clerk denial.
     // 467 + 4 = 471.
+    //
+    // + 3 for client testimonial submission: Client admitted, Lawyer and
+    // Clerk denied. The handler resolves the named Project participation.
+    // 471 + 3 = 474.
     assert_eq!(
         test_names.len(),
-        471,
+        474,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

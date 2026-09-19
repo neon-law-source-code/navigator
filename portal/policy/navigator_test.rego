@@ -558,6 +558,23 @@ test_anonymous_denied_entity_delete if {
 
 # ---------- /app/api/projects/{id}/contract-review upload (any AUTHENTICATED tier — client-writable) ----------
 
+# ---------- /app/api/projects/{id}/testimonial (client-lens write) ----------
+
+# Rego admits the client tier to this exact route; the handler and store then
+# resolve the client DRI's participation on the named Project and collapse a
+# different Project to 404.
+test_client_can_save_a_testimonial if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "testimonial"], "method": "POST", "session": client_session}
+}
+
+test_lawyer_denied_saving_a_client_testimonial if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "testimonial"], "method": "POST", "session": lawyer_session}
+}
+
+test_clerk_denied_saving_a_client_testimonial if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "testimonial"], "method": "POST", "session": clerk_session}
+}
+
 test_client_can_upload_contract_review if {
 	authz.allow with input as {"path": ["app", "api", "projects", "p1", "contract-review"], "method": "POST", "session": client_session}
 }

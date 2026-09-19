@@ -865,14 +865,28 @@ async fn home_separates_membership_review_and_litigation_fees() {
     }
     assert!(body.contains(r#"scope="col""#));
     assert!(body.contains(r#"scope="row""#));
-    for href in [
-        "/navigator",
-        "https://www.abhayaimmigration.com",
-        "https://www.vestaestateplanning.com",
+    assert!(body.contains(r#"href="/navigator""#), "missing /navigator");
+    // The two sibling practices are named in the same section either way; the
+    // launch gate decides whether each name is a link. A held-out practice's
+    // host answers `404` (see `server::tests::routes`'s launch-gate tests), so
+    // linking it would advertise an address rather than the offer.
+    //
+    // Derived from `is_live()` rather than listed, so the day Vesta or Abhaya
+    // launches this test follows without an edit — a hand-maintained list
+    // here is the same drift the gate exists to prevent.
+    for (key, label) in [
+        (views::brand::BrandKey::Abhaya, "Abhaya / Immigration"),
+        (views::brand::BrandKey::Vesta, "Vesta / Estate planning"),
     ] {
-        assert!(
-            body.contains(&format!(r#"href="{href}""#)),
-            "missing {href}"
+        assert!(body.contains(label), "missing {label}");
+        let linked = body.contains(&format!(r#"href="{}""#, key.public_home_href()));
+        assert_eq!(
+            linked,
+            key.is_live(),
+            "{} is {}live, so its name must {}link",
+            key.as_str(),
+            if key.is_live() { "" } else { "not " },
+            if key.is_live() { "" } else { "not " },
         );
     }
     assert!(!body.contains("open source"));

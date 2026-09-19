@@ -10119,6 +10119,183 @@ async fn host_brand_path_matrix_resolves_every_combination() {
     }
 }
 
+/// The launch gate, end to end through the real composed router.
+///
+/// `views::brand::BrandKey::LIVE` is the approved set; everything else in the
+/// registry is built, staged, and deliberately unreachable. The defect this
+/// pins is that the gate lived only in the deploy render
+/// (`cli::devx::ship`, which filters certificates and Ingress rules on
+/// `is_live()`) while the request router admitted every registered host — so
+/// any request that reached the process with a held-out `Host:` (a direct hit
+/// on the load-balancer IP, a misrouted Ingress rule, a future certificate, a
+/// port-forward) was answered with that brand's full identity: practice copy,
+/// contact mailbox, legal language, and a sitemap pointing crawlers at an
+/// unlaunched host.
+///
+/// Both halves matter, so both are asserted here over the whole registry
+/// rather than over a hand-picked host or two — a list that has to be edited
+/// at launch is the same failure in a different file.
+#[tokio::test]
+async fn the_launch_gate_refuses_every_held_out_host_and_serves_every_live_one() {
+    let default_host = "www.neonlaw.com";
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for key in views::brand::BrandKey::ALL {
+        let brand = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+        let site_name = brand.firm.site_name;
+        let mailbox = brand.firm_email;
+
+        for host in key
+            .hosts()
+            .iter()
+            .copied()
+            .chain(std::iter::once(key.apex()))
+        {
+            let apex = host == key.apex();
+
+            if key.is_live() {
+                // A live served host renders; a live apex 301s to that
+                // brand's own `www`, never to the deployment's canonical
+                // host. Both are the behaviour this change must not disturb.
+                let resp = get_on_host(&app, "/", host).await;
+                if apex {
+                    assert_eq!(
+                        resp.status(),
+                        StatusCode::MOVED_PERMANENTLY,
+                        "{host} is a live apex and must redirect"
+                    );
+                    assert_eq!(
+                        resp.headers()
+                            .get(header::LOCATION)
+                            .and_then(|v| v.to_str().ok()),
+                        Some(format!("https://{}/", key.canonical_host()).as_str()),
+                        "{host} redirects to its own brand's home"
+                    );
+                } else {
+                    assert_eq!(resp.status(), StatusCode::OK, "{host} /");
+                    let body = body_string(resp).await;
+                    assert!(
+                        page_declares_og_site_name(&body, site_name),
+                        "{host} wears {site_name}: {body}"
+                    );
+                }
+                continue;
+            }
+
+            // A held-out host is refused outright: `404`, no `Location`, and
+            // no trace of the brand in the body. Not a redirect to the
+            // default brand — a 301 would confirm the unlaunched domain is
+            // the firm's, seed crawler caches with a permanent redirect that
+            // has to be undone on launch day, and for the NYC summons
+            // practice amount to holding out before admission.
+            for path in ["/", "/services", "/contact", "/robots.txt", "/sitemap.xml"] {
+                let resp = get_on_host(&app, path, host).await;
+                assert_eq!(
+                    resp.status(),
+                    StatusCode::NOT_FOUND,
+                    "{host} {path} belongs to {}, which has not launched",
+                    key.as_str()
+                );
+                assert!(
+                    resp.headers().get(header::LOCATION).is_none(),
+                    "{host} {path} must not redirect anywhere"
+                );
+                let body = body_string(resp).await;
+                assert!(
+                    !page_declares_og_site_name(&body, site_name),
+                    "{host} {path} must not wear {site_name}: {body}"
+                );
+                assert!(
+                    !body.contains(mailbox),
+                    "{host} {path} must not publish {mailbox}: {body}"
+                );
+                // The crawler documents are the sharpest form of the leak:
+                // whatever the status, the held-out hostname must never
+                // appear as an absolute base a crawler would follow.
+                assert!(
+                    !body.contains(host),
+                    "{host} {path} must not advertise its own host: {body}"
+                );
+            }
+        }
+    }
+
+    // A live host's crawler documents still name that host as their own
+    // absolute base — the gate refuses held-out hosts without collapsing
+    // every brand onto the deployment's canonical host.
+    for (_, host) in views::brand::live_brand_hosts() {
+        let body = body_string(get_on_host(&app, "/robots.txt", host).await).await;
+        assert!(
+            body.contains(&format!("Sitemap: https://{host}/sitemap.xml")),
+            "{host} advertises its own sitemap: {body}"
+        );
+    }
+}
+
+/// An unknown host is somebody else's; a held-out host is ours and not yet
+/// public. The two must not be answered the same way.
+///
+/// `unregistered.example` keeps the deployment's ordinary canonical-host
+/// redirect — that is what lets an arbitrary test host, a load-balancer
+/// probe address, or a not-yet-registered deployment host keep working.
+/// `www.summonsdefense.nyc` does not, because redirecting it is the
+/// disclosure the gate exists to prevent.
+#[tokio::test]
+async fn a_held_out_host_is_refused_where_an_unknown_host_is_redirected() {
+    let default_host = "www.neonlaw.com";
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let unknown = get_on_host(&app, "/contact", "unregistered.example").await;
+    assert_eq!(unknown.status(), StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(
+        unknown
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some("https://www.neonlaw.com/contact"),
+    );
+
+    let held_out = get_on_host(&app, "/contact", "www.summonsdefense.nyc").await;
+    assert_eq!(held_out.status(), StatusCode::NOT_FOUND);
+    assert!(held_out.headers().get(header::LOCATION).is_none());
+
+    // And the same refusal with enforcement switched off, because the gate
+    // is about what this build may publish rather than about which host the
+    // deployment prefers.
+    let unenforced = server::neon_router(
+        empty_state_with_canonical_host(CanonicalHost::new(None)).await,
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let resp = get_on_host(&unenforced, "/contact", "www.summonsdefense.nyc").await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    // An unknown host with no `CANONICAL_HOST` still falls through to the
+    // default brand, unchanged.
+    let resp = get_on_host(&unenforced, "/contact", "unregistered.example").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// The health probes stay exempt from the launch gate.
+///
+/// Kubernetes dials a pod IP and cannot promise a public `Host:`. A probe
+/// that arrived carrying a held-out hostname — a misrouted Ingress rule is
+/// exactly how that happens — must still answer `200`, or the gate takes the
+/// deployment down instead of keeping a brand private.
+#[tokio::test]
+async fn the_launch_gate_does_not_reach_the_health_probes() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".to_string())))
+            .await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    for path in ["/app/health", "/app/readyz"] {
+        let resp = get_on_host(&app, path, "www.summonsdefense.nyc").await;
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+    }
+}
+
 #[tokio::test]
 async fn design_page_renders_the_component_gallery() {
     let app = server::neon_router(

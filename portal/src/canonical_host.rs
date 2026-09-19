@@ -1,10 +1,21 @@
 //! Brand-host resolution and canonical-host enforcement middleware.
 //!
 //! Every request's `Host:` header resolves to a [`views::brand::BrandKey`]
-//! through the compiled registry
-//! ([`views::brand::registered_brand_key`]). A host the registry names
-//! passes through carrying its own resolved brand, whatever `CANONICAL_HOST`
-//! says. The deployment's own configured host — `CANONICAL_HOST`, whatever
+//! through the compiled registry's *launch gate*
+//! ([`views::brand::admitted_brand_key`]). A host the gate admits passes
+//! through carrying its own resolved brand, whatever `CANONICAL_HOST` says.
+//!
+//! Registered is not admitted. A brand is compiled here — copy, mailbox,
+//! hosts and all — long before its launch is approved, and
+//! [`views::brand::BrandKey::LIVE`] is what separates the two. A host this
+//! registry names for a brand that has not launched is answered `404` and is
+//! never branded, never redirected, and never becomes the crawler base: see
+//! [`views::brand::held_out_host`]. That refusal is what keeps this
+//! admission set and the deploy render's (`cli::devx::ship`, which builds
+//! certificates and Ingress rules from the same gate) from coming apart
+//! again.
+//!
+//! The deployment's own configured host — `CANONICAL_HOST`, whatever
 //! literal value that deployment names — also passes through as the default
 //! brand even when it is not itself a registry entry, which is what keeps an
 //! arbitrary test host or a not-yet-registered deployment host working.
@@ -12,8 +23,11 @@
 //! configured host, except `/health`: kubelet and load-balancer probes
 //! address a backend rather than its public hostname. When `CANONICAL_HOST`
 //! is unset (the default), enforcement is a pass-through and every host still
-//! resolves to its registered brand (or the default brand for an
-//! unregistered one) — useful for local development and integration tests.
+//! resolves to its admitted brand (or the default brand for an unregistered
+//! one) — useful for local development and integration tests. The launch
+//! gate is *not* part of that pass-through: a held-out host is refused
+//! whether or not `CANONICAL_HOST` is configured, because the gate is about
+//! what this build may publish rather than about which host it prefers.
 //!
 //! When browser OAuth is configured, `/app` and sign-in entry points first
 //! redirect to the callback origin, before any authentication cookie is issued.
@@ -36,7 +50,7 @@ use axum::http::{header, StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 
-use views::brand::{registered_brand_key, BrandKey};
+use views::brand::{admitted_brand_key, held_out_host, BrandKey};
 
 #[derive(Clone)]
 pub struct CanonicalHost {
@@ -173,6 +187,29 @@ pub async fn resolve_brand_and_enforce_host(
         .headers()
         .get(header::HOST)
         .and_then(|v| v.to_str().ok());
+    // A registered host whose brand has not launched is refused here, before
+    // anything downstream can brand the request, redirect it, or read its
+    // `Host:` as an absolute base.
+    //
+    // `404` rather than a redirect to the default brand. A 301 from
+    // `www.vestaestateplanning.com` publishes the association — it confirms
+    // the unlaunched domain is the firm's, hands crawlers a permanent
+    // redirect they cache and that has to be undone on launch day, and for
+    // the NYC summons practice, pointing a not-yet-admitted practice's
+    // domain at the firm's site is itself a form of holding out. A `404`
+    // says nothing, which is the correct amount to say about a site that
+    // does not exist yet.
+    //
+    // The local port map is checked first and wins: binding
+    // `NAVIGATOR_LOCAL_VESTA_PORT` is a developer deliberately opening the
+    // held-out brand on a port this process had to be told to listen on, and
+    // it is the one door that is not public host admission. An operator who
+    // sets that variable in a deployment has published the brand on purpose.
+    if raw_host.is_some_and(|host| {
+        cfg.resolve_local_port(host).is_none() && held_out_host(strip_port(host))
+    }) {
+        return (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response();
+    }
     let path = req.uri().path();
     let sign_in_entry = path == "/app"
         || path.starts_with("/app/")
@@ -199,14 +236,15 @@ pub async fn resolve_brand_and_enforce_host(
     let resolved = raw_host.and_then(|host| {
         cfg.resolve_local_port(host).or_else(|| {
             let stripped = strip_port(host);
-            registered_brand_key(stripped).or_else(|| {
+            admitted_brand_key(stripped).or_else(|| {
                 (cfg.canonical() == Some(stripped) || cfg.is_sign_in_host(host))
                     .then_some(BrandKey::default())
             })
         })
     });
-    // A brand's naked domain 301s to that brand's own `www`, before the
-    // deployment-wide canonical fallback below can claim it. That ordering is
+    // A live brand's naked domain 301s to that brand's own `www`, before the
+    // deployment-wide canonical fallback below can claim it. A held-out
+    // brand's apex never reaches here: it was refused above. That ordering is
     // the point: `CANONICAL_HOST` names one host for the whole deployment, so
     // letting it answer here would send `vestaestateplanning.com` to the
     // firm's site instead of Vesta's.
@@ -218,7 +256,7 @@ pub async fn resolve_brand_and_enforce_host(
     if resolved.is_none() {
         if let Some(key) = raw_host
             .map(strip_port)
-            .and_then(views::brand::brand_key_for_apex)
+            .and_then(views::brand::admitted_brand_key_for_apex)
         {
             let path_and_query = req
                 .uri()

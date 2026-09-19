@@ -692,6 +692,16 @@ fn privacy_content(copy: views::locales::PrivacyCopy) -> webapp::home::PrivacyCo
     }
 }
 
+/// A sibling practice's public home, when it has one.
+///
+/// `None` while the practice is held out of launch, because
+/// `portal::canonical_host` refuses its hosts and the link would land a
+/// reader on a `404`. `views::brand::BrandKey::public_home_href` builds the
+/// address; the launch gate decides whether there is one to hand out.
+fn sibling_practice_href(key: views::brand::BrandKey) -> Option<String> {
+    key.is_live().then(|| key.public_home_href())
+}
+
 /// The firm home page, resolved from this brand's `home.yaml`.
 pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     let copy: HomeCopy = load_page(branding, "home");
@@ -769,6 +779,11 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
             people_body: copy.people_body,
             immigration_label: copy.immigration_label,
             estate_label: copy.estate_label,
+            // The launch gate decides whether each sibling's name links. Both
+            // practices are real and separately engaged whatever it says;
+            // what it governs is whether the page hands a reader an address.
+            immigration_href: sibling_practice_href(views::brand::BrandKey::Abhaya),
+            estate_href: sibling_practice_href(views::brand::BrandKey::Vesta),
             navigator_heading: copy.navigator_heading,
             navigator_body: copy.navigator_body,
             navigator_link: copy.navigator_link,

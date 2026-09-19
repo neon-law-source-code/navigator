@@ -94,6 +94,13 @@ Overdraw is never clipped to what fits. Drawing more than a client has in trust 
 prevent, and clipping would hide it where a refusal puts it in front of a human. The refusal is *reported*, not fatal —
 one bad transfer does not stop the rest of the night's states from reconciling.
 
+### What the firm hears each night
+
+The nightly run posts its report to Slack **`#finance`** through the same bot that posts to `#general`: how many
+invoices were ingested, how many deposits, refunds, and withdrawals landed, what was refused and needs a human, and one
+line per matter that moved — Project code and cents. Firm-internal, never a client's name or a portal link. The
+destination is `SLACK_FINANCE_CHANNEL_ID`; unset fails the run rather than reconciling silently.
+
 ### What each audience sees
 
 A **client** sees their own matter's position — paid in, still held, earned and drawn, refunded — and their own

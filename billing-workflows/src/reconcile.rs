@@ -16,10 +16,13 @@
 //! [`reconcile_once`] is provider-agnostic so it unit-tests against the
 //! [`billing::StubBillingProvider`] + a test database without a worker.
 
+use std::sync::Arc;
+
 use billing::{BillingProvider, XeroBillingProvider};
 use restate_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use store::surreal::SurrealDb;
+use workflows::SlackBot;
 
 /// Request body for `ReconcileInvoices::run`. Empty — the trigger only
 /// starts the workflow — but kept as a struct so fields can be threaded
@@ -65,6 +68,22 @@ pub struct ReconcileReport {
     /// matter on another state's pool, or a matter drawn beyond what it
     /// holds. Nothing of a refused withdrawal is written.
     pub iolta_withdrawals_refused: usize,
+    /// What actually moved in trust tonight, per matter. Firm-internal:
+    /// Project codes and cents only, never a client's name, email, or
+    /// portal URL (`#finance` copy rules, ENG-790).
+    #[serde(default)]
+    pub trust_lines: Vec<TrustLine>,
+}
+
+/// One trust movement this run posted, as `#finance` reads it out.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TrustLine {
+    /// The matter's Project code — the firm-internal name for it. Never the
+    /// client's own name.
+    pub project_code: String,
+    /// `deposit`, `refund`, or `draw`.
+    pub kind: String,
+    pub cents: i64,
 }
 
 /// Service registered with the Restate endpoint. Holds a SurrealDB clone (the
@@ -73,12 +92,33 @@ pub struct ReconcileReport {
 #[derive(Clone)]
 pub struct ReconcileInvoicesService {
     surreal: SurrealDb,
+    /// The same Slack Web API bot `#general` posts through — AIDA, as the
+    /// workspace sees it. Not a second token and not an incoming webhook.
+    slack: Arc<dyn SlackBot>,
+    /// `#finance`'s channel id. Empty in KIND and local loops, where the
+    /// CronJob is installed but has no live destination; an empty value
+    /// fails the run as a terminal error rather than reconciling silently
+    /// and posting nowhere.
+    finance_channel: String,
+    /// Whether this deployment's matters are simulated, folded into the
+    /// post so a reader of `#finance` can tell staging from production.
+    simulated: bool,
 }
 
 impl ReconcileInvoicesService {
     #[must_use]
-    pub fn new(surreal: SurrealDb) -> Self {
-        Self { surreal }
+    pub fn new(
+        surreal: SurrealDb,
+        slack: Arc<dyn SlackBot>,
+        finance_channel: String,
+        simulated: bool,
+    ) -> Self {
+        Self {
+            surreal,
+            slack,
+            finance_channel,
+            simulated,
+        }
     }
 }
 
@@ -90,6 +130,12 @@ impl ReconcileInvoicesService {
         ctx: WorkflowContext<'_>,
         _req: Json<ReconcileRequest>,
     ) -> Result<Json<ReconcileReport>, HandlerError> {
+        if self.finance_channel.is_empty() {
+            return Err(HandlerError::from(TerminalError::new(
+                "SLACK_FINANCE_CHANNEL_ID must be set (the #finance channel ID)",
+            )));
+        }
+
         let surreal = self.surreal.clone();
         let report = ctx
             .run(move || async move {
@@ -101,6 +147,21 @@ impl ReconcileInvoicesService {
             .name("reconcile")
             .await?
             .into_inner();
+
+        // A second journaled step, so a retry of the post never re-runs the
+        // reconcile — the same split `GeneralNag` uses for its two posts.
+        let channel_id = self.finance_channel.clone();
+        let report_for_post = report.clone();
+        let simulated = self.simulated;
+        let slack = Arc::clone(&self.slack);
+        ctx.run(move || async move {
+            post_finance_notice(slack.as_ref(), &channel_id, &report_for_post, simulated)
+                .await
+                .map_err(HandlerError::from)
+        })
+        .name("notify_finance")
+        .await?;
+
         Ok(Json(report))
     }
 }
@@ -146,6 +207,7 @@ pub async fn reconcile_once(
         trust_unscoped: trust.unscoped,
         iolta_withdrawals: trust.withdrawals,
         iolta_withdrawals_refused: trust.withdrawals_refused,
+        trust_lines: trust.lines,
     })
 }
 
@@ -157,11 +219,13 @@ struct TrustMirrorTally {
     unscoped: usize,
     withdrawals: usize,
     withdrawals_refused: usize,
+    lines: Vec<TrustLine>,
 }
 
 /// What one pooled withdrawal did.
 enum WithdrawalOutcome {
-    Applied,
+    /// Carries what each matter drew, so the nightly notice can name it.
+    Applied { drawn: Vec<(uuid::Uuid, i64)> },
     /// Mirrored on an earlier night; nothing written.
     AlreadyApplied,
     /// Refused whole, with the reason a human needs to reconcile it in Xero.
@@ -197,7 +261,19 @@ async fn apply_withdrawal(
             .collect(),
     };
     match store::iolta_withdrawals::apply(surreal, &input).await {
-        Ok(store::iolta_withdrawals::Applied::Posted { .. }) => Ok(WithdrawalOutcome::Applied),
+        Ok(store::iolta_withdrawals::Applied::Posted { projects }) => {
+            let mut drawn = Vec::with_capacity(projects.len());
+            for project_id in projects {
+                let cents = store::iolta_withdrawals::for_project(surreal, project_id)
+                    .await?
+                    .into_iter()
+                    .filter(|line| line.withdrawal_id == transaction.transaction_id)
+                    .map(|line| line.amount_cents)
+                    .sum();
+                drawn.push((project_id, cents));
+            }
+            Ok(WithdrawalOutcome::Applied { drawn })
+        }
         Ok(store::iolta_withdrawals::Applied::AlreadyApplied) => {
             Ok(WithdrawalOutcome::AlreadyApplied)
         }
@@ -239,7 +315,14 @@ async fn mirror_trust_movements(
             && settles_invoices(&transaction)
         {
             match apply_withdrawal(surreal, &transaction).await? {
-                WithdrawalOutcome::Applied => tally.withdrawals += 1,
+                WithdrawalOutcome::Applied { drawn } => {
+                    tally.withdrawals += 1;
+                    for (project_id, cents) in drawn {
+                        tally
+                            .lines
+                            .push(trust_line(surreal, project_id, "draw", cents).await?);
+                    }
+                }
                 WithdrawalOutcome::Refused(reason) => {
                     tracing::warn!(
                         transaction_id = %transaction.transaction_id,
@@ -286,10 +369,21 @@ async fn mirror_trust_movements(
             .await
             .map_err(anyhow::Error::msg)?
         {
-            store::trust::Recorded::Posted => match transaction.kind {
-                billing::TrustTransactionKind::Receive => tally.deposits += 1,
-                billing::TrustTransactionKind::Spend => tally.refunds += 1,
-            },
+            store::trust::Recorded::Posted => {
+                let kind = match transaction.kind {
+                    billing::TrustTransactionKind::Receive => {
+                        tally.deposits += 1;
+                        "deposit"
+                    }
+                    billing::TrustTransactionKind::Spend => {
+                        tally.refunds += 1;
+                        "refund"
+                    }
+                };
+                tally
+                    .lines
+                    .push(trust_line(surreal, project_id, kind, transaction.amount_cents).await?);
+            }
             // Already on the ledger from an earlier night, or the matter has
             // no notation to anchor a posting to. Neither is a new fact.
             store::trust::Recorded::AlreadyRecorded => {}
@@ -297,6 +391,28 @@ async fn mirror_trust_movements(
         }
     }
     Ok(tally)
+}
+
+/// Name one posted movement for the nightly `#finance` notice.
+///
+/// The matter is named by its **Project code**, the firm's own handle for it
+/// — never by the client's name, which `#finance` has no reason to carry. A
+/// matter whose row has gone reads as `unknown`, so a report line is never
+/// dropped silently.
+async fn trust_line(
+    surreal: &SurrealDb,
+    project_id: uuid::Uuid,
+    kind: &str,
+    cents: i64,
+) -> anyhow::Result<TrustLine> {
+    let project_code = store::projects::find_by_id(surreal, project_id)
+        .await?
+        .map_or_else(|| "unknown".to_string(), |project| project.code);
+    Ok(TrustLine {
+        project_code,
+        kind: kind.to_string(),
+        cents,
+    })
 }
 
 /// Render minor units as the decimal string `store::trust::Movement` keeps
@@ -352,6 +468,92 @@ async fn mirror_iolta_accounts(
         }
     }
     Ok((mirrored, unscoped))
+}
+
+/// Post one night's report to `#finance`, and nowhere else.
+///
+/// Split out of the handler so the destination is testable without a Restate
+/// context: the channel a firm-finance notice lands in is exactly the sort of
+/// thing that should fail a test rather than a reader's trust.
+///
+/// # Errors
+///
+/// Propagates the Slack client's own error.
+pub async fn post_finance_notice(
+    slack: &dyn SlackBot,
+    finance_channel: &str,
+    report: &ReconcileReport,
+    simulated: bool,
+) -> Result<(), workflows::SlackBotError> {
+    slack
+        .post_message(finance_channel, &finance_message(report, simulated))
+        .await
+}
+
+/// What AIDA posts to `#finance` after a nightly run.
+///
+/// Firm-internal by construction: it names **Project codes** and **cents**,
+/// which the owner allowed for this channel, and nothing else about a
+/// client. No client name, no email address, no portal link. Invoices whose
+/// Xero `Reference` names no matter are a **count** — dumping the Xero
+/// contact names behind them would put client identities in a channel that
+/// has no need for them.
+///
+/// `simulated` folds in the staging disclosure, the same signal
+/// `GeneralNag` gives a reader of `#general`.
+#[must_use]
+pub fn finance_message(report: &ReconcileReport, simulated: bool) -> String {
+    let mut body = String::from("Xero mirror, nightly run.");
+    if simulated {
+        body.push_str(" (from the staging account)");
+    }
+    body.push_str(&format!(
+        "\nInvoices: {} ingested, {} unscoped, {} updated of {} re-checked.",
+        report.ingested, report.unscoped, report.updated, report.checked
+    ));
+    body.push_str(&format!(
+        "\nTrust: {} deposit(s), {} refund(s), {} withdrawal(s) across {} pooled account(s).",
+        report.trust_deposits,
+        report.trust_refunds,
+        report.iolta_withdrawals,
+        report.iolta_accounts
+    ));
+    if report.trust_unscoped > 0
+        || report.iolta_withdrawals_refused > 0
+        || report.iolta_unscoped > 0
+    {
+        body.push_str(&format!(
+            "\nNeeds a look: {} trust movement(s) unscoped, {} withdrawal(s) refused, \
+             {} bank account(s) unscoped.",
+            report.trust_unscoped, report.iolta_withdrawals_refused, report.iolta_unscoped
+        ));
+    }
+    for line in &report.trust_lines {
+        body.push_str(&format!(
+            "\n  {} {} {}",
+            line.project_code,
+            line.kind,
+            format_usd(line.cents)
+        ));
+    }
+    body
+}
+
+/// Render minor units as a dollar amount for the `#finance` post. Money
+/// never passes through a float.
+fn format_usd(cents: i64) -> String {
+    let sign = if cents < 0 { "-" } else { "" };
+    let abs = cents.unsigned_abs();
+    let digits = (abs / 100).to_string();
+    let mut grouped = String::new();
+    for (index, ch) in digits.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(ch);
+    }
+    let grouped: String = grouped.chars().rev().collect();
+    format!("{sign}${grouped}.{:02}", abs % 100)
 }
 
 fn skip_listed_status(status: &str) -> bool {
@@ -658,6 +860,120 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    /// The report a nightly run hands `finance_message`, with only the
+    /// fields a given assertion cares about set.
+    fn report() -> super::ReconcileReport {
+        super::ReconcileReport {
+            ingested: 3,
+            unscoped: 1,
+            checked: 5,
+            updated: 2,
+            iolta_accounts: 2,
+            iolta_unscoped: 0,
+            trust_deposits: 1,
+            trust_refunds: 0,
+            trust_unscoped: 0,
+            iolta_withdrawals: 1,
+            iolta_withdrawals_refused: 0,
+            trust_lines: vec![
+                super::TrustLine {
+                    project_code: "acme-formation".into(),
+                    kind: "deposit".into(),
+                    cents: 500_000,
+                },
+                super::TrustLine {
+                    project_code: "libra-estate".into(),
+                    kind: "draw".into(),
+                    cents: 123_456,
+                },
+            ],
+        }
+    }
+
+    /// The owner allowed Project codes and cents in `#finance`; everything
+    /// that identifies a *client* stays out.
+    #[test]
+    fn the_finance_notice_names_codes_and_cents_and_nothing_client_facing() {
+        let body = super::finance_message(&report(), false);
+
+        assert!(
+            body.contains("3 ingested, 1 unscoped, 2 updated of 5 re-checked"),
+            "{body}"
+        );
+        assert!(
+            body.contains("1 deposit(s), 0 refund(s), 1 withdrawal(s)"),
+            "{body}"
+        );
+        assert!(body.contains("acme-formation deposit $5,000.00"), "{body}");
+        assert!(body.contains("libra-estate draw $1,234.56"), "{body}");
+
+        for forbidden in ["@", "linear.app", "http", "/app/projects"] {
+            assert!(
+                !body.contains(forbidden),
+                "the #finance notice must not carry {forbidden:?}: {body}"
+            );
+        }
+    }
+
+    /// An unscoped invoice is a count. Dumping the Xero contact names behind
+    /// those invoices would put client identities in the channel.
+    #[test]
+    fn unscoped_and_refused_work_is_reported_as_counts() {
+        let mut report = report();
+        report.trust_unscoped = 2;
+        report.iolta_withdrawals_refused = 1;
+        report.iolta_unscoped = 3;
+
+        let body = super::finance_message(&report, false);
+        assert!(
+            body.contains(
+                "2 trust movement(s) unscoped, 1 withdrawal(s) refused, 3 bank account(s) unscoped"
+            ),
+            "{body}"
+        );
+    }
+
+    /// A quiet night still says so, without a "needs a look" line.
+    #[test]
+    fn a_quiet_night_reports_zeroes_and_flags_nothing() {
+        let body = super::finance_message(&super::ReconcileReport::default(), false);
+        assert!(body.contains("0 ingested"), "{body}");
+        assert!(!body.contains("Needs a look"), "{body}");
+    }
+
+    /// The notice lands in `#finance` and nowhere else — one post, to the
+    /// finance channel id, never to `#general` or a Project's own channel.
+    #[tokio::test]
+    async fn the_notice_lands_in_the_finance_channel_and_nowhere_else() {
+        let bot = workflows::CapturingSlackBot::new();
+        super::post_finance_notice(&bot, "C012FINANCE", &report(), false)
+            .await
+            .unwrap();
+
+        let posted = bot.posted_messages();
+        assert_eq!(posted.len(), 1, "one post per run: {posted:?}");
+        assert_eq!(posted[0].0, "C012FINANCE");
+        assert!(
+            posted[0].1.contains("Xero mirror, nightly run."),
+            "{posted:?}"
+        );
+        assert!(
+            bot.created_channels().is_empty(),
+            "the notice creates no channel"
+        );
+    }
+
+    /// A reader of `#finance` can tell a persistent-staging post from a
+    /// production one, the same way `#general` can.
+    #[test]
+    fn a_simulated_deployment_discloses_staging() {
+        assert!(super::finance_message(&report(), true).contains("(from the staging account)"));
+        assert!(
+            !super::finance_message(&report(), false).contains("staging"),
+            "a production run must not claim to be staging"
+        );
     }
 
     async fn seed_state(surreal: &store::surreal::SurrealDb, name: &str, code: &str) -> uuid::Uuid {

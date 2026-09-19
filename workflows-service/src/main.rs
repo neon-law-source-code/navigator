@@ -24,7 +24,7 @@ use workflows_service::{
 };
 
 macro_rules! bind_common_services {
-    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr, $general_channel:expr, $simulated_matters:expr) => {
+    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr, $general_channel:expr, $finance_channel:expr, $simulated_matters:expr) => {
         $endpoint
             .bind(NotationService::new(
                 $surreal.clone(),
@@ -39,7 +39,12 @@ macro_rules! bind_common_services {
             .bind(HeartbeatService::new($notifier.clone()))
             .bind(BillingCanaryService::new($ops_delivery.clone()))
             .bind(BillingDigestService::new($ops_delivery))
-            .bind(ReconcileInvoicesService::new($surreal.clone()))
+            .bind(ReconcileInvoicesService::new(
+                $surreal.clone(),
+                $slack_bot.clone(),
+                $finance_channel,
+                $simulated_matters,
+            ))
             .bind(DriDigestService::new(
                 $surreal.clone(),
                 $notifier,
@@ -133,6 +138,11 @@ async fn main() -> anyhow::Result<()> {
     // installed but has no live Slack destination. An empty value fails the
     // `GeneralNag` run as a terminal error rather than posting nowhere.
     let general_channel = std::env::var("SLACK_GENERAL_CHANNEL_ID").unwrap_or_default();
+    // `#finance`'s channel ID, where AIDA reads out the nightly Xero and
+    // IOLTA mirror. Same bot, same empty-value rule as `#general`: a run
+    // that reconciled but had nowhere to say so is a terminal error, not a
+    // silent success.
+    let finance_channel = std::env::var("SLACK_FINANCE_CHANNEL_ID").unwrap_or_default();
     tracing::info!(
         backend = if workflows_service::notify_config::slack_enabled(|k| std::env::var(k).ok()) {
             "Slack"
@@ -176,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
             ops_delivery,
             slack_bot,
             general_channel,
+            finance_channel,
             simulated_matters
         )
         .build(),

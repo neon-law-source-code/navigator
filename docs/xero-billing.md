@@ -141,6 +141,19 @@ it refused — an invoice with no matter reference, a deposit that does not sit 
 lines do not add up. This workflow only ever *reads* from Xero. Like every workflow, it is hosted by `workflows-service`
 — no per-workflow worker pod.
 
+### AIDA reads the night out in `#finance`
+
+After the mirror settles, the same run posts its report to Slack **`#finance`** as a second journaled step, so a retry
+of the post never re-runs the reconcile. It goes through the same Slack Web API bot that posts to `#general` — AIDA, as
+the workspace sees it — not a second token and not an incoming webhook. Invite that app to the channel and set
+`SLACK_FINANCE_CHANNEL_ID`; an unset id fails the run as a **terminal error** rather than reconciling with nowhere to
+report it.
+
+The copy is firm-internal: invoice counts, trust counts, and one line per matter that moved, naming the **Project code**
+and the **cents**. Never a client's name, email address, or portal link. Invoices whose Xero `Reference` names no matter
+are a **count** — dumping the Xero contact names behind them would put client identities in a channel that has no need
+for them. A simulated-matters deployment folds in the staging disclosure, the same signal `#general` gets.
+
 ## Production cutover
 
 1. Create the **live** custom connection (separate from the demo one) authorised against the firm's real organisation.

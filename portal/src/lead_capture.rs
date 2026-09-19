@@ -176,11 +176,7 @@ fn valid_phone(phone: &str) -> bool {
 
 fn safe_source_path(path: &str) -> String {
     let path = path.trim();
-    if path.starts_with('/')
-        && path.len() <= 256
-        && !path.chars().any(char::is_control)
-        && !path.contains("//")
-    {
+    if matches!(path, "/contact" | "/navigator" | "/services") {
         path.to_string()
     } else {
         "/leads".to_string()
@@ -262,6 +258,25 @@ mod tests {
             fields.push(("sms_consent", "on"));
         }
         encoded(&fields)
+    }
+
+    #[test]
+    fn source_path_accepts_only_routes_that_mount_the_lead_form() {
+        for path in ["/contact", "/navigator", "/services"] {
+            assert_eq!(safe_source_path(path), path);
+        }
+
+        for path in [
+            "/client-name",
+            "/services?utm_source=campaign",
+            "/services/client@example.com",
+        ] {
+            assert_eq!(
+                safe_source_path(path),
+                "/leads",
+                "browser-selected source path must not enter a lead or telemetry record: {path}"
+            );
+        }
     }
 
     #[tokio::test]

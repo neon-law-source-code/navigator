@@ -70,7 +70,7 @@ data:
             - job_name: otel-collector-self
               scrape_interval: 30s
               static_configs:
-                - targets: ["0.0.0.0:8888"]
+                - targets: ["${env:POD_IP}:8888"]
     processors:
       # Guard the collector's own memory before anything else in the chain.
       memory_limiter:
@@ -186,6 +186,23 @@ data:
           - confirmed
           - confirmation_required
           - routed_via_llm
+          # --- bounded public-visit dimensions (no identifiers) ---
+          - status_class
+          - locale
+          - source
+          - country
+          # --- sign-in and funnel enums and opaque ids ---
+          - provider
+          - reason
+          - brand
+          - first_link
+          - channel
+          - lead_id
+          - service_id
+          - sms_consent
+          # A public marketing route, never a raw URL or query string. The
+          # source subscriber drops suspicious values before they reach here.
+          - source_path
           # --- sanitized address fields (portal/src/audit_fields.rs) ---
           # The domain half of an address, never the local part: it names an
           # organization rather than a person. Absent these keys the redaction
@@ -319,6 +336,10 @@ spec:
           image: otel/opentelemetry-collector-contrib:0.116.1
           args: ["--config=/etc/otel/config.yaml"]
           env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             # Render-time opt-in coordinates. The renderer removes these two
             # entries, the exporter, and the pipeline fan-out when absent.
             - name: DASH0_ENDPOINT

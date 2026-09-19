@@ -5086,6 +5086,51 @@ spec:
     }
 
     #[test]
+    fn embedded_workloads_receive_pod_identity_for_telemetry() {
+        let subs = resolve_substitutions_for_deployment(
+            "neon-production",
+            "26.9.16",
+            env_getter(FULL_ENV),
+        )
+        .expect("full env resolves");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
+        let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
+            .expect("rendered GKE manifests build");
+
+        for (deployment_name, container_name) in
+            [(WEB_DEPLOYMENT, "web"), (WORKFLOWS_DEPLOYMENT, "worker")]
+        {
+            let deployment = manifest_doc(&manifests, "Deployment", deployment_name);
+            let container = deployment["spec"]["template"]["spec"]["containers"]
+                .as_sequence()
+                .expect("deployment containers")
+                .iter()
+                .find(|container| container["name"].as_str() == Some(container_name))
+                .unwrap_or_else(|| panic!("{deployment_name}/{container_name} container"));
+            assert_eq!(
+                container["env"]
+                    .as_sequence()
+                    .expect("container env")
+                    .iter()
+                    .find(|entry| entry["name"].as_str() == Some("POD_NAME"))
+                    .and_then(|entry| entry["valueFrom"]["fieldRef"]["fieldPath"].as_str()),
+                Some("metadata.name"),
+                "{deployment_name} must use the downward API for pod identity"
+            );
+            assert_eq!(
+                container["env"]
+                    .as_sequence()
+                    .expect("container env")
+                    .iter()
+                    .find(|entry| entry["name"].as_str() == Some("OTEL_RESOURCE_ATTRIBUTES"))
+                    .and_then(|entry| entry["value"].as_str()),
+                Some("k8s.pod.name=$(POD_NAME),service.instance.id=$(POD_NAME)"),
+                "{deployment_name} must carry pod identity on the shared resource"
+            );
+        }
+    }
+
+    #[test]
     fn images_render_from_the_registry_while_everything_else_renders_the_environment() {
         // The two projects are different and both must land: every image line
         // points at the hub CI publishes to, while the buckets and the GSA

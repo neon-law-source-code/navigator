@@ -141,6 +141,12 @@ spec:
               value: YOUR_ASSET_BASE_URL
             - name: OTEL_SERVICE_NAME
               value: navigator-web
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(POD_NAME),service.instance.id=$(POD_NAME)
             # OTEL_EXPORTER_OTLP_ENDPOINT is NOT declared inline: it comes in
             # via `envFrom` the shared `navigator-otel-env` ConfigMap below
             # (one source of truth for the collector URL). The base manifest's

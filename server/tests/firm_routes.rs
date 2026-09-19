@@ -219,8 +219,8 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
     assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("Equity") && body.contains("$5,000"));
     assert!(body.contains("W-2 onboarding and offboarding"));
-    assert!(body.contains("Equity and stock compensation agreements."));
-    assert!(body.contains("Your master services agreement, for your company to sell."));
+    assert!(body.contains("Equity and investor relations."));
+    assert!(body.contains("Your master services agreement for your company to sell."));
     assert!(body.contains("img/neon-home/neon-home-presentation.mp4"));
     assert!(body.contains("<video") && body.contains("video/mp4"));
     assert!(body.contains("href=\"/notations\""));

@@ -1085,6 +1085,27 @@ DEFINE FIELD OVERWRITE updated_at ON letter TYPE datetime DEFAULT time::now();
 -- The lawyer-tier listing scopes to the caller's participation (ENG-310).
 DEFINE INDEX OVERWRITE letter_project_id ON letter FIELDS project_id;
 
+-- `email_receipts`: one authenticated summary-intake admission. The identity
+-- is scoped by deployment and receiving mailbox, then keyed by the digest of
+-- the original raw message. The source Message-ID is evidence only: providers
+-- may reuse it for different content. `letter_id` is fixed at admission so a
+-- retry after a partial write can finish the same letter.
+DEFINE TABLE IF NOT EXISTS email_receipt SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE receiving_mailbox ON email_receipt TYPE string;
+DEFINE FIELD OVERWRITE deployment ON email_receipt TYPE string;
+DEFINE FIELD OVERWRITE raw_digest ON email_receipt TYPE string;
+DEFINE FIELD OVERWRITE source_message_id ON email_receipt TYPE option<string>;
+DEFINE FIELD OVERWRITE archive_key ON email_receipt TYPE string;
+DEFINE FIELD OVERWRITE letter_id ON email_receipt TYPE record<letter>;
+DEFINE FIELD OVERWRITE processing_state ON email_receipt TYPE string
+    ASSERT $value IN ['pending', 'archived'];
+DEFINE FIELD OVERWRITE delivery_state ON email_receipt TYPE string
+    ASSERT $value IN ['not_attempted'];
+DEFINE FIELD OVERWRITE inserted_at ON email_receipt TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON email_receipt TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE email_receipt_identity ON email_receipt
+    FIELDS receiving_mailbox, deployment, raw_digest UNIQUE;
+
 -- `questions`: one prompt presented to a respondent during template
 -- traversal. Seeded from template frontmatter by `cli import`, so the
 -- lawyer surface is a transparency listing only — no add, edit, or delete.

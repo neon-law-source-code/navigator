@@ -7,8 +7,11 @@
 //! `store::surreal::test_support::mem` so they don't share state.
 
 use axum::body::Body;
-use axum::http::{header, Request, StatusCode};
+use axum::http::{header, HeaderMap, Request, StatusCode};
+use base64::Engine;
 use http_body_util::BodyExt;
+use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+use p256::pkcs8::EncodePublicKey;
 use portal::workshops::{WorkshopChapter, WorkshopSection};
 use portal::{AppState, AuthConfig, CanonicalHost, SessionStore, WorkshopIndex, WorkshopMaterial};
 use scraper::{Html, Selector};
@@ -625,6 +628,7 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
             portal::attachment_scanner::FakeAttachmentScanner::clean(),
         ),
         inbound_email_secret: None,
+        summary_intake: None,
         email_events_secret: None,
         sendgrid_events_public_key: None,
         bootstrap_owner_email: None,
@@ -14060,6 +14064,113 @@ fn build_inbound_multipart(
     (content_type, body)
 }
 
+fn build_inbound_multipart_with_envelope(
+    from: &str,
+    display_to: &str,
+    envelope_to: &str,
+    subject: &str,
+    text: &str,
+    raw_email: &[u8],
+) -> (String, Vec<u8>) {
+    build_inbound_multipart_with_envelope_boundary(
+        from,
+        display_to,
+        envelope_to,
+        subject,
+        text,
+        raw_email,
+        "----navigator-summary-boundary",
+    )
+}
+
+fn build_inbound_multipart_with_envelope_boundary(
+    from: &str,
+    display_to: &str,
+    envelope_to: &str,
+    subject: &str,
+    text: &str,
+    raw_email: &[u8],
+    boundary: &str,
+) -> (String, Vec<u8>) {
+    let mut body = Vec::new();
+    let mut text_part = |name: &str, value: &str| {
+        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        body.extend_from_slice(
+            format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
+        );
+        body.extend_from_slice(value.as_bytes());
+        body.extend_from_slice(b"\r\n");
+    };
+    text_part("from", from);
+    text_part("to", display_to);
+    text_part(
+        "envelope",
+        &format!(r#"{{"to":["{envelope_to}"],"from":"{from}"}}"#),
+    );
+    text_part("subject", subject);
+    text_part("text", text);
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"email\"\r\nContent-Type: message/rfc822\r\n\r\n",
+    );
+    body.extend_from_slice(raw_email);
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+fn summary_test_key() -> (String, HeaderMap) {
+    let signing_key = SigningKey::from_slice(&[0x42_u8; 32]).expect("valid test key");
+    let standard = base64::engine::general_purpose::STANDARD;
+    let public_key = standard.encode(
+        signing_key
+            .verifying_key()
+            .to_public_key_der()
+            .expect("encode test key")
+            .as_bytes(),
+    );
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("test clock after epoch")
+        .as_secs()
+        .to_string();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        portal::inbound_email::SUMMARY_TIMESTAMP_HEADER,
+        timestamp.parse().expect("timestamp header"),
+    );
+    (public_key, headers)
+}
+
+fn sign_summary_body(headers: &mut HeaderMap, body: &[u8]) {
+    let signing_key = SigningKey::from_slice(&[0x42_u8; 32]).expect("valid test key");
+    let timestamp = headers
+        .get(portal::inbound_email::SUMMARY_TIMESTAMP_HEADER)
+        .expect("timestamp")
+        .to_str()
+        .expect("timestamp text");
+    let mut payload = timestamp.as_bytes().to_vec();
+    payload.extend_from_slice(body);
+    let signature: Signature = signing_key.sign(&payload);
+    headers.insert(
+        portal::inbound_email::SUMMARY_SIGNATURE_HEADER,
+        base64::engine::general_purpose::STANDARD
+            .encode(signature.to_der().as_bytes())
+            .parse()
+            .expect("signature header"),
+    );
+}
+
+fn with_headers(
+    mut builder: axum::http::request::Builder,
+    headers: &HeaderMap,
+) -> axum::http::request::Builder {
+    for (name, value) in headers {
+        builder = builder.header(name, value);
+    }
+    builder
+}
+
 #[tokio::test]
 async fn admin_send_welcome_writes_audit_row_and_redirects() {
     // Wrap the dev CapturingEmail in LoggingEmail so the audit decorator
@@ -14410,6 +14521,194 @@ async fn sendgrid_inbound_webhook_persists_letter_and_stores_raw_email() {
     // the public get method against the known prefix is exercised
     // by separate storage tests.)
     drop(storage);
+}
+
+#[tokio::test]
+async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
+    let (mut state, surreal) = state_with_engines().await;
+    state.storage = Arc::new(
+        cloud::FsStorage::new(
+            std::env::temp_dir().join(format!("navigator-summary-{}", uuid::Uuid::now_v7())),
+        )
+        .await
+        .unwrap(),
+    );
+    let addr = store::addresses::create(
+        &surreal,
+        &store::addresses::NewAddress {
+            line1: "1 Test".into(),
+            city: "Reno".into(),
+            region: "NV".into(),
+            postal_code: "89501".into(),
+            country: "US".into(),
+            ..store::addresses::NewAddress::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::mailrooms::create(&surreal, "HQ", addr.id)
+        .await
+        .unwrap();
+    let (public_key, mut headers) = summary_test_key();
+    state.summary_intake = Some(portal::inbound_email::SummaryIntakeConfig {
+        envelope_recipients: vec!["support@example.com".into()],
+        inbound_public_key: public_key,
+        deployment: "staging".into(),
+    });
+    let raw = b"Message-ID: <receipt@example.com>\r\nFrom: aries@example.com\r\nTo: forged@example.com\r\nSubject: Summary\r\n\r\nBody";
+    let (content_type, body) = build_inbound_multipart_with_envelope(
+        "aries@example.com",
+        "forged@example.com",
+        "support@example.com",
+        "Summary",
+        "Body",
+        raw,
+    );
+    sign_summary_body(&mut headers, &body);
+    let response = with_headers(
+        Request::builder()
+            .method("POST")
+            .uri("/webhook/sendgrid/inbound/any-token-in-dev")
+            .header("content-type", content_type),
+        &headers,
+    )
+    .body(Body::from(body.clone()))
+    .unwrap();
+    let response = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    )
+    .oneshot(response)
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(store::letters::list_all(&surreal).await.unwrap().len(), 1);
+    assert_eq!(store::email_receipts::count(&surreal).await.unwrap(), 1);
+    let letters = store::letters::list_all(&surreal).await.unwrap();
+    assert_eq!(letters[0].recipient, "support@example.com");
+    let objects = state.storage.list("inbound/").await.unwrap();
+    assert_eq!(objects.len(), 1);
+    assert_eq!(state.storage.get(&objects[0].key).await.unwrap().bytes, raw);
+
+    let (retry_content_type, retry_body) = build_inbound_multipart_with_envelope_boundary(
+        "aries@example.com",
+        "forged@example.com",
+        "support@example.com",
+        "Summary",
+        "Body",
+        raw,
+        "----navigator-summary-boundary-retry",
+    );
+    let (_retry_public_key, mut retry_headers) = summary_test_key();
+    sign_summary_body(&mut retry_headers, &retry_body);
+    let response = with_headers(
+        Request::builder()
+            .method("POST")
+            .uri("/webhook/sendgrid/inbound/any-token-in-dev")
+            .header("content-type", retry_content_type),
+        &retry_headers,
+    )
+    .body(Body::from(retry_body))
+    .unwrap();
+    let response = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    )
+    .oneshot(response)
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(store::letters::list_all(&surreal).await.unwrap().len(), 1);
+    assert_eq!(store::email_receipts::count(&surreal).await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn summary_intake_rejects_tampered_body_and_missing_envelope() {
+    let (mut state, _surreal) = state_with_engines().await;
+    let (public_key, mut headers) = summary_test_key();
+    state.summary_intake = Some(portal::inbound_email::SummaryIntakeConfig {
+        envelope_recipients: vec!["support@example.com".into()],
+        inbound_public_key: public_key,
+        deployment: "staging".into(),
+    });
+    let raw = b"From: aries@example.com\r\nTo: support@example.com\r\nSubject: Summary\r\n\r\nBody";
+    let (content_type, body) = build_inbound_multipart_with_envelope(
+        "aries@example.com",
+        "support@example.com",
+        "support@example.com",
+        "Summary",
+        "Body",
+        raw,
+    );
+    sign_summary_body(&mut headers, &body);
+    let tampered = [body.clone(), b"tampered".to_vec()].concat();
+    let response = with_headers(
+        Request::builder()
+            .method("POST")
+            .uri("/webhook/sendgrid/inbound/any-token-in-dev")
+            .header("content-type", content_type),
+        &headers,
+    )
+    .body(Body::from(tampered))
+    .unwrap();
+    let response = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    )
+    .oneshot(response)
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let (content_type, body) = build_inbound_multipart(
+        "aries@example.com",
+        "support@example.com",
+        "Summary",
+        "Body",
+        raw,
+    );
+    sign_summary_body(&mut headers, &body);
+    let response = with_headers(
+        Request::builder()
+            .method("POST")
+            .uri("/webhook/sendgrid/inbound/any-token-in-dev")
+            .header("content-type", content_type),
+        &headers,
+    )
+    .body(Body::from(body))
+    .unwrap();
+    let response = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    )
+    .oneshot(response)
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let (content_type, body) = build_inbound_multipart_with_envelope(
+        "aries@example.com",
+        "support@example.com",
+        "support@example.com",
+        "Summary",
+        "Body",
+        b"",
+    );
+    sign_summary_body(&mut headers, &body);
+    let response = with_headers(
+        Request::builder()
+            .method("POST")
+            .uri("/webhook/sendgrid/inbound/any-token-in-dev")
+            .header("content-type", content_type),
+        &headers,
+    )
+    .body(Body::from(body))
+    .unwrap();
+    let response = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR))
+        .oneshot(response)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

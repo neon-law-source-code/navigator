@@ -19,20 +19,63 @@
 //! `None` and any token is accepted; in production the deploy
 //! invariant requires the env var, so a missing secret crashes the
 //! binary at boot rather than silently letting the world POST mail
-//! at us. HMAC verification of SendGrid's signed-event header is the
-//! natural next layer once Twilio finalizes the signing format.
+//! at us. The opt-in summary lane additionally verifies a separate signed
+//! event header over the original multipart bytes before parsing; the legacy
+//! lane keeps the path-secret contract unchanged.
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Multipart, Path, State};
-use axum::http::StatusCode;
+use axum::body::{Body, Bytes};
+use axum::extract::{FromRequest, Multipart, Path, State};
+use axum::http::{HeaderMap, Request, StatusCode};
 use axum::response::IntoResponse;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use cloud::StorageService;
 
 use crate::attachment_scanner::{AttachmentScanner, ScanError, ScanVerdict};
 use crate::audit_fields::domain_of;
+use crate::webhook_auth::verify_ecdsa_p256_der_b64;
+
+pub const SUMMARY_SIGNATURE_HEADER: &str = "x-twilio-email-event-webhook-signature";
+pub const SUMMARY_TIMESTAMP_HEADER: &str = "x-twilio-email-event-webhook-timestamp";
+const SUMMARY_TIMESTAMP_MAX_AGE_SECONDS: i64 = 86_400;
+const SUMMARY_TIMESTAMP_MAX_FUTURE_SECONDS: i64 = 300;
+
+/// Opt-in authentication and routing for the summary-only intake lane.
+///
+/// The hosting layer deliberately leaves this absent until the durable
+/// handoff is wired. Tests and the later feature-configuration issue can
+/// provide it explicitly without changing the legacy SendGrid path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SummaryIntakeConfig {
+    pub envelope_recipients: Vec<String>,
+    pub inbound_public_key: String,
+    pub deployment: String,
+}
+
+impl SummaryIntakeConfig {
+    #[must_use]
+    pub fn matches_envelope(&self, envelope: &SmtpEnvelope) -> bool {
+        envelope.to.iter().any(|candidate| {
+            self.envelope_recipients
+                .iter()
+                .any(|configured| normalize_address(candidate) == normalize_address(configured))
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct SmtpEnvelope {
+    #[serde(default)]
+    pub to: Vec<String>,
+    #[serde(default)]
+    pub from: Option<String>,
+}
 
 /// SendGrid accepts complete inbound messages up to 30 MB. This is also the
 /// scanner's per-attachment ceiling, and the router applies it to the full
@@ -59,6 +102,9 @@ pub struct InboundAttachment {
 pub struct InboundEmail {
     pub from: String,
     pub to: String,
+    /// SendGrid's SMTP envelope, separate from display headers. Only this
+    /// value is routing authority for the opt-in summary lane.
+    pub envelope: Option<SmtpEnvelope>,
     pub subject: String,
     pub text: String,
     pub raw: Vec<u8>,
@@ -113,6 +159,8 @@ pub fn is_attachment_field(name: &str) -> bool {
 pub enum InboundError {
     #[error("missing required field: {0}")]
     MissingField(&'static str),
+    #[error("invalid SMTP envelope")]
+    InvalidEnvelope,
     #[error("malformed multipart payload: {0}")]
     Multipart(String),
     #[error("no mailroom configured to route inbound mail through")]
@@ -123,6 +171,8 @@ pub enum InboundError {
     Database(String),
     #[error("unauthorized: webhook secret mismatch")]
     Unauthorized,
+    #[error("unauthorized: missing or invalid summary signature")]
+    UnauthorizedSignature,
     #[error("attachment scanner failed: {0}")]
     Scanner(#[from] ScanError),
 }
@@ -130,10 +180,12 @@ pub enum InboundError {
 impl IntoResponse for InboundError {
     fn into_response(self) -> axum::response::Response {
         let code = match &self {
-            Self::MissingField(_) | Self::Multipart(_) => StatusCode::BAD_REQUEST,
+            Self::MissingField(_) | Self::InvalidEnvelope | Self::Multipart(_) => {
+                StatusCode::BAD_REQUEST
+            }
             Self::NoMailroom | Self::Scanner(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Storage(_) | Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Unauthorized | Self::UnauthorizedSignature => StatusCode::UNAUTHORIZED,
         };
         (code, self.to_string()).into_response()
     }
@@ -184,6 +236,108 @@ pub fn constant_time_eq(a: &str, b: &str) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+fn normalize_address(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
+fn parse_envelope(value: &str) -> Result<SmtpEnvelope, InboundError> {
+    serde_json::from_str(value).map_err(|_| InboundError::InvalidEnvelope)
+}
+
+fn verify_summary_signature(
+    config: &SummaryIntakeConfig,
+    headers: &HeaderMap,
+    body: &[u8],
+    now: SystemTime,
+) -> Result<(), InboundError> {
+    let signature = headers
+        .get(SUMMARY_SIGNATURE_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .ok_or(InboundError::UnauthorizedSignature)?;
+    let timestamp = headers
+        .get(SUMMARY_TIMESTAMP_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .ok_or(InboundError::UnauthorizedSignature)?;
+    let timestamp_seconds = timestamp
+        .parse::<i64>()
+        .map_err(|_| InboundError::UnauthorizedSignature)?;
+    let now_seconds: i64 = now
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| InboundError::UnauthorizedSignature)?
+        .as_secs()
+        .try_into()
+        .map_err(|_| InboundError::UnauthorizedSignature)?;
+    if timestamp_seconds > now_seconds.saturating_add(SUMMARY_TIMESTAMP_MAX_FUTURE_SECONDS)
+        || now_seconds.saturating_sub(timestamp_seconds) > SUMMARY_TIMESTAMP_MAX_AGE_SECONDS
+    {
+        return Err(InboundError::UnauthorizedSignature);
+    }
+    let mut signed_payload = timestamp.as_bytes().to_vec();
+    signed_payload.extend_from_slice(body);
+    if !verify_ecdsa_p256_der_b64(&config.inbound_public_key, &signed_payload, signature) {
+        return Err(InboundError::UnauthorizedSignature);
+    }
+    Ok(())
+}
+
+/// Digest the immutable raw message with the receiving mailbox and deployment
+/// scope. The outer multipart boundary is not part of the digest, so a retry
+/// with a different boundary reaches the same receipt and archive.
+#[must_use]
+pub fn summary_raw_digest(config: &SummaryIntakeConfig, email: &InboundEmail) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(config.deployment.as_bytes());
+    hasher.update([0]);
+    let mailbox = config
+        .envelope_recipients
+        .iter()
+        .find(|recipient| {
+            email.envelope.as_ref().is_some_and(|envelope| {
+                envelope
+                    .to
+                    .iter()
+                    .any(|candidate| normalize_address(candidate) == normalize_address(recipient))
+            })
+        })
+        .map_or_else(String::new, |recipient| normalize_address(recipient));
+    hasher.update(mailbox.as_bytes());
+    hasher.update([0]);
+    hasher.update(&email.raw);
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
+}
+
+fn stable_uuid_from_digest(digest: &str) -> Uuid {
+    let bytes = digest.as_bytes();
+    let mut raw = [0_u8; 16];
+    for (index, slot) in raw.iter_mut().enumerate() {
+        let high = hex_digit(bytes[index * 2]);
+        let low = hex_digit(bytes[index * 2 + 1]);
+        *slot = (high << 4) | low;
+    }
+    raw[6] = (raw[6] & 0x0f) | 0x50;
+    raw[8] = (raw[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(raw)
+}
+
+fn hex_digit(byte: u8) -> u8 {
+    match byte {
+        b'0'..=b'9' => byte - b'0',
+        b'a'..=b'f' => byte - b'a' + 10,
+        b'A'..=b'F' => byte - b'A' + 10,
+        _ => 0,
+    }
+}
+
+#[must_use]
+pub fn summary_archive_key(digest: &str) -> String {
+    format!("inbound/{digest}.eml")
 }
 
 /// Pull every relevant field off the multipart body and assemble an
@@ -245,6 +399,9 @@ pub async fn parse_multipart(mut form: Multipart) -> Result<InboundEmail, Inboun
             "to" => {
                 out.to = value;
                 saw_to = true;
+            }
+            "envelope" => {
+                out.envelope = Some(parse_envelope(&value)?);
             }
             "subject" => {
                 out.subject = value;
@@ -413,6 +570,101 @@ pub async fn persist(
     Ok(key)
 }
 
+/// Persist one summary-lane receipt, archive, and letter. Every derived key
+/// is stable for the scoped raw-message digest, so retries can complete a
+/// partial attempt without allocating another object or letter.
+pub async fn persist_summary(
+    surreal: &store::surreal::SurrealDb,
+    storage: &Arc<dyn StorageService>,
+    config: &SummaryIntakeConfig,
+    email: &InboundEmail,
+) -> Result<store::email_receipts::EmailReceipt, InboundError> {
+    let mailrooms = store::mailrooms::list_all(surreal)
+        .await
+        .map_err(|e| InboundError::Database(e.to_string()))?;
+    let mailroom_id = mailrooms
+        .first()
+        .map(|mailroom| mailroom.id)
+        .ok_or(InboundError::NoMailroom)?;
+    let digest = summary_raw_digest(config, email);
+    let archive_key = summary_archive_key(&digest);
+    let letter_id = stable_uuid_from_digest(&digest);
+    let Some(receiving_mailbox) = email
+        .envelope
+        .as_ref()
+        .and_then(|envelope| {
+            envelope.to.iter().find(|candidate| {
+                config
+                    .envelope_recipients
+                    .iter()
+                    .any(|configured| normalize_address(candidate) == normalize_address(configured))
+            })
+        })
+        .map(|value| normalize_address(value))
+    else {
+        return Err(InboundError::InvalidEnvelope);
+    };
+    let ensured = store::email_receipts::ensure(
+        surreal,
+        &store::email_receipts::NewEmailReceipt {
+            receiving_mailbox: &receiving_mailbox,
+            deployment: &config.deployment,
+            raw_digest: &digest,
+            source_message_id: email.message_id.as_deref(),
+            archive_key: &archive_key,
+            letter_id,
+        },
+    )
+    .await
+    .map_err(|e| InboundError::Database(e.to_string()))?;
+
+    storage
+        .put(&archive_key, &email.raw, "message/rfc822")
+        .await
+        .map_err(|e| InboundError::Storage(e.to_string()))?;
+
+    if store::letters::find_by_id(surreal, letter_id)
+        .await
+        .map_err(|e| InboundError::Database(e.to_string()))?
+        .is_none()
+    {
+        let new_letter = store::letters::NewLetter {
+            mailroom_id,
+            project_id: None,
+            direction: store::letters::DIRECTION_INCOMING.to_string(),
+            sender: email.from.clone(),
+            recipient: receiving_mailbox,
+            summary: email.subject.clone(),
+        };
+        match store::letters::record_with_id(surreal, letter_id, &new_letter).await {
+            Ok(_) => {}
+            Err(error) => {
+                let recovered = store::letters::find_by_id(surreal, letter_id)
+                    .await
+                    .map_err(|e| InboundError::Database(e.to_string()))?;
+                if recovered.is_none() {
+                    return Err(InboundError::Database(error.to_string()));
+                }
+            }
+        }
+    }
+    store::email_receipts::mark_archived(surreal, ensured.receipt.id)
+        .await
+        .map_err(|e| InboundError::Database(e.to_string()))?;
+    let receipt = store::email_receipts::find(
+        surreal,
+        &ensured.receipt.receiving_mailbox,
+        &ensured.receipt.deployment,
+        &ensured.receipt.raw_digest,
+    )
+    .await
+    .map_err(|e| InboundError::Database(e.to_string()))?
+    .ok_or(InboundError::Database(
+        "receipt disappeared after update".into(),
+    ))?;
+    Ok(receipt)
+}
+
 /// Webhook handler — verifies the path-embedded secret, parses the
 /// multipart, persists, returns 200.
 ///
@@ -424,7 +676,8 @@ pub async fn persist(
 pub async fn webhook(
     State(state): State<crate::AppState>,
     Path(provided): Path<String>,
-    form: Multipart,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Result<StatusCode, InboundError> {
     if let Some(configured) = state.inbound_email_secret.as_deref() {
         if !constant_time_eq(&provided, configured) {
@@ -432,7 +685,28 @@ pub async fn webhook(
             return Err(InboundError::Unauthorized);
         }
     }
+    if let Some(config) = state.summary_intake.as_ref() {
+        verify_summary_signature(config, &headers, &body, SystemTime::now())?;
+    }
+    let mut request = Request::new(Body::from(body));
+    *request.headers_mut() = headers;
+    let form = Multipart::from_request(request, &state)
+        .await
+        .map_err(|error| InboundError::Multipart(error.to_string()))?;
     let mut email = parse_multipart(form).await?;
+    let summary_config = state.summary_intake.as_ref();
+    let summary_eligible = if let Some(config) = summary_config {
+        let envelope = email
+            .envelope
+            .as_ref()
+            .ok_or(InboundError::MissingField("envelope"))?;
+        config.matches_envelope(envelope)
+    } else {
+        false
+    };
+    if summary_eligible && email.raw.is_empty() {
+        return Err(InboundError::MissingField("email"));
+    }
     // Any scanner error returns 503 before storage, conversation,
     // notification, or document side effects.
     scan_attachments(state.attachment_scanner.as_ref(), &mut email).await?;
@@ -451,6 +725,12 @@ pub async fn webhook(
         attachments = email.attachments.len(),
         "inbound parse received"
     );
+    if summary_eligible {
+        if let Some(config) = summary_config {
+            persist_summary(&state.surreal, &state.storage, config, &email).await?;
+        }
+        return Ok(StatusCode::ACCEPTED);
+    }
     let raw_key = persist(&state.surreal, &state.storage, &email).await?;
 
     // Thread the message into a support conversation when the feature is
@@ -533,6 +813,7 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
             signature: "Eicar-Signature".into(),
         }));
         let mut email = InboundEmail {
+            envelope: None,
             attachments: vec![InboundAttachment {
                 filename: "eicar.txt".into(),
                 content_type: "text/plain".into(),
@@ -551,6 +832,7 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
     async fn scanner_error_fails_closed_without_retaining_bytes() {
         let scanner = FakeAttachmentScanner::new(Err(ScanError::Timeout));
         let mut email = InboundEmail {
+            envelope: None,
             attachments: vec![InboundAttachment {
                 filename: "document.pdf".into(),
                 content_type: "application/pdf".into(),
@@ -607,6 +889,7 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
         let email = InboundEmail {
             from: "Aries <aries@example.com>".into(),
             to: "support@example.com".into(),
+            envelope: None,
             subject: "Hello".into(),
             text: String::new(),
             raw: vec![],
@@ -628,6 +911,7 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
     fn storage_key_truncates_long_sender_slugs() {
         let email = InboundEmail {
             from: "a".repeat(200),
+            envelope: None,
             ..Default::default()
         };
         let key = storage_key_for(&email);

@@ -148,6 +148,7 @@ pub async fn app_state(surreal: store::surreal::SurrealDb) -> AppState {
         email: Arc::new(crate::email::CapturingEmail::new()),
         attachment_scanner: Arc::new(crate::attachment_scanner::FakeAttachmentScanner::clean()),
         inbound_email_secret: None,
+        summary_intake: None,
         email_events_secret: None,
         sendgrid_events_public_key: None,
         bootstrap_owner_email: None,

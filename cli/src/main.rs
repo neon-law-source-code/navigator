@@ -1029,6 +1029,8 @@ enum DevCmd {
     /// worker or shared workflow code; `dev up` does this automatically
     /// while creating a dependency tier.
     WorkerReload,
+    /// Serve the local website, rebuild Rust/catalog changes, and refresh browsers.
+    Serve,
     /// Build the Dioxus client bundle (issue #641): drive `dx` to compile the
     /// `webapp` crate to `wasm32-unknown-unknown` and stage it under
     /// `server/public/dioxus`, where `web` serves it same-origin to hydrate the

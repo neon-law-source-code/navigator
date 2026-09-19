@@ -87,6 +87,8 @@ pub mod brand_edit;
 pub mod brand_fonts;
 pub mod brand_tokens;
 pub mod cron_schedules;
+#[cfg(debug_assertions)]
+mod dev_reload;
 // The billing-provider seam moved to the `billing` crate so the
 // worker-side `billing-workflows` can share it. Re-exported here so
 // existing `portal::billing` / `portal::xero_auth` paths keep resolving.

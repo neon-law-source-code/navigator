@@ -40,6 +40,7 @@ mod orchestrate;
 pub(crate) mod registry;
 mod runtime;
 mod sample_project;
+mod serve;
 mod ship;
 mod signed_commits;
 mod staging;
@@ -770,6 +771,7 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             Ok(())
         }
         crate::Command::Dev(crate::DevCmd::WorkerReload) => reload_worker(&cfg),
+        crate::Command::Dev(crate::DevCmd::Serve) => serve::run(),
         crate::Command::Dev(crate::DevCmd::BuildWebapp { release }) => webapp::build(release),
         crate::Command::Dev(crate::DevCmd::Staging(action)) => staging::dispatch_kind(action, &cfg),
         crate::Command::Dev(crate::DevCmd::Kind(crate::KindCmd::Up)) => kind_up_only(&cfg),

@@ -112,7 +112,7 @@ async fn the_terms_and_the_footer_name_the_same_engagement_entity() {
 
     // The footer's legal person, which since #145 is the copyright line.
     assert!(
-        collapsed.contains(&format!("© 2026 {entity}")),
+        collapsed.contains("© 2026") && collapsed.contains(entity),
         "the footer must name {entity}: {collapsed}"
     );
     // The body's engagement sentence — the one that says when the relationship

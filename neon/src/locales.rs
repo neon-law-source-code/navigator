@@ -666,6 +666,47 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
             )
             .collect(),
         provenance: copy.provenance.map(provenance_to_home),
+        company: copy.company.map(|copy| webapp::home::CompanyContent {
+            booking_href: copy.booking_href,
+            pricing_link: copy.pricing_link,
+            hero_note: copy.hero_note,
+            flow_caption: copy.flow_caption,
+            flow_steps: copy.flow_steps,
+            packages: copy.packages,
+            pause_label: copy.pause_label,
+            pricing_heading: copy.pricing_heading,
+            video_label: copy.video_label,
+            video_src: views::assets::asset_url(views::assets::HOME_PRESENTATION_KEY),
+            membership_label: copy.membership_label,
+            membership_price: copy.membership_price,
+            membership_unit: copy.membership_unit,
+            membership_body: copy.membership_body,
+            membership_features: copy.membership_features,
+            review_heading: copy.review_heading,
+            review_body: copy.review_body,
+            review_columns: copy.review_columns,
+            review_rows: copy.review_rows,
+            review_note: copy.review_note,
+            drafting_heading: copy.drafting_heading,
+            drafting_packages: copy.drafting_packages,
+            closing_heading: copy.closing_heading,
+            closing_body: copy.closing_body,
+            litigation_heading: copy.litigation_heading,
+            litigation_link: copy.litigation_link,
+            litigation_price: copy.litigation_price,
+            litigation_unit: copy.litigation_unit,
+            litigation_body: copy.litigation_body,
+            litigation_note: copy.litigation_note,
+            people_heading: copy.people_heading,
+            people_body: copy.people_body,
+            immigration_label: copy.immigration_label,
+            estate_label: copy.estate_label,
+            navigator_heading: copy.navigator_heading,
+            navigator_body: copy.navigator_body,
+            navigator_link: copy.navigator_link,
+            source_label: copy.source_label,
+            source_note: copy.source_note,
+        }),
         // Every brand that loads a `home.yaml` publishes an ordinary
         // marketing page; only Lawyer Shook's hardcoded holding statement
         // (`neon::firm_pages::lawyer_shook_holding_content`) sets `bare`.
@@ -756,6 +797,23 @@ mod tests {
     use views::locales::parse_locale_file;
     use webapp::marketing_page::Band as RenderedBand;
 
+    #[test]
+    fn home_company_contract_publishes_membership_and_separate_review_prices() {
+        let copy: serde_yaml::Value = serde_yaml::from_str(NEON_HOME_YAML).unwrap();
+        let company = &copy["company"];
+        assert_eq!(company["membership_price"].as_str(), Some("$50"));
+        assert_eq!(company["review_rows"][0][1].as_str(), Some("$100"));
+        assert_eq!(company["review_rows"][2][2].as_str(), Some("$5,000"));
+        assert!(company["review_note"]
+            .as_str()
+            .unwrap()
+            .contains("5 p.m. PST"));
+        assert!(company["source_note"]
+            .as_str()
+            .unwrap()
+            .contains("BUSL-1.1"));
+    }
+
     /// The shipped shared catalog is the contract both repositories consume.
     /// If it stops parsing, the export the other repository pins stops being
     /// producible — so this fails here rather than in the exporter.
@@ -799,7 +857,7 @@ mod tests {
     /// The shared catalog is not decoration: the pages that reference it must
     /// actually be the ones that carry the duplicated sentences.
     #[test]
-    fn the_shared_catalog_is_the_source_the_neon_pages_read() {
+    fn shared_copy_is_consumed_by_pages_or_the_exported_home_contract() {
         let mut referenced: std::collections::BTreeSet<String> = BrandKey::ALL
             .iter()
             .flat_map(|key| {
@@ -816,7 +874,13 @@ mod tests {
             "lead.phone_helper".to_string(),
             "lead.sms_label".to_string(),
         ]);
-        for key in shared_catalog().keys() {
+        // The versioned home keys remain part of the navigator-ux export.
+        // Neon's company offer is authored in its own home catalog.
+        for key in shared_catalog()
+            .keys()
+            .into_iter()
+            .filter(|key| !key.starts_with("home."))
+        {
             assert!(
                 referenced.contains(key),
                 "`{key}` is authored in the shared catalog but no page reads it"
@@ -963,25 +1027,9 @@ mod tests {
             content.contact_href,
             format!("mailto:{}", views::brand::firm_email())
         );
-        assert_eq!(content.heading, "What does your technology company need?");
-        assert!(content
-            .service
-            .as_ref()
-            .is_some_and(|service| service.heading == "Everyone deserves to be seen."));
-        assert_eq!(
-            content
-                .practices
-                .iter()
-                .map(|practice| practice.heading.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "Fractional general counsel",
-                "Individual services",
-                "Disputes",
-            ],
-            "the plan chooser leads with the counsel relationship and no \
-             longer offers a consumer plan"
-        );
+        assert_eq!(content.heading, "Keep building.");
+        assert!(content.company.is_some());
+        assert!(content.practices.is_empty());
     }
 
     /// The firm's own site markets to emerging technology companies alone.

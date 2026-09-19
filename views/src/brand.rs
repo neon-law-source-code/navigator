@@ -137,27 +137,11 @@ impl NavLink {
     }
 }
 
-/// The firm's header navigation, in the same order the home page's practice
-/// cards publish: the company-counsel plan, the consumer legal plan, the
-/// flat-fee schedule, then the disputes practice.
-///
-/// `/business` (fractional general counsel) is the company-counsel plan,
-/// `/services` the flat-fee schedule of routine one-time matters — which
-/// requires an active plan — and `/disputes` the litigation practice. The plan
-/// leads because an emerging technology company reading the header is the
-/// reader the whole site is for.
-///
-/// Every entry is the firm's own work, and no label here repeats in
-/// [`FIRM_FOOTER_NAV`] — see the
-/// `the_footer_nav_carries_what_the_header_does_not` assertion.
-///
-/// Everything a reader looks for second — the Blog, Navigator, how to reach
-/// the firm — stays in [`FIRM_FOOTER_NAV`].
-const FIRM_NAV: &[NavLink] = &[
-    NavLink::leaf("Business", "/business"),
-    NavLink::leaf("Services", "/services"),
-    NavLink::leaf("Disputes", "/disputes"),
-];
+/// The company's public offer lives on one page; the next step is a call.
+const FIRM_NAV: &[NavLink] = &[NavLink::leaf(
+    "Book Consultation",
+    "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+)];
 
 /// The rest of the firm's public surface, rendered in the footer rather than the
 /// header, and ordered alphabetically by label.
@@ -895,13 +879,22 @@ impl BrandKey {
 
     /// English catalog stems this key ships under `locales/en/<key>/`.
     ///
-    /// Neon publishes every page in [`crate::locales::KNOWN_PAGES`]. A house
-    /// brand ships only the stems it actually serves; a missing file is a
-    /// loader-test failure, not a first-request panic. Lawyer Shook's `/` is
-    /// a hardcoded bare statement rather than a YAML page (there is no
-    /// marketing copy to edit), so `home` is absent from its list even
-    /// though `/services` still builds from a catalog file — the route is
-    /// gated off by [`Self::publishes_firm_path`], not the file removed.
+    /// This is the list of *files a key ships*, not the list of paths it
+    /// answers: [`Self::publishes_firm_path`] is the route gate. Neon still
+    /// ships every stem in [`crate::locales::KNOWN_PAGES`] — `fractional-gc`,
+    /// `litigation` and `services` remain authored, and remain the only
+    /// readers of their `{shared:…}` keys — even though the firm now
+    /// consolidates its offer on `/` and answers none of those three paths.
+    /// Dropping a stem here while the file still ships would strand its shared
+    /// copy, which `shared_copy_is_consumed_by_pages_or_the_exported_home_contract`
+    /// fails on.
+    ///
+    /// A house brand ships only the stems it actually serves; a missing file is
+    /// a loader-test failure, not a first-request panic. Lawyer Shook's `/` is a
+    /// hardcoded bare statement rather than a YAML page (there is no marketing
+    /// copy to edit), so `home` is absent from its list even though `/services`
+    /// still builds from a catalog file — the route is gated off by
+    /// [`Self::publishes_firm_path`], not the file removed.
     #[must_use]
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
@@ -921,7 +914,7 @@ impl BrandKey {
 
     /// Firm marketing paths this key answers on its own hosts.
     ///
-    /// Neon answers every firm page the crate mounts. DeleteYourData answers
+    /// Neon consolidates its services on `/`. DeleteYourData answers
     /// only the pages it has a catalog for (plus `/contact`, which is
     /// addresses rather than a YAML stem). Lawyer Shook is a bare holding
     /// notice for Shook Law PLLC, not a marketing site: it answers `/` alone.
@@ -930,7 +923,10 @@ impl BrandKey {
     #[must_use]
     pub fn publishes_firm_path(self, path: &str) -> bool {
         match self {
-            Self::Neon => true,
+            Self::Neon => !matches!(
+                path.trim_end_matches('/'),
+                "/business" | "/services" | "/disputes"
+            ),
             Self::DeleteYourData => matches!(path, "/" | "/services" | "/contact"),
             Self::LawyerShook => path == "/",
             Self::Vesta
@@ -1997,52 +1993,16 @@ mod tests {
         }
     }
 
-    /// The firm's header matches the order the home page's practice cards
-    /// publish: the two plans, then the fee schedule, then disputes.
-    ///
-    /// Team used to close the row, and the nonprofit's home after it. Both
-    /// pages were retired outright — routers, views, path constants, sitemap
-    /// and llms.txt rows — so a header entry for either would now be a link to
-    /// a retired URL.
     #[test]
-    fn the_firm_nav_matches_the_home_page_card_order() {
-        let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
-        assert_eq!(labels, ["Business", "Services", "Disputes"]);
+    fn the_firm_nav_leads_to_consultation_booking() {
+        assert_eq!(FIRM_BRAND.nav.len(), 1);
+        assert_eq!(FIRM_BRAND.nav[0].label, "Book Consultation");
         assert_eq!(
-            FIRM_BRAND.nav.first().map(|link| link.href),
-            Some("/business"),
-            "the header leads with the same practice the home page cards lead with"
-        );
-        assert_eq!(
-            FIRM_BRAND.nav.last().map(|link| link.href),
-            Some("/disputes"),
-            "the header closes with the same practice the home page cards close with"
-        );
-        assert!(
-            FIRM_BRAND.nav.iter().all(|link| !link.is_dropdown()),
-            "every firm nav link is a flat leaf"
+            FIRM_BRAND.nav[0].href,
+            "https://calendar.notion.so/meet/shicholas/or15n4yy7"
         );
     }
 
-    /// API, Blog, Contact, Docs, Navigator, Notations, Presentations, Privacy,
-    /// Team, Terms, UX, and Workshops are the routes the header does not
-    /// carry, ordered alphabetically by label. They are still linked from
-    /// every public page — a route in neither row is stranded, which is the
-    /// failure this pairs with the test above to catch.
-    ///
-    /// Workshops joined the row when the classes became public, and Docs when
-    /// the workspace documentation did. While either was gated the chrome
-    /// deliberately omitted it rather than send a signed-out reader at a login
-    /// door; now that anyone may read them, a footer link is what stops each
-    /// being reachable only by typing the URL. API joined the same way: the
-    /// Swagger explorer it names is public — a reader needs no session just
-    /// to see what the API looks like, though the operations it documents
-    /// still do.
-    ///
-    /// Privacy and Terms are here for the plainer reason that the header links
-    /// neither and the legal strip below links only the bar records: without
-    /// this row, the two documents the site publishes about itself would be
-    /// reachable only by typing the URL.
     #[test]
     fn the_footer_nav_carries_what_the_header_does_not() {
         let footer: Vec<&str> = super::firm_footer_nav().iter().map(|n| n.label).collect();
@@ -2447,7 +2407,7 @@ mod tests {
         assert!(!BrandKey::LawyerShook.publishes_firm_path("/services"));
         assert!(!BrandKey::LawyerShook.publishes_firm_path("/contact"));
         assert!(!BrandKey::LawyerShook.publishes_firm_path("/disputes"));
-        assert!(BrandKey::Neon.publishes_firm_path("/disputes"));
+        assert!(!BrandKey::Neon.publishes_firm_path("/disputes"));
     }
 
     /// A mounted white-label manifest replaces the *default* brand's identity,

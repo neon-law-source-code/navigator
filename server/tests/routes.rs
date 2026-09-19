@@ -2526,7 +2526,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     assert!(body.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
     for loc in [
         "https://www.neonlaw.com/",
-        "https://www.neonlaw.com/services",
+        "https://www.neonlaw.com/navigator",
     ] {
         assert!(
             body.contains(&format!("<loc>{loc}</loc>")),
@@ -2577,7 +2577,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     }
     // The firm's pages ARE advertised — one host, one sitemap. What must not
     // appear is a firm page filed beneath `/foundation`.
-    for firm_page in ["/blog", "/disputes", "/notations"] {
+    for firm_page in ["/blog", "/navigator", "/notations"] {
         assert!(
             body.contains(&format!("<loc>https://www.neonlaw.com{firm_page}</loc>")),
             "sitemap must advertise the firm page {firm_page}: {body}"
@@ -2911,7 +2911,7 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
     // presentations catalog is not curated into the index at all.
     for page in [
         "https://www.example.com/)",
-        "https://www.example.com/services)",
+        "https://www.example.com/navigator)",
         "https://www.example.com/notations)",
     ] {
         assert!(
@@ -9669,10 +9669,7 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
         .unwrap();
     assert_eq!(neon_resp.status(), StatusCode::OK);
     let neon_body = body_string(neon_resp).await;
-    assert!(
-        neon_body.contains("Everyone deserves to be seen."),
-        "{neon_body}"
-    );
+    assert!(neon_body.contains("Keep building."), "{neon_body}");
     assert!(
         neon_body.contains("<title>Neon Law | Home</title>"),
         "{neon_body}"
@@ -9704,19 +9701,12 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
         "{delete_your_data_body}"
     );
     assert!(
-        !delete_your_data_body.contains("Everyone deserves to be seen."),
+        !delete_your_data_body.contains("Keep building."),
         "{delete_your_data_body}"
     );
-    for (brand, body) in [
-        ("Neon Law", neon_body.as_str()),
-        ("DeleteYourData.com", delete_your_data_body.as_str()),
-    ] {
-        assert!(
-            body.contains(r#"class="home-service""#)
-                && body.contains(r#"aria-labelledby="home-service-heading""#),
-            "{brand} home must render the engagements band: {body}"
-        );
-    }
+    assert!(neon_body.contains("company-pricing"));
+    assert!(!delete_your_data_body.contains("company-pricing"));
+    assert!(delete_your_data_body.contains(r#"aria-labelledby="home-service-heading""#));
 
     let litigation = app
         .oneshot(

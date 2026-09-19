@@ -28,7 +28,7 @@ use dioxus::prelude::*;
 pub const POWERED_BY_NEON_LAW_NAVIGATOR: &str = "Powered by Neon Law Navigator";
 
 /// The firm's final footer line, shared by public and authenticated pages.
-pub const FOOTER_TAGLINE: &str = "Everyone Deserves to be Seen";
+pub const FOOTER_TAGLINE: &str = "Everyone deserves to be seen. Made with ❤️ in 🗽.";
 
 use crate::components::{ExternalLink, GitHubStars, Icon, IconName};
 
@@ -280,6 +280,7 @@ pub(crate) fn tel_href(phone: &str) -> String {
 #[component]
 pub fn SiteFooterLegal(
     copyright_holder: String,
+    #[props(default)] copyright_href: String,
     disclaimer: String,
     copyright_year: i32,
     #[props(default)] logo_href: String,
@@ -652,7 +653,12 @@ pub fn SiteFooterLegal(
                         // line naming the entity behind the site. One name: the
                         // wordmark it trades under is named on the line below,
                         // as the mark this same person registered.
-                        "© {copyright_year} {copyright_holder}"
+                        "© {copyright_year} "
+                        if copyright_href.is_empty() {
+                            "{copyright_holder}"
+                        } else {
+                            a { href: "{copyright_href}", "{copyright_holder}" }
+                        }
                     }
                     // The other ownership fact, directly under the first: the
                     // wordmark this footer opens on is a registered mark, and

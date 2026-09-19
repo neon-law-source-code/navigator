@@ -687,28 +687,8 @@ fn resolve_firm_contact_content(
 /// Brand-safe like [`resolve_firm_contact_content`]: the `<title>` names the
 /// mounted brand, resolved at router-build time.
 ///
-/// **The page's statement is the firm's tagline, and the practice it leads with
-/// is litigation.** "Everyone deserves to be seen." is the whole of the `<h1>`:
-/// it is what the firm is for, and it is short enough to be read rather than
-/// read through. The lead under it names the docket (cases of every kind) and
-/// the work the firm focuses on (impact litigation whose point is to make a
-/// person's life better) because a reader deciding whether to call needs both
-/// the open door and the aim in the first two sentences. It does not list
-/// causes of action; those live on `/disputes`. Speed stays method, and the
-/// lead binds the aim so it is not read as a promised result.
-///
-/// **The page leads with litigation, then shows the whole firm.** The
-/// statement opens on impact litigation, `locales/en/home.yaml` says what it
-/// means, and the four boxes are the practice: disputes, company counsel,
-/// technology for law firms, and one-time filings. The fractional CTO
-/// engagement is still real work with a page of its own; it is no longer what
-/// this page opens on, and the copy that used to open this page now opens that
-/// one. The prose names the team and links `/team` rather than claiming a
-/// headcount the roster does not have.
-///
-/// The home page opens on a New York skyline, supplied as a finished PNG in the
-/// public asset lane. No price, on any section — every engagement is quoted
-/// through `mailto:contact@neonlaw.com`.
+/// Neon presents membership, notation packages, and booking on one page.
+/// Other house brands resolve their own home catalogs.
 pub(crate) fn resolve_firm_home_content(
     branding: &views::brand::Branding,
 ) -> webapp::home::HomeContent {

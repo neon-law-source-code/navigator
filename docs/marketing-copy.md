@@ -135,9 +135,11 @@ tiles, and notes — which `webapp::home` renders as one animated card between t
 Only `neon/locales/en/delete-your-data/home.yaml` publishes one; a brand that keeps no such record omits the block and
 renders no section.
 
-The `practices` list in `neon/locales/en/neon/home.yaml` is the firm's practice catalog. The Neon home page renders
-those doors, and workshop slides that expand `{{firm-product-cards}}` render the same list. Do not keep a second copy of
-the doors in Rust.
+The Neon home page's `company` block presents membership, notation drafting and review, litigation, employee support,
+and Navigator, with consultation booking as the next step. Its `practices` list is empty: Neon publishes one offer on
+`/`, and `/business`, `/services`, and `/disputes` return 404 without redirects. Other brands omit that block and retain
+their own home layout. The package conveyor illustrates a workflow; it does not report live client activity. Its
+checkbox pauses the page's motion, and reduced-motion preferences disable the animations.
 
 ## A copy-only pull request
 

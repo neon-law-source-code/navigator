@@ -1,49 +1,58 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Neon Law is flat-fee counsel for emerging technology companies. Name us as
-  your fractional general counsel, ask about an individual service, or start a
-  free consultation for a dispute.
-heading: "{shared:home.need_prompt}"
-lead: >-
-  We work with software, AI, and other technology companies at an early stage.
-  Tell us whether you need ongoing counsel, a single contract or filing, or
-  help with a dispute. If you are not sure where to start, contact us and we
-  will help you find the next step.
-contact_label: Contact us
-service:
-  heading: "{shared:home.mission_heading}"
-  body:
-    - - text: "{shared:home.mission_north_star} {shared:home.mission_promise}"
-    - - text: "Name us as your "
-      - text: fractional general counsel
-        href: /business
-      - text: " for ongoing work — contract-library access and a counsel relationship for the work we agree to handle."
-    - - text: "Need one thing? See our "
-      - text: individual services
-        href: /services
-      - text: >-
-          . An unchanged template can be sent for signature for $5; a Notation
-          we prepare or revise begins at $100. Government fees may be separate.
-    - - text: "If your company has a dispute, start with a "
-      - text: free consultation
-        href: /disputes
-      - text: ". You do not need a subscription for that first conversation."
-practices_heading: Choose the help that fits.
-practices:
-  - mark: handshake
-    heading: Fractional general counsel
-    body: >-
-      Contract-library access at $50 a day, then a la carte Notations for the
-      documents you need.
-    href: /business
-  - mark: gavel
-    heading: Individual services
-    body: >-
-      Ask about a single form, filing, contract review, or other legal service.
-    href: /services
-  - mark: scales
-    heading: Disputes
-    body: >-
-      Commercial, IP, employment, and investor disputes. Tell us what happened
-      in a free consultation.
-    href: /disputes
+  Counsel for emerging technology companies. $50 a day for membership,
+  then fixed fees for notation drafting and review. Litigation from $5,000
+  a month per active case.
+heading: Keep building.
+lead: Counsel for emerging technology companies.
+contact_label: Book Consultation
+practices_heading: ""
+practices: []
+company:
+  booking_href: https://calendar.notion.so/meet/shicholas/or15n4yy7
+  pricing_link: See pricing
+  hero_note: "$50/day membership. Predictable notation pricing."
+  flow_caption: Notation workflow
+  flow_steps: [Scope, Draft, Review, Sign]
+  packages: [MSA, Employment, Cap Table]
+  pause_label: Pause motion
+  pricing_heading: Membership and notation pricing
+  video_label: Neon Law presentation
+  membership_label: Membership
+  membership_price: "$50"
+  membership_unit: / day
+  membership_body: Your company's counsel relationship, ready for what comes next.
+  membership_features:
+    - Access to our template library
+    - Registered-agent service in eligible jurisdictions
+    - Lawyer on file when you need
+  review_heading: Notation review
+  review_body: A notation is a legal work package. We size the scope before work begins.
+  review_columns: [Size, 3 business days, Same day]
+  review_rows:
+    - [Small, "$100", "$1,000"]
+    - [Medium, "$300", "$3,000"]
+    - [Large, "$500", "$5,000"]
+  review_note: Same-day requests must arrive before 5 p.m. PST. Scope and delivery are confirmed when we accept the work.
+  drafting_heading: Notation packages
+  drafting_packages:
+    - [MSA, "$5,000", "Your master services agreement for your company to sell."]
+    - [Employment, "$5,000", "Employee onboarding and offboarding, IP assignment, and bonus compensation."]
+    - [Equity, "$5,000", One-time setup on Carta or our cap-table solution. Equity and investor relations.]
+  closing_heading: Keep building.
+  closing_body: "We'll do the paperwork"
+  litigation_heading: When business gets contentious.
+  litigation_link: Book Consultation
+  litigation_price: "$5,000+"
+  litigation_unit: / month per active case
+  litigation_body: Litigation, organized into notations. All for your zealous advocacy.
+  litigation_note: You are responsible for legal fees and case expenses, including discovery-data storage and research fees. Your retainer sets the scope.
+  people_heading: For the people building it.
+  people_body: Immigration and estate planning support for your employees. Separately engaged through our sibling practices.
+  immigration_label: Abhaya / Immigration
+  estate_label: Vesta / Estate planning
+  navigator_heading: Every step. Connected.
+  navigator_body: Navigator connects the documents, decisions, and people behind your work. From the first draft to the final signature.
+  navigator_link: Explore Navigator
+  source_label: Read the source
+  source_note: Available under BUSL-1.1. Evaluation, development, testing, and demonstration are permitted where no one relies on the work. Commercial licenses available.

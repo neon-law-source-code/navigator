@@ -40,9 +40,22 @@ Feature: Public routing on the firm's own host
       | path       |
       | /notations |
       | /contact   |
-      | /disputes  |
-      | /business  |
-      | /services  |
+
+  Scenario Outline: A retired practice path answers 404 rather than redirecting
+    # The firm consolidated its whole public offer onto `/`, so these three
+    # paths no longer name a page. They answer the same `404` as a path that
+    # never existed, and carry no `Location`: a reader who follows an old link
+    # is told the page is gone rather than silently rerouted to the root, where
+    # they would have to find the section themselves.
+    When a visitor opens <path>
+    Then the response status is 404
+    And the response carries no redirect
+
+    Examples:
+      | path      |
+      | /disputes |
+      | /business |
+      | /services |
 
   Scenario Outline: A path with no firm page answers 404
     When a visitor opens <path>

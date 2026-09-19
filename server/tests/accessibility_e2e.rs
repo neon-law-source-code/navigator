@@ -537,7 +537,7 @@ async fn the_public_shell_passes_a_full_document_audit() {
         let Some(c) = session_in_scheme(scheme, &base_url()).await else {
             return;
         };
-        for path in ["/", "/services", "/navigator"] {
+        for path in ["/", "/navigator"] {
             assert_route_passes_axe(&c, path, DOCUMENT_AXE_SCOPE, scheme).await;
             assert_public_shell(&c).await;
         }
@@ -816,7 +816,7 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
 
     assert_public_shell(&c).await;
     let cta = c
-        .find(Locator::Css("a.home-statement__cta"))
+        .find(Locator::Css(".company-hero a.nav-btn--primary"))
         .await
         .expect("the home page has its contact call to action");
     let href = cta
@@ -824,9 +824,9 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
         .await
         .expect("the home call to action has an href")
         .expect("the home call to action has an href");
-    assert!(
-        href.starts_with("mailto:"),
-        "the home call to action writes the firm inbox directly: {href}"
+    assert_eq!(
+        href, "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+        "the home call to action opens the consultation calendar"
     );
 
     c.goto(&format!("{site_base_url}/blog/thanks-apple"))

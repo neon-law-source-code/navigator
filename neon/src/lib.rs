@@ -117,9 +117,6 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
         BrandKey::Neon => {
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
-                "/services",
-                "/disputes",
-                "/business",
                 "/navigator",
                 "/notations",
                 "/contact",
@@ -296,31 +293,7 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         page(
             mark,
             "/",
-            "The firm's practice — flat-fee consumer legal work, litigation on both sides of \
-                 the v., and company counsel for emerging technology companies.",
-        ),
-        page(
-            "Legal Services and fees",
-            "/services",
-            "The flat-fee schedule: wills, trusts, name changes, formations, trademarks, \
-                 tenant defense, demand letters, contract and form review, and a Nevada \
-                 business address, each a fixed fee agreed before work begins and reviewed \
-                 by a licensed attorney. An unchanged template can be sent for signature \
-                 for $5; a prepared or revised Notation begins at $100. Some fees are \
-                 published on the page; email the firm for the rest.",
-        ),
-        page(
-            "Litigation",
-            "/disputes",
-            "Plaintiff and defense: complex technology disputes for companies, and fraud \
-                 cases for the people on the receiving end. Quoted per engagement.",
-        ),
-        page(
-            "Business plan",
-            "/business",
-            "Contract-library access and a counsel relationship for work the firm agrees to \
-                 handle, at $10 a day. Each prepared or revised Notation is separately \
-                 scoped and priced before work begins.",
+            "Counsel for emerging technology companies. Membership at $50 a day, fixed notation packages, and litigation from $5,000 a month per active case.",
         ),
         page(
             "Neon Law Navigator",

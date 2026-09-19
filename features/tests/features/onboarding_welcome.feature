@@ -1,13 +1,11 @@
-Feature: Welcome email on operator-mediated signup
+Feature: Welcome email on first identity creation
 
-  Sign-up is operator-mediated: an unseeded identity is rejected
-  (403), never JIT-created, so there is no self-service "brand-new
-  signup" welcome. The one identity the callback may create on first
-  login is the system's configured Owner email — the bootstrap
-  carve-out so a fresh deployment is never locked out — created as
-  `owner`, the highest tier. That first
-  login fires the welcome once; promotion of an operator-seeded email
-  is not a fresh signup and sends nothing.
+  A supported verified identity creates a Person on first login and
+  receives the welcome once. The configured Owner email is the
+  bootstrap carve-out so a fresh deployment is never locked out; it is
+  created as `owner`, the highest tier, rather than the ordinary
+  `client`. Promotion of an existing operator-seeded email is not a
+  new Person and sends nothing.
 
   The synchronous send is a stopgap. The durable version drives the
   same email via the `onboarding__welcome` workflow spec

@@ -132,9 +132,7 @@ fn oauth_cfg(idp: &TestIdp) -> OAuthConfig {
 }
 
 /// Insert a `persons` row up-front so a downstream `/auth/callback`
-/// can promote (link the `oidc_subject`) rather than 403. Sign-up is
-/// operator-mediated — every test that drives the callback to a
-/// successful session has to call this first.
+/// promotes (links `oidc_subject`) rather than creating a client.
 async fn seed_person(
     surreal: &store::surreal::SurrealDb,
     email: &str,
@@ -235,8 +233,8 @@ async fn full_oidc_flow_upserts_person_and_allows_lawyer() {
     let policy_client = policy::PolicyClient::embedded().expect("embedded policy compiles");
 
     let (state, surreal) = state(oauth_cfg(&idp), sessions(), policy_client).await;
-    // Pre-seed Lawyer — sign-up is operator-mediated. The callback
-    // promotes (links `oidc_subject`) instead of inserting.
+    // Pre-seed Lawyer so the callback promotes (links `oidc_subject`)
+    // instead of creating an ordinary Client.
     seed_person(
         &surreal,
         "lawyer@neonlaw.com",
@@ -619,12 +617,11 @@ async fn db_role_revocation_takes_effect_on_next_login() {
     );
 }
 
-// ---------- Pre-seed requirement ----------
+// ---------- First sign-in and admission ----------
 
 /// Drive `/auth/login` → `/auth/callback` and return the raw callback
-/// response. Used by tests that expect the callback to *fail* (no
-/// pre-seeded persons row) — `complete_oauth_flow` asserts SEE_OTHER
-/// on the callback, which is exactly what we don't want here.
+/// response. Used by tests that expect the callback to fail —
+/// `complete_oauth_flow` asserts SEE_OTHER on the callback.
 async fn callback_response(
     app: &axum::Router,
     idp: &TestIdp,
@@ -648,50 +645,50 @@ async fn state_with_bootstrap_owner(
 }
 
 #[tokio::test]
-async fn callback_returns_403_html_when_email_is_not_pre_seeded() {
-    // Scorpio logs in with a perfectly valid id_token but no operator
-    // has ever inserted a `persons` row for `scorpio@example.com`. The
-    // callback must refuse to mint a session and render the styled
-    // 403 page instead — sign-up is operator-mediated by design.
-    //
-    // The page is the sign-in-specific one, not the generic Forbidden: Scorpio
-    // is not a misconfigured account but someone who has never engaged the
-    // firm, and "not authorized" would tell them nothing about what to do.
+async fn callback_creates_a_client_and_reaches_the_empty_portfolio() {
     let idp = idp_returning("rauthy-scorpio-subject", "scorpio@example.com", "Scorpio").await;
     let (s, surreal) = state_with_bootstrap_owner(
         oauth_cfg(&idp),
         sessions(),
         policy::PolicyClient::embedded().expect("embedded policy compiles"),
-        // Bootstrap Owner override deliberately points elsewhere so scorpio@
-        // is NOT the carve-out.
+        // The client path is distinct from the bootstrap-Owner carve-out.
         Some("nobody@unreachable.invalid".into()),
     )
     .await;
     let app = server::neon_router(s, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = callback_response(&app, &idp, "/app/lawyer").await;
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let session_cookie = complete_oauth_flow(&app, &idp, "/app/projects").await;
+    let projects = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header("cookie", &session_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(projects.status(), StatusCode::OK);
+    let body = projects.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8_lossy(&body);
-    assert!(html.starts_with("<!DOCTYPE html>"), "got: {html}");
     assert!(
-        html.contains("already engaged"),
-        "the denial must name the precondition rather than say \"not authorized\": {html}",
-    );
-    // The CTA's own text: the site header's nav carries `href="/contact"` too,
-    // so matching the bare link would pass with the button deleted.
-    assert!(
-        html.contains(">Contact us<"),
-        "the denial must offer a way to get in touch: {html}",
+        html.contains("You have no projects yet."),
+        "a first-sign-in client reaches the empty portfolio: {html}",
     );
 
-    // No persons row created — operator must seed first.
     let persons = store::persons::list_directory(&surreal, "", "", &[])
         .await
         .unwrap();
+    assert_eq!(persons.len(), 1, "first sign-in creates exactly one client");
+    let person = &persons[0];
+    assert_eq!(person.email, "scorpio@example.com");
+    assert_eq!(person.role, store::persons::Role::Client);
     assert!(
-        persons.is_empty(),
-        "callback must not create a row when sign-up is operator-mediated; got {persons:?}",
+        store::projects::participations_for_person(&surreal, person.id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "first sign-in does not grant Project participation",
     );
 }
 

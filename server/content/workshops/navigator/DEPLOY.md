@@ -1035,7 +1035,6 @@ roles. Complete the global Workspace attachment once:
 emits its entry only for a nonblank coordinate.
 | Bootstrap Owner | `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` (`config.toml`) | Missing: ship refused; unset: no JIT identity |
 | Protected firm Entity | `NAVIGATOR_BOOTSTRAP_COMPANY` | `Shook Law PLLC` is protected either way |
-| Self-signup | `NAVIGATOR_SELF_SIGNUP_ENABLED` | Off; an unknown email is refused (403) |
 | Google token policy | `GOOGLE_OAUTH_CLIENT_IDS`, `GOOGLE_OAUTH_REQUIRED_HD` | No client/domain pin |
 | Google token endpoint | `GOOGLE_TOKENINFO_URL` | Google default |
 | Password door | `NAVIGATOR_IDENTITY_PLATFORM_API_KEY` | OIDC-only login |

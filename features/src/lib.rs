@@ -175,7 +175,6 @@ pub async fn app_state_with_email(
         sendgrid_events_public_key: None,
         bootstrap_owner_email: None,
         on_call_lawyer_email: None,
-        self_signup_enabled: false,
         identity_password: None,
         identity_admin: None,
         a2a_router: None,
@@ -277,9 +276,8 @@ pub fn verified_oauth_config(idp_uri: &str) -> OAuthConfig {
 /// repeat login never replays a stale-nonce token.
 ///
 /// Returns the callback's status and its `Location` header — `303` with the
-/// role's post-login landing on a successful link, `403` with no location when
-/// the identity isn't pre-seeded (sign-up is operator-mediated). The login leg
-/// carries no `return_to`, so the landing is the tier default that
+/// role's post-login landing on a successful link, or `403` with no location
+/// for a refused identity. The login leg carries no `return_to`, so the landing is the tier default that
 /// `post_login_landing` resolves, not a deep link.
 pub async fn drive_verified_oauth(
     app: &axum::Router,

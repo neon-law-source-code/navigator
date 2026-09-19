@@ -2,13 +2,11 @@ Feature: OIDC callback persons linking
 
   On every `/auth/callback`, the server decodes `sub` + `email` +
   `name` from the id_token and links a `persons` row to the IdP via
-  the `oidc_subject` column. Sign-up is **operator-mediated**: an
-  identity the firm hasn't seeded is rejected, never JIT-created.
+  the `oidc_subject` column. A supported verified identity with an
+  email that the firm has not yet seen is JIT-created as a client.
   Three paths:
 
-    1. No seeded row → `403`, no row created (sign-up is
-       operator-mediated; `resolve_person_from_claims` returns
-       `NotPreSeeded`).
+    1. No seeded row → create a `client` with no Project participation.
     2. Seeded email with `oidc_subject IS NULL` → PROMOTE (link the
        existing row, preserve the seeded role).
     3. Returning sub → no-op (idempotent).
@@ -21,11 +19,14 @@ Feature: OIDC callback persons linking
   Background:
     Given a mock IdP returning an id_token
 
-  Scenario: An unseeded identity is rejected — sign-up is operator-mediated
+  Scenario: A first sign-in creates a client
     Given the IdP issues sub="rauthy-libra-subject", email="libra@example.com", name="Libra"
     When Libra completes the OAuth login dance
-    Then the callback is rejected with 403
-    And exactly 0 persons rows exist
+    Then the callback redirects with 303
+    And the callback lands on "/app/projects"
+    And exactly 1 persons row exists
+    And the persons row has oidc_subject "rauthy-libra-subject"
+    And the persons row keeps the "client" role
 
   Scenario: A seeded email is promoted on first login, preserving the lawyer role
     Given a seeded person with email "lawyer@neonlaw.com" and role "lawyer"

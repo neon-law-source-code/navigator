@@ -1847,9 +1847,8 @@ person holds exactly one:
   `person_project_role` row.
 - **Anonymous** — not signed in; no `person` row at all. The public visitor, who sees only public pages.
 
-`role` is read from the DB row at callback time, never trusted from the OIDC token. Sign-up is operator-mediated: an
-unseeded identity is rejected, not created. The one exception is the system's configured Owner email, created on first
-login as `owner`.
+`role` is read from the DB row at callback time, never trusted from the OIDC token. A supported verified identity with
+an email creates a `client` on first sign-in; the system's configured Owner email instead creates an `owner`.
 
 - Schema: [`store::persons::Role`](../store/src/persons.rs) — a stored `string` on `person`, defaulting to `client` and
   gated by `ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client']` in

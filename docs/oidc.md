@@ -92,7 +92,7 @@ sequenceDiagram
         alt email matches an admitted seeded row
             Web->>DB: UPDATE persons SET provider_subject = sub WHERE id = ?
             DB-->>Web: row promoted, keeps prior role
-        else no match and self-signup enabled
+        else no match
             Web->>DB: INSERT INTO persons (provider_subject, email, name, role='client')
             DB-->>Web: new row, role=client
         end
@@ -305,9 +305,8 @@ token contains the tenant ID (`tid`) claim."
 
 `GOOGLE_OAUTH_REQUIRED_HD` does **not** gate browser login — it is read only by
 [`portal::google_oauth`](../portal/src/google_oauth.rs), the Bearer-token validator in front of `/app/mcp`. The browser
-gate has always been the pre-seeded `persons` row: an authenticated identity with no row gets 403, whichever provider
-issued it. That is a per-person gate rather than a per-domain one, and it is strictly better for signing in an external
-client's people.
+path uses the verified email claim to resolve an existing Person or create a client on first sign-in, whichever provider
+issued it. That keeps client admission per person rather than per domain.
 
 But it is a gate on the **address**, so the claim that carries the address has to be trustworthy, and for Entra one of
 the two candidates is not:
@@ -544,8 +543,8 @@ policy. Ten tests:
    after callback, and every admin route returns 403.
 7. `db_role_revocation_takes_effect_on_next_login` — a lawyer user starts with lawyer, succeeds; row is updated to `role
    = 'client'`; next login produces a session that fails the embedded Rego check.
-8. `callback_returns_403_html_when_email_is_not_pre_seeded` — an id_token for an email with no `persons` row renders
-   the styled sign-in-specific 403 page and creates no row; sign-up is operator-mediated.
+8. `callback_creates_a_client_and_reaches_the_empty_portfolio` — an id_token for an email with no `persons` row creates
+   the client row and redirects to the empty portfolio, with no Project participation.
 9. `callback_jit_creates_bootstrap_owner_with_owner_role_when_absent` — the configured bootstrap-Owner email JIT-creates
    its `persons` row with `role = owner` on first login to a fresh deployment.
 10. `bootstrap_owner_role_heals_back_after_being_cleared` — the bootstrap-Owner row is pre-seeded as `client`, and the

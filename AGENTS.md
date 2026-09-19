@@ -364,8 +364,14 @@ supporting checks inside them.
   coverage gate inside that same test pass, so total workspace line coverage must hold at or above 90.6%. Cover what you
   wrote regardless: the floor is a workspace total, so it can stay green while your change goes uncovered, and the
   covering test is what proves the change.
-- Run Markdown validation for Markdown changes. The workspace test suite carries the no-client-data gate, so running it
-  is running that gate. Capture and embed a live walkthrough for public or portal UI changes.
+- **The diff decides which gate you owe.** CI's `changes` job classifies each PR and skips `cargo test (workspace)`
+  when the diff touches no Rust scope — no `*.rs`, `*.surql`, `*.feature`, `Cargo.toml`, `Cargo.lock`,
+  `rust-toolchain.toml`, `.cargo/`, `.config/nextest.toml`, `features/`, or `ci.yml`. A Markdown-only PR owes `project
+  gate` and nothing from cargo, and the no-client-data gate rides along with the Rust suite only on a PR that runs it.
+  Confirm the classification against that job's globs rather than assuming either way; it fails open.
+- Run Markdown validation for Markdown changes, and check whether the prose you touched is compiled in and asserted by
+  a Rust test — `git grep` a distinctive removed phrase before calling a change Markdown-only. Capture and embed a live
+  walkthrough for public or portal UI changes.
 - Push and open the PR against `main`; auto-merge lands it after the required checks pass and review threads resolve.
 
 ### 4. Address a pull request comment

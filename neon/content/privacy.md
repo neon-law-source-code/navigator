@@ -3,14 +3,14 @@ the choices you have.
 
 ## Who We Are
 
-**Neon Law** (Shook Law PLLC), or its affiliate lawyers are legal providers that render services through this site.
+**Neon Law** (Shook Law PLLC) or its affiliate lawyers are legal providers that render services through this site.
 
 ## Information We Collect
 
 - **Information you give us:** your name, email address, phone number, and the details you share when you contact us,
   request legal assistance, make a donation, or sign up for one of our programs.
-- **Information created when you use the site:** account and sign-in information (we use Google sign-in), basic security
-  and session cookies, and limited server log data such as your IP address.
+- **Information created when you use the site:** account and sign-in information, basic security and session
+  cookies, and limited server log data such as your IP address.
 - **Your legal matter:** the documents and communications you send us, which may be stored in our secured Google shared
   drive.
 
@@ -30,37 +30,27 @@ and data rates may apply.** Reply STOP at any time to opt out, or HELP for help.
 share them for anyone's marketing or promotional purposes.** We use them only to communicate with you as described here.
 Our full text-messaging program terms are in our [Terms of Service](/terms).
 
-## AI Assistance (Navigator MCP)
+## AI Assistance (Navigator)
 
-When you use our Navigator MCP assistant, your messages may be processed by a third-party AI provider (currently Google
-Vertex AI) solely to generate a response. We do not use your conversations to train third-party models. If you would
-rather not use Navigator MCP, you can contact us directly instead.
+When you use our Navigator assistant, your messages may be processed by a third-party AI provider to generate a
+response. We do not use your conversations to train third-party models. If you would rather not use Navigator, you can
+contact us directly instead.
 
 ## Who We Share Information With
 
-We rely on trusted service providers, under contract, to operate our services: Google (sign-in, document storage, and AI
-processing), our cloud database and storage provider, our telephony and text-messaging provider, and our email provider.
-We disclose information to law enforcement only when legally required, and we will tell you when we are permitted to do
-so.
+We rely on trusted service providers, under contract, to operate our services. We disclose information to law
+enforcement only when legally required, and we will tell you when we are permitted to do so.
 
 ## Your Privacy Rights
 
-**You always have the right to delete.** You may ask us to access, correct, or delete your personal information, and to
-opt out of any sale of personal information (we do not sell it). To exercise these rights, email
-[support@neonlaw.org](mailto:support@neonlaw.org). We honor these rights for everyone, regardless of where you live —
-consistent with the California Consumer Privacy Act (CCPA/CPRA), the EU General Data Protection Regulation (GDPR), and
-Nevada law (NRS 603A).
+**You always have the right to delete.** You may ask us to access, correct, or delete your personal information. To
+exercise these rights, email [support@neonlaw.com](mailto:support@neonlaw.com).
 
 ## Attorney-Client Privilege
 
 Once an attorney-client relationship is formed, your communications with our attorneys are protected by attorney-client
 privilege to the fullest extent permitted by law, and we do not disclose confidential client communications without your
 consent. Browsing this site or sending a general inquiry does not by itself create that relationship.
-
-## Donor Privacy
-
-We respect the privacy of our donors. We do not share, sell, rent, or trade donor information with other organizations.
-Donor records are kept confidential and are used only to administer donations and keep donors informed about our work.
 
 ## Data Security and Retention
 

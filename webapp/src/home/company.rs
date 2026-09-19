@@ -41,11 +41,39 @@ pub struct CompanyContent {
     pub people_body: String,
     pub immigration_label: String,
     pub estate_label: String,
+    /// Where each sibling practice's name links, when it links at all.
+    ///
+    /// `None` while that practice is held out of launch
+    /// (`views::brand::BrandKey::is_live`), in which case the name renders as
+    /// plain text. The section's offer is real either way — the firm does
+    /// arrange this work through its siblings — but a link to a host the
+    /// deployment answers `404` for advertises an address rather than an
+    /// offer. Same rule the footer's family row applies, derived from the
+    /// same launch gate, so a launch flips both at once.
+    pub immigration_href: Option<String>,
+    pub estate_href: Option<String>,
     pub navigator_heading: String,
     pub navigator_body: String,
     pub navigator_link: String,
     pub source_label: String,
     pub source_note: String,
+}
+
+/// One sibling practice in the "for the people building it" section: a link
+/// when that practice has launched, its bare name when it has not.
+///
+/// The arrow is part of the link affordance, so it goes with the link rather
+/// than staying on a label that no longer leads anywhere.
+#[component]
+fn SiblingPractice(label: String, href: Option<String>) -> Element {
+    match href {
+        Some(href) => rsx! {
+            a { class: "company-text-link", href: "{href}", "{label} ↗" }
+        },
+        None => rsx! {
+            span { class: "company-text-link company-text-link--unlinked", "{label}" }
+        },
+    }
 }
 
 #[component]
@@ -169,8 +197,14 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                     p { "{company.people_body}" }
                 }
                 div { class: "company-people__links",
-                    a { class: "company-text-link", href: "https://www.abhayaimmigration.com", "{company.immigration_label} ↗" }
-                    a { class: "company-text-link", href: "https://www.vestaestateplanning.com", "{company.estate_label} ↗" }
+                    SiblingPractice {
+                        label: company.immigration_label.clone(),
+                        href: company.immigration_href.clone(),
+                    }
+                    SiblingPractice {
+                        label: company.estate_label.clone(),
+                        href: company.estate_href.clone(),
+                    }
                 }
             }
             section { class: "company-closing",

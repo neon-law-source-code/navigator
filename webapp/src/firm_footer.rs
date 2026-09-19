@@ -213,8 +213,19 @@ pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooter
     views::brand::firm_family()
         .iter()
         // "Our Family" is a set of links, so it lists only brands a reader
-        // can actually reach. A brand is registered here well before its
-        // host serves anything; see `views::brand::BrandKey::is_live`.
+        // can actually reach — the launch gate's set, the same one
+        // `portal::canonical_host` admits and `cli::devx::ship` renders
+        // certificates for. A brand is registered here well before its host
+        // serves anything; see `views::brand::BrandKey::is_live`.
+        //
+        // `current` is retained beyond that set for exactly one caller: a
+        // developer previewing a held-out brand through its
+        // `local_port_env_var` door, where a footer that omitted the brand
+        // being previewed would be the wrong preview. A public request can
+        // no longer arrive wearing a held-out key at all — the router
+        // refuses those hosts — so on a real host this clause is
+        // unreachable, and `the_family_row_lists_only_admitted_brands`
+        // holds that.
         .filter(|key| key.is_live() || **key == current)
         .map(|key| FirmFooterBrand {
             label: compiled_footer_label(*key),

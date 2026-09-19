@@ -813,6 +813,98 @@ mod tests {
         );
     }
 
+    /// Every brand page carries the attorney-advertising notice and names
+    /// the legal entity of record.
+    ///
+    /// The notice and the entity are the two things a bar regulator looks
+    /// for, and they are the two things a brand page renders *without
+    /// stating them itself*: both arrive through `PublicFooter`, from the
+    /// mounted `Branding`. That indirection is why this was unenforced —
+    /// every brand's `firm_disclaimer` said the right thing and nothing
+    /// checked that any of it reached a reader.
+    ///
+    /// Asserted over `BrandKey::ALL`, not over the launch set. A brand is
+    /// built and staged for as long as it takes to get approval, and the
+    /// page a reviewer reads before flipping `LIVE` is this one; a held-out
+    /// brand whose notice was lost would fail the review, or worse, pass it.
+    ///
+    /// This renders the footer rather than reading `chrome.disclaimer`,
+    /// because a field the component stopped rendering would still satisfy
+    /// a test that only read the field.
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn every_brand_page_carries_the_advertising_notice_and_the_legal_entity() {
+        for key in views::brand::BrandKey::ALL {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            let chrome =
+                views::brand::scope(branding, async { chrome_for(&branding.firm, Vec::new()) })
+                    .await;
+            let mut dom = VirtualDom::new_with_props(PublicFooter, PublicFooterProps { chrome });
+            dom.rebuild_in_place();
+            let out = dioxus_ssr::render(&dom);
+            let name = key.as_str();
+
+            assert!(
+                out.to_lowercase().contains("attorney advertis"),
+                "{name}'s page must carry the advertising notice: {out}"
+            );
+            assert!(
+                out.contains(branding.firm.legal_entity),
+                "{name}'s page must name {}: {out}",
+                branding.firm.legal_entity
+            );
+            // Both in their own element, not merely somewhere in the
+            // markup: the notice is the disclaimer paragraph, and the entity
+            // is the copyright holder. A word that happened to appear in a
+            // nav label or an office address would satisfy a bare
+            // `contains` while telling a reader nothing.
+            let disclaimer = element_text(&out, "site-footer__disclaimer");
+            assert_eq!(
+                disclaimer, branding.firm_disclaimer,
+                "{name}'s page renders its own disclaimer"
+            );
+            assert!(
+                disclaimer.to_lowercase().contains("attorney advertis"),
+                "{name}'s disclaimer names itself an advertisement: {disclaimer}"
+            );
+            let copyright = element_text(&out, "site-footer__copyright");
+            assert!(
+                copyright.contains(branding.firm.legal_entity),
+                "{name}'s page names {} as the publisher: {copyright}",
+                branding.firm.legal_entity
+            );
+        }
+    }
+
+    /// The visible text of the first element carrying `class`, tags
+    /// stripped. Enough to assert *where* a string renders rather than only
+    /// that it is somewhere in the markup; the footer's legal strip nests a
+    /// link inside the copyright line, so a whole-document `contains` cannot
+    /// tell the two apart.
+    #[cfg(feature = "server")]
+    fn element_text(html: &str, class: &str) -> String {
+        let after = html
+            .split_once(&format!("class=\"{class}\""))
+            .unwrap_or_else(|| panic!("no element with class {class}: {html}"))
+            .1;
+        let inner = after
+            .split_once('>')
+            .expect("element has no closing angle bracket")
+            .1;
+        let inner = inner.split_once("</p>").map_or(inner, |(head, _)| head);
+        let mut text = String::new();
+        let mut depth = 0usize;
+        for ch in inner.chars() {
+            match ch {
+                '<' => depth += 1,
+                '>' => depth = depth.saturating_sub(1),
+                _ if depth == 0 => text.push(ch),
+                _ => {}
+            }
+        }
+        text.trim().to_string()
+    }
+
     /// The attribution line is derived, not listed.
     ///
     /// A trade name is permitted in Nevada because it is not misleading, and

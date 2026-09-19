@@ -2822,7 +2822,14 @@ fn resolve_base_url(canonical_host: &CanonicalHost, headers: &axum::http::Header
         .map(|host| host.split(':').next().unwrap_or(host))
         .filter(|host| !host.is_empty());
     if let Some(host) = request_host {
-        if views::brand::registered_brand_key(host).is_some() {
+        // The launch gate, not the registry. A host belonging to a brand
+        // that has not launched must never become the absolute base a
+        // `robots.txt` or a sitemap advertises — that is how a crawler finds
+        // an unlaunched site. `canonical_host` already refuses those hosts
+        // with a `404`; this is the same gate read at the second surface, so
+        // a future caller that reaches here by another route cannot publish
+        // one either.
+        if views::brand::admitted_brand_key(host).is_some() {
             let scheme = scheme_for_authority(host);
             return format!("{scheme}://{host}");
         }

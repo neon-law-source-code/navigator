@@ -409,23 +409,25 @@ fn additional_brand_hosts(public_host: &str) -> Vec<&'static str> {
 
 fn additional_brand_bindings(public_host: &str) -> Vec<AdditionalBrandBinding> {
     let staging = public_host.starts_with("staging.");
-    BrandKey::ALL
-        .iter()
-        .copied()
-        .filter(|key| *key != BrandKey::default())
-        // A brand whose DNS does not yet point at a load balancer stays off
-        // Ingress and the certificate set. Each family has its own
-        // `ManagedCertificate`, so an unpointed brand can no longer hold the
-        // firm's own certificate in `Provisioning`; it would still publish a
-        // host the footer must not advertise. See `BrandKey::is_live`.
-        .filter(|key| key.is_live())
-        .filter_map(|key| {
-            key.hosts()
-                .iter()
-                .copied()
-                .find(|host| host.starts_with("staging.") == staging)
-                .map(|host| AdditionalBrandBinding { key, host })
-        })
+    // Built from `views::brand::live_brand_hosts` — the launch gate — rather
+    // than from `BrandKey::ALL` filtered on `is_live()` here. Those two read
+    // the same today and that is precisely the problem they caused: the
+    // request router filtered on nothing at all, so the deployment admitted
+    // three brands while the process would wear any of eight. One list now
+    // drives the certificate, the Ingress rule, the router, the crawler
+    // base, and the footer; `the_render_and_the_router_admit_the_same_hosts`
+    // holds it.
+    //
+    // `live_brand_hosts` mixes production and staging names for the same key
+    // (e.g. `www.deleteyourdata.com` and `staging.deleteyourdata.com`); this
+    // keeps only the one matching `public_host`'s own `staging.`-prefix
+    // convention, the same split `NAVIGATOR_PUBLIC_HOST` already follows for
+    // the default brand.
+    views::brand::live_brand_hosts()
+        .into_iter()
+        .filter(|(key, _)| *key != BrandKey::default())
+        .filter(|(_, host)| host.starts_with("staging.") == staging)
+        .map(|(key, host)| AdditionalBrandBinding { key, host })
         .collect()
 }
 
@@ -3991,6 +3993,73 @@ mod tests {
                     "{host} has no DNS yet and must not reach the staging certificate"
                 );
             }
+        }
+    }
+
+    /// The deploy render and the request router admit the same hosts.
+    ///
+    /// This is the invariant, and it is the one the defect broke: the render
+    /// filtered on `is_live()` while `portal::canonical_host` filtered on
+    /// nothing, so the deployment published three brands and the process
+    /// would wear any of eight. Both now derive from
+    /// `views::brand::live_brand_hosts`, and this compares the rendered host
+    /// set against the router's own admission decision
+    /// (`views::brand::admitted_brand_key`) rather than against a second
+    /// copy of the filter — a test that re-derived the expected list would
+    /// drift in exactly the way the code did.
+    ///
+    /// Both environments, because the split between `www.` and `staging.`
+    /// is per-render and a gate that held for only one of them would leave
+    /// the other open.
+    #[test]
+    fn the_render_and_the_router_admit_the_same_hosts() {
+        for public_host in ["www.neonlaw.com", "staging.neonlaw.com"] {
+            let rendered = additional_brand_hosts(public_host);
+            for host in &rendered {
+                assert!(
+                    views::brand::admitted_brand_key(host).is_some(),
+                    "{public_host}: the render emits {host}, which the router refuses",
+                );
+            }
+            // And the other direction: every host the router would admit on
+            // this environment, for a brand other than the default, has a
+            // certificate and an Ingress rule. A host the process answers
+            // for but the deployment never routes is the same divergence
+            // read the other way round.
+            let staging = public_host.starts_with("staging.");
+            for (key, host) in views::brand::live_brand_hosts() {
+                if key == views::brand::BrandKey::default()
+                    || host.starts_with("staging.") != staging
+                {
+                    continue;
+                }
+                assert!(
+                    rendered.contains(&host),
+                    "{public_host}: the router admits {host}, which the render omits: {rendered:?}",
+                );
+            }
+        }
+    }
+
+    /// The footer's family row reads the same gate.
+    ///
+    /// "Our Family" is a set of links; listing a brand whose host answers
+    /// `404` advertises a practice a reader cannot reach, and for the NYC
+    /// summons practice that is worse than a dead link.
+    #[test]
+    fn the_family_row_lists_only_admitted_brands() {
+        let listed = webapp::firm_footer::compiled_family_brands(views::brand::BrandKey::default());
+        for key in views::brand::BrandKey::ALL {
+            let href = key.public_home_href();
+            let present = listed.iter().any(|brand| brand.href == href);
+            assert_eq!(
+                present,
+                key.is_live(),
+                "{} is {}live and {}listed in the family row",
+                key.as_str(),
+                if key.is_live() { "" } else { "not " },
+                if present { "" } else { "not " },
+            );
         }
     }
 

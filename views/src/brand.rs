@@ -1068,8 +1068,13 @@ impl BrandKey {
     }
 }
 
-/// The key whose *apex* this host is, if any. `None` for a host that is
-/// either served (see [`registered_brand_key`]) or unknown.
+/// The key whose *apex* this host is, if any — **registry order, not launch
+/// order**. `None` for a host that is either served (see
+/// [`registered_brand_key`]) or unknown.
+///
+/// Registered is not admitted. A public request path wants
+/// [`admitted_brand_key_for_apex`]; this answers only what the registry
+/// compiled.
 #[must_use]
 pub fn brand_key_for_apex(host: &str) -> Option<BrandKey> {
     BrandKey::ALL
@@ -1081,12 +1086,100 @@ pub fn brand_key_for_apex(host: &str) -> Option<BrandKey> {
 /// Look up which key, if any, is registered to serve `host` (already
 /// port-stripped). `None` means the host answers to no brand in the
 /// registry.
+///
+/// **Registered is not admitted.** A key is registered here — with its copy,
+/// its mailbox, and its hosts — for as long as it takes to build the brand,
+/// which is long before anyone may reach it. Answering a public request from
+/// this function is what let the router's admission set drift away from the
+/// deployment's: see [`admitted_brand_key`], which is what a request path
+/// must call.
+///
+/// Matching folds case, because a `Host:` header is not case-sensitive and a
+/// crawler that sends `WWW.NEONLAW.COM` is addressing the same site.
 #[must_use]
 pub fn registered_brand_key(host: &str) -> Option<BrandKey> {
-    BrandKey::ALL
+    BrandKey::ALL.iter().copied().find(|key| {
+        key.hosts()
+            .iter()
+            .any(|registered| registered.eq_ignore_ascii_case(host))
+    })
+}
+
+// --- The launch gate --------------------------------------------------------
+//
+// [`BrandKey::LIVE`] is the approved launch set, and everything below is the
+// single seam every public surface reads it through: the request router's
+// host admission, the apex redirect, the crawler's `robots.txt` / sitemap
+// base, the footer's family row, the `ManagedCertificate` render, and the
+// Ingress render. Five surfaces that each filtered `BrandKey::ALL` on
+// `is_live()` in their own way is exactly how the router and the deploy
+// render came apart — they agreed by coincidence rather than by
+// construction, and only four of the five kept agreeing.
+//
+// Adding a surface that decides whether a host is public means calling one of
+// these, never re-deriving the filter. `the_launch_gate_admits_exactly_the_live_set`
+// and the cross-crate invariant tests hold each surface to this list.
+
+/// Every (key, host) pair the launch gate admits, in registry order: the
+/// approved set crossed with the hosts each approved key serves.
+///
+/// This is the list. The deploy render turns it into certificates and Ingress
+/// rules; the router admits exactly these hostnames; the invariant tests
+/// compare both against it.
+#[must_use]
+pub fn live_brand_hosts() -> Vec<(BrandKey, &'static str)> {
+    BrandKey::LIVE
         .iter()
         .copied()
-        .find(|key| key.hosts().contains(&host))
+        .flat_map(|key| key.hosts().iter().copied().map(move |host| (key, host)))
+        .collect()
+}
+
+/// Every (key, apex) pair the launch gate admits — the naked domains whose
+/// 301 to a brand's own `www` host may be served.
+#[must_use]
+pub fn live_brand_apexes() -> Vec<(BrandKey, &'static str)> {
+    BrandKey::LIVE
+        .iter()
+        .copied()
+        .map(|key| (key, key.apex()))
+        .collect()
+}
+
+/// Resolve a public `Host:` (already port-stripped) to the brand allowed to
+/// wear it. `None` for an unregistered host **and** for a registered host
+/// whose brand has not launched.
+///
+/// This is the admission decision. [`registered_brand_key`] is the registry
+/// lookup underneath it and is not an admission decision.
+#[must_use]
+pub fn admitted_brand_key(host: &str) -> Option<BrandKey> {
+    registered_brand_key(host).filter(|key| key.is_live())
+}
+
+/// The apex form of [`admitted_brand_key`]: the brand whose naked domain
+/// this is, when that brand has launched.
+#[must_use]
+pub fn admitted_brand_key_for_apex(host: &str) -> Option<BrandKey> {
+    brand_key_for_apex(host).filter(|key| key.is_live())
+}
+
+/// Whether `host` is a name this registry compiled but the launch gate
+/// refuses — a served host or an apex belonging to a brand that is built and
+/// staged but not approved.
+///
+/// Distinct from "unknown", and the distinction is the whole point: an
+/// unknown host is somebody else's and gets the deployment's ordinary
+/// canonical-host treatment, while a held-out host is *ours and not yet
+/// public*, so it is refused outright rather than redirected. A 301 from
+/// `www.summonsdefense.nyc` to the firm's site would confirm the
+/// association, seed a crawler's cache with a permanent redirect that has to
+/// be undone at launch, and — for a practice awaiting admission — is itself a
+/// form of holding out.
+#[must_use]
+pub fn held_out_host(host: &str) -> bool {
+    registered_brand_key(host).is_some_and(|key| !key.is_live())
+        || brand_key_for_apex(host).is_some_and(|key| !key.is_live())
 }
 
 tokio::task_local! {
@@ -2253,6 +2346,112 @@ mod tests {
                 "{key:?} has no resolving host"
             );
         }
+    }
+
+    // --- The launch gate ---------------------------------------------------
+
+    /// The gate admits the approved set and nothing else, in both
+    /// directions: every live key's hosts are admitted, and every host of
+    /// every key that is not live is refused.
+    ///
+    /// This is the invariant the router, the crawler base, the footer, the
+    /// certificate render, and the Ingress render all read. Flipping a key
+    /// into `LIVE` moves all five at once; nothing else can.
+    #[test]
+    fn the_launch_gate_admits_exactly_the_live_set() {
+        for key in BrandKey::ALL {
+            for host in key.hosts() {
+                if key.is_live() {
+                    assert_eq!(
+                        super::admitted_brand_key(host),
+                        Some(*key),
+                        "{host} belongs to the live brand {}",
+                        key.as_str()
+                    );
+                    assert!(!super::held_out_host(host), "{host} is live, not held out");
+                } else {
+                    assert_eq!(
+                        super::admitted_brand_key(host),
+                        None,
+                        "{host} belongs to {}, which has not launched",
+                        key.as_str()
+                    );
+                    assert!(
+                        super::held_out_host(host),
+                        "{host} is ours and not yet public"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The same gate over naked domains. A held-out apex is refused rather
+    /// than 301'd, so no crawler learns the association before launch.
+    #[test]
+    fn the_launch_gate_admits_exactly_the_live_apexes() {
+        for key in BrandKey::ALL {
+            let apex = key.apex();
+            if key.is_live() {
+                assert_eq!(super::admitted_brand_key_for_apex(apex), Some(*key));
+                assert!(!super::held_out_host(apex));
+            } else {
+                assert_eq!(super::admitted_brand_key_for_apex(apex), None);
+                assert!(
+                    super::held_out_host(apex),
+                    "{apex} is ours and not yet public"
+                );
+            }
+        }
+    }
+
+    /// [`super::live_brand_hosts`] is the list every surface derives from, so
+    /// it must be exactly `LIVE` crossed with the hosts those keys serve —
+    /// each key's production and staging name, and no other key's.
+    #[test]
+    fn live_brand_hosts_is_the_live_set_crossed_with_its_hosts() {
+        let listed = super::live_brand_hosts();
+        let expected: Vec<(BrandKey, &str)> = BrandKey::ALL
+            .iter()
+            .copied()
+            .filter(|key| key.is_live())
+            .flat_map(|key| key.hosts().iter().copied().map(move |host| (key, host)))
+            .collect();
+        assert_eq!(listed, expected);
+        for (_, host) in &listed {
+            assert!(
+                super::admitted_brand_key(host).is_some(),
+                "{host} is rendered but not admitted"
+            );
+        }
+        assert_eq!(
+            super::live_brand_apexes().len(),
+            BrandKey::LIVE.len(),
+            "one apex per live key"
+        );
+    }
+
+    /// A `Host:` header is not case-sensitive. A crawler sending
+    /// `WWW.NEONLAW.COM` addresses the live site, and one sending
+    /// `WWW.SUMMONSDEFENSE.NYC` must not slip past the gate into the
+    /// deployment's ordinary unregistered-host handling.
+    #[test]
+    fn the_gate_folds_host_case() {
+        assert_eq!(
+            super::admitted_brand_key("WWW.NEONLAW.COM"),
+            Some(BrandKey::Neon)
+        );
+        assert_eq!(super::admitted_brand_key("WWW.SUMMONSDEFENSE.NYC"), None);
+        assert!(super::held_out_host("WWW.SUMMONSDEFENSE.NYC"));
+        assert!(super::held_out_host("SummonsDefense.NYC"));
+    }
+
+    /// An unknown host is somebody else's, not ours-and-not-yet-public: it
+    /// is not held out, so the deployment keeps redirecting it to its
+    /// canonical host rather than answering `404`.
+    #[test]
+    fn an_unknown_host_is_not_held_out() {
+        assert!(!super::held_out_host("unregistered.example"));
+        assert!(!super::held_out_host("localhost"));
     }
 
     /// A host no key claims resolves to no brand at all — the caller decides

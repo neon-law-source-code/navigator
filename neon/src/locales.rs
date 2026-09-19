@@ -715,7 +715,10 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
         }),
         // Lawyer Shook's resolver supplies its firm notice over this catalog.
         bare: None,
-        estate: copy.estate,
+        estate: copy.estate.map(|mut estate| {
+            estate.video_src = views::assets::asset_url(&estate.video_src);
+            estate
+        }),
     }
 }
 

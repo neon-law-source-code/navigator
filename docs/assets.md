@@ -161,8 +161,8 @@ families it never probed.
 | --- | --- | --- |
 | `gorp-serif` | GORP Serif | Neon Law |
 | `plus-jakarta-sans` | Plus Jakarta Sans | DeleteYourData.com |
-| `eb-garamond` | EB Garamond | Vesta Estate Planning (display) |
-| `source-sans-3` | Source Sans 3 | Vesta, Misericordia Injury Law (body) |
+| `eb-garamond` | EB Garamond | Vesta Estate Planning (headings and body) |
+| `source-sans-3` | Source Sans 3 | Misericordia Injury Law (body) |
 | `source-serif-4` | Source Serif 4 | Misericordia Injury Law (display) |
 | `mukta` | Mukta | Abhaya Immigration |
 | `public-sans` | Public Sans | DeleteYourDebt.com |
@@ -332,3 +332,17 @@ done; done
 If you are _curating_ the gallery (adding or replacing a responsive photo), use `build` from the source JPEGs and then
 `upload` instead — see [The four commands](#the-four-commands) above. If you are adding a blog hero PNG, put it under
 `server/public/img/<slug>/`, verify it locally, then run `assets upload`.
+
+## Vesta explainer
+
+Vesta uses EB Garamond throughout. Its captioned explainer lives at `server/public/img/vesta-home/vesta-explainer.mp4`
+locally and resolves through the public asset origin in a deployment. The video script and accessible transcript live in
+`neon/locales/en/vesta/home.yaml`. The clip describes the lifetime plan and identifies blockchain recording as coming
+soon. Both source-checkout and embedded deployment verification include its object key, so a missing video blocks a new
+release instead of leaving a broken player.
+
+Publish the finished clip to staging before the next rollout:
+
+```bash
+cargo run -p cli -- ops assets upload --dir server/public/img --bucket neon-law-stg-assets
+```

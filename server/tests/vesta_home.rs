@@ -87,3 +87,16 @@ async fn vesta_and_lawyer_shook_share_the_company_footer_treatment() {
         assert!(!footer.contains("Our family"));
     }
 }
+
+#[tokio::test]
+async fn vesta_has_an_explainer_instead_of_numbered_steps() {
+    let html = page("staging.vestaestateplanning.com", "/").await;
+    assert!(!html.contains("vesta-step__number"));
+    assert!(html.contains("<video"));
+    assert!(html.contains("/public/img/vesta-home/vesta-explainer.mp4"));
+    assert!(html.contains("Read the video transcript"));
+    assert!(html.contains("does not replace required signing"));
+    let brand = views::brand::BrandKey::Vesta;
+    assert_eq!(brand.default_typeface().id, "eb-garamond");
+    assert!(brand.display_typeface().is_none());
+}

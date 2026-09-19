@@ -26,13 +26,28 @@ pub(super) fn EstateHome(content: HomeContent, estate: EstateCopy) -> Element {
                     p { class: "vesta-note", "{estate.fee_note}" }
                 }
             }
+            section { class: "vesta-video", "aria-labelledby": "vesta-video-title",
+                h2 { id: "vesta-video-title", "{estate.video_label}" }
+                video {
+                    controls: true,
+                    playsinline: true,
+                    preload: "metadata",
+                    poster: "/public/brand/vesta.svg",
+                    src: "{estate.video_src}",
+                    "aria-label": "{estate.video_label}",
+                    a { href: "{estate.video_src}", "{estate.video_label}" }
+                }
+                details {
+                    summary { "{estate.transcript_label}" }
+                    p { "{estate.video_transcript}" }
+                }
+            }
             section { id: "your-plan", class: "vesta-process", "aria-labelledby": "vesta-process-title",
                 p { class: "vesta-eyebrow", "{estate.process_label}" }
                 h2 { id: "vesta-process-title", "{estate.process_heading}" }
                 ol { class: "vesta-steps",
-                    for (index, step) in estate.steps.iter().enumerate() {
+                    for step in &estate.steps {
                         li {
-                            span { class: "vesta-step__number", "aria-hidden": "true", "0{index + 1}" }
                             h3 { "{step[0]}" }
                             p { "{step[1]}" }
                         }

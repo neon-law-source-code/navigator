@@ -48,6 +48,7 @@ async fn persistent_boot_registers_vesta_idempotently() {
             .unwrap()
             .unwrap();
         assert_eq!(vesta.name, "Vesta Estate Planning");
+        assert_eq!(vesta.typeface.as_deref(), Some("eb-garamond"));
         assert_eq!(vesta.primary_color.as_deref(), Some("#8A5A2B"));
         if let Some(id) = brand_id {
             assert_eq!(vesta.id, id);

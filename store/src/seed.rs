@@ -2666,7 +2666,7 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
     CompiledBrand {
         key: "vesta",
         name: "Vesta Estate Planning",
-        typeface: "source-sans-3",
+        typeface: "eb-garamond",
         primary_hex: "#8A5A2B",
     },
     CompiledBrand {

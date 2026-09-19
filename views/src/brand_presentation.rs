@@ -459,7 +459,8 @@ impl BrandKey {
                 typeface_by_id("plus-jakarta-sans").expect("plus-jakarta-sans is catalogued")
             }
             Self::LawyerShook => typeface_by_id("tinos").expect("tinos is catalogued"),
-            Self::Vesta | Self::Misericordia => {
+            Self::Vesta => typeface_by_id("eb-garamond").expect("eb-garamond is catalogued"),
+            Self::Misericordia => {
                 typeface_by_id("source-sans-3").expect("source-sans-3 is catalogued")
             }
             Self::Abhaya => typeface_by_id("mukta").expect("mukta is catalogued"),
@@ -477,16 +478,14 @@ impl BrandKey {
     ///
     /// `None` means headings and body share one face, which is true of every
     /// brand the firm shipped before the practice brands: a single
-    /// `--nav-font-family` was the whole typographic contract. Vesta and
-    /// Misericordia are the reason it is no longer enough — each pairs a
-    /// serif display face with a separate sans body face — so this returns
-    /// the *display* half and `default_typeface` keeps meaning body.
+    /// `--nav-font-family` was the whole typographic contract. Misericordia
+    /// is the reason it is no longer enough — it pairs a serif display face
+    /// with a separate sans body face — so this returns the *display* half
+    /// and `default_typeface` keeps meaning body.
     #[must_use]
     pub fn display_typeface(self) -> Option<&'static Typeface> {
         match self {
-            // The two brands whose headings are set in a serif over a sans
-            // body — the reason this method exists at all.
-            Self::Vesta => Some(typeface_by_id("eb-garamond").expect("eb-garamond is catalogued")),
+            // Misericordia pairs serif headings with a sans body.
             Self::Misericordia => {
                 Some(typeface_by_id("source-serif-4").expect("source-serif-4 is catalogued"))
             }
@@ -497,6 +496,7 @@ impl BrandKey {
             Self::Neon
             | Self::DeleteYourData
             | Self::LawyerShook
+            | Self::Vesta
             | Self::Abhaya
             | Self::DeleteYourDebt
             | Self::Summons => None,
@@ -584,9 +584,8 @@ pub fn tokens_stylesheet(face: &Typeface, display: Option<&Typeface>, palette: &
         css.push('\n');
     }
     // A brand whose display face differs from its body face carries both
-    // sets of `@font-face` rules. Vesta (EB Garamond over Source Sans 3)
-    // and Misericordia (Source Serif 4 over Source Sans 3) are why this
-    // exists; a brand that sets one face for everything emits one set.
+    // sets of `@font-face` rules, as Misericordia does. A brand that
+    // sets one face for everything emits one set.
     if let Some(display) = display.filter(|d| d.id != face.id) {
         if let Some(faces) = webfont_css(display) {
             css.push_str(&faces);

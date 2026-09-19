@@ -16,6 +16,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 mod estate;
+mod privacy;
+pub use privacy::PrivacyCopy;
 pub mod services;
 pub mod shared;
 pub use estate::EstateCopy;
@@ -105,6 +107,9 @@ pub struct HomeCopy {
     /// Lifetime estate planning, absent on other practice pages.
     #[serde(default)]
     pub estate: Option<EstateCopy>,
+    /// Annual data removal and privacy protection.
+    #[serde(default)]
+    pub privacy: Option<PrivacyCopy>,
 }
 
 /// The home page's provenance section: the flow a request follows, the

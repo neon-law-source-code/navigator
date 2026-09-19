@@ -102,9 +102,12 @@ pub const PUBLIC_PATHS: &[&str] = &[
 #[must_use]
 pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
     match key {
-        // Every practice brand publishes the same three paths it answers.
-        BrandKey::DeleteYourData
-        | BrandKey::Vesta
+        // Privacy keeps the annual product on one page, with office details separate.
+        BrandKey::DeleteYourData => ["/", "/contact"]
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect(),
+        BrandKey::Vesta
         | BrandKey::Misericordia
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
@@ -209,11 +212,6 @@ pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
                         title: mark.to_string(),
                         path: "/".to_string(),
                         description: branding.mission_description.to_string(),
-                    },
-                    portal::LlmsTxtLink {
-                        title: "Data-deletion requests".to_string(),
-                        path: "/services".to_string(),
-                        description: branding.service_description.to_string(),
                     },
                     portal::LlmsTxtLink {
                         title: "Contact".to_string(),

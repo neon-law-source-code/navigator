@@ -1,107 +1,35 @@
-head_title: "{site_name} | Home"
+head_title: "{site_name} | Privacy for $50 a year"
 meta_description: >-
-  DeleteYourData.com is a practice of Shook Law PLLC. A licensed attorney
-  helps you ask companies to delete personal data they hold about you. This
-  is an attorney advertisement. It is not legal advice and not a promise
-  about a result.
-heading: Ask companies to delete your data.
-lead: >-
-  DeleteYourData.com is a practice of Shook Law PLLC. If you want a lawyer
-  to help you send a data-deletion request, write to us. We will tell you
-  whether we can take the work, and what it would cost, before any work
-  begins. Nothing on this page is legal advice without a signed retainer
-  for an active project.
-contact_label: Contact us
-service:
-  heading: What this practice does
-  body:
-    - - text: >-
-          We help a person ask a company to delete personal data it holds
-          about them. A licensed attorney reviews the work. Shook Law PLLC
-          is the law firm you would retain.
-    - - text: "A standard removal request is a flat "
-      - text: "$10"
-        emphasis: true
-      - text: >-
-          per company, paid before we send it. Whether a particular request
-          is available, and what it can achieve, depends on the company, the
-          records, and the law that applies; a request outside this standard
-          scope is quoted before any work on it begins.
-    - - text: "Write to "
-      - text: "{firm_email}"
-        href: "mailto:{firm_email}"
-      - text: >-
-          . Name the company, what you want deleted if you know it, and how
-          we can reach you.
-provenance:
-  overline: How the record works
-  heading: Verified by a lawyer,
-  heading_accent: then recorded on Solana.
-  lead: >-
-    We verify your removal request before anything leaves the firm. Once a
-    licensed attorney has confirmed it, we upload a record of that request
-    to Solana. The record is a fingerprint and a timestamp, never the
-    request itself and never your data.
-  steps:
-    - mark: request
-      label: You send the request
-      detail: >-
-        Name the company and what you want deleted. We quote the matter
-        before any work begins.
-    - mark: attorney
-      label: A licensed attorney verifies it
-      detail: >-
-        The attorney checks the request against what you sent and signs
-        off before it goes out.
-    - mark: chain
-      label: We upload the record to Solana
-      detail: >-
-        A hash of the verified request is written to the chain, binding the
-        firm's attestation to that moment.
-  ledger_heading: Where your data has been removed from
-  ledger_caption: >-
-    An illustration of one request's record, not a count. Each row is a
-    place a request went and the attestation that followed it.
-  ledger:
-    - label: A data broker
-      status: Attested
-    - label: A people-search site
-      status: Attested
-    - label: An advertising network
-      status: Attested
-    - label: A service you stopped using
-      status: Attested
-  pillars:
-    - heading: Privacy
-      body: >-
-        Only a hash goes on the chain. Your request, your name, and the data
-        you want deleted stay with the firm, never on a public ledger.
-    - heading: Security
-      body: >-
-        Each record is attested by a licensed attorney before it is written.
-        You can check it against the chain later instead of trusting a
-        screenshot or an email thread.
-    - heading: Federated work
-      body: >-
-        Our lawyer-attested nodes are run by licensed practices, not one
-        company. Where your data has been removed from is recorded across
-        them, so the provenance does not depend on a single vendor's
-        database.
-  notes:
-    - - text: "Our "
-      - text: lawyer-attested nodes
-        emphasis: true
-      - text: " can be used for long-term provenance of where your data has been removed from. Each attestation is a licensed attorney's record that a request was made, and it stays readable after the company, the email thread, and the firm's own files have moved on."
-    - - text: >-
-          A record that a request was made is not a promise that the company
-          complied. What a company deletes, and when, depends on the company,
-          the records, and the law that applies. This is an attorney
-          advertisement.
-practices_heading: The work
-practices:
-  - mark: gavel
-    heading: Data-deletion requests
-    body: >-
-      A standard request is a flat $10, reviewed by a licensed attorney. This
-      is an attorney advertisement.
-    href: /services
+  A year of data removal and privacy protection for $50. Gift cards available.
+  Opt-in privacy and credit monitoring. A practice of Shook Law PLLC.
+heading: Your Life. Less Exposed.
+lead: A year of data removal and privacy protection.
+contact_label: Book a consultation
+practices: []
+privacy:
+  eyebrow: DeleteYourData.com
+  price: "$50"
+  price_term: / year
+  offer_note: Start a conversation and protect your data.
+  gift_link: Gift cards available
+  animation_label: A little less out there.
+  animation_note: Privacy in motion / illustration
+  pause_label: Pause motion
+  benefits_heading: Your privacy. Your choice.
+  benefits:
+    - [Data removal, "We help you ask companies to delete the personal data they hold about you. A licensed attorney reviews your requests."]
+    - [A year of protection, "One year of data removal and privacy protection. We confirm the work included before you enroll."]
+    - [Privacy & Credit, "Privacy and credit monitoring are optional. Choose whether to opt in when you enroll."]
+  record_label: Request records on Solana
+  record_heading: A record you can verify.
+  record_body: >-
+    Record your removal requests on Solana. This protects you if you ever see your
+    data leaked after you deleted it. Our litigator friends will happily help you out.
+  gift_heading: Give a year of privacy.
+  gift_body: >-
+    A $50 gift card gives someone a year of data removal and privacy
+    protection. They choose when to get started and whether to opt in to monitoring.
+  gift_cta: Ask for a gift card
+  gift_card_label: DeleteYourData.com
+  gift_card_term: One year. $50. Their choice.
+  closing_heading: Make privacy your next move.

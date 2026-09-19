@@ -240,14 +240,7 @@ async fn the_delete_your_data_sitemap_lists_only_that_brands_pages_under_its_hos
             path.to_string()
         })
         .collect();
-    for required in [
-        "/",
-        "/services",
-        "/contact",
-        "/privacy",
-        "/terms",
-        "/llms.txt",
-    ] {
+    for required in ["/", "/contact", "/privacy", "/terms", "/llms.txt"] {
         assert!(
             paths.iter().any(|path| path == required),
             "missing {required}: {paths:?}"

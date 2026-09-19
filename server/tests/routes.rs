@@ -1811,11 +1811,15 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
     assert!(html.contains("Shook Law PLLC"), "{html}");
     assert!(html.contains("Entity: Shook Law PLLC"), "{html}");
     assert!(
-        html.contains(
-            "Brands: neon, delete-your-data, delete-your-debt, vesta, misericordia, abhaya, \
-             lawyer-shook, summons"
-        ),
-        "{html}"
+        html.contains("neon (www.neonlaw.com)")
+            && html.contains("delete-your-data (www.deleteyourdata.com)")
+            && html.contains("lawyer-shook (www.lawyershook.com)")
+            && html.contains("vesta (www.vestaestateplanning.com, not live)")
+            && html.contains("delete-your-debt (www.deleteyourdebt.com, not live)")
+            && html.contains("misericordia (www.misericordialaw.com, not live)")
+            && html.contains("abhaya (www.abhayaimmigration.com, not live)")
+            && html.contains("summons (www.summonsdefense.nyc, not live)"),
+        "Owner lists every compiled brand's production www host: {html}"
     );
     assert!(
         html.contains("href=\"/app/owner\""),

@@ -223,6 +223,12 @@ An uploaded logo also renders on `/app` (ENG-590), not only on the public site:
 still leads with "Navigator", because `/app` is the firm's own internal tool rather than a client-facing surface a
 white-label deploy needs to rebrand in the reader's eyes.
 
+The `/app` inventory surfaces name a compiled brand's production website as its `www` host (`www.deleteyourdata.com`):
+`/app/admin/brands`, `/app/owner`, `/app/admin/firms/{id}`, the admin project directory, `/app/projects`, and
+`/app/projects/{code}`. A compiled key that is not yet live still shows that host, labelled `not live`. A runtime-only
+`brand` row has no public host. `project.brand` is still written at matter-open from the request host and cannot be
+edited afterwards.
+
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local

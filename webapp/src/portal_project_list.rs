@@ -174,7 +174,9 @@ pub fn ClientProjects() -> Element {
                     a { class: "portal-project-card", key: "{row.id}", href: "/app/projects/{row.code}",
                         div { class: "portal-project-card__name", "{row.name}" }
                         div { class: "portal-project-card__status", "Status: {row.status}" }
-                        div { class: "portal-project-card__brand", "Brand: {row.brand}" }
+                        div { class: "portal-project-card__brand",
+                            "Brand: {crate::brand_website::BrandWebsite::from_key(&row.brand).attached_line()}"
+                        }
                     }
                 }
             }

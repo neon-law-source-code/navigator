@@ -249,7 +249,9 @@ pub fn matter_directory_body(view: &MatterDirectoryView) -> Element {
                             td { class: "project-code", code { "{row.code}" } }
                             td { class: "project-name", "{row.name}" }
                             td { class: "project-status", "{row.status}" }
-                            td { class: "project-brand", "{row.brand}" }
+                            td { class: "project-brand",
+                                "{crate::brand_website::BrandWebsite::from_key(&row.brand).attached_line()}"
+                            }
                             td { class: "matter-directory-dri",
                                 if row.lawyer_dris.is_empty() {
                                     span { class: "matter-flag", "Unassigned" }
@@ -316,7 +318,7 @@ mod tests {
             ViewerRole::Owner,
         ));
         assert!(out.contains(r#"class="project-brand""#), "{out}");
-        assert!(out.contains("neon"), "{out}");
+        assert!(out.contains("neon (www.neonlaw.com)"), "{out}");
         assert!(
             out.contains("sort=brand"),
             "the brand header must be sortable: {out}"

@@ -466,7 +466,7 @@ mod tests {
 
     #[test]
     fn shipped_onboarding_letter_needs_no_signers_key() {
-        let body = include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+        let body = include_str!("../../templates/notations/neon_law/onboarding.md");
         assert!(
             F115PathResolution.lint(&file(body)).is_empty(),
             "{:?}",
@@ -476,7 +476,7 @@ mod tests {
 
     #[test]
     fn shipped_offboarding_letter_needs_no_signers_key() {
-        let body = include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+        let body = include_str!("../../templates/notations/neon_law/offboarding.md");
         assert!(
             F115PathResolution.lint(&file(body)).is_empty(),
             "{:?}",

@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn the_shipped_onboarding_letter_reads_every_state_it_asks() {
-        let body = include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+        let body = include_str!("../../templates/notations/neon_law/onboarding.md");
         assert!(
             F122QuestionnaireStateIsRead.lint(&file(body)).is_empty(),
             "{:?}",

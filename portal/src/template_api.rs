@@ -40,7 +40,7 @@ const LEGACY_ALIASES: &[(&str, &str)] = &[
         "nonprofit/nevada_charitable_solicitation_registration",
         "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration",
     ),
-    ("onboarding/retainer", "notations/neon_law/shared/retainer"),
+    ("onboarding/retainer", "notations/neon_law/onboarding"),
 ];
 
 /// Canonical destination for old public links. Values are repository
@@ -159,11 +159,17 @@ mod tests {
 
     #[test]
     fn refuses_a_confidential_template() {
-        // The retainer is `confidential: true` and must never be served
-        // over the public API even though the path is valid.
+        // The onboarding letter is `confidential: true` and must never be
+        // served over the public API even though the path is valid — and the
+        // legacy `onboarding/retainer` alias reaches the same file, so it must
+        // be refused the same way.
         assert!(
-            find_raw_path("notations/neon_law/shared/retainer").is_none(),
+            find_raw_path("notations/neon_law/onboarding").is_none(),
             "confidential templates must 404"
+        );
+        assert!(
+            find_raw_path("onboarding/retainer").is_none(),
+            "the legacy alias must not smuggle a confidential template out"
         );
     }
 

@@ -44,8 +44,8 @@ fn notation_id(output: &str) -> &str {
 
 #[test]
 fn run_walks_a_bundled_template_without_deployment_configuration_and_isolated_runs() {
-    let template = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../templates/notations/neon_law/shared/onboarding_letter.md");
+    let template =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../templates/notations/neon_law/onboarding.md");
 
     let first = run(&template);
     let second = run(&template);

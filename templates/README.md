@@ -64,9 +64,8 @@ records where those bytes came from.
 
 ```text
 templates/notations/neon_law/
-└── shared/
-    ├── onboarding_letter.md
-    └── offboarding_letter.md
+├── onboarding.md
+└── offboarding.md
 ```
 
 These files are the Firm's confidential work product, and the marks are reserved. **NEON LAW** is a registered trademark

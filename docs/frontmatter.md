@@ -87,7 +87,7 @@ at `/app/projects/{code}/{notation_id}/outline`.
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks
 to get there. Here is the real frontmatter from the shared onboarding letter,
-`templates/notations/neon_law/shared/onboarding_letter.md` (shown without its surrounding `---` fences):
+`templates/notations/neon_law/onboarding.md` (shown without its surrounding `---` fences):
 
 ```yaml
 kind: onboarding

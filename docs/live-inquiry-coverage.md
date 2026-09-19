@@ -113,7 +113,7 @@ The first executable slice is deliberately local and lawyer/developer-facing:
 
 ```bash
 cargo run -p cli -- notations transcribe \
-  --template templates/notations/neon_law/shared/onboarding_letter.md \
+  --template templates/notations/neon_law/onboarding.md \
   --transcript /tmp/sitting.txt \
   --pretty
 ```

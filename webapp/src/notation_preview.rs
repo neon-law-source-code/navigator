@@ -261,7 +261,7 @@ mod tests {
     fn letter_content() -> NotationPreviewContent {
         NotationPreviewContent {
             title: "Onboarding Letter".to_string(),
-            source_href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/neon_law/shared/onboarding_letter.md".to_string(),
+            source_href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/neon_law/onboarding.md".to_string(),
             frontmatter: "title: Onboarding Letter\ncode: onboarding__letter".to_string(),
             stage_html: "<article class=\"harvard-stage\" data-harvard-outline>\
                     <section class=\"harvard-unit harvard-unit--depth-1\" data-harvard-path=\"I\">\
@@ -318,7 +318,7 @@ mod tests {
         let out = html();
         assert!(
             out.contains(
-                r#"href="https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/neon_law/shared/onboarding_letter.md""#
+                r#"href="https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/neon_law/onboarding.md""#
             ),
             "github source link: {out}"
         );

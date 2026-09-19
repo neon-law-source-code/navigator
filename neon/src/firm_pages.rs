@@ -138,20 +138,17 @@ fn preview_doc(slug: &str, source_path: &str, src: &str) -> webapp::notation_pre
 /// `/notations/{slug}`.
 #[allow(clippy::too_many_lines)] // The literal source-to-preview inventory is reviewed as one catalog.
 fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
-    const ONBOARDING: &str =
-        include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
-    const OFFBOARDING: &str =
-        include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+    const ONBOARDING: &str = include_str!("../../templates/notations/neon_law/onboarding.md");
+    const OFFBOARDING: &str = include_str!("../../templates/notations/neon_law/offboarding.md");
     const RESCISSION_NOTICE: &str =
-        include_str!("../../templates/notations/neon_law/shared/rescission_notice_nevada.md");
+        include_str!("../../templates/notations/neon_law/rescission_notice_nevada.md");
     const WITNESS_AFFIDAVIT: &str =
-        include_str!("../../templates/notations/neon_law/shared/witness_affidavit_nevada.md");
+        include_str!("../../templates/notations/neon_law/witness_affidavit_nevada.md");
     const ANSWER_TO_COUNTERCLAIM: &str =
-        include_str!("../../templates/notations/neon_law/shared/answer_to_counterclaim_nevada.md");
+        include_str!("../../templates/notations/neon_law/answer_to_counterclaim_nevada.md");
     const ENGAGEMENT_LETTER: &str =
-        include_str!("../../templates/notations/neon_law/shared/engagement_letter_nevada.md");
-    const SUMMONS: &str =
-        include_str!("../../templates/notations/neon_law/shared/summons_nevada.md");
+        include_str!("../../templates/notations/neon_law/engagement_letter_nevada.md");
+    const SUMMONS: &str = include_str!("../../templates/notations/neon_law/summons_nevada.md");
     const FORM_990: &str =
         include_str!("../../templates/notations/forms/united_states/federal/irs/us__form_990.md");
     const NATURALIZATION: &str = include_str!(
@@ -185,37 +182,37 @@ fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
     vec![
         preview_doc(
             "onboarding-letter",
-            "notations/neon_law/shared/onboarding_letter.md",
+            "notations/neon_law/onboarding.md",
             ONBOARDING,
         ),
         preview_doc(
             "offboarding-letter",
-            "notations/neon_law/shared/offboarding_letter.md",
+            "notations/neon_law/offboarding.md",
             OFFBOARDING,
         ),
         preview_doc(
             "nevada-rescission-notice",
-            "notations/neon_law/shared/rescission_notice_nevada.md",
+            "notations/neon_law/rescission_notice_nevada.md",
             RESCISSION_NOTICE,
         ),
         preview_doc(
             "nevada-witness-affidavit",
-            "notations/neon_law/shared/witness_affidavit_nevada.md",
+            "notations/neon_law/witness_affidavit_nevada.md",
             WITNESS_AFFIDAVIT,
         ),
         preview_doc(
             "nevada-answer-to-counterclaim",
-            "notations/neon_law/shared/answer_to_counterclaim_nevada.md",
+            "notations/neon_law/answer_to_counterclaim_nevada.md",
             ANSWER_TO_COUNTERCLAIM,
         ),
         preview_doc(
             "nevada-engagement-letter",
-            "notations/neon_law/shared/engagement_letter_nevada.md",
+            "notations/neon_law/engagement_letter_nevada.md",
             ENGAGEMENT_LETTER,
         ),
         preview_doc(
             "nevada-summons",
-            "notations/neon_law/shared/summons_nevada.md",
+            "notations/neon_law/summons_nevada.md",
             SUMMONS,
         ),
         preview_doc(

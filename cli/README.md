@@ -122,8 +122,8 @@ Those are two different kinds of failure, so they exit differently:
 ## Reading a template the way a reader will
 
 ```bash
-navigator notations preview templates/notations/neon_law/shared/onboarding_letter.md
-navigator notations preview onboarding-letter          # a name, looked up under templates/
+navigator notations preview templates/notations/neon_law/onboarding.md
+navigator notations preview onboarding                 # a name, looked up under templates/
 ```
 
 This serves that one template's `/notations/{slug}` show page on a local bind and prints the URL. It is the same axum
@@ -143,7 +143,7 @@ holds no session, and persists nothing when its process stops.
 ## Walk a template through the local runtime
 
 ```bash
-navigator notations run templates/notations/neon_law/shared/onboarding_letter.md
+navigator notations run templates/notations/neon_law/onboarding.md
 ```
 
 `notations run` validates the file, creates a fresh embedded store and temporary object directory, then creates only

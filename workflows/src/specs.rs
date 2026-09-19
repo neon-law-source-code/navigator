@@ -30,7 +30,7 @@ use crate::spec::{QuestionnaireSpec, WorkflowSpec, WorkflowSpecError};
 /// the integrity / coherence tests; the workflow spec itself now
 /// loads from [`RETAINER_INTAKE_SPEC_YAML`].
 pub const RETAINER_INTAKE_TEMPLATE: &str =
-    include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+    include_str!("../../templates/notations/neon_law/onboarding.md");
 
 /// Standalone YAML carrying both `questionnaire:` and `workflow:`
 /// blocks for the onboarding-letter intake template.

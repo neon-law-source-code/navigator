@@ -238,9 +238,9 @@ mod canonical {
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
     pub const TEMPLATE_ONBOARDING_LETTER: &str =
-        include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+        include_str!("../../templates/notations/neon_law/onboarding.md");
     pub const TEMPLATE_OFFBOARDING_LETTER: &str =
-        include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+        include_str!("../../templates/notations/neon_law/offboarding.md");
     pub const TEMPLATE_ANNUAL_REPORT_NV: &str = include_str!(
         "../../templates/notations/forms/united_states/nevada/state/nv__annual_report.md"
     );
@@ -289,11 +289,11 @@ pub struct SeededTemplate {
 /// body.
 pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
-        label: "notations/neon_law/shared/onboarding_letter.md",
+        label: "notations/neon_law/onboarding.md",
         markdown: canonical::TEMPLATE_ONBOARDING_LETTER,
     },
     SeededTemplate {
-        label: "notations/neon_law/shared/offboarding_letter.md",
+        label: "notations/neon_law/offboarding.md",
         markdown: canonical::TEMPLATE_OFFBOARDING_LETTER,
     },
     SeededTemplate {

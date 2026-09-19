@@ -860,7 +860,10 @@ version.
 
 A Project repository may hold notation templates, portal source, fixtures, tests, and the checked-in configuration
 required to build or validate them. It may not hold client uploads, answers, generated legal documents, secrets,
-dependencies, or build output.
+dependencies, or build output. An imported Word document's Notation Markdown source and its block/anchor manifest are
+matter work product under this same rule — they live in internal, content-addressed Assets
+([`store::notation_documents`](../store/src/notation_documents.rs); see [Notation document
+source](notation.md#notation-document-source)), never in a Project repository or any other git history.
 
 ## Access boundary
 

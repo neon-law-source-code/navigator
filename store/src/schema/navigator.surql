@@ -1426,6 +1426,49 @@ DEFINE FIELD OVERWRITE updated_at ON notation_clause TYPE datetime DEFAULT time:
 -- The only read is "this notation's clauses, in position order".
 DEFINE INDEX OVERWRITE notation_clause_notation ON notation_clause FIELDS notation_id, position;
 
+-- `notation_documents`: the durable Notation Markdown document-source
+-- identity for one Notation (ENG-578). At most one per Notation — an
+-- imported Word baseline is matter work product, not a reusable Template,
+-- so it lives here rather than in `templates` or `notation_clause`.
+-- `original_asset_id` pins the exact immutable Word package this document's
+-- version chain was derived from; it never changes after the row is
+-- created. `current_version_id` is the current-version projection kept for
+-- efficient reads — see `store::notation_documents` for the compare-and-swap
+-- that advances it without ever rewriting a version row.
+DEFINE TABLE IF NOT EXISTS notation_document SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE notation_id ON notation_document TYPE record<notation>;
+DEFINE FIELD OVERWRITE original_asset_id ON notation_document TYPE record<asset>;
+DEFINE FIELD OVERWRITE current_version_id ON notation_document TYPE option<record<notation_document_version>>;
+DEFINE FIELD OVERWRITE inserted_at ON notation_document TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_document TYPE datetime DEFAULT time::now();
+-- One document identity per Notation.
+DEFINE INDEX OVERWRITE notation_document_notation ON notation_document FIELDS notation_id UNIQUE;
+
+-- `notation_document_versions`: append-only immutable Markdown-source
+-- versions of a `notation_document` (ENG-578). A parse or an edit always
+-- appends a child row; nothing here is ever rewritten. `markdown_asset_id`
+-- and `anchor_manifest_asset_id` are internal, content-addressed
+-- `asset` rows (see `store::assets::ingest_content`) — never Git, never a
+-- workflow journal payload, never a Linear issue. `schema_version` pins the
+-- canonical outline schema the Markdown was projected against
+-- (`word::outline`); `parser_version` pins the importer build. `status` is
+-- `imported` for the root version produced from the original Word package,
+-- or `edited` for a version an attorney produced by hand (ENG-579).
+DEFINE TABLE IF NOT EXISTS notation_document_version SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE document_id ON notation_document_version TYPE record<notation_document>;
+DEFINE FIELD OVERWRITE parent_version_id ON notation_document_version TYPE option<record<notation_document_version>>;
+DEFINE FIELD OVERWRITE markdown_asset_id ON notation_document_version TYPE record<asset>;
+DEFINE FIELD OVERWRITE anchor_manifest_asset_id ON notation_document_version TYPE record<asset>;
+DEFINE FIELD OVERWRITE parser_version ON notation_document_version TYPE string;
+DEFINE FIELD OVERWRITE schema_version ON notation_document_version TYPE int;
+DEFINE FIELD OVERWRITE authored_by_person_id ON notation_document_version TYPE record<person>;
+DEFINE FIELD OVERWRITE status ON notation_document_version TYPE string;
+DEFINE FIELD OVERWRITE inserted_at ON notation_document_version TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_document_version TYPE datetime DEFAULT time::now();
+-- The only reads are "every version of this document, newest first" and
+-- the id lookups `notation_documents` already indexes by primary key.
+DEFINE INDEX OVERWRITE notation_document_version_document ON notation_document_version FIELDS document_id, inserted_at;
+
 -- `notation_events`: the append-only journal of every state-machine
 -- transition for every Notation. One row per transition.
 --

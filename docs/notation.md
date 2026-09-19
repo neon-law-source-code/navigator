@@ -117,6 +117,44 @@ callers are the round-trip tests in `word/src/outline.rs` and `word/src/notation
 text first passes through the managed adapter and the canonical emitter, whose escaping keeps comment-shaped prose as
 prose.
 
+### Notation document source
+
+An imported Word document is matter work product, not a reusable Git-backed [Template](#template) and not a single
+[`notation_clause`](../store/src/notation_clauses.rs) spliced into `{{custom_clauses}}`. `store::notation_documents`
+owns a third shape: one `notation_document` identity per Notation, tied to the immutable original `.docx`
+[Asset](glossary.md#asset) it was parsed from, plus an append-only chain of `notation_document_version` rows holding
+that document's Notation Markdown at each point in its life.
+
+- One document identity per Notation (`notation_document`), pinned to the original Word `asset_id` for its whole life —
+  a later import that names a different baseline is refused rather than silently rebasing the chain.
+- Every parse or edit **appends** a version; nothing is ever rewritten. [`store::notation_documents::import_root`]
+  writes the root version from a freshly parsed package and is idempotent — re-parsing byte-identical Markdown at the
+  same parser/schema version returns the existing version rather than forking the chain.
+  [`store::notation_documents::append_edit`] appends a child version and requires the caller's
+  `expected_parent_version_id` to still be current; a stale parent is refused as a conflict, never as a silent overwrite
+  or an unannounced fork.
+- A version's Markdown bytes and its block/anchor manifest are internal, content-addressed
+  [`store::assets::ingest_content`] rows — `visibility::INTERNAL`, never `client` — and never enter Git, logs, a
+  workflow journal payload, or a Linear issue. The `notation_event` row this module journals (`machine_kind =
+  "document"`) carries only identifiers: document id, version id, parent version id, asset ids, parser/schema version,
+  and status.
+
+> **Anchor durability decision (ENG-578).** Word's `w14:paraId` is the selected package-embedded block identity for a
+  paragraph: it is an established Open XML extension every modern Word build emits and preserves across ordinary edits,
+  and `word::anchor::paragraph_anchor` already prefers it over a positional fallback. It is not a sufficient identity on
+  its own — a paragraph can be saved without one, and a document can end up with a duplicate after a copy — so the
+  block/anchor manifest a version stores is the **governed external manifest** this decision also requires: a per-block
+  record of `(anchor, ordinal, content hash, whether the anchor came from an embedded id or a positional fallback)`. A
+  block with no embedded id, or a duplicated one, is not a text-guessing problem to paper over; it is recorded as
+  ambiguous in the manifest, and a caller building a redline (ENG-580) must refuse to attach a change to an ambiguous
+  block rather than guess which occurrence the attorney meant. Tables and other non-paragraph blocks carry no persistent
+  Open XML identity at all today, so their manifest entries are always positional and always ambiguous under
+  move/reorder — a gap the manifest makes visible rather than hides.
+
+- Schema: [`notation_document` and `notation_document_version` in
+  `navigator.surql`](../store/src/schema/navigator.surql) Queries:
+  [`store::notation_documents`](../store/src/notation_documents.rs)
+
 ## Questionnaire
 
 The ordered list of [Questions](#question) a Template **declares** it will ask. Lives entirely in the template's

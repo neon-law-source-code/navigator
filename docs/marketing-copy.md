@@ -49,7 +49,8 @@ Lawyer Shook (`lawyer-shook/`):
 
 Lawyer Shook's `/` combines the firm notice and client sign-in written in Rust
 (`neon::firm_pages::lawyer_shook_holding_content`) with Neon Law and Vesta practice cards from its home catalog. It uses
-the shared footer.
+the shared footer treatment used by Neon Law and Vesta, including the link to Shook Law PLLC and the common closing
+line.
 
 Vesta's `home.yaml` carries the `estate` block: a $5,000 lifetime plan with unlimited edits, a three-step explanation,
 and an optional $5 blockchain record marked coming soon. The booking link uses Vesta's `consultation_url`, matching the

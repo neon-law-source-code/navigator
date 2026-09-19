@@ -76,3 +76,14 @@ async fn vesta_services_agree_with_the_lifetime_offer() {
     assert!(html.contains("unlimited edits"));
     assert!(!html.contains("$3,000"));
 }
+
+#[tokio::test]
+async fn vesta_and_lawyer_shook_share_the_company_footer_treatment() {
+    for host in ["staging.vestaestateplanning.com", "staging.lawyershook.com"] {
+        let html = page(host, "/").await;
+        let footer = html.split("<footer").nth(1).expect("shared footer");
+        assert!(footer.contains("https://www.lawyershook.com"));
+        assert!(footer.contains("Everyone deserves to be seen."));
+        assert!(!footer.contains("Our family"));
+    }
+}

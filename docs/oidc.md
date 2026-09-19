@@ -74,17 +74,26 @@ sequenceDiagram
     Web->>IdP: POST /token (grant_type=authorization_code, code_verifier=...)
     IdP-->>Web: { id_token: { sub, email, name } }
     Note over Web: token carries identity only —<br/>no role, no profile
+    Note over Web,DB: provider_subject below is the presenting provider's own column:<br/>oidc_subject, microsoft_subject, or apple_subject
 
-    Web->>DB: SELECT * FROM persons WHERE oidc_subject = sub
+    Web->>DB: SELECT * FROM persons WHERE provider_subject = sub
     alt subject already linked
         DB-->>Web: existing row
+    else no email claim on the token
+        Web->>DB: SELECT * FROM persons WHERE oidc_subject = sub
+        alt a pre-split row still holds it
+            Web->>DB: UPDATE persons SET provider_subject = sub, oidc_subject = NONE
+            DB-->>Web: row converged, keeps prior role
+        else no match
+            DB-->>Web: refused (403)
+        end
     else not linked
         Web->>DB: SELECT * FROM persons WHERE email = ?
         alt email matches an admitted seeded row
-            Web->>DB: UPDATE persons SET oidc_subject = sub WHERE id = ?
+            Web->>DB: UPDATE persons SET provider_subject = sub WHERE id = ?
             DB-->>Web: row promoted, keeps prior role
         else no match and self-signup enabled
-            Web->>DB: INSERT INTO persons (sub, email, name, role='client')
+            Web->>DB: INSERT INTO persons (provider_subject, email, name, role='client')
             DB-->>Web: new row, role=client
         end
     end
@@ -131,7 +140,7 @@ flowchart LR
         name[name<br/>Lawyer]
     end
     subgraph DB[persons row]
-        oidc_subject[oidc_subject<br/>provider-specific string]
+        oidc_subject["oidc_subject / microsoft_subject / apple_subject<br/>one column per provider,<br/>provider-specific string"]
         local_email[email<br/>lawyer@neonlaw.com]
         local_name[name<br/>Lawyer]
         role["role<br/>lawyer"]
@@ -143,7 +152,7 @@ flowchart LR
         s_person_id[person_id]
         s_role[role &lt;-- from DB]
     end
-    sub -->|id_token claim| oidc_subject
+    sub -->|id_token claim,<br/>into the presenting provider's column| oidc_subject
     email -->|id_token claim| local_email
     name -->|id_token claim| local_name
     oidc_subject --> s_sub
@@ -241,11 +250,33 @@ siblings — is the primary provider, unchanged: Google in production, Rauthy in
 provider in principle. Setting `OAUTH_MICROSOFT_CLIENT_ID` adds Microsoft Entra ID **alongside** it. Leaving it unset
 changes nothing: one button, one immediate redirect from `/auth/login`, one session cookie shape.
 
-Adding rather than replacing is the whole point. A person's `persons.oidc_subject` is issued by whichever provider
-authenticated them, and `resolve_person_from_claims` only ever links a subject to a row whose column is empty
+Adding rather than replacing is the whole point. A person carries one subject column **per provider** —
+`persons.oidc_subject` for the primary slot, `persons.microsoft_subject`, `persons.apple_subject` — each holding the
+identifier that provider issued, each under its own unique index. `resolve_person_from_claims` matches on the presenting
+provider's column, and on an email match links only that provider's column, leaving the others alone
 ([`portal::oauth`](../portal/src/oauth.rs)). Moving Google behind a broker would therefore change every existing subject
 and leave every existing person resolving by email alone, permanently — including the highest-privilege rows. Adding a
 provider next to Google leaves Google issuing exactly the subjects it always did.
+
+### Legacy convergence
+
+Before the columns were split, every provider wrote to the single `oidc_subject` slot, so a row created by a first
+sign-in through Microsoft or Apple holds *that* provider's identifier there, with nothing recording which provider
+issued it. Apple omits the `email` claim on a repeat authorization, so such a row would have neither a matching
+`apple_subject` nor an email to fall back on, and would be refused on every later sign-in.
+
+The resolver therefore keeps one bounded fallback: when the presenting provider is **not** the primary one, the token
+carries **no** email claim, and the row found in `oidc_subject` holds no subject for that provider yet, the identifier
+is **moved** into the provider's own column and `oidc_subject` is cleared in the same write. Each affected row converges
+exactly once and is then resolved by the ordinary per-provider lookup. A convergence emits
+`auth.legacy_subject_relinked` with the provider and nothing else.
+
+The email condition is what keeps this from being a second way into a row: when a token does carry an email, an
+unmatched address stays a refusal. A row whose stored identifier really was primary-issued and is consumed here still
+signs in, because the primary provider supplies an email on every authorization and the email path re-links its column.
+
+The branch is a migration seam with an end. ENG-783 removes it once `auth.legacy_subject_relinked` has been quiet for
+four consecutive weeks across every deployment.
 
 ### Why multi-tenant Entra needs code and not just config
 

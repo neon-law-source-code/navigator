@@ -104,6 +104,12 @@ whose token fails verification, emits `auth.sign_in_refused` with `provider`, `b
 `navigator.auth.sign_in` counter carries only `provider` and `outcome` (`signed_in` or `refused`). These events and the
 refusal log carry identifiers and bounded values only: no email, name, address, or provider subject.
 
+A sign-in that converges a Person row written before sign-in identifiers were split per provider also emits
+`auth.legacy_subject_relinked` with `provider` and nothing else. It is a migration signal, not a sign-in outcome, so it
+increments no counter and the sign-in that triggered it emits its own `auth.signed_in`. Each affected row can produce it
+at most once — see ["Legacy convergence"](oidc.md#legacy-convergence) — so the event falling silent everywhere is the
+condition ENG-783 waits on before removing the branch that emits it.
+
 The GET and form-post callbacks share one completion path. The pre-auth cookie is consumed before token processing, and
 the event is emitted once at the session-creation or refusal boundary. `first_link` is currently true when the resolver
 creates a new Person; the named resolver seam can take an explicit subject-link result when the linkage path exposes

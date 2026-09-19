@@ -229,8 +229,9 @@ Signing in with the IdP does not, by itself, create a `person` row. The OAuth ca
 subject against the table (`portal::oauth::resolve_person_from_claims`):
 
 - an existing **admitted** row (matched on the presenting provider's subject — `oidc_subject` for the primary provider,
-  `microsoft_subject` for Microsoft, or `apple_subject` for Apple — or, case-insensitively, `email`) signs in with its
-  stored role;
+  `microsoft_subject` for Microsoft, or `apple_subject` for Apple — or, case-insensitively, `email`, or, for a row
+  written before the columns were split, the bounded fallback in [`docs/oidc` → Legacy
+  convergence](oidc.md#legacy-convergence)) signs in with its stored role;
 - the configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` is JIT-created as `owner` on first login (the carve-out that keeps a
   fresh deploy from locking its Owner out), and role-healed back to `owner` on every subsequent login;
 - **every other unknown email is refused with a `403`** — onboarding is operator-mediated by default.

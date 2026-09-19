@@ -1816,6 +1816,33 @@ jobs:
         );
     }
 
+    /// Synced skills are copied into Project repositories that do not carry
+    /// Navigator's `docs/` tree. A relative link that only resolves here
+    /// becomes `M057` the moment `project gate` scans `.agents/`.
+    #[test]
+    fn synced_skills_resolve_relative_links_outside_navigator() {
+        use rules::{M057RelativeLinkResolves, Rule, SourceFile};
+
+        for (name, contents) in SYNCED_SKILLS {
+            let root = tempfile::tempdir().unwrap();
+            let path = root
+                .path()
+                .join(".agents/skills")
+                .join(name)
+                .join("SKILL.md");
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, contents).unwrap();
+            let violations = M057RelativeLinkResolves.lint(&SourceFile {
+                path: path.clone(),
+                contents: (*contents).to_string(),
+            });
+            assert!(
+                violations.is_empty(),
+                "{name} still points at a Navigator-only path: {violations:?}"
+            );
+        }
+    }
+
     #[test]
     fn agents_md_must_name_cli_feedback() {
         let root = tempfile::tempdir().unwrap();

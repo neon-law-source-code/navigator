@@ -1028,7 +1028,7 @@ fn gate_passes_when_no_skills_have_been_synced() {
 /// that violated it, in sixteen repositories, claiming a fleet-wide
 /// uniformity that had already broken in two directions.
 #[test]
-fn gate_fails_when_claude_exists_without_the_catalog() {
+fn gate_fails_when_agents_exists_without_the_catalog() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     fs::create_dir_all(dir.path().join(".agents")).unwrap();
@@ -1045,7 +1045,7 @@ fn gate_fails_when_claude_exists_without_the_catalog() {
 /// once `sync-skills` has run. A check whose only remedy is deleting the
 /// directory that triggered it would just teach people to delete it.
 #[test]
-fn gate_passes_when_claude_exists_and_the_catalog_is_synced() {
+fn gate_passes_when_agents_exists_and_the_catalog_is_synced() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     fs::create_dir_all(dir.path().join(".agents")).unwrap();

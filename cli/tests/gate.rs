@@ -30,14 +30,6 @@ fn write_agent_contract(dir: &Path, code: &str) {
              workaround here.\n"
         ),
     );
-    let claude = dir.join("CLAUDE.md");
-    if claude.exists() {
-        fs::remove_file(&claude).unwrap();
-    }
-    #[cfg(unix)]
-    std::os::unix::fs::symlink("AGENTS.md", &claude).unwrap();
-    #[cfg(not(unix))]
-    fs::copy(dir.join("AGENTS.md"), &claude).unwrap();
 }
 
 fn write_project_shell(dir: &Path, code: &str) {

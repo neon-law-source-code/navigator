@@ -72,14 +72,6 @@ fn write_agent_contract(root: &Path) {
          When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team rather than documenting a CLI\n\
          workaround here.\n",
     );
-    let claude = root.join("CLAUDE.md");
-    if claude.exists() {
-        fs::remove_file(&claude).unwrap();
-    }
-    #[cfg(unix)]
-    std::os::unix::fs::symlink("AGENTS.md", &claude).unwrap();
-    #[cfg(not(unix))]
-    fs::copy(root.join("AGENTS.md"), &claude).unwrap();
 }
 
 fn write_layout_for_the_gate(root: &Path) {

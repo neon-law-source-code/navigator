@@ -86,6 +86,4 @@ a swap rather than stretching a misfit voice. The zodiac is fixed at twelve; the
 
 How to run any council — render inline (voices → consensus → action, never twelve real subagents), default to the
 smallest useful bench and expand only when asked, read the real source and confirm every asserted fact first, and end
-with a decision — lives once in
-[`docs/agent-decision-councils.md`](../../../docs/agent-decision-councils.md#how-to-run-a-council). Read it before
-convening.
+with a decision — lives once in `docs/agent-decision-councils.md`. Read that document before convening.

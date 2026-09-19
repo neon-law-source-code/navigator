@@ -9984,16 +9984,17 @@ async fn assert_unregistered_host_redirects(
 /// chrome to check) — this matrix asserts the status/redirect shape that
 /// holds on every host regardless of session.
 /// The holding host's chrome: no header and no public shell (so no
-/// support-chat widget) — but the one shared footer, with the firm's office,
-/// its family of brands, and its membership, is under the notice like on
-/// every other page.
+/// support-chat widget) — but the one shared footer, with the firm's office
+/// and membership, is under the notice along with its two practice cards.
 fn assert_holding_host_chrome(body: &str) {
     for (marker, present) in [
         (r#"class="site-header""#, false),
         ("nav-theme public-shell", false),
         (r#"class="site-footer""#, true),
         ("Ste 405-9002", true),
-        (r#"aria-label="Our family""#, true),
+        (r#"aria-label="Our family""#, false),
+        (r#"class="home-practices__grid""#, true),
+        ("Vesta Estate Planning", true),
         ("Proud member of the Justice Technology Association", true),
     ] {
         assert_eq!(
@@ -10016,9 +10017,9 @@ async fn host_brand_path_matrix_resolves_every_combination() {
 
     // Marketing path: 200 on every registered host with its own
     // `og:site_name`; the unknown host's redirect target renders the
-    // default brand's chrome, not merely a 301. Lawyer Shook is a bare
-    // holding page rather than a marketing site, so `/` is its own
-    // marketing path here — `/contact` is unpublished and 404s.
+    // default brand's chrome, not merely a 301. Lawyer Shook keeps its
+    // holding notice and practice cards on `/` — `/contact` is unpublished
+    // and 404s.
     for (host, path, brand) in [
         (default_host, "/contact", "Neon Law"),
         (delete_your_data_host, "/contact", "DeleteYourData.com"),
@@ -10040,7 +10041,7 @@ async fn host_brand_path_matrix_resolves_every_combination() {
             assert!(
                 body.contains(r#"class="holding-page""#)
                     && body.contains(r#"class="holding-page__heading""#),
-                "the holding host renders its bare notice: {body}"
+                "the holding host renders its notice: {body}"
             );
             assert_holding_host_chrome(&body);
         }

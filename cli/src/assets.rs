@@ -97,15 +97,14 @@ pub const PLUS_JAKARTA_SANS: FontFamily = FontFamily {
     stem: "PlusJakartaSans",
 };
 
-/// Vesta Estate Planning's display face, paired with [`SOURCE_SANS_3`].
+/// Vesta Estate Planning's single face for headings and body copy.
 pub const EB_GARAMOND: FontFamily = FontFamily {
     label: "EB Garamond",
     dir: "eb-garamond",
     stem: "EBGaramond",
 };
 
-/// The body face Vesta and Misericordia Injury Law both read in — one family,
-/// two brands, one upload.
+/// Misericordia Injury Law's body face.
 pub const SOURCE_SANS_3: FontFamily = FontFamily {
     label: "Source Sans 3",
     dir: "source-sans-3",
@@ -690,6 +689,7 @@ fn reachable_image_keys(content_root: &Path) -> anyhow::Result<BTreeSet<String>>
     let mut keys = content_image_refs(content_root)?;
     keys.extend(gallery_variant_keys());
     keys.insert(views::assets::HOME_PRESENTATION_KEY.to_owned());
+    keys.insert(views::assets::VESTA_EXPLAINER_KEY.to_owned());
     Ok(keys)
 }
 
@@ -1101,6 +1101,7 @@ pub(crate) fn embedded_asset_refs() -> BTreeSet<String> {
     let mut refs = bundled_slide_asset_keys();
     refs.extend(gallery_variant_keys());
     refs.insert(views::assets::HOME_PRESENTATION_KEY.to_owned());
+    refs.insert(views::assets::VESTA_EXPLAINER_KEY.to_owned());
     for family in BUCKET_FONT_FAMILIES {
         refs.extend(font_family_refs(family));
     }
@@ -2500,11 +2501,16 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
                 .mount(server)
                 .await;
         }
-        Mock::given(method("HEAD"))
-            .and(path(format!("/{}", views::assets::HOME_PRESENTATION_KEY)))
-            .respond_with(ResponseTemplate::new(200))
-            .mount(server)
-            .await;
+        for key in [
+            views::assets::HOME_PRESENTATION_KEY,
+            views::assets::VESTA_EXPLAINER_KEY,
+        ] {
+            Mock::given(method("HEAD"))
+                .and(path(format!("/{key}")))
+                .respond_with(ResponseTemplate::new(200))
+                .mount(server)
+                .await;
+        }
     }
 
     #[tokio::test]
@@ -2600,6 +2606,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
             .collect();
         assert_eq!(image_refs, reachable);
         assert!(refs.contains(views::assets::HOME_PRESENTATION_KEY));
+        assert!(refs.contains(views::assets::VESTA_EXPLAINER_KEY));
         for key in gallery_variant_keys() {
             assert!(refs.contains(&key), "verify must probe `{key}`");
         }
@@ -2721,6 +2728,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         assert!(slides.is_subset(&refs));
         assert!(gallery_variant_keys().is_subset(&refs));
         assert!(refs.contains(views::assets::HOME_PRESENTATION_KEY));
+        assert!(refs.contains(views::assets::VESTA_EXPLAINER_KEY));
         for family in BUCKET_FONT_FAMILIES {
             for rel in font_family_refs(family) {
                 assert!(refs.contains(&rel), "missing font key {rel}");

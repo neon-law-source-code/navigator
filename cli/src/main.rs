@@ -1762,9 +1762,9 @@ enum FontFamilyArg {
     /// DeleteYourData.com's OFL-1.1 sans, self-hosted on the same
     /// operator-upload lane as GORP's licensed delivery.
     PlusJakartaSans,
-    /// Vesta Estate Planning's display face.
+    /// Vesta Estate Planning's heading and body face.
     EbGaramond,
-    /// The body face Vesta and Misericordia Injury Law share.
+    /// Misericordia Injury Law's body face.
     // Both `Source` values are spelled out because clap's derivation drops the
     // hyphen before a trailing digit, and the value has to equal the bucket
     // directory.

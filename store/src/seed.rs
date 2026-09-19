@@ -1322,7 +1322,7 @@ async fn seed_sample_portfolio_into(
 /// One trailing-30-day Xero invoice per sample matter (ENG-591), invented
 /// exactly like every other row this table carries, so the local Firm show
 /// page's invoice graphs have something to draw. One is fully paid, one is
-/// partly paid, and one is unpaid, across the fixture's two house brands.
+/// partly paid, and one is unpaid, across the fixture's three house brands.
 async fn seed_sample_invoices(surreal: &SurrealDb) -> anyhow::Result<()> {
     let now = chrono::Utc::now();
     for (matter, amount_cents, paid_cents, days_ago) in [
@@ -1454,7 +1454,7 @@ const SAMPLE_MATTERS: &[SampleMatter] = &[
         description: "estate plan dividing the residue among nieces and nephews",
         repository_url: "https://github.com/neon-law-staging/sample-estate",
         portal_index: SAMPLE_ESTATE_PORTAL_INDEX,
-        brand: "neon",
+        brand: "vesta",
     },
 ];
 
@@ -2666,7 +2666,7 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
     CompiledBrand {
         key: "vesta",
         name: "Vesta Estate Planning",
-        typeface: "source-sans-3",
+        typeface: "eb-garamond",
         primary_hex: "#8A5A2B",
     },
     CompiledBrand {

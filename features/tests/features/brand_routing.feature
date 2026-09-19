@@ -30,7 +30,7 @@ Feature: Public routing on the firm's own host
     Then the response status is 200
     And the page is branded "Neon Law"
 
-  Scenario Outline: The firm's anonymous marketing surface serves at the root
+  Scenario Outline: The firm's published anonymous surface serves at the root
     # Each is anonymous: a stranger deciding whether to hire a lawyer must not
     # meet a login door.
     When a visitor opens <path>

@@ -15,8 +15,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+mod estate;
 pub mod services;
 pub mod shared;
+pub use estate::EstateCopy;
 
 /// The only locale directory the site publishes.
 pub const DEFAULT_LOCALE: &str = "en";
@@ -100,6 +102,9 @@ pub struct HomeCopy {
     /// Company counsel pricing and the illustrative notation flow.
     #[serde(default)]
     pub company: Option<CompanyCopy>,
+    /// Lifetime estate planning, absent on other practice pages.
+    #[serde(default)]
+    pub estate: Option<EstateCopy>,
 }
 
 /// The home page's provenance section: the flow a request follows, the

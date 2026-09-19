@@ -698,15 +698,8 @@ pub(crate) fn resolve_firm_home_content(
     locales::home(branding)
 }
 
-/// Lawyer Shook's home page (`/`): a bare holding notice for Shook Law PLLC,
-/// not a marketing page. The mark holds the LAWYER SHOOK registration; the
-/// screen carries only the firm's name, one statement of what it is, and a
-/// sign-in line for an existing client — no header, hero, CTA, or practice
-/// boxes — over the one shared footer every page of the firm's sites carries.
-/// [`webapp::home::HomePage`] renders nothing else once
-/// [`webapp::home::HomeContent::bare`] is set, which is why this is a
-/// hardcoded statement rather than a `locales::home` YAML catalog page: there
-/// is no marketing copy here to edit.
+/// The firm's notice and sign-in line, followed by the practice cards from
+/// Lawyer Shook's home catalog, over the shared footer.
 fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     let legal_entity = branding.firm.legal_entity;
     let paragraph = format!(
@@ -744,7 +737,7 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
                 },
             ],
         }),
-        ..Default::default()
+        ..locales::home(branding)
     }
 }
 
@@ -771,9 +764,11 @@ mod lawyer_shook_holding_page_tests {
             "{}",
             bare.paragraph
         );
-        // No marketing content at all: nothing else is on the screen.
+        // The firm's notice leads into the two active practice doors.
         assert!(content.service.is_none());
-        assert!(content.practices.is_empty());
+        assert_eq!(content.practices.len(), 2);
+        assert_eq!(content.practices[0].heading, "Neon Law");
+        assert_eq!(content.practices[1].heading, "Vesta Estate Planning");
         assert!(content.provenance.is_none());
         // The one link on the page: an existing client's way to `/app`.
         let sign_in_text: String = bare.sign_in.iter().map(|run| run.text.as_str()).collect();

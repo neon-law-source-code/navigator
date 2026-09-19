@@ -1,57 +1,57 @@
-head_title: "{site_name} | Home"
+head_title: "{site_name} | A plan for life"
 meta_description: >-
-  Vesta Estate Planning is a practice of Shook Law PLLC. Wills, trusts, powers
-  of attorney, advance directives, and probate, at flat fees quoted before any
-  work begins. This is an attorney advertisement.
-heading: Decide now who receives what.
+  A lifetime estate plan for $5,000, paid once, with unlimited edits.
+  Vesta Estate Planning is a practice of Shook Law PLLC. Attorney advertisement.
+heading: For the life you build.
 lead: >-
-  Vesta Estate Planning is a practice of Shook Law PLLC. We help people say who
-  should receive what when they die, and who can act for them if they cannot
-  act for themselves. We tell you the fee before any work begins. Nothing here
-  is legal advice without a signed retainer for an active project.
-contact_label: Contact us
-service:
-  heading: What this practice does
-  body:
-    - - text: >-
-          We prepare wills, living trusts, financial powers of attorney, and
-          advance directives, and we handle probate after someone has died. A
-          licensed attorney prepares and reviews the work. Shook Law PLLC is
-          the law firm you would retain.
-    - - text: "A will starts at "
-      - text: "$3,000"
-        emphasis: true
-      - text: >-
-          . A living trust starts at $3,000. An estate plan bringing together a
-          will, a document naming someone to handle your finances, and your
-          wishes for medical care is $5,000. Court filing fees and recording
-          fees are set by the government and are separate from our fee.
-    - - text: >-
-          A will does not avoid probate. It tells the court who should receive
-          what. Whether an estate goes through probate at all, and how long
-          that takes, depends on what the person owned and how it was held. We
-          will explain what applies to yours.
-    - - text: >-
-          There is no deadline here that we invented. People usually do this
-          when something changes — a birth, a marriage, a house, a diagnosis —
-          and any of those is a reasonable time to start.
-    - - text: "Write to "
-      - text: "{firm_email}"
-        href: "mailto:{firm_email}"
-      - text: >-
-          . Tell us roughly what you would like to arrange, and we will explain
-          the first step and what it costs.
-practices_heading: The work
-practices:
-  - mark: gavel
-    heading: Wills, trusts, and directives
-    body: >-
-      A will or a living trust starts at $3,000. A full estate plan is $5,000.
-      This is an attorney advertisement.
-    href: /services
-  - mark: scales
-    heading: Probate
-    body: >-
-      Help handling the estate of someone who has died. We quote the work
-      before it begins.
-    href: /services
+  Make your wishes clear for the people you love. An estate plan you can
+  keep up to date, through every chapter of your life.
+contact_label: Book a consultation
+estate:
+  eyebrow: Vesta Estate Planning
+  process_link: How your plan works
+  plan_label: Your lifetime estate plan
+  price: "$5,000"
+  price_term: Once. For life.
+  features:
+    - Unlimited edits for life
+    - Prepared and reviewed by a licensed attorney
+    - Your wishes for property, finances, and care
+  fee_note: >-
+    One fee for your estate plan and its lifetime edits. Court and recording
+    fees are separate. Your retainer sets out the work included.
+  video_label: Your estate plan, explained.
+  video_src: img/vesta-home/vesta-explainer.mp4
+  transcript_label: Read the video transcript
+  video_transcript: >-
+    An estate plan for the life you build. With Vesta Estate Planning, pay five
+    thousand dollars once, with unlimited edits for life. Start with a conversation.
+    A licensed attorney prepares and reviews your plan, then guides you through
+    signing. As your life changes, come back to update your wishes. An optional
+    blockchain record is planned at five dollars per transaction. It is not yet
+    available, and does not replace required signing, witnesses, or notarization.
+    Book a consultation with Vesta, an estate-planning practice of Shook Law PLLC.
+  process_label: A plan that grows with you
+  process_heading: Decide today. Keep room for tomorrow.
+  steps:
+    - [Start with a conversation, "Tell us who matters to you and what you want to arrange. We explain the documents and the work before you commit."]
+    - [Put your wishes in writing, "A licensed attorney prepares and reviews your plan, then guides you through the signing steps for your documents."]
+    - [Change it as life changes, "A new home, a growing family, or a different wish. Come back to update your plan. Unlimited edits are included for life."]
+  record_label: Optional blockchain record
+  record_price: "$5"
+  record_unit: per transaction
+  record_status: Coming soon
+  record_heading: A lasting record of one version.
+  record_body: >-
+    Planning to leave your documents as they are? The optional blockchain
+    record is intended to preserve evidence of a signed version. Each new
+    record is a separate $5 transaction. You can still change your plan;
+    the earlier record stays on the chain.
+  record_note: >-
+    Blockchain recording is not yet available. It does not replace the
+    signatures, witnesses, or notarization your documents require, and it
+    does not make your plan unchangeable.
+  closing_heading: Start with the people you love.
+  closing_body: >-
+    Book a conversation with Vesta, an estate-planning practice of
+    Shook Law PLLC.

@@ -596,9 +596,9 @@ pub static VESTA_BRANDING: Branding = Branding {
     firm: SiteBrand {
         site_name: "Vesta Estate Planning",
         home_href: "/",
-        tagline: "A Shook Law PLLC practice. Wills, trusts, powers of attorney, and probate, at flat fees quoted before work begins.",
+        tagline: "A Shook Law PLLC practice. An estate plan for $5,000 once, with unlimited edits for life.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        logo_href: "",
+        logo_href: "/public/brand/vesta.svg",
         social_image: "",
         nav: &[],
         is_law_firm: true,
@@ -614,14 +614,14 @@ pub static VESTA_BRANDING: Branding = Branding {
     firm_trademark: "",
     firm_trademark_registration: "",
     firm_trademark_record_url: "",
-    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    consultation_url: "https://calendar.notion.so/meet/shicholas/or15n4yy7",
     terms_url: "/terms",
     privacy_url: "/privacy",
     base_url: "",
     primary_domain: "vestaestateplanning.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Vesta Estate Planning is a practice of Shook Law PLLC. A licensed attorney prepares wills, living trusts, powers of attorney, and advance directives, and handles probate. A will or a living trust starts at $3,000 and a full estate plan is $5,000, with court and recording fees separate. This is an attorney advertisement, not a promise about a result.",
-    service_description: "Estate planning from Vesta Estate Planning, a practice of Shook Law PLLC. Wills and living trusts from $3,000, a full estate plan at $5,000, with government fees separate.",
+    mission_description: "Vesta Estate Planning is a practice of Shook Law PLLC. An estate plan is $5,000 once, with unlimited edits for life. A licensed attorney prepares and reviews the work. Court and recording fees are separate. Attorney advertisement.",
+    service_description: "A lifetime estate plan from Vesta Estate Planning, a practice of Shook Law PLLC. $5,000 once, with unlimited edits for life. Court and recording fees are separate.",
     portal_only: false,
     brand_key: BrandKey::Vesta,
 };
@@ -899,11 +899,11 @@ impl BrandKey {
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
             Self::Neon => crate::locales::KNOWN_PAGES,
-            Self::LawyerShook => &["services"],
             // Every practice brand publishes the two stems it actually
             // serves; a missing file is a loader-test failure rather than a
             // first-request panic.
-            Self::DeleteYourData
+            Self::LawyerShook
+            | Self::DeleteYourData
             | Self::Vesta
             | Self::Misericordia
             | Self::Abhaya
@@ -916,10 +916,9 @@ impl BrandKey {
     ///
     /// Neon consolidates its services on `/`. DeleteYourData answers
     /// only the pages it has a catalog for (plus `/contact`, which is
-    /// addresses rather than a YAML stem). Lawyer Shook is a bare holding
-    /// notice for Shook Law PLLC, not a marketing site: it answers `/` alone.
-    /// Other firm paths 404 on that host rather than rendering another
-    /// brand's words.
+    /// addresses rather than a YAML stem). Lawyer Shook keeps its holding
+    /// notice and practice cards on `/`; other firm paths 404 on that host
+    /// rather than rendering another brand's words.
     #[must_use]
     pub fn publishes_firm_path(self, path: &str) -> bool {
         match self {
@@ -2398,7 +2397,7 @@ mod tests {
             BrandKey::DeleteYourData.catalog_pages(),
             &["home", "services"]
         );
-        assert_eq!(BrandKey::LawyerShook.catalog_pages(), &["services"]);
+        assert_eq!(BrandKey::LawyerShook.catalog_pages(), &["home", "services"]);
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/services"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/contact"));

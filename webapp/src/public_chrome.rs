@@ -196,7 +196,9 @@ pub struct PublicChrome {
 /// [`crate::components::PublicShell`].
 #[component]
 pub fn PublicFooter(chrome: PublicChrome) -> Element {
-    let company_footer = chrome.tokens_href == crate::brand_style::brand_tokens_href("neon");
+    let practice_footer = ["neon", "vesta", "lawyer-shook"]
+        .iter()
+        .any(|brand| chrome.tokens_href == crate::brand_style::brand_tokens_href(brand));
     rsx! {
         // The resolved brand's colour, hoisted here because this is the one
         // place that already knows which brand the page wears. Navigator's
@@ -210,8 +212,8 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
             // services, resolved from the firm brand, so it is the same name at
             // the bottom of every page.
             copyright_holder: chrome.legal_entity.clone(),
-            attribution: if company_footer { String::new() } else { chrome.attribution.clone() },
-            copyright_href: if company_footer { "https://www.lawyershook.com".to_string() } else { String::new() },
+            attribution: if practice_footer { String::new() } else { chrome.attribution.clone() },
+            copyright_href: if practice_footer { "https://www.lawyershook.com".to_string() } else { String::new() },
             disclaimer: chrome.disclaimer.clone(),
             // The mark notice reads `copyright_holder` as its registrant, so
             // it is handed in beside that name rather than resolved apart from
@@ -270,7 +272,7 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
             brands: chrome
                 .brands
                 .iter()
-                .filter(|_| !company_footer)
+                .filter(|_| !practice_footer)
                 .map(|brand| FooterBrandLink {
                     label: brand.label.clone(),
                     href: brand.href.clone(),

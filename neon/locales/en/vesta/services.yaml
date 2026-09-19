@@ -1,106 +1,54 @@
-head_title: "Wills, trusts, and probate — {site_name}"
+head_title: "Your lifetime estate plan — {site_name}"
 meta_description: >-
-  Estate planning from Vesta Estate Planning, a practice of Shook Law PLLC.
-  Wills and living trusts from $3,000, a full estate plan at $5,000, with
-  government fees separate. This is an attorney advertisement.
-title: Wills, trusts, and probate
+  A lifetime estate plan for $5,000 once, with unlimited edits. Vesta Estate
+  Planning is a practice of Shook Law PLLC. Attorney advertisement.
+title: Your lifetime estate plan
 hero_mark: gavel
-tagline: Say who receives what
+tagline: A plan for life
 hero_lines:
-  - text: Say who receives what
-    accent_words: 2
-  - text: and who can act for you
+  - text: For the life you build.
     accent_words: 0
 hero_lead: >-
-  Flat fees, quoted before any work begins. A licensed attorney prepares and
-  reviews the work. Shook Law PLLC is the law firm you would retain.
+  $5,000 once, with unlimited edits for life. A licensed attorney prepares
+  and reviews your plan. Shook Law PLLC is the law firm you retain.
 hero_cta:
-  href: "mailto:{firm_email}"
-  label: Contact us
+  href: https://calendar.notion.so/meet/shicholas/or15n4yy7
+  label: Book a consultation
 skin: practice
 bands:
   - kind: cards
-    anchor: work
-    overline: The work
-    heading: What we prepare
-    description: ""
-    items:
-      - title: A will
-        body:
-          - - text: >-
-                Says who should receive what when you die, and who should
-                look after any children who are still minors. Starts at
-                $3,000.
-      - title: A living trust
-        body:
-          - - text: >-
-                A trust you can change during your lifetime, with a will that
-                leaves property to it and the paperwork to put one Nevada
-                property into it. Starts at $3,000.
-      - title: Powers of attorney and directives
-        body:
-          - - text: >-
-                A document naming someone to handle your finances, and a
-                record of your wishes for medical care and who can make those
-                decisions. Each is $3,000, or $5,000 together with a will.
-      - title: Probate
-        body:
-          - - text: >-
-                Help handling the estate of someone who has died, including
-                what the court requires and when. We quote this before it
-                begins, because what it takes depends on the estate.
-  - kind: cards
-    anchor: fees
-    overline: Fees
-    heading: What it costs
+    anchor: plan
+    overline: Your plan
+    heading: Make your wishes clear
     description: >-
-      Our fee is flat and agreed in writing before work begins. Court filing
-      fees, recording fees, and certified copies are set by the government,
-      are separate from our fee, and are paid to the court or the county
-      rather than to us.
+      We discuss the documents you need and put the scope in your retainer
+      before work begins. Court and recording fees are separate.
     items:
-      - title: Will
+      - title: Your property
         body:
-          - - text: "Starting at $3,000."
-      - title: Living trust
+          - - text: Decide who receives what, and discuss whether a will or living trust fits your plans.
+      - title: Your finances and care
         body:
-          - - text: "Starting at $3,000."
-      - title: Estate plan
+          - - text: Name the people who can act for you and record your wishes for medical care.
+      - title: Your changes
         body:
-          - - text: >-
-                $5,000 for a will, a document naming someone to handle your
-                finances, and your wishes for medical care.
+          - - text: Return as your life changes. Your $5,000 estate plan includes unlimited edits for life.
   - kind: cards
-    anchor: about
-    overline: About
-    heading: Why Vesta
-    description: ""
+    anchor: record
+    overline: Optional · Coming soon
+    heading: A blockchain record of one version
+    description: >-
+      $5 per transaction when available. Intended to preserve evidence of a
+      signed version you expect to keep. An earlier record stays on the
+      chain if you change your plan and record a new version.
     items:
-      - title: The name
+      - title: Signing still matters
         body:
           - - text: >-
-                Vesta is the Roman goddess of the hearth — the household fire
-                that was kept alight from one generation to the next. The work
-                here is the same idea in ordinary language: deciding what
-                carries on, and making it plain enough that nobody has to
-                guess.
-      - title: The firm
+                Blockchain recording is not yet available. It does not replace
+                required signatures, witnesses, or notarization. It does not
+                make your plan unchangeable.
+      - title: Explore your plan
         body:
-          - - text: >-
-                Vesta Estate Planning is a trade name of Shook Law PLLC, a
-                Nevada professional limited liability company. Shook Law PLLC
-                is the firm you would retain, and a licensed attorney reviews
-                every matter.
-      - title: What we do not promise
-        body:
-          - - text: >-
-                We do not promise a result. A will does not avoid probate, and
-                whether a particular estate goes through probate depends on
-                what was owned and how it was held.
-  - kind: cta
-    heading: Ready to start?
-    body: >-
-      Write to us with roughly what you would like to arrange. We will explain
-      the first step and what it costs before any work begins.
-    email: "{firm_email}"
-    email_subject: Estate planning
+          - - text: See the lifetime plan and how to get started.
+              href: /#your-plan

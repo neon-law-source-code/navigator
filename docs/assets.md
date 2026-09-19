@@ -9,6 +9,10 @@ megabytes of binaries) without making the local test harness depend on a runtime
 
 ## The four commands
 
+Vesta's mark is the [public-domain Vesta symbol](https://commons.wikimedia.org/wiki/File:4_Vesta_(1).svg), vectorized by
+Carnby after Urhixidur. `server/public/brand/vesta.svg` adds a scalable view box and the brand's bronze fill. This small
+SVG ships with the other tracked brand marks and needs no bucket upload.
+
 The `navigator ops assets` subcommands form a build → publish → restore → verify loop. For responsive photos, the
 `views::assets::GALLERY` manifest and the width set (`WIDTHS = [400, 800, 1200]`) are the single source of truth shared
 with the view layer, so adding a photo is a manifest edit plus a JPEG — never a code change. Standalone blog,
@@ -157,8 +161,8 @@ families it never probed.
 | --- | --- | --- |
 | `gorp-serif` | GORP Serif | Neon Law |
 | `plus-jakarta-sans` | Plus Jakarta Sans | DeleteYourData.com |
-| `eb-garamond` | EB Garamond | Vesta Estate Planning (display) |
-| `source-sans-3` | Source Sans 3 | Vesta, Misericordia Injury Law (body) |
+| `eb-garamond` | EB Garamond | Vesta Estate Planning (headings and body) |
+| `source-sans-3` | Source Sans 3 | Misericordia Injury Law (body) |
 | `source-serif-4` | Source Serif 4 | Misericordia Injury Law (display) |
 | `mukta` | Mukta | Abhaya Immigration |
 | `public-sans` | Public Sans | DeleteYourDebt.com |
@@ -328,3 +332,17 @@ done; done
 If you are _curating_ the gallery (adding or replacing a responsive photo), use `build` from the source JPEGs and then
 `upload` instead — see [The four commands](#the-four-commands) above. If you are adding a blog hero PNG, put it under
 `server/public/img/<slug>/`, verify it locally, then run `assets upload`.
+
+## Vesta explainer
+
+Vesta uses EB Garamond throughout. Its captioned explainer lives at `server/public/img/vesta-home/vesta-explainer.mp4`
+locally and resolves through the public asset origin in a deployment. The video script and accessible transcript live in
+`neon/locales/en/vesta/home.yaml`. The clip describes the lifetime plan and identifies blockchain recording as coming
+soon. Both source-checkout and embedded deployment verification include its object key, so a missing video blocks a new
+release instead of leaving a broken player.
+
+Publish the finished clip to staging before the next rollout:
+
+```bash
+cargo run -p cli -- ops assets upload --dir server/public/img --bucket neon-law-stg-assets
+```

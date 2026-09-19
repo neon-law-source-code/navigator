@@ -349,7 +349,7 @@ mod tests {
         // losing every N-family check. Living under `templates/` is what
         // makes a file a template, so that is what requires the field.
         for path in [
-            "templates/notations/neon_law/shared/will.md",
+            "templates/notations/neon_law/will.md",
             "templates/notations/forms/united_states/nevada/state/nv__llc_formation.md",
         ] {
             let v = S104MissingKind.lint(&file_at(
@@ -373,7 +373,7 @@ mod tests {
         // unclassified file. The lane check therefore precedes the
         // frontmatter lookup rather than returning early behind it.
         let v = S104MissingKind.lint(&file_at(
-            "templates/notations/neon_law/shared/will.md",
+            "templates/notations/neon_law/will.md",
             "# Last Will and Testament\n",
         ));
         assert_eq!(v.len(), 1, "got {v:?}");
@@ -398,7 +398,7 @@ mod tests {
     fn a_template_lane_file_that_declares_its_kind_passes() {
         assert!(S104MissingKind
             .lint(&file_at(
-                "templates/notations/neon_law/shared/will.md",
+                "templates/notations/neon_law/will.md",
                 "---\nkind: will\ntitle: Last Will\n---\n",
             ))
             .is_empty());
@@ -465,7 +465,7 @@ mod tests {
         // Navigator's catalog lives in.
         for (marker, rel) in [
             ("navigator.yaml", "templates/will.md"),
-            (".git", "templates/notations/neon_law/shared/will.md"),
+            (".git", "templates/notations/neon_law/will.md"),
         ] {
             let (_root, path) = repository_with(marker, rel);
             let file = SourceFile {

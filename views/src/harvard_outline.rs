@@ -622,11 +622,11 @@ mod tests {
 
     const ONBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../templates/notations/neon_law/shared/onboarding_letter.md"
+        "/../templates/notations/neon_law/onboarding.md"
     ));
     const OFFBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../templates/notations/neon_law/shared/offboarding_letter.md"
+        "/../templates/notations/neon_law/offboarding.md"
     ));
 
     #[test]
@@ -729,13 +729,36 @@ mod tests {
             .collect();
         assert_eq!(
             markers,
-            vec!["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
+            vec![
+                "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII",
+                "XIV",
+            ]
         );
-        assert!(doc.units.iter().any(|u| u.path == "II.A" && u.depth == 2));
-        assert!(doc.units.iter().any(|u| u.path == "III.B" && u.depth == 2));
+        // The flat-fee letter labels its parts with bold run-ins rather than
+        // the lettered blockquotes the hourly letter carried, so no unit sits
+        // deeper than 1. Preamble before § I is depth 0.
+        // `stage_html_nests_a_lettered_subsection` holds the depth-2 rendering.
+        assert!(doc.units.iter().any(|u| u.depth == 0));
+        assert!(doc.units.iter().all(|u| u.depth <= 1));
         let html = stage_html(&doc);
         assert!(html.contains("data-harvard-outline"));
         assert!(html.contains("data-harvard-path=\"I\""));
+        assert!(html.contains("harvard-unit--depth-1"));
+        assert!(html.contains("Scope"));
+    }
+
+    /// Depth-2 staging, which the bundled letters no longer exercise: a
+    /// lettered blockquote under a roman section nests one level and carries
+    /// the `<section>.<letter>` path into the rendered markup.
+    #[test]
+    fn stage_html_nests_a_lettered_subsection() {
+        let doc = parse(
+            "---\ntitle: Sample\n---\n\nDear client:\n\n## I. Scope\n\nThe firm acts.\n\n\
+             ## II. Fees\n\n> **A. Invoices.** Read them.\n>\n> **B. Costs.** Passed through.\n",
+        );
+        assert!(doc.units.iter().any(|u| u.path == "II.A" && u.depth == 2));
+        assert!(doc.units.iter().any(|u| u.path == "II.B" && u.depth == 2));
+        let html = stage_html(&doc);
         assert!(html.contains("data-harvard-path=\"II.A\""));
         assert!(html.contains("harvard-unit--depth-1"));
         assert!(html.contains("harvard-unit--depth-2"));

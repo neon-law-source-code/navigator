@@ -239,11 +239,10 @@ fn gate_walks_authored_directories_whose_names_only_contain_a_skipped_name() {
 #[test]
 fn gate_marks_each_diagnostic_with_its_severity() {
     let dir = TempDir::new().unwrap();
-    let warning_source =
-        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md");
+    let warning_source = workspace_root().join("templates/notations/neon_law/onboarding.md");
     let warning_path = dir
         .path()
-        .join("templates/notations/neon_law/shared/onboarding_letter.md");
+        .join("templates/notations/neon_law/onboarding.md");
     fs::create_dir_all(warning_path.parent().unwrap()).unwrap();
     fs::copy(warning_source, warning_path).unwrap();
     write(
@@ -313,7 +312,7 @@ fn gate_exempts_templates_lane_repository_furniture_from_the_kind_rule() {
 #[test]
 fn gate_rejects_the_retired_public_template_shelf() {
     let dir = TempDir::new().unwrap();
-    let source = workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md");
+    let source = workspace_root().join("templates/notations/neon_law/onboarding.md");
     let retired = dir.path().join("templates/open_source/retainer.md");
     fs::create_dir_all(retired.parent().unwrap()).unwrap();
     fs::copy(source, &retired).unwrap();
@@ -1833,10 +1832,9 @@ fn gate_fixes_preserves_a_standalone_raw_text_closing_tag() {
 /// `validate` must fail on it rather than report zero errors.
 #[test]
 fn gate_flags_a_questionnaire_state_the_body_stopped_reading() {
-    let source = fs::read_to_string(
-        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
-    )
-    .unwrap();
+    let source =
+        fs::read_to_string(workspace_root().join("templates/notations/neon_law/onboarding.md"))
+            .unwrap();
     assert!(
         source.contains("{{custom_text__engagement_scope}}"),
         "the letter must read the state this test removes",
@@ -1845,7 +1843,7 @@ fn gate_flags_a_questionnaire_state_the_body_stopped_reading() {
     let clean = TempDir::new().unwrap();
     write(
         clean.path(),
-        "templates/notations/neon_law/shared/onboarding_letter.md",
+        "templates/notations/neon_law/onboarding.md",
         &source,
     );
     gate(clean.path())
@@ -1856,7 +1854,7 @@ fn gate_flags_a_questionnaire_state_the_body_stopped_reading() {
     let rewritten = TempDir::new().unwrap();
     write(
         rewritten.path(),
-        "templates/notations/neon_law/shared/onboarding_letter.md",
+        "templates/notations/neon_law/onboarding.md",
         &source.replace(
             "> {{custom_text__engagement_scope}}",
             "> The scope is agreed in writing.",
@@ -1880,10 +1878,9 @@ fn gate_flags_a_questionnaire_state_the_body_stopped_reading() {
 /// must fail on it.
 #[test]
 fn gate_flags_a_contract_numbered_like_motion_practice() {
-    let source = fs::read_to_string(
-        workspace_root().join("templates/notations/neon_law/shared/offboarding_letter.md"),
-    )
-    .unwrap();
+    let source =
+        fs::read_to_string(workspace_root().join("templates/notations/neon_law/offboarding.md"))
+            .unwrap();
     assert!(
         source.contains("kind: offboarding") && source.contains("## I. Representation concluded"),
         "the letter must carry the Roman heading this test renumbers",
@@ -1892,7 +1889,7 @@ fn gate_flags_a_contract_numbered_like_motion_practice() {
     let clean = TempDir::new().unwrap();
     write(
         clean.path(),
-        "templates/notations/neon_law/shared/offboarding_letter.md",
+        "templates/notations/neon_law/offboarding.md",
         &source,
     );
     gate(clean.path())
@@ -1903,7 +1900,7 @@ fn gate_flags_a_contract_numbered_like_motion_practice() {
     let renumbered = TempDir::new().unwrap();
     write(
         renumbered.path(),
-        "templates/notations/neon_law/shared/offboarding_letter.md",
+        "templates/notations/neon_law/offboarding.md",
         &source.replace(
             "## I. Representation concluded",
             "## 1. Representation concluded",
@@ -1921,24 +1918,19 @@ fn gate_flags_a_contract_numbered_like_motion_practice() {
 /// or the scaffold cannot ship a stub that declares the kind it is.
 #[test]
 fn gate_exempts_onboarding_from_the_outline_check() {
-    let source = fs::read_to_string(
-        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
-    )
-    .unwrap();
+    let source =
+        fs::read_to_string(workspace_root().join("templates/notations/neon_law/onboarding.md"))
+            .unwrap();
     assert!(
-        source.contains("kind: onboarding")
-            && source.contains("## I. Client and scope of the engagement"),
+        source.contains("kind: onboarding") && source.contains("## I. Scope"),
         "the fixture must be the Roman-numbered `onboarding` this test renumbers",
     );
 
     let dir = TempDir::new().unwrap();
     write(
         dir.path(),
-        "templates/notations/neon_law/shared/onboarding_letter.md",
-        &source.replace(
-            "## I. Client and scope of the engagement",
-            "## 1. Client and scope of the engagement",
-        ),
+        "templates/notations/neon_law/onboarding.md",
+        &source.replace("## I. Scope", "## 1. Scope"),
     );
     gate(dir.path())
         .assert()
@@ -1955,7 +1947,7 @@ fn gate_exempts_onboarding_from_the_outline_check() {
 /// must fail on it.
 #[test]
 fn gate_flags_a_pleading_numbered_like_a_contract() {
-    let rel = "templates/notations/neon_law/shared/witness_affidavit_nevada.md";
+    let rel = "templates/notations/neon_law/witness_affidavit_nevada.md";
     let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
     assert!(
         source.contains("kind: pleading") && source.contains("## 1. Basis of knowledge"),
@@ -1982,7 +1974,7 @@ fn gate_flags_a_pleading_numbered_like_a_contract() {
 /// allowance is not hypothetical.
 #[test]
 fn gate_accepts_a_pleading_whose_caption_title_precedes_the_outline() {
-    let rel = "templates/notations/neon_law/shared/summons_nevada.md";
+    let rel = "templates/notations/neon_law/summons_nevada.md";
     let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
     assert!(
         source.contains("## SUMMONS — CIVIL") && source.contains("## 1. You must respond"),
@@ -2006,7 +1998,7 @@ fn gate_accepts_a_pleading_whose_caption_title_precedes_the_outline() {
 /// `offboarding` is not, and is the run that still fails.
 #[test]
 fn gate_exempts_a_letter_from_the_outline_check() {
-    let rel = "templates/notations/neon_law/shared/engagement_letter_nevada.md";
+    let rel = "templates/notations/neon_law/engagement_letter_nevada.md";
     let source = fs::read_to_string(workspace_root().join(rel)).unwrap();
     assert!(
         source.contains("kind: letter") && source.contains("## I. Client and scope"),
@@ -2034,7 +2026,7 @@ fn gate_exempts_a_letter_from_the_outline_check() {
 #[test]
 fn the_nevada_engagement_letter_is_a_roman_outline() {
     let source = fs::read_to_string(
-        workspace_root().join("templates/notations/neon_law/shared/engagement_letter_nevada.md"),
+        workspace_root().join("templates/notations/neon_law/engagement_letter_nevada.md"),
     )
     .unwrap();
     let markers: Vec<&str> = source

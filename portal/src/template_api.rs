@@ -40,7 +40,7 @@ const LEGACY_ALIASES: &[(&str, &str)] = &[
         "nonprofit/nevada_charitable_solicitation_registration",
         "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration",
     ),
-    ("onboarding/retainer", "notations/neon_law/shared/retainer"),
+    ("onboarding/retainer", "notations/neon_law/onboarding"),
 ];
 
 /// Canonical destination for old public links. Values are repository
@@ -92,6 +92,34 @@ pub fn find_raw_path(path: &str) -> Option<&'static str> {
 #[must_use]
 pub fn find_raw(category: &str, name: &str) -> Option<&'static str> {
     find_raw_path(&format!("{category}/{name}"))
+}
+
+/// Every file in the embedded `templates/` tree as `(repository-relative
+/// path, bytes)`, in a stable depth-first order.
+///
+/// This is the whole shipped catalog, *including* the templates
+/// [`find_raw_path`] refuses. That is deliberate and the two doors are not
+/// interchangeable: `find_raw_path` answers the public web, where
+/// `confidential: true` must fail closed, while this one answers the CLI
+/// running on a firm machine, where the operator is entitled to the same
+/// catalog a checkout would give them. A caller that serves bytes over the
+/// network wants `find_raw_path`, never this.
+#[must_use]
+pub fn bundled_files() -> Vec<(&'static str, &'static [u8])> {
+    fn walk(dir: &'static Dir<'static>, out: &mut Vec<(&'static str, &'static [u8])>) {
+        for file in dir.files() {
+            if let Some(path) = file.path().to_str() {
+                out.push((path, file.contents()));
+            }
+        }
+        for child in dir.dirs() {
+            walk(child, out);
+        }
+    }
+    let mut out = Vec::new();
+    walk(&TEMPLATES, &mut out);
+    out.sort_unstable_by_key(|(path, _)| *path);
+    out
 }
 
 fn safe_parts(parts: &[&str]) -> bool {
@@ -159,12 +187,51 @@ mod tests {
 
     #[test]
     fn refuses_a_confidential_template() {
-        // The retainer is `confidential: true` and must never be served
-        // over the public API even though the path is valid.
+        // The onboarding letter is `confidential: true` and must never be
+        // served over the public API even though the path is valid — and the
+        // legacy `onboarding/retainer` alias reaches the same file, so it must
+        // be refused the same way.
         assert!(
-            find_raw_path("notations/neon_law/shared/retainer").is_none(),
+            find_raw_path("notations/neon_law/onboarding").is_none(),
             "confidential templates must 404"
         );
+        assert!(
+            find_raw_path("onboarding/retainer").is_none(),
+            "the legacy alias must not smuggle a confidential template out"
+        );
+    }
+
+    /// The CLI door carries the whole catalog, including the confidential
+    /// letters the public door refuses — otherwise `navigator notations
+    /// export` would hand a lawyer a catalog with the firm's own letters
+    /// missing.
+    #[test]
+    fn bundled_files_carries_the_confidential_templates_the_public_door_refuses() {
+        let files = super::bundled_files();
+        let path = "notations/neon_law/onboarding.md";
+        let onboarding = files
+            .iter()
+            .find(|(p, _)| *p == path)
+            .expect("the onboarding letter is bundled");
+        assert!(String::from_utf8_lossy(onboarding.1).contains("code: onboarding__letter"));
+        assert!(
+            find_raw_path("notations/neon_law/onboarding").is_none(),
+            "the same file must still be refused over the public API"
+        );
+        assert!(
+            files.iter().any(|(p, _)| p.ends_with("us__form_990.md")),
+            "the public forms are bundled too"
+        );
+    }
+
+    /// Non-Markdown siblings — a form's `.fields` manifest and its
+    /// `.sha256` — travel with the catalog, so an export reproduces the
+    /// tree rather than just its prose.
+    #[test]
+    fn bundled_files_carries_more_than_markdown() {
+        let files = super::bundled_files();
+        assert!(files.iter().any(|(p, _)| p.ends_with(".fields")));
+        assert!(files.iter().any(|(p, _)| p.ends_with(".sha256")));
     }
 
     #[test]

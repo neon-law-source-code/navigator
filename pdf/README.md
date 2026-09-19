@@ -11,7 +11,7 @@ Keeping persistence outside the crate lets web, workflow, and test code use the 
 Turn any validation-passing notation template into a PDF on your desk with one command:
 
 ```bash
-cargo run -p cli -- notations render templates/notations/neon_law/shared/onboarding_letter.md --out /tmp/onboarding.pdf
+cargo run -p cli -- notations render templates/notations/neon_law/onboarding.md --out /tmp/onboarding.pdf
 ```
 
 The command is `navigator notations render`, and it takes the template markdown, not a rendered document. It:
@@ -26,7 +26,7 @@ The command is `navigator notations render`, and it takes the template markdown,
    by hand:
 
    ```bash
-   cargo run -p cli -- notations render templates/notations/neon_law/shared/onboarding_letter.md \
+   cargo run -p cli -- notations render templates/notations/neon_law/onboarding.md \
      --out /tmp/onboarding.pdf \
      --answer person__client.name="Acme, Inc." \
      --answer custom_text__scope.value="Reviewing and revising the master services agreement."

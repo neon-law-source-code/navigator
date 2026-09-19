@@ -241,8 +241,7 @@ mod tests {
     /// A template guaranteed to pass validation: the workspace corpus is
     /// validated clean in CI, so an existing corpus body is a stable valid
     /// fixture. Its `lawyer_review → generate_pdf` shape satisfies N116.
-    const VALID_TEMPLATE: &str =
-        include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+    const VALID_TEMPLATE: &str = include_str!("../../templates/notations/neon_law/onboarding.md");
 
     async fn fs_storage() -> Arc<dyn StorageService> {
         Arc::new(

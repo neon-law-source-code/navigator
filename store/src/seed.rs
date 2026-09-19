@@ -238,9 +238,9 @@ mod canonical {
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
     pub const TEMPLATE_ONBOARDING_LETTER: &str =
-        include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+        include_str!("../../templates/notations/neon_law/onboarding.md");
     pub const TEMPLATE_OFFBOARDING_LETTER: &str =
-        include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+        include_str!("../../templates/notations/neon_law/offboarding.md");
     pub const TEMPLATE_ANNUAL_REPORT_NV: &str = include_str!(
         "../../templates/notations/forms/united_states/nevada/state/nv__annual_report.md"
     );
@@ -289,11 +289,11 @@ pub struct SeededTemplate {
 /// body.
 pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
-        label: "notations/neon_law/shared/onboarding_letter.md",
+        label: "notations/neon_law/onboarding.md",
         markdown: canonical::TEMPLATE_ONBOARDING_LETTER,
     },
     SeededTemplate {
-        label: "notations/neon_law/shared/offboarding_letter.md",
+        label: "notations/neon_law/offboarding.md",
         markdown: canonical::TEMPLATE_OFFBOARDING_LETTER,
     },
     SeededTemplate {
@@ -4887,10 +4887,10 @@ records:
 
     /// The firm's one engagement agreement carries the three load-bearing
     /// elements every matter needs: the AAA arbitration clause (forum
-    /// selection only, with the non-waivable fee-arbitration carve-out and
-    /// the independent-counsel sentence — never a liability limitation), the
-    /// `contact@neonlaw.com` reach-the-Firm clause, and the custom-clause
-    /// slot the fee terms and any practice-area ethics reading arrive through.
+    /// selection only, with the non-waivable fee-arbitration carve-out across
+    /// the three governing-law choices and the independent-counsel sentence —
+    /// never a liability limitation), the `contact@neonlaw.com` reach-the-Firm
+    /// clause, and the custom-clause slot extra work arrives through.
     ///
     /// These moved here when the twelve service-specific retainers retired:
     /// they were the only bodies carrying them, so without this the firm
@@ -4907,11 +4907,11 @@ records:
         // satisfy the Markdown linter cannot silently drop a clause from
         // this guard.
         let required = [
-            "binding arbitration before a single arbitrator administered by the **American Arbitration",
-            "limit, cap, or waive the Firm's responsibility for its own work",
-            "right to consult independent counsel of your own choosing before you agree to it",
+            "binding arbitration administered by the American Arbitration Association",
+            "limit, cap, or waive our responsibility for our own work",
+            "consult independent counsel before agreeing to it",
             "Mandatory Fee Arbitration Act",
-            "22 NYCRR Part 137",
+            "State Bar of Nevada",
             "Washington State Bar Association",
             "Write to contact@neonlaw.com",
             "{{custom_clauses}}",
@@ -4939,11 +4939,11 @@ records:
             );
         }
 
-        // It states the basis of the fee without stating an amount or a
-        // cadence: the figure arrives as a custom clause (ENG-146).
+        // The price sheet and the day-rate cadence live in the body. Extra
+        // work still arrives through the custom-clause slot (ENG-146).
         assert!(
-            !flat.contains("billed monthly") && !flat.contains("rate sheet attached"),
-            "the generic retainer asserts no cadence and no rate sheet"
+            flat.contains("We bill it monthly") && flat.contains("Base Membership"),
+            "the engagement letter states the day-rate cadence and the price sheet"
         );
 
         // It is practice-neutral. The old body excluded litigation, which
@@ -4971,8 +4971,9 @@ records:
         // placeholder. The arbitration forum does not flex with governing
         // law.
         assert!(
-            flat.contains("This letter is governed by the law of")
-                && flat.contains("{{custom_single_choice__governing_law}}"),
+            flat.contains("The law of")
+                && flat.contains("{{custom_single_choice__governing_law}}")
+                && flat.contains("governs this letter"),
             "{code} must fill governing law from the questionnaire, not hardcode it"
         );
         assert!(

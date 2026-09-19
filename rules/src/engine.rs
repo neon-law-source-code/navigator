@@ -1407,7 +1407,7 @@ mod tests {
         // classifies the file as a template (||), and N104 then requires
         // the other. A half-declared template never lints clean.
         let workflow_only = source(
-            "templates/notations/neon_law/shared/draft.md",
+            "templates/notations/neon_law/draft.md",
             "---\nkind: onboarding\ntitle: Draft\ncode: x__draft\nworkflow:\n  BEGIN:\n    created: END\n---\n",
         );
         let codes: Vec<&str> = lint_source_classified(&workflow_only)
@@ -1423,7 +1423,7 @@ mod tests {
         );
 
         let questionnaire_only = source(
-            "templates/notations/neon_law/shared/draft.md",
+            "templates/notations/neon_law/draft.md",
             "---\nkind: onboarding\ntitle: Draft\ncode: x__draft\nquestionnaire:\n  BEGIN:\n    _: END\n---\n",
         );
         assert!(
@@ -1570,7 +1570,7 @@ Body.
         );
         write(
             dir.path(),
-            "templates/notations/neon_law/shared/sample_trust.md",
+            "templates/notations/neon_law/sample_trust.md",
             r"---
 kind: trust
 title: Nevada Trust

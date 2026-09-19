@@ -131,6 +131,7 @@ fn notations_help_lists_the_notation_authoring_workbench() {
     assert_eq!(
         command_names(&output),
         vec![
+            "export",
             "format",
             "preview",
             "render",

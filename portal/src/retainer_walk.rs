@@ -4063,7 +4063,7 @@ Sign: {{client.signature}}";
         // documented "Nevada by default" rather than rendering a raw
         // placeholder in a binding document.
         assert!(
-            rendered.contains("governed by the law of Nevada"),
+            rendered.contains("The law of Nevada governs this letter"),
             "expected the Nevada default in:\n{}",
             governing_law_clause(&rendered),
         );

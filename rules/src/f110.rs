@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn accepts_a_firm_template_with_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/notations/neon_law/shared/onboarding_letter.md",
+            "templates/notations/neon_law/onboarding.md",
             "title: T\ncode: onboarding__letter\njurisdiction: NV",
         ));
         assert!(v.is_empty(), "{v:?}");
@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn flags_missing_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/notations/neon_law/shared/onboarding_letter.md",
+            "templates/notations/neon_law/onboarding.md",
             "title: T\ncode: onboarding__letter",
         ));
         assert_eq!(v[0].code, "N110");
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn flags_unknown_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/notations/neon_law/shared/onboarding_letter.md",
+            "templates/notations/neon_law/onboarding.md",
             "title: T\ncode: onboarding__letter\njurisdiction: ZZ",
         ));
         assert_eq!(v[0].code, "N110");
@@ -354,7 +354,7 @@ mod tests {
     fn accepts_every_seeded_jurisdiction_code() {
         for (code, _prefix) in super::JURISDICTIONS.iter() {
             let v = F110JurisdictionPath.lint(&at(
-                "templates/notations/neon_law/shared/onboarding_letter.md",
+                "templates/notations/neon_law/onboarding.md",
                 &format!("title: T\ncode: onboarding__letter\njurisdiction: {code}"),
             ));
             assert!(v.is_empty(), "jurisdiction `{code}` should validate: {v:?}");
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn flags_missing_frontmatter() {
         let v = F110JurisdictionPath.lint(&SourceFile {
-            path: PathBuf::from("templates/notations/neon_law/shared/onboarding_letter.md"),
+            path: PathBuf::from("templates/notations/neon_law/onboarding.md"),
             contents: "no frontmatter here\n".to_string(),
         });
         assert_eq!(v[0].code, "N110");

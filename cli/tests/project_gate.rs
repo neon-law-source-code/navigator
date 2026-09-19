@@ -207,10 +207,9 @@ fn the_gate_the_action_runs_fails_a_project_template_with_an_unread_state() {
     .unwrap();
     let templates = dir.path().join("templates");
     fs::create_dir_all(&templates).unwrap();
-    let source = fs::read_to_string(
-        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md"),
-    )
-    .unwrap();
+    let source =
+        fs::read_to_string(workspace_root().join("templates/notations/neon_law/onboarding.md"))
+            .unwrap();
     fs::write(
         templates.join("onboarding__letter.md"),
         source.replace(

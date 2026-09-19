@@ -706,7 +706,7 @@ mod tests {
 
     #[test]
     fn shipped_onboarding_letter_validates_without_a_signers_key() {
-        let body = include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+        let body = include_str!("../../templates/notations/neon_law/onboarding.md");
         assert!(
             F107SignaturePlaceholders.lint(&file(body)).is_empty(),
             "the bundled onboarding letter must stay valid with the default signer set: {:?}",
@@ -716,7 +716,7 @@ mod tests {
 
     #[test]
     fn shipped_offboarding_letter_validates_without_a_signers_key() {
-        let body = include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+        let body = include_str!("../../templates/notations/neon_law/offboarding.md");
         assert!(
             F107SignaturePlaceholders.lint(&file(body)).is_empty(),
             "the bundled closing letter must stay valid with the default signer set: {:?}",

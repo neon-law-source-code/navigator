@@ -119,12 +119,31 @@ Those are two different kinds of failure, so they exit differently:
   (`/auth/ci/seed-token` or `/auth/ci/document-token`) and the server's own message, so the Actions log shows why the
   run was refused rather than a generic HTTP status.
 
+## Handing someone the catalog
+
+```bash
+navigator notations export ./templates      # the tree as shipped
+navigator notations export ./templates --force
+```
+
+The templates travel inside `navigator` — `portal::template_api` embeds the repository's `templates/` tree at build time
+— so an export needs no checkout, no network, and no git access. The binary is the distribution. What lands is the tree
+as shipped, including the `.fields` and `.sha256` manifests a vendored government form carries.
+
+Files already present are left alone and counted in the summary; `--force` overwrites them. The catalog includes the
+firm's confidential templates, so an export is work product and the command says so.
+
 ## Reading a template the way a reader will
 
 ```bash
-navigator notations preview templates/notations/neon_law/shared/onboarding_letter.md
-navigator notations preview onboarding-letter          # a name, looked up under templates/
+navigator notations preview templates/notations/neon_law/onboarding.md
+navigator notations preview onboarding                 # a name, looked up under templates/
 ```
+
+A name is looked up in three places, in order: a Project repository's flat `templates/`, Navigator's own nested
+`templates/notations/`, and the catalog compiled into the binary. A checkout always wins, so an author previews the file
+under their cursor; the bundled tier is what lets the command work in a directory that has no templates at all. The
+printed provenance line says which one answered.
 
 This serves that one template's `/notations/{slug}` show page on a local bind and prints the URL. It is the same axum
 router the public site mounts, fed by the same projection, so the questionnaire section walks the template's own
@@ -143,7 +162,7 @@ holds no session, and persists nothing when its process stops.
 ## Walk a template through the local runtime
 
 ```bash
-navigator notations run templates/notations/neon_law/shared/onboarding_letter.md
+navigator notations run templates/notations/neon_law/onboarding.md
 ```
 
 `notations run` validates the file, creates a fresh embedded store and temporary object directory, then creates only

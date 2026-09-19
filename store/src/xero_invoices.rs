@@ -394,6 +394,41 @@ pub async fn record_reconcile(
     one(response)
 }
 
+/// Resolve the invoice an IOLTA withdrawal line names.
+///
+/// A Xero withdrawal line references the invoice it settles either by the
+/// `InvoiceID` — which is this mirror's own record id — or by the human
+/// reference the firm put on the invoice. The id is tried first because it
+/// is unique by construction; the reference is a fallback and is honoured
+/// **only when exactly one** mirrored invoice carries it. Two invoices
+/// sharing a reference make the line ambiguous, and an ambiguous allocation
+/// is answered `None` so the caller refuses the whole withdrawal rather than
+/// crediting a coin-flip matter.
+///
+/// # Errors
+///
+/// [`XeroInvoiceError::Db`] when a lookup fails.
+pub async fn find_for_allocation(
+    db: &SurrealDb,
+    reference: &str,
+) -> Result<Option<XeroInvoice>, XeroInvoiceError> {
+    if let Some(by_id) = for_xero_id(db, reference).await? {
+        return Ok(Some(by_id));
+    }
+    let response = db
+        .query(format!(
+            "SELECT {SELECT} FROM {TABLE} WHERE reference = $reference LIMIT 2"
+        ))
+        .bind(("reference", reference.to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let mut matches = many(response)?;
+    if matches.len() == 1 {
+        return Ok(Some(matches.remove(0)));
+    }
+    Ok(None)
+}
+
 /// Fetch every invoice mirrored for a set of matters, newest first, for the
 /// project-scoped portal invoice list. Empty input short-circuits to an
 /// empty vec.

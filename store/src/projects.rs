@@ -19,6 +19,7 @@ use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 /// same shape — see [`is_valid_code`].
 pub const PROJECT_CODE_MAX_LEN: usize = cloud::workspace::SLUG_MAX_LEN;
 const SLACK_CHANNEL_ID_INVALID: &str = "Slack channel id is invalid.";
+const JURISDICTION_UNKNOWN: &str = "That jurisdiction does not exist.";
 const NOTION_PAGE_URL_INVALID: &str = "Notion page URL is invalid.";
 
 /// A Project read from the SurrealDB projects cluster.
@@ -44,6 +45,13 @@ pub struct Project {
     /// Owning practice. `None` until the row is pointed at a
     /// [`crate::firms::Firm`].
     pub firm_id: Option<Uuid>,
+    /// The matter's governing jurisdiction — a general fact about the
+    /// Project, read by whatever needs it. The pooled IOLTA account this
+    /// matter's client funds sit in is derived from it
+    /// ([`crate::iolta_accounts::for_project`]) rather than recorded a second
+    /// time. `None` while the jurisdiction is unsettled, and never guessed
+    /// from the client entity or the owning firm.
+    pub jurisdiction_id: Option<Uuid>,
     pub description: Option<String>,
     pub drive_folder_id: Option<String>,
     /// The full URL of the one source repository holding this Project's
@@ -103,6 +111,7 @@ struct ProjectRow {
     brand: String,
     entity_id: surrealdb::types::RecordId,
     firm_id: Option<surrealdb::types::RecordId>,
+    jurisdiction_id: Option<surrealdb::types::RecordId>,
     description: Option<String>,
     drive_folder_id: Option<String>,
     repository_url: Option<String>,
@@ -131,6 +140,10 @@ impl ProjectRow {
                 None => None,
                 Some(id) => Some(record_uuid(id)?),
             },
+            jurisdiction_id: match self.jurisdiction_id.as_ref() {
+                None => None,
+                Some(id) => Some(record_uuid(id)?),
+            },
             description: self.description,
             drive_folder_id: self.drive_folder_id,
             repository_url: self.repository_url,
@@ -152,7 +165,8 @@ pub(crate) const PROJECT_TABLE: &str = "project";
 /// The entities cluster this table links into (ENG-120).
 const ENTITY_TABLE: &str = "entity";
 const PERSON_PROJECT_ROLE_TABLE: &str = "person_project_role";
-const PROJECT_SELECT: &str = "id, code, name, status, brand, entity_id, firm_id, description, \
+const PROJECT_SELECT: &str = "id, code, name, status, brand, entity_id, firm_id, \
+                              jurisdiction_id, description, \
                               drive_folder_id, repository_url, git_initialized_at, \
                               forge_provisioned_at, closed_at, \
                               internal_slack_channel_url, external_slack_channel_url, \
@@ -187,6 +201,13 @@ pub enum ProjectStoreError {
     NoSuchProject(Uuid),
     #[error("no firm {0}")]
     NoSuchFirm(Uuid),
+    /// `NewProject.jurisdiction_id` names no `jurisdiction` row. Validated
+    /// like `firm_id`: a matter's governing jurisdiction is a link readers
+    /// dereference, so a dangling one is refused at the write.
+    #[error("no jurisdiction {0}")]
+    NoSuchJurisdiction(Uuid),
+    #[error(transparent)]
+    Jurisdictions(#[from] crate::jurisdictions::JurisdictionError),
     /// `NewProject.brand` does not match any live `brand` row (ENG-587) —
     /// the same check `store::firms::attach_brand` runs, not a compiled
     /// closed list.
@@ -250,6 +271,10 @@ pub struct NewProject {
     /// Owning practice. `None` on a row that has not yet been pointed at a
     /// firm — every existing caller that uses [`Default`] keeps that shape.
     pub firm_id: Option<Uuid>,
+    /// The matter's governing jurisdiction — see [`Project::jurisdiction_id`].
+    /// `None` by default: a matter opened before its jurisdiction is settled
+    /// carries none, and [`set_jurisdiction`] fills it later.
+    pub jurisdiction_id: Option<Uuid>,
     pub description: Option<String>,
 }
 
@@ -262,6 +287,7 @@ impl Default for NewProject {
             brand: "neon".to_string(),
             entity_id: Uuid::nil(),
             firm_id: None,
+            jurisdiction_id: None,
             description: None,
         }
     }
@@ -928,6 +954,14 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
     if !crate::firms::brand_key_exists(surreal, &input.brand).await? {
         return Err(ProjectStoreError::UnknownBrand(input.brand.clone()));
     }
+    if let Some(jurisdiction_id) = input.jurisdiction_id {
+        if crate::jurisdictions::find_by_id(surreal, jurisdiction_id)
+            .await?
+            .is_none()
+        {
+            return Err(ProjectStoreError::NoSuchJurisdiction(jurisdiction_id));
+        }
+    }
     let id = Uuid::now_v7();
     let now = chrono::Utc::now().to_rfc3339();
     let mut response = writing_project(|| {
@@ -937,6 +971,7 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
                  brand = $brand, \
                  entity_id = $entity_id, \
                  firm_id = $firm_id, \
+                 jurisdiction_id = $jurisdiction_id, \
                  description = $description, inserted_at = $inserted_at, \
                  updated_at = $updated_at RETURN {PROJECT_SELECT}"
             ))
@@ -951,6 +986,12 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
                 input
                     .firm_id
                     .map(|firm_id| record_id(crate::firms::TABLE, firm_id)),
+            ))
+            .bind((
+                "jurisdiction_id",
+                input
+                    .jurisdiction_id
+                    .map(|id| record_id(crate::jurisdictions::TABLE, id)),
             ))
             .bind(("description", input.description.clone()))
             .bind(("inserted_at", now.clone()))
@@ -1025,9 +1066,25 @@ pub async fn upsert_with_id(
     if !crate::firms::brand_key_exists(surreal, &input.brand).await? {
         return Err(ProjectStoreError::UnknownBrand(input.brand.clone()));
     }
+    if let Some(jurisdiction_id) = input.jurisdiction_id {
+        if crate::jurisdictions::find_by_id(surreal, jurisdiction_id)
+            .await?
+            .is_none()
+        {
+            return Err(ProjectStoreError::NoSuchJurisdiction(jurisdiction_id));
+        }
+    }
     let now = chrono::Utc::now().to_rfc3339();
     let firm_set = if input.firm_id.is_some() {
         "firm_id = $firm_id,"
+    } else {
+        ""
+    };
+    // Same shape as `firm_set`: an upsert that does not name a jurisdiction
+    // leaves whatever the row already carries, so a re-seed never clears a
+    // jurisdiction a lawyer set.
+    let jurisdiction_set = if input.jurisdiction_id.is_some() {
+        "jurisdiction_id = $jurisdiction_id,"
     } else {
         ""
     };
@@ -1038,6 +1095,7 @@ pub async fn upsert_with_id(
                  brand = $brand, \
                  entity_id = $entity_id, \
                  {firm_set} \
+                 {jurisdiction_set} \
                  description = $description, \
                  inserted_at = IF inserted_at THEN inserted_at ELSE $inserted_at END, \
                  updated_at = $updated_at RETURN {PROJECT_SELECT}"
@@ -1053,6 +1111,12 @@ pub async fn upsert_with_id(
                 input
                     .firm_id
                     .map(|firm_id| record_id(crate::firms::TABLE, firm_id)),
+            ))
+            .bind((
+                "jurisdiction_id",
+                input
+                    .jurisdiction_id
+                    .map(|id| record_id(crate::jurisdictions::TABLE, id)),
             ))
             .bind(("description", input.description.clone()))
             .bind(("inserted_at", now.clone()))
@@ -1608,6 +1672,61 @@ pub async fn set_internal_slack_channel_id(
         ))
         .bind(("id", record_id(PROJECT_TABLE, project_id)))
         .bind(("channel_id", channel_id.to_string()))
+        .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    let updated: Option<ProjectRow> = response
+        .take(0)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    Ok(updated.and_then(ProjectRow::into_project))
+}
+
+/// Set or clear the matter's governing jurisdiction.
+///
+/// A general fact about the Project — it answers whose law governs the matter
+/// — read by whatever needs it, including
+/// [`crate::iolta_accounts::for_project`], which derives the pooled trust
+/// account from it. `None` clears it back to unsettled.
+///
+/// Returns `Ok(None)` when the matter no longer exists.
+///
+/// # Errors
+///
+/// [`ProjectCommandError::Invalid`] when `jurisdiction_id` names no
+/// jurisdiction — a dangling link would make the matter's governing law
+/// unreadable rather than absent — and propagates database errors.
+pub async fn set_jurisdiction(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    jurisdiction_id: Option<Uuid>,
+) -> Result<Option<Project>, ProjectCommandError> {
+    if let Some(jurisdiction_id) = jurisdiction_id {
+        if crate::jurisdictions::find_by_id(surreal, jurisdiction_id)
+            .await
+            .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+            .is_none()
+        {
+            return Err(ProjectCommandError::Invalid(JURISDICTION_UNKNOWN));
+        }
+    }
+    if find_by_id(surreal, project_id)
+        .await
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let mut response = surreal
+        .query(format!(
+            "UPDATE $id SET jurisdiction_id = $jurisdiction_id, updated_at = $updated_at \
+             RETURN {PROJECT_SELECT}"
+        ))
+        .bind(("id", record_id(PROJECT_TABLE, project_id)))
+        .bind((
+            "jurisdiction_id",
+            jurisdiction_id.map(|id| record_id(crate::jurisdictions::TABLE, id)),
+        ))
         .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
         .await
         .and_then(surrealdb::IndexedResults::check)
@@ -3844,6 +3963,124 @@ mod project_code_resolution_tests {
             id_for_code(&surreal, &project.id.to_string()).await,
             None,
             "a row id must not resolve the matter it belongs to"
+        );
+    }
+}
+
+#[cfg(test)]
+mod project_jurisdiction_tests {
+    use super::{
+        create, find_by_id, set_jurisdiction, NewProject, ProjectCommandError, ProjectStoreError,
+    };
+    use crate::jurisdictions::NewJurisdiction;
+    use uuid::Uuid;
+
+    async fn nevada(surreal: &crate::surreal::SurrealDb) -> Uuid {
+        crate::jurisdictions::create(surreal, &NewJurisdiction::new("Nevada", "NV", "state"))
+            .await
+            .unwrap()
+            .id
+    }
+
+    async fn matter(surreal: &crate::surreal::SurrealDb, jurisdiction_id: Option<Uuid>) -> Uuid {
+        create(
+            surreal,
+            &NewProject {
+                code: "acme-formation".into(),
+                name: "Acme formation".into(),
+                status: "open".into(),
+                entity_id: crate::test_support::seed_entity(surreal).await,
+                jurisdiction_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    /// The matter's governing jurisdiction is written at matter-open and
+    /// reads back off the row like any other field.
+    #[tokio::test]
+    async fn a_matter_can_be_opened_with_its_governing_jurisdiction() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let nevada = nevada(&surreal).await;
+        let id = matter(&surreal, Some(nevada)).await;
+
+        assert_eq!(
+            find_by_id(&surreal, id)
+                .await
+                .unwrap()
+                .unwrap()
+                .jurisdiction_id,
+            Some(nevada)
+        );
+    }
+
+    /// A matter opened before its jurisdiction is settled carries none, and
+    /// nothing derives one for it.
+    #[tokio::test]
+    async fn a_matter_without_a_jurisdiction_carries_none() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let id = matter(&surreal, None).await;
+
+        assert_eq!(
+            find_by_id(&surreal, id)
+                .await
+                .unwrap()
+                .unwrap()
+                .jurisdiction_id,
+            None
+        );
+    }
+
+    /// The link is validated at the write: a dangling jurisdiction would
+    /// make the matter's governing law unreadable rather than absent.
+    #[tokio::test]
+    async fn a_dangling_jurisdiction_is_refused_at_matter_open() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let created = create(
+            &surreal,
+            &NewProject {
+                code: "ghost".into(),
+                name: "Ghost".into(),
+                status: "open".into(),
+                entity_id: crate::test_support::seed_entity(&surreal).await,
+                jurisdiction_id: Some(Uuid::now_v7()),
+                ..Default::default()
+            },
+        )
+        .await;
+        assert!(
+            matches!(created, Err(ProjectStoreError::NoSuchJurisdiction(_))),
+            "got {created:?}"
+        );
+    }
+
+    /// Set later, and cleared back to unsettled.
+    #[tokio::test]
+    async fn the_jurisdiction_can_be_set_and_cleared_afterwards() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let nevada = nevada(&surreal).await;
+        let id = matter(&surreal, None).await;
+
+        let set = set_jurisdiction(&surreal, id, Some(nevada)).await.unwrap();
+        assert_eq!(set.unwrap().jurisdiction_id, Some(nevada));
+
+        let cleared = set_jurisdiction(&surreal, id, None).await.unwrap();
+        assert_eq!(cleared.unwrap().jurisdiction_id, None);
+
+        let unknown = set_jurisdiction(&surreal, id, Some(Uuid::now_v7())).await;
+        assert!(
+            matches!(unknown, Err(ProjectCommandError::Invalid(_))),
+            "got {unknown:?}"
+        );
+        assert_eq!(
+            set_jurisdiction(&surreal, Uuid::now_v7(), Some(nevada))
+                .await
+                .unwrap(),
+            None,
+            "a matter that does not exist is reported as absent, not created"
         );
     }
 }

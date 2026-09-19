@@ -45,6 +45,83 @@ pub struct InvoiceView {
     pub issued_on: String,
 }
 
+/// What the matter holds in the firm's client trust account, and how it got
+/// there — this matter's own funds only.
+///
+/// IOLTA is a pooled bank account: the firm's Nevada account holds many
+/// clients' money at once. A client is shown their own position and nothing
+/// else — never the pooled balance, never another matter's cents. The numbers
+/// are folded from `store::trust`, which mirrors what the firm recorded in
+/// Xero.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct TrustView {
+    /// Total this matter has paid into trust, e.g. `"$5,000.00"`.
+    pub deposited: String,
+    /// Still held for this matter — money paid in advance and not yet
+    /// earned, which is what would be refunded if the matter closed today.
+    pub held: String,
+    /// Earned by the firm and drawn out of trust against this matter's
+    /// invoices.
+    pub drawn: String,
+    /// Returned to the client.
+    pub refunded: String,
+    /// `true` when this matter has any trust posting at all — the section is
+    /// not rendered otherwise, so a matter that never held client funds says
+    /// nothing rather than showing four zeroes.
+    pub any: bool,
+    /// How this matter's funds left trust, newest first. Only this matter's
+    /// lines: the pooled transfer they were part of is a firm-side number.
+    #[serde(default)]
+    pub allocations: Vec<TrustAllocationView>,
+}
+
+/// One line of a pooled withdrawal that belonged to **this** matter: how
+/// much of the firm's transfer out of trust settled which of this matter's
+/// invoices.
+///
+/// The bank made one transfer covering several matters. What is rendered
+/// here is only the part funded by this client's money — never the pooled
+/// total, never another matter's share, and never the Xero ids behind
+/// either.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct TrustAllocationView {
+    /// The invoice this settled, by its human reference.
+    pub invoice_reference: String,
+    /// This matter's share, e.g. `"$600.00"`.
+    pub amount: String,
+    /// The date the money left trust, `YYYY-MM-DD`.
+    pub occurred_on: String,
+}
+
+/// Render one matter's [`store::trust::Position`] as the client-safe view
+/// both the client page and the lawyer matter page show. One constructor, so
+/// the two surfaces cannot drift into showing different numbers for the same
+/// matter.
+#[cfg(feature = "server")]
+#[must_use]
+pub fn trust_view(
+    position: &store::trust::Position,
+    allocations: &[store::iolta_withdrawals::IoltaAllocation],
+) -> TrustView {
+    TrustView {
+        deposited: format_usd(position.deposited_cents),
+        held: format_usd(position.held_cents()),
+        drawn: format_usd(position.earned_cents),
+        refunded: format_usd(position.refunded_cents),
+        any: position.deposited_cents != 0
+            || position.earned_cents != 0
+            || position.refunded_cents != 0,
+        allocations: allocations
+            .iter()
+            .map(|line| TrustAllocationView {
+                invoice_reference: line.invoice_reference.clone(),
+                amount: format_usd(line.amount_cents),
+                occurred_on: line.occurred_at.format("%Y-%m-%d").to_string(),
+            })
+            .collect(),
+    }
+}
+
 /// One of the matter's notations (e.g. the retainer), in plain words, with the
 /// download links keyed off which of its three PDFs exist in storage.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -109,6 +186,10 @@ pub struct ProjectDetailView {
     /// Every invoice mirrored for this matter, newest first — a matter may
     /// carry more than one over time (ENG-588). Empty until Xero raises one.
     pub invoices: Vec<InvoiceView>,
+    /// This matter's client-trust position. Never another matter's, and
+    /// never the pooled account's own balance.
+    #[serde(default)]
+    pub trust: TrustView,
     pub notations: Vec<NotationRow>,
     pub documents: Vec<String>,
     pub review_docs: Vec<ReviewDocRow>,
@@ -358,6 +439,18 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         })
         .collect();
 
+    // This matter's trust position, folded from its own ledger. A pooled
+    // IOLTA account holds many clients' funds; nothing here reads beyond
+    // this one matter's postings.
+    let trust = trust_view(
+        &store::trust::position_for_project(&surreal, id)
+            .await
+            .map_err(server_error)?,
+        &store::iolta_withdrawals::for_project(&surreal, id)
+            .await
+            .map_err(server_error)?,
+    );
+
     let resources = crate::project_resources::ProjectResourcesView {
         resources: crate::project_resources::visible_resources(
             &crate::project_resources::ProjectResourceLinks {
@@ -380,6 +473,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         name: project.name,
         status: project.status,
         invoices,
+        trust,
         notations: notation_rows,
         documents,
         review_docs: review_rows,
@@ -680,6 +774,39 @@ pub fn ClientProjectDetail() -> Element {
                                 span { class: "status-chip status-chip--paid", "Paid" }
                             } else {
                                 span { class: "status-chip status-chip--due", "Due" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if view.trust.any {
+                section { class: "portal-detail__section",
+                    h2 { "Funds we hold for you" }
+                    p { class: "nav-muted",
+                        "Money you pay in advance is held in the firm's client trust account \
+                         and drawn only as work is earned. Whatever is still held is yours."
+                    }
+                    div { class: "portal-card portal-card--trust",
+                        div {
+                            div { class: "portal-card__title", "{view.trust.held}" }
+                            div { class: "portal-card__meta", "Still held for you" }
+                        }
+                        div {
+                            div { class: "portal-card__meta", "Paid in: {view.trust.deposited}" }
+                            div { class: "portal-card__meta", "Earned and drawn: {view.trust.drawn}" }
+                            if view.trust.refunded != "$0.00" {
+                                div { class: "portal-card__meta", "Refunded: {view.trust.refunded}" }
+                            }
+                        }
+                    }
+                    if !view.trust.allocations.is_empty() {
+                        p { class: "nav-muted", "How your funds were applied" }
+                        ul {
+                            for line in view.trust.allocations.iter() {
+                                li {
+                                    "{line.amount} to {line.invoice_reference} on {line.occurred_on}"
+                                }
                             }
                         }
                     }

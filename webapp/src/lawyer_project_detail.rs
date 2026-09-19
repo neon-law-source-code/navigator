@@ -123,6 +123,12 @@ pub struct LawyerDetailView {
     /// place that decision is made.
     pub resources: crate::project_resources::ProjectResourcesView,
     pub xero_invoice_url: Option<String>,
+    /// This matter's client-trust position — the same client-safe numbers
+    /// the client sees on their own page, for the lawyers on this matter.
+    /// A Firm-wide view of the pooled account is a different surface and
+    /// never renders here.
+    #[serde(default)]
+    pub trust: crate::portal_project_detail::TrustView,
     pub repository_url: Option<String>,
     pub participations: Vec<ParticipationRow>,
     pub documents: Vec<LawyerDocRow>,
@@ -316,6 +322,18 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     // The matter's most recently raised Xero invoice — a matter may carry
     // several over time, and `for_projects` orders newest first. Absent
     // until an invoice raised in Xero is mirrored here.
+    // Same fold, same matter scope as the client page: a lawyer reading a
+    // matter sees that matter's trust position, not the pooled balance.
+    let position = store::trust::position_for_project(&surreal, id)
+        .await
+        .map_err(server_error)?;
+    let trust = crate::portal_project_detail::trust_view(
+        &position,
+        &store::iolta_withdrawals::for_project(&surreal, id)
+            .await
+            .map_err(server_error)?,
+    );
+
     let xero_invoice_url = store::xero_invoices::for_projects(&surreal, &[id])
         .await
         .map_err(server_error)?
@@ -426,6 +444,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
             project_code: code_for_resources.clone(),
         },
         xero_invoice_url,
+        trust,
         repository_url,
         participations,
         documents,
@@ -682,6 +701,35 @@ pub fn LawyerProjectDetail() -> Element {
             }
 
             crate::project_resources::ProjectResourcesPanel { view: view.resources.clone() }
+
+            if view.trust.any {
+                section { class: "lawyer-detail__section",
+                    h2 { "Client trust" }
+                    p { class: "nav-muted",
+                        "Held for this Project in the firm's pooled client trust account, \
+                         mirrored from Xero. Xero is the books."
+                    }
+                    ul {
+                        li { "Held: {view.trust.held}" }
+                        li { "Paid in: {view.trust.deposited}" }
+                        li { "Earned and drawn: {view.trust.drawn}" }
+                        li { "Refunded: {view.trust.refunded}" }
+                    }
+                    if !view.trust.allocations.is_empty() {
+                        p { class: "nav-muted",
+                            "Drawn against this Project's invoices. The pooled transfer \
+                             these lines were part of is not a Project-level fact."
+                        }
+                        ul {
+                            for line in view.trust.allocations.iter() {
+                                li {
+                                    "{line.amount} to {line.invoice_reference} on {line.occurred_on}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if view.xero_invoice_url.is_some() || view.repository_url.is_some() {
                 section { class: "lawyer-detail__section project-integrations",

@@ -16,10 +16,13 @@
 //! [`reconcile_once`] is provider-agnostic so it unit-tests against the
 //! [`billing::StubBillingProvider`] + a test database without a worker.
 
+use std::sync::Arc;
+
 use billing::{BillingProvider, XeroBillingProvider};
 use restate_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use store::surreal::SurrealDb;
+use workflows::SlackBot;
 
 /// Request body for `ReconcileInvoices::run`. Empty — the trigger only
 /// starts the workflow — but kept as a struct so fields can be threaded
@@ -40,6 +43,47 @@ pub struct ReconcileReport {
     pub checked: usize,
     /// How many of those actually changed (status or amount paid).
     pub updated: usize,
+    /// Xero bank accounts whose name declared a state (`IOLTA NV …`) and
+    /// whose pooled balance was mirrored onto `iolta_account`.
+    pub iolta_accounts: usize,
+    /// Listed bank accounts that declared no state, or a state this
+    /// deployment does not carry. No row is written — the firm's operating
+    /// and payroll accounts land here, and so does a typo.
+    pub iolta_unscoped: usize,
+    /// Client deposits into trust posted onto a matter's ledger this run. A
+    /// deposit already mirrored on an earlier night is not counted again.
+    pub trust_deposits: usize,
+    /// Refunds of unearned funds posted onto a matter's ledger this run.
+    pub trust_refunds: usize,
+    /// Trust transactions this run did not post: no `Matter` reference, a
+    /// matter that does not sit on the account the money moved through, or a
+    /// matter with no notation to anchor a posting to.
+    pub trust_unscoped: usize,
+    /// Pooled withdrawals mirrored this run: one bank transfer out of a
+    /// state's IOLTA account, split across the invoices it settles, with one
+    /// earned draw posted per matter.
+    pub iolta_withdrawals: usize,
+    /// Pooled withdrawals refused whole and left for a human — lines that do
+    /// not sum to the transfer, a line naming an unmirrored invoice, a
+    /// matter on another state's pool, or a matter drawn beyond what it
+    /// holds. Nothing of a refused withdrawal is written.
+    pub iolta_withdrawals_refused: usize,
+    /// What actually moved in trust tonight, per matter. Firm-internal:
+    /// Project codes and cents only, never a client's name, email, or
+    /// portal URL (`#finance` copy rules, ENG-790).
+    #[serde(default)]
+    pub trust_lines: Vec<TrustLine>,
+}
+
+/// One trust movement this run posted, as `#finance` reads it out.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TrustLine {
+    /// The matter's Project code — the firm-internal name for it. Never the
+    /// client's own name.
+    pub project_code: String,
+    /// `deposit`, `refund`, or `draw`.
+    pub kind: String,
+    pub cents: i64,
 }
 
 /// Service registered with the Restate endpoint. Holds a SurrealDB clone (the
@@ -48,12 +92,33 @@ pub struct ReconcileReport {
 #[derive(Clone)]
 pub struct ReconcileInvoicesService {
     surreal: SurrealDb,
+    /// The same Slack Web API bot `#general` posts through — AIDA, as the
+    /// workspace sees it. Not a second token and not an incoming webhook.
+    slack: Arc<dyn SlackBot>,
+    /// `#finance`'s channel id. Empty in KIND and local loops, where the
+    /// CronJob is installed but has no live destination; an empty value
+    /// fails the run as a terminal error rather than reconciling silently
+    /// and posting nowhere.
+    finance_channel: String,
+    /// Whether this deployment's matters are simulated, folded into the
+    /// post so a reader of `#finance` can tell staging from production.
+    simulated: bool,
 }
 
 impl ReconcileInvoicesService {
     #[must_use]
-    pub fn new(surreal: SurrealDb) -> Self {
-        Self { surreal }
+    pub fn new(
+        surreal: SurrealDb,
+        slack: Arc<dyn SlackBot>,
+        finance_channel: String,
+        simulated: bool,
+    ) -> Self {
+        Self {
+            surreal,
+            slack,
+            finance_channel,
+            simulated,
+        }
     }
 }
 
@@ -65,6 +130,12 @@ impl ReconcileInvoicesService {
         ctx: WorkflowContext<'_>,
         _req: Json<ReconcileRequest>,
     ) -> Result<Json<ReconcileReport>, HandlerError> {
+        if self.finance_channel.is_empty() {
+            return Err(HandlerError::from(TerminalError::new(
+                "SLACK_FINANCE_CHANNEL_ID must be set (the #finance channel ID)",
+            )));
+        }
+
         let surreal = self.surreal.clone();
         let report = ctx
             .run(move || async move {
@@ -76,6 +147,21 @@ impl ReconcileInvoicesService {
             .name("reconcile")
             .await?
             .into_inner();
+
+        // A second journaled step, so a retry of the post never re-runs the
+        // reconcile — the same split `GeneralNag` uses for its two posts.
+        let channel_id = self.finance_channel.clone();
+        let report_for_post = report.clone();
+        let simulated = self.simulated;
+        let slack = Arc::clone(&self.slack);
+        ctx.run(move || async move {
+            post_finance_notice(slack.as_ref(), &channel_id, &report_for_post, simulated)
+                .await
+                .map_err(HandlerError::from)
+        })
+        .name("notify_finance")
+        .await?;
+
         Ok(Json(report))
     }
 }
@@ -107,12 +193,367 @@ pub async fn reconcile_once(
         )
         .await?;
     }
+    let (iolta_accounts, iolta_unscoped) = mirror_iolta_accounts(provider, surreal).await?;
+    let trust = mirror_trust_movements(provider, surreal).await?;
     Ok(ReconcileReport {
         ingested,
         unscoped,
         checked: rows.len(),
         updated,
+        iolta_accounts,
+        iolta_unscoped,
+        trust_deposits: trust.deposits,
+        trust_refunds: trust.refunds,
+        trust_unscoped: trust.unscoped,
+        iolta_withdrawals: trust.withdrawals,
+        iolta_withdrawals_refused: trust.withdrawals_refused,
+        trust_lines: trust.lines,
     })
+}
+
+/// What one pass over the trust transactions posted.
+#[derive(Debug, Default)]
+struct TrustMirrorTally {
+    deposits: usize,
+    refunds: usize,
+    unscoped: usize,
+    withdrawals: usize,
+    withdrawals_refused: usize,
+    lines: Vec<TrustLine>,
+}
+
+/// What one pooled withdrawal did.
+enum WithdrawalOutcome {
+    /// Carries what each matter drew, so the nightly notice can name it.
+    Applied { drawn: Vec<(uuid::Uuid, i64)> },
+    /// Mirrored on an earlier night; nothing written.
+    AlreadyApplied,
+    /// Refused whole, with the reason a human needs to reconcile it in Xero.
+    Refused(String),
+}
+
+/// Mirror one pooled withdrawal and its allocations.
+///
+/// A refusal is a *reported* outcome rather than an error that abandons the
+/// night: one bookkeeping mistake in one transfer must not stop the rest of
+/// the run. Only a database or ledger failure propagates.
+async fn apply_withdrawal(
+    surreal: &SurrealDb,
+    transaction: &billing::TrustBankTransaction,
+) -> anyhow::Result<WithdrawalOutcome> {
+    let input = store::iolta_withdrawals::WithdrawalInput {
+        xero_transaction_id: transaction.transaction_id.clone(),
+        xero_account_id: transaction.account_id.clone(),
+        total_cents: transaction.amount_cents,
+        currency: transaction.currency.clone(),
+        occurred_at: transaction.occurred_at,
+        lines: transaction
+            .line_items
+            .iter()
+            .filter_map(|line| {
+                line.invoice_reference.as_ref().map(|reference| {
+                    store::iolta_withdrawals::AllocationInput {
+                        invoice_reference: reference.clone(),
+                        amount_cents: line.amount_cents,
+                    }
+                })
+            })
+            .collect(),
+    };
+    match store::iolta_withdrawals::apply(surreal, &input).await {
+        Ok(store::iolta_withdrawals::Applied::Posted { projects }) => {
+            let mut drawn = Vec::with_capacity(projects.len());
+            for project_id in projects {
+                let cents = store::iolta_withdrawals::for_project(surreal, project_id)
+                    .await?
+                    .into_iter()
+                    .filter(|line| line.withdrawal_id == transaction.transaction_id)
+                    .map(|line| line.amount_cents)
+                    .sum();
+                drawn.push((project_id, cents));
+            }
+            Ok(WithdrawalOutcome::Applied { drawn })
+        }
+        Ok(store::iolta_withdrawals::Applied::AlreadyApplied) => {
+            Ok(WithdrawalOutcome::AlreadyApplied)
+        }
+        Err(store::iolta_withdrawals::IoltaWithdrawalError::Db(error)) => Err(error.into()),
+        Err(refusal) => Ok(WithdrawalOutcome::Refused(refusal.to_string())),
+    }
+}
+
+/// Whether a spend settles invoices — the pooled withdrawal — rather than
+/// refunding a client. The lines say which: an allocation line names the
+/// invoice it settles, a refund's lines name none.
+fn settles_invoices(transaction: &billing::TrustBankTransaction) -> bool {
+    transaction
+        .line_items
+        .iter()
+        .any(|line| line.invoice_reference.is_some())
+}
+
+/// Mirror client deposits into trust, and refunds out of it, onto each
+/// matter's `store::trust` ledger.
+///
+/// Every posting is refused unless it holds together three ways: the
+/// transaction's `Matter <code>` reference resolves to a live Project, that
+/// Project's governing jurisdiction has a mirrored pooled account, and the
+/// money actually moved through *that* account. A Nevada deposit landing
+/// against a California-governed matter is a bookkeeping error, so it is
+/// counted and left for a human rather than posted somewhere plausible.
+///
+/// Idempotent on the Xero transaction id: the same night's read, re-run,
+/// posts nothing.
+async fn mirror_trust_movements(
+    provider: &dyn BillingProvider,
+    surreal: &SurrealDb,
+) -> anyhow::Result<TrustMirrorTally> {
+    let listed = provider.list_trust_transactions().await?;
+    let mut tally = TrustMirrorTally::default();
+    for transaction in listed {
+        if matches!(transaction.kind, billing::TrustTransactionKind::Spend)
+            && settles_invoices(&transaction)
+        {
+            match apply_withdrawal(surreal, &transaction).await? {
+                WithdrawalOutcome::Applied { drawn } => {
+                    tally.withdrawals += 1;
+                    for (project_id, cents) in drawn {
+                        tally
+                            .lines
+                            .push(trust_line(surreal, project_id, "draw", cents).await?);
+                    }
+                }
+                WithdrawalOutcome::Refused(reason) => {
+                    tracing::warn!(
+                        transaction_id = %transaction.transaction_id,
+                        reason = %reason,
+                        "IOLTA withdrawal refused; nothing written"
+                    );
+                    tally.withdrawals_refused += 1;
+                }
+                WithdrawalOutcome::AlreadyApplied => {}
+            }
+            continue;
+        }
+        let Some(project_id) =
+            store::xero_invoices::resolve_project_scope(surreal, &transaction.reference).await?
+        else {
+            tally.unscoped += 1;
+            continue;
+        };
+        let Some(account) = store::iolta_accounts::for_project(surreal, project_id).await? else {
+            tally.unscoped += 1;
+            continue;
+        };
+        if account.xero_account_id != transaction.account_id {
+            tally.unscoped += 1;
+            continue;
+        }
+
+        let occurred_at = transaction.occurred_at.to_rfc3339();
+        let movement = match transaction.kind {
+            billing::TrustTransactionKind::Receive => store::trust::Movement::deposit(
+                project_id,
+                transaction.currency.clone(),
+                format_cents(transaction.amount_cents),
+                transaction.amount_cents,
+                occurred_at,
+            ),
+            billing::TrustTransactionKind::Spend => {
+                store::trust::Movement::refund(project_id, transaction.amount_cents, occurred_at)
+            }
+        }
+        .with_external_ref(transaction.transaction_id.clone());
+
+        match store::trust::record_project_movement(surreal, project_id, &movement)
+            .await
+            .map_err(anyhow::Error::msg)?
+        {
+            store::trust::Recorded::Posted => {
+                let kind = match transaction.kind {
+                    billing::TrustTransactionKind::Receive => {
+                        tally.deposits += 1;
+                        "deposit"
+                    }
+                    billing::TrustTransactionKind::Spend => {
+                        tally.refunds += 1;
+                        "refund"
+                    }
+                };
+                tally
+                    .lines
+                    .push(trust_line(surreal, project_id, kind, transaction.amount_cents).await?);
+            }
+            // Already on the ledger from an earlier night, or the matter has
+            // no notation to anchor a posting to. Neither is a new fact.
+            store::trust::Recorded::AlreadyRecorded => {}
+            store::trust::Recorded::NoAnchor => tally.unscoped += 1,
+        }
+    }
+    Ok(tally)
+}
+
+/// Name one posted movement for the nightly `#finance` notice.
+///
+/// The matter is named by its **Project code**, the firm's own handle for it
+/// — never by the client's name, which `#finance` has no reason to carry. A
+/// matter whose row has gone reads as `unknown`, so a report line is never
+/// dropped silently.
+async fn trust_line(
+    surreal: &SurrealDb,
+    project_id: uuid::Uuid,
+    kind: &str,
+    cents: i64,
+) -> anyhow::Result<TrustLine> {
+    let project_code = store::projects::find_by_id(surreal, project_id)
+        .await?
+        .map_or_else(|| "unknown".to_string(), |project| project.code);
+    Ok(TrustLine {
+        project_code,
+        kind: kind.to_string(),
+        cents,
+    })
+}
+
+/// Render minor units as the decimal string `store::trust::Movement` keeps
+/// its native amount in — never a float in the money path.
+fn format_cents(cents: i64) -> String {
+    let sign = if cents < 0 { "-" } else { "" };
+    let abs = cents.unsigned_abs();
+    format!("{sign}{}.{:02}", abs / 100, abs % 100)
+}
+
+/// Refresh the mirrored balance of each state's pooled IOLTA account.
+///
+/// Read-only in both directions: Xero lists its bank accounts, Navigator
+/// keeps the one row per state that `store::iolta_accounts` allows, and
+/// nothing is ever written back to Xero. An account whose name does not
+/// declare a state (`IOLTA NV — Trust`) is counted as unscoped rather than
+/// attached to one — the firm's operating account is in the same list.
+///
+/// A refused write for one account does not abandon the rest: a second Xero
+/// account claiming a state that is already mirrored is reported as unscoped
+/// and the run continues, because one bookkeeping mistake should not stop
+/// every other state's balance from refreshing.
+async fn mirror_iolta_accounts(
+    provider: &dyn BillingProvider,
+    surreal: &SurrealDb,
+) -> anyhow::Result<(usize, usize)> {
+    let listed = provider.list_bank_accounts().await?;
+    let mirrored_at = chrono::Utc::now();
+    let mut mirrored = 0;
+    let mut unscoped = 0;
+    for account in listed {
+        let Some(jurisdiction_id) =
+            store::iolta_accounts::resolve_jurisdiction_scope(surreal, &account.name).await?
+        else {
+            unscoped += 1;
+            continue;
+        };
+        let upsert = store::iolta_accounts::UpsertIoltaAccount {
+            jurisdiction_id,
+            xero_account_id: account.account_id.clone(),
+            xero_account_code: account.code.clone(),
+            name: account.name.clone(),
+            currency: account.currency.clone(),
+            balance_cents: account.balance_cents,
+            mirrored_at,
+        };
+        match store::iolta_accounts::upsert(surreal, &upsert).await {
+            Ok(_) => mirrored += 1,
+            Err(store::iolta_accounts::IoltaAccountError::JurisdictionTaken { .. }) => {
+                unscoped += 1;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok((mirrored, unscoped))
+}
+
+/// Post one night's report to `#finance`, and nowhere else.
+///
+/// Split out of the handler so the destination is testable without a Restate
+/// context: the channel a firm-finance notice lands in is exactly the sort of
+/// thing that should fail a test rather than a reader's trust.
+///
+/// # Errors
+///
+/// Propagates the Slack client's own error.
+pub async fn post_finance_notice(
+    slack: &dyn SlackBot,
+    finance_channel: &str,
+    report: &ReconcileReport,
+    simulated: bool,
+) -> Result<(), workflows::SlackBotError> {
+    slack
+        .post_message(finance_channel, &finance_message(report, simulated))
+        .await
+}
+
+/// What AIDA posts to `#finance` after a nightly run.
+///
+/// Firm-internal by construction: it names **Project codes** and **cents**,
+/// which the owner allowed for this channel, and nothing else about a
+/// client. No client name, no email address, no portal link. Invoices whose
+/// Xero `Reference` names no matter are a **count** — dumping the Xero
+/// contact names behind them would put client identities in a channel that
+/// has no need for them.
+///
+/// `simulated` folds in the staging disclosure, the same signal
+/// `GeneralNag` gives a reader of `#general`.
+#[must_use]
+pub fn finance_message(report: &ReconcileReport, simulated: bool) -> String {
+    let mut body = String::from("Xero mirror, nightly run.");
+    if simulated {
+        body.push_str(" (from the staging account)");
+    }
+    body.push_str(&format!(
+        "\nInvoices: {} ingested, {} unscoped, {} updated of {} re-checked.",
+        report.ingested, report.unscoped, report.updated, report.checked
+    ));
+    body.push_str(&format!(
+        "\nTrust: {} deposit(s), {} refund(s), {} withdrawal(s) across {} pooled account(s).",
+        report.trust_deposits,
+        report.trust_refunds,
+        report.iolta_withdrawals,
+        report.iolta_accounts
+    ));
+    if report.trust_unscoped > 0
+        || report.iolta_withdrawals_refused > 0
+        || report.iolta_unscoped > 0
+    {
+        body.push_str(&format!(
+            "\nNeeds a look: {} trust movement(s) unscoped, {} withdrawal(s) refused, \
+             {} bank account(s) unscoped.",
+            report.trust_unscoped, report.iolta_withdrawals_refused, report.iolta_unscoped
+        ));
+    }
+    for line in &report.trust_lines {
+        body.push_str(&format!(
+            "\n  {} {} {}",
+            line.project_code,
+            line.kind,
+            format_usd(line.cents)
+        ));
+    }
+    body
+}
+
+/// Render minor units as a dollar amount for the `#finance` post. Money
+/// never passes through a float.
+fn format_usd(cents: i64) -> String {
+    let sign = if cents < 0 { "-" } else { "" };
+    let abs = cents.unsigned_abs();
+    let digits = (abs / 100).to_string();
+    let mut grouped = String::new();
+    for (index, ch) in digits.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(ch);
+    }
+    let grouped: String = grouped.chars().rev().collect();
+    format!("{sign}${grouped}.{:02}", abs % 100)
 }
 
 fn skip_listed_status(status: &str) -> bool {
@@ -165,7 +606,10 @@ async fn ingest_listed(
 #[cfg(test)]
 mod tests {
     use super::reconcile_once;
-    use billing::{InvoiceStatus, ReceivableInvoice, StubBillingProvider};
+    use billing::{
+        InvoiceStatus, ReceivableInvoice, StubBillingProvider, TrustBankAccount,
+        TrustBankTransaction,
+    };
     use chrono::{TimeZone, Utc};
 
     async fn seed_mirror(
@@ -416,5 +860,429 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    /// The report a nightly run hands `finance_message`, with only the
+    /// fields a given assertion cares about set.
+    fn report() -> super::ReconcileReport {
+        super::ReconcileReport {
+            ingested: 3,
+            unscoped: 1,
+            checked: 5,
+            updated: 2,
+            iolta_accounts: 2,
+            iolta_unscoped: 0,
+            trust_deposits: 1,
+            trust_refunds: 0,
+            trust_unscoped: 0,
+            iolta_withdrawals: 1,
+            iolta_withdrawals_refused: 0,
+            trust_lines: vec![
+                super::TrustLine {
+                    project_code: "acme-formation".into(),
+                    kind: "deposit".into(),
+                    cents: 500_000,
+                },
+                super::TrustLine {
+                    project_code: "libra-estate".into(),
+                    kind: "draw".into(),
+                    cents: 123_456,
+                },
+            ],
+        }
+    }
+
+    /// The owner allowed Project codes and cents in `#finance`; everything
+    /// that identifies a *client* stays out.
+    #[test]
+    fn the_finance_notice_names_codes_and_cents_and_nothing_client_facing() {
+        let body = super::finance_message(&report(), false);
+
+        assert!(
+            body.contains("3 ingested, 1 unscoped, 2 updated of 5 re-checked"),
+            "{body}"
+        );
+        assert!(
+            body.contains("1 deposit(s), 0 refund(s), 1 withdrawal(s)"),
+            "{body}"
+        );
+        assert!(body.contains("acme-formation deposit $5,000.00"), "{body}");
+        assert!(body.contains("libra-estate draw $1,234.56"), "{body}");
+
+        for forbidden in ["@", "linear.app", "http", "/app/projects"] {
+            assert!(
+                !body.contains(forbidden),
+                "the #finance notice must not carry {forbidden:?}: {body}"
+            );
+        }
+    }
+
+    /// An unscoped invoice is a count. Dumping the Xero contact names behind
+    /// those invoices would put client identities in the channel.
+    #[test]
+    fn unscoped_and_refused_work_is_reported_as_counts() {
+        let mut report = report();
+        report.trust_unscoped = 2;
+        report.iolta_withdrawals_refused = 1;
+        report.iolta_unscoped = 3;
+
+        let body = super::finance_message(&report, false);
+        assert!(
+            body.contains(
+                "2 trust movement(s) unscoped, 1 withdrawal(s) refused, 3 bank account(s) unscoped"
+            ),
+            "{body}"
+        );
+    }
+
+    /// A quiet night still says so, without a "needs a look" line.
+    #[test]
+    fn a_quiet_night_reports_zeroes_and_flags_nothing() {
+        let body = super::finance_message(&super::ReconcileReport::default(), false);
+        assert!(body.contains("0 ingested"), "{body}");
+        assert!(!body.contains("Needs a look"), "{body}");
+    }
+
+    /// The notice lands in `#finance` and nowhere else — one post, to the
+    /// finance channel id, never to `#general` or a Project's own channel.
+    #[tokio::test]
+    async fn the_notice_lands_in_the_finance_channel_and_nowhere_else() {
+        let bot = workflows::CapturingSlackBot::new();
+        super::post_finance_notice(&bot, "C012FINANCE", &report(), false)
+            .await
+            .unwrap();
+
+        let posted = bot.posted_messages();
+        assert_eq!(posted.len(), 1, "one post per run: {posted:?}");
+        assert_eq!(posted[0].0, "C012FINANCE");
+        assert!(
+            posted[0].1.contains("Xero mirror, nightly run."),
+            "{posted:?}"
+        );
+        assert!(
+            bot.created_channels().is_empty(),
+            "the notice creates no channel"
+        );
+    }
+
+    /// A reader of `#finance` can tell a persistent-staging post from a
+    /// production one, the same way `#general` can.
+    #[test]
+    fn a_simulated_deployment_discloses_staging() {
+        assert!(super::finance_message(&report(), true).contains("(from the staging account)"));
+        assert!(
+            !super::finance_message(&report(), false).contains("staging"),
+            "a production run must not claim to be staging"
+        );
+    }
+
+    async fn seed_state(surreal: &store::surreal::SurrealDb, name: &str, code: &str) -> uuid::Uuid {
+        store::jurisdictions::create(
+            surreal,
+            &store::jurisdictions::NewJurisdiction::new(name, code, "state"),
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    fn bank(account_id: &str, name: &str, balance_cents: i64) -> TrustBankAccount {
+        TrustBankAccount {
+            account_id: account_id.into(),
+            code: Some("090".into()),
+            name: name.into(),
+            currency: "USD".into(),
+            balance_cents,
+        }
+    }
+
+    /// ENG-801: two states are two mirrored pooled accounts, and the firm's
+    /// own accounts — listed by the same Xero read — are counted as unscoped
+    /// rather than turned into a trust pool.
+    #[tokio::test]
+    async fn the_nightly_run_mirrors_one_pooled_account_per_state() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        let california = seed_state(&surreal, "California", "CA").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![
+            bank("xero-nv", "IOLTA NV — Trust", 1_250_000),
+            bank("xero-ca", "IOLTA CA — Trust", 400_000),
+            bank("xero-op", "Business Checking", 9_000_000),
+        ]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.iolta_accounts, 2);
+        assert_eq!(report.iolta_unscoped, 1, "the operating account is skipped");
+
+        let nv = store::iolta_accounts::for_jurisdiction(&surreal, nevada)
+            .await
+            .unwrap()
+            .expect("Nevada is mirrored");
+        assert_eq!(nv.xero_account_id, "xero-nv");
+        assert_eq!(nv.balance_cents, 1_250_000);
+        assert!(nv.mirrored_at.is_some(), "the read stamps when it happened");
+        assert_eq!(
+            store::iolta_accounts::for_jurisdiction(&surreal, california)
+                .await
+                .unwrap()
+                .map(|a| a.balance_cents),
+            Some(400_000)
+        );
+    }
+
+    /// A second Xero account claiming a state that already has one is
+    /// reported, not applied — and it does not stop the other states in the
+    /// same run from refreshing.
+    #[tokio::test]
+    async fn a_duplicate_state_account_is_counted_and_the_run_continues() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        seed_state(&surreal, "California", "CA").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![
+            bank("xero-nv", "IOLTA NV — Trust", 1_000_000),
+            bank("xero-nv-2", "IOLTA NV — Second", 7),
+            bank("xero-ca", "IOLTA CA — Trust", 500_000),
+        ]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.iolta_accounts, 2, "NV once, CA once");
+        assert_eq!(report.iolta_unscoped, 1, "the second NV account is refused");
+        assert_eq!(
+            store::iolta_accounts::for_jurisdiction(&surreal, nevada)
+                .await
+                .unwrap()
+                .map(|a| a.xero_account_id),
+            Some("xero-nv".to_string()),
+            "the incumbent is not replaced"
+        );
+    }
+
+    /// A matter seeded with a notation (so trust postings have an anchor)
+    /// and a governing jurisdiction (so they have a pooled account).
+    async fn seed_matter_in(
+        surreal: &store::surreal::SurrealDb,
+        jurisdiction_id: uuid::Uuid,
+    ) -> uuid::Uuid {
+        let notation_id = store::test_support::seed_notation(surreal).await;
+        let project_id = store::notations::find_by_id(surreal, notation_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .project_id;
+        store::projects::set_jurisdiction(surreal, project_id, Some(jurisdiction_id))
+            .await
+            .unwrap();
+        project_id
+    }
+
+    fn receipt(
+        transaction_id: &str,
+        account_id: &str,
+        reference: String,
+        amount_cents: i64,
+    ) -> TrustBankTransaction {
+        TrustBankTransaction {
+            transaction_id: transaction_id.into(),
+            kind: billing::TrustTransactionKind::Receive,
+            account_id: account_id.into(),
+            reference,
+            amount_cents,
+            currency: "USD".into(),
+            occurred_at: Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap(),
+            line_items: Vec::new(),
+        }
+    }
+
+    /// ENG-802: a Xero deposit tagged to a matter raises that matter's
+    /// deposited and held balance, and leaves every other matter alone.
+    #[tokio::test]
+    async fn a_mirrored_deposit_raises_one_matters_held_balance() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        let first = seed_matter_in(&surreal, nevada).await;
+        let second = seed_matter_in(&surreal, nevada).await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 900_000)]);
+        stub.set_listed_trust_transactions(vec![receipt(
+            "bt-1",
+            "xero-nv",
+            format!("Matter {first}"),
+            500_000,
+        )]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.trust_deposits, 1);
+        assert_eq!(report.trust_unscoped, 0);
+
+        let held = store::trust::position_for_project(&surreal, first)
+            .await
+            .unwrap();
+        assert_eq!(held.deposited_cents, 500_000);
+        assert_eq!(held.held_cents(), 500_000);
+        assert_eq!(
+            store::trust::position_for_project(&surreal, second)
+                .await
+                .unwrap(),
+            store::trust::Position::default(),
+            "the other matter on the same pooled account is untouched"
+        );
+    }
+
+    /// The same night, re-run, posts nothing: the Xero transaction id is the
+    /// idempotency key.
+    #[tokio::test]
+    async fn re_running_the_trust_mirror_does_not_double_count() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        let project_id = seed_matter_in(&surreal, nevada).await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 900_000)]);
+        stub.set_listed_trust_transactions(vec![receipt(
+            "bt-1",
+            "xero-nv",
+            format!("Matter {project_id}"),
+            250_000,
+        )]);
+
+        reconcile_once(&stub, &surreal).await.unwrap();
+        let second = reconcile_once(&stub, &surreal).await.unwrap();
+
+        assert_eq!(second.trust_deposits, 0, "already mirrored, nothing new");
+        assert_eq!(
+            store::trust::position_for_project(&surreal, project_id)
+                .await
+                .unwrap()
+                .deposited_cents,
+            250_000
+        );
+    }
+
+    /// Three ways a deposit fails to hold together, each counted rather than
+    /// posted somewhere plausible: no matter reference, a matter with no
+    /// pooled account, and money that moved through another state's account.
+    #[tokio::test]
+    async fn a_deposit_that_does_not_hold_together_is_counted_not_posted() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        let california = seed_state(&surreal, "California", "CA").await;
+        let nv_matter = seed_matter_in(&surreal, nevada).await;
+        let ca_matter = seed_matter_in(&surreal, california).await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 900_000)]);
+        stub.set_listed_trust_transactions(vec![
+            receipt("bt-1", "xero-nv", "Deposit, thanks".into(), 100_000),
+            receipt("bt-2", "xero-nv", format!("Matter {ca_matter}"), 100_000),
+            receipt("bt-3", "xero-ca", format!("Matter {nv_matter}"), 100_000),
+        ]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.trust_deposits, 0);
+        assert_eq!(report.trust_unscoped, 3);
+        assert_eq!(
+            store::trust::position_for_project(&surreal, nv_matter)
+                .await
+                .unwrap(),
+            store::trust::Position::default(),
+            "a Nevada matter is not credited from the California account"
+        );
+        assert_eq!(
+            store::trust::position_for_project(&surreal, ca_matter)
+                .await
+                .unwrap(),
+            store::trust::Position::default(),
+            "California has no mirrored pooled account, so nothing posts"
+        );
+    }
+
+    /// Money out of the pooled account that names no invoice is a refund of
+    /// unearned funds; one that settles invoices is the pooled withdrawal,
+    /// and a withdrawal naming an invoice the mirror does not carry is
+    /// refused whole rather than posted against a guessed matter.
+    #[tokio::test]
+    async fn a_refund_posts_and_an_unmirrored_withdrawal_is_refused() {
+        let surreal = store::surreal::test_support::mem().await;
+        let nevada = seed_state(&surreal, "Nevada", "NV").await;
+        let project_id = seed_matter_in(&surreal, nevada).await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 900_000)]);
+        stub.set_listed_trust_transactions(vec![
+            receipt("bt-1", "xero-nv", format!("Matter {project_id}"), 500_000),
+            TrustBankTransaction {
+                transaction_id: "bt-2".into(),
+                kind: billing::TrustTransactionKind::Spend,
+                account_id: "xero-nv".into(),
+                reference: format!("Matter {project_id}"),
+                amount_cents: 120_000,
+                currency: "USD".into(),
+                occurred_at: Utc.with_ymd_and_hms(2026, 9, 10, 0, 0, 0).unwrap(),
+                line_items: vec![billing::TrustTransactionLine {
+                    description: "Unearned balance returned".into(),
+                    amount_cents: 120_000,
+                    invoice_reference: None,
+                }],
+            },
+            TrustBankTransaction {
+                transaction_id: "bt-3".into(),
+                kind: billing::TrustTransactionKind::Spend,
+                account_id: "xero-nv".into(),
+                reference: "Fees earned, September".into(),
+                amount_cents: 80_000,
+                currency: "USD".into(),
+                occurred_at: Utc.with_ymd_and_hms(2026, 9, 30, 0, 0, 0).unwrap(),
+                line_items: vec![billing::TrustTransactionLine {
+                    description: "September fees".into(),
+                    amount_cents: 80_000,
+                    invoice_reference: Some("INV-001".into()),
+                }],
+            },
+        ]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.trust_deposits, 1);
+        assert_eq!(report.trust_refunds, 1);
+        assert_eq!(
+            report.iolta_withdrawals_refused, 1,
+            "INV-001 is not mirrored, so the withdrawal explains nothing"
+        );
+        assert_eq!(report.iolta_withdrawals, 0);
+
+        let position = store::trust::position_for_project(&surreal, project_id)
+            .await
+            .unwrap();
+        assert_eq!(position.deposited_cents, 500_000);
+        assert_eq!(position.refunded_cents, 120_000);
+        assert_eq!(
+            position.earned_cents, 0,
+            "a refused withdrawal posts no draw"
+        );
+        assert_eq!(position.held_cents(), 380_000);
+    }
+
+    /// A second night refreshes the balance in place rather than adding a
+    /// second master balance for the same state.
+    #[tokio::test]
+    async fn re_running_the_mirror_refreshes_rather_than_duplicates() {
+        let surreal = store::surreal::test_support::mem().await;
+        seed_state(&surreal, "Nevada", "NV").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 100_000)]);
+        reconcile_once(&stub, &surreal).await.unwrap();
+
+        stub.set_listed_bank_accounts(vec![bank("xero-nv", "IOLTA NV — Trust", 250_000)]);
+        let second = reconcile_once(&stub, &surreal).await.unwrap();
+
+        assert_eq!(second.iolta_accounts, 1);
+        let accounts = store::iolta_accounts::all(&surreal).await.unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].balance_cents, 250_000);
     }
 }

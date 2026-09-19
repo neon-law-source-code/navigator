@@ -78,6 +78,65 @@ pub struct ReceivableInvoice {
     pub due_at: Option<DateTime<Utc>>,
 }
 
+/// One bank account as listed from the provider, read-only. The firm's
+/// pooled IOLTA account for a state is one of these; which state it serves
+/// is a Navigator mapping (`store::iolta_accounts`), not something Xero
+/// knows. Money is minor units.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustBankAccount {
+    /// Xero `AccountID` (a GUID) — the stable identity.
+    pub account_id: String,
+    /// Xero's short chart-of-accounts `Code` (`"090"`), when set.
+    pub code: Option<String>,
+    pub name: String,
+    pub currency: String,
+    /// The balance Xero reports for the account, in minor units.
+    pub balance_cents: i64,
+}
+
+/// Which way money moved on a bank account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrustTransactionKind {
+    /// Money into the account — a client's deposit into trust.
+    Receive,
+    /// Money out of the account — either the pooled IOLTA → operating
+    /// withdrawal that settles invoices, or a refund of unearned funds back
+    /// to a client. Which one it is, is told by whether the lines name
+    /// invoices.
+    Spend,
+}
+
+/// One line on a bank transaction. On the pooled withdrawal each line is an
+/// allocation: how much of the one bank transfer settles which invoice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustTransactionLine {
+    pub description: String,
+    pub amount_cents: i64,
+    /// The invoice this line settles, as the line's own reference names it.
+    /// `None` on a line that settles no invoice — a refund's line, or an
+    /// unlabelled one.
+    pub invoice_reference: Option<String>,
+}
+
+/// One bank transaction on a trust account, read-only. Navigator mirrors
+/// these; the firm's bookkeeper records them in Xero.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustBankTransaction {
+    /// Xero `BankTransactionID` — the idempotency key the mirror posts on.
+    pub transaction_id: String,
+    pub kind: TrustTransactionKind,
+    /// The bank account it moved on; matched against the mirrored pooled
+    /// account for a state.
+    pub account_id: String,
+    /// The transaction-level `Reference` (`Matter <project uuid or code>`).
+    pub reference: String,
+    /// Total moved, minor units.
+    pub amount_cents: i64,
+    pub currency: String,
+    pub occurred_at: DateTime<Utc>,
+    pub line_items: Vec<TrustTransactionLine>,
+}
+
 /// One line on an invoice. Money is carried in **minor units (cents)** —
 /// never a float — and rendered to a decimal string only at the wire
 /// boundary. Quantity is whole units (a flat-fee matter bills quantity 1).
@@ -153,6 +212,17 @@ pub trait BillingProvider: Send + Sync {
     /// mirror yet. Pagination is the provider's problem; the caller sees
     /// one complete vec.
     async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError>;
+
+    /// List the provider's bank accounts. Read-only, and read for exactly
+    /// one purpose: refreshing the mirrored balance of the pooled IOLTA
+    /// account each state's matters draw on. Navigator never opens, closes,
+    /// or writes to an account — Xero is the books.
+    async fn list_bank_accounts(&self) -> Result<Vec<TrustBankAccount>, BillingError>;
+
+    /// List bank transactions — the deposits into trust, the refunds out of
+    /// it, and the pooled withdrawal that settles invoices. Read-only: the
+    /// firm posts these in Xero and Navigator mirrors what it finds.
+    async fn list_trust_transactions(&self) -> Result<Vec<TrustBankTransaction>, BillingError>;
 }
 
 /// In-process stub. Records every call and hands back synthetic
@@ -167,6 +237,10 @@ pub struct StubBillingProvider {
     /// Canned `list_receivable_invoices` rows. Empty until a test seeds
     /// them — ingest is a no-op against a fresh stub.
     listed_invoices: Mutex<Vec<ReceivableInvoice>>,
+    /// Canned `list_bank_accounts` rows. Empty until a test seeds them.
+    listed_bank_accounts: Mutex<Vec<TrustBankAccount>>,
+    /// Canned `list_trust_transactions` rows. Empty until a test seeds them.
+    listed_trust_transactions: Mutex<Vec<TrustBankTransaction>>,
 }
 
 impl StubBillingProvider {
@@ -188,6 +262,24 @@ impl StubBillingProvider {
     /// can simulate invoices already raised in Xero.
     pub fn set_listed_invoices(&self, invoices: Vec<ReceivableInvoice>) {
         *self.listed_invoices.lock().expect("stub provider lock") = invoices;
+    }
+
+    /// Pre-seed what `list_bank_accounts` returns, so an IOLTA mirror test
+    /// can simulate the firm's pooled trust accounts in Xero.
+    pub fn set_listed_bank_accounts(&self, accounts: Vec<TrustBankAccount>) {
+        *self
+            .listed_bank_accounts
+            .lock()
+            .expect("stub provider lock") = accounts;
+    }
+
+    /// Pre-seed what `list_trust_transactions` returns, so a trust-ledger
+    /// test can simulate deposits, refunds, and the pooled withdrawal.
+    pub fn set_listed_trust_transactions(&self, transactions: Vec<TrustBankTransaction>) {
+        *self
+            .listed_trust_transactions
+            .lock()
+            .expect("stub provider lock") = transactions;
     }
 
     /// Snapshot of every call so far. Cheap clone — callers can hold onto
@@ -249,6 +341,22 @@ impl BillingProvider for StubBillingProvider {
     async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError> {
         Ok(self
             .listed_invoices
+            .lock()
+            .expect("stub provider lock")
+            .clone())
+    }
+
+    async fn list_bank_accounts(&self) -> Result<Vec<TrustBankAccount>, BillingError> {
+        Ok(self
+            .listed_bank_accounts
+            .lock()
+            .expect("stub provider lock")
+            .clone())
+    }
+
+    async fn list_trust_transactions(&self) -> Result<Vec<TrustBankTransaction>, BillingError> {
+        Ok(self
+            .listed_trust_transactions
             .lock()
             .expect("stub provider lock")
             .clone())
@@ -712,6 +820,76 @@ impl BillingProvider for XeroBillingProvider {
         })
     }
 
+    async fn list_bank_accounts(&self) -> Result<Vec<TrustBankAccount>, BillingError> {
+        let url = format!("{}/Accounts", self.base_url.trim_end_matches('/'));
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(self.bearer_token().await?)
+            .header("Xero-Tenant-Id", &self.tenant_id)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .query(&[("where", r#"Type=="BANK""#)])
+            .send()
+            .await
+            .map_err(|e| BillingError::Provider(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(BillingError::Provider(format!(
+                "xero responded {status}: {body}"
+            )));
+        }
+        let parsed: AccountsResponse = resp
+            .json()
+            .await
+            .map_err(|e| BillingError::Provider(e.to_string()))?;
+        Ok(parsed
+            .accounts
+            .into_iter()
+            .map(AccountSummary::into_bank_account)
+            .collect())
+    }
+
+    async fn list_trust_transactions(&self) -> Result<Vec<TrustBankTransaction>, BillingError> {
+        let url = format!("{}/BankTransactions", self.base_url.trim_end_matches('/'));
+        let mut transactions = Vec::new();
+        let mut page = 1_u32;
+        loop {
+            let page_param = page.to_string();
+            let resp = self
+                .http
+                .get(&url)
+                .bearer_auth(self.bearer_token().await?)
+                .header("Xero-Tenant-Id", &self.tenant_id)
+                .header(reqwest::header::ACCEPT, "application/json")
+                .query(&[("page", page_param.as_str())])
+                .send()
+                .await
+                .map_err(|e| BillingError::Provider(e.to_string()))?;
+            let status = resp.status();
+            if !status.is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(BillingError::Provider(format!(
+                    "xero responded {status}: {body}"
+                )));
+            }
+            let parsed: BankTransactionsResponse = resp
+                .json()
+                .await
+                .map_err(|e| BillingError::Provider(e.to_string()))?;
+            if parsed.bank_transactions.is_empty() {
+                break;
+            }
+            for summary in parsed.bank_transactions {
+                if let Some(transaction) = summary.into_trust_transaction() {
+                    transactions.push(transaction);
+                }
+            }
+            page = page.saturating_add(1);
+        }
+        Ok(transactions)
+    }
+
     async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError> {
         let mut invoices = Vec::new();
         let mut page = 1_u32;
@@ -728,6 +906,138 @@ impl BillingProvider for XeroBillingProvider {
             page = page.saturating_add(1);
         }
         Ok(invoices)
+    }
+}
+
+/// Xero's `GET /BankTransactions` response.
+#[derive(Deserialize)]
+struct BankTransactionsResponse {
+    #[serde(rename = "BankTransactions", default)]
+    bank_transactions: Vec<BankTransactionSummary>,
+}
+
+#[derive(Deserialize)]
+struct BankTransactionSummary {
+    #[serde(rename = "BankTransactionID")]
+    bank_transaction_id: String,
+    /// `RECEIVE`, `SPEND`, and the prepayment/overpayment variants of each.
+    #[serde(rename = "Type", default)]
+    transaction_type: Option<String>,
+    #[serde(rename = "Status", default)]
+    status: Option<String>,
+    #[serde(rename = "Reference", default)]
+    reference: Option<String>,
+    #[serde(rename = "Total", default)]
+    total: Option<f64>,
+    #[serde(rename = "CurrencyCode", default)]
+    currency_code: Option<String>,
+    #[serde(rename = "Date", default)]
+    date: Option<String>,
+    #[serde(rename = "BankAccount", default)]
+    bank_account: Option<BankAccountRef>,
+    #[serde(rename = "LineItems", default)]
+    line_items: Vec<BankTransactionLine>,
+}
+
+#[derive(Deserialize)]
+struct BankAccountRef {
+    #[serde(rename = "AccountID", default)]
+    account_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BankTransactionLine {
+    #[serde(rename = "Description", default)]
+    description: Option<String>,
+    #[serde(rename = "LineAmount", default)]
+    line_amount: Option<f64>,
+    /// The line's own reference — how a pooled withdrawal names which
+    /// invoice each part of it settles.
+    #[serde(rename = "Reference", default)]
+    reference: Option<String>,
+}
+
+impl BankTransactionSummary {
+    /// `None` for a transaction the mirror has no business posting: one that
+    /// is not a plain receive or spend, one Xero has deleted or left as a
+    /// draft, or one with no bank account or date to anchor it.
+    fn into_trust_transaction(self) -> Option<TrustBankTransaction> {
+        let kind = match self
+            .transaction_type
+            .as_deref()?
+            .to_ascii_uppercase()
+            .as_str()
+        {
+            "RECEIVE" => TrustTransactionKind::Receive,
+            "SPEND" => TrustTransactionKind::Spend,
+            _ => return None,
+        };
+        if matches!(
+            self.status
+                .as_deref()
+                .map(str::to_ascii_uppercase)
+                .as_deref(),
+            Some("DELETED") | Some("VOIDED")
+        ) {
+            return None;
+        }
+        let account_id = self.bank_account?.account_id?;
+        let occurred_at = parse_xero_datetime(self.date.as_deref()?)?;
+        Some(TrustBankTransaction {
+            transaction_id: self.bank_transaction_id,
+            kind,
+            account_id,
+            reference: self.reference.unwrap_or_default(),
+            amount_cents: self.total.map(dollars_to_cents).unwrap_or_default(),
+            currency: self.currency_code.unwrap_or_else(|| "USD".to_string()),
+            occurred_at,
+            line_items: self
+                .line_items
+                .into_iter()
+                .map(|line| TrustTransactionLine {
+                    description: line.description.unwrap_or_default(),
+                    amount_cents: line.line_amount.map(dollars_to_cents).unwrap_or_default(),
+                    invoice_reference: line.reference,
+                })
+                .collect(),
+        })
+    }
+}
+
+/// Xero's `GET /Accounts` response.
+#[derive(Deserialize)]
+struct AccountsResponse {
+    #[serde(rename = "Accounts", default)]
+    accounts: Vec<AccountSummary>,
+}
+
+/// One bank account as Xero reports it. Only the fields the IOLTA mirror
+/// reads; Xero returns many more.
+#[derive(Deserialize)]
+struct AccountSummary {
+    #[serde(rename = "AccountID")]
+    account_id: String,
+    #[serde(rename = "Code", default)]
+    code: Option<String>,
+    #[serde(rename = "Name", default)]
+    name: Option<String>,
+    #[serde(rename = "CurrencyCode", default)]
+    currency_code: Option<String>,
+    /// Xero omits this on accounts it has no balance for; absent reads as
+    /// zero rather than failing the whole nightly mirror.
+    #[serde(rename = "Balance", default)]
+    balance: Option<f64>,
+}
+
+impl AccountSummary {
+    fn into_bank_account(self) -> TrustBankAccount {
+        TrustBankAccount {
+            account_id: self.account_id,
+            code: self.code,
+            name: self.name.unwrap_or_default(),
+            currency: self.currency_code.unwrap_or_else(|| "USD".to_string()),
+            balance_cents: self.balance.map(dollars_to_cents).unwrap_or_default(),
+        }
     }
 }
 

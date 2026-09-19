@@ -164,6 +164,14 @@ spec:
             # time. Unset/empty fails that workflow as a terminal error.
             - name: SLACK_GENERAL_CHANNEL_ID
               value: YOUR_SLACK_GENERAL_CHANNEL_ID
+            # `#finance`'s channel ID, where AIDA reads out the nightly Xero
+            # and IOLTA mirror (`ReconcileInvoices`). The same Slack app as
+            # `#general` — invite it to the channel; no second token and no
+            # incoming webhook. Not a secret; substitute the real ID at
+            # render time. Unset/empty fails that workflow as a terminal
+            # error rather than reconciling with nowhere to report it.
+            - name: SLACK_FINANCE_CHANNEL_ID
+              value: YOUR_SLACK_FINANCE_CHANNEL_ID
             - name: OTEL_SERVICE_NAME
               value: workflows-service
             - name: POD_NAME

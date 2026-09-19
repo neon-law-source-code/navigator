@@ -75,6 +75,18 @@ DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 -- reach rows written before this field existed, so the store reads
 -- `option<record<firm>>` and treats absence as "not yet owned".
 DEFINE FIELD OVERWRITE firm_id ON project TYPE option<record<firm>>;
+-- The matter's governing jurisdiction — a general fact about the Project,
+-- not a trust-accounting column. It answers "whose law governs this matter",
+-- and the pooled IOLTA account a matter's client funds sit in is *derived*
+-- from it (`store::iolta_accounts::for_project`) rather than stored a second
+-- time: one authoritative jurisdiction per matter, read by whatever needs it.
+--
+-- Optional, because a matter may be opened before the jurisdiction is
+-- settled, and because every row written before this field existed has none.
+-- Absence is never guessed at: a Project with no jurisdiction is skipped and
+-- counted by the nightly IOLTA mirror rather than being attached to the
+-- entity's or the firm's state.
+DEFINE FIELD OVERWRITE jurisdiction_id ON project TYPE option<record<jurisdiction>>;
 DEFINE FIELD OVERWRITE description ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE drive_folder_id ON project TYPE option<string>;
 -- The full URL of the one source repository this Project's templates and
@@ -177,6 +189,85 @@ FOR $legacy IN $legacy_xero_invoices {
         updated_at = $legacy.updated_at;
     DELETE $legacy.id;
 };
+
+-- `iolta_account`: the read-only mirror of one pooled IOLTA bank account per
+-- US state, as Xero holds it. IOLTA is pooled by jurisdiction — every client
+-- whose matter is governed by Nevada law shares the Nevada trust account — so
+-- the row's identity is its `jurisdiction_id`, enforced UNIQUE below. A
+-- matter reaches its account through `project.jurisdiction_id`; there is no
+-- second mapping table to drift.
+--
+-- Xero is the books. Navigator never opens an account, never moves money, and
+-- never writes to Xero: `balance_cents` is whatever the last nightly mirror
+-- read from the Xero bank account, and `mirrored_at` says when. The
+-- per-matter side of the three-way reconciliation stays in `store::trust`,
+-- folded from the journal rather than stored here, so the master balance and
+-- the per-matter balances can never disagree by way of a stale column.
+DEFINE TABLE IF NOT EXISTS iolta_account SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE jurisdiction_id ON iolta_account TYPE record<jurisdiction>;
+-- The Xero `BankAccount` / chart-of-accounts `AccountID` (a GUID). Also the
+-- row's own record id, so a re-mirror of the same Xero account lands on the
+-- one row it already wrote — the same concurrency boundary `xero_invoice`
+-- uses, for the same reason.
+DEFINE FIELD OVERWRITE xero_account_id ON iolta_account TYPE string;
+-- Xero's short chart-of-accounts code (`"090"`), when the account carries
+-- one. Display only; `xero_account_id` is the identity.
+DEFINE FIELD OVERWRITE xero_account_code ON iolta_account TYPE option<string>;
+DEFINE FIELD OVERWRITE name ON iolta_account TYPE string;
+DEFINE FIELD OVERWRITE currency ON iolta_account TYPE string;
+DEFINE FIELD OVERWRITE balance_cents ON iolta_account TYPE int DEFAULT 0;
+DEFINE FIELD OVERWRITE mirrored_at ON iolta_account TYPE option<datetime>;
+DEFINE FIELD OVERWRITE inserted_at ON iolta_account TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON iolta_account TYPE datetime DEFAULT time::now();
+-- One pooled account per state. A second Xero account claiming the same
+-- jurisdiction is a refused write, not a silent second master balance.
+DEFINE INDEX OVERWRITE iolta_account_jurisdiction ON iolta_account FIELDS jurisdiction_id UNIQUE;
+
+-- `iolta_withdrawal` + `iolta_allocation`: one bank transfer out of a state's
+-- pooled IOLTA account, and how it splits across the invoices it settles.
+--
+-- The bank sees one transfer. The clients whose money funded it each see only
+-- their own share, which is why the split is modelled rather than inferred: a
+-- pooled withdrawal of $10,000 that settles four matters' invoices is one
+-- `iolta_withdrawal` row and four `iolta_allocation` rows, and a client's
+-- matter page renders only the rows carrying their `project_id`.
+--
+-- Xero is the books: the firm's bookkeeper records the transfer there and
+-- Navigator mirrors it. The record id is the Xero `BankTransactionID`, so a
+-- re-read of the same transfer lands on the row it already wrote.
+DEFINE TABLE IF NOT EXISTS iolta_withdrawal SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE xero_transaction_id ON iolta_withdrawal TYPE string;
+-- The state pool the money left. Links to the jurisdiction rather than to
+-- `iolta_account` so the withdrawal survives a re-mirrored Xero account id.
+DEFINE FIELD OVERWRITE jurisdiction_id ON iolta_withdrawal TYPE record<jurisdiction>;
+-- The whole transfer, minor units. The allocations must sum to exactly this;
+-- `store::iolta_withdrawals` refuses the apply otherwise, so a partially
+-- explained withdrawal never becomes durable.
+DEFINE FIELD OVERWRITE total_cents ON iolta_withdrawal TYPE int;
+DEFINE FIELD OVERWRITE currency ON iolta_withdrawal TYPE string;
+DEFINE FIELD OVERWRITE occurred_at ON iolta_withdrawal TYPE datetime;
+DEFINE FIELD OVERWRITE inserted_at ON iolta_withdrawal TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON iolta_withdrawal TYPE datetime DEFAULT time::now();
+
+-- One line of that split: this much of the transfer settled this invoice for
+-- this matter. `project_id` is copied from the invoice it settles rather than
+-- supplied alongside it, so a line can never name a matter the invoice does
+-- not bill.
+DEFINE TABLE IF NOT EXISTS iolta_allocation SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE withdrawal_id ON iolta_allocation TYPE string;
+DEFINE FIELD OVERWRITE xero_invoice_id ON iolta_allocation TYPE string;
+DEFINE FIELD OVERWRITE project_id ON iolta_allocation TYPE record<project>;
+DEFINE FIELD OVERWRITE invoice_reference ON iolta_allocation TYPE string;
+DEFINE FIELD OVERWRITE amount_cents ON iolta_allocation TYPE int;
+DEFINE FIELD OVERWRITE occurred_at ON iolta_allocation TYPE datetime;
+DEFINE FIELD OVERWRITE inserted_at ON iolta_allocation TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON iolta_allocation TYPE datetime DEFAULT time::now();
+-- The client read: every line belonging to one matter.
+DEFINE INDEX OVERWRITE iolta_allocation_project ON iolta_allocation FIELDS project_id;
+-- One line per (withdrawal, invoice). A re-read of the same transfer updates
+-- its lines in place instead of doubling the matter's drawn total.
+DEFINE INDEX OVERWRITE iolta_allocation_line ON iolta_allocation
+    FIELDS withdrawal_id, xero_invoice_id UNIQUE;
 
 DEFINE TABLE IF NOT EXISTS person_project_role SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON person_project_role TYPE record<person>;

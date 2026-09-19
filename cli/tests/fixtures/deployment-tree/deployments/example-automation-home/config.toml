@@ -62,6 +62,7 @@ NAVIGATOR_WORKFLOWS_URL = "https://workflows.home.example.com/"
 # Public Restate Cloud request-signing key; synthetic fixture value.
 RESTATE_IDENTITY_KEY = "publickeyv1_test-identity-key"
 SLACK_GENERAL_CHANNEL_ID = "C012GENERAL"
+SLACK_FINANCE_CHANNEL_ID = "C012FINANCE"
 
 # Declaring Dash0 is optional. When the endpoint is present, the dataset and
 # encrypted token are required together by store::deployment.

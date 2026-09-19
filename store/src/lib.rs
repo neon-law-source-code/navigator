@@ -108,6 +108,8 @@ pub mod firms;
 pub mod git_access_tokens;
 pub mod git_repositories;
 pub mod glossary;
+pub mod iolta_accounts;
+pub mod iolta_withdrawals;
 pub mod jurisdictions;
 pub mod leads;
 pub mod letters;

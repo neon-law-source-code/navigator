@@ -12,25 +12,28 @@
 //! bank or payment processor computes for us — so they live here, as pure,
 //! provider- and asset-agnostic logic.
 //!
-//! # What this is NOT (the deferred banking seam)
+//! # What this is NOT (the bank)
 //!
-//! Navigator does **not** custody funds. A real banking/trust-ledger provider
-//! (Modern Treasury / Increase / Column) will own USD settlement and the
-//! bank-statement leg of the IOLTA three-way reconciliation; on-chain rails
-//! own crypto settlement. This module owns only the *legal-meaning overlay*:
-//! which engagement a movement belongs to, what it means (deposit / earned
-//! draw / refund), and the running trust position per matter.
+//! Navigator does **not** custody funds. **Xero is the books**: the firm's
+//! bookkeeper records every deposit, refund, and withdrawal there, against a
+//! real pooled trust account, and Navigator reads. It opens no account, moves
+//! no money, and writes nothing back. This module owns only the
+//! *legal-meaning overlay*: which engagement a movement belongs to, what it
+//! means (deposit / earned draw / refund), and the running trust position per
+//! matter.
 //!
-//! Because the provider — and whether a client pays in USD, USDC, or BTC — is
-//! not chosen yet, we commit to **no financial schema**. Each movement is
-//! recorded as an immutable JSON event on the existing append-only
-//! [`notation_events`](crate::notation_events) journal (append-only by the
-//! module's own shape — see its header — which makes it tamper-evident) under a
-//! [`MACHINE_TRUST_LEDGER`] machine-kind, anchored to the engagement's
-//! retainer notation (which already carries the `project_id` / `person_id` /
-//! `entity_id` links). When a provider lands, its posting id / on-chain tx
-//! hash mirrors into [`Movement::external_ref`] and these postings replay onto
-//! the provider's ledger — no migration to unwind.
+//! Each movement is recorded as an immutable JSON event on the existing
+//! append-only [`notation_events`](crate::notation_events) journal (append-only
+//! at its command seam — see its header) under a [`MACHINE_TRUST_LEDGER`]
+//! machine-kind, anchored to a notation of the matter it belongs to (which
+//! already carries the `project_id` / `person_id` / `entity_id` links). The
+//! settling Xero `BankTransactionID` lands in [`Movement::external_ref`],
+//! which is what makes a re-read of the same night post nothing.
+//!
+//! The pooled account per state, and the split of one withdrawal across the
+//! invoices it settles, live beside this module in
+//! [`crate::iolta_accounts`] and [`crate::iolta_withdrawals`] — facts about
+//! the bank, where this module holds facts about a matter.
 //!
 //! # Double-entry
 //!
@@ -641,6 +644,148 @@ pub async fn position_for(surreal: &SurrealDb, notation_id: Uuid) -> Result<Posi
     position(&movements_for(surreal, notation_id).await?).map_err(|e| trust_error(&e))
 }
 
+/// The notation a matter's trust postings anchor to: its **earliest**
+/// notation, which is the engagement's own — the retainer a matter opens
+/// with, before any later notation exists to be confused with it.
+///
+/// The journal requires a notation link ([`crate::notation_events`]), so a
+/// Project-scoped posting has to name one. `Ok(None)` when the matter has no
+/// notation at all: a Xero receipt for such a matter is skipped and counted
+/// rather than anchored to something invented.
+///
+/// # Errors
+///
+/// Propagates a notation read failure.
+pub async fn engagement_anchor(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+) -> Result<Option<Uuid>, String> {
+    let mut notations = crate::notations::list_by_project(surreal, project_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    notations.sort_by(|a, b| a.inserted_at.cmp(&b.inserted_at).then(a.id.cmp(&b.id)));
+    Ok(notations.first().map(|notation| notation.id))
+}
+
+/// Every trust movement recorded against a matter, across all of its
+/// notations.
+///
+/// The Project — not one notation — is the unit a client's trust balance is
+/// kept in, so the read spans the matter rather than the anchor alone: a
+/// posting recorded by hand against some other notation of the same matter
+/// still counts toward what the firm holds for that client.
+///
+/// # Errors
+///
+/// Propagates a notation or journal read failure, or a corrupt payload.
+pub async fn movements_for_project(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+) -> Result<Vec<Movement>, String> {
+    let notations = crate::notations::list_by_project(surreal, project_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut movements = Vec::new();
+    for notation in notations {
+        movements.extend(movements_for(surreal, notation.id).await?);
+    }
+    Ok(movements)
+}
+
+/// The matter's running trust [`Position`] — [`movements_for_project`] folded
+/// through [`position`]. This is the number a client is shown for their own
+/// matter, and the per-matter leg of the IOLTA reconciliation.
+///
+/// # Errors
+///
+/// Propagates any failure from [`movements_for_project`].
+pub async fn position_for_project(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+) -> Result<Position, String> {
+    position(&movements_for_project(surreal, project_id).await?).map_err(|e| trust_error(&e))
+}
+
+/// Whether this matter's ledger already carries a movement mirrored from
+/// `external_ref` — the Xero bank-transaction id.
+///
+/// The nightly mirror re-reads the same Xero transactions every night, so
+/// this is what keeps a deposit from being counted twice. The reference is
+/// the provider's own id, which makes the check exact rather than heuristic.
+///
+/// # Errors
+///
+/// Propagates any failure from [`movements_for_project`].
+pub async fn has_external_ref(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    external_ref: &str,
+) -> Result<bool, String> {
+    Ok(movements_for_project(surreal, project_id)
+        .await?
+        .iter()
+        .any(|movement| movement.external_ref.as_deref() == Some(external_ref)))
+}
+
+/// What [`record_project_movement`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Recorded {
+    /// The movement was appended to the matter's ledger.
+    Posted,
+    /// A movement carrying the same `external_ref` was already on this
+    /// matter's ledger, so nothing was written. A re-run of the nightly
+    /// mirror lands here.
+    AlreadyRecorded,
+    /// The matter has no notation to anchor a posting to
+    /// ([`engagement_anchor`]). Nothing is written, and the caller counts it.
+    NoAnchor,
+}
+
+/// Append one movement to a **matter's** ledger, idempotently on its
+/// `external_ref`.
+///
+/// This is the seam the Xero mirror posts through: it resolves the
+/// engagement anchor itself, refuses to double-post a Xero transaction it
+/// has already mirrored, and attributes the posting to the anchor notation's
+/// own person — the journal's existing fallback — because a nightly mirror
+/// has no acting human.
+///
+/// A movement with no `external_ref` is refused: an un-referenced posting
+/// cannot be recognised on the next night's read, so it would duplicate.
+///
+/// # Errors
+///
+/// Returns a [`String`] when the movement is invalid for the matter, when it
+/// carries no `external_ref`, or when a read or append fails.
+pub async fn record_project_movement(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    movement: &Movement,
+) -> Result<Recorded, String> {
+    movement
+        .validate_for_project(project_id)
+        .map_err(|e| trust_error(&e))?;
+    let Some(external_ref) = movement.external_ref.as_deref() else {
+        return Err(
+            "a mirrored trust movement must carry the provider's reference, or the next \
+             night's read would post it again"
+                .to_string(),
+        );
+    };
+    if has_external_ref(surreal, project_id, external_ref).await? {
+        return Ok(Recorded::AlreadyRecorded);
+    }
+    let Some(anchor) = engagement_anchor(surreal, project_id).await? else {
+        return Ok(Recorded::NoAnchor);
+    };
+    let notation = crate::notations::find_by_id(surreal, anchor)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("notation {anchor}"))?;
+    record_movement(surreal, anchor, notation.person_id, movement).await?;
+    Ok(Recorded::Posted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1029,5 +1174,178 @@ mod db_tests {
             movements_for(&surreal, bad).await.is_err(),
             "an unparseable trust event must error"
         );
+    }
+}
+
+#[cfg(test)]
+mod project_ledger_tests {
+    use super::{
+        engagement_anchor, has_external_ref, position_for_project, record_project_movement,
+        Movement, Recorded,
+    };
+    use crate::surreal::SurrealDb;
+    use uuid::Uuid;
+
+    /// A seeded matter that already has a notation to anchor postings to.
+    async fn matter(surreal: &SurrealDb) -> Uuid {
+        let notation_id = crate::test_support::seed_notation(surreal).await;
+        crate::notations::find_by_id(surreal, notation_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .project_id
+    }
+
+    fn deposit(project_id: Uuid, cents: i64, xero_id: &str) -> Movement {
+        Movement::deposit(
+            project_id,
+            "USD",
+            format!("{}.00", cents / 100),
+            cents,
+            "2026-09-01T00:00:00Z",
+        )
+        .with_external_ref(xero_id)
+    }
+
+    /// A deposit lands on the matter's ledger and moves its position.
+    #[tokio::test]
+    async fn a_mirrored_deposit_moves_the_matters_position() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let project_id = matter(&surreal).await;
+
+        let posted =
+            record_project_movement(&surreal, project_id, &deposit(project_id, 500_000, "bt-1"))
+                .await
+                .unwrap();
+        assert_eq!(posted, Recorded::Posted);
+
+        let position = position_for_project(&surreal, project_id).await.unwrap();
+        assert_eq!(position.deposited_cents, 500_000);
+        assert_eq!(position.held_cents(), 500_000);
+        assert!(has_external_ref(&surreal, project_id, "bt-1")
+            .await
+            .unwrap());
+    }
+
+    /// The nightly mirror re-reads the same Xero transaction every night.
+    /// The second read must post nothing.
+    #[tokio::test]
+    async fn re_mirroring_one_xero_transaction_does_not_double_count() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let project_id = matter(&surreal).await;
+        let movement = deposit(project_id, 250_000, "bt-1");
+
+        assert_eq!(
+            record_project_movement(&surreal, project_id, &movement)
+                .await
+                .unwrap(),
+            Recorded::Posted
+        );
+        assert_eq!(
+            record_project_movement(&surreal, project_id, &movement)
+                .await
+                .unwrap(),
+            Recorded::AlreadyRecorded
+        );
+
+        let position = position_for_project(&surreal, project_id).await.unwrap();
+        assert_eq!(position.deposited_cents, 250_000, "posted once, not twice");
+    }
+
+    /// Two matters keep two ledgers. A pooled bank account is shared; the
+    /// positions are not.
+    #[tokio::test]
+    async fn two_matters_keep_two_ledgers() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let first = matter(&surreal).await;
+        let second = matter(&surreal).await;
+
+        record_project_movement(&surreal, first, &deposit(first, 100_000, "bt-a"))
+            .await
+            .unwrap();
+        record_project_movement(&surreal, second, &deposit(second, 700_000, "bt-b"))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            position_for_project(&surreal, first)
+                .await
+                .unwrap()
+                .held_cents(),
+            100_000
+        );
+        assert_eq!(
+            position_for_project(&surreal, second)
+                .await
+                .unwrap()
+                .held_cents(),
+            700_000
+        );
+    }
+
+    /// A matter with no notation has nothing to anchor a posting to. It is
+    /// reported, not anchored to something invented.
+    #[tokio::test]
+    async fn a_matter_with_no_notation_has_no_anchor() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let project_id = crate::projects::create(
+            &surreal,
+            &crate::projects::NewProject {
+                code: "unanchored".into(),
+                name: "Unanchored".into(),
+                status: "open".into(),
+                entity_id: crate::test_support::seed_entity(&surreal).await,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .id;
+
+        assert_eq!(engagement_anchor(&surreal, project_id).await.unwrap(), None);
+        assert_eq!(
+            record_project_movement(&surreal, project_id, &deposit(project_id, 1, "bt-x"))
+                .await
+                .unwrap(),
+            Recorded::NoAnchor
+        );
+        assert_eq!(
+            position_for_project(&surreal, project_id).await.unwrap(),
+            super::Position::default()
+        );
+    }
+
+    /// A posting with no provider reference could not be recognised on the
+    /// next night's read, so it is refused rather than duplicated later.
+    #[tokio::test]
+    async fn a_movement_without_a_provider_reference_is_refused() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let project_id = matter(&surreal).await;
+        let unreferenced =
+            Movement::deposit(project_id, "USD", "10.00", 1_000, "2026-09-01T00:00:00Z");
+
+        let refused = record_project_movement(&surreal, project_id, &unreferenced).await;
+        assert!(refused.is_err(), "got {refused:?}");
+    }
+
+    /// A refund reduces what is held without touching what was deposited.
+    #[tokio::test]
+    async fn a_refund_reduces_the_held_balance() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let project_id = matter(&surreal).await;
+        record_project_movement(&surreal, project_id, &deposit(project_id, 500_000, "bt-1"))
+            .await
+            .unwrap();
+
+        let refund =
+            Movement::refund(project_id, 200_000, "2026-09-10T00:00:00Z").with_external_ref("bt-2");
+        record_project_movement(&surreal, project_id, &refund)
+            .await
+            .unwrap();
+
+        let position = position_for_project(&surreal, project_id).await.unwrap();
+        assert_eq!(position.deposited_cents, 500_000);
+        assert_eq!(position.refunded_cents, 200_000);
+        assert_eq!(position.held_cents(), 300_000);
     }
 }

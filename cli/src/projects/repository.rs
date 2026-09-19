@@ -1522,9 +1522,11 @@ mod tests {
     use super::{
         agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
         placeholder_template, repository_name, scaffold, validate_layout, validate_workflow,
-        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST, WORKFLOW,
+        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST, SYNCED_SKILLS,
+        WORKFLOW,
     };
     use crate::projects::manifest::Manifest;
+    use std::fs;
     use std::path::Path;
 
     /// The pin the fixtures below scaffold with.

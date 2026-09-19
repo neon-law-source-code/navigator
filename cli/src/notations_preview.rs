@@ -66,11 +66,13 @@ const PUBLIC_PATH_ENV: &str = "DIOXUS_PUBLIC_PATH";
 /// way, so the reader never has to guess.
 pub async fn run(file: &Path, port: u16) -> Result<()> {
     let here = std::env::current_dir().context("reading the current directory")?;
-    let path = resolve_template(&here, file)?;
-    let src = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading the template at {}", path.display()))?;
-    let slug = slug_for(&path);
-    let doc = portal::notation_preview_doc::from_markdown(&slug, &path.display().to_string(), &src);
+    let found = resolve_template(&here, file)?;
+    let slug = slug_for(&found.path);
+    let doc = portal::notation_preview_doc::from_markdown(
+        &slug,
+        &found.path.display().to_string(),
+        &found.src,
+    );
 
     let questions = doc.demo_questions.len();
     let states = doc.demo_workflow.len();
@@ -92,10 +94,15 @@ pub async fn run(file: &Path, port: u16) -> Result<()> {
 
     eprintln!("==> {title}");
     eprintln!(
-        "    {} question(s), {} workflow state(s), from {}",
+        "    {} question(s), {} workflow state(s), from {}{}",
         questions,
         states,
-        path.display()
+        found.path.display(),
+        if found.bundled {
+            " (bundled in this binary)"
+        } else {
+            ""
+        }
     );
     match &bundle {
         Some(dir) => eprintln!("    client bundle: {}", dir.display()),
@@ -187,17 +194,41 @@ fn workspace_public_dir() -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
-/// Resolve what the author typed to a template on disk.
+/// A template the preview will serve, and where its bytes came from.
+#[derive(Debug)]
+struct Resolved {
+    /// What the slug and the printed provenance line derive from: a path on
+    /// disk, or the repository-relative path of a bundled file.
+    path: PathBuf,
+    src: String,
+    /// True when the bytes came out of this binary rather than a checkout.
+    bundled: bool,
+}
+
+/// Resolve what the author typed to a template.
 ///
-/// A path is taken as given. A bare name is looked up the two ways a name is
-/// written: a Project repository's flat `templates/<code>.md`, then
-/// Navigator's own nested `templates/notations/**/<code>.md`. Underscores and
-/// hyphens are treated as the same character throughout, because a notation's
-/// `code` is written with underscores and its URL slug with hyphens, and an
-/// author reaching for either means the same file.
-fn resolve_template(base: &Path, file: &Path) -> Result<PathBuf> {
+/// A path is taken as given. A bare name is looked up the three ways a name
+/// is written: a Project repository's flat `templates/<code>.md`, then
+/// Navigator's own nested `templates/notations/**/<code>.md`, then the
+/// catalog compiled into this binary. Underscores and hyphens are treated as
+/// the same character throughout, because a notation's `code` is written with
+/// underscores and its URL slug with hyphens, and an author reaching for
+/// either means the same file.
+///
+/// The bundled tier is last so a checkout always wins: an author editing a
+/// template previews the file under their cursor, never the copy frozen into
+/// the binary they happen to be running. It exists so the other direction
+/// works too — `navigator notations preview onboarding` from any directory at
+/// all, which is what makes the binary worth handing to someone.
+fn resolve_template(base: &Path, file: &Path) -> Result<Resolved> {
     if file.is_file() {
-        return Ok(file.to_path_buf());
+        let src = std::fs::read_to_string(file)
+            .with_context(|| format!("reading the template at {}", file.display()))?;
+        return Ok(Resolved {
+            path: file.to_path_buf(),
+            src,
+            bundled: false,
+        });
     }
     let wanted = normalized_stem(file);
     if wanted.is_empty() {
@@ -219,20 +250,48 @@ fn resolve_template(base: &Path, file: &Path) -> Result<PathBuf> {
                     && normalized_stem(entry.path()) == wanted
             });
         if let Some(entry) = found {
-            return Ok(entry.into_path());
+            let path = entry.into_path();
+            let src = std::fs::read_to_string(&path)
+                .with_context(|| format!("reading the template at {}", path.display()))?;
+            return Ok(Resolved {
+                path,
+                src,
+                bundled: false,
+            });
         }
     }
-    if searched.is_empty() {
-        anyhow::bail!(
-            "no such file: {} (and there is no `templates/` directory here to look in)",
-            file.display()
-        );
+    if let Some(found) = bundled_template(&wanted) {
+        return Ok(found);
     }
+    searched.push("the catalog bundled in this binary".to_string());
     anyhow::bail!(
-        "no template named `{}` under {} — pass a path instead",
+        "no template named `{}` in {} — pass a path instead",
         wanted,
-        searched.join(" or ")
+        searched.join(", or ")
     )
+}
+
+/// The bundled template whose stem matches `wanted`, read out of the
+/// catalog [`portal::template_api::bundled_files`] compiled into this binary.
+///
+/// Only Markdown is a candidate: a form's `.fields` manifest travels with the
+/// catalog for `export`, but it is not a template anyone previews.
+fn bundled_template(wanted: &str) -> Option<Resolved> {
+    portal::template_api::bundled_files()
+        .into_iter()
+        .filter(|(path, _)| {
+            Path::new(path)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        })
+        .find(|(path, _)| normalized_stem(Path::new(path)) == wanted)
+        .and_then(|(path, bytes)| {
+            Some(Resolved {
+                path: PathBuf::from(path),
+                src: String::from_utf8(bytes.to_vec()).ok()?,
+                bundled: true,
+            })
+        })
 }
 
 /// A file stem reduced to its lookup key: every separator becomes a hyphen
@@ -333,7 +392,9 @@ mod tests {
         std::fs::write(&file, TEMPLATE).expect("write");
 
         assert_eq!(
-            resolve_template(dir.path(), &file).expect("the path resolves"),
+            resolve_template(dir.path(), &file)
+                .expect("the path resolves")
+                .path,
             file
         );
 
@@ -343,6 +404,52 @@ mod tests {
             err.to_string().contains("no-such-notation"),
             "the error names what was looked for: {err}"
         );
+    }
+
+    /// A name that names nothing on disk falls through to the catalog in
+    /// the binary, so the preview works outside a checkout — the whole point
+    /// of shipping the templates inside `navigator`.
+    #[test]
+    fn a_name_falls_back_to_the_catalog_bundled_in_the_binary() {
+        let empty = tempfile::tempdir().expect("tempdir");
+
+        let found = resolve_template(empty.path(), Path::new("onboarding"))
+            .expect("the bundled onboarding letter resolves with no templates/ in sight");
+
+        assert!(found.bundled);
+        assert_eq!(found.path, Path::new("notations/neon_law/onboarding.md"));
+        assert!(found.src.contains("code: onboarding__letter"));
+    }
+
+    /// The checkout wins. An author editing a template previews the file
+    /// under their cursor, never the copy frozen into the binary.
+    #[test]
+    fn a_checkout_outranks_the_bundled_copy_of_the_same_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("templates/notations")).expect("mkdir");
+        let file = dir.path().join("templates/notations/onboarding.md");
+        std::fs::write(&file, TEMPLATE).expect("write");
+
+        let found = resolve_template(dir.path(), Path::new("onboarding")).expect("resolves");
+
+        assert!(!found.bundled);
+        assert_eq!(found.path, file);
+        assert!(found.src.contains("code: sample__letter"));
+    }
+
+    /// The failure still names what was looked for, and now says the bundled
+    /// catalog was consulted too, so the reader knows the search was total.
+    #[test]
+    fn an_unknown_name_reports_every_tier_it_searched() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("templates")).expect("mkdir");
+
+        let err = resolve_template(dir.path(), Path::new("no-such-notation"))
+            .expect_err("an unknown name is refused");
+
+        let message = err.to_string();
+        assert!(message.contains("no-such-notation"), "{message}");
+        assert!(message.contains("bundled in this binary"), "{message}");
     }
 
     /// The preview mounts the show page at the template's own slug and lands
@@ -467,9 +574,8 @@ mod tests {
         // the `code`'s doubled one.
         let found = resolve_template(dir.path(), Path::new("sample-letter"));
 
-        assert_eq!(
-            found.expect("the name resolves"),
-            dir.path().join("templates/sample__letter.md")
-        );
+        let found = found.expect("the name resolves");
+        assert_eq!(found.path, dir.path().join("templates/sample__letter.md"));
+        assert!(!found.bundled, "a checkout outranks the bundled catalog");
     }
 }

@@ -23,6 +23,7 @@ mod intake;
 mod login;
 mod lsp_publish;
 mod mcp_bridge;
+mod notations_export;
 mod notations_preview;
 mod notations_run;
 mod notices;
@@ -783,6 +784,24 @@ enum NotationsCmd {
         /// printed either way.
         #[arg(long, default_value_t = 0)]
         port: u16,
+    },
+    /// Write the notation catalog compiled into this binary out to a
+    /// directory.
+    ///
+    /// The templates travel inside `navigator`, so this needs no checkout,
+    /// no network, and no git access: the binary is the distribution. What
+    /// lands is the tree as shipped, including the `.fields` and `.sha256`
+    /// manifests a vendored government form carries.
+    ///
+    /// The catalog includes the firm's confidential templates. An export is
+    /// work product; treat it as such.
+    Export {
+        /// Directory to write the catalog into. Created if absent.
+        out: PathBuf,
+        /// Overwrite files that are already there. Without it they are
+        /// left alone and counted in the summary.
+        #[arg(long)]
+        force: bool,
     },
     /// Run a notation in Navigator's isolated, embedded local runtime.
     Run {
@@ -2369,6 +2388,7 @@ fn main() -> ExitCode {
             NotationsCmd::Preview { file, port } => {
                 devx_result(runtime().block_on(notations_preview::run(&file, port)))
             }
+            NotationsCmd::Export { out, force } => devx_result(notations_export::run(&out, force)),
             NotationsCmd::Run { file } => {
                 devx_result(runtime().block_on(notations_run::run(&file)))
             }

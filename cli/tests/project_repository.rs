@@ -274,6 +274,9 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
     assert!(instructions.contains("A precedent"));
     assert!(instructions.contains("citation is still a breach"));
+    assert!(instructions.contains("`.agents/skills/` is the whole skill catalog"));
+    assert!(instructions.contains("`.codex/`"));
+    assert!(instructions.contains("fails `navigator project gate`"));
     assert!(dir.path().join("templates/onboarding.md").is_file());
     assert!(
         fs::read_to_string(dir.path().join("templates/onboarding.md"))
@@ -937,6 +940,58 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
         assert!(!fs::read_to_string(&path).unwrap().is_empty());
     }
 
+    gate(dir.path())
+        .success()
+        .stdout(str::contains("0 error(s)"));
+}
+
+/// The harness-specific mirrors are refused by name, in one place, for every
+/// Project repository at once.
+///
+/// `CLAUDE.md` was already refused — as an anonymous unenumerated root, which
+/// said nothing about what survives it. A `.claude/` or a `.codex/` was not
+/// refused at all: the layout walk matched a path's first component against
+/// the allowed roots only when that component was the whole path, so a
+/// committed mirror directory was never examined. Each now names its survivor
+/// — `AGENTS.md` or `.agents/skills/` — and the remedy.
+#[test]
+fn gate_refuses_the_retired_agent_mirrors_by_name() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::write(dir.path().join("CLAUDE.md"), "AGENTS.md").unwrap();
+    for mirror in [".claude", ".codex"] {
+        let skill = dir.path().join(mirror).join("skills/council");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# mirrored council\n").unwrap();
+    }
+
+    gate(dir.path())
+        .failure()
+        .code(1)
+        .stderr(str::contains(
+            "`CLAUDE.md` is a retired agent-instruction mirror",
+        ))
+        .stderr(str::contains("`AGENTS.md` is the whole contract"))
+        .stderr(str::contains(
+            "`.claude/` is a retired agent-instruction mirror",
+        ))
+        .stderr(str::contains(
+            "`.codex/` is a retired agent-instruction mirror",
+        ))
+        .stderr(str::contains("`.agents/skills/` is the whole catalog"))
+        .stderr(str::contains("sync-skills"));
+}
+
+/// The canonical pair is what a repository is meant to carry, so a checkout
+/// holding both passes: this refuses the mirrors, not agent tooling.
+#[test]
+fn gate_accepts_the_canonical_contract_and_catalog() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    sync_skills(dir.path()).success();
+
+    assert!(dir.path().join("AGENTS.md").is_file());
+    assert!(dir.path().join(".agents/skills").is_dir());
     gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));

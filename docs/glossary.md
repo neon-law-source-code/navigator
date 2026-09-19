@@ -1327,8 +1327,9 @@ Not to be confused with [Disclosure](#disclosure), which is the firm's conflicts
 
 A human contact. The system-wide tier — `owner`, `admin`, `lawyer`, `clerk`, or `client` — lives on this row in the
 `role` field, not on the OIDC token. The Rauthy / Google id_token carries only `sub` and `email`; the callback handler
-links that pair to a Person via `oidc_subject` and reads `role` from the DB. `lawyer` means a person licensed to
-practice law authorized for Navigator legal work, not a firm email or source-forge membership. See
+links that pair to a Person via the presenting provider's own subject column — `oidc_subject` for the primary slot,
+`microsoft_subject`, or `apple_subject` — and reads `role` from the DB. `lawyer` means a person licensed to practice law
+authorized for Navigator legal work, not a firm email or source-forge membership. See
 [`docs/access-model`](access-model.md) and [`docs/oidc`](oidc.md).
 
 This is a SurrealDB table and [`store::persons`](../store/src/persons.rs) is the only module that reads or writes it.
@@ -1349,6 +1350,7 @@ deleted, so a mailbox is reusable rather than locked out.
 ```text
 ┌─ person ──────────────────────────┐
 │ id                 record         │
+│ apple_subject      option<string> │
 │ email              string         │
 │ email_confirmed    bool           │
 │ email_lower        string         │
@@ -1357,6 +1359,7 @@ deleted, so a mailbox is reusable rather than locked out.
 │ inserted_at        datetime       │
 │ is_admitted        bool           │
 │ linkedin_url       option<string> │
+│ microsoft_subject  option<string> │
 │ middle_name        option<string> │
 │ name               string         │
 │ oidc_subject       option<string> │

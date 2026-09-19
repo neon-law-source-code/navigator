@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 50;
+pub const SCHEMA_VERSION: u32 = 51;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -418,6 +418,7 @@ mod tests {
         DEFINITIONS, SCHEMA_VERSION, VERSION_RECORD,
     };
     use crate::surreal::test_support::unmigrated;
+    use uuid::Uuid;
 
     /// #1145: Navigator's authorization stays above the database, so
     /// every table lands `PERMISSIONS NONE`. That is also the engine's
@@ -568,6 +569,138 @@ mod tests {
         assert!(crate::persons::is_admitted(&db, historical_id)
             .await
             .unwrap());
+    }
+
+    /// `OVERWRITE` converges a field *definition*; it does not touch the
+    /// values already stored under that field. Every `DEFINE FIELD` in
+    /// `navigator.surql` relies on that, because `apply` runs the whole file
+    /// on every boot — so a re-apply must be a no-op for data. The three
+    /// provider subjects are the case worth pinning: they are the columns a
+    /// person's sign-in identity lives in, and losing one silently locks that
+    /// person out of the provider it belonged to.
+    #[tokio::test]
+    async fn reapplying_the_schema_preserves_every_stored_provider_subject() {
+        let db = unmigrated().await;
+        apply(&db)
+            .await
+            .expect("the first apply defines the fields");
+
+        let id = Uuid::now_v7();
+        db.query(
+            "CREATE $id SET name = 'Linked Person', \
+             email = 'linked@example.com', role = 'client', is_admitted = true, \
+             email_confirmed = true, \
+             oidc_subject = 'primary-subject', \
+             microsoft_subject = 'microsoft-subject', \
+             apple_subject = 'apple-subject'",
+        )
+        .bind(("id", crate::surreal::record_id("person", id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        // A second and third boot against the same database.
+        apply(&db).await.expect("a re-apply converges");
+        apply(&db)
+            .await
+            .expect("a third apply is still a no-op for data");
+
+        let read = |field: &'static str| {
+            let db = db.clone();
+            async move {
+                db.query(format!("SELECT VALUE {field} FROM ONLY $id"))
+                    .bind(("id", crate::surreal::record_id("person", id)))
+                    .await
+                    .unwrap()
+                    .take::<Option<String>>(0)
+                    .unwrap()
+            }
+        };
+        assert_eq!(
+            read("oidc_subject").await.as_deref(),
+            Some("primary-subject")
+        );
+        assert_eq!(
+            read("microsoft_subject").await.as_deref(),
+            Some("microsoft-subject")
+        );
+        assert_eq!(
+            read("apple_subject").await.as_deref(),
+            Some("apple-subject")
+        );
+
+        // The row itself is intact, not just the three columns.
+        let name: Option<String> = db
+            .query("SELECT VALUE name FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", id)))
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        assert_eq!(name.as_deref(), Some("Linked Person"));
+
+        // And the unique indexes survived the re-apply as enforcing indexes.
+        let collision = db
+            .query(
+                "CREATE person:collider SET name = 'Collider', \
+                 email = 'collider@example.com', role = 'client', is_admitted = true, \
+                 email_confirmed = true, apple_subject = 'apple-subject'",
+            )
+            .await
+            .unwrap()
+            .check();
+        assert!(
+            collision.is_err(),
+            "person_apple_subject must still refuse a duplicate after a re-apply",
+        );
+    }
+
+    #[tokio::test]
+    async fn applying_preserves_a_historical_primary_subject_and_adds_provider_fields() {
+        let db = unmigrated().await;
+        let historical_id = Uuid::now_v7();
+        db.query(
+            "CREATE $id SET name = 'Historical Person', \
+             email = 'historical@example.com', role = 'client', is_admitted = true, \
+             oidc_subject = 'primary-subject', \
+             inserted_at = type::datetime('2020-01-01T00:00:00Z'), \
+             updated_at = type::datetime('2020-01-01T00:00:00Z')",
+        )
+        .bind(("id", crate::surreal::record_id("person", historical_id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        apply(&db)
+            .await
+            .expect("the provider fields converge over a historical row");
+
+        let primary: Option<String> = db
+            .query("SELECT VALUE oidc_subject FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", historical_id)))
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        let microsoft: Option<String> = db
+            .query("SELECT VALUE microsoft_subject FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", historical_id)))
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        let apple: Option<String> = db
+            .query("SELECT VALUE apple_subject FROM ONLY $id")
+            .bind(("id", crate::surreal::record_id("person", historical_id)))
+            .await
+            .unwrap()
+            .take(0)
+            .unwrap();
+        assert_eq!(primary.as_deref(), Some("primary-subject"));
+        assert_eq!(microsoft, None);
+        assert_eq!(apple, None);
     }
 
     /// A row coded `closed` written before that code was reserved (simulated

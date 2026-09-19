@@ -308,9 +308,9 @@ DEFINE INDEX OVERWRITE lead_consent_lead ON lead_consent FIELDS lead_id;
 -- and `attorney@example.com` are one mailbox, and an IdP may present a
 -- casing that differs from the stored row.
 --
--- `oidc_subject` is UNIQUE over `option<string>`. Multiple NONEs do not
--- collide on a Surreal unique index, so persons not yet linked to an IdP
--- identity coexist.
+-- Each provider subject is UNIQUE over `option<string>`. Multiple NONEs do
+-- not collide on a Surreal unique index, so persons not yet linked to an
+-- identity coexist and one Person can link more than one provider.
 DEFINE TABLE IF NOT EXISTS person SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON person TYPE string;
 DEFINE FIELD OVERWRITE given_name ON person TYPE option<string>;
@@ -319,6 +319,8 @@ DEFINE FIELD OVERWRITE middle_name ON person TYPE option<string>;
 DEFINE FIELD OVERWRITE email ON person TYPE string;
 DEFINE FIELD OVERWRITE email_lower ON person TYPE string VALUE string::lowercase(email);
 DEFINE FIELD OVERWRITE oidc_subject ON person TYPE option<string>;
+DEFINE FIELD OVERWRITE microsoft_subject ON person TYPE option<string>;
+DEFINE FIELD OVERWRITE apple_subject ON person TYPE option<string>;
 DEFINE FIELD OVERWRITE role ON person TYPE string DEFAULT 'client'
     ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client'];
 DEFINE FIELD OVERWRITE title ON person TYPE option<string>;
@@ -332,6 +334,8 @@ DEFINE FIELD OVERWRITE inserted_at ON person TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON person TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE person_email_lower ON person FIELDS email_lower UNIQUE;
 DEFINE INDEX OVERWRITE person_oidc_subject ON person FIELDS oidc_subject UNIQUE;
+DEFINE INDEX OVERWRITE person_microsoft_subject ON person FIELDS microsoft_subject UNIQUE;
+DEFINE INDEX OVERWRITE person_apple_subject ON person FIELDS apple_subject UNIQUE;
 
 -- `person_mailbox`: the row that serializes claiming a mailbox, and the
 -- reason the UNIQUE `person_email_lower` index above is no longer the

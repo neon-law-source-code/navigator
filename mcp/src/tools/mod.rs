@@ -567,9 +567,13 @@ impl From<store::persons::PersonError> for ToolError {
     fn from(err: store::persons::PersonError) -> Self {
         use store::persons::PersonError as E;
         match err {
-            // The two unique indexes are caller-correctable: the model
-            // can retry with a different mailbox or identity.
-            E::EmailTaken | E::OidcSubjectTaken => ToolError::Conflict(err.to_string()),
+            // The mailbox and provider-subject unique indexes are
+            // caller-correctable: the model can retry with a different
+            // mailbox or identity.
+            E::EmailTaken
+            | E::OidcSubjectTaken
+            | E::MicrosoftSubjectTaken
+            | E::AppleSubjectTaken => ToolError::Conflict(err.to_string()),
             E::Db(_) | E::WriteReturnedNothing => ToolError::Internal(err.to_string()),
         }
     }

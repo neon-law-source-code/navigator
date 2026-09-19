@@ -436,10 +436,7 @@ fn brand_certificate_name(key: BrandKey) -> String {
 /// One `ManagedCertificate` document per additional live brand. Each
 /// document lists exactly that family's environment host, so adding or
 /// removing a name reissues only that family's certificate.
-fn brand_managed_certificate_yaml(
-    namespace: &str,
-    bindings: &[AdditionalBrandBinding],
-) -> String {
+fn brand_managed_certificate_yaml(namespace: &str, bindings: &[AdditionalBrandBinding]) -> String {
     use std::fmt::Write as _;
     bindings
         .iter()
@@ -3732,7 +3729,7 @@ mod tests {
         assert!(
             !cert_manifest.contains("www.deleteyourdata.com")
                 && !cert_manifest.contains("www.lawyershook.com"),
-            "additional brands must not share the default-brand certificate: {cert_manifest}"
+            "additional brands must not share the default-brand certificate"
         );
         let brand_certs =
             fs::read_to_string(gke.join("ingress/brand-managed-certificates.yaml")).unwrap();
@@ -4116,13 +4113,13 @@ mod tests {
             {
                 assert!(
                     domain.contains('.'),
-                    "{name} domain `{domain}` must be a hostname"
+                    "each certificate domain must be a hostname"
                 );
                 assert!(
                     domain.starts_with("www.")
                         || domain.starts_with("workflows.")
                         || domain.starts_with("staging."),
-                    "{name} must not certificate an apex (`{domain}`)"
+                    "managed certificates must not include an apex"
                 );
             }
         }

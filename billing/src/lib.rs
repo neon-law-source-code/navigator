@@ -33,6 +33,7 @@ pub use gcp_cost::{
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
@@ -60,6 +61,21 @@ pub struct ContactId(pub String);
 pub struct InvoiceStatus {
     pub status: String,
     pub amount_paid_cents: i64,
+}
+
+/// One accounts-receivable invoice as listed from the provider. Money is
+/// minor units. Dates are UTC at the wire boundary. `reference` is the
+/// Xero `Reference` (`Matter <project uuid or code>`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReceivableInvoice {
+    pub invoice_id: String,
+    pub reference: String,
+    pub status: String,
+    pub amount_cents: i64,
+    pub amount_paid_cents: i64,
+    pub currency: String,
+    pub issued_at: DateTime<Utc>,
+    pub due_at: Option<DateTime<Utc>>,
 }
 
 /// One line on an invoice. Money is carried in **minor units (cents)** —
@@ -131,6 +147,12 @@ pub trait BillingProvider: Send + Sync {
     /// invoice id. Used by the nightly reconcile to fold Xero's payment
     /// state back onto the local mirror. Read-only.
     async fn get_invoice(&self, invoice_id: &str) -> Result<InvoiceStatus, BillingError>;
+
+    /// List accounts-receivable invoices. Read-only. The nightly ingest
+    /// uses this to discover invoices raised in Xero that have no local
+    /// mirror yet. Pagination is the provider's problem; the caller sees
+    /// one complete vec.
+    async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError>;
 }
 
 /// In-process stub. Records every call and hands back synthetic
@@ -142,6 +164,9 @@ pub struct StubBillingProvider {
     /// Canned `get_invoice` responses, keyed on invoice id. Unset ids
     /// resolve to `AUTHORISED` / nothing paid — the create-time default.
     invoice_statuses: Mutex<std::collections::HashMap<String, InvoiceStatus>>,
+    /// Canned `list_receivable_invoices` rows. Empty until a test seeds
+    /// them — ingest is a no-op against a fresh stub.
+    listed_invoices: Mutex<Vec<ReceivableInvoice>>,
 }
 
 impl StubBillingProvider {
@@ -157,6 +182,12 @@ impl StubBillingProvider {
             .lock()
             .expect("stub provider lock")
             .insert(invoice_id.to_string(), status);
+    }
+
+    /// Pre-seed what `list_receivable_invoices` returns, so an ingest test
+    /// can simulate invoices already raised in Xero.
+    pub fn set_listed_invoices(&self, invoices: Vec<ReceivableInvoice>) {
+        *self.listed_invoices.lock().expect("stub provider lock") = invoices;
     }
 
     /// Snapshot of every call so far. Cheap clone — callers can hold onto
@@ -213,6 +244,14 @@ impl BillingProvider for StubBillingProvider {
                 status: "AUTHORISED".into(),
                 amount_paid_cents: 0,
             }))
+    }
+
+    async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError> {
+        Ok(self
+            .listed_invoices
+            .lock()
+            .expect("stub provider lock")
+            .clone())
     }
 }
 
@@ -475,6 +514,35 @@ impl XeroBillingProvider {
             .map(|c| ContactId(c.contact_id))
             .ok_or_else(|| BillingError::Provider("xero returned no contact".to_string()))
     }
+
+    /// One page of `ACCREC` invoices. `page` is 1-based. An empty vec means
+    /// there is no further page.
+    async fn fetch_accrec_page(&self, page: u32) -> Result<Vec<InvoiceSummary>, BillingError> {
+        let url = format!("{}/Invoices", self.base_url.trim_end_matches('/'));
+        let page = page.to_string();
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(self.bearer_token().await?)
+            .header("Xero-Tenant-Id", &self.tenant_id)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .query(&[("where", r#"Type=="ACCREC""#), ("page", page.as_str())])
+            .send()
+            .await
+            .map_err(|e| BillingError::Provider(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(BillingError::Provider(format!(
+                "xero responded {status}: {body}"
+            )));
+        }
+        let parsed: InvoicesResponse = resp
+            .json()
+            .await
+            .map_err(|e| BillingError::Provider(e.to_string()))?;
+        Ok(parsed.invoices)
+    }
 }
 
 /// Xero's invoice-create response. Accounting API wraps results in a
@@ -495,6 +563,53 @@ struct InvoiceSummary {
     status: Option<String>,
     #[serde(rename = "AmountPaid", default)]
     amount_paid: Option<f64>,
+    #[serde(rename = "Reference", default)]
+    reference: Option<String>,
+    #[serde(rename = "Total", default)]
+    total: Option<f64>,
+    #[serde(rename = "CurrencyCode", default)]
+    currency: Option<String>,
+    #[serde(rename = "DateString", default)]
+    date_string: Option<String>,
+    #[serde(rename = "Date", default)]
+    date: Option<String>,
+    #[serde(rename = "DueDateString", default)]
+    due_date_string: Option<String>,
+    #[serde(rename = "DueDate", default)]
+    due_date: Option<String>,
+}
+
+impl InvoiceSummary {
+    /// `None` when the payload has no invoice id or no parseable issued
+    /// date — ingest cannot key or stamp a mirror row from that.
+    fn into_receivable(self) -> Option<ReceivableInvoice> {
+        if self.invoice_id.is_empty() {
+            return None;
+        }
+        let issued_at = self
+            .date_string
+            .as_deref()
+            .and_then(parse_xero_datetime)
+            .or_else(|| self.date.as_deref().and_then(parse_xero_datetime))?;
+        let due_at = self
+            .due_date_string
+            .as_deref()
+            .and_then(parse_xero_datetime)
+            .or_else(|| self.due_date.as_deref().and_then(parse_xero_datetime));
+        Some(ReceivableInvoice {
+            invoice_id: self.invoice_id,
+            reference: self.reference.unwrap_or_default(),
+            status: self.status.unwrap_or_default(),
+            amount_cents: dollars_to_cents(self.total.unwrap_or(0.0)),
+            amount_paid_cents: dollars_to_cents(self.amount_paid.unwrap_or(0.0)),
+            currency: self
+                .currency
+                .filter(|code| !code.is_empty())
+                .unwrap_or_else(|| "USD".to_string()),
+            issued_at,
+            due_at,
+        })
+    }
 }
 
 /// Xero's contact lookup/create response — the Accounting API wraps
@@ -596,6 +711,24 @@ impl BillingProvider for XeroBillingProvider {
             amount_paid_cents: dollars_to_cents(inv.amount_paid.unwrap_or(0.0)),
         })
     }
+
+    async fn list_receivable_invoices(&self) -> Result<Vec<ReceivableInvoice>, BillingError> {
+        let mut invoices = Vec::new();
+        let mut page = 1_u32;
+        loop {
+            let batch = self.fetch_accrec_page(page).await?;
+            if batch.is_empty() {
+                break;
+            }
+            for summary in batch {
+                if let Some(invoice) = summary.into_receivable() {
+                    invoices.push(invoice);
+                }
+            }
+            page = page.saturating_add(1);
+        }
+        Ok(invoices)
+    }
 }
 
 /// Convert a provider decimal amount (e.g. `333.30`) to whole cents. The
@@ -606,14 +739,47 @@ fn dollars_to_cents(amount: f64) -> i64 {
     (amount * 100.0).round() as i64
 }
 
+/// Parse a Xero invoice date at the JSON wire. Accepts `DateString`
+/// (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS`), RFC 3339, or the Microsoft
+/// `\/Date(milliseconds[+offset])\/` form.
+fn parse_xero_datetime(raw: &str) -> Option<DateTime<Utc>> {
+    let raw = raw.trim();
+    if let Some(inner) = raw
+        .strip_prefix("/Date(")
+        .and_then(|rest| rest.strip_suffix(")/"))
+    {
+        let mut end = 0;
+        let bytes = inner.as_bytes();
+        if bytes.first() == Some(&b'-') {
+            end = 1;
+        }
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        let millis: i64 = inner.get(..end)?.parse().ok()?;
+        return DateTime::from_timestamp_millis(millis);
+    }
+    if let Ok(dt) = DateTime::parse_from_rfc3339(raw) {
+        return Some(dt.with_timezone(&Utc));
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S") {
+        return Some(ndt.and_utc());
+    }
+    chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+        .ok()
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .map(|ndt| ndt.and_utc())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        dollars_to_cents, format_cents, BillingProvider, CachedToken, ContactId, ContactRequest,
-        InvoiceId, InvoiceLine, InvoiceRequest, InvoiceStatus, StubBillingProvider,
-        XeroBillingProvider,
+        dollars_to_cents, format_cents, parse_xero_datetime, BillingProvider, CachedToken,
+        ContactId, ContactRequest, InvoiceId, InvoiceLine, InvoiceRequest, InvoiceStatus,
+        ReceivableInvoice, StubBillingProvider, XeroBillingProvider,
     };
     use crate::xero_auth::XeroClientCredentials;
+    use chrono::{TimeZone, Utc};
     use uuid::Uuid;
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -952,5 +1118,99 @@ mod tests {
         let got = xero(server.uri()).get_invoice("inv-42").await.unwrap();
         assert_eq!(got.status, "PAID");
         assert_eq!(got.amount_paid_cents, 333_300);
+    }
+
+    #[tokio::test]
+    async fn stub_lists_canned_receivable_invoices() {
+        let stub = StubBillingProvider::new();
+        assert!(stub.list_receivable_invoices().await.unwrap().is_empty());
+        let listed = ReceivableInvoice {
+            invoice_id: "inv-list".into(),
+            reference: format!("Matter {ID1}"),
+            status: "PAID".into(),
+            amount_cents: 10_000,
+            amount_paid_cents: 10_000,
+            currency: "USD".into(),
+            issued_at: Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap(),
+            due_at: None,
+        };
+        stub.set_listed_invoices(vec![listed.clone()]);
+        assert_eq!(stub.list_receivable_invoices().await.unwrap(), vec![listed]);
+    }
+
+    #[test]
+    fn parse_xero_datetime_accepts_date_string_and_microsoft_ticks() {
+        let from_string = parse_xero_datetime("2026-06-01T00:00:00").unwrap();
+        assert_eq!(
+            from_string,
+            Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap()
+        );
+        let from_day = parse_xero_datetime("2026-06-01").unwrap();
+        assert_eq!(from_day, Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap());
+        let from_ticks = parse_xero_datetime("/Date(1717200000000+0000)/").unwrap();
+        assert_eq!(from_ticks.timestamp_millis(), 1_717_200_000_000);
+    }
+
+    #[tokio::test]
+    async fn xero_lists_accrec_invoices_across_pages() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/Invoices"))
+            .and(query_param("where", r#"Type=="ACCREC""#))
+            .and(query_param("page", "1"))
+            .and(header("Xero-Tenant-Id", "tenant-guid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "Invoices": [{
+                    "InvoiceID": "inv-a",
+                    "Reference": "Matter sample-matter",
+                    "Status": "AUTHORISED",
+                    "Total": 100.00,
+                    "AmountPaid": 0.0,
+                    "CurrencyCode": "USD",
+                    "DateString": "2026-06-01T00:00:00"
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/Invoices"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "Invoices": [{
+                    "InvoiceID": "inv-b",
+                    "Reference": "Matter sample-matter",
+                    "Status": "PAID",
+                    "Total": 50.50,
+                    "AmountPaid": 50.50,
+                    "CurrencyCode": "USD",
+                    "DateString": "2026-06-02T00:00:00",
+                    "DueDateString": "2026-06-16T00:00:00"
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/Invoices"))
+            .and(query_param("page", "3"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "Invoices": []
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let listed = xero(server.uri()).list_receivable_invoices().await.unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].invoice_id, "inv-a");
+        assert_eq!(listed[0].amount_cents, 10_000);
+        assert_eq!(listed[1].invoice_id, "inv-b");
+        assert_eq!(listed[1].status, "PAID");
+        assert_eq!(listed[1].amount_paid_cents, 5_050);
+        assert_eq!(
+            listed[1].due_at,
+            Some(Utc.with_ymd_and_hms(2026, 6, 16, 0, 0, 0).unwrap())
+        );
     }
 }

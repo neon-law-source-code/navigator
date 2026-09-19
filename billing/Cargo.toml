@@ -18,6 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+chrono.workspace = true
 base64.workspace = true
 # GCP billing-export reader (`gcp_cost`): ADC token minting for the
 # BigQuery REST API. Isolated to that module — the Xero provider needs

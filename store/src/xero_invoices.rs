@@ -43,6 +43,52 @@ use uuid::Uuid;
 
 use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 
+/// How a Xero `Reference` names the Project an invoice bills.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProjectScopeRef {
+    /// `Matter <uuid>` — the Project's store id.
+    Id(Uuid),
+    /// `Matter <code>` — the Project's immutable code.
+    Code(String),
+}
+
+/// Parse the documented Xero `Reference` (`Matter <project uuid or code>`).
+///
+/// `None` when the prefix is missing or the remainder is neither a UUID nor
+/// a valid Project code — ingest counts those as unscoped and writes no row.
+#[must_use]
+pub fn project_scope_from_reference(reference: &str) -> Option<ProjectScopeRef> {
+    let token = reference.trim().strip_prefix("Matter ")?.trim();
+    if token.is_empty() {
+        return None;
+    }
+    if let Ok(id) = Uuid::parse_str(token) {
+        return Some(ProjectScopeRef::Id(id));
+    }
+    crate::projects::is_valid_code(token).then(|| ProjectScopeRef::Code(token.to_string()))
+}
+
+/// Resolve [`project_scope_from_reference`] against the store. `None` when
+/// the reference does not parse or no live Project carries that id or code.
+///
+/// # Errors
+///
+/// [`XeroInvoiceError::Projects`] when the lookup itself fails.
+pub async fn resolve_project_scope(
+    db: &SurrealDb,
+    reference: &str,
+) -> Result<Option<Uuid>, XeroInvoiceError> {
+    match project_scope_from_reference(reference) {
+        Some(ProjectScopeRef::Id(id)) => Ok(crate::projects::find_by_id(db, id)
+            .await?
+            .map(|project| project.id)),
+        Some(ProjectScopeRef::Code(code)) => Ok(crate::projects::find_by_code(db, &code)
+            .await?
+            .map(|project| project.id)),
+        None => Ok(None),
+    }
+}
+
 /// The SurrealDB table holding the local Xero invoice mirror.
 pub(crate) const TABLE: &str = "xero_invoice";
 const SELECT: &str = "project_id, xero_invoice_id, reference, status, amount_cents, \
@@ -613,8 +659,8 @@ pub async fn needing_reconcile(db: &SurrealDb) -> Result<Vec<XeroInvoice>, XeroI
 #[cfg(test)]
 mod tests {
     use super::{
-        firm_thirty_day_rollup, for_firm_since, for_projects, needing_reconcile, record_reconcile,
-        upsert, UpsertXeroInvoice,
+        firm_thirty_day_rollup, for_firm_since, for_projects, needing_reconcile,
+        project_scope_from_reference, record_reconcile, upsert, ProjectScopeRef, UpsertXeroInvoice,
     };
     use crate::surreal::SurrealDb;
     use chrono::{Duration, TimeZone, Utc};
@@ -634,6 +680,27 @@ mod tests {
             issued_at: Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap(),
             due_at: None,
         }
+    }
+
+    #[test]
+    fn project_scope_from_reference_reads_uuid_code_or_nothing() {
+        let id = uuid::Uuid::from_u128(1);
+        assert_eq!(
+            project_scope_from_reference(&format!("Matter {id}")),
+            Some(ProjectScopeRef::Id(id))
+        );
+        assert_eq!(
+            project_scope_from_reference("Matter sample-matter"),
+            Some(ProjectScopeRef::Code("sample-matter".into()))
+        );
+        assert_eq!(
+            project_scope_from_reference("  Matter sample-matter  "),
+            Some(ProjectScopeRef::Code("sample-matter".into()))
+        );
+        assert_eq!(project_scope_from_reference("sample-matter"), None);
+        assert_eq!(project_scope_from_reference("Invoice 12"), None);
+        assert_eq!(project_scope_from_reference("Matter "), None);
+        assert_eq!(project_scope_from_reference("Matter not a code!"), None);
     }
 
     #[tokio::test]

@@ -42,11 +42,19 @@ the **`ACCREC`** (accounts-receivable) invoice **in Xero directly**. No Navigato
 one, and no Navigator code applies a discount or otherwise computes what a client owes. Navigator's job is to record the
 legal work.
 
-What Navigator does hold is a **read-only mirror**: the `xero_invoice` table carries the Xero `InvoiceID`, reference,
-amount, and paid-status for at most one invoice per matter, keyed on `project_id`. That mirror backs the per-project
-invoice card in the portal and the "View in Xero" link on the lawyer matter page, so nobody has to open Xero to see
-whether a matter is paid. Navigator **never holds client funds, card data, or bank credentials** — Xero reconciles
-against the firm's bank (Mercury) itself. The integration boundary is the Xero Accounting API and nothing beyond it.
+What Navigator does hold is a **read-only mirror**: the `xero_invoice` table
+carries the Xero `InvoiceID`, reference, amount, dates, and paid-status for
+**every** invoice tagged to a matter. The row is keyed on the Xero invoice id;
+several invoices may share one `project_id`. Lawyers set Xero `Reference` to
+`Matter <project uuid>` or `Matter <project code>`. The nightly ingest lists
+`ACCREC` invoices, upserts each that resolves to a live Project, and skips
+DRAFT, DELETED, and any invoice whose reference does not match a Project
+(counted as unscoped — no row). That mirror backs the per-project invoice
+list in the portal and the Firm trailing-30-day graphs, so nobody has to open
+Xero to see whether a matter is paid. Navigator **never holds client funds,
+card data, or bank credentials** — Xero reconciles against the firm's bank
+itself. The integration boundary is the Xero Accounting API and nothing beyond
+it. IOLTA deposits are not `xero_invoice` rows.
 
 ## Where the price comes from: the matter, agreed per client
 
@@ -55,7 +63,7 @@ that matter and raise the invoice in Xero directly. What was actually billed is 
 into `xero_invoice` — nothing in Navigator computes, quotes, or anchors a price.
 
 An invoice line that would once have carried a catalog field now takes the firm-wide default. Tagging invoices to a
-project and a jurisdiction is a separate, later model; it is deliberately not part of removing the catalog.
+project is the `Reference` convention above; IOLTA state accounts are a separate model.
 
 ## Authentication: client-credentials grant (preferred)
 
@@ -111,13 +119,14 @@ NAVIGATOR_RUN_LIVE_SANDBOX=1 cargo test -p server --test xero_sandbox -- --nocap
 It reads the CI `XERO_SANDBOX_*` names first, each falling back to the canonical `XERO_*` name, so a local `.env` drives
 it without separate sandbox vars.
 
-## Paid-status reconciliation
+## Nightly ingest and paid-status reconciliation
 
-The invoice is raised in Xero, and its payment status has to come back. The nightly `ReconcileInvoices` workflow
-(worker-side, in [`billing-workflows`](../billing-workflows/)) calls `get_invoice` for each mirrored invoice and folds
-Xero's paid-status into the `xero_invoice` table, so the per-project invoice card in the portal flips to **Paid**
-without anyone re-keying it. This is the only writer of the mirror in normal operation, and it only ever *reads* from
-Xero. Like every workflow, it is hosted by `workflows-service` — no per-workflow worker pod.
+The invoice is raised in Xero. The nightly `ReconcileInvoices` workflow (worker-side, in
+[`billing-workflows`](../billing-workflows/)) first **lists** `ACCREC` invoices and upserts each Project-scoped row
+into `xero_invoice`, folding `Status` and `AmountPaid` from that list so a first-night Paid invoice already shows Paid.
+It then calls `get_invoice` for each mirrored invoice still open (`AUTHORISED`, not `PAID`/`VOIDED`) and folds Xero's
+paid-status into the mirror. The portal never calls Xero live. This workflow only ever *reads* from Xero. Like every
+workflow, it is hosted by `workflows-service` — no per-workflow worker pod.
 
 ## Production cutover
 
@@ -126,8 +135,8 @@ Xero. Like every workflow, it is hosted by `workflows-service` — no per-workfl
    `secrets.enc.yaml` (applied to Secret Manager and projected into the `navigator-web-secrets` Secret), never in
    plaintext source.
 3. Confirm the live org grants the same `accounting.contacts accounting.invoices` scopes.
-4. Verify with one real invoice raised in the live org that `ReconcileInvoices` mirrors its paid-status onto the
-   portal card.
+4. Verify with one real invoice raised in the live org, `Reference` set to `Matter <project code>`, that
+   `ReconcileInvoices` ingests it onto the portal list and mirrors its paid-status.
 
 ## Related
 

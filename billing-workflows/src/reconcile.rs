@@ -1,11 +1,13 @@
-//! The `ReconcileInvoices` Restate workflow — the nightly job that folds
-//! Xero's payment state back onto the local `xero_invoice` mirror.
+//! The `ReconcileInvoices` Restate workflow — the nightly job that
+//! discovers Xero accounts-receivable invoices onto the local
+//! `xero_invoice` mirror, then folds paid-status onto rows still open.
 //!
-//! The portal reads the mirror, never Xero live, so something has to keep
-//! the mirror's `status` / `amount_paid_cents` current. This workflow does
-//! it once a night: it lists every mirror row not yet in a terminal state
-//! (`PAID` / `VOIDED`), reads each invoice back from Xero, and records the
-//! result. A settled invoice is never polled again.
+//! The portal reads the mirror, never Xero live. Lawyers raise invoices in
+//! Xero tagged `Matter <project uuid or code>`. This workflow lists those
+//! invoices, upserts each that resolves to a live Project, skips DRAFT and
+//! DELETED, and counts unscoped references (no matching Project) without
+//! writing a row. It then re-checks every mirror row not yet in a terminal
+//! state (`PAID` / `VOIDED`) via `get_invoice`.
 //!
 //! The `billing-reconcile-trigger` `CronJob` starts one invocation per day
 //! (keyed on the UTC date, so a same-day re-fire is a no-op); Restate owns
@@ -28,6 +30,12 @@ pub struct ReconcileRequest {}
 /// What a reconcile run touched, surfaced as the invocation output.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ReconcileReport {
+    /// Listed invoices whose `Reference` resolved to a Project and were
+    /// upserted (including a metadata update of an existing row).
+    pub ingested: usize,
+    /// Listed invoices that were not DRAFT/DELETED and whose `Reference`
+    /// did not resolve to a live Project. No row is written.
+    pub unscoped: usize,
     /// Mirror rows that were still open and got re-checked against Xero.
     pub checked: usize,
     /// How many of those actually changed (status or amount paid).
@@ -72,8 +80,8 @@ impl ReconcileInvoicesService {
     }
 }
 
-/// Re-check every open mirror row against the provider and fold the result
-/// back. Provider-agnostic; unit-tested against the stub + an in-memory
+/// List provider invoices onto the mirror, then re-check every open mirror
+/// row. Provider-agnostic; unit-tested against the stub + an in-memory
 /// SurrealDB.
 ///
 /// # Errors
@@ -83,6 +91,7 @@ pub async fn reconcile_once(
     provider: &dyn BillingProvider,
     surreal: &SurrealDb,
 ) -> anyhow::Result<ReconcileReport> {
+    let (ingested, unscoped) = ingest_listed(provider, surreal).await?;
     let rows = store::xero_invoices::needing_reconcile(surreal).await?;
     let mut updated = 0;
     for row in &rows {
@@ -99,15 +108,65 @@ pub async fn reconcile_once(
         .await?;
     }
     Ok(ReconcileReport {
+        ingested,
+        unscoped,
         checked: rows.len(),
         updated,
     })
 }
 
+fn skip_listed_status(status: &str) -> bool {
+    matches!(status.to_ascii_uppercase().as_str(), "DRAFT" | "DELETED")
+}
+
+async fn ingest_listed(
+    provider: &dyn BillingProvider,
+    surreal: &SurrealDb,
+) -> anyhow::Result<(usize, usize)> {
+    let listed = provider.list_receivable_invoices().await?;
+    let mut ingested = 0;
+    let mut unscoped = 0;
+    for invoice in listed {
+        if skip_listed_status(&invoice.status) {
+            continue;
+        }
+        let Some(project_id) =
+            store::xero_invoices::resolve_project_scope(surreal, &invoice.reference).await?
+        else {
+            unscoped += 1;
+            continue;
+        };
+        store::xero_invoices::upsert(
+            surreal,
+            &store::xero_invoices::UpsertXeroInvoice {
+                project_id,
+                xero_invoice_id: invoice.invoice_id.clone(),
+                reference: invoice.reference.clone(),
+                status: invoice.status.clone(),
+                amount_cents: invoice.amount_cents,
+                currency: invoice.currency.clone(),
+                issued_at: invoice.issued_at,
+                due_at: invoice.due_at,
+            },
+        )
+        .await?;
+        store::xero_invoices::record_reconcile(
+            surreal,
+            &invoice.invoice_id,
+            &invoice.status,
+            invoice.amount_paid_cents,
+        )
+        .await?;
+        ingested += 1;
+    }
+    Ok((ingested, unscoped))
+}
+
 #[cfg(test)]
 mod tests {
     use super::reconcile_once;
-    use billing::{InvoiceStatus, StubBillingProvider};
+    use billing::{InvoiceStatus, ReceivableInvoice, StubBillingProvider};
+    use chrono::{TimeZone, Utc};
 
     async fn seed_mirror(
         surreal: &store::surreal::SurrealDb,
@@ -130,6 +189,42 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    async fn seed_project_with_code(surreal: &store::surreal::SurrealDb, code: &str) -> uuid::Uuid {
+        let entity_id = store::test_support::seed_entity(surreal).await;
+        store::projects::create(
+            surreal,
+            &store::projects::NewProject {
+                code: code.to_string(),
+                name: code.to_string(),
+                status: "open".to_string(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    fn listed(
+        invoice_id: &str,
+        reference: String,
+        status: &str,
+        amount_cents: i64,
+        amount_paid_cents: i64,
+    ) -> ReceivableInvoice {
+        ReceivableInvoice {
+            invoice_id: invoice_id.into(),
+            reference,
+            status: status.into(),
+            amount_cents,
+            amount_paid_cents,
+            currency: "USD".into(),
+            issued_at: Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap(),
+            due_at: None,
+        }
     }
 
     #[tokio::test]
@@ -212,5 +307,114 @@ mod tests {
         assert_eq!(a.amount_paid_cents, 333_300);
         assert_eq!(b.status, "VOIDED");
         assert_eq!(b.amount_paid_cents, 0);
+    }
+
+    #[tokio::test]
+    async fn ingest_mirrors_by_project_uuid_and_code() {
+        let surreal = store::surreal::test_support::mem().await;
+        let by_uuid = seed_project_with_code(&surreal, "ingest-by-uuid").await;
+        let by_code = seed_project_with_code(&surreal, "ingest-by-code").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_invoices(vec![
+            listed(
+                "inv-uuid",
+                format!("Matter {by_uuid}"),
+                "AUTHORISED",
+                10_000,
+                0,
+            ),
+            listed(
+                "inv-code",
+                "Matter ingest-by-code".into(),
+                "PAID",
+                20_000,
+                20_000,
+            ),
+        ]);
+
+        let report = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(report.ingested, 2);
+        assert_eq!(report.unscoped, 0);
+
+        let uuid_rows = store::xero_invoices::for_projects(&surreal, &[by_uuid])
+            .await
+            .unwrap();
+        assert_eq!(uuid_rows.len(), 1);
+        assert_eq!(uuid_rows[0].xero_invoice_id, "inv-uuid");
+
+        let code_rows = store::xero_invoices::for_projects(&surreal, &[by_code])
+            .await
+            .unwrap();
+        assert_eq!(code_rows.len(), 1);
+        assert_eq!(code_rows[0].status, "PAID");
+        assert_eq!(code_rows[0].amount_paid_cents, 20_000);
+    }
+
+    #[tokio::test]
+    async fn ingest_skips_unscoped_and_draft_and_is_idempotent() {
+        let surreal = store::surreal::test_support::mem().await;
+        let project_id = seed_project_with_code(&surreal, "ingest-scoped").await;
+        let other = seed_project_with_code(&surreal, "ingest-other").await;
+
+        let stub = StubBillingProvider::new();
+        stub.set_listed_invoices(vec![
+            listed(
+                "inv-ok",
+                format!("Matter {project_id}"),
+                "AUTHORISED",
+                10_000,
+                0,
+            ),
+            listed(
+                "inv-second",
+                format!("Matter {project_id}"),
+                "AUTHORISED",
+                15_000,
+                0,
+            ),
+            listed(
+                "inv-missing",
+                "Matter no-such-matter".into(),
+                "AUTHORISED",
+                1,
+                0,
+            ),
+            listed("inv-blank", "Invoice 99".into(), "AUTHORISED", 1, 0),
+            listed(
+                "inv-draft",
+                format!("Matter {project_id}"),
+                "DRAFT",
+                9_000,
+                0,
+            ),
+            listed(
+                "inv-deleted",
+                format!("Matter {project_id}"),
+                "DELETED",
+                9_000,
+                0,
+            ),
+        ]);
+
+        let first = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(first.ingested, 2);
+        assert_eq!(first.unscoped, 2);
+
+        let second = reconcile_once(&stub, &surreal).await.unwrap();
+        assert_eq!(second.ingested, 2, "a repeat updates in place");
+        assert_eq!(second.unscoped, 2);
+
+        let rows = store::xero_invoices::for_projects(&surreal, &[project_id])
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        let ids: std::collections::BTreeSet<&str> =
+            rows.iter().map(|r| r.xero_invoice_id.as_str()).collect();
+        assert_eq!(ids, ["inv-ok", "inv-second"].into_iter().collect());
+        assert!(store::xero_invoices::for_projects(&surreal, &[other])
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

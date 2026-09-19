@@ -110,6 +110,10 @@ name = "portal_invoice_card"
 harness = false
 
 [[test]]
+name = "portal_trust_position"
+harness = false
+
+[[test]]
 name = "portal_signed_document"
 harness = false
 

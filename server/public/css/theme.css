@@ -2815,6 +2815,15 @@ a.nav-link:hover {
   gap: 0.75rem;
 }
 
+/* The client-trust position card. Same split layout as an invoice card,
+ * under its own name so a test that counts invoice cards stays exact. */
+.portal-card--trust {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
 .portal-card__title {
   font-size: 1.1rem;
   font-weight: 600;

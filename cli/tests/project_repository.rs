@@ -1033,6 +1033,83 @@ fn sync_skills_overwrites_a_hand_edited_copy() {
     assert_eq!(fs::read_to_string(&path).unwrap(), canonical);
 }
 
+#[test]
+fn sync_skills_relocates_legacy_skills_and_preserves_harness_state() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let legacy = dir.path().join(".claude/skills/project-review");
+    fs::create_dir_all(legacy.join("references")).unwrap();
+    fs::write(legacy.join("SKILL.md"), "# Project review\n").unwrap();
+    fs::write(legacy.join("references/checklist.md"), "# Checklist\n").unwrap();
+    fs::write(dir.path().join(".claude/settings.local.json"), "{}\n").unwrap();
+
+    sync_skills(dir.path()).success();
+
+    let relocated = dir.path().join(".agents/skills/project-review");
+    assert_eq!(
+        fs::read_to_string(relocated.join("SKILL.md")).unwrap(),
+        "# Project review\n"
+    );
+    assert_eq!(
+        fs::read_to_string(relocated.join("references/checklist.md")).unwrap(),
+        "# Checklist\n"
+    );
+    assert!(!dir.path().join(".claude/skills").exists());
+    assert_eq!(
+        fs::read_to_string(dir.path().join(".claude/settings.local.json")).unwrap(),
+        "{}\n"
+    );
+}
+
+#[test]
+fn sync_skills_refuses_a_conflicting_destination_before_writing() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let legacy = dir.path().join(".claude/skills/project-review/SKILL.md");
+    let destination = dir.path().join(".agents/skills/project-review/SKILL.md");
+    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    fs::write(&legacy, "legacy bytes\n").unwrap();
+    fs::write(&destination, "destination bytes\n").unwrap();
+    let canonical = dir.path().join(".agents/skills/client-council/SKILL.md");
+    fs::create_dir_all(canonical.parent().unwrap()).unwrap();
+    fs::write(&canonical, "before preflight\n").unwrap();
+
+    sync_skills(dir.path())
+        .failure()
+        .code(2)
+        .stderr(str::contains("conflicts with"));
+
+    assert_eq!(fs::read_to_string(&legacy).unwrap(), "legacy bytes\n");
+    assert_eq!(
+        fs::read_to_string(&destination).unwrap(),
+        "destination bytes\n"
+    );
+    assert_eq!(
+        fs::read_to_string(canonical).unwrap(),
+        "before preflight\n",
+        "the conflict preflight must finish before canonical files are overwritten"
+    );
+}
+
+#[test]
+fn sync_skills_retry_is_idempotent_and_removes_an_empty_legacy_root() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let legacy = dir.path().join(".claude/skills/project-review/SKILL.md");
+    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    fs::write(&legacy, "# Project review\n").unwrap();
+
+    sync_skills(dir.path()).success();
+    let relocated = dir.path().join(".agents/skills/project-review/SKILL.md");
+    let first = fs::read_to_string(&relocated).unwrap();
+    assert!(!dir.path().join(".claude").exists());
+
+    sync_skills(dir.path()).success();
+    assert_eq!(fs::read_to_string(relocated).unwrap(), first);
+    assert!(!dir.path().join(".claude").exists());
+}
+
 /// A synced skill that has drifted from the canonical copy fails `validate`
 /// and names the file, so a hand edit or a stale sync is caught rather than
 /// silently diverging across 19 repositories.

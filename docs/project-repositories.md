@@ -625,6 +625,11 @@ rules.
 `validate` accepts templates, applications, either, or both, and reports a repository carrying neither distinctly rather
 than failing it. A Project may legitimately open before either half exists.
 
+`navigator project repository sync-skills` also migrates a repository that still carries `.claude/skills/`. It checks
+the complete destination first, refuses any same-path file whose bytes differ, copies repository-local skills alongside
+the canonical catalog, and removes only the relocated `skills/` tree. Other ignored `.claude/` state remains in place.
+After a successful migration, rerunning the command is a no-op apart from restoring the canonical skill bytes.
+
 The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
 Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds the shared catalog
 to those shelves. When the tree carries a `navigator.yaml` with `project:`, the same rule accepts a direct

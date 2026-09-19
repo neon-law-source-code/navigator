@@ -422,8 +422,32 @@ pub fn scaffold(
 /// is only useful if re-running this command is also how an operator fixes
 /// it.
 pub fn sync_skills(root: &Path) -> ExitCode {
+    let legacy_skills = root.join(".claude/skills");
+    let canonical_skills = root.join(".agents/skills");
+    if legacy_skills.exists() {
+        let entries = match relocation_entries(&legacy_skills) {
+            Ok(entries) => entries,
+            Err(error) => {
+                eprintln!(
+                    "navigator: inspect legacy skill catalog {}: {error}",
+                    legacy_skills.display()
+                );
+                return ExitCode::from(2);
+            }
+        };
+        if let Err(error) = preflight_skill_relocation(&legacy_skills, &canonical_skills, &entries)
+        {
+            eprintln!("navigator: {error}");
+            return ExitCode::from(2);
+        }
+        if let Err(error) = copy_legacy_skills(&legacy_skills, &canonical_skills, &entries) {
+            eprintln!("navigator: relocate legacy skill catalog: {error}");
+            return ExitCode::from(2);
+        }
+    }
+
     for (name, contents) in SYNCED_SKILLS {
-        let path = root.join(".agents/skills").join(name).join("SKILL.md");
+        let path = canonical_skills.join(name).join("SKILL.md");
         if let Some(parent) = path.parent() {
             if let Err(error) = fs::create_dir_all(parent) {
                 eprintln!("navigator: create {}: {error}", parent.display());
@@ -436,7 +460,125 @@ pub fn sync_skills(root: &Path) -> ExitCode {
         }
         println!("synced    {}", path.display());
     }
+
+    if legacy_skills.exists() {
+        if let Err(error) = fs::remove_dir_all(&legacy_skills) {
+            eprintln!(
+                "navigator: remove relocated skill catalog {}: {error}",
+                legacy_skills.display()
+            );
+            return ExitCode::from(2);
+        }
+        let legacy_root = root.join(".claude");
+        if let Ok(0) = fs::read_dir(&legacy_root).map(Iterator::count) {
+            if let Err(error) = fs::remove_dir(&legacy_root) {
+                eprintln!(
+                    "navigator: remove empty legacy harness directory {}: {error}",
+                    legacy_root.display()
+                );
+                return ExitCode::from(2);
+            }
+        }
+        println!(
+            "relocated {} -> {}",
+            legacy_skills.display(),
+            canonical_skills.display()
+        );
+    }
     ExitCode::SUCCESS
+}
+
+#[derive(Debug)]
+struct RelocationEntry {
+    relative: PathBuf,
+    is_directory: bool,
+}
+
+fn relocation_entries(root: &Path) -> io::Result<Vec<RelocationEntry>> {
+    fn visit(root: &Path, directory: &Path, entries: &mut Vec<RelocationEntry>) -> io::Result<()> {
+        let mut children = fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
+        children.sort_by_key(std::fs::DirEntry::file_name);
+        for child in children {
+            let path = child.path();
+            let relative = path
+                .strip_prefix(root)
+                .map_err(io::Error::other)?
+                .to_path_buf();
+            let kind = child.file_type()?;
+            if kind.is_dir() {
+                entries.push(RelocationEntry {
+                    relative,
+                    is_directory: true,
+                });
+                visit(root, &path, entries)?;
+            } else if kind.is_file() {
+                entries.push(RelocationEntry {
+                    relative,
+                    is_directory: false,
+                });
+            } else {
+                return Err(io::Error::other(format!(
+                    "{} is neither a file nor a directory",
+                    path.display()
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    let mut entries = Vec::new();
+    visit(root, root, &mut entries)?;
+    Ok(entries)
+}
+
+fn preflight_skill_relocation(
+    source_root: &Path,
+    destination_root: &Path,
+    entries: &[RelocationEntry],
+) -> io::Result<()> {
+    for entry in entries {
+        let source = source_root.join(&entry.relative);
+        let destination = destination_root.join(&entry.relative);
+        if !destination.exists() {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&destination)?;
+        let agrees = if entry.is_directory {
+            metadata.is_dir()
+        } else {
+            metadata.is_file() && fs::read(&source)? == fs::read(&destination)?
+        };
+        if !agrees {
+            return Err(io::Error::other(format!(
+                "legacy skill path {} conflicts with {}; resolve the two copies before retrying",
+                source.display(),
+                destination.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn copy_legacy_skills(
+    source_root: &Path,
+    destination_root: &Path,
+    entries: &[RelocationEntry],
+) -> io::Result<()> {
+    for entry in entries {
+        let destination = destination_root.join(&entry.relative);
+        if entry.is_directory {
+            fs::create_dir_all(&destination)?;
+            continue;
+        }
+        if destination.exists() {
+            continue;
+        }
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(source_root.join(&entry.relative), destination)?;
+    }
+    Ok(())
 }
 
 /// Validate one Project's repository.

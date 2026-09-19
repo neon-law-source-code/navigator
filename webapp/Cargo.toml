@@ -126,6 +126,19 @@ dioxus-ssr = "0.7.9"
 # `build.rs` fails the gate instead of being agreed with. A dev-dependency, so
 # it reaches neither the server binary nor the wasm client bundle.
 serde_yaml = { workspace = true }
+# `tests/brand_seed_presentation.rs` seeds an embedded engine through the
+# real `store::seed` path and reads `views::brand` defaults. Those crates
+# are optional on the library (behind `server`); the integration-test crate
+# names them directly. `tokio` is the same: the library's copy is optional.
+cloud = { workspace = true }
+store = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true }
+views = { workspace = true }
+
+[[test]]
+name = "brand_seed_presentation"
+path = "tests/brand_seed_presentation.rs"
+required-features = ["server"]
 
 # `build.rs` reads the same kustomization to generate the shipped `CronJob`
 # table. Build-only for the same reason.

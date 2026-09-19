@@ -2627,8 +2627,10 @@ async fn seed_entities(
 /// renders from the seeded row), the typeface id
 /// (`BrandKey::default_typeface`), and the light-mode primary hex
 /// (`BrandKey::default_palette`). `webapp::firm_footer`'s
-/// `every_compiled_brand_seeds_its_published_wordmark` is where that copy
-/// is held against the compiled original.
+/// `every_compiled_brand_seeds_its_published_wordmark` holds the wordmark
+/// against `SiteBrand::site_name`. `webapp/tests/brand_seed_presentation.rs`
+/// holds the typeface id and light-mode primary hex against
+/// `BrandKey::default_typeface` and `BrandKey::default_palette`.
 struct CompiledBrand {
     key: &'static str,
     name: &'static str,

@@ -467,7 +467,7 @@ mod tests {
                 Err(IoltaAccountError::JurisdictionTaken { ref existing, .. })
                     if existing == "xero-nv"
             ),
-            "got {second:?}"
+            "unexpected upsert result shape"
         );
         assert_eq!(all(&db).await.unwrap().len(), 1);
     }

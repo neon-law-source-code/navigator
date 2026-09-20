@@ -47,6 +47,8 @@ async fn privacy_home_publishes_one_annual_offer_and_shared_footer() {
         assert!(html.contains(required), "missing {required}");
     }
     assert_eq!(html.matches("<h1").count(), 1);
+    assert!(!html.contains("A little less out there."));
+    assert!(!html.contains("Privacy in motion"));
     assert!(!html.contains("$10"));
     assert!(!html.contains("Coming soon"));
     assert!(!html.contains("Removal depends on the company"));

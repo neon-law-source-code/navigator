@@ -23,6 +23,7 @@ use clap::Subcommand;
 
 mod application_publish;
 pub mod brand;
+mod brand_readiness;
 mod browser_e2e;
 mod chrome;
 pub mod deployments;
@@ -1027,6 +1028,15 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             },
             dry_run,
         ),
+        crate::Command::Ops(crate::OpsCmd::BrandReadiness {
+            deployment,
+            deployments_dir,
+            timeout_seconds,
+        }) => brand_readiness::run_for_deployment(
+            &deployment,
+            deployments_dir.as_deref(),
+            timeout_seconds,
+        ),
         crate::Command::Ops(crate::OpsCmd::Rebrand(cmd)) => brand::run(cmd),
         crate::Command::Ops(crate::OpsCmd::Observability {
             deployment,
@@ -1091,7 +1101,18 @@ fn dns_setup(domains: Vec<String>, config: &dns::DnsSetupConfig, dry_run: bool) 
                 );
             }
             if config.redirect_apex_to_www {
-                eprintln!("\nApex redirect certificate guidance is available.");
+                let cert_report = dns::ensure_apex_certificate(&provider, zone, true)
+                    .await
+                    .with_context(|| format!("check/provision {zone}'s apex certificate"))?;
+                eprintln!(
+                    "==> apex certificate {:?} ({:?}, id {}) — {}",
+                    cert_report.state,
+                    cert_report.action,
+                    cert_report
+                        .certificate_id
+                        .map_or_else(|| "none".to_string(), |id| id.to_string()),
+                    cert_report.message,
+                );
             }
         }
         if dry_run {

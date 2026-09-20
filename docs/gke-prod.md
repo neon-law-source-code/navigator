@@ -78,11 +78,17 @@ A `ManagedCertificate` is authorized **by the load balancer**, not by DNS: Googl
 already resolves to the ingress address. That ordering is forced and it costs a TLS gap — while the certificate
 validates, the host answers `308` on port 80 and returns an empty TLS handshake on 443, so it is neither the old site
 nor the new one. A Google-managed certificate also reissues as a whole when `spec.domains` changes, so each hostname
-family (`NAVIGATOR_PUBLIC_HOST`, each additional live brand, and the workflows host) has its own `ManagedCertificate` on
-the shared Ingress. Adding a name to one family does not retire another family's certificate. The apex of a brand zone
-is not one of those families: it stays a DNS `URL` record that 301s to `www`, and it must not appear on a
-`ManagedCertificate` while that record stands — the name never resolves to the load balancer, so the certificate never
-leaves `Provisioning`.
+family (`NAVIGATOR_PUBLIC_HOST`, every other registered brand — launched or not, per the release inventory
+`views::brand::release_brand_hosts` names, and [`docs/dns.md`'s Grounding TLS in the release
+inventory](dns.md#grounding-tls-in-the-release-inventory) explains — and the workflows host) has its own
+`ManagedCertificate` on the shared Ingress. Adding a name to one family does not retire another family's certificate. A
+held-out brand's certificate and Ingress rule exist the same as a launched one's; only the request router's host
+admission still gates whether that host serves the brand's page or a `404`. The apex of a brand zone is not one of those
+families: it stays a DNS `URL` record that 301s to `www`, and it must not appear on a `ManagedCertificate` while that
+record stands — the name never resolves to the load balancer, so the certificate never leaves `Provisioning`. `navigator
+ops brand-readiness --deployment <name>` (see `docs/dns.md`) is the bounded, non-mutating check that every one of these
+certificates is actually `Active` and serving the right host — never take a rendered manifest or a successful `apply`
+alone as proof.
 
 Plan the cutover as a short outage rather than a swap:
 

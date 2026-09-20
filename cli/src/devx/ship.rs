@@ -410,21 +410,27 @@ fn additional_brand_hosts(public_host: &str) -> Vec<&'static str> {
 
 fn additional_brand_bindings(public_host: &str) -> Vec<AdditionalBrandBinding> {
     let staging = public_host.starts_with("staging.");
-    // Built from `views::brand::live_brand_hosts` — the launch gate — rather
-    // than from `BrandKey::ALL` filtered on `is_live()` here. Those two read
-    // the same today and that is precisely the problem they caused: the
-    // request router filtered on nothing at all, so the deployment admitted
-    // three brands while the process would wear any of eight. One list now
-    // drives the certificate, the Ingress rule, the router, the crawler
-    // base, and the footer; `the_render_and_the_router_admit_the_same_hosts`
-    // holds it.
+    // Built from `views::brand::release_brand_hosts` — the full compiled
+    // registry, live or not — rather than `views::brand::live_brand_hosts`
+    // (the launch gate) or `BrandKey::ALL` filtered on `is_live()` here.
     //
-    // `live_brand_hosts` mixes production and staging names for the same key
-    // (e.g. `www.deleteyourdata.com` and `staging.deleteyourdata.com`); this
-    // keeps only the one matching `public_host`'s own `staging.`-prefix
+    // Before ENG-808 this filtered on `is_live()`, so a held-out brand had no
+    // certificate or Ingress rule until the same change that launched it. TLS
+    // readiness and the launch decision are independent: a certificate is
+    // release infrastructure that should already be valid, trusted, and
+    // serving the right SAN before a launch is approved, not requested by the
+    // approval itself. `views::brand::admitted_brand_key` — unaffected by
+    // this — is still what gates the router, the crawler base, and the
+    // footer's family row, so a held-out host now serves a real certificate
+    // and then a `404`, never a TLS handshake failure. See the launch-gate
+    // note in `views::brand` and `the_render_covers_the_full_registry_while_the_router_stays_live_gated`.
+    //
+    // `release_brand_hosts` mixes production and staging names for the same
+    // key (e.g. `www.deleteyourdata.com` and `staging.deleteyourdata.com`);
+    // this keeps only the one matching `public_host`'s own `staging.`-prefix
     // convention, the same split `NAVIGATOR_PUBLIC_HOST` already follows for
     // the default brand.
-    views::brand::live_brand_hosts()
+    views::brand::release_brand_hosts()
         .into_iter()
         .filter(|(key, _)| *key != BrandKey::default())
         .filter(|(_, host)| host.starts_with("staging.") == staging)
@@ -2755,7 +2761,7 @@ fn smoke_check(cfg: &ShipConfig, dry_run: bool) {
 // ---------- small shared helpers ----------
 
 /// A `kubectl` invocation pinned to the prod context and namespace.
-fn kubectl(cfg: &ShipConfig) -> Command {
+pub(crate) fn kubectl(cfg: &ShipConfig) -> Command {
     let mut cmd = kubectl_ctx(cfg);
     cmd.arg("-n").arg(&cfg.namespace);
     cmd
@@ -2763,14 +2769,14 @@ fn kubectl(cfg: &ShipConfig) -> Command {
 
 /// A `kubectl` invocation pinned to the prod context only (for the
 /// kustomize `diff`/`apply`, which carry their own namespaces).
-fn kubectl_ctx(cfg: &ShipConfig) -> Command {
+pub(crate) fn kubectl_ctx(cfg: &ShipConfig) -> Command {
     let mut cmd = Command::new("kubectl");
     cmd.arg("--context").arg(&cfg.context);
     cmd
 }
 
 /// `kubectl get <kind> <name> -o json`, parsed.
-fn kubectl_json(cfg: &ShipConfig, kind: &str, name: &str) -> Result<serde_json::Value> {
+pub(crate) fn kubectl_json(cfg: &ShipConfig, kind: &str, name: &str) -> Result<serde_json::Value> {
     let out = kubectl(cfg)
         .arg("get")
         .arg(kind)
@@ -3025,7 +3031,7 @@ fn verify_context(cfg: &ShipConfig, dry_run: bool) -> Result<()> {
 
 /// True when `tool` is on PATH (same probe as `require_tools`, but
 /// boolean — for best-effort steps that downgrade to a warning).
-fn tool_present(tool: &str) -> bool {
+pub(crate) fn tool_present(tool: &str) -> bool {
     Command::new("sh")
         .arg("-c")
         .arg(format!("command -v {tool}"))
@@ -3720,48 +3726,60 @@ mod tests {
             "OAuth hosted-domain environment-variable name is preserved"
         );
         // The production render's `NAVIGATOR_PUBLIC_HOST` is `www.neonlaw.com`,
-        // so every other registered `BrandKey` contributes its own production
-        // host here — derived from the compiled registry, not a second
-        // hand-maintained coordinate. Each additional family is its own
-        // `ManagedCertificate`; bundling them onto `navigator-web` would
-        // reissue the firm's certificate whenever one of those names changed.
+        // so every OTHER registered `BrandKey` — launched or not, per
+        // ENG-808 — contributes its own production host here, derived from
+        // the compiled registry rather than a second hand-maintained
+        // coordinate. Each additional family is its own `ManagedCertificate`;
+        // bundling them onto `navigator-web` would reissue the firm's
+        // certificate whenever one of those names changed.
         let cert_manifest =
             fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
         assert!(
             cert_manifest.contains("- www.neonlaw.com"),
             "the default brand keeps the navigator-web certificate"
         );
-        assert!(
-            !cert_manifest.contains("www.deleteyourdata.com")
-                && !cert_manifest.contains("www.lawyershook.com"),
-            "additional brands must not share the default-brand certificate"
-        );
         let brand_certs =
             fs::read_to_string(gke.join("ingress/brand-managed-certificates.yaml")).unwrap();
-        assert!(
-            brand_certs.contains("name: navigator-web-delete-your-data")
-                && brand_certs.contains("- www.deleteyourdata.com"),
-            "the additional brand's production host gets its own certificate"
-        );
-        assert!(
-            brand_certs.contains("name: navigator-web-lawyer-shook")
-                && brand_certs.contains("- www.lawyershook.com")
-        );
         let kustomization = fs::read_to_string(gke.join("kustomization.yaml")).unwrap();
         assert!(
             kustomization.contains("- ingress/brand-managed-certificates.yaml"),
             "the GKE overlay includes the additional brand certificates"
         );
         let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
+        for key in views::brand::BrandKey::ALL {
+            if *key == views::brand::BrandKey::default() {
+                continue;
+            }
+            let production_host = key.canonical_host();
+            assert!(
+                !cert_manifest.contains(production_host),
+                "additional brands must not share the default-brand certificate: {production_host}"
+            );
+            assert!(
+                brand_certs.contains(&format!("name: {}", brand_certificate_name(*key)))
+                    && brand_certs.contains(&format!("- {production_host}")),
+                "{}'s production host gets its own certificate",
+                key.as_str(),
+            );
+            assert!(
+                ingress.contains(&format!("- host: {production_host}")),
+                "{}'s production host gets an Ingress rule: {ingress}",
+                key.as_str(),
+            );
+            let staging_host = format!("staging.{}", key.apex());
+            assert!(
+                !cert_manifest.contains(&staging_host)
+                    && !brand_certs.contains(&staging_host)
+                    && !ingress.contains(&staging_host),
+                "a production render must not carry {}'s staging sibling",
+                key.as_str(),
+            );
+        }
         assert!(
-            ingress.contains("- host: www.deleteyourdata.com"),
-            "the additional brand's production host gets an Ingress rule: {ingress}"
-        );
-        assert!(ingress.contains("- host: www.lawyershook.com"));
-        assert!(
-            ingress.contains(
-                "networking.gke.io/managed-certificates: navigator-web,navigator-web-delete-your-data,navigator-web-lawyer-shook,navigator-workflows"
-            ),
+            ingress.contains(&format!(
+                "networking.gke.io/managed-certificates: {}",
+                expected_managed_certificates_annotation()
+            )),
             "the Ingress attaches every family's certificate: {ingress}"
         );
         assert!(
@@ -3769,15 +3787,6 @@ mod tests {
                 "name: navigator-web\n                port:\n                  number: 80"
             ),
             "the additional brand host routes to the same navigator-web Service"
-        );
-        assert!(
-            !cert_manifest.contains("staging.deleteyourdata.com")
-                && !cert_manifest.contains("staging.lawyershook.com")
-                && !brand_certs.contains("staging.deleteyourdata.com")
-                && !brand_certs.contains("staging.lawyershook.com")
-                && !ingress.contains("staging.deleteyourdata.com")
-                && !ingress.contains("staging.lawyershook.com"),
-            "a production render must not carry the staging sibling of the additional brand's host"
         );
         // The support-chat coordinate is optional, so the drift that matters is
         // the reverse of the required keys': the env *name* must survive even
@@ -3927,17 +3936,35 @@ mod tests {
     fn additional_brand_hosts_excludes_the_default_and_matches_the_environment() {
         assert_eq!(
             additional_brand_hosts("www.neonlaw.com"),
-            vec!["www.deleteyourdata.com", "www.lawyershook.com"],
-            "a production public host pulls in each other brand's production host"
+            vec![
+                "www.deleteyourdata.com",
+                "www.deleteyourdebt.com",
+                "www.vestaestateplanning.com",
+                "www.misericordialaw.com",
+                "www.abhayaimmigration.com",
+                "www.lawyershook.com",
+                "www.summonsdefense.nyc",
+            ],
+            "a production public host pulls in every other registered brand's production host — \
+             ENG-808: the full registry, not only the launched ones"
         );
         assert_eq!(
             additional_brand_hosts("staging.neonlaw.com"),
-            vec!["staging.deleteyourdata.com", "staging.lawyershook.com"],
-            "a staging public host pulls in only the other brand's staging host"
+            vec![
+                "staging.deleteyourdata.com",
+                "staging.deleteyourdebt.com",
+                "staging.vestaestateplanning.com",
+                "staging.misericordialaw.com",
+                "staging.abhayaimmigration.com",
+                "staging.lawyershook.com",
+                "staging.summonsdefense.nyc",
+            ],
+            "a staging public host pulls in only the other brands' staging hosts"
         );
     }
 
-    /// The apex stays off the certificate and the Ingress.
+    /// The apex stays off the certificate and the Ingress, for every
+    /// registered key — live or held out.
     ///
     /// DNS already 301s each naked domain to its own `www` from a URL record
     /// that does not resolve to the load balancer. Listing those apexes on a
@@ -3949,7 +3976,7 @@ mod tests {
     fn the_apex_stays_off_the_certificate_and_ingress() {
         let production = additional_brand_hosts("www.neonlaw.com");
         for key in views::brand::BrandKey::ALL {
-            if *key == views::brand::BrandKey::default() || !key.is_live() {
+            if *key == views::brand::BrandKey::default() {
                 continue;
             }
             assert!(
@@ -3972,64 +3999,66 @@ mod tests {
         );
     }
 
-    /// A registered brand whose DNS does not yet point at a load balancer
-    /// stays off the certificate and the Ingress.
+    /// Every registered brand reaches its own certificate and Ingress rule,
+    /// launched or not.
     ///
-    /// Adding a brand to the registry is therefore safe, and pointing its
-    /// DNS is the step that admits it here. Each family has its own
-    /// `ManagedCertificate`, so an unpointed name cannot hold another
-    /// family's certificate in `Provisioning`; it still must not appear on
-    /// Ingress or in the footer.
+    /// Before ENG-808 a brand without an approved launch had no TLS at all
+    /// until the same change that launched it. Certificate issuance is
+    /// release infrastructure, independent of the launch decision: each
+    /// family gets its own `ManagedCertificate` (ENG-768), so an unpointed
+    /// or held-out name cannot hold another family's certificate in
+    /// `Provisioning`, and it still must not appear in the footer or answer
+    /// as that brand at the router — see
+    /// `the_render_covers_the_full_registry_while_the_router_stays_live_gated`.
     #[test]
-    fn a_brand_without_live_dns_stays_off_the_certificate() {
+    fn every_registered_brand_reaches_its_own_certificate_regardless_of_launch_status() {
         for key in views::brand::BrandKey::ALL {
-            if key.is_live() {
+            if *key == views::brand::BrandKey::default() {
                 continue;
             }
             for host in key.hosts() {
+                let rendered = if host.starts_with("staging.") {
+                    additional_brand_hosts("staging.neonlaw.com")
+                } else {
+                    additional_brand_hosts("www.neonlaw.com")
+                };
                 assert!(
-                    !additional_brand_hosts("www.neonlaw.com").contains(host),
-                    "{host} has no DNS yet and must not reach the production certificate"
-                );
-                assert!(
-                    !additional_brand_hosts("staging.neonlaw.com").contains(host),
-                    "{host} has no DNS yet and must not reach the staging certificate"
+                    rendered.contains(host),
+                    "{host} ({}, live={}) must reach its own certificate and Ingress rule",
+                    key.as_str(),
+                    key.is_live(),
                 );
             }
         }
     }
 
-    /// The deploy render and the request router admit the same hosts.
+    /// The deploy render covers the full registry; the request router stays
+    /// gated on the approved launch set.
     ///
-    /// This is the invariant, and it is the one the defect broke: the render
-    /// filtered on `is_live()` while `portal::canonical_host` filtered on
-    /// nothing, so the deployment published three brands and the process
-    /// would wear any of eight. Both now derive from
-    /// `views::brand::live_brand_hosts`, and this compares the rendered host
-    /// set against the router's own admission decision
-    /// (`views::brand::admitted_brand_key`) rather than against a second
-    /// copy of the filter — a test that re-derived the expected list would
-    /// drift in exactly the way the code did.
+    /// Before ENG-808 these were the same list by construction: the render
+    /// filtered `views::brand::live_brand_hosts` while `portal::canonical_host`
+    /// filtered nothing, so the deployment published three brands while the
+    /// process would wear any of eight. ENG-808 deliberately widens the
+    /// render to [`views::brand::release_brand_hosts`] (every registered key)
+    /// because a certificate is release infrastructure that should be ready
+    /// before a launch is approved. The router's admission decision
+    /// (`views::brand::admitted_brand_key`) is intentionally unchanged, so the
+    /// two lists now diverge by exactly the held-out brands — this pins both
+    /// halves of that divergence rather than re-deriving either filter.
     ///
-    /// Both environments, because the split between `www.` and `staging.`
-    /// is per-render and a gate that held for only one of them would leave
-    /// the other open.
+    /// Both environments, because the split between `www.` and `staging.` is
+    /// per-render and a gate that held for only one of them would leave the
+    /// other open.
     #[test]
-    fn the_render_and_the_router_admit_the_same_hosts() {
+    fn the_render_covers_the_full_registry_while_the_router_stays_live_gated() {
         for public_host in ["www.neonlaw.com", "staging.neonlaw.com"] {
             let rendered = additional_brand_hosts(public_host);
-            for host in &rendered {
-                assert!(
-                    views::brand::admitted_brand_key(host).is_some(),
-                    "{public_host}: the render emits {host}, which the router refuses",
-                );
-            }
-            // And the other direction: every host the router would admit on
-            // this environment, for a brand other than the default, has a
-            // certificate and an Ingress rule. A host the process answers
-            // for but the deployment never routes is the same divergence
-            // read the other way round.
             let staging = public_host.starts_with("staging.");
+
+            // Every host the router would admit on this environment, for a
+            // brand other than the default, has a certificate and an
+            // Ingress rule. A host the process answers for but the
+            // deployment never routes would be a live-brand regression.
             for (key, host) in views::brand::live_brand_hosts() {
                 if key == views::brand::BrandKey::default()
                     || host.starts_with("staging.") != staging
@@ -4039,6 +4068,20 @@ mod tests {
                 assert!(
                     rendered.contains(&host),
                     "{public_host}: the router admits {host}, which the render omits: {rendered:?}",
+                );
+            }
+
+            // And the release-inventory surplus over the launch set is
+            // exactly the held-out brands: rendered but refused at the
+            // router, never a registered host the router would admit.
+            for host in &rendered {
+                let key = views::brand::registered_brand_key(host)
+                    .expect("every rendered host is registered");
+                assert_eq!(
+                    views::brand::admitted_brand_key(host).is_some(),
+                    key.is_live(),
+                    "{public_host}: {host} ({}) must be admitted iff it is live",
+                    key.as_str(),
                 );
             }
         }
@@ -4066,28 +4109,14 @@ mod tests {
         }
     }
 
-    /// The brands that *are* reachable still come through, so the gate above
-    /// cannot be satisfied by excluding everything.
-    #[test]
-    fn the_launched_brands_still_reach_the_certificate() {
-        let production = additional_brand_hosts("www.neonlaw.com");
-        assert!(
-            production.contains(&"www.deleteyourdata.com"),
-            "{production:?}"
-        );
-        assert!(
-            production.contains(&"www.lawyershook.com"),
-            "{production:?}"
-        );
-    }
-
     #[test]
     fn a_staging_render_carries_the_staging_sibling_not_the_production_one() {
         // Mirrors `render_substitutes_every_placeholder_to_zero_remaining`'s
         // production assertion, but for the `neon-law-stg` shape (`HUB_ENV`),
         // whose `NAVIGATOR_PUBLIC_HOST` is `staging.neonlaw.com` — each
         // registered brand's cert/Ingress entry must use its own `staging.`
-        // host.
+        // host, and ENG-808 means every registered brand, not only the
+        // launched ones.
         let subs =
             resolve_substitutions_for_deployment("neon-law-stg", "26.7.15", env_getter(HUB_ENV))
                 .expect("hub env resolves");
@@ -4095,34 +4124,63 @@ mod tests {
         let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
         let cert_manifest =
             fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
-        assert!(
-            !cert_manifest.contains("staging.deleteyourdata.com")
-                && !cert_manifest.contains("staging.lawyershook.com"),
-            "additional staging brands must not share the default-brand certificate"
-        );
+        for key in views::brand::BrandKey::ALL {
+            if *key != views::brand::BrandKey::default() {
+                assert!(
+                    !cert_manifest.contains(&format!("staging.{}", key.apex())),
+                    "{}'s staging host must not share the default-brand certificate",
+                    key.as_str(),
+                );
+            }
+        }
         let brand_certs =
             fs::read_to_string(gke.join("ingress/brand-managed-certificates.yaml")).unwrap();
-        assert!(
-            brand_certs.contains("- staging.deleteyourdata.com"),
-            "the additional brand's staging host gets its own certificate"
-        );
-        assert!(brand_certs.contains("- staging.lawyershook.com"));
+        let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
+        for key in views::brand::BrandKey::ALL {
+            if *key == views::brand::BrandKey::default() {
+                continue;
+            }
+            let staging_host = format!("staging.{}", key.apex());
+            assert!(
+                brand_certs.contains(&format!("- {staging_host}")),
+                "{}'s staging host gets its own certificate",
+                key.as_str(),
+            );
+            assert!(
+                ingress.contains(&format!("- host: {staging_host}")),
+                "{}'s staging host gets an Ingress rule: {ingress}",
+                key.as_str(),
+            );
+        }
         assert!(
             !brand_certs.contains("www.deleteyourdata.com"),
             "a staging render must not carry the production sibling"
         );
-        let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
         assert!(
-            ingress.contains("- host: staging.deleteyourdata.com"),
-            "the additional brand's staging host gets an Ingress rule: {ingress}"
-        );
-        assert!(ingress.contains("- host: staging.lawyershook.com"));
-        assert!(
-            ingress.contains(
-                "networking.gke.io/managed-certificates: navigator-web,navigator-web-delete-your-data,navigator-web-lawyer-shook,navigator-workflows"
-            ),
+            ingress.contains(&format!(
+                "networking.gke.io/managed-certificates: {}",
+                expected_managed_certificates_annotation()
+            )),
             "staging attaches every family's certificate: {ingress}"
         );
+    }
+
+    /// The full `networking.gke.io/managed-certificates` annotation ENG-808
+    /// expects: the default brand, every other registered key in registry
+    /// order, then the workflows service — derived from the same
+    /// [`views::brand::BrandKey::ALL`] the render reads, so this drifts with
+    /// the registry rather than needing a hand-maintained string.
+    fn expected_managed_certificates_annotation() -> String {
+        let mut names = vec!["navigator-web".to_string()];
+        names.extend(
+            views::brand::BrandKey::ALL
+                .iter()
+                .copied()
+                .filter(|key| *key != views::brand::BrandKey::default())
+                .map(brand_certificate_name),
+        );
+        names.push("navigator-workflows".to_string());
+        names.join(",")
     }
 
     fn certificate_domains(doc: &serde_yaml::Value) -> Vec<&str> {
@@ -4135,12 +4193,13 @@ mod tests {
             .collect()
     }
 
-    /// Each live brand family is its own `ManagedCertificate` on the shared
-    /// Ingress. A Google-managed certificate reissues as a whole when
-    /// `spec.domains` changes, so sharing one object across families is how
-    /// a DNS miss on a marketing host takes the firm's own site offline.
+    /// Each registered brand family is its own `ManagedCertificate` on the
+    /// shared Ingress, launched or not (ENG-808). A Google-managed
+    /// certificate reissues as a whole when `spec.domains` changes, so
+    /// sharing one object across families is how a DNS miss on a marketing
+    /// host takes the firm's own site offline.
     #[test]
-    fn each_live_brand_family_has_its_own_managed_certificate() {
+    fn each_registered_brand_family_has_its_own_managed_certificate() {
         let subs = resolve_substitutions_for_deployment(
             "neon-production",
             "26.7.15",
@@ -4159,28 +4218,22 @@ mod tests {
             )),
             vec!["www.neonlaw.com"]
         );
-        assert_eq!(
-            certificate_domains(&manifest_doc(
-                &manifests,
-                "ManagedCertificate",
-                "navigator-web-delete-your-data"
-            )),
-            vec!["www.deleteyourdata.com"]
-        );
-        assert_eq!(
-            certificate_domains(&manifest_doc(
-                &manifests,
-                "ManagedCertificate",
-                "navigator-web-lawyer-shook"
-            )),
-            vec!["www.lawyershook.com"]
-        );
-        for name in [
-            "navigator-web",
-            "navigator-web-delete-your-data",
-            "navigator-web-lawyer-shook",
-            "navigator-workflows",
-        ] {
+        let mut certificate_names = vec!["navigator-web".to_string()];
+        for key in views::brand::BrandKey::ALL {
+            if *key == views::brand::BrandKey::default() {
+                continue;
+            }
+            let name = brand_certificate_name(*key);
+            assert_eq!(
+                certificate_domains(&manifest_doc(&manifests, "ManagedCertificate", &name)),
+                vec![key.canonical_host()],
+                "{}'s production certificate must list only its own www host",
+                key.as_str(),
+            );
+            certificate_names.push(name);
+        }
+        certificate_names.push("navigator-workflows".to_string());
+        for name in &certificate_names {
             for domain in certificate_domains(&manifest_doc(&manifests, "ManagedCertificate", name))
             {
                 assert!(
@@ -4203,9 +4256,7 @@ mod tests {
                 .and_then(|metadata| metadata.get("annotations"))
                 .and_then(|annotations| annotations.get("networking.gke.io/managed-certificates"))
                 .and_then(serde_yaml::Value::as_str),
-            Some(
-                "navigator-web,navigator-web-delete-your-data,navigator-web-lawyer-shook,navigator-workflows"
-            )
+            Some(expected_managed_certificates_annotation().as_str())
         );
         let hosts: Vec<&str> = ingress
             .get("spec")
@@ -4215,10 +4266,21 @@ mod tests {
             .iter()
             .filter_map(|rule| rule.get("host").and_then(serde_yaml::Value::as_str))
             .collect();
-        assert!(hosts.contains(&"www.deleteyourdata.com"));
-        assert!(hosts.contains(&"www.lawyershook.com"));
-        assert!(!hosts.contains(&"deleteyourdata.com"));
-        assert!(!hosts.contains(&"lawyershook.com"));
+        for key in views::brand::BrandKey::ALL {
+            if *key == views::brand::BrandKey::default() {
+                continue;
+            }
+            assert!(
+                hosts.contains(&key.canonical_host()),
+                "{}'s production host gets an Ingress rule: {hosts:?}",
+                key.as_str(),
+            );
+            assert!(
+                !hosts.contains(&key.apex()),
+                "{}'s apex must not carry an Ingress rule",
+                key.as_str(),
+            );
+        }
     }
 
     /// Collect every `env:` entry declared anywhere under `node`, as

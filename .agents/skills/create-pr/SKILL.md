@@ -3,9 +3,11 @@ name: create-pr
 description: >
   Turn a dirty working tree into a clean pull request against `main`: survey every change, group the files into
   Conventional Commits by blast radius (one concern per commit), run the gate, branch off `main`, capture a visual for
-  any user-visible change, push, and open the PR. Trigger when the user says "/create-pr", "create a PR", "open a pull
-  request", "commit and PR these changes", "group these into commits and ship them", or has a dirty working tree they
-  want landed. Stops at "PR open"; building images and deploying to prod is a separate flow.
+  any user-visible change, push, and open the PR ready for review, not as a draft. Trigger when the user says
+  "/create-pr", "create a PR", "open a pull request", "commit and PR these changes", "group these into commits and ship
+  them", or has a dirty working tree they want landed, and as the ship step of
+  [`implement-issue`](../implement-issue/SKILL.md). Stops at "PR open"; building images and deploying to prod is a
+  separate flow.
 ---
 
 # create-pr
@@ -85,5 +87,7 @@ Load-bearing rules from those docs:
   tests, and workshops against what this branch changed and reports any that describe something the code has moved past.
   Fix the confirmed drift or escalate per its routing, and update the surface that owns each changed fact in the same
   commits. Findings are advisory.
-- **Leave auto-merge to CI.** Push, `gh pr create --base main`, report the PR URL, and stop. CI enables auto-merge on
-  open, and it lands once the gate is green and its review threads resolve.
+- **Leave auto-merge to CI.** Push, `gh pr create --base main` with no `--draft`, report the PR URL, and stop. Open it
+  ready for review, not as a draft: auto-merge is armed only on a non-draft open, and a draft sits until someone marks
+  it ready. Use `--draft` only when the user asks to hold the PR. CI enables auto-merge on a ready open, and it lands
+  once the gate is green and its review threads resolve.

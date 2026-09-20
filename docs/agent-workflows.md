@@ -98,10 +98,10 @@ When a dirty tree is ready to land:
    a raw `/tmp` URL. Rendering tests are not live proof. For authenticated pages, follow
    [`AGENTS.md`](../AGENTS.md#authentication-and-lawyer-access): grant lawyer against `web`'s database and authenticate
    through Rauthy, never a hand-written cookie.
-8. Push and open a PR against `main`, linking its Linear issue with a bare `Closes ENG-NN` trailer in the body — see
-   [Linking a PR to its Linear issue](#linking-a-pr-to-its-linear-issue). Auto-merge lands it once the required checks
-   pass and its review threads are resolved. CI enables auto-merge on open — do not run `gh pr merge` yourself; let
-   auto-merge land it.
+8. Push and open a PR against `main`, ready for review, not as a draft, linking its Linear issue with a bare
+   `Closes ENG-NN` trailer in the body — see [Linking a PR to its Linear issue](#linking-a-pr-to-its-linear-issue).
+   Auto-merge is armed only on a non-draft open; a draft holds the PR for a human. CI enables auto-merge on a ready open
+   — do not run `gh pr merge` yourself; let auto-merge land it.
 9. Clean up task-owned local resources before ending the session. See [Resource cleanup](#resource-cleanup).
 
 If the work should become multiple PRs, decide that before committing. Use the Engineering Council for real sequencing

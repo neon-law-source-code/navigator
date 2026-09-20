@@ -932,6 +932,26 @@ enum SiteCmd {
         /// Directory to walk.
         dir: PathBuf,
     },
+    /// Plan or apply the versioned synthetic staging portfolio fixture:
+    /// stable synthetic people, entity, matter, document, invoice mirror,
+    /// trust movement, IOLTA pool, allocation, and portal bundle
+    /// (`store::synthetic_portfolio`). Connects to whatever store and
+    /// storage the environment names — the same seam `site seed` uses —
+    /// so applying to persistent staging is an explicit operator action
+    /// with the right `NAVIGATOR_SURREAL_*`/storage env pointed there.
+    ///
+    /// Refuses before any write unless `--target staging` is given exactly
+    /// and the deployment has already disclosed
+    /// `NAVIGATOR_SIMULATED_MATTERS=true`; see `docs/environments.md`.
+    /// Idempotent: a repeat `--apply` inserts nothing new.
+    SyntheticPortfolio {
+        /// The only accepted value is `staging`.
+        #[arg(long)]
+        target: Option<String>,
+        /// Perform the writes. Omit for a dry-run report with zero writes.
+        #[arg(long)]
+        apply: bool,
+    },
     /// Forget the stored token for a host (or the sole logged-in host).
     Logout {
         /// Host to log out of. Optional when exactly one host is stored.
@@ -2303,6 +2323,9 @@ fn main() -> ExitCode {
                 runtime().block_on(login::run_login(&host, no_browser))
             }
             SiteCmd::Seed { dir } => runtime().block_on(run_catalog_seed(&dir)),
+            SiteCmd::SyntheticPortfolio { target, apply } => {
+                runtime().block_on(run_synthetic_portfolio(target, apply))
+            }
             SiteCmd::Logout { host } => login::run_logout(host.as_deref()),
             SiteCmd::Whoami { host } => login::run_whoami(host.as_deref()),
             SiteCmd::Mcp { host } => runtime().block_on(mcp_bridge::run(host.as_deref())),
@@ -4214,4 +4237,60 @@ async fn run_catalog_seed(dir: &std::path::Path) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+async fn run_synthetic_portfolio(target: Option<String>, apply: bool) -> ExitCode {
+    let environment = match store::DeploymentEnvironment::from_env() {
+        Ok(environment) => environment,
+        Err(e) => {
+            eprintln!("navigator: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let surreal = match open_surreal().await {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let storage = match cloud::from_env().await {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("navigator: storage: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let result = if apply {
+        store::synthetic_portfolio::apply(&surreal, &storage, environment, target.as_deref()).await
+    } else {
+        store::synthetic_portfolio::dry_run(&surreal, &storage, environment, target.as_deref())
+            .await
+    };
+    let plan = match result {
+        Ok(plan) => plan,
+        Err(e) => {
+            eprintln!("navigator: synthetic portfolio: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    for item in &plan.items {
+        println!(
+            "{}",
+            palette::dim(format!("{:?} {} {}", item.action, item.kind, item.key))
+        );
+    }
+    println!(
+        "{}",
+        palette::dim(format!(
+            "synthetic portfolio v{} against `{}`: {} to create, {} unchanged{}.",
+            plan.version,
+            plan.target,
+            plan.created(),
+            plan.unchanged(),
+            if apply {
+                ""
+            } else {
+                " (dry run; nothing written)"
+            },
+        ))
+    );
+    ExitCode::SUCCESS
 }

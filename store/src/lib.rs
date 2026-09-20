@@ -148,6 +148,7 @@ pub mod source_pages;
 pub mod statutory_deadlines;
 /// The store connection, over the `NAVIGATOR_SURREAL_*` contract.
 pub mod surreal;
+pub mod synthetic_portfolio;
 pub mod template_source;
 pub mod templates;
 pub mod testimonials;

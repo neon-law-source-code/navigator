@@ -2163,6 +2163,46 @@ pub fn contract_review_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// The attorney's imported-Word document review path. Its mutations stay on
+/// the native admin router, just like the surrounding contract-review page.
+pub const LAWYER_CONTRACT_DOCUMENT_REVIEW_PATH: &str = "/app/lawyer/contract-reviews/{id}/document";
+
+/// The gated Dioxus document review screen for one inbound contract review.
+pub fn notation_document_review_router(
+    surreal: store::surreal::SurrealDb,
+    storage: std::sync::Arc<dyn cloud::StorageService>,
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
+        Box::new(move || Box::new(surreal.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+        Box::new(move || Box::new(storage.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+    ]));
+
+    Router::<FullstackState>::new()
+        .route(
+            LAWYER_CONTRACT_DOCUMENT_REVIEW_PATH,
+            get(render_handler)
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_app_brand_mark))
+                .layer(from_fn(inject_person_id))
+                .layer(from_fn(inject_csrf_token))
+                .layer(from_fn(dioxus_document_head)),
+        )
+        .with_state(FullstackState::new(
+            cfg,
+            webapp::notation_document_review::LawyerNotationDocumentReview,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
 /// The lawyer "add entity" form path (#641 Phase 3) — a CRUD create form.
 pub const LAWYER_ENTITY_NEW_PATH: &str = "/app/admin/entities/new";
 /// The admin "add person" form path (#641 Phase 3) — an admin-only CRUD create

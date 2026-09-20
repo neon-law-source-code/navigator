@@ -27,6 +27,7 @@
 use axum::extract::{Extension, Form, Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
+use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -37,6 +38,7 @@ use store::playbooks::{self, Playbook, SEVERITY_HIGH, SEVERITY_LOW, SEVERITY_MED
 use workflows::{DocumentPayload, MachineKind, StateMachineRuntime};
 
 use crate::admin::AdminState;
+use crate::contract_review_walk::INBOUND_CONTRACT_KIND;
 use crate::session::SessionData;
 
 const FINDING_ACCEPTED: &str = "finding_accepted";
@@ -75,8 +77,55 @@ pub enum ReviewActionError {
     FindingNotFound,
     /// Approval blocked: not every finding has an accept/reject decision.
     FindingsUnacted,
+    /// Approval blocked: not every anchored document comment has a decision.
+    DocumentCommentsUnacted,
     /// A store write or the workflow signal failed.
     Db(String),
+}
+
+/// Errors returned by the full-document review mutations. Error redirects use
+/// only these stable codes; document text and comment bodies never enter a
+/// response, log, or workflow payload.
+#[derive(Debug, thiserror::Error)]
+pub enum DocumentReviewError {
+    #[error("review not found or not authorized")]
+    NotFound,
+    #[error("document review is not open")]
+    NotOpen,
+    #[error("expected parent version has moved on")]
+    Conflict,
+    #[error("unsupported or missing document anchor")]
+    Anchor,
+    #[error("protected token changed")]
+    Protected,
+    #[error("invalid decision")]
+    Decision,
+    #[error("document operation failed")]
+    Store(#[from] store::notation_documents::NotationDocumentError),
+    #[error("document operation failed")]
+    Serde(#[from] serde_json::Error),
+    #[error("document operation failed")]
+    Parse(#[from] word::BlockEditError),
+}
+
+#[derive(Deserialize)]
+pub struct DocumentEditForm {
+    expected_parent_version_id: String,
+    anchor: String,
+    text: String,
+    #[serde(default)]
+    locked_kinds: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct DocumentCommentForm {
+    anchor: String,
+    body: String,
+}
+
+#[derive(Deserialize)]
+pub struct DocumentDecisionForm {
+    decision: String,
 }
 
 impl std::fmt::Display for ReviewActionError {
@@ -88,6 +137,10 @@ impl std::fmt::Display for ReviewActionError {
             Self::FindingsUnacted => write!(
                 f,
                 "every finding must be accepted or rejected before the memo can be approved"
+            ),
+            Self::DocumentCommentsUnacted => write!(
+                f,
+                "every document comment must be accepted, rejected, or edited before the memo can be approved"
             ),
             Self::Db(e) => write!(f, "database: {e}"),
         }
@@ -282,6 +335,257 @@ pub async fn save_summary(
     }
 }
 
+fn document_redirect(review_id: Uuid, code: &str) -> Response {
+    Redirect::to(&format!(
+        "/app/lawyer/contract-reviews/{review_id}/document?error={code}"
+    ))
+    .into_response()
+}
+
+fn protected_kinds(values: &[String]) -> Vec<store::notation_documents::ProtectedTokenKind> {
+    values
+        .iter()
+        .filter_map(|value| match value.as_str() {
+            "number" => Some(store::notation_documents::ProtectedTokenKind::Number),
+            "percentage" => Some(store::notation_documents::ProtectedTokenKind::Percentage),
+            "currency" => Some(store::notation_documents::ProtectedTokenKind::Currency),
+            "date" => Some(store::notation_documents::ProtectedTokenKind::Date),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Append one child source version from the supported block editor. The
+/// parent compare-and-swap is the authoritative concurrent-save gate.
+#[allow(clippy::too_many_arguments)]
+pub async fn save_document_edit(
+    surreal: &store::surreal::SurrealDb,
+    storage: &std::sync::Arc<dyn cloud::StorageService>,
+    review_id: Uuid,
+    person_id: Option<Uuid>,
+    role: Role,
+    input: &DocumentEditForm,
+) -> Result<(), DocumentReviewError> {
+    let loaded = load_review_scoped(surreal, review_id, person_id, role)
+        .await
+        .map_err(|_| DocumentReviewError::NotFound)?;
+    if loaded.review.status != contract_reviews::STATUS_ANALYZED
+        || loaded.notation.state != "lawyer_review"
+    {
+        return Err(DocumentReviewError::NotOpen);
+    }
+    let expected_parent_version_id = input
+        .expected_parent_version_id
+        .parse::<Uuid>()
+        .map_err(|_| DocumentReviewError::Conflict)?;
+    let current = store::notation_documents::current_version(
+        surreal,
+        loaded.notation.project_id,
+        loaded.notation.id,
+    )
+    .await?
+    .ok_or(DocumentReviewError::NotFound)?;
+    if current.id != expected_parent_version_id {
+        return Err(DocumentReviewError::Conflict);
+    }
+    let markdown = store::notation_documents::markdown_of(surreal, storage, &current).await?;
+    let trusted = word::TrustedNotationMarkdown::from_governed_store(markdown.clone());
+    let document = word::CanonicalDocument::from_markdown(&trusted);
+    let edited = document.with_block_text(&input.anchor, &input.text)?;
+    let edited_markdown = edited.to_markdown();
+    if store::notation_documents::protected_tokens_changed(
+        &markdown,
+        edited_markdown.as_ref(),
+        &protected_kinds(&input.locked_kinds),
+    ) {
+        return Err(DocumentReviewError::Protected);
+    }
+    let manifest = serde_json::to_vec(&edited.block_manifest())?;
+    let Some(person_id) = person_id else {
+        return Err(DocumentReviewError::NotFound);
+    };
+    let recorded_at = Utc::now().to_rfc3339();
+    let child = store::notation_documents::append_edit(
+        surreal,
+        storage,
+        store::notation_documents::AppendEdit {
+            project_id: loaded.notation.project_id,
+            notation_id: loaded.notation.id,
+            expected_parent_version_id,
+            markdown: edited_markdown.as_ref().as_bytes(),
+            anchor_manifest: &manifest,
+            parser_version: &current.parser_version,
+            schema_version: current.schema_version,
+            authored_by_person_id: person_id,
+            recorded_at: &recorded_at,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        store::notation_documents::NotationDocumentError::Conflict { .. } => {
+            DocumentReviewError::Conflict
+        }
+        other => DocumentReviewError::Store(other),
+    })?;
+    let anchors = edited
+        .block_manifest()
+        .into_iter()
+        .map(|entry| entry.anchor)
+        .collect::<Vec<_>>();
+    store::notation_documents::carry_comments_to_version(
+        surreal,
+        loaded.notation.project_id,
+        loaded.notation.id,
+        current.id,
+        child.id,
+        &anchors,
+    )
+    .await?;
+    Ok(())
+}
+
+/// `POST /app/lawyer/contract-reviews/{id}/document/edit`.
+pub async fn save_document_edit_route(
+    State(state): State<AdminState>,
+    Path(review_id): Path<Uuid>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<DocumentEditForm>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return document_redirect(review_id, "not-found");
+    };
+    let result = save_document_edit(
+        &state.surreal,
+        &state.storage,
+        review_id,
+        session.person_id,
+        session.role,
+        &input,
+    )
+    .await;
+    match result {
+        Ok(()) => document_redirect(review_id, "saved"),
+        Err(DocumentReviewError::Conflict) => document_redirect(review_id, "conflict"),
+        Err(DocumentReviewError::Protected) => document_redirect(review_id, "protected"),
+        Err(DocumentReviewError::NotOpen) => document_redirect(review_id, "closed"),
+        Err(DocumentReviewError::Anchor | DocumentReviewError::Parse(_)) => {
+            document_redirect(review_id, "unsupported")
+        }
+        Err(DocumentReviewError::Decision) => document_redirect(review_id, "unsupported"),
+        Err(
+            DocumentReviewError::NotFound
+            | DocumentReviewError::Store(_)
+            | DocumentReviewError::Serde(_),
+        ) => document_redirect(review_id, "not-found"),
+    }
+}
+
+/// Add one comment to the current source version after checking that its
+/// anchor is present in the governed manifest.
+pub async fn add_document_comment_route(
+    State(state): State<AdminState>,
+    Path(review_id): Path<Uuid>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<DocumentCommentForm>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return document_redirect(review_id, "not-found");
+    };
+    let result = async {
+        let loaded = load_review_scoped(&state.surreal, review_id, session.person_id, session.role)
+            .await
+            .map_err(|_| DocumentReviewError::NotFound)?;
+        if loaded.review.status != contract_reviews::STATUS_ANALYZED
+            || loaded.notation.state != "lawyer_review"
+        {
+            return Err(DocumentReviewError::NotOpen);
+        }
+        let Some(person_id) = session.person_id else {
+            return Err(DocumentReviewError::NotFound);
+        };
+        let current = store::notation_documents::current_version(
+            &state.surreal,
+            loaded.notation.project_id,
+            loaded.notation.id,
+        )
+        .await?
+        .ok_or(DocumentReviewError::NotFound)?;
+        let manifest =
+            store::notation_documents::anchor_manifest_of(&state.surreal, &state.storage, &current)
+                .await?;
+        let entries: Vec<word::BlockManifestEntry> = serde_json::from_slice(&manifest)?;
+        if !entries.iter().any(|entry| entry.anchor == input.anchor) {
+            return Err(DocumentReviewError::Anchor);
+        }
+        if input.body.trim().is_empty() {
+            return Err(DocumentReviewError::Anchor);
+        }
+        store::notation_documents::add_comment(
+            &state.surreal,
+            loaded.notation.project_id,
+            loaded.notation.id,
+            current.id,
+            &input.anchor,
+            person_id,
+            input.body.trim(),
+        )
+        .await?;
+        Ok::<(), DocumentReviewError>(())
+    }
+    .await;
+    match result {
+        Ok(()) => document_redirect(review_id, "comment-added"),
+        Err(DocumentReviewError::NotOpen) => document_redirect(review_id, "closed"),
+        Err(DocumentReviewError::Anchor) => document_redirect(review_id, "unsupported"),
+        Err(_) => document_redirect(review_id, "not-found"),
+    }
+}
+
+/// Decide exactly one anchored comment; the store rejects duplicate decisions
+/// and also verifies that the comment belongs to this scoped Notation.
+pub async fn decide_document_comment_route(
+    State(state): State<AdminState>,
+    Path((review_id, comment_id)): Path<(Uuid, Uuid)>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<DocumentDecisionForm>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return document_redirect(review_id, "not-found");
+    };
+    let result = async {
+        let loaded = load_review_scoped(&state.surreal, review_id, session.person_id, session.role)
+            .await
+            .map_err(|_| DocumentReviewError::NotFound)?;
+        if loaded.review.status != contract_reviews::STATUS_ANALYZED
+            || loaded.notation.state != "lawyer_review"
+        {
+            return Err(DocumentReviewError::NotOpen);
+        }
+        let Some(person_id) = session.person_id else {
+            return Err(DocumentReviewError::NotFound);
+        };
+        let recorded_at = Utc::now().to_rfc3339();
+        store::notation_documents::decide_comment(
+            &state.surreal,
+            loaded.notation.project_id,
+            loaded.notation.id,
+            comment_id,
+            &input.decision,
+            person_id,
+            &recorded_at,
+        )
+        .await
+        .map_err(|_| DocumentReviewError::Decision)
+    }
+    .await;
+    match result {
+        Ok(()) => document_redirect(review_id, "decided"),
+        Err(DocumentReviewError::NotOpen) => document_redirect(review_id, "closed"),
+        Err(DocumentReviewError::Decision) => document_redirect(review_id, "decision"),
+        Err(_) => document_redirect(review_id, "not-found"),
+    }
+}
+
 /// Assemble + deliver the review memo and approve. The one command behind both
 /// the lawyer approve control and the REST door. Refuses until every finding has
 /// an accept/reject decision.
@@ -304,6 +608,26 @@ pub async fn approve_review(
         .unwrap_or_default();
     if (0..findings.len()).any(|i| !acted.contains(&i)) {
         return Err(ReviewActionError::FindingsUnacted);
+    }
+    if let Some(current) = store::notation_documents::current_version(
+        surreal,
+        loaded.notation.project_id,
+        loaded.notation.id,
+    )
+    .await
+    .map_err(|error| ReviewActionError::Db(error.to_string()))?
+    {
+        let all_decided = store::notation_documents::all_comments_decided(
+            surreal,
+            loaded.notation.project_id,
+            loaded.notation.id,
+            current.id,
+        )
+        .await
+        .map_err(|error| ReviewActionError::Db(error.to_string()))?;
+        if !all_decided {
+            return Err(ReviewActionError::DocumentCommentsUnacted);
+        }
     }
     deliver_memo(surreal, storage, runtime, &loaded, &findings)
         .await
@@ -337,6 +661,13 @@ pub async fn approve(
             "/app/lawyer/contract-reviews/{review_id}?error={}",
             crate::admin::encode_query_value(
                 "Every finding must be accepted or rejected before the memo can be approved."
+            )
+        ))
+        .into_response(),
+        Err(ReviewActionError::DocumentCommentsUnacted) => Redirect::to(&format!(
+            "/app/lawyer/contract-reviews/{review_id}?error={}",
+            crate::admin::encode_query_value(
+                "Every document comment must be accepted, rejected, or edited before the memo can be approved."
             )
         ))
         .into_response(),
@@ -414,6 +745,7 @@ async fn deliver_memo(
     findings: &[Finding],
 ) -> anyhow::Result<()> {
     let notation_id = loaded.notation.id;
+    export_and_verify_review_document(surreal, storage, loaded).await?;
     let risk_summary = loaded.review.risk_summary.clone().unwrap_or_default();
     let accepted: Vec<&Finding> = findings.iter().filter(|f| f.accepted).collect();
     let typst_source = assemble_memo_typst(&MemoInput {
@@ -467,6 +799,124 @@ async fn deliver_memo(
     .await?;
     sync_notation_state(surreal, notation_id, s.as_str()).await?;
     Ok(())
+}
+
+/// Reapply the governed Notation edit projection to the immutable Word
+/// baseline, then independently validate the resulting package before filing
+/// it as internal attorney work product. The managed exporter refuses a
+/// missing or ambiguous embedded anchor; it never falls back to text matching.
+async fn export_and_verify_review_document(
+    surreal: &store::surreal::SurrealDb,
+    storage: &std::sync::Arc<dyn cloud::StorageService>,
+    loaded: &Loaded,
+) -> anyhow::Result<()> {
+    let Some(document) = store::notation_documents::find_document(
+        surreal,
+        loaded.notation.project_id,
+        loaded.notation.id,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+    let Some(current) = store::notation_documents::current_version(
+        surreal,
+        loaded.notation.project_id,
+        loaded.notation.id,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+    let original = store::assets::fetch(surreal, storage, document.original_asset_id).await?;
+    let adapter = word::ManagedAdapter::from_env();
+    let parsed = word::parse_with_adapter(&adapter, "source.docx", &original).await?;
+    let governed = store::notation_documents::markdown_of(surreal, storage, &current).await?;
+    let edited = word::CanonicalDocument::from_markdown(
+        &word::TrustedNotationMarkdown::from_governed_store(governed),
+    );
+    let changes = changed_blocks(&edited, &parsed.canonical_outline());
+    let exported = word::export_with_adapter(&adapter, "reviewed.docx", &original, changes).await?;
+    word::verify_with_adapter(&adapter, "reviewed.docx", &exported).await?;
+    store::documents::ingest_bytes(
+        surreal,
+        storage,
+        &store::documents::IngestArgs {
+            project_id: loaded.notation.project_id,
+            source: store::documents::source::GENERATED,
+            filename: "reviewed-contract.docx",
+            kind: INBOUND_CONTRACT_KIND,
+            content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            description: Some("Attorney-reviewed Word contract"),
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::INTERNAL,
+        },
+        &exported,
+    )
+    .await?;
+    Ok(())
+}
+
+fn changed_blocks(
+    edited: &word::CanonicalDocument,
+    original: &word::CanonicalDocument,
+) -> Vec<word::ExportChange> {
+    let mut original_by_anchor = std::collections::BTreeMap::new();
+    collect_block_text(&original.stories, &mut original_by_anchor);
+    let mut changes = Vec::new();
+    collect_changes(&edited.stories, &original_by_anchor, &mut changes);
+    changes
+}
+
+fn collect_block_text(
+    stories: &[word::CanonicalStory],
+    output: &mut std::collections::BTreeMap<String, (String, bool)>,
+) {
+    for story in stories {
+        collect_block_texts(&story.blocks, output);
+    }
+}
+
+fn collect_block_texts(
+    blocks: &[word::CanonicalBlock],
+    output: &mut std::collections::BTreeMap<String, (String, bool)>,
+) {
+    for block in blocks {
+        output.insert(
+            block.anchor.clone(),
+            (block.text.clone(), block.is_editable()),
+        );
+        collect_block_texts(&block.children, output);
+    }
+}
+
+fn collect_changes(
+    stories: &[word::CanonicalStory],
+    original: &std::collections::BTreeMap<String, (String, bool)>,
+    output: &mut Vec<word::ExportChange>,
+) {
+    for story in stories {
+        collect_changes_from_blocks(&story.blocks, original, output);
+    }
+}
+
+fn collect_changes_from_blocks(
+    blocks: &[word::CanonicalBlock],
+    original: &std::collections::BTreeMap<String, (String, bool)>,
+    output: &mut Vec<word::ExportChange>,
+) {
+    for block in blocks {
+        if let Some((old_text, editable)) = original.get(&block.anchor) {
+            if *editable && block.is_editable() && old_text != &block.text {
+                output.push(word::ExportChange {
+                    anchor: block.anchor.clone(),
+                    replacement_text: block.text.clone(),
+                    author: "Neon Law attorney".to_string(),
+                });
+            }
+        }
+        collect_changes_from_blocks(&block.children, original, output);
+    }
 }
 
 /// What the memo is assembled from.

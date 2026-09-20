@@ -27,8 +27,7 @@ use crate::runtime::{SignalContext, StateMachineRuntime, WorkflowRuntimeError};
 use crate::spec::{MachineKind, QuestionnaireSpec, StateName, WorkflowSpecError};
 use crate::specs::{
     audiences_from_template, audiences_from_yaml, catalog_spec_yaml, choices_from_template,
-    choices_from_yaml, custom_questions_from_template, custom_questions_from_yaml,
-    merge_custom_questions, prompt_overrides_from_template, prompt_overrides_from_yaml,
+    choices_from_yaml, prompt_overrides_from_template, prompt_overrides_from_yaml,
     questionnaire_spec_from_template, questionnaire_spec_from_yaml, template_has_questionnaire,
 };
 
@@ -930,13 +929,8 @@ async fn questionnaire_definition_for(
 
 /// Build a [`QuestionnaireDefinition`] from a bundled standalone spec YAML.
 fn definition_from_yaml(yaml: &str) -> Result<QuestionnaireDefinition, NotationSessionError> {
-    let mut prompts = prompt_overrides_from_yaml(yaml)?;
-    let mut choices = choices_from_yaml(yaml)?;
-    merge_custom_questions(
-        &custom_questions_from_yaml(yaml)?,
-        &mut prompts,
-        &mut choices,
-    );
+    let prompts = prompt_overrides_from_yaml(yaml)?;
+    let choices = choices_from_yaml(yaml)?;
     Ok(QuestionnaireDefinition {
         spec: questionnaire_spec_from_yaml(yaml)?,
         prompts,
@@ -948,13 +942,8 @@ fn definition_from_yaml(yaml: &str) -> Result<QuestionnaireDefinition, NotationS
 /// Build a [`QuestionnaireDefinition`] from a template's markdown body
 /// (its `questionnaire:` frontmatter block).
 fn definition_from_body(body: &str) -> Result<QuestionnaireDefinition, NotationSessionError> {
-    let mut prompts = prompt_overrides_from_template(body)?;
-    let mut choices = choices_from_template(body)?;
-    merge_custom_questions(
-        &custom_questions_from_template(body)?,
-        &mut prompts,
-        &mut choices,
-    );
+    let prompts = prompt_overrides_from_template(body)?;
+    let choices = choices_from_template(body)?;
     Ok(QuestionnaireDefinition {
         spec: questionnaire_spec_from_template(body)?,
         prompts,
@@ -1140,9 +1129,9 @@ fn metadata_lookup<'a, T>(map: &'a BTreeMap<String, T>, state: &str) -> Option<&
 }
 
 /// Resolve a stored choice `value` to its human label for a question
-/// `state`, given the template's merged choice metadata (`value → label`
+/// `state`, given the template's choice metadata (`value → label`
 /// keyed by custom-question key / question code — see
-/// [`merged_choices_from_yaml`]). Returns `None` for a free-text state
+/// [`choices_from_yaml`]). Returns `None` for a free-text state
 /// (no choice metadata) or a value that isn't a declared option, so the
 /// caller falls back to the raw value. Lets a rendered document show the
 /// label ("Married"), not the stored key ("married"), everywhere the
@@ -1194,7 +1183,7 @@ fn is_multi_valued_choice(state: &str) -> bool {
 /// closed-choice check every answer write shares.
 ///
 /// A choice question declares a closed `value → label` set
-/// (`custom_questions.<key>.choices`). The render side resolves a stored
+/// (`choices.<key>`). The render side resolves a stored
 /// value through [`choice_label`] and falls back to the raw string when the
 /// value is not a declared option, so an undeclared value is substituted
 /// verbatim into whatever the template says — including the engagement
@@ -1246,23 +1235,6 @@ fn ensure_declared_choice(
         return Ok(());
     }
     Err(undeclared())
-}
-
-/// The merged `value → label` choice metadata for a bundled spec YAML,
-/// keyed by custom-question key / question code — the same map the walker
-/// resolves a question's radio options from ([`choices_from_yaml`] merged
-/// with each `custom_questions.<key>.choices`). Pair with [`choice_label`]
-/// to turn a stored choice key back into its label at render time.
-pub fn merged_choices_from_yaml(
-    yaml: &str,
-) -> Result<BTreeMap<String, BTreeMap<String, String>>, WorkflowSpecError> {
-    let mut choices = choices_from_yaml(yaml)?;
-    merge_custom_questions(
-        &custom_questions_from_yaml(yaml)?,
-        &mut BTreeMap::new(),
-        &mut choices,
-    );
-    Ok(choices)
 }
 
 fn metadata_keys_for_state(state: &str) -> Vec<&str> {
@@ -3390,7 +3362,7 @@ mod tests {
         let state = "custom_multiple_choice__practice_areas";
         let mut declared = BTreeMap::new();
         // Keyed by the role suffix (`metadata_lookup`/`role_key_for_state`),
-        // not the full state name — the same key `custom_questions.<key>`
+        // not the full state name — the same key `choices.<key>`
         // uses in template frontmatter.
         declared.insert(
             "practice_areas".to_string(),

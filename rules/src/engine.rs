@@ -1223,7 +1223,7 @@ mod tests {
         let no_workflow = source(
             "templates/github/create_issue.md",
             "---\nkind: github\ntitle: T\nquestionnaire:\n  BEGIN:\n    _: custom_text__x\n  \
-             custom_text__x:\n    _: END\n  END: {}\ncustom_questions:\n  x:\n    prompt: P\n---\n\nBody.\n",
+             custom_text__x:\n    _: END\n  END: {}\nprompts:\n  x: P\n---\n\nBody.\n",
         );
         let codes = canonical_question_codes();
         assert!(
@@ -1251,7 +1251,7 @@ mod tests {
             F104FlowQuestionCodes::questionnaire_only(codes)
                 .lint(&undefined)
                 .iter()
-                .any(|v| v.message.contains("custom_questions")),
+                .any(|v| v.message.contains("prompts")),
             "questionnaire validation must still run",
         );
     }

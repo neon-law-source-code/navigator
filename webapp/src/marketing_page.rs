@@ -40,6 +40,8 @@ pub const MARKETING_STYLESHEET_HREF: &str = "/public/css/marketing-page.css";
 pub struct Run {
     pub text: String,
     pub emphasis: bool,
+    #[serde(default)]
+    pub code: bool,
     /// When set, the run renders as an `<a>` to this href rather than as text.
     pub href: Option<String>,
 }
@@ -51,6 +53,7 @@ impl Run {
         Self {
             text: text.to_string(),
             emphasis: false,
+            code: false,
             href: None,
         }
     }
@@ -61,6 +64,7 @@ impl Run {
         Self {
             text: text.to_string(),
             emphasis: true,
+            code: false,
             href: None,
         }
     }
@@ -71,6 +75,7 @@ impl Run {
         Self {
             text: text.to_string(),
             emphasis: false,
+            code: false,
             href: Some(href.to_string()),
         }
     }
@@ -297,6 +302,9 @@ pub struct PageContent {
     pub hero_lines: Vec<Vec<HeroWord>>,
     /// The paragraph under the hero statement. Empty renders none.
     pub hero_lead: String,
+    /// Linked or emphasized opening prose. Empty uses `hero_lead`.
+    #[serde(default)]
+    pub hero_lead_runs: Paragraph,
     /// The one call to action in the hero. `None` renders none — the closing
     /// [`Band::Cta`] is still where a page's address lives.
     pub hero_cta: Option<HeroCta>,
@@ -559,7 +567,11 @@ pub fn MarketingPage(
                                     }
                                 }
                             }
-                            if !content.hero_lead.is_empty() {
+                            if !content.hero_lead_runs.is_empty() {
+                                div { class: "fm-hero__lead commitment-hero__lead",
+                                    Prose { runs: content.hero_lead_runs.clone() }
+                                }
+                            } else if !content.hero_lead.is_empty() {
                                 p { class: "fm-hero__lead commitment-hero__lead", "{content.hero_lead}" }
                             }
                             if let Some(cta) = content.hero_cta.as_ref() {
@@ -605,8 +617,9 @@ pub fn MarketingPage(
 
 /// Render a page's bands in order.
 #[component]
-fn Bands(
+pub(crate) fn Bands(
     items: Vec<Band>,
+    #[props(default)] notation_mark: bool,
     #[props(default)] query: String,
     #[props(default)] lead_copy: LeadCaptureCopy,
     #[props(default)] lead_context: LeadCaptureContext,
@@ -760,12 +773,14 @@ fn Bands(
                                     div { class: "fm-project-network__core",
                                         img {
                                             class: "fm-project-network__wheel",
-                                            src: "/public/navigator-wheel.svg",
-                                            alt: "Neon Law Navigator wheel",
+                                            src: if notation_mark { "/public/notation-pen.svg" } else { "/public/navigator-wheel.svg" },
+                                            alt: if notation_mark { "Notation pen" } else { "Neon Law Navigator wheel" },
                                         }
                                         p { class: "fm-project-network__eyebrow", "{center_eyebrow}" }
                                         h3 { "{center_heading}" }
-                                        p { "{center_detail}" }
+                                        if !center_detail.is_empty() {
+                                            p { "{center_detail}" }
+                                        }
                                     }
                                     ul { class: "fm-project-network__lane fm-project-network__lane--right",
                                         "aria-label": "{right_lane_label}",
@@ -941,7 +956,9 @@ pub(crate) fn BandHeading(
 ) -> Element {
     rsx! {
         div { class: "fm-band__heading",
-            p { class: "fm-overline", "{overline}" }
+            if !overline.is_empty() {
+                p { class: "fm-overline", "{overline}" }
+            }
             h2 { class: "fm-band__title", "{heading}" }
             if let Some(description) = description.as_ref() {
                 p { class: "fm-band__description", "{description}" }
@@ -965,7 +982,7 @@ pub(crate) fn BandHeading(
 /// button. Those are styled, and they carry their own affordance. A run inside a
 /// sentence is prose.
 #[component]
-fn Prose(runs: Paragraph) -> Element {
+pub(crate) fn Prose(runs: Paragraph) -> Element {
     rsx! {
         p {
             for run in runs.iter() {
@@ -973,6 +990,8 @@ fn Prose(runs: Paragraph) -> Element {
                     a { href: "{href}", "{run.text}" }
                 } else if run.emphasis {
                     strong { "{run.text}" }
+                } else if run.code {
+                    code { "{run.text}" }
                 } else {
                     "{run.text}"
                 }
@@ -1220,9 +1239,6 @@ mod tests {
     /// A page exercising every band shape in the vocabulary, in order.
     fn sample_page() -> PageContent {
         PageContent {
-            hero_lines: Vec::new(),
-            hero_lead: String::new(),
-            hero_cta: None,
             head_title: "Sample Practice — Neon Law".to_string(),
             meta_description: "The technology function, run by the firm.".to_string(),
             title: "Sample Practice".to_string(),
@@ -1318,6 +1334,7 @@ mod tests {
                     email_subject: None,
                 },
             ],
+            ..PageContent::default()
         }
     }
 
@@ -1588,6 +1605,7 @@ mod tests {
             let content = PageContent {
                 hero_lines: Vec::new(),
                 hero_lead: String::new(),
+                hero_lead_runs: Vec::new(),
                 hero_cta: None,
                 head_title: "T".to_string(),
                 meta_description: "D".to_string(),
@@ -1662,6 +1680,7 @@ mod tests {
             let content = PageContent {
                 hero_lines: Vec::new(),
                 hero_lead: String::new(),
+                hero_lead_runs: Vec::new(),
                 hero_cta: None,
                 head_title: "Fractional General Counsel — Neon Law".to_string(),
                 meta_description: "Company counsel on a flat monthly fee.".to_string(),

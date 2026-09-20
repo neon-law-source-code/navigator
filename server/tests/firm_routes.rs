@@ -1730,23 +1730,29 @@ async fn blog_kebab_slug_is_served_without_redirect() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-// ---- Notations catalog (same hero as workshops and presentations) ----
+// ---- Notations format introduction and template catalog ----
 
 #[tokio::test]
-async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() {
+async fn notations_page_renders_format_structure_and_template_links() {
     let app = site_app().await;
     let resp = anon_get(&app, "/notations").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("<title>Neon Law | Notations</title>"),
-        "brand-prefixed document title: {body}"
+        body.contains("notations-page"),
+        "notation format page: {body}"
     );
-    assert!(
-        body.contains(r#"class="catalog-hero""#),
-        "catalog hero: {body}"
-    );
-    assert!(body.contains(">Notations<"), "page heading: {body}");
+    for section in ["notation-flow", "notation-source", "rules", "templates"] {
+        assert!(
+            body.contains(&format!("id=\"{section}\"")),
+            "missing {section}"
+        );
+    }
+    assert!(body.contains("/public/notation-pen.svg"));
+    assert!(!body.contains("/public/navigator-wheel.svg"));
+    assert!(body.contains("/public/css/notations.css"));
+    let navigator = body_string(anon_get(&app, "/navigator").await).await;
+    assert!(!navigator.contains("id=\"notation-flow\""));
     // Every card's default link opens the notation's own show page now — the
     // raw GitHub source lives on that page, not the catalog card.
     assert!(

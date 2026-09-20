@@ -13,7 +13,7 @@
 //! template's `origin_url`) when one is declared — `None` for a letter. The
 //! fields the questionnaire fills in are not repeated here: the YAML
 //! frontmatter rendered below already names them (`questionnaire:`,
-//! `custom_questions:`), so a separate table would only duplicate it.
+//! `prompts:` / `choices:`), so a separate table would only duplicate it.
 //!
 //! Every notation gets its own path, the same shape as
 //! [`crate::catalog_material`]'s `/workshops/{slug}` and

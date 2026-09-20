@@ -101,6 +101,12 @@ prompts:
   client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
   project_name: What is the project name for this engagement?
   lawyer_dri: Which lawyer is directly responsible for this engagement?
+  engagement_scope: >-
+    In a sentence or two, what is the minimum scope of this engagement.
+  engagement_start_date: When does this engagement begin?
+  governing_law: >-
+    Which state's law governs this engagement? Nevada, unless the Firm has
+    agreed otherwise; California and Washington are the alternatives available.
 audiences:
   client_name: client
   project_name: lawyer
@@ -110,20 +116,11 @@ audiences:
   engagement_scope: lawyer
   entity: lawyer
   principal_office: lawyer
-custom_questions:
-  engagement_scope:
-    prompt: >-
-      In a sentence or two, what is the minimum scope of this engagement.
-  engagement_start_date:
-    prompt: When does this engagement begin?
+choices:
   governing_law:
-    prompt: >-
-      Which state's law governs this engagement? Nevada, unless the Firm has
-      agreed otherwise; California and Washington are the alternatives available.
-    choices:
-      nevada: Nevada
-      california: California
-      washington: Washington
+    nevada: Nevada
+    california: California
+    washington: Washington
 questionnaire:
   BEGIN:                                     { _: entity }
   entity:                                    { _: address__principal_office }
@@ -179,10 +176,10 @@ prompt (your editor shows it when you hover the state). Rewording that prompt fo
 rule: add a `prompts:` entry keyed by the state's role (e.g. `client`) only when this template genuinely needs different
 wording. Improving the bank prompt itself is usually the better fix, because every template inherits it at once.
 
-A **one-off** question — something no bank type covers — uses a `custom_*` type and is defined in `custom_questions:`,
-keyed by the part of the state after the **first** `__` (so `custom_single_choice__management_structure` is keyed
-`management_structure`). That block is the single home for a custom question's wording, and, for `custom_single_choice`
-/ `custom_multiple_choice`, its options:
+A **one-off** question uses a `custom_*` type in the questionnaire. Its wording lives under the top-level `prompts:`
+key, and its options live under the top-level `choices:` key. Both maps use the question code after the **first** `__`:
+`custom_single_choice__management_structure` looks up `management_structure`. Bank-backed prompt overrides use that same
+`prompts:` map. The question's type remains explicit in the questionnaire:
 
 ```yaml
 questionnaire:
@@ -190,19 +187,18 @@ questionnaire:
   custom_single_choice__management_structure:  { _: custom_datetime__formation_date }
   custom_datetime__formation_date:             { _: END }
   END: {}
-custom_questions:
+prompts:
+  management_structure: How will the company be managed?
+  formation_date: When was the formation date?
+choices:
   management_structure:
-    prompt: How will the company be managed?
-    choices:
-      members: Managed by its members — the owners
-      managers: Managed by appointed managers
-  formation_date:
-    prompt: When was the formation date?
+    members: Managed by its members — the owners
+    managers: Managed by appointed managers
 ```
 
-N104 enforces the split: every `custom_*` state needs a matching `custom_questions:` entry with a non-empty `prompt`; a
-choice type needs `choices` and every other custom type must not carry them. Options live inside `custom_questions`, so
-there is no top-level `choices:` key.
+N104 requires a non-empty `prompts.<question_code>` for every `custom_*` state. A custom choice type also needs a
+non-empty `choices.<question_code>` mapping of stored values to display labels. Other custom types must not carry
+choices. The same keys are read by the questionnaire runtime, document renderer, CLI preview, and editor hovers.
 
 ### One rule worth saying twice: `questionnaire` and `workflow` travel together
 
@@ -298,8 +294,8 @@ what each code actually checks, its severity, and whether it autofixes, see the 
 | `confidential` | yes | `true` or `false` | N105 |
 | `questionnaire` | yes (paired) | a `BEGIN` → `END` ladder | N104 |
 | `workflow` | yes (paired) | a `BEGIN` → `END` path that includes `lawyer_review` | N104, N106 |
-| `custom_questions` | with any `custom_*` state | wording (and options) for one-off questions | N104 |
-| `prompts` | no | override the bank's wording for a bank-backed state | N104 |
+| `prompts` | with any `custom_*` state; optional for bank questions | wording keyed by question code | N104 |
+| `choices` | with a custom choice state | option values and labels keyed by question code | N104 |
 | `output` | no | `letter`, `agreement`, `pleading`, or `form` (omit for a plain page) | N109 |
 | `form` | with `output: form` | the bundled form's code | N109 |
 | `origin_url` | forms only | the `.gov` page the blank form came from | N109, N110 |
@@ -359,7 +355,8 @@ firm's.
 | `kind` | yes | `github` | S103, S104 |
 | `title` | yes | any non-empty text | N101 |
 | `questionnaire` | yes | a linear `BEGIN` → `END` ladder | N104, N113, N118, N119 |
-| `custom_questions` | yes | wording (and options) for every `custom_*` state | N104, N119 |
+| `prompts` | yes | wording for every `custom_*` state | N104 |
+| `choices` | for choice states | option values and labels | N104, N119 |
 
 Every key the legal contract requires — `code`, `respondent_type`, `jurisdiction`, `confidential`, `workflow`, `output`
 — is absent here, and that is the point: a GitHub notation is engineering intake, so there is no respondent to bind, no

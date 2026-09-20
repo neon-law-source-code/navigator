@@ -24,26 +24,23 @@ questionnaire:
   custom_single_choice__governing_law:
     _: END
   END: {}
-custom_questions:
-  engagement_start_date:
-    prompt: When does this engagement begin?
-  engagement_scope:
-    prompt: >-
-      In a sentence or two, what is the minimum scope of this engagement — the work the Firm is committing to right now?
-      Everything else is added later in writing.
+prompts:
+  engagement_start_date: When does this engagement begin?
+  engagement_scope: >-
+    In a sentence or two, what is the minimum scope of this engagement — the work the Firm is committing to right now?
+    Everything else is added later in writing.
+  arbitration_forum: Which administrator hears the arbitration, and where is it seated?
+  governing_law: >-
+    Which state's law governs this engagement? Nevada by default; choose California or Washington only if the client is
+    located there.
+choices:
   arbitration_forum:
-    prompt: Which administrator hears the arbitration, and where is it seated?
-    choices:
-      jams: JAMS, seated in Las Vegas, Nevada
-      aaa: The American Arbitration Association, seated in Las Vegas, Nevada
+    jams: JAMS, seated in Las Vegas, Nevada
+    aaa: The American Arbitration Association, seated in Las Vegas, Nevada
   governing_law:
-    prompt: >-
-      Which state's law governs this engagement? Nevada by default; choose California or Washington only if the client
-      is located there.
-    choices:
-      nevada: Nevada
-      california: California
-      washington: Washington
+    nevada: Nevada
+    california: California
+    washington: Washington
 workflow:
   BEGIN:
     _: lawyer_review

@@ -323,14 +323,14 @@ fn question_type_hover(text: &str, byte: usize) -> Option<(std::ops::Range<usize
 
 /// Hover doc for a change-surface choice key, when `byte` falls on one of
 /// the tokens under a GitHub notation's
-/// `custom_questions.change_surface.choices`.
+/// `choices.change_surface`.
 ///
 /// The surface is the field that decides which gate the work has to clear,
 /// so an author picking a value sees the consequence rather than guessing
 /// from a two-word label. Scoped to the `choices:` mapping of that one
 /// question, so the word `web` elsewhere in the frontmatter stays inert.
 fn change_surface_hover(text: &str, byte: usize) -> Option<(std::ops::Range<usize>, String)> {
-    if !in_frontmatter_block(text, byte, "custom_questions:") {
+    if !in_frontmatter_block(text, byte, "choices:") {
         return None;
     }
     let range = identifier_at(text, byte)?;
@@ -341,7 +341,7 @@ fn change_surface_hover(text: &str, byte: usize) -> Option<(std::ops::Range<usiz
 }
 
 /// True when the line holding `byte` is an entry under
-/// `custom_questions.<change-surface role>.choices:`.
+/// `choices.<change-surface role>:`.
 ///
 /// Walks back through progressively shallower parent keys the way a YAML
 /// reader would, so it recognizes the nesting rather than pattern-matching
@@ -352,7 +352,7 @@ fn under_change_surface_choices(text: &str, byte: usize) -> bool {
     };
     let line_start = text[..byte].rfind('\n').map_or(0, |i| i + 1);
     let mut indent = leading_width(line_at(text, line_start));
-    let mut parent_is_choices = false;
+    let mut parent_is_role = false;
     for line in text[..line_start].lines().rev() {
         if line.trim().is_empty() {
             continue;
@@ -363,14 +363,14 @@ fn under_change_surface_choices(text: &str, byte: usize) -> bool {
         }
         indent = parent_indent;
         let key = line.trim().trim_end_matches(':');
-        if parent_is_choices {
-            // The grandparent must be the change-surface question itself.
-            return key == role;
+        if parent_is_role {
+            // The role must sit directly under the top-level choices map.
+            return key == "choices";
         }
-        if key != "choices" {
+        if key != role {
             return false;
         }
-        parent_is_choices = true;
+        parent_is_role = true;
     }
     false
 }
@@ -778,18 +778,16 @@ questionnaire:
   custom_text__change_summary:
     _: END
   END: {}
-custom_questions:
+prompts:
+  change_surface: What does this change touch?
+  engineering_council: Should the Engineering Council convene?
+  change_summary: Describe the web change.
+choices:
   change_surface:
-    prompt: What does this change touch?
-    choices:
-      web: Web feature
-      api: API feature
-      infrastructure: Infrastructure
-      form: Government form
-  engineering_council:
-    prompt: Should the Engineering Council convene?
-  change_summary:
-    prompt: Describe the web change.
+    web: Web feature
+    api: API feature
+    infrastructure: Infrastructure
+    form: Government form
 ---
 
 ## What changed
@@ -821,14 +819,17 @@ Reviewed by the council: {{custom_yes_no__engineering_council}}
     /// which gate it implies — the whole point of the closed option list.
     #[test]
     fn hover_explains_each_change_surface_choice() {
-        // Lines 17–20 (0-based) are the four `      <key>: <label>` entries.
-        for (line, key, expected) in [
-            (17, "web", "browser"),
-            (18, "api", "Navigator MCP"),
-            (19, "infrastructure", "Kubernetes"),
-            (20, "form", "templates/notations/forms/"),
+        for (key, expected) in [
+            ("web", "browser"),
+            ("api", "Navigator MCP"),
+            ("infrastructure", "Kubernetes"),
+            ("form", "templates/notations/forms/"),
         ] {
-            let body = github_hover(line, 7)
+            let line = GITHUB_NOTATION
+                .lines()
+                .position(|line| line.starts_with(&format!("    {key}:")))
+                .expect("choice line");
+            let body = github_hover(u32::try_from(line).expect("line fits"), 5)
                 .unwrap_or_else(|| panic!("expected a hover for `{key}` on line {line}"));
             assert!(body.contains(key), "`{key}` hover: {body}");
             assert!(body.contains(expected), "`{key}` hover: {body}");
@@ -836,11 +837,19 @@ Reviewed by the council: {{custom_yes_no__engineering_council}}
     }
 
     /// The scoping is real: the same word under a different question's
-    /// `prompt:` is prose, not a change-surface choice.
+    /// `prompts:` entry is prose, not a change-surface choice.
     #[test]
     fn hover_ignores_a_surface_word_outside_the_choices_mapping() {
-        // Line 24 is `    prompt: Describe the web change.` — hover `web`.
-        let body = github_hover(24, 26);
+        let (line, prose) = GITHUB_NOTATION
+            .lines()
+            .enumerate()
+            .find(|(_, line)| line.contains("Describe the web change."))
+            .expect("prompt line");
+        let character = prose.find("web").expect("surface word");
+        let body = github_hover(
+            u32::try_from(line).expect("line fits"),
+            u32::try_from(character).expect("column fits"),
+        );
         assert!(
             body.as_deref().is_none_or(|b| !b.contains("Web feature")),
             "prose word picked up the change-surface doc: {body:?}",

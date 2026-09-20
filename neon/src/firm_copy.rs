@@ -655,54 +655,6 @@ mod firm_copy_tests {
         );
     }
 
-    #[test]
-    fn the_navigator_page_maps_sources_into_a_notation() {
-        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
-        let diagram = content
-            .bands
-            .iter()
-            .find_map(|band| match band {
-                Band::ProjectNetwork {
-                    anchor,
-                    center_heading,
-                    left,
-                    right,
-                    mcp_tools,
-                    agentic_coding_tools,
-                    saas_tools,
-                    ..
-                } if anchor == "notation-flow" => Some((
-                    center_heading,
-                    left,
-                    right,
-                    mcp_tools,
-                    agentic_coding_tools,
-                    saas_tools,
-                )),
-                _ => None,
-            })
-            .expect("the Navigator page renders the source-to-Notation diagram");
-
-        assert_eq!(diagram.0, "One Notation");
-        assert_eq!(
-            diagram
-                .1
-                .iter()
-                .map(|node| node.label.as_str())
-                .collect::<Vec<_>>(),
-            ["Email", "Text messages", "Conversations", "Questionnaire"]
-        );
-        assert_eq!(
-            diagram
-                .2
-                .iter()
-                .map(|node| node.label.as_str())
-                .collect::<Vec<_>>(),
-            ["Estate package", "Employee onboarding", "Contract revision"]
-        );
-        assert!(diagram.3.is_empty() && diagram.4.is_empty() && diagram.5.is_empty());
-    }
-
     /// The vibe-coding case is argued without a claim the firm cannot
     /// substantiate.
     ///

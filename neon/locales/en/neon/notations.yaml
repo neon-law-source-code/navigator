@@ -1,0 +1,102 @@
+head_title: Notations
+meta_description: >-
+  Neon Law Navigator's computable legal format. Markdown and Frontmatter connect
+  document drafting, questionnaires, attorney review, and finished documents.
+title: Notations
+tagline: Executable Legal Writing.
+hero_lead_runs:
+  - text: "Neon Law Notations are a way to write legal agreements in markdown, and specify data and workflows in frontmatter. Our "
+  - text: Navigator
+    href: /navigator
+  - text: " CLI helps authors adhere to rules, ground with our ontology, and deliver excellent legal product."
+hero_cta:
+  label: Explore the templates
+  href: '#templates'
+bands:
+  - kind: project_network
+    anchor: notation-flow
+    overline: Many sources. One working format.
+    heading: Markdown in the middle.
+    description: >-
+      Email, conversations, questionnaires, and documents supply the material.
+      A lawyer confirms the facts and scope. Notation brings the text and its
+      structure together so the work can be read, checked, revised, and rendered.
+    center_eyebrow: Computable legal format
+    center_heading: Markdown + Frontmatter
+    left_lane_label: Sources for legal work
+    right_lane_label: Document outputs
+    left:
+      - label: Conversations
+        detail: Email, text messages, and discussions supply facts for confirmation.
+      - label: Questionnaires
+        detail: Typed questions gather the answers a template needs.
+      - label: Word documents
+        detail: Managed import projects supported document structure into notation.
+      - label: Markdown templates
+        detail: Authored prose and Frontmatter declare the document and its process.
+    right:
+      - label: Word revisions
+        detail: Supported edits return to the original package with tracked changes.
+      - label: Typst
+        detail: The Typst rendering engine typesets Markdown into PDFs, with the document's layout, headings, and page numbering.
+      - label: Government forms
+        detail: Declared field mappings fill the issuing agency's PDF.
+      - label: Browser previews
+        detail: Read the document and explore its questionnaire before running it.
+  - kind: cards
+    anchor: anatomy
+    overline: ""
+    heading: One file. Four connected parts.
+    description: >-
+      A template is the blueprint. Bind it to a respondent and a Project, and
+      it becomes a running Notation with answers, review, and a history.
+    items:
+      - title: Metadata
+        body:
+          - - text: Frontmatter names the document and the rules that govern its structure.
+      - title: Questionnaire
+        body:
+          - - text: Typed questions collect answers. Prompts supply wording; choices name the available options.
+      - title: Workflow
+        body:
+          - - text: Explicit steps describe how the work advances and where a lawyer makes the decision.
+      - title: Body
+        body:
+          - - text: Readable prose carries headings, clauses, and placeholders that resolve from the answers.
+  - kind: cards
+    anchor: rules
+    overline: ""
+    heading: Plain text. Precise checks.
+    description: >-
+      Navigator's Rust rule engine checks declared kinds, required fields,
+      question types, placeholders, and workflow structure. The CLI and editor
+      use the same rules.
+    items:
+      - title: Check the project
+        body:
+          - - text: navigator project gate
+              code: true
+            - text: " validates the repository's Markdown, YAML, and notation contracts together."
+        href: /docs/gate
+        href_label: Read the rule reference
+      - title: Preview a file
+        body:
+          - - text: navigator notations preview
+              code: true
+            - text: " opens a local browser preview of a template and its questionnaire."
+        href: /docs/notation-authoring
+        href_label: Learn to author a notation
+      - title: Walk the questions
+        body:
+          - - text: navigator notations run
+              code: true
+            - text: " exercises a template in a temporary local store with synthetic identities so you can inspect its transitions."
+        href: /docs/notation
+        href_label: Understand the runtime
+      - title: Check as you type
+        body:
+          - - text: navigator-lsp
+              code: true
+            - text: " shows diagnostics and hover explanations in your editor, using the rule engine behind the CLI."
+        href: /docs/frontmatter
+        href_label: Read the Frontmatter guide

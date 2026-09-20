@@ -11,15 +11,14 @@ questionnaire:
 prompts:
   client_name: What is the client's full legal name?
   project_name: What is the project name for this engagement?
-custom_questions:
+  governing_law: >-
+    Which state's law governs this engagement? Nevada, unless the Firm has
+    agreed otherwise; California and Washington are the alternatives available.
+choices:
   governing_law:
-    prompt: >-
-      Which state's law governs this engagement? Nevada, unless the Firm has
-      agreed otherwise; California and Washington are the alternatives available.
-    choices:
-      nevada: Nevada
-      california: California
-      washington: Washington
+    nevada: Nevada
+    california: California
+    washington: Washington
 workflow:
   BEGIN:
     intake_submitted: intake_persisted__client

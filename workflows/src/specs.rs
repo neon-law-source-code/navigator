@@ -213,64 +213,6 @@ pub fn choices_from_yaml(
     Ok(wrapper.choices)
 }
 
-/// A single `custom_*` question defined by the template: its wording and,
-/// for a choice type, the one-off options. This is the canonical home for
-/// a custom question — the bank supplies the wording for every non-`custom_`
-/// state, so those never appear here.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct CustomQuestion {
-    /// The prompt shown to the respondent for this custom state.
-    pub prompt: String,
-    /// The one-off options, keyed `value: label`. Empty for the non-choice
-    /// custom types (`custom_text`, `custom_datetime`, …).
-    #[serde(default)]
-    pub choices: BTreeMap<String, String>,
-}
-
-/// Parse the optional `custom_questions:` map from a standalone spec YAML.
-/// Keyed by the state's `__<prompt_key>` discriminator (e.g. the entry
-/// `management_structure` describes `custom_single_choice__management_structure`).
-pub fn custom_questions_from_yaml(
-    yaml: &str,
-) -> Result<BTreeMap<String, CustomQuestion>, WorkflowSpecError> {
-    let wrapper: CustomQuestionsFrontmatter =
-        serde_yaml::from_str(yaml).map_err(|e| WorkflowSpecError::Yaml(e.to_string()))?;
-    Ok(wrapper.custom_questions)
-}
-
-/// Extract the optional `custom_questions:` map from a notation template's
-/// YAML frontmatter.
-pub fn custom_questions_from_template(
-    markdown: &str,
-) -> Result<BTreeMap<String, CustomQuestion>, WorkflowSpecError> {
-    let frontmatter = extract_frontmatter(markdown)
-        .ok_or_else(|| WorkflowSpecError::Yaml("template has no YAML frontmatter".into()))?;
-    custom_questions_from_yaml(frontmatter)
-}
-
-/// Fold a `custom_questions:` map into the flat `prompts` and `choices`
-/// maps the questionnaire runtime resolves against. Each custom question's
-/// wording lands in `prompts` under its key, and its options (if any) in
-/// `choices`. The custom-question entry is canonical: it overwrites any
-/// stray flat entry sharing the key.
-pub fn merge_custom_questions(
-    custom_questions: &BTreeMap<String, CustomQuestion>,
-    prompts: &mut BTreeMap<String, String>,
-    choices: &mut BTreeMap<String, BTreeMap<String, String>>,
-) {
-    for (key, question) in custom_questions {
-        prompts.insert(key.clone(), question.prompt.clone());
-        // The custom question is canonical for its key's choices too: a
-        // non-choice custom type clears any stray flat entry so no retired
-        // option metadata survives behind it.
-        if question.choices.is_empty() {
-            choices.remove(key);
-        } else {
-            choices.insert(key.clone(), question.choices.clone());
-        }
-    }
-}
-
 /// Extract the `workflow:` block from a notation template's YAML
 /// frontmatter and parse it as a [`WorkflowSpec`]. Used by the
 /// integrity / shape-lock tests, which validate that every template's
@@ -366,12 +308,6 @@ struct ChoiceFrontmatter {
     choices: BTreeMap<String, BTreeMap<String, String>>,
 }
 
-#[derive(Deserialize)]
-struct CustomQuestionsFrontmatter {
-    #[serde(default)]
-    custom_questions: BTreeMap<String, CustomQuestion>,
-}
-
 fn extract_frontmatter(contents: &str) -> Option<&str> {
     let after_open = contents.strip_prefix("---\n")?;
     if let Some(end) = after_open.find("\n---\n") {
@@ -383,35 +319,41 @@ fn extract_frontmatter(contents: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_spec_yaml, catalog_spec_yaml, custom_questions_from_template,
-        custom_questions_from_yaml, merge_custom_questions, questionnaire_spec_from_template,
-        questionnaire_spec_from_yaml, retainer_intake_questionnaire, retainer_intake_spec,
-        template_has_questionnaire, workflow_spec_from_template, workflow_spec_from_yaml,
-        RETAINER_INTAKE_SPEC_YAML, RETAINER_INTAKE_TEMPLATE, RETAINER_SCOPED_SPEC_YAML,
+        bundled_spec_yaml, catalog_spec_yaml, choices_from_template, choices_from_yaml,
+        prompt_overrides_from_template, prompt_overrides_from_yaml,
+        questionnaire_spec_from_template, questionnaire_spec_from_yaml,
+        retainer_intake_questionnaire, retainer_intake_spec, template_has_questionnaire,
+        workflow_spec_from_template, workflow_spec_from_yaml, RETAINER_INTAKE_SPEC_YAML,
+        RETAINER_INTAKE_TEMPLATE, RETAINER_SCOPED_SPEC_YAML,
     };
     use crate::spec::StateName;
-    use std::collections::BTreeMap;
 
     const GOVERNING_LAW_PROMPT: &str = "Which state's law governs this engagement? Nevada, unless the Firm has agreed otherwise; California and Washington are the alternatives available.";
 
     #[test]
     fn governing_law_prompt_names_firm_choice_not_client_location() {
         let sources = [
-            custom_questions_from_template(RETAINER_INTAKE_TEMPLATE)
+            prompt_overrides_from_template(RETAINER_INTAKE_TEMPLATE)
                 .expect("onboarding letter frontmatter"),
-            custom_questions_from_yaml(RETAINER_INTAKE_SPEC_YAML).expect("onboarding letter spec"),
-            custom_questions_from_yaml(RETAINER_SCOPED_SPEC_YAML).expect("scoped letter spec"),
+            prompt_overrides_from_yaml(RETAINER_INTAKE_SPEC_YAML).expect("onboarding letter spec"),
+            prompt_overrides_from_yaml(RETAINER_SCOPED_SPEC_YAML).expect("scoped letter spec"),
         ];
         for cq in sources {
             let question = cq
                 .get("governing_law")
                 .expect("governing_law custom question");
-            assert_eq!(question.prompt, GOVERNING_LAW_PROMPT);
+            assert_eq!(question, GOVERNING_LAW_PROMPT);
             assert!(
-                !question.prompt.contains("Client is located"),
+                !question.contains("Client is located"),
                 "prompt must not make governing law a function of Client location"
             );
-            let keys: Vec<_> = question.choices.keys().cloned().collect();
+        }
+        for choices in [
+            choices_from_template(RETAINER_INTAKE_TEMPLATE).expect("template choices"),
+            choices_from_yaml(RETAINER_INTAKE_SPEC_YAML).expect("spec choices"),
+            choices_from_yaml(RETAINER_SCOPED_SPEC_YAML).expect("scoped choices"),
+        ] {
+            let keys: Vec<_> = choices["governing_law"].keys().cloned().collect();
             assert_eq!(keys, ["california", "nevada", "washington"]);
         }
         let teaching = include_str!("../../docs/frontmatter.md");
@@ -427,68 +369,19 @@ mod tests {
     }
 
     #[test]
-    fn custom_questions_parse_prompt_and_choices() {
-        let yaml = "\
-custom_questions:
-  management_structure:
-    prompt: How will the company be managed?
-    choices:
-      members: Managed by its members
-      managers: Managed by appointed managers
-  formation_date:
-    prompt: When was the formation date?
-";
-        let cq = custom_questions_from_yaml(yaml).expect("parses");
-        assert_eq!(cq.len(), 2);
+    fn prompts_and_choices_are_keyed_by_question_code() {
+        let yaml = "prompts:\n  delivery: How should it arrive?\nchoices:\n  delivery:\n    email: By email\n";
         assert_eq!(
-            cq["management_structure"].prompt,
-            "How will the company be managed?"
+            prompt_overrides_from_yaml(yaml).expect("prompts")["delivery"],
+            "How should it arrive?"
         );
-        assert_eq!(cq["management_structure"].choices.len(), 2);
-        assert!(cq["formation_date"].choices.is_empty());
-    }
-
-    #[test]
-    fn custom_questions_absent_yields_empty_map() {
-        let cq = custom_questions_from_yaml("questionnaire:\n  BEGIN:\n    _: END\n  END: {}\n")
-            .expect("parses");
-        assert!(cq.is_empty());
-    }
-
-    #[test]
-    fn merge_folds_prompts_and_choices_custom_wins() {
-        let cq = custom_questions_from_yaml(
-            "custom_questions:\n  fee_status:\n    prompt: What is the fee status?\n    choices:\n      paid: Paid in full\n",
-        )
-        .expect("parses");
-        let mut prompts: BTreeMap<String, String> =
-            BTreeMap::from([("fee_status".into(), "stale prompt".into())]);
-        let mut choices: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
-        merge_custom_questions(&cq, &mut prompts, &mut choices);
-        assert_eq!(prompts["fee_status"], "What is the fee status?");
-        assert_eq!(choices["fee_status"]["paid"], "Paid in full");
-    }
-
-    #[test]
-    fn merge_clears_stale_flat_choices_for_a_non_choice_custom_question() {
-        // `fee_status` is now a non-choice custom question, but a retired
-        // flat `choices.fee_status` lingers — the merge must drop it so no
-        // stale option metadata survives behind the canonical definition.
-        let cq = custom_questions_from_yaml(
-            "custom_questions:\n  fee_status:\n    prompt: What is the fee status?\n",
-        )
-        .expect("parses");
-        let mut prompts: BTreeMap<String, String> = BTreeMap::new();
-        let mut choices: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::from([(
-            "fee_status".into(),
-            BTreeMap::from([("paid".into(), "Paid in full".into())]),
-        )]);
-        merge_custom_questions(&cq, &mut prompts, &mut choices);
-        assert_eq!(prompts["fee_status"], "What is the fee status?");
-        assert!(
-            !choices.contains_key("fee_status"),
-            "stale flat choices should be cleared, got {choices:?}"
+        assert_eq!(
+            choices_from_yaml(yaml).expect("choices")["delivery"]["email"],
+            "By email"
         );
+        assert!(choices_from_yaml("prompts: {}\n")
+            .expect("absent choices")
+            .is_empty());
     }
 
     #[test]
@@ -690,10 +583,10 @@ custom_questions:
             // Every product retainer carries the fillable governing-law
             // question the shared product spec declares (#363).
             assert_eq!(
-                custom_questions_from_template(template.markdown)
-                    .unwrap_or_else(|e| panic!("{code} custom_questions parse: {e}")),
-                custom_questions_from_yaml(RETAINER_SCOPED_SPEC_YAML)
-                    .expect("shared product custom_questions"),
+                prompt_overrides_from_template(template.markdown)
+                    .unwrap_or_else(|e| panic!("{code} prompts parse: {e}")),
+                prompt_overrides_from_yaml(RETAINER_SCOPED_SPEC_YAML)
+                    .expect("shared product prompts"),
                 "{code} must carry the shared governing_law question"
             );
         }

@@ -67,8 +67,8 @@ pub use integrations::{
 };
 pub use notation_session::{
     answer_step, answer_step_with_reference, choice_label, create_notation_from_repo, current_step,
-    merged_choices_from_yaml, start_notation, AnswerAuthor, NextStep, NotationSessionError,
-    QuestionChoice, QuestionDescriptor, StartOutcome,
+    start_notation, AnswerAuthor, NextStep, NotationSessionError, QuestionChoice,
+    QuestionDescriptor, StartOutcome,
 };
 pub use notify::{
     ops_slack_messages, CapturingNotifier, CapturingSlackBot, Notifier, NotifyError, SlackBot,
@@ -85,12 +85,11 @@ pub use spec::{
     WorkflowSpecError,
 };
 pub use specs::{
-    bundled_spec_yaml, catalog_spec_yaml, custom_questions_from_template,
-    custom_questions_from_yaml, merge_custom_questions, prompt_overrides_from_template,
-    prompt_overrides_from_yaml, questionnaire_spec_from_template, questionnaire_spec_from_yaml,
-    retainer_intake_questionnaire, retainer_intake_spec, workflow_spec_from_template,
-    workflow_spec_from_yaml, CustomQuestion, BUNDLED_SPEC_YAML, RETAINER_INTAKE_SPEC_YAML,
-    RETAINER_INTAKE_TEMPLATE,
+    bundled_spec_yaml, catalog_spec_yaml, choices_from_template, choices_from_yaml,
+    prompt_overrides_from_template, prompt_overrides_from_yaml, questionnaire_spec_from_template,
+    questionnaire_spec_from_yaml, retainer_intake_questionnaire, retainer_intake_spec,
+    workflow_spec_from_template, workflow_spec_from_yaml, BUNDLED_SPEC_YAML,
+    RETAINER_INTAKE_SPEC_YAML, RETAINER_INTAKE_TEMPLATE,
 };
 pub use step::{client_phrase_for, step_kind_for, ClientActor, ClientPhrase, StepKind};
 pub use trigger::{start_workflow, TriggerError};

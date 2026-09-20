@@ -537,7 +537,7 @@ async fn the_public_shell_passes_a_full_document_audit() {
         let Some(c) = session_in_scheme(scheme, &base_url()).await else {
             return;
         };
-        for path in ["/", "/navigator"] {
+        for path in ["/", "/navigator", "/notations"] {
             assert_route_passes_axe(&c, path, DOCUMENT_AXE_SCOPE, scheme).await;
             assert_public_shell(&c).await;
         }

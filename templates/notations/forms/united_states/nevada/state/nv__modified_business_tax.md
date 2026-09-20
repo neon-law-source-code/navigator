@@ -14,11 +14,9 @@ questionnaire:
   custom_usd__gross_revenue:
     _: END
   END: {}
-custom_questions:
-  tax_year:
-    prompt: What tax year does this return cover?
-  gross_revenue:
-    prompt: What is the gross revenue?
+prompts:
+  tax_year: What tax year does this return cover?
+  gross_revenue: What is the gross revenue?
 workflow:
   BEGIN:
     _: member_signatures

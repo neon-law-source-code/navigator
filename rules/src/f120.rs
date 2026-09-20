@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn a_placeholder_in_the_frontmatter_is_not_a_body_placeholder() {
         // A prompt may quote a token; only the body renders.
-        let contents = "---\nkind: onboarding\ntitle: T\ncustom_questions:\n  x:\n    prompt: \
+        let contents = "---\nkind: onboarding\ntitle: T\nprompts:\n  x: \
                         \"say {{custom_text__x}}\"\nquestionnaire:\n  BEGIN:\n    _: END\n  \
                         END: {}\n---\n\nBody.\n";
         assert!(F120BodyStateGrounding.lint(&file(contents)).is_empty());

@@ -25,7 +25,7 @@ async fn test_storage() -> (cloud::FsStorage, tempfile::TempDir) {
 
 /// A synthetic, genuinely fillable blank for `form_code`. A re-authored
 /// form gets one widget per `.fields` manifest name — a radio group
-/// (options from the sibling notation's `custom_questions:`) for
+/// (options from the sibling notation's `choices:`) for
 /// `custom_single_choice__*` names, a text field for everything else,
 /// `unmapped__*` included (those fields exist on the real blank too;
 /// the resolver just never fills them).
@@ -50,20 +50,16 @@ fn synthetic_blank(form_code: &str, object_path: &str) -> Vec<u8> {
     pdf::blank_acroform_with(&specs)
 }
 
-/// The sibling notation's `custom_questions:` options — the on-state
+/// The sibling notation's `choices:` options — the on-state
 /// vocabulary a re-authored radio group carries, keyed by the custom
-/// question's `__<key>` and read from its nested `choices`.
+/// question's `__<key>` and read from its top-level `choices`.
 fn template_choices(object_path: &str) -> BTreeMap<String, Vec<String>> {
     #[derive(serde::Deserialize)]
     struct Fm {
         #[serde(default)]
-        custom_questions: BTreeMap<String, CustomQuestion>,
+        choices: BTreeMap<String, BTreeMap<String, String>>,
     }
-    #[derive(serde::Deserialize)]
-    struct CustomQuestion {
-        #[serde(default)]
-        choices: BTreeMap<String, String>,
-    }
+
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("templates")
@@ -75,10 +71,10 @@ fn template_choices(object_path: &str) -> BTreeMap<String, Vec<String>> {
         .and_then(|rest| rest.find("\n---").map(|end| &rest[..end]))
         .expect("frontmatter");
     let fm: Fm = serde_yaml::from_str(fm).expect("frontmatter parses");
-    fm.custom_questions
+    fm.choices
         .into_iter()
-        .filter(|(_, q)| !q.choices.is_empty())
-        .map(|(role, q)| (role, q.choices.into_keys().collect()))
+        .filter(|(_, q)| !q.is_empty())
+        .map(|(role, q)| (role, q.into_keys().collect()))
         .collect()
 }
 

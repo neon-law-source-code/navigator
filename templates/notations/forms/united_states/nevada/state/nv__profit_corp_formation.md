@@ -30,11 +30,8 @@ prompts:
   client_name: What is the client's full legal name?
   entity_name: What is the legal name of your LLC?
   registered_agent: Who is the registered agent?
-custom_questions:
-  shares_authorized:
-    prompt: How many shares is the corporation authorized to issue?
-  par_value:
-    prompt: What is the par value of each share, in dollars?
+  shares_authorized: How many shares is the corporation authorized to issue?
+  par_value: What is the par value of each share, in dollars?
 workflow:
   BEGIN:
     intake_submitted: intake_persisted__incorporator

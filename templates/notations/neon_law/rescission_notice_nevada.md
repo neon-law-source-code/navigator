@@ -19,15 +19,11 @@ questionnaire:
   custom_datetime__notice_date:
     _: END
   END: {}
-custom_questions:
-  offer_date:
-    prompt: On what date was the doughnut offered?
-  completion_date:
-    prompt: On what date was the remainder of the doughnut consumed?
-  discovery_date:
-    prompt: On what date did the client learn of the soul-conveyance term?
-  notice_date:
-    prompt: What is the date of this notice?
+prompts:
+  offer_date: On what date was the doughnut offered?
+  completion_date: On what date was the remainder of the doughnut consumed?
+  discovery_date: On what date did the client learn of the soul-conveyance term?
+  notice_date: What is the date of this notice?
 workflow:
   BEGIN:
     _: lawyer_review

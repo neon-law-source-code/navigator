@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 
 use workflows::{
-    custom_questions_from_template, custom_questions_from_yaml, prompt_overrides_from_template,
+    choices_from_template, choices_from_yaml, prompt_overrides_from_template,
     prompt_overrides_from_yaml, questionnaire_spec_from_template, questionnaire_spec_from_yaml,
     workflow_spec_from_template, workflow_spec_from_yaml, BUNDLED_SPEC_YAML,
 };
@@ -102,15 +102,15 @@ fn every_bundled_spec_yaml_matches_its_template_frontmatter() {
             "prompts mismatch between standalone yaml and template frontmatter for `{code}`",
         );
 
-        let cq_from_yaml = custom_questions_from_yaml(yaml).unwrap_or_else(|e| {
-            panic!("standalone custom_questions yaml for `{code}` failed to parse: {e}")
+        let cq_from_yaml = choices_from_yaml(yaml).unwrap_or_else(|e| {
+            panic!("standalone choices yaml for `{code}` failed to parse: {e}")
         });
-        let cq_from_template = custom_questions_from_template(&markdown).unwrap_or_else(|e| {
-            panic!("template custom_questions frontmatter for `{code}` failed to parse: {e}")
+        let cq_from_template = choices_from_template(&markdown).unwrap_or_else(|e| {
+            panic!("template choices frontmatter for `{code}` failed to parse: {e}")
         });
         assert_eq!(
             cq_from_yaml, cq_from_template,
-            "custom_questions mismatch between standalone yaml and template frontmatter for `{code}`",
+            "choices mismatch between standalone yaml and template frontmatter for `{code}`",
         );
     }
 }

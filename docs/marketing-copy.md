@@ -24,6 +24,7 @@ Neon Law (`neon/`):
 | `neon/locales/en/neon/fractional-gc.yaml` | `/business` |
 | `neon/locales/en/neon/personal-plan.yaml` | `/personal` |
 | `neon/locales/en/neon/navigator.yaml` | `/navigator` |
+| `neon/locales/en/neon/notations.yaml` | `/notations` format introduction |
 | `neon/locales/en/neon/services.yaml` | `/services` |
 
 The shared catalog sits beside the brand directories rather than inside one, because it is shared across brands and

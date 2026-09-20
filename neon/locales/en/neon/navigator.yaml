@@ -15,6 +15,7 @@ bands:
     anchor: connected-project
     overline: One connected Project
     heading: Navigator is the center of the work.
+    center_detail: Web API MCP CLI
     description: >-
       A Project can include one or more cases, companies, filings, and more so
       long as it's related to the best interest of our clients.
@@ -59,35 +60,6 @@ bands:
       - SurrealDB
       - Twilio
       - Xero
-  - kind: project_network
-    anchor: notation-flow
-    overline: From sources to a Notation
-    heading: Many conversations. One Notation.
-    description: >-
-      Navigator brings email, text messages, conversations, and questionnaire
-      answers into one place. A lawyer confirms the facts and scope before the
-      work becomes the documents you need.
-    center_eyebrow: Navigator
-    center_heading: One Notation
-    center_detail: Confirmed facts · selected templates · lawyer review
-    left_lane_label: Information entering a Notation
-    right_lane_label: Documents within a Notation
-    left:
-      - label: Email
-        detail: Messages and documents filed to the work.
-      - label: Text messages
-        detail: Conversation captured with the right context.
-      - label: Conversations
-        detail: Facts discussed with the people involved.
-      - label: Questionnaire
-        detail: Details confirmed in a structured form.
-    right:
-      - label: Estate package
-        detail: One Notation can hold a will, powers of attorney, and care directions.
-      - label: Employee onboarding
-        detail: One Notation can hold the documents a new hire needs.
-      - label: Contract revision
-        detail: One scoped Notation produces the reviewed document.
   - kind: statement
     heading: Vibe coding is modern storytelling
     lead: Vibe coding is modern storytelling.

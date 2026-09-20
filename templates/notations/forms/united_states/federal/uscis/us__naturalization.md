@@ -36,32 +36,24 @@ prompts:
   client_name: What is the client's full legal name?
   of_birth: In what country were you born?
   of_citizenship: Of what country are you currently a citizen or national?
-custom_questions:
-  date_of_birth:
-    prompt: What is your date of birth?
-  lpr_since:
-    prompt: On what date did you become a lawful permanent resident?
-  daytime_phone:
-    prompt: What is the best daytime phone number to reach you?
+  date_of_birth: What is your date of birth?
+  lpr_since: On what date did you become a lawful permanent resident?
+  daytime_phone: What is the best daytime phone number to reach you?
+  eligibility_basis: Which path to naturalization are you applying under?
+  marital_status: What is your current marital status?
+  time_outside_us: About how many total days have you spent outside the United States in the last five years?
+  good_moral_character: >-
+    Is there anything in your history — arrests, citations, or unpaid taxes — your attorney should know before we file?
+choices:
   eligibility_basis:
-    prompt: Which path to naturalization are you applying under?
-    choices:
-      five_year: Five years as a permanent resident
-      three_year_marriage: Three years married to a U.S. citizen
-      military: Qualifying U.S. military service
+    five_year: Five years as a permanent resident
+    three_year_marriage: Three years married to a U.S. citizen
+    military: Qualifying U.S. military service
   marital_status:
-    prompt: What is your current marital status?
-    choices:
-      single: Single, never married
-      married: Married
-      divorced: Divorced
-      widowed: Widowed
-  time_outside_us:
-    prompt: About how many total days have you spent outside the United States in the last five years?
-  good_moral_character:
-    prompt: >-
-      Is there anything in your history — arrests, citations, or unpaid taxes — your attorney should know before we
-      file?
+    single: Single, never married
+    married: Married
+    divorced: Divorced
+    widowed: Widowed
 workflow:
   BEGIN:
     intake_submitted: intake_persisted__applicant

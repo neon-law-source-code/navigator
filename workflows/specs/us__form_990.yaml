@@ -6,11 +6,9 @@ questionnaire:
   custom_text__revenue_strategy:
     _: END
   END: {}
-custom_questions:
-  tax_year:
-    prompt: What tax year does this return cover?
-  revenue_strategy:
-    prompt: What is the revenue strategy?
+prompts:
+  tax_year: What tax year does this return cover?
+  revenue_strategy: What is the revenue strategy?
 workflow:
   BEGIN:
     _: board_signatures

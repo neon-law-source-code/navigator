@@ -72,6 +72,7 @@ fn catalog_index_content(
 ) -> webapp::catalog_index::CatalogIndexContent {
     webapp::catalog_index::CatalogIndexContent {
         title: title.to_string(),
+        introduction: None,
         lede: lede.to_string(),
         materials: workshops
             .materials()
@@ -90,11 +91,6 @@ fn catalog_index_content(
 }
 
 const NOTATIONS_INDEX_TITLE: &str = "Notations";
-const NOTATIONS_INDEX_LEDE: &str =
-    "A notation is one markdown file: the template a client signs, the questionnaire that fills \
-     it in, and the workflow that carries it from intake through attorney review to signature, \
-     filing, or closing. Navigator ships the sample letters that open and close a matter, and \
-     the government forms the firm files.";
 const NOTATIONS_BLOB_BASE: &str =
     "https://github.com/neon-law-source-code/navigator/blob/main/templates/";
 
@@ -272,9 +268,11 @@ fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
 /// every government form in `templates/notations/forms/`.
 #[allow(clippy::too_many_lines)] // The literal public inventory stays aligned with the preview catalog above.
 fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
+    let introduction = crate::locales::notations_content();
     webapp::catalog_index::CatalogIndexContent {
         title: NOTATIONS_INDEX_TITLE.to_string(),
-        lede: NOTATIONS_INDEX_LEDE.to_string(),
+        lede: introduction.meta_description.clone(),
+        introduction: Some(introduction),
         materials: vec![
             notation_card(
                 "Letter",

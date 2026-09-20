@@ -18,14 +18,12 @@ prompts:
   client_name: What is the client's full legal name?
   entity_name: What is the legal name of your LLC?
   registered_agent: Who is the registered agent?
-custom_questions:
+  management_structure: How will the company be managed?
+  formation_date: When was the formation date?
+choices:
   management_structure:
-    prompt: How will the company be managed?
-    choices:
-      members: Managed by its members — the owners
-      managers: Managed by appointed managers
-  formation_date:
-    prompt: When was the formation date?
+    members: Managed by its members — the owners
+    managers: Managed by appointed managers
 workflow:
   BEGIN:
     intake_submitted: intake_persisted__organizer

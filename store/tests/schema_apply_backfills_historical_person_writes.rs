@@ -114,4 +114,36 @@ async fn applying_lets_sign_in_link_an_oidc_subject_on_a_historical_person() {
         .take(0)
         .unwrap();
     assert_eq!(admitted, vec![false]);
+
+    assert_reapply_preserves_person_defaults(&db, historical_id, preserved_id).await;
+}
+
+async fn assert_reapply_preserves_person_defaults(
+    db: &store::surreal::SurrealDb,
+    historical_id: Uuid,
+    preserved_id: Uuid,
+) {
+    schema::apply(db)
+        .await
+        .expect("a second apply skips the converged person-default backfill");
+
+    let linked_after_reapply = persons::find_by_oidc_subject(db, NEW_SUBJECT)
+        .await
+        .unwrap()
+        .expect("the linked subject remains after reapplying the schema");
+    assert_eq!(linked_after_reapply.id, historical_id);
+    assert_eq!(
+        linked_after_reapply.oidc_subject.as_deref(),
+        Some(NEW_SUBJECT)
+    );
+    assert!(!linked_after_reapply.email_confirmed);
+    assert!(persons::is_admitted(db, historical_id).await.unwrap());
+
+    let preserved_after_reapply = persons::find_by_email_ci(db, PRESERVED_EMAIL)
+        .await
+        .unwrap()
+        .expect("the preserved person remains after reapplying the schema");
+    assert_eq!(preserved_after_reapply.id, preserved_id);
+    assert!(preserved_after_reapply.email_confirmed);
+    assert!(!persons::is_admitted(db, preserved_id).await.unwrap());
 }

@@ -80,6 +80,8 @@ pub enum SlackError {
     IncompleteResponse,
     #[error("Slack channel name is already in use")]
     NameTaken,
+    #[error("Slack returned a channel that is not private")]
+    NotPrivate,
 }
 
 /// `is_archived` is `false` on every channel `find_private_channel` can
@@ -93,6 +95,7 @@ pub struct SlackChannel {
     pub id: String,
     pub name: String,
     pub is_archived: bool,
+    pub is_private: bool,
 }
 
 /// An ID issued by Slack for an eligible Firm participant. It is deliberately
@@ -159,6 +162,12 @@ pub async fn ensure_private_channel<S: SlackService + ?Sized>(
         Some(channel) => (channel, false),
         None => (service.create_private_channel(project_code).await?, true),
     };
+    if !channel.is_private {
+        return Err(SlackError::NotPrivate);
+    }
+    if channel.name != project_code {
+        return Err(SlackError::Api);
+    }
     service.invite_firm_members(&channel.id, members).await?;
     Ok((channel, created))
 }
@@ -248,6 +257,28 @@ impl FakeSlack {
         }
     }
 
+    /// Simulate a provider-side privacy change while the Project still
+    /// records the channel id.
+    pub fn set_public(&self, channel_id: &str) {
+        if let Some(channel) = self
+            .by_id
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .get_mut(channel_id)
+        {
+            channel.is_private = false;
+        }
+    }
+
+    /// Simulate the provider deleting the channel while its id remains on the
+    /// Project row.
+    pub fn remove(&self, channel_id: &str) {
+        self.by_id
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .remove(channel_id);
+    }
+
     /// The current channel findable under `project_code` — `None` once that
     /// channel has been renamed or archived, matching what a name search
     /// would see.
@@ -299,6 +330,7 @@ impl SlackService for FakeSlack {
             id: format!("C{:016X}", *next_id),
             name: project_code.to_string(),
             is_archived: false,
+            is_private: true,
         };
         self.by_id
             .lock()
@@ -354,6 +386,8 @@ struct SlackChannelBody {
     name: String,
     #[serde(default)]
     is_archived: bool,
+    #[serde(default)]
+    is_private: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -496,6 +530,7 @@ impl SlackService for SlackClient {
                     id: channel.id,
                     name: channel.name,
                     is_archived: channel.is_archived,
+                    is_private: channel.is_private,
                 }));
             }
             // An empty `next_cursor` is how Slack says "last page"; it is
@@ -529,10 +564,17 @@ impl SlackService for SlackClient {
             });
         }
         let channel = response.channel.ok_or(SlackError::IncompleteResponse)?;
+        if !channel.is_private {
+            return Err(SlackError::NotPrivate);
+        }
+        if channel.name != project_code {
+            return Err(SlackError::Api);
+        }
         Ok(SlackChannel {
             id: channel.id,
             name: channel.name,
             is_archived: channel.is_archived,
+            is_private: channel.is_private,
         })
     }
 
@@ -609,6 +651,7 @@ impl SlackService for SlackClient {
             id: channel.id,
             name: channel.name,
             is_archived: channel.is_archived,
+            is_private: channel.is_private,
         }))
     }
 }
@@ -650,7 +693,7 @@ mod tests {
             .and(query_param("cursor", "page-2"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "ok": true,
-                "channels": [{ "id": "C2", "name": "sample-project" }],
+                "channels": [{ "id": "C2", "name": "sample-project", "is_private": true }],
                 "response_metadata": { "next_cursor": "" }
             })))
             .expect(1)
@@ -660,7 +703,7 @@ mod tests {
             .and(path("/conversations.list"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "ok": true,
-                "channels": [{ "id": "C1", "name": "another-matter" }],
+                "channels": [{ "id": "C1", "name": "another-matter", "is_private": true }],
                 "response_metadata": { "next_cursor": "page-2" }
             })))
             .expect(1)
@@ -737,6 +780,19 @@ mod tests {
             "a re-run adopts the existing channel and must not report a creation"
         );
         assert_eq!(slack.invited_members(&first.id), vec!["U123", "U456"]);
+    }
+
+    #[tokio::test]
+    async fn a_public_channel_with_the_project_name_is_refused() {
+        let slack = FakeSlack::new();
+        let (channel, _) = ensure_private_channel(&slack, "sample-project", &[])
+            .await
+            .unwrap();
+        slack.set_public(&channel.id);
+        assert!(matches!(
+            ensure_private_channel(&slack, "sample-project", &[]).await,
+            Err(SlackError::NotPrivate)
+        ));
     }
 
     #[tokio::test]

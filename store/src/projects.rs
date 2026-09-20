@@ -1683,12 +1683,10 @@ pub async fn set_internal_slack_channel_id(
     Ok(updated.and_then(ProjectRow::into_project))
 }
 
-/// Record the canonical Slack URL for a matter's private firm-side channel,
-/// alongside [`set_internal_slack_channel_id`]. Kept as a second setter
-/// rather than folded into the id write: the id is the only coordinate a
-/// provider call needs, while the URL exists purely so a human can click
-/// through, and the two are written together by every caller that has just
-/// resolved a channel (`portal::integrations_api`) so they never disagree.
+/// Record the canonical Slack URL for a matter's private firm-side channel.
+/// New provider callers should use [`set_internal_slack_channel`] so the URL
+/// and provider id are committed as one coordinate. This setter remains for
+/// migrations and narrowly scoped callers that only repair the display URL.
 ///
 /// # Errors
 /// Returns [`ProjectCommandError::Invalid`] for an empty or malformed URL,
@@ -1715,6 +1713,50 @@ pub async fn set_internal_slack_channel_url(
              RETURN {PROJECT_SELECT}"
         ))
         .bind(("id", record_id(PROJECT_TABLE, project_id)))
+        .bind(("channel_url", channel_url.to_string()))
+        .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    let updated: Option<ProjectRow> = response
+        .take(0)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    Ok(updated.and_then(ProjectRow::into_project))
+}
+
+/// Record the Slack channel's id and canonical URL in one database update.
+/// These two columns are one provider coordinate: exposing a row with only
+/// one half would make a retry choose between posting and rendering a stale
+/// link. Callers that have resolved a channel should use this atomic seam.
+pub async fn set_internal_slack_channel(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    channel_id: &str,
+    channel_url: &str,
+) -> Result<Option<Project>, ProjectCommandError> {
+    let channel_id = channel_id.trim();
+    if channel_id.is_empty() || !channel_id.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        return Err(ProjectCommandError::Invalid(SLACK_CHANNEL_ID_INVALID));
+    }
+    let channel_url = channel_url.trim();
+    if channel_url.is_empty() || !is_valid_resource_url(channel_url) {
+        return Err(ProjectCommandError::Invalid(SLACK_CHANNEL_URL_INVALID));
+    }
+    if find_by_id(surreal, project_id)
+        .await
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let mut response = surreal
+        .query(format!(
+            "UPDATE $id SET internal_slack_channel_id = $channel_id, \
+             internal_slack_channel_url = $channel_url, updated_at = $updated_at \
+             RETURN {PROJECT_SELECT}"
+        ))
+        .bind(("id", record_id(PROJECT_TABLE, project_id)))
+        .bind(("channel_id", channel_id.to_string()))
         .bind(("channel_url", channel_url.to_string()))
         .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
         .await

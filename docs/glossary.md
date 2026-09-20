@@ -1627,7 +1627,7 @@ private documents bucket, not a bucket per Project. Google Drive is the Project'
 matter named for `project.code`. Workspace users drop files there, and Navigator copies them into the documents bucket.
 Drive never serves content or receives CI publishes. Project participation grants Navigator and deployed application
 access, never source-forge access. `store::project_surfaces` creates or adopts the handles. Their retry API/CLI are
-`POST /app/api/project-surfaces/{id}` and `navigator project surfaces reconcile --project <code>`.
+`POST /app/api/project-surfaces/{id}` and `navigator project setup <code>`.
 
 - Schema and commands: [`store::projects`](../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)

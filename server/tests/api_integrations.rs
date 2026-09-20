@@ -920,6 +920,29 @@ async fn notion_ensure_reports_an_archived_recorded_page_instead_of_duplicating_
     );
 }
 
+/// A deleted provider resource must not be silently replaced. The recorded
+/// coordinate is evidence of an operator decision, so a retry reports the
+/// missing resource and leaves the row untouched for an explicit repair.
+#[tokio::test]
+async fn notion_ensure_refuses_a_missing_recorded_page() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()).await;
+    let page = fx
+        .providers
+        .notion
+        .page(&fx.code)
+        .expect("first ensure recorded a page");
+    fx.providers.notion.remove(&page.id);
+
+    let report = json(post(&fx, ALL_DOORS[0], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&report),
+        vec![(fx.code.clone(), "recorded_resource_missing".to_string())]
+    );
+    assert_eq!(fx.providers.notion.create_calls(), 1);
+}
+
 /// Same as the archived case, but for a page someone renamed by hand — a
 /// title search cannot see it either, since the title no longer matches the
 /// query, so this is only catchable by looking up the recorded id directly.
@@ -1098,6 +1121,69 @@ async fn slack_ensure_reports_an_archived_recorded_channel() {
         outcomes(&archived),
         vec![(fx.code.clone(), "archived".to_string())]
     );
+}
+
+#[tokio::test]
+async fn slack_ensure_refuses_a_missing_recorded_channel() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[2], Some(&fx.admin), body.clone()).await;
+    let stored = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    let channel_id = stored
+        .internal_slack_channel_id
+        .expect("first ensure recorded a channel");
+    fx.providers.slack.remove(&channel_id);
+
+    let report = json(post(&fx, ALL_DOORS[2], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&report),
+        vec![(fx.code.clone(), "recorded_resource_missing".to_string())]
+    );
+}
+
+#[tokio::test]
+async fn provider_privacy_and_parent_validation_refuse_existing_resources() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+
+    post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()).await;
+    fx.providers.notion.set_wrong_parent(true);
+    let notion = json(post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()).await).await;
+    assert_eq!(outcomes(&notion)[0].1, "wrong_parent");
+
+    post(&fx, ALL_DOORS[2], Some(&fx.admin), body.clone()).await;
+    let stored = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    fx.providers
+        .slack
+        .set_public(&stored.internal_slack_channel_id.expect("channel id"));
+    let slack = json(post(&fx, ALL_DOORS[2], Some(&fx.admin), body).await).await;
+    assert_eq!(outcomes(&slack)[0].1, "not_private");
+}
+
+/// A provider outage leaves the row unmodified and a later run converges
+/// without creating a second resource.
+#[tokio::test]
+async fn partial_provider_failure_is_retryable() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    fx.providers.slack.set_unavailable(true);
+    let failed = json(post(&fx, ALL_DOORS[2], Some(&fx.admin), body.clone()).await).await;
+    assert_eq!(outcomes(&failed)[0].1, "provider_unavailable");
+    fx.providers.slack.set_unavailable(false);
+    let retried = json(post(&fx, ALL_DOORS[2], Some(&fx.admin), body).await).await;
+    assert_eq!(outcomes(&retried)[0].1, "created");
+    assert!(store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap()
+        .internal_slack_channel_id
+        .is_some());
 }
 
 /// Same as the archived case, but for a channel someone renamed by hand — a

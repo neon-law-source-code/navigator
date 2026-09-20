@@ -178,16 +178,25 @@ fn site_projects_close_accepts_an_effective_time() {
     assert!(unwrapped(&output).contains("RFC 3339 time when the matter actually closed."));
 }
 
+#[test]
+fn site_sync_help_discloses_defaults_and_preserved_keys() {
+    let output = unwrapped(&help(&["site", "sync", "--help"]));
+    assert!(output.contains("internal-visible"));
+    assert!(output.contains("pleadings to filing"));
+    assert!(output.contains("content-addressed"));
+    assert!(output.contains("does not rename or migrate those keys"));
+}
+
 /// `projects` is the Project workspace group: the verbs that operate on
 /// the Drive folder plus the one repository a code names live with the site's
 /// project list and workbench.
 ///
 /// `doctor` reads a machine, `repository` operates on a checkout, `drift`
-/// reconciles the checkouts against the live rows, and `surfaces` creates
-/// or adopts the Drive ingest folder and source repository. The split
+/// reconciles the checkouts against the live rows, and `setup` composes the
+/// authenticated Drive, repository, Slack, and Notion doors. The split
 /// matters, because `projects doctor` and `projects drift` promise to change
-/// nothing, `repository scaffold` writes files, and `surfaces reconcile`
-/// talks to Drive and the forge; `lifecycle` reads every row for admin-tier
+/// nothing, `repository scaffold` writes files, and `setup` reports each
+/// resource independently; `lifecycle` reads every row for admin-tier
 /// oversight. `archive-repository` zips a closed Project's repository
 /// working tree at its current commit and files it as a document — the
 /// separate, deliberate step that follows a close rather than gating it.
@@ -213,11 +222,9 @@ fn projects_help_lists_the_project_workspace_verbs() {
             "gate",
             "lifecycle",
             "list",
-            "notion",
             "open",
             "repository",
-            "slack",
-            "surfaces",
+            "setup",
             "help"
         ]
     );
@@ -225,10 +232,11 @@ fn projects_help_lists_the_project_workspace_verbs() {
         command_names(&help(&["project", "repository", "--help"])),
         vec!["deliver", "scaffold", "sync-skills", "help"]
     );
-    assert_eq!(
-        command_names(&help(&["project", "surfaces", "--help"])),
-        vec!["reconcile", "help"]
-    );
+    let setup = unwrapped(&help(&["project", "setup", "--help"]));
+    assert!(setup.contains("--all"));
+    assert!(setup.contains("--json"));
+    assert!(setup
+        .contains("Complete an existing Project's Drive, repository, Slack, and Notion setup."));
 }
 
 /// Two commands are spelled `doctor` and they diagnose different things.

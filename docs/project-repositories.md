@@ -216,22 +216,30 @@ During local development, `navigator dev up` and `navigator dev worktree-env up`
 project before writing `.devx/env`. The host `web` process therefore starts against the same refreshed portal bundle for
 every developer.
 
-## Firm-private Slack and Notion sync
+## Existing Project setup
 
-Four CLI verbs converge one Project's Firm-private Slack channel and Notion page with Navigator, through `POST
-/app/api/integrations/*` (`portal::integrations_api`):
+One CLI command converges an existing Project's Drive/repository surfaces and its Firm-private Slack channel and Notion
+page through the existing authenticated doors (`portal::integrations_api`):
 
 ```bash
-navigator project notion ensure <code>       # create-or-adopt the Firm-private Notion page
-navigator project notion reconcile <code>    # validate the recorded page and repair its URL
-navigator project notion ensure --all        # sweep every Project this login's Firm access admits
-navigator project notion reconcile --all
-navigator project slack ensure <code>        # create-or-adopt the Firm-private Slack channel
-navigator project slack notify <code> --event <event>   # post a mechanism-only notice
+navigator project setup <code>        # one Project, one outcome per resource
+navigator project setup --all --json  # every Project visible to this login
 ```
 
-`slack` has no `--all` sweep and `notify`'s event is one of `project_opened`, `project_closed`, `project_reconciled`,
-`integration_unavailable` — a closed vocabulary refused before any provider call.
+Setup composes the surface reconcile door, Slack ensure door, and Notion ensure door. It does not accept provider
+credentials and does not open a database connection; every request carries the stored login's bearer token, so the
+server's `AdminSession`, visible-Project lens, and owning-Firm `FirmCapability::UseIntegrations` checks remain in force.
+Text prints one row per resource; `--json` returns one structured resource outcome per Project. Any required resource
+outcome other than `created`, `present`, `adopted`, `unchanged`, `repaired`, or `notified` makes the process exit
+nonzero, including `credential_missing`, `provider_unavailable`, `recorded_resource_missing`, `wrong_parent`,
+`not_private`, `renamed`, `archived`, `conflict`, and `address_not_recorded`.
+
+Setup never replaces a recorded provider identity. A deleted or otherwise unresolvable recorded resource is reported as
+`recorded_resource_missing`, and a provider privacy or Notion-parent mismatch is reported for operator remediation. The
+Slack id and canonical URL are persisted in one Project-row update. If one door fails, the other doors still run; rerun
+setup after the provider or credential is repaired. The in-process lock prevents duplicate work within one Navigator
+replica. Across replicas, the guarantee is only the provider adapters' find/create idempotency and the single-row
+recorded-identity check; this command does not claim a distributed exactly-once lock.
 
 **Prerequisite: a Firm credential.** Every door resolves the caller's `FirmCapability::UseIntegrations` against the
 target Project's owning Firm and then reads that Firm's typed provider credential (`store::firm_secrets`) — there is no
@@ -344,10 +352,10 @@ a deliberate visibility change, either of which needs a human rather than a sile
 
 `POST /app/api/project-surfaces/{id}` is the admin retry for a failed or legacy row. It carries its own noun rather than
 sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.
-CLI: `navigator project surfaces reconcile --project <code>` — an HTTP client of this same door, like every other
-`navigator site` command. It resolves the given code to an id through `GET /app/api/projects` (the same lookup
-`navigator project close` uses) and never opens a database connection of its own, even against a local deployment.
-Project participation is never copied onto the forge.
+CLI: `navigator project setup <code>` — an HTTP client of this same door, like every other `navigator site` command. It
+resolves the given code to an id through `GET /app/api/projects` (the same lookup `navigator project close` uses) and
+never opens a database connection of its own, even against a local deployment. Project participation is never copied
+onto the forge.
 
 ## The CI gate
 
@@ -738,7 +746,7 @@ experiences them as one sequence, not five, so this section threads them togethe
    explicitly to create (or adopt) the empty private repository and Drive folder:
 
    ```bash
-   navigator project surfaces reconcile --project <code>
+   navigator project setup <code>
    ```
 
 3. **Populate the repository.** Clone it, then run [`scaffold`](#scaffolding-a-repository):
@@ -800,16 +808,16 @@ the report immediately, because every later coordinate would otherwise describe 
 
 It is not `ops doctor`, which diagnoses scheduled-job health in a running Kubernetes namespace.
 
-To create or adopt the three handles after a failed or legacy open:
+To create or adopt the three handles and the Firm-private provider resources after a failed or legacy open:
 
 ```bash
-navigator project surfaces reconcile --project acme
+navigator project setup acme
 ```
 
-The same pass runs best-effort when a matter opens. This command is the operator retry: it authenticates to the
-logged-in deployment like every other `navigator site` command and asks its admin API to talk to Drive and the forge,
-skipping a surface when those services are not configured. Even against a local deployment, it never opens a database
-connection of its own — the site does that work, not the CLI.
+The same surface pass runs best-effort when a matter opens. This command is the operator retry: it authenticates to the
+logged-in deployment like every other `navigator site` command and asks its admin API to talk to Drive, the forge,
+Slack, and Notion. Even against a local deployment, it never opens a database connection of its own — the site does that
+work, not the CLI.
 
 ## Reconciling repositories against live rows
 

@@ -695,30 +695,26 @@ fn the_field_help_paragraph_states_its_own_block_margins() {
 }
 
 #[test]
-fn gallery_and_application_footer_links_keep_a_non_colour_cue() {
+fn gallery_footer_links_keep_a_non_colour_cue() {
     let theme = std::fs::read_to_string(public_dir().join("css/theme.css"))
         .expect("read the shared theme stylesheet");
 
-    for selector in [
-        ".nav-theme .nav-card__footer > a",
-        ".nav-theme a.app-footer__family-link",
-    ] {
-        let rule = theme
-            .split_once(&format!("{selector} {{"))
-            .and_then(|(_, rest)| rest.split_once('}'))
-            .map_or_else(
-                || panic!("theme.css must carry the non-colour link rule at `{selector}`"),
-                |(declarations, _)| declarations,
-            );
-        assert!(
-            rule.contains("text-decoration: underline;"),
-            "{selector} must not rely on link colour: {rule}"
+    let selector = ".nav-theme .nav-card__footer > a";
+    let rule = theme
+        .split_once(&format!("{selector} {{"))
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map_or_else(
+            || panic!("theme.css must carry the non-colour link rule at `{selector}`"),
+            |(declarations, _)| declarations,
         );
-        assert!(
-            rule.contains("text-underline-offset: 0.14em;"),
-            "{selector} must use the shared in-copy underline offset: {rule}"
-        );
-    }
+    assert!(
+        rule.contains("text-decoration: underline;"),
+        "{selector} must not rely on link colour: {rule}"
+    );
+    assert!(
+        rule.contains("text-underline-offset: 0.14em;"),
+        "{selector} must use the shared in-copy underline offset: {rule}"
+    );
 }
 
 fn hex_lower(bytes: &[u8]) -> String {

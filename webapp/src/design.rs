@@ -571,10 +571,8 @@ fn AppProfileMenuShowcase() -> Element {
 /// The footer every `/app` page carries, injected once into every response by
 /// `portal::dioxus_app::dioxus_document_head` rather than rendered by each of
 /// the eight real `/app` pages — see the component's own module docs for why.
-/// It carries the copyright line naming the resolved Firm's legal entity, the
-/// "Our Family" row of brands that Firm wears (a synthetic two-brand model
-/// here, matching ENG-589's gallery requirement), the firm's membership line,
-/// and the shared platform line, with no navigation.
+/// It carries a single centered copyright line naming the resolved Firm's
+/// legal entity, with no navigation.
 #[component]
 fn FirmFooterShowcase() -> Element {
     rsx! {
@@ -582,44 +580,13 @@ fn FirmFooterShowcase() -> Element {
             h2 { "Application footer" }
             p {
                 "The one footer every authenticated /app page carries: a centered copyright "
-                "line naming the resolved Firm's legal entity, that Firm's family of brands, "
-                "the association it is a member of, then the platform line, and no navigation."
+                "line naming the resolved Firm's legal entity, and nothing else."
             }
             FirmFooter {
                 model: crate::firm_footer::FirmFooterModel {
                     legal_entity: "Shook Law PLLC".to_string(),
-                    brands: vec![
-                        crate::firm_footer::FirmFooterBrand {
-                            label: "Emerging Technologies Counsel".to_string(),
-                            href: String::new(),
-                            current: true,
-                            byline: "flat-fee legal services for emerging tech".to_string(),
-                        },
-                        crate::firm_footer::FirmFooterBrand {
-                            label: "Protect your info".to_string(),
-                            href: "https://www.deleteyourdata.com".to_string(),
-                            current: false,
-                            byline: "protect your personal information".to_string(),
-                        },
-                    ],
-                    memberships: demo_memberships()
-                        .into_iter()
-                        .map(|membership| crate::firm_footer::FirmFooterMembership {
-                            label: membership.label,
-                            href: membership.href,
-                        })
-                        .collect(),
-                    disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.".to_string(),
-                    trademark: "NEON LAW".to_string(),
-                    trademark_registration: "6,325,650".to_string(),
-                    trademark_record_url:
-                        "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
+                    brands: Vec::new(),
                     copyright_year: 2026,
-                    source_repo: "neon-law-source-code/navigator".to_string(),
-                    source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
-                    source_stars: Some(4),
-                    navigator_version: String::new(),
-                    navigator_href: "https://www.neonlaw.com/navigator".to_string(),
                 },
             }
         }
@@ -1954,7 +1921,7 @@ mod tests {
     }
 
     #[test]
-    fn app_footer_showcase_renders_the_platform_line() {
+    fn app_footer_showcase_renders_only_the_copyright_line() {
         use super::FirmFooterShowcase;
         use dioxus::prelude::*;
 
@@ -1965,12 +1932,12 @@ mod tests {
         dom.rebuild_in_place();
         let html = dioxus_ssr::render(&dom);
         assert!(
-            html.contains("Powered by"),
-            "the platform line renders: {html}"
+            html.contains("© 2026 Shook Law PLLC"),
+            "the copyright line renders: {html}"
         );
         assert!(
-            html.contains("neon-law-source-code/navigator") && html.contains("GitHub stars"),
-            "the gallery preview shows the source repository attribution: {html}"
+            !html.contains("Powered by"),
+            "the platform line no longer renders: {html}"
         );
     }
 }

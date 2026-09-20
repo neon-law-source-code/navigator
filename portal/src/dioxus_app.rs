@@ -222,25 +222,18 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         None => html,
     };
 
-    // The `/app` footer — copyright naming the resolved Firm's legal entity,
-    // its "Our Family" row, its membership line, and the shared platform
-    // line (ENG-589). Gated on the request path rather than on the rendered
-    // shell: unlike the public/authenticated split above, the eight real
-    // `/app` pages render their navbar directly rather than through a shared
-    // `NavigatorShell`, so there is no shell marker to key off. See
-    // `webapp::firm_footer`.
+    // The `/app` footer — one centered copyright line naming the resolved
+    // Firm's legal entity (ENG-589). Gated on the request path rather than
+    // on the rendered shell: unlike the public/authenticated split above,
+    // the eight real `/app` pages render their navbar directly rather than
+    // through a shared `NavigatorShell`, so there is no shell marker to key
+    // off. See `webapp::firm_footer`.
     let html = if renders_app_footer(&path) {
         let model = footer_model.unwrap_or_else(|| {
-            webapp::firm_footer::compiled_firm_footer_model(
-                views::brand::brand_key(),
-                {
-                    use chrono::Datelike;
-                    chrono::Utc::now().year()
-                },
-                views::brand::deployed_release()
-                    .unwrap_or_default()
-                    .to_string(),
-            )
+            webapp::firm_footer::compiled_firm_footer_model(views::brand::brand_key(), {
+                use chrono::Datelike;
+                chrono::Utc::now().year()
+            })
         });
         close_with_script(&html, &webapp::firm_footer::render_firm_footer(model))
     } else {
@@ -4412,7 +4405,6 @@ mod tests {
         let model = webapp::firm_footer::compiled_firm_footer_model(
             views::brand::BrandKey::default(),
             2026,
-            String::new(),
         );
         let footer = webapp::firm_footer::render_firm_footer(model);
         assert!(footer.contains("Shook Law PLLC"), "{footer}");

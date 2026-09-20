@@ -2419,17 +2419,10 @@ async fn inject_resolved_firm_context(
         .get::<views::brand::BrandKey>()
         .copied()
         .unwrap_or_default();
-    let model = webapp::firm_footer::resolve_firm_footer_model(
-        &surreal,
-        current,
-        {
-            use chrono::Datelike;
-            chrono::Utc::now().year()
-        },
-        views::brand::deployed_release()
-            .unwrap_or_default()
-            .to_string(),
-    )
+    let model = webapp::firm_footer::resolve_firm_footer_model(&surreal, current, {
+        use chrono::Datelike;
+        chrono::Utc::now().year()
+    })
     .await;
     let mark = webapp::app_chrome::resolve_app_brand_mark(&surreal, current).await;
     request.extensions_mut().insert(model);

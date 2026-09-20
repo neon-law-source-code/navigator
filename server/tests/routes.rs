@@ -1839,12 +1839,13 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
 }
 
 /// ENG-589: the `/app` footer and the public footer both name the seeded
-/// practice's Entity and list its three brands, current first — resolved
-/// live from `store::firms`/`store::brands`, not the compiled
-/// `FIRM_BRAND` constant every deployment used to render regardless of which
-/// Firm actually owns the request's brand.
+/// practice's Entity — resolved live from `store::firms`/`store::brands`,
+/// not the compiled `FIRM_BRAND` constant every deployment used to render
+/// regardless of which Firm actually owns the request's brand. The `/app`
+/// footer itself renders only that one copyright line; the family/membership
+/// rows are the public footer's alone.
 #[tokio::test]
-async fn the_app_and_public_footers_name_the_seeded_firm_and_its_brands() {
+async fn the_app_and_public_footers_name_the_seeded_firm() {
     let (state, surreal) = state_with_engines().await;
     store::seed::seed_canonical(&surreal, &state.storage)
         .await
@@ -1859,14 +1860,6 @@ async fn the_app_and_public_footers_name_the_seeded_firm_and_its_brands() {
         "{team_html}"
     );
     assert!(team_html.contains("Shook Law PLLC"), "{team_html}");
-    assert!(
-        team_html.contains(r#"class="app-footer__family""#),
-        "the seeded practice wears three brands, so the family row renders: {team_html}"
-    );
-    assert!(
-        team_html.contains("Proud member of the Justice Technology Association"),
-        "the firm's membership line renders on /app too: {team_html}"
-    );
 
     let home = app
         .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())

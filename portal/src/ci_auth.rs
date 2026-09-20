@@ -1,14 +1,13 @@
-//! Mint a project-scoped CI session from a GitHub Actions OIDC token.
+//! Mint an explicitly scoped CI session from a GitHub Actions OIDC token.
 //!
 //! `POST /auth/ci/seed-token` and `POST /auth/ci/document-token` are the CI
 //! counterparts of `/auth/cli/start`. A Project repository's job presents
 //! GitHub's JWT; the door verifies it, binds the run to the live Project
 //! whose `repository_url` is that repository, and returns an HMAC-signed
-//! [`SessionData`] attributed to that Project's own lawyer DRI. The seed
-//! mint additionally scopes the session to `POST /app/api/seed`, because it
-//! writes; the document mint leaves the session unscoped, because
-//! `navigator site document verify` (#486) only reads and the resolved actor
-//! already bounds it to that person's own participation.
+//! [`SessionData`] attributed to that Project's own lawyer DRI. Each door
+//! carries an explicit capability: the seed mint can reach its one write
+//! endpoint, while the document mint can reach only the two metadata reads
+//! used by `navigator site document verify`.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -20,8 +19,8 @@ use store::seed::SeedModel;
 
 use crate::github_oidc::{GitHubActionsClaims, GitHubOidc};
 use crate::session::{
-    now_unix_secs, random_token_32, SeedScope, SessionData, SessionSource, SessionStore,
-    CI_SESSION_TTL_SECS,
+    now_unix_secs, random_token_32, DocumentScope, SeedScope, SessionData, SessionScope,
+    SessionSource, SessionStore, CI_SESSION_TTL_SECS,
 };
 use crate::CanonicalHost;
 
@@ -58,25 +57,34 @@ async fn mint_seed_token(
     State(state): State<CiAuthState>,
     Json(input): Json<MintRequest>,
 ) -> Response {
-    match mint_inner(&state, &input.token, "ci.seed_token.minted", true).await {
+    match mint_inner(
+        &state,
+        &input.token,
+        "ci.seed_token.minted",
+        CiSessionKind::Seed,
+    )
+    .await
+    {
         Ok(body) => (StatusCode::OK, Json(body)).into_response(),
         Err(error) => error.into_response(),
     }
 }
 
 /// `POST /auth/ci/document-token` — the `navigator site document verify --ci`
-/// counterpart (#486). Verifies the same GitHub Actions OIDC token, binds to
-/// the same live Project, and attributes to the same lawyer DRI actor; the
-/// only difference is the minted session carries no [`SeedScope`] at all.
-/// Verification only reads, and the resolved actor is always that Project's
-/// own lawyer DRI, so an unscoped session already reaches no more than that
-/// person's ordinary login would — there is no write surface here to bound
-/// further the way `/app/api/seed` needs to.
+/// counterpart (#486). The minted session is limited to the named Project's
+/// minimal lookup and revision metadata reads.
 async fn mint_document_token(
     State(state): State<CiAuthState>,
     Json(input): Json<MintRequest>,
 ) -> Response {
-    match mint_inner(&state, &input.token, "ci.document_token.minted", false).await {
+    match mint_inner(
+        &state,
+        &input.token,
+        "ci.document_token.minted",
+        CiSessionKind::Document,
+    )
+    .await
+    {
         Ok(body) => (StatusCode::OK, Json(body)).into_response(),
         Err(error) => error.into_response(),
     }
@@ -113,11 +121,11 @@ async fn mint_inner(
     state: &CiAuthState,
     github_token: &str,
     audit_event: &'static str,
-    scoped: bool,
+    kind: CiSessionKind,
 ) -> Result<MintResponse, MintError> {
     let Some(host) = state.canonical_host.host() else {
         return Err(MintError::Unavailable(
-            "CANONICAL_HOST is required to mint CI seed tokens",
+            "CANONICAL_HOST is required to mint CI tokens",
         ));
     };
     let audience = format!("https://{host}");
@@ -132,7 +140,7 @@ async fn mint_inner(
         .spend_jti(&claims.jti, claims.exp)
         .map_err(|error| MintError::Unauthorized(error.to_string()))?;
     let project = resolve_project(&state.surreal, &claims).await?;
-    let actor = lawyer_dri_actor(&state.surreal, &project, scoped).await?;
+    let actor = lawyer_dri_actor(&state.surreal, &project, kind).await?;
     let exp = now_unix_secs() + CI_SESSION_TTL_SECS;
     let session = SessionData {
         sub: actor
@@ -147,10 +155,16 @@ async fn mint_inner(
         source: SessionSource::Ci,
         provider: None,
         viewing_as_dri: None,
-        scope: scoped.then(|| SeedScope {
-            endpoint: crate::api::SEED_ENDPOINT.to_string(),
-            models: SeedModel::ALL.to_vec(),
-            project_code: project.code.clone(),
+        scope: Some(match kind {
+            CiSessionKind::Seed => SessionScope::Seed(SeedScope {
+                endpoint: crate::api::SEED_ENDPOINT.to_string(),
+                models: SeedModel::ALL.to_vec(),
+                project_code: project.code.clone(),
+            }),
+            CiSessionKind::Document => SessionScope::Document(DocumentScope {
+                project_id: project.id,
+                project_code: project.code.clone(),
+            }),
         }),
     };
     let token = state.sessions.encode(&session);
@@ -220,14 +234,16 @@ async fn resolve_project(
     Ok(project.clone())
 }
 
-/// `scoped` names the door this actor is being resolved for — `true` for
-/// `/auth/ci/seed-token`, which writes, `false` for
-/// `/auth/ci/document-token`, which only verifies — so a refusal names what
-/// the caller was actually trying to do rather than always naming the write.
+#[derive(Clone, Copy)]
+enum CiSessionKind {
+    Seed,
+    Document,
+}
+
 async fn lawyer_dri_actor(
     surreal: &store::surreal::SurrealDb,
     project: &store::projects::Project,
-    scoped: bool,
+    kind: CiSessionKind,
 ) -> Result<store::persons::Person, MintError> {
     let people = store::projects::lawyer_dri_people(surreal, project.id)
         .await
@@ -236,7 +252,7 @@ async fn lawyer_dri_actor(
         .into_iter()
         .find(|person| person.role.is_lawyer_tier())
     else {
-        let purpose = if scoped {
+        let purpose = if matches!(kind, CiSessionKind::Seed) {
             "attribute a CI seed write to"
         } else {
             "attribute CI document verification to"

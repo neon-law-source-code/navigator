@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::people_commands::{PeopleCommandError, UpdateContext};
+use crate::session::SessionScope;
 use crate::SessionData;
 
 /// Client-safe Project payload. Firm-private integration coordinates never
@@ -1054,6 +1055,18 @@ async fn list_projects_door(
     State(state): State<ApiState>,
     authed: AuthedSession,
 ) -> Result<Response, ApiError> {
+    if let Some(SessionScope::Document(scope)) = &authed.0.scope {
+        let project = store::projects::find_by_id(&state.surreal, scope.project_id)
+            .await
+            .map_err(|error| ApiError::Db(error.to_string()))?
+            .filter(|project| project.code == scope.project_code)
+            .ok_or(ApiError::NotFound)?;
+        let lookup = vec![DocumentProjectLookup {
+            id: project.id,
+            code: project.code,
+        }];
+        return Ok((StatusCode::OK, Json(lookup)).into_response());
+    }
     let projects =
         store::access::visible_projects(&state.surreal, authed.0.person_id, authed.0.role)
             .await
@@ -1064,6 +1077,15 @@ async fn list_projects_door(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| ApiError::Db(error.to_string()))?;
     Ok((StatusCode::OK, Json(projects)).into_response())
+}
+
+/// The only Project fields the document-verification CLI needs before it asks
+/// for revision metadata. Keeping this response separate from the human
+/// Project payload prevents a CI token from inheriting unrelated fields.
+#[derive(Debug, Serialize)]
+struct DocumentProjectLookup {
+    id: Uuid,
+    code: String,
 }
 
 /// `GET /app/api/projects/{id}` — one matter, or 404 if the caller may not see it.
@@ -1489,7 +1511,7 @@ pub(crate) const SEED_ENDPOINT: &str = "/app/api/seed";
 pub(crate) async fn refuse_scoped_elsewhere(request: Request, next: Next) -> Response {
     if let Some(session) = request.extensions().get::<SessionData>() {
         if let Some(scope) = &session.scope {
-            if request.uri().path() != scope.endpoint {
+            if !scope.allows_request(request.method().as_str(), request.uri().path()) {
                 return (
                     StatusCode::FORBIDDEN,
                     Json(serde_json::json!({
@@ -1511,15 +1533,23 @@ async fn reconcile_seed(
 ) -> Response {
     let outcome = async {
         let model = store::seed::SeedModel::parse(&input.model)?;
-        if let Some(scope) = &session.scope {
-            if scope.endpoint != SEED_ENDPOINT {
+        match &session.scope {
+            None => {}
+            Some(SessionScope::Seed(scope)) => {
+                if scope.endpoint != SEED_ENDPOINT {
+                    return Err(anyhow::Error::new(
+                        store::seed::ScopeViolation::EndpointNotScoped,
+                    ));
+                }
+                if !scope.models.contains(&model) {
+                    return Err(anyhow::Error::new(
+                        store::seed::ScopeViolation::ModelNotScoped(model.term()),
+                    ));
+                }
+            }
+            Some(SessionScope::Document(_)) => {
                 return Err(anyhow::Error::new(
                     store::seed::ScopeViolation::EndpointNotScoped,
-                ));
-            }
-            if !scope.models.contains(&model) {
-                return Err(anyhow::Error::new(
-                    store::seed::ScopeViolation::ModelNotScoped(model.term()),
                 ));
             }
         }
@@ -1536,6 +1566,7 @@ async fn reconcile_seed(
                 project_scope: session
                     .scope
                     .as_ref()
+                    .and_then(SessionScope::as_seed)
                     .map(|scope| scope.project_code.as_str()),
                 dry_run: input.dry_run,
             },

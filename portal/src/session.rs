@@ -39,9 +39,8 @@ pub const CLI_SESSION_TTL_SECS: i64 = 60 * 60;
 /// long-lived Navigator session.
 pub const CI_SESSION_TTL_SECS: i64 = 10 * 60;
 
-/// Which front door minted a session — a browser cookie or a portable
-/// CLI bearer token. Lets audit logs tell them apart and lets policy
-/// treat a file-backed CLI credential differently from a cookie.
+/// Which front door minted a session — a browser cookie, a portable CLI
+/// bearer token, or a short-lived CI token.
 /// Defaults to [`SessionSource::Browser`] so tokens minted before this
 /// field existed still decode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -53,11 +52,10 @@ pub enum SessionSource {
     Ci,
 }
 
-/// Restricts a session to one endpoint, a closed set of seed models, and one
-/// project's records. Minted by `POST /auth/ci/seed-token`; every interactive
-/// login leaves [`SessionData::scope`] `None`, meaning unrestricted — the
-/// session may do everything its `role` allows.
+/// Restricts a CI session to one endpoint, a closed set of seed models, and
+/// one Project's records. Minted by `POST /auth/ci/seed-token`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SeedScope {
     /// The one route this session may reach, e.g. `/app/api/seed`.
     pub endpoint: String,
@@ -65,6 +63,52 @@ pub struct SeedScope {
     pub models: Vec<SeedModel>,
     /// The `project.code` this session's writes are confined to.
     pub project_code: String,
+}
+
+/// The read-only fields and route needed by the document verifier for one
+/// minted Project. It does not authorize document bytes or any other route.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentScope {
+    /// The only Project id whose revision metadata may be read.
+    pub project_id: Uuid,
+    /// The Project code returned by the lookup the CLI uses to resolve its id.
+    pub project_code: String,
+}
+
+/// The server-enforced capabilities of a CI session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SessionScope {
+    Seed(SeedScope),
+    Document(DocumentScope),
+}
+
+impl SessionScope {
+    /// Whether this session may reach this exact HTTP method and path.
+    #[must_use]
+    pub fn allows_request(&self, method: &str, path: &str) -> bool {
+        match self {
+            Self::Seed(scope) => method == "POST" && path == scope.endpoint,
+            Self::Document(scope) => {
+                method == "GET"
+                    && (path == "/app/api/projects"
+                        || path
+                            == format!(
+                                "/app/api/projects/{}/documents/revisions",
+                                scope.project_id
+                            ))
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn as_seed(&self) -> Option<&SeedScope> {
+        match self {
+            Self::Seed(scope) => Some(scope),
+            Self::Document(_) => None,
+        }
+    }
 }
 
 /// Original viewer actor retained while the session is scoped to a
@@ -132,11 +176,10 @@ pub struct SessionData {
     /// the actor for the banner and for restoring the original session.
     #[serde(default)]
     pub viewing_as_dri: Option<DriView>,
-    /// A CI-minted session's write scope. `None` for every interactive login and
-    /// every session minted before this field existed — an unrestricted session,
-    /// same as today.
+    /// A CI-minted session's explicit capability scope. Interactive sessions
+    /// leave this `None`; a CI session without it is rejected fail-closed.
     #[serde(default)]
-    pub scope: Option<SeedScope>,
+    pub scope: Option<SessionScope>,
 }
 
 impl SessionData {
@@ -144,6 +187,12 @@ impl SessionData {
     #[must_use]
     pub fn is_expired(&self) -> bool {
         self.exp <= now_unix()
+    }
+
+    /// A CI token without an explicit capability is not a valid session.
+    #[must_use]
+    pub fn is_legacy_unscoped_ci(&self) -> bool {
+        self.source == SessionSource::Ci && self.scope.is_none()
     }
 
     /// Convenience: build a session that expires in `DEFAULT_SESSION_TTL_SECS`.

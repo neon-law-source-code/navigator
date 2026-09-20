@@ -5,6 +5,8 @@
 //! [`protocol`] shape. Rust owns the immutable source bytes, safety preflight,
 //! orchestration, diagnostics contract, and the typed document model.
 
+use base64::Engine as _;
+
 mod adapter;
 pub mod anchor;
 mod model;
@@ -28,7 +30,62 @@ pub use outline::{
     HARVARD_OUTLINE_PATTERN, MARKER_GROUPS, MAX_DEPTH,
 };
 pub use preflight::is_docx_filename;
+pub use protocol::{ExportChange, ExportReply, ExportRequest, VerifyReply, VerifyRequest};
 pub use render::{render_notation, RenderError, RenderLetterhead, RenderOptions};
+
+/// Export attorney-approved edits through the managed native Open XML
+/// adapter. The original package remains the baseline; the adapter applies
+/// only anchor-addressed changes and emits native Word revisions.
+pub async fn export_with_adapter<A: WordAdapter + ?Sized>(
+    adapter: &A,
+    filename: &str,
+    original_bytes: &[u8],
+    changes: Vec<ExportChange>,
+) -> Result<Vec<u8>, WordError> {
+    preflight::validate_filename(filename)?;
+    preflight::validate_zip(original_bytes)?;
+    let reply = adapter
+        .export(ExportRequest::new(original_bytes, changes))
+        .await
+        .map_err(WordError::Adapter)?;
+    if reply.protocol_version != PROTOCOL_VERSION {
+        return Err(WordError::ProtocolVersion {
+            expected: PROTOCOL_VERSION,
+            received: reply.protocol_version,
+        });
+    }
+    if let Some(diagnostic) = reply.diagnostic {
+        return Err(WordError::Rejected(diagnostic));
+    }
+    let bytes = reply.bytes_base64.ok_or(WordError::MissingExportBytes)?;
+    base64::engine::general_purpose::STANDARD
+        .decode(bytes)
+        .map_err(WordError::ExportDecode)
+}
+
+/// Run the independent managed package validator against an exported package.
+pub async fn verify_with_adapter<A: WordAdapter + ?Sized>(
+    adapter: &A,
+    filename: &str,
+    bytes: &[u8],
+) -> Result<(), WordError> {
+    preflight::validate_filename(filename)?;
+    preflight::validate_zip(bytes)?;
+    let reply = adapter
+        .verify(VerifyRequest::new(bytes))
+        .await
+        .map_err(WordError::Adapter)?;
+    if reply.protocol_version != PROTOCOL_VERSION {
+        return Err(WordError::ProtocolVersion {
+            expected: PROTOCOL_VERSION,
+            received: reply.protocol_version,
+        });
+    }
+    if let Some(diagnostic) = reply.diagnostic {
+        return Err(WordError::Rejected(diagnostic));
+    }
+    Ok(())
+}
 
 /// The only protocol version currently understood by both sides of the local
 /// boundary. A version mismatch is terminal rather than best-effort: a lossy
@@ -105,6 +162,10 @@ pub enum WordError {
     ProtocolVersion { expected: u16, received: u16 },
     #[error("Word adapter returned no document")]
     MissingDocument,
+    #[error("managed Word adapter returned no exported package")]
+    MissingExportBytes,
+    #[error("managed Word adapter returned invalid exported bytes")]
+    ExportDecode(#[source] base64::DecodeError),
     #[error("Word package rejected: {0:?}")]
     Rejected(Diagnostic),
 }
@@ -256,6 +317,7 @@ mod tests {
                 "zip_total_uncompressed_size_exceeded",
                 DiagnosticCode::ZipTotalUncompressedSizeExceeded,
             ),
+            ("open_xml_validation", DiagnosticCode::OpenXmlValidation),
             ("macro_enabled_package", DiagnosticCode::MacroEnabledPackage),
             ("encrypted_package", DiagnosticCode::EncryptedPackage),
             ("escaping_package", DiagnosticCode::EscapingPackage),

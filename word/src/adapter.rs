@@ -6,7 +6,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::protocol::{AdapterReply, AdapterRequest};
+use crate::protocol::{
+    AdapterReply, AdapterRequest, ExportReply, ExportRequest, VerifyReply, VerifyRequest,
+};
 
 const ADAPTER_ENV: &str = "NAVIGATOR_WORD_ADAPTER";
 const DEFAULT_ADAPTER: &str = "navigator-word-adapter";
@@ -18,6 +20,14 @@ const MAX_PROTOCOL_BYTES: usize = 64 * 1024 * 1024;
 #[async_trait]
 pub trait WordAdapter: Send + Sync {
     async fn parse(&self, request: AdapterRequest) -> Result<AdapterReply, AdapterError>;
+
+    async fn export(&self, _request: ExportRequest) -> Result<ExportReply, AdapterError> {
+        Err(AdapterError::UnsupportedOperation)
+    }
+
+    async fn verify(&self, _request: VerifyRequest) -> Result<VerifyReply, AdapterError> {
+        Err(AdapterError::UnsupportedOperation)
+    }
 }
 
 /// Local process adapter built by the pinned managed-runtime image stage.
@@ -48,7 +58,31 @@ impl ManagedAdapter {
 impl WordAdapter for ManagedAdapter {
     async fn parse(&self, request: AdapterRequest) -> Result<AdapterReply, AdapterError> {
         let input = serde_json::to_vec(&request).map_err(AdapterError::Serialize)?;
+        let output = self.run("parse", &input).await?;
+        serde_json::from_slice(&output.stdout).map_err(|_| AdapterError::InvalidResponse)
+    }
+
+    async fn export(&self, request: ExportRequest) -> Result<ExportReply, AdapterError> {
+        let input = serde_json::to_vec(&request).map_err(AdapterError::Serialize)?;
+        let output = self.run("export", &input).await?;
+        serde_json::from_slice(&output.stdout).map_err(|_| AdapterError::InvalidResponse)
+    }
+
+    async fn verify(&self, request: VerifyRequest) -> Result<VerifyReply, AdapterError> {
+        let input = serde_json::to_vec(&request).map_err(AdapterError::Serialize)?;
+        let output = self.run("verify", &input).await?;
+        serde_json::from_slice(&output.stdout).map_err(|_| AdapterError::InvalidResponse)
+    }
+}
+
+impl ManagedAdapter {
+    async fn run(
+        &self,
+        operation: &str,
+        input: &[u8],
+    ) -> Result<std::process::Output, AdapterError> {
         let mut command = Command::new(&self.program);
+        command.arg(operation);
         command
             .env_clear()
             .stdin(std::process::Stdio::piped())
@@ -60,7 +94,7 @@ impl WordAdapter for ManagedAdapter {
         let mut child = command.spawn().map_err(|_| AdapterError::Unavailable)?;
         if let Some(mut stdin) = child.stdin.take() {
             stdin
-                .write_all(&input)
+                .write_all(input)
                 .await
                 .map_err(|_| AdapterError::Unavailable)?;
         }
@@ -71,9 +105,7 @@ impl WordAdapter for ManagedAdapter {
         if output.stdout.len() > MAX_PROTOCOL_BYTES {
             return Err(AdapterError::ResponseTooLarge);
         }
-        let reply: AdapterReply =
-            serde_json::from_slice(&output.stdout).map_err(|_| AdapterError::InvalidResponse)?;
-        Ok(reply)
+        Ok(output)
     }
 }
 
@@ -89,4 +121,6 @@ pub enum AdapterError {
     ResponseTooLarge,
     #[error("adapter returned an invalid response")]
     InvalidResponse,
+    #[error("managed adapter operation is unavailable")]
+    UnsupportedOperation,
 }

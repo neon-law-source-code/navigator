@@ -123,7 +123,17 @@ The pointer records `kind`, desired `visibility`, current revision metadata, and
 has one. It never contains an object-storage coordinate or legal-document bytes. Editing a pointer's visibility and
 running sync reconciles that value through the same authorized API; the normal API audit records the actor and
 operation. Folder conventions infer `filing` for `pleadings/`, `exhibit` for `exhibits/`, and `agreement` for
-`agreements/`; other paths use `unclassified`. Visibility defaults to `internal`.
+`agreements/`; other paths use `unclassified`. Visibility defaults to `internal`. A folder outside those three
+conventions is therefore deliberately `unclassified` rather than a rejected path, and `navigator site sync --help` says
+so, so a lawyer who drops a file somewhere the conventions do not name is not left reading a silent pass as a failure.
+
+**The key layout stays content-addressed; a readable slug key is a proposal, not an authorized migration.** Keys remain
+`projects/<code>/documents/<sha256>`, and `site sync` never renames or migrates one — the slug it derives from the
+staging path names the *pointer*, not the object. Content addressing is load-bearing in three places at once: it is what
+makes the `assets` revision chain immutable, what lets the same bytes filed in two matters deduplicate instead of
+diverging, and what lets a governed expunge find every reference to the bytes it is about to destroy. A slug-keyed
+layout has to answer all three before a migration is considered, so flattening these keys is not routine cleanup and no
+part of it rides along with an unrelated change.
 
 The command creates `documents/.gitignore` without overwriting an existing file. `scaffold` writes the same four bytes,
 and `Y014` holds them exact whenever `documents/` exists: deny everything, then re-admit subdirectories, pointer files,

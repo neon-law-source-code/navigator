@@ -178,6 +178,13 @@ fn site_projects_close_accepts_an_effective_time() {
     assert!(unwrapped(&output).contains("RFC 3339 time when the matter actually closed."));
 }
 
+/// The disclosure has to carry the *fallback* as well as the mappings it
+/// enumerates. A lawyer who drops a file into a folder the conventions do not
+/// name gets `unclassified`, and without that sentence the help reads as
+/// though the enumerated three are the only accepted shapes — so the silent
+/// pass looks like a bug and the folder looks like a mistake. Pinned
+/// separately from the mappings because it is the half most easily lost when
+/// someone tightens the prose.
 #[test]
 fn site_sync_help_discloses_defaults_and_preserved_keys() {
     let output = unwrapped(&help(&["site", "sync", "--help"]));
@@ -185,6 +192,8 @@ fn site_sync_help_discloses_defaults_and_preserved_keys() {
     assert!(output.contains("pleadings to filing"));
     assert!(output.contains("content-addressed"));
     assert!(output.contains("does not rename or migrate those keys"));
+    assert!(output.contains("everything else to unclassified"));
+    assert!(output.contains("intentionally unclassified, not an error"));
 }
 
 /// `projects` is the Project workspace group: the verbs that operate on

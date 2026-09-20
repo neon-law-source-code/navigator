@@ -202,11 +202,10 @@ textarea {
   gap: 0.75rem;
 }
 
-/* The footer every `/app` page carries — copyright naming the resolved
-   Firm's legal entity, that Firm's "Our Family" row, its membership lines,
-   then the shared platform line, no navigation. Distinct from `.navigator-footer`, which lays out a
-   legal attribution, a link row, and a release stamp for the not yet
-   widely adopted `NavigatorShell`. */
+/* The footer every `/app` page carries — one centered copyright line naming
+   the resolved Firm's legal entity, no navigation. Distinct from
+   `.navigator-footer`, which lays out a legal attribution, a link row, and a
+   release stamp for the not yet widely adopted `NavigatorShell`. */
 .app-footer {
   padding: 1.5rem 1rem;
   text-align: center;
@@ -217,124 +216,6 @@ textarea {
 
 .app-footer__copyright {
   margin: 0;
-}
-
-.app-footer__tagline,
-.app-footer__disclaimer,
-.app-footer__trademark {
-  margin: 0;
-}
-
-/* "Our Family", centered like the lines around it: the small uppercase
-   heading inline with the row of brands, the current one bold and unlinked. */
-.app-footer__family {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin: 0.75rem 0 0;
-}
-
-.app-footer__family-heading {
-  margin: 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.app-footer__family-list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem 0.75rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.app-footer__family-item {
-  margin: 0;
-}
-
-/*
- * Every multi-brand list is a two-column block on desktop, one brand per
- * line. One column on narrow screens keeps each entry readable.
- */
-.app-footer__family-list--two-column {
-  display: grid;
-  grid-template-columns: 1fr;
-  justify-content: start;
-  gap: 0.35rem 2rem;
-  text-align: left;
-}
-
-@media (min-width: 40rem) {
-  .app-footer__family-list--two-column {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-/*
- * The byline is supporting text, so it is quieter than the name it follows -
- * but it still has to clear AA, so it reads --nav-color-text-muted rather
- * than an opacity, which would silently drop contrast below the floor the
- * palette guarantees.
- */
-.app-footer__family-byline {
-  font-size: 0.8125rem;
-  color: var(--nav-color-text-muted);
-}
-
-.app-footer__family-link,
-.app-footer__family-current {
-  font-size: 0.875rem;
-}
-
-/* The application footer's family destinations are inline with their
-   supporting bylines, so the link cue cannot be colour alone. */
-.nav-theme a.app-footer__family-link {
-  text-decoration: underline;
-  text-decoration-thickness: 0.08em;
-  text-underline-offset: 0.14em;
-}
-
-.app-footer__family-current {
-  font-weight: 600;
-  color: var(--nav-color-text);
-}
-
-/* "Proud member of …", one line per association, linking off-site. */
-.app-footer__membership {
-  margin: 0.5rem 0 0;
-}
-
-.app-footer__membership-link {
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
-}
-
-.app-footer__platform {
-  margin: 0.25rem 0 0;
-}
-
-.app-footer__platform {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-@media (max-width: 54rem) {
-  .app-footer__platform {
-    margin-top: 0;
-  }
-}
-
-.app-footer__release {
-  font-variant-numeric: tabular-nums;
 }
 
 .navigator-chrome-showcase {

@@ -32,6 +32,7 @@ use axum::extract::{Extension, Multipart, Path as AxumPath, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use base64::Engine as _;
+use chrono::Utc;
 use tower_cookies::Cookies;
 use uuid::Uuid;
 use workflows::{IntakeArtifact, IntakePayload, MachineKind, StateMachineRuntime};
@@ -70,6 +71,8 @@ pub enum ContractReviewError {
     DocumentIngest(#[from] store::documents::IngestError),
     #[error("decode document bytes: {0}")]
     Base64(#[from] base64::DecodeError),
+    #[error("contract artifact: {0}")]
+    Artifact(String),
     #[error("Word package: {0}")]
     Word(#[from] word::WordError),
     #[error("template: {0}")]
@@ -84,6 +87,10 @@ pub enum ContractReviewError {
     Snapshot(String),
     #[error("serialize intake payload: {0}")]
     Payload(serde_json::Error),
+    #[error("serialize Word anchor manifest: {0}")]
+    Manifest(serde_json::Error),
+    #[error("Notation document: {0}")]
+    NotationDocument(#[from] store::notation_documents::NotationDocumentError),
     #[error("no active playbook on file for this Entity")]
     NoPlaybook,
     #[error("playbook positions malformed: {0}")]
@@ -279,6 +286,10 @@ pub async fn drive_contract_review(
     let filed_artifact =
         stage_contract_artifact(deps.surreal, deps.storage, project_id, filename, &artifact)
             .await?;
+    let original_asset_id = match (&artifact, &filed_artifact) {
+        (IntakeArtifact::File { .. }, IntakeArtifact::Stored { asset_id }) => Some(*asset_id),
+        _ => None,
+    };
 
     // Open the notation at BEGIN, bound to the client Entity.
     let new_notation = store::notations::NewNotation::new(
@@ -294,6 +305,47 @@ pub async fn drive_contract_review(
         .await
         .map_err(|error| ContractReviewError::Db(error.to_string()))?
         .id;
+
+    // A DOCX upload owns a governed Notation source before the workflow is
+    // started. A parse/import failure must leave the workflow at BEGIN rather
+    // than advancing a notation whose source could not be understood.
+    if filename
+        .rsplit_once('.')
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("docx"))
+    {
+        let IntakeArtifact::File { bytes_base64, .. } = &artifact else {
+            return Err(ContractReviewError::Artifact(
+                "DOCX source was not supplied as a file".to_string(),
+            ));
+        };
+        let asset_id = original_asset_id.ok_or_else(|| {
+            ContractReviewError::Artifact("DOCX source was not filed".to_string())
+        })?;
+        let adapter = word::ManagedAdapter::from_env();
+        let bytes = base64::engine::general_purpose::STANDARD.decode(bytes_base64)?;
+        let parsed = word::parse_with_adapter(&adapter, filename, &bytes).await?;
+        let markdown = parsed.notation_markdown();
+        let manifest = parsed
+            .anchor_manifest()
+            .map_err(ContractReviewError::Manifest)?;
+        let recorded_at = Utc::now().to_rfc3339();
+        store::notation_documents::import_root(
+            deps.surreal,
+            deps.storage,
+            store::notation_documents::ImportRoot {
+                project_id,
+                notation_id,
+                original_asset_id: asset_id,
+                markdown: markdown.as_ref().as_bytes(),
+                anchor_manifest: &manifest,
+                parser_version: "word-protocol-1",
+                schema_version: 1,
+                authored_by_person_id: person_id,
+                recorded_at: &recorded_at,
+            },
+        )
+        .await?;
+    }
 
     // Start the workflow and file the contract: `contract_uploaded` lands on
     // `document_intake__inbound_contract`, whose document-intake side effect

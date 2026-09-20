@@ -28,10 +28,14 @@
 //! redirector answers the bare domain with a 301 to `https://www.<zone>`,
 //! so the GKE ingress only ever serves `www` (and `workflows`). The
 //! redirect serves HTTPS only once a certificate exists for the apex —
-//! DNSimple does not auto-issue one for a `URL` record — so a public
-//! deploy pairs `--redirect-apex-to-www` with a Let's Encrypt certificate
-//! for the domain (issued from DNSimple's certificate API; see
-//! `docs/dns.md`). The command prints that reminder after it runs.
+//! DNSimple does not auto-issue one for a `URL` record — so
+//! `--redirect-apex-to-www` also reconciles a Let's Encrypt certificate
+//! for the bare domain through [`ensure_apex_certificate`]: order it when
+//! none exists, request issuance when domain-control validation may have
+//! completed, and report the certificate's actual state either way. This
+//! replaced an earlier version that only printed a reminder to run the
+//! `dnsimple` CLI by hand; see `docs/dns.md` for the certificate lifecycle
+//! and remediation when a certificate lands in a failed state.
 //!
 //! The SendGrid DKIM/link-branding targets and the site-verification
 //! token are issued per-domain by SendGrid's Domain Authentication
@@ -188,6 +192,194 @@ pub struct ExistingRecord {
     pub name: String,
     pub content: String,
     pub priority: Option<u32>,
+}
+
+// --- The apex redirect's own certificate ---------------------------
+
+/// The state of the most recent Let's Encrypt certificate DNSimple holds
+/// for a domain, folded down to the four states [`ensure_apex_certificate`]
+/// acts on.
+///
+/// DNSimple's own `state` string carries more values than this (`new`,
+/// `requesting`, `issued`, `reissuing`, `reissued`, `expiring`, and others a
+/// plan or product change can introduce); mapping is intentionally
+/// fail-closed — [`ApexCertificateState::from_api`] folds anything it does
+/// not recognize to [`Self::Failed`] rather than [`Self::Active`], because a
+/// state this code has never seen is not evidence the apex is safe to
+/// pronounce ready.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApexCertificateState {
+    /// Ordered but not yet domain-control-validated and issued.
+    Pending,
+    /// Issued and fit to serve the redirect's HTTPS handshake.
+    Active,
+    /// Cancelled, expired, or an unrecognized state — never silently ready.
+    Failed,
+}
+
+impl ApexCertificateState {
+    #[must_use]
+    pub fn from_api(raw: &str) -> Self {
+        match raw {
+            "issued" | "reissued" | "expiring" => Self::Active,
+            "new" | "requesting" | "reissuing" => Self::Pending,
+            _ => Self::Failed,
+        }
+    }
+}
+
+/// The most recent certificate DNSimple holds for a domain's apex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApexCertificate {
+    pub id: u64,
+    pub state: ApexCertificateState,
+}
+
+/// What [`ensure_apex_certificate`] did to reach the reported state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApexCertificateAction {
+    /// No certificate existed; one was ordered.
+    Ordered,
+    /// A pending certificate existed; issuance was requested in case
+    /// domain-control validation had already completed.
+    IssueRequested,
+    /// An active certificate already covers the apex; nothing changed.
+    Unchanged,
+    /// The certificate cannot be advanced automatically — issuance failed,
+    /// or a pending certificate's issuance request was refused because
+    /// validation has not completed yet. An operator must act.
+    RemediationNeeded,
+}
+
+/// [`ensure_apex_certificate`]'s report for one zone: the redirect
+/// certificate's identity, its state, what this run did, and a
+/// human-readable line naming the next step when one remains.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApexCertificateReport {
+    pub zone: String,
+    pub certificate_id: Option<u64>,
+    pub state: ApexCertificateState,
+    pub action: ApexCertificateAction,
+    pub message: String,
+}
+
+/// The apex certificate operations `ensure_apex_certificate` needs — the
+/// certificate-API sibling of [`DnsProvider`], which only ever touches
+/// records. Kept as its own trait rather than added to `DnsProvider` because
+/// a fork's `DnsProvider` (Cloud DNS, Route 53) may have no equivalent
+/// certificate API at all: DNSimple's redirector is what makes a bare-domain
+/// certificate this code's problem in the first place.
+#[async_trait]
+pub trait CertificateProvider: Send + Sync {
+    /// The most recently created certificate for `zone`, if any. Always a
+    /// live read, even under `--dry-run` — the same convention
+    /// [`DnsProvider::list_records`] follows, because deciding what to do
+    /// needs the real state regardless of whether the write that follows is
+    /// recorded or sent.
+    async fn latest_certificate(&self, zone: &str) -> Result<Option<ApexCertificate>, DnsError>;
+
+    /// Order a new Let's Encrypt certificate for `zone`'s bare apex —
+    /// `name: ""`, never `"www"`: GKE's `ManagedCertificate` already covers
+    /// `www` (see `cli::devx::ship`), and pairing this certificate with the
+    /// apex alone is what lets it reissue independently of that one.
+    async fn order_letsencrypt(
+        &self,
+        zone: &str,
+        auto_renew: bool,
+    ) -> Result<ApexCertificate, DnsError>;
+
+    /// Request issuance of a previously ordered certificate — the step that
+    /// only succeeds once DNSimple's domain-control validation has
+    /// completed. A certificate not yet validated is expected to refuse
+    /// this call; the caller (`ensure_apex_certificate`) treats that refusal
+    /// as an ordinary "still pending" outcome, not a hard failure.
+    async fn issue_letsencrypt(
+        &self,
+        zone: &str,
+        certificate_id: u64,
+    ) -> Result<ApexCertificateState, DnsError>;
+}
+
+/// Reconcile the apex redirect's own certificate: order one if none exists,
+/// request issuance of a pending one in case validation already completed,
+/// or report that an active certificate already covers it. Never errors on
+/// an ordinary "not ready yet" — that is [`ApexCertificateAction::RemediationNeeded`]
+/// with a message naming the next step, so a caller can rerun this safely
+/// and as often as it likes (the same idempotence [`run_setup`] gives DNS
+/// records). A hard `Err` means the DNSimple API call itself failed —
+/// network, auth, or an unexpected response — not that the certificate is
+/// merely unready.
+pub async fn ensure_apex_certificate(
+    provider: &dyn CertificateProvider,
+    zone: &str,
+    auto_renew: bool,
+) -> Result<ApexCertificateReport, DnsError> {
+    match provider.latest_certificate(zone).await? {
+        None => {
+            let cert = provider.order_letsencrypt(zone, auto_renew).await?;
+            Ok(ApexCertificateReport {
+                zone: zone.to_string(),
+                certificate_id: Some(cert.id),
+                state: cert.state,
+                action: ApexCertificateAction::Ordered,
+                message: format!(
+                    "ordered a Let's Encrypt certificate for {zone} (id {}); issuance is \
+                     asynchronous — rerun once DNS validates to request issuance",
+                    cert.id
+                ),
+            })
+        }
+        Some(cert) if cert.state == ApexCertificateState::Active => Ok(ApexCertificateReport {
+            zone: zone.to_string(),
+            certificate_id: Some(cert.id),
+            state: cert.state,
+            action: ApexCertificateAction::Unchanged,
+            message: format!(
+                "{zone} already carries an active certificate (id {}); the apex redirect \
+                 serves HTTPS",
+                cert.id
+            ),
+        }),
+        Some(cert) if cert.state == ApexCertificateState::Pending => {
+            match provider.issue_letsencrypt(zone, cert.id).await {
+                Ok(state) => Ok(ApexCertificateReport {
+                    zone: zone.to_string(),
+                    certificate_id: Some(cert.id),
+                    state,
+                    action: ApexCertificateAction::IssueRequested,
+                    message: format!(
+                        "requested issuance of {zone}'s certificate (id {}); rerun to confirm \
+                         it moved to issued",
+                        cert.id
+                    ),
+                }),
+                Err(err) => Ok(ApexCertificateReport {
+                    zone: zone.to_string(),
+                    certificate_id: Some(cert.id),
+                    state: ApexCertificateState::Pending,
+                    action: ApexCertificateAction::RemediationNeeded,
+                    message: format!(
+                        "{zone}'s certificate (id {}) is still pending — domain-control \
+                         validation has likely not completed yet ({err}); rerun `ops dns \
+                         setup --redirect-apex-to-www --domain {zone}` once DNS resolves",
+                        cert.id
+                    ),
+                }),
+            }
+        }
+        Some(cert) => Ok(ApexCertificateReport {
+            zone: zone.to_string(),
+            certificate_id: Some(cert.id),
+            state: cert.state,
+            action: ApexCertificateAction::RemediationNeeded,
+            message: format!(
+                "{zone}'s most recent certificate (id {}) is not active and this run cannot \
+                 advance it automatically; order a fresh one with `dnsimple certificates \
+                 order-letsencrypt {zone} -a <account> --auto-renew` (see docs/dns.md)",
+                cert.id
+            ),
+        }),
+    }
 }
 
 /// Normalize record content for comparison. DNSimple returns `TXT`
@@ -832,6 +1024,162 @@ impl DnsProvider for DnsimpleProvider {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct DnsimpleCertificate {
+    id: u64,
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DnsimpleCertificateListResponse {
+    data: Vec<DnsimpleCertificate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DnsimpleCertificateSingleResponse {
+    data: DnsimpleCertificate,
+}
+
+#[derive(Debug, Serialize)]
+struct DnsimpleOrderLetsencryptBody<'a> {
+    /// The bare apex, never `"www"` — see [`CertificateProvider::order_letsencrypt`].
+    name: &'a str,
+    auto_renew: bool,
+}
+
+#[async_trait]
+impl CertificateProvider for DnsimpleProvider {
+    async fn latest_certificate(&self, zone: &str) -> Result<Option<ApexCertificate>, DnsError> {
+        // Bounded to the first 100 certificates DNSimple returns for the
+        // domain — a redirect apex is reissued at most a few times a year,
+        // so a domain with more than a page of certificate history is
+        // outside what this reads; the caller still gets an answer, just
+        // possibly not the very latest of an unusually long history.
+        let url = self.url(&format!("/domains/{zone}/certificates?per_page=100"));
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&self.api_token)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| DnsError::Http(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let body_bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| DnsError::Http(e.to_string()))?;
+        if !(200..300).contains(&status) {
+            return Err(DnsError::Status {
+                status,
+                url,
+                body: String::from_utf8_lossy(&body_bytes).into_owned(),
+            });
+        }
+        let parsed: DnsimpleCertificateListResponse = serde_json::from_slice(&body_bytes)
+            .map_err(|e| DnsError::Http(format!("decode certificate list response: {e}")))?;
+        Ok(parsed
+            .data
+            .into_iter()
+            .max_by_key(|cert| cert.id)
+            .map(|cert| ApexCertificate {
+                id: cert.id,
+                state: ApexCertificateState::from_api(&cert.state),
+            }))
+    }
+
+    async fn order_letsencrypt(
+        &self,
+        zone: &str,
+        auto_renew: bool,
+    ) -> Result<ApexCertificate, DnsError> {
+        let url = self.url(&format!("/domains/{zone}/certificates/letsencrypt"));
+        // The bare apex (`name: ""`), deliberately never `"www"` — DNSimple
+        // defaults `name` to `"www"` when omitted, which would order a
+        // certificate for the host GKE's own `ManagedCertificate` already
+        // covers instead of the one this command actually needs: the naked
+        // domain the `URL` redirect record answers on.
+        let body = DnsimpleOrderLetsencryptBody {
+            name: "",
+            auto_renew,
+        };
+        let body_json = serde_json::to_string(&body)
+            .map_err(|e| DnsError::Http(format!("serialize body: {e}")))?;
+        if self.dry_run {
+            self.record("POST", &url, Some(body_json));
+            return Ok(ApexCertificate {
+                id: 0,
+                state: ApexCertificateState::Pending,
+            });
+        }
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.api_token)
+            .header("Accept", "application/json")
+            .body(body_json)
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+            .map_err(|e| DnsError::Http(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let body_bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| DnsError::Http(e.to_string()))?;
+        if !(200..300).contains(&status) {
+            return Err(DnsError::Status {
+                status,
+                url,
+                body: String::from_utf8_lossy(&body_bytes).into_owned(),
+            });
+        }
+        let parsed: DnsimpleCertificateSingleResponse = serde_json::from_slice(&body_bytes)
+            .map_err(|e| DnsError::Http(format!("decode order-letsencrypt response: {e}")))?;
+        Ok(ApexCertificate {
+            id: parsed.data.id,
+            state: ApexCertificateState::from_api(&parsed.data.state),
+        })
+    }
+
+    async fn issue_letsencrypt(
+        &self,
+        zone: &str,
+        certificate_id: u64,
+    ) -> Result<ApexCertificateState, DnsError> {
+        let url = self.url(&format!(
+            "/domains/{zone}/certificates/letsencrypt/{certificate_id}/issue"
+        ));
+        if self.dry_run {
+            self.record("POST", &url, None);
+            return Ok(ApexCertificateState::Pending);
+        }
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.api_token)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| DnsError::Http(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let body_bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| DnsError::Http(e.to_string()))?;
+        if !(200..300).contains(&status) {
+            return Err(DnsError::Status {
+                status,
+                url,
+                body: String::from_utf8_lossy(&body_bytes).into_owned(),
+            });
+        }
+        let parsed: DnsimpleCertificateSingleResponse = serde_json::from_slice(&body_bytes)
+            .map_err(|e| DnsError::Http(format!("decode issue-letsencrypt response: {e}")))?;
+        Ok(ApexCertificateState::from_api(&parsed.data.state))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1437,5 +1785,361 @@ mod tests {
             }
             _ => panic!("expected Status, got {err:?}"),
         }
+    }
+
+    // --- The apex redirect's own certificate ---------------------------
+
+    #[test]
+    fn apex_certificate_state_is_fail_closed_on_unrecognized_states() {
+        assert_eq!(
+            ApexCertificateState::from_api("issued"),
+            ApexCertificateState::Active
+        );
+        assert_eq!(
+            ApexCertificateState::from_api("reissued"),
+            ApexCertificateState::Active
+        );
+        assert_eq!(
+            ApexCertificateState::from_api("expiring"),
+            ApexCertificateState::Active
+        );
+        assert_eq!(
+            ApexCertificateState::from_api("new"),
+            ApexCertificateState::Pending
+        );
+        assert_eq!(
+            ApexCertificateState::from_api("requesting"),
+            ApexCertificateState::Pending
+        );
+        assert_eq!(
+            ApexCertificateState::from_api("reissuing"),
+            ApexCertificateState::Pending
+        );
+        for unrecognized in [
+            "cancelled",
+            "expired",
+            "failed",
+            "",
+            "something-new-dnsimple-adds",
+        ] {
+            assert_eq!(
+                ApexCertificateState::from_api(unrecognized),
+                ApexCertificateState::Failed,
+                "{unrecognized} must never be treated as ready"
+            );
+        }
+    }
+
+    /// Programmable fake for [`ensure_apex_certificate`]'s decision logic —
+    /// the certificate-API sibling of `FakeProvider` above.
+    #[derive(Default)]
+    struct FakeCertificateProvider {
+        existing: Option<ApexCertificate>,
+        /// `Err(..)` simulates DNSimple refusing issuance because
+        /// domain-control validation has not completed yet.
+        issue_result: Option<Result<ApexCertificateState, String>>,
+        orders: Arc<Mutex<Vec<(String, bool)>>>,
+        issues: Arc<Mutex<Vec<(String, u64)>>>,
+    }
+
+    #[async_trait]
+    impl CertificateProvider for FakeCertificateProvider {
+        async fn latest_certificate(
+            &self,
+            _zone: &str,
+        ) -> Result<Option<ApexCertificate>, DnsError> {
+            Ok(self.existing)
+        }
+
+        async fn order_letsencrypt(
+            &self,
+            zone: &str,
+            auto_renew: bool,
+        ) -> Result<ApexCertificate, DnsError> {
+            self.orders
+                .lock()
+                .unwrap()
+                .push((zone.to_string(), auto_renew));
+            Ok(ApexCertificate {
+                id: 501,
+                state: ApexCertificateState::Pending,
+            })
+        }
+
+        async fn issue_letsencrypt(
+            &self,
+            zone: &str,
+            certificate_id: u64,
+        ) -> Result<ApexCertificateState, DnsError> {
+            self.issues
+                .lock()
+                .unwrap()
+                .push((zone.to_string(), certificate_id));
+            match self.issue_result.clone() {
+                Some(Ok(state)) => Ok(state),
+                Some(Err(message)) => Err(DnsError::Http(message)),
+                None => Ok(ApexCertificateState::Pending),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn ensure_apex_certificate_orders_one_when_none_exists() {
+        let fake = FakeCertificateProvider::default();
+        let orders = fake.orders.clone();
+        let report = ensure_apex_certificate(&fake, "example.com", true)
+            .await
+            .unwrap();
+        assert_eq!(report.action, ApexCertificateAction::Ordered);
+        assert_eq!(report.state, ApexCertificateState::Pending);
+        assert_eq!(report.certificate_id, Some(501));
+        assert_eq!(
+            orders.lock().unwrap().as_slice(),
+            [("example.com".to_string(), true)]
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_apex_certificate_requests_issuance_of_a_pending_certificate() {
+        let fake = FakeCertificateProvider {
+            existing: Some(ApexCertificate {
+                id: 7,
+                state: ApexCertificateState::Pending,
+            }),
+            issue_result: Some(Ok(ApexCertificateState::Active)),
+            ..Default::default()
+        };
+        let issues = fake.issues.clone();
+        let orders = fake.orders.clone();
+        let report = ensure_apex_certificate(&fake, "example.com", true)
+            .await
+            .unwrap();
+        assert_eq!(report.action, ApexCertificateAction::IssueRequested);
+        assert_eq!(report.state, ApexCertificateState::Active);
+        assert_eq!(report.certificate_id, Some(7));
+        assert_eq!(
+            issues.lock().unwrap().as_slice(),
+            [("example.com".to_string(), 7)]
+        );
+        assert!(
+            orders.lock().unwrap().is_empty(),
+            "a pending certificate must not be re-ordered"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_apex_certificate_treats_a_refused_issue_as_still_pending_not_a_hard_error() {
+        // Domain-control validation has not completed yet: DNSimple refuses
+        // the issue call. Repeat execution (rerunning `ops dns setup`) must
+        // stay safe, so this is a report naming the remediation, not an
+        // `Err` that would abort the whole zone reconciliation.
+        let fake = FakeCertificateProvider {
+            existing: Some(ApexCertificate {
+                id: 7,
+                state: ApexCertificateState::Pending,
+            }),
+            issue_result: Some(Err("422 not yet validated".to_string())),
+            ..Default::default()
+        };
+        let report = ensure_apex_certificate(&fake, "example.com", true)
+            .await
+            .expect("a refused issue is a report, not an Err");
+        assert_eq!(report.action, ApexCertificateAction::RemediationNeeded);
+        assert_eq!(report.state, ApexCertificateState::Pending);
+        assert!(report.message.contains("pending"));
+    }
+
+    #[tokio::test]
+    async fn ensure_apex_certificate_reports_an_active_certificate_as_unchanged() {
+        let fake = FakeCertificateProvider {
+            existing: Some(ApexCertificate {
+                id: 9,
+                state: ApexCertificateState::Active,
+            }),
+            ..Default::default()
+        };
+        let issues = fake.issues.clone();
+        let orders = fake.orders.clone();
+        let report = ensure_apex_certificate(&fake, "example.com", true)
+            .await
+            .unwrap();
+        assert_eq!(report.action, ApexCertificateAction::Unchanged);
+        assert_eq!(report.state, ApexCertificateState::Active);
+        assert!(issues.lock().unwrap().is_empty());
+        assert!(orders.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn ensure_apex_certificate_flags_a_failed_certificate_for_remediation() {
+        let fake = FakeCertificateProvider {
+            existing: Some(ApexCertificate {
+                id: 11,
+                state: ApexCertificateState::Failed,
+            }),
+            ..Default::default()
+        };
+        let report = ensure_apex_certificate(&fake, "example.com", true)
+            .await
+            .unwrap();
+        assert_eq!(report.action, ApexCertificateAction::RemediationNeeded);
+        assert_eq!(report.state, ApexCertificateState::Failed);
+        assert!(report.message.contains("order-letsencrypt"));
+    }
+
+    #[tokio::test]
+    async fn ensure_apex_certificate_is_idempotent_on_repeat_execution() {
+        // Rerunning against an already-active certificate must be a pure
+        // no-op both times — the same idempotence `run_setup` gives records.
+        let fake = FakeCertificateProvider {
+            existing: Some(ApexCertificate {
+                id: 9,
+                state: ApexCertificateState::Active,
+            }),
+            ..Default::default()
+        };
+        let first = ensure_apex_certificate(&fake, "example.com", true)
+            .await
+            .unwrap();
+        let second = ensure_apex_certificate(&fake, "example.com", true)
+            .await
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.action, ApexCertificateAction::Unchanged);
+    }
+
+    #[tokio::test]
+    async fn dnsimple_order_letsencrypt_targets_the_bare_apex_and_decodes_state() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v2/123/domains/neonlaw.com/certificates/letsencrypt"))
+            .and(header("authorization", "Bearer T"))
+            .respond_with(
+                ResponseTemplate::new(201)
+                    .set_body_json(serde_json::json!({"data": {"id": 55, "state": "new"}})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = DnsimpleProvider::new("T", "123").with_base_url(server.uri());
+        let cert = provider
+            .order_letsencrypt("neonlaw.com", true)
+            .await
+            .unwrap();
+        assert_eq!(cert.id, 55);
+        assert_eq!(cert.state, ApexCertificateState::Pending);
+    }
+
+    #[tokio::test]
+    async fn dnsimple_order_letsencrypt_request_names_the_bare_apex_not_www() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v2/123/domains/neonlaw.com/certificates/letsencrypt"))
+            .respond_with(
+                ResponseTemplate::new(201)
+                    .set_body_json(serde_json::json!({"data": {"id": 55, "state": "new"}})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = DnsimpleProvider::new("T", "123").with_base_url(server.uri());
+        provider
+            .order_letsencrypt("neonlaw.com", true)
+            .await
+            .unwrap();
+        // wiremock has no built-in JSON-body assertion helper here, so this
+        // pins the contract through `with_dry_run` instead, which records
+        // the exact body this same code path sends.
+        let dry = DnsimpleProvider::new("T", "123")
+            .with_base_url(server.uri())
+            .with_dry_run();
+        dry.order_letsencrypt("neonlaw.com", true).await.unwrap();
+        let calls = dry.recorded_calls();
+        assert_eq!(calls.len(), 1);
+        assert!(
+            calls[0].body.as_deref().unwrap().contains("\"name\":\"\""),
+            "must order the bare apex, not `www`: {:?}",
+            calls[0].body
+        );
+    }
+
+    #[tokio::test]
+    async fn dnsimple_issue_letsencrypt_posts_and_decodes_the_requesting_state() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/v2/123/domains/neonlaw.com/certificates/letsencrypt/55/issue",
+            ))
+            .and(header("authorization", "Bearer T"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .set_body_json(serde_json::json!({"data": {"id": 55, "state": "requesting"}})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = DnsimpleProvider::new("T", "123").with_base_url(server.uri());
+        let state = provider.issue_letsencrypt("neonlaw.com", 55).await.unwrap();
+        assert_eq!(state, ApexCertificateState::Pending);
+    }
+
+    #[tokio::test]
+    async fn dnsimple_latest_certificate_picks_the_highest_id() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v2/123/domains/neonlaw.com/certificates"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [
+                    {"id": 3, "state": "issued"},
+                    {"id": 9, "state": "requesting"},
+                    {"id": 1, "state": "issued"},
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = DnsimpleProvider::new("T", "123").with_base_url(server.uri());
+        let cert = provider
+            .latest_certificate("neonlaw.com")
+            .await
+            .unwrap()
+            .expect("a certificate exists");
+        assert_eq!(cert.id, 9, "the most recently created certificate wins");
+        assert_eq!(cert.state, ApexCertificateState::Pending);
+    }
+
+    #[tokio::test]
+    async fn dnsimple_latest_certificate_is_none_for_an_empty_domain() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+            .mount(&server)
+            .await;
+        let provider = DnsimpleProvider::new("T", "123").with_base_url(server.uri());
+        assert!(provider
+            .latest_certificate("example.com")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn dnsimple_certificate_calls_are_dry_run_safe() {
+        // Unreachable base URL proves no real HTTP happens for the two write
+        // calls under `--dry-run`; `latest_certificate` is a read and is
+        // exercised separately above.
+        let provider = DnsimpleProvider::new("T", "123")
+            .with_base_url("http://127.0.0.1:1")
+            .with_dry_run();
+        let order = provider
+            .order_letsencrypt("example.com", true)
+            .await
+            .unwrap();
+        assert_eq!(order.state, ApexCertificateState::Pending);
+        let issue_state = provider.issue_letsencrypt("example.com", 1).await.unwrap();
+        assert_eq!(issue_state, ApexCertificateState::Pending);
+        let calls = provider.recorded_calls();
+        assert_eq!(calls.len(), 2);
+        assert!(calls[0].url.contains("/certificates/letsencrypt"));
+        assert!(calls[1].url.contains("/certificates/letsencrypt/1/issue"));
     }
 }

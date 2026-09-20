@@ -44,6 +44,11 @@ const VERSION_RECORD: &str = "schema_version:current";
 /// deployed binary carries its own schema and cannot be pointed at a
 /// stale copy on a volume.
 const DEFINITIONS: &str = include_str!("navigator.surql");
+
+/// The backfill may be deleted after every environment has applied a build
+/// containing it, including the production rollout of release `26.9.20`.
+pub const PERSON_DEFAULTS_BACKFILL_RETIRE_AFTER: &str = "26.9.20";
+
 const PERSON_DEFAULTS_BACKFILL: &str = "\
     UPDATE person SET \
         email_confirmed = IF email_confirmed IS NONE THEN false ELSE email_confirmed END, \
@@ -293,11 +298,27 @@ async fn backfill_project_brand(db: &SurrealDb) -> Result<(), SchemaError> {
 /// for that validation, not because its reader was broken. Existing values
 /// are preserved, and a second apply is a no-op.
 async fn backfill_person_defaults(db: &SurrealDb) -> Result<(), SchemaError> {
+    let missing_rows = person_defaults_missing_rows(db).await?;
+    if missing_rows == 0 {
+        tracing::debug!(missing_rows, "person defaults backfill already converged");
+        return Ok(());
+    }
+
     db.query(PERSON_DEFAULTS_BACKFILL)
         .await
         .and_then(surrealdb::IndexedResults::check)
         .map_err(SchemaError::Apply)?;
     Ok(())
+}
+
+async fn person_defaults_missing_rows(db: &SurrealDb) -> Result<usize, SchemaError> {
+    let mut response = db
+        .query("SELECT VALUE id FROM person WHERE (email_confirmed IS NONE OR is_admitted IS NONE)")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    let missing: Vec<RecordId> = response.take(0).map_err(SchemaError::Apply)?;
+    Ok(missing.len())
 }
 
 /// Apply the schema, guard historical Project brands, and record [`SCHEMA_VERSION`].
@@ -419,8 +440,9 @@ pub async fn state(db: &SurrealDb) -> Result<SchemaState, SchemaError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply, installed_version, introspect, state, table_names, SchemaError, SchemaState,
-        DEFINITIONS, SCHEMA_VERSION, VERSION_RECORD,
+        apply, backfill_person_defaults, installed_version, introspect,
+        person_defaults_missing_rows, state, table_names, SchemaError, SchemaState, DEFINITIONS,
+        SCHEMA_VERSION, VERSION_RECORD,
     };
     use crate::surreal::test_support::unmigrated;
     use uuid::Uuid;
@@ -577,6 +599,24 @@ mod tests {
         assert!(crate::persons::is_admitted(&db, historical_id)
             .await
             .unwrap());
+    }
+
+    #[tokio::test]
+    async fn person_defaults_preflight_reports_no_rows_after_convergence() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+        db.query(
+            "CREATE person:converged SET name = 'Converged Person', \
+             email = 'converged@example.com', role = 'client', \
+             email_confirmed = true, is_admitted = false",
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        assert_eq!(person_defaults_missing_rows(&db).await.unwrap(), 0);
+        backfill_person_defaults(&db).await.unwrap();
     }
 
     /// `OVERWRITE` converges a field *definition*; it does not touch the

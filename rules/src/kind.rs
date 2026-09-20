@@ -60,6 +60,24 @@ pub enum Kind {
     Offboarding,
     /// An analytical work product the firm delivers — a review memo or
     /// opinion, not an executed instrument.
+    ///
+    /// A memo blueprint is authored differently from every instrument kind
+    /// above, and deliberately so. Its questionnaire collects only the
+    /// durable typed inputs — the client, the responsible lawyer, the
+    /// matter, the governing jurisdiction, the date, the client's own
+    /// statement of the question, and the records handed over. The facts,
+    /// the analysis, the recommendation, and the open questions are body
+    /// prose the attorney writes at `lawyer_review`; they are not states
+    /// in the questionnaire, and a memo blueprint that tries to make them
+    /// states is the thing this note exists to head off.
+    ///
+    /// That is why `N117` allowlists no memo-section role, and why the
+    /// absence is a holding rather than a gap in
+    /// `ALLOWED_CUSTOM_TEXT_ROLES`. A question presented, a short answer,
+    /// an analysis — each is attorney work product, so collecting it at
+    /// intake would ask the client to supply the reasoning the memorandum
+    /// exists to deliver. Read an `N117` failure on a memo as a prompt to
+    /// move that section into the body, never as one to widen the list.
     Memo,
     /// A dated public event page under `server/content/events/`.
     Event,

@@ -23,6 +23,7 @@ use clap::Subcommand;
 
 mod application_publish;
 pub mod brand;
+mod brand_readiness;
 mod browser_e2e;
 mod chrome;
 pub mod deployments;
@@ -1026,6 +1027,15 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
                 dmarc_rua,
             },
             dry_run,
+        ),
+        crate::Command::Ops(crate::OpsCmd::BrandReadiness {
+            deployment,
+            deployments_dir,
+            timeout_seconds,
+        }) => brand_readiness::run_for_deployment(
+            &deployment,
+            deployments_dir.as_deref(),
+            timeout_seconds,
         ),
         crate::Command::Ops(crate::OpsCmd::Rebrand(cmd)) => brand::run(cmd),
         crate::Command::Ops(crate::OpsCmd::Observability {

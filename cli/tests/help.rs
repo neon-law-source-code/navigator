@@ -632,6 +632,7 @@ fn ops_help_lists_operator_members() {
         vec![
             "application",
             "assets",
+            "brand-readiness",
             "deployments",
             "dns",
             "doctor",

@@ -1344,6 +1344,29 @@ enum OpsCmd {
     /// records are no-ops.
     #[command(subcommand)]
     Dns(DnsCmd),
+    /// Bounded per-host release-readiness check (ENG-808): for every host
+    /// the release inventory (`views::brand::release_brand_hosts`) covers on
+    /// the selected deployment's environment, perform a real TLS handshake
+    /// through the ordinary trust store (never `-k`) and confirm the actual
+    /// response — a live brand's own `og:site_name` at `200`, a held-out
+    /// brand's `404`, and (production only) every live brand's apex
+    /// redirect. Never mutates anything; exits nonzero and names every
+    /// failing host when any check is not ready. Safe to rerun as often as
+    /// needed — this is a point-in-time receipt, not a wait-until-ready loop.
+    BrandReadiness {
+        /// Deployment directory under `deployments/`, such as `neon-law-stg`.
+        #[arg(long)]
+        deployment: String,
+        /// The directory CONTAINING `deployments/` — the same flag `ops ship`
+        /// takes. Defaults to `NAVIGATOR_DEPLOYMENTS_DIR`, then to the
+        /// discovered workspace root.
+        #[arg(long, value_name = "DIR")]
+        deployments_dir: Option<PathBuf>,
+        /// Per-host `curl` timeout, in seconds. Bounds the whole run to at
+        /// most this many seconds times the number of hosts checked.
+        #[arg(long, default_value_t = 15)]
+        timeout_seconds: u32,
+    },
     /// Deprecated: use the white-label bundle workflow documented in `navigator.example.yaml`.
     #[command(subcommand)]
     Rebrand(BrandCmd),

@@ -16,7 +16,6 @@ chrono.workspace = true
 cloud.workspace = true
 import.workspace = true
 reqwest.workspace = true
-repos = { workspace = true }
 rules.workspace = true
 serde.workspace = true
 serde_json.workspace = true

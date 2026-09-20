@@ -36,7 +36,6 @@ restate-sdk.workspace = true
 # the two features being unified into one build is otherwise ambiguous
 # (ENG-550).
 restate-jwt.workspace = true
-repos = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

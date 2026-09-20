@@ -137,6 +137,9 @@ pub fn enforce_deployment_invariants<F: Fn(&str) -> Option<String>>(
             violations.push(format!("NAVIGATOR_ASSET_BASE_URL is invalid: {err}"));
         }
     }
+    if let Err(err) = crate::inbound_email::summary_envelope_recipients_from_lookup(&get) {
+        violations.push(err.to_string());
+    }
     match environment {
         DeploymentEnvironment::Production => {
             if get("NAVIGATOR_STORAGE_BACKEND").is_some_and(|value| value != "gcs") {
@@ -324,6 +327,22 @@ mod tests {
             ),
         ]));
         assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn prod_invariants_refuse_a_blank_summary_envelope_allowlist() {
+        let mut pairs = full_with_jwks();
+        pairs.push((
+            crate::inbound_email::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS,
+            "  ",
+        ));
+        let err = production_invariants(lookup(&pairs)).unwrap_err();
+        assert!(
+            err.violations.iter().any(|violation| {
+                violation.contains(crate::inbound_email::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS)
+            }),
+            "{err:?}"
+        );
     }
 
     #[test]

@@ -76,6 +76,7 @@ use tempfile::TempDir;
 use portal::chatwoot::{
     DEFAULT_CHATWOOT_BASE_URL, NAVIGATOR_CHATWOOT_BASE_URL, NAVIGATOR_CHATWOOT_WEBSITE_TOKEN,
 };
+use portal::inbound_email::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS;
 use store::NAVIGATOR_SIMULATED_MATTERS;
 use views::brand::BrandKey;
 
@@ -288,6 +289,11 @@ where
         env: NAVIGATOR_CHATWOOT_BASE_URL,
         value: non_empty_env(NAVIGATOR_CHATWOOT_BASE_URL, &get)
             .unwrap_or_else(|| DEFAULT_CHATWOOT_BASE_URL.to_string()),
+    });
+    substitutions.push(Substitution {
+        token: "YOUR_SUMMARY_ENVELOPE_RECIPIENTS",
+        env: NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS,
+        value: non_empty_env(NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS, &get).unwrap_or_default(),
     });
     substitutions.extend(optional_provider_substitutions(&get));
     // Not in TABLE and not read from `get` at all: the additional brand
@@ -3575,6 +3581,7 @@ mod tests {
         "YOUR_BOOTSTRAP_OWNER_EMAIL",
         "YOUR_CHATWOOT_WEBSITE_TOKEN",
         "YOUR_CHATWOOT_BASE_URL",
+        "YOUR_SUMMARY_ENVELOPE_RECIPIENTS",
         "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
         "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
         RELEASE_TAG_TOKEN,
@@ -3800,6 +3807,10 @@ mod tests {
             web_env.contains("name: NAVIGATOR_CHATWOOT_BASE_URL")
                 && web_env.contains("value: \"https://app.chatwoot.com\""),
             "the optional Chatwoot base URL reaches the pod with its Cloud default"
+        );
+        assert!(
+            web_env.contains(&format!("name: {NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS}")),
+            "summary envelope allowlist environment-variable name is preserved"
         );
         // The break-glass Owner must reach the pod for the same reason the
         // asset origin must: `$patch: replace` drops the base env list, so an

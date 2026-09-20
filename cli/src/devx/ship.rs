@@ -3758,7 +3758,7 @@ mod tests {
             assert!(
                 brand_certs.contains(&format!("name: {}", brand_certificate_name(*key)))
                     && brand_certs.contains(&format!("- {production_host}")),
-                "{}'s production host gets its own certificate: {brand_certs}",
+                "{}'s production host gets its own certificate",
                 key.as_str(),
             );
             assert!(
@@ -4143,7 +4143,7 @@ mod tests {
             let staging_host = format!("staging.{}", key.apex());
             assert!(
                 brand_certs.contains(&format!("- {staging_host}")),
-                "{}'s staging host gets its own certificate: {brand_certs}",
+                "{}'s staging host gets its own certificate",
                 key.as_str(),
             );
             assert!(

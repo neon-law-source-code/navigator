@@ -1818,10 +1818,10 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
         html.contains("neon (www.neonlaw.com)")
             && html.contains("delete-your-data (www.deleteyourdata.com)")
             && html.contains("lawyer-shook (www.lawyershook.com)")
-            && html.contains("vesta (www.vestaestateplanning.com, not live)")
-            && html.contains("delete-your-debt (www.deleteyourdebt.com, not live)")
-            && html.contains("misericordia (www.misericordialaw.com, not live)")
-            && html.contains("abhaya (www.abhayaimmigration.com, not live)")
+            && html.contains("vesta (www.vestaestateplanning.com)")
+            && html.contains("delete-your-debt (www.deleteyourdebt.com)")
+            && html.contains("misericordia (www.misericordialaw.com)")
+            && html.contains("abhaya (www.abhayaimmigration.com)")
             && html.contains("summons (www.summonsdefense.nyc, not live)"),
         "Owner lists every compiled brand's production www host: {html}"
     );

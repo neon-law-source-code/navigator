@@ -196,9 +196,9 @@ pub struct PublicChrome {
 /// [`crate::components::PublicShell`].
 #[component]
 pub fn PublicFooter(chrome: PublicChrome) -> Element {
-    let practice_footer = ["neon", "vesta", "lawyer-shook", "delete-your-data"]
+    let practice_footer = views::brand::BrandKey::LIVE
         .iter()
-        .any(|brand| chrome.tokens_href == crate::brand_style::brand_tokens_href(brand));
+        .any(|brand| chrome.tokens_href == crate::brand_style::brand_tokens_href(brand.as_str()));
     rsx! {
         // The resolved brand's colour, hoisted here because this is the one
         // place that already knows which brand the page wears. Navigator's

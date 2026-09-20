@@ -200,13 +200,17 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         ""
     };
     let font_head: &str = font_head(views::brand::brand_key());
-    let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
-        .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
-        .replacen(
-            "</head>",
-            &format!("{navigator_favicon}{font_head}</head>"),
-            1,
-        );
+    let html = stamp_document_title(
+        &stamp_html_lang(&rendered, lang),
+        &path,
+        views::brand::FIRM_BRAND.site_name,
+    )
+    .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
+    .replacen(
+        "</head>",
+        &format!("{navigator_favicon}{font_head}</head>"),
+        1,
+    );
     let html = if *SAMPLE_MATTERS {
         open_with_banner(&html, &SAMPLE_MATTERS_BANNER)
     } else {
@@ -829,7 +833,7 @@ fn title_segment(segment: &str) -> String {
 /// navigation, but the HTTP response's document head is the canonical browser
 /// title. Keeping the normalization here makes every server-rendered route
 /// follow the same policy.
-fn stamp_document_title(html: &str, path: &str) -> String {
+fn stamp_document_title(html: &str, path: &str, firm_name: &str) -> String {
     let Some(start) = html.find("<title") else {
         return html.to_string();
     };
@@ -842,11 +846,6 @@ fn stamp_document_title(html: &str, path: &str) -> String {
     else {
         return html.to_string();
     };
-
-    let rendered_title = &html[open_end..close_start];
-    let firm_name = rendered_title
-        .split_once(" | ")
-        .map_or("Neon Law", |(prefix, _)| prefix);
 
     format!(
         "{}{}{}{}",
@@ -4772,11 +4771,21 @@ mod tests {
     fn document_title_is_replaced_without_touching_the_rest_of_the_head() {
         let html = "<html><head><meta charset=\"UTF-8\"><title>Old title</title>\
                     <meta name=\"description\" content=\"x\"></head><body></body></html>";
-        let stamped = stamp_document_title(html, "/app/projects");
+        let stamped = stamp_document_title(html, "/app/projects", "Neon Law");
         assert_eq!(
             stamped,
             "<html><head><meta charset=\"UTF-8\"><title>Navigator | Projects</title>\
              <meta name=\"description\" content=\"x\"></head><body></body></html>"
+        );
+
+        let holding = stamp_document_title(
+            "<html><head><title>Old title</title></head><body></body></html>",
+            "/",
+            "Shook Law PLLC",
+        );
+        assert!(
+            holding.contains("<title>Shook Law PLLC | Home</title>"),
+            "{holding}"
         );
     }
 

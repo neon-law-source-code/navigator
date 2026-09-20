@@ -556,7 +556,7 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
         home_href: "/",
         tagline: "The Shook Law PLLC holding page.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        logo_href: "",
+        logo_href: "/public/brand/lawyer-shook/logo.svg",
         social_image: "",
         nav: &[],
         is_law_firm: true,
@@ -636,7 +636,7 @@ pub static MISERICORDIA_BRANDING: Branding = Branding {
         home_href: "/",
         tagline: "A Shook Law PLLC practice. Injury claims, on a contingency fee, with a free first conversation.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        logo_href: "",
+        logo_href: "/public/brand/misericordia/logo.svg",
         social_image: "",
         nav: &[],
         is_law_firm: true,
@@ -674,7 +674,7 @@ pub static ABHAYA_BRANDING: Branding = Branding {
         home_href: "/",
         tagline: "A Shook Law PLLC practice. Family petitions, employment visas, green cards, naturalization, and consular processing.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        logo_href: "",
+        logo_href: "/public/brand/abhaya/logo.svg",
         social_image: "",
         nav: &[],
         is_law_firm: true,
@@ -712,7 +712,7 @@ pub static DELETE_YOUR_DEBT_BRANDING: Branding = Branding {
         home_href: "/",
         tagline: "A Shook Law PLLC practice. Collection defense: we defend the lawsuit and make the collector prove the debt.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        logo_href: "",
+        logo_href: "/public/brand/delete-your-debt/logo.svg",
         social_image: "",
         nav: &[],
         is_law_firm: true,
@@ -755,7 +755,7 @@ pub static SUMMONS_BRANDING: Branding = Branding {
         home_href: "/",
         tagline: "A private law firm, not affiliated with the City of New York or OATH. We defend City summonses at the OATH Hearings Division.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        logo_href: "",
+        logo_href: "/public/brand/summons/logo.svg",
         social_image: "",
         nav: &[],
         is_law_firm: true,
@@ -820,7 +820,15 @@ impl BrandKey {
     /// The compiled keys whose hosts currently serve a public site. The
     /// remaining registered keys are built and staged, but intentionally stay
     /// out of the footer's link row until their launches are approved.
-    pub const LIVE: &'static [Self] = &[Self::Neon, Self::DeleteYourData, Self::LawyerShook];
+    pub const LIVE: &'static [Self] = &[
+        Self::Neon,
+        Self::DeleteYourData,
+        Self::DeleteYourDebt,
+        Self::Vesta,
+        Self::Misericordia,
+        Self::Abhaya,
+        Self::LawyerShook,
+    ];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -918,10 +926,10 @@ impl BrandKey {
     /// only the pages it has a catalog for (plus `/contact`, which is
     /// addresses rather than a YAML stem). Lawyer Shook keeps its holding
     /// notice and practice cards on `/`; other firm paths 404 on that host
-    /// rather than rendering another brand's words. The four unlaunched
-    /// practices answer their "Coming Soon" landing page and nothing else.
+    /// rather than rendering another brand's words. The held-out summons
+    /// channel answers its "Coming Soon" landing page and nothing else.
     #[must_use]
-    // Lawyer Shook and the four unlaunched practices both answer `/` alone,
+    // Lawyer Shook and the held-out summons channel both answer `/` alone,
     // for unrelated reasons: one is a launched brand that deliberately
     // publishes a single page, the others are holding pages whose arm
     // disappears at launch. Merging them would tie a launched brand's
@@ -937,11 +945,16 @@ impl BrandKey {
             Self::DeleteYourData => matches!(path, "/" | "/contact"),
             Self::LawyerShook => path == "/",
             Self::Vesta => matches!(path, "/" | "/services" | "/contact"),
-            // The four unlaunched practices answer one landing page and
+            // The held-out summons channel answers one landing page and
             // nothing else. Their `/services` and `/contact` copy still ships
             // and still loads; reopening those paths is this line, not a
             // rewrite. See `neon::firm_pages::coming_soon_content`.
-            Self::Misericordia | Self::Abhaya | Self::DeleteYourDebt | Self::Summons => path == "/",
+            Self::Misericordia | Self::Abhaya | Self::DeleteYourDebt => {
+                matches!(path, "/" | "/services" | "/contact")
+            }
+            // The NYC channel remains held until its separate admission and
+            // naming decisions are complete.
+            Self::Summons => path == "/",
         }
     }
 

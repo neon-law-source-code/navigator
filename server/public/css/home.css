@@ -281,6 +281,13 @@
   color: var(--nav-color-text);
 }
 
+.home-practice__logo {
+  align-self: center;
+  inline-size: min(100%, 12rem);
+  block-size: 2.75rem;
+  object-fit: contain;
+}
+
 .home-practice__heading {
   margin: 0;
   font-family: var(--firm-serif);

@@ -687,8 +687,8 @@ fn resolve_firm_contact_content(
 /// Neon presents membership, notation packages, and booking on one page.
 /// Other house brands resolve their own home catalogs.
 ///
-/// The four unlaunched practices answer a "Coming Soon" holding page instead
-/// of their catalogs. Their copy still ships and is still loaded — see
+/// The held-out summons channel answers a "Coming Soon" holding page instead
+/// of its catalog. Its copy still ships and is still loaded — see
 /// [`coming_soon_content`] for why the catalog stays and what relaunching
 /// costs.
 pub(crate) fn resolve_firm_home_content(
@@ -696,11 +696,13 @@ pub(crate) fn resolve_firm_home_content(
 ) -> webapp::home::HomeContent {
     match branding.brand_key {
         BrandKey::LawyerShook => lawyer_shook_holding_content(branding),
-        BrandKey::Misericordia
+        BrandKey::Summons => coming_soon_content(branding),
+        BrandKey::Neon
+        | BrandKey::DeleteYourData
+        | BrandKey::Vesta
+        | BrandKey::Misericordia
         | BrandKey::Abhaya
-        | BrandKey::DeleteYourDebt
-        | BrandKey::Summons => coming_soon_content(branding),
-        BrandKey::Neon | BrandKey::DeleteYourData | BrandKey::Vesta => locales::home(branding),
+        | BrandKey::DeleteYourDebt => locales::home(branding),
     }
 }
 
@@ -757,7 +759,7 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
         "{legal_entity} is the legal office of Nicholas Shook. Unless you have an active \
          retainer with {legal_entity}, they are not your attorney."
     );
-    webapp::home::HomeContent {
+    let mut content = webapp::home::HomeContent {
         head_title: legal_entity.to_string(),
         meta_description: paragraph.clone(),
         bare: Some(webapp::home::BareStatement {
@@ -789,7 +791,33 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
             ],
         }),
         ..locales::home(branding)
-    }
+    };
+    content.practices_heading = "The Shook Law PLLC family".to_string();
+    content.practices = portfolio_practices();
+    content
+}
+
+/// The parent firm's directory is derived from the compiled registry so a
+/// newly registered brand cannot silently disappear from the holding page.
+/// Held-out channels remain out of the links until their launch decision is
+/// complete, but their identity stays available to the release inventory.
+fn portfolio_practices() -> Vec<webapp::home::PracticeLink> {
+    views::brand::BrandKey::LIVE
+        .iter()
+        .copied()
+        .filter(|key| *key != BrandKey::LawyerShook)
+        .map(|key| {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            webapp::home::PracticeLink {
+                mark: webapp::components::PracticeMark::Scales,
+                heading: branding.firm.site_name.to_string(),
+                body: key.family_byline().to_string(),
+                href: key.public_home_href(),
+                logo_href: branding.firm.logo_href.to_string(),
+                font_family: key.default_typeface().stack.to_string(),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -797,57 +825,42 @@ mod coming_soon_page_tests {
     use super::coming_soon_content;
     use views::brand::BrandKey;
 
-    /// Every unlaunched practice answers the same bare notice, wearing its
-    /// own name and its own reviewed one-liner.
+    /// The held-out summons channel answers the bare notice, wearing its own
+    /// name and reviewed one-liner.
     #[test]
     fn each_unlaunched_practice_renders_a_bare_coming_soon_notice() {
-        for key in [
-            BrandKey::Misericordia,
-            BrandKey::Abhaya,
-            BrandKey::DeleteYourDebt,
-            BrandKey::Summons,
-        ] {
-            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
-            let content = coming_soon_content(branding);
-            let bare = content
-                .bare
-                .clone()
-                .unwrap_or_else(|| panic!("{key:?} renders the bare-statement variant"));
+        let key = BrandKey::Summons;
+        let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+        let content = coming_soon_content(branding);
+        let bare = content
+            .bare
+            .clone()
+            .unwrap_or_else(|| panic!("{key:?} renders the bare-statement variant"));
 
-            assert_eq!(bare.heading, "Coming Soon", "{key:?}");
-            assert_eq!(bare.paragraph, branding.firm.tagline, "{key:?}");
-            assert_eq!(
-                content.head_title,
-                format!("{} | Coming Soon", branding.firm.site_name),
-                "{key:?}"
-            );
-            assert!(
-                bare.sign_in.is_empty(),
-                "{key:?} has no clients to sign in yet"
-            );
-        }
+        assert_eq!(bare.heading, "Coming Soon", "{key:?}");
+        assert_eq!(bare.paragraph, branding.firm.tagline, "{key:?}");
+        assert_eq!(
+            content.head_title,
+            format!("{} | Coming Soon", branding.firm.site_name),
+            "{key:?}"
+        );
+        assert!(
+            bare.sign_in.is_empty(),
+            "{key:?} has no clients to sign in yet"
+        );
     }
 
-    /// One landing page: the holding notice carries no practice cards, so it
-    /// cannot advertise a sibling brand's site from a page of its own that has
-    /// not launched.
+    /// One landing page: the held-out notice carries no practice cards.
     #[test]
     fn the_coming_soon_page_publishes_nothing_under_the_notice() {
-        for key in [
-            BrandKey::Misericordia,
-            BrandKey::Abhaya,
-            BrandKey::DeleteYourDebt,
-            BrandKey::Summons,
-        ] {
-            let content =
-                coming_soon_content(key.resolve_branding(&views::brand::DEFAULT_BRANDING));
-            assert!(content.practices.is_empty(), "{key:?} lists no practices");
-            assert!(content.practices_heading.is_empty(), "{key:?}");
-            assert!(content.service.is_none(), "{key:?} publishes no offer yet");
-            assert!(content.estate.is_none(), "{key:?}");
-            assert!(content.company.is_none(), "{key:?}");
-            assert!(content.provenance.is_none(), "{key:?}");
-        }
+        let key = BrandKey::Summons;
+        let content = coming_soon_content(key.resolve_branding(&views::brand::DEFAULT_BRANDING));
+        assert!(content.practices.is_empty(), "{key:?} lists no practices");
+        assert!(content.practices_heading.is_empty(), "{key:?}");
+        assert!(content.service.is_none(), "{key:?} publishes no offer yet");
+        assert!(content.estate.is_none(), "{key:?}");
+        assert!(content.company.is_none(), "{key:?}");
+        assert!(content.provenance.is_none(), "{key:?}");
     }
 
     /// The notice reuses the brand's reviewed tagline rather than a fresh
@@ -910,11 +923,28 @@ mod lawyer_shook_holding_page_tests {
             "{}",
             bare.paragraph
         );
-        // The firm's notice leads into the two active practice doors.
+        // The firm's notice leads into every admitted brand door.
         assert!(content.service.is_none());
-        assert_eq!(content.practices.len(), 2);
-        assert_eq!(content.practices[0].heading, "Neon Law");
-        assert_eq!(content.practices[1].heading, "Vesta Estate Planning");
+        let headings: Vec<&str> = content
+            .practices
+            .iter()
+            .map(|practice| practice.heading.as_str())
+            .collect();
+        assert_eq!(
+            headings,
+            vec![
+                "Neon Law",
+                "DeleteYourData.com",
+                "DeleteYourDebt.com",
+                "Vesta Estate Planning",
+                "Misericordia Injury Law",
+                "Abhaya Immigration",
+            ]
+        );
+        assert!(content
+            .practices
+            .iter()
+            .all(|practice| !practice.logo_href.is_empty() && !practice.font_family.is_empty()));
         assert!(content.provenance.is_none());
         // The one link on the page: an existing client's way to `/app`.
         let sign_in_text: String = bare.sign_in.iter().map(|run| run.text.as_str()).collect();

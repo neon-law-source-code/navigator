@@ -44,7 +44,16 @@ the canonical `.agents/` skill catalog. The match is on a whole directory name, 
 below: `Y009` opens each application's `dist/` directly, because a built bundle is exactly what it exists to check.
 
 This is also the exact command every Project repository's generated CI gate runs against its own tree — see
-[`project-repositories.md`](project-repositories.md) for how `navigator project repository scaffold` wires it up.
+[`project-repositories.md`](project-repositories.md) for how `navigator project repository scaffold` wires it up. On a
+Project repository, the same run also closes `.github/` to exactly `.github/CODEOWNERS` and the two thin workflow
+callers, `.github/workflows/ci.yml` and `.github/workflows/cd.yml`: any other path there is a finding naming the exact
+path and the closed set it fell outside of. Each caller is checked structurally against its canonical generator —
+permitted trigger, permissions, jobs, `needs:` dependency between them, and the `project`/`host` inputs pinned release
+it calls — so a caller can differ from the generator in whitespace, quoting, or key order and still pass, but not in
+which event triggers it, what it can do with its token, or how many jobs answer for the required check.
+`.github/workflows/gate.yml` and `.github/workflows/publish.yml`, the filenames these two callers replaced, are still
+read under those names: the gate accepts either one for one further release with a warning naming the file to rename,
+and the release after that refuses the retired name outright.
 
 ## What it runs
 

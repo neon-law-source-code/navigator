@@ -94,6 +94,12 @@ pub(crate) const WORKFLOW: &str = ".github/workflows/ci.yml";
 pub(crate) const RETIRED_WORKFLOW: &str = ".github/workflows/gate.yml";
 /// `pub(crate)` for the same reason as [`WORKFLOW`], but for [`cd_workflow`].
 pub(crate) const CD_WORKFLOW: &str = ".github/workflows/cd.yml";
+/// The retired generated-publish filename, accepted the same one-release way
+/// as [`RETIRED_WORKFLOW`]: `validate_layout` reports a warning naming the
+/// replacement rather than refusing outright, so a repository has a release
+/// to rename it in before the gate stops accepting the old name. See
+/// [`docs/gate.md`](../../../docs/gate.md) for the documented transition.
+pub(crate) const RETIRED_CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// The manifest a Project repository declares its Project in.
 ///
 /// `pub(crate)` rather than private because [`super::drift`] and
@@ -681,6 +687,84 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: 
     }
 }
 
+/// A repository still carrying [`RETIRED_WORKFLOW`] or [`RETIRED_CD_WORKFLOW`]
+/// is not failed for it — it is warned, once, by name. The one-release
+/// transition this documents lives in `docs/gate.md`: this release still
+/// reads the retired filename, and the next Navigator CLI release refuses it,
+/// so the warning is the operator's whole notice to rename it.
+fn retired_workflow_warning(path: &Path, canonical: &str) -> Finding {
+    Finding::at(
+        path,
+        format!(
+            "`{}` is the retired filename for `{canonical}`; this release still accepts it, \
+             but the next Navigator CLI release refuses it — rename the file to `{canonical}`",
+            path.display()
+        ),
+    )
+}
+
+/// `expected` (a `.yml` path) is missing, but its `.yaml` sibling exists: name
+/// the extension actually on disk and the one Navigator reads, rather than
+/// reporting a bare "missing" that sends the operator looking for a typo they
+/// already made correctly.
+fn yaml_extension_finding(expected: &Path, canonical: &str) -> Option<Finding> {
+    let yaml_path = expected.with_extension("yaml");
+    if yaml_path.is_file() {
+        Some(Finding::at(
+            &yaml_path,
+            format!(
+                "`{}` uses the retired `.yaml` extension; Navigator only reads `{canonical}`",
+                yaml_path.display()
+            ),
+        ))
+    } else {
+        None
+    }
+}
+
+/// The fixed facts one workflow file's resolution needs: its current name,
+/// its retired name, the canonical name to name in a diagnostic, and the
+/// message for a bare "missing" finding.
+struct WorkflowSpec<'a> {
+    current: &'a Path,
+    retired: &'a Path,
+    canonical: &'a str,
+    missing_message: &'a str,
+}
+
+/// Resolve one workflow file against `spec`'s current name, its retired
+/// name, and a `.yaml` extension typo of either, then structurally validate
+/// whichever content was found with `validate`.
+///
+/// Shared by both `ci.yml` (with [`validate_workflow`]) and `cd.yml` (with
+/// [`validate_cd_workflow`]) in [`validate_layout`], which is what keeps this
+/// resolution order — current name, then retired name with a warning, then
+/// the precise extension diagnostic, then a bare "missing" — in exactly one
+/// place instead of drifting between the two callers.
+fn resolve_workflow(
+    spec: &WorkflowSpec,
+    manifest: Option<&super::manifest::Manifest>,
+    errors: &mut Vec<Finding>,
+    warnings: &mut Vec<Finding>,
+    validate: impl Fn(&Path, &str, Option<&super::manifest::Manifest>, &mut Vec<Finding>),
+) {
+    match fs::read_to_string(spec.current) {
+        Ok(contents) => validate(spec.current, &contents, manifest, errors),
+        Err(_) => match fs::read_to_string(spec.retired) {
+            Ok(contents) => {
+                warnings.push(retired_workflow_warning(spec.retired, spec.canonical));
+                validate(spec.retired, &contents, manifest, errors);
+            }
+            Err(_) => match yaml_extension_finding(spec.current, spec.canonical)
+                .or_else(|| yaml_extension_finding(spec.retired, spec.canonical))
+            {
+                Some(finding) => errors.push(finding),
+                None => errors.push(Finding::at(spec.current, spec.missing_message)),
+            },
+        },
+    }
+}
+
 fn validate_codeowners(root: &Path, errors: &mut Vec<Finding>) {
     let path = root.join(".github/CODEOWNERS");
     match fs::read_to_string(&path) {
@@ -846,6 +930,34 @@ fn retired_mirror(
     true
 }
 
+/// Close `.github/` to exactly [`CODEOWNERS`], the two thin workflow callers,
+/// and their retired filenames during the one-release transition.
+///
+/// [`ALLOWED_ROOTS`] admits `.github` as a whole first path component, so
+/// nothing else in [`validate_layout`]'s walk descends into it — this is that
+/// descent. It closes which *paths* may exist; `.github/CODEOWNERS`'s
+/// content is [`validate_codeowners`]'s job, and each workflow's content is
+/// [`validate_workflow`]'s or [`validate_cd_workflow`]'s.
+fn validate_github_path(path: &Path, relative: &Path, errors: &mut Vec<Finding>) {
+    let relative = relative.to_string_lossy();
+    let allowed = [
+        ".github/CODEOWNERS",
+        WORKFLOW,
+        CD_WORKFLOW,
+        RETIRED_WORKFLOW,
+        RETIRED_CD_WORKFLOW,
+    ];
+    if !allowed.contains(&relative.as_ref()) {
+        errors.push(Finding::at(
+            path,
+            format!(
+                "`{relative}` is outside the closed `.github` file set; only CODEOWNERS, \
+                 `{WORKFLOW}`, and `{CD_WORKFLOW}` belong here"
+            ),
+        ));
+    }
+}
+
 fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {
     if !root.join("README.md").is_file() {
         errors.push(Finding::at(
@@ -860,17 +972,30 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Fi
         .ok()
         .and_then(|contents| super::manifest::parse(&contents).ok());
 
-    let workflow_path = root.join(WORKFLOW);
-    let retired_workflow = root.join(RETIRED_WORKFLOW);
-    match fs::read_to_string(&workflow_path) {
-        Ok(contents) => validate_workflow(&workflow_path, &contents, manifest.as_ref(), errors),
-        Err(_) => match fs::read_to_string(&retired_workflow) {
-            Ok(contents) => {
-                validate_workflow(&retired_workflow, &contents, manifest.as_ref(), errors);
-            }
-            Err(_) => errors.push(Finding::at(workflow_path, "missing required CI gate")),
+    resolve_workflow(
+        &WorkflowSpec {
+            current: &root.join(WORKFLOW),
+            retired: &root.join(RETIRED_WORKFLOW),
+            canonical: WORKFLOW,
+            missing_message: "missing required CI gate",
         },
-    }
+        manifest.as_ref(),
+        errors,
+        warnings,
+        validate_workflow,
+    );
+    resolve_workflow(
+        &WorkflowSpec {
+            current: &root.join(CD_WORKFLOW),
+            retired: &root.join(RETIRED_CD_WORKFLOW),
+            canonical: CD_WORKFLOW,
+            missing_message: "missing required CD workflow",
+        },
+        manifest.as_ref(),
+        errors,
+        warnings,
+        validate_cd_workflow,
+    );
 
     let Some(entries) = layout_entries(root, errors) else {
         return manifest_valid;
@@ -888,64 +1013,92 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Fi
             .components()
             .filter_map(|component| component.as_os_str().to_str().map(str::to_string))
             .collect();
-        let Some(first) = components.first() else {
-            continue;
-        };
-        let mirrored = retired_mirror(root, &components, &mut retired_mirrors, errors);
-        if !mirrored && components.len() == 1 && !ALLOWED_ROOTS.contains(&first.as_str()) {
-            errors.push(Finding::at(
-                &path,
-                "path is outside the source-only Project repository layout",
-            ));
-        }
-        if first == DOCUMENT_DIRECTORY && is_file {
-            let is_pointer = crate::document_sync::is_pointer_path(&path);
-            let is_guard = components.len() == 2 && components[1] == ".gitignore";
-            if !is_pointer && !is_guard {
-                errors.push(Finding::at(
-                    &path,
-                    "legal documents and raw document bytes must not be committed; keep only `*.yaml` pointers under `documents/`",
-                ));
-            }
-        }
-        if let Some(component) = components
-            .iter()
-            .find(|component| FORBIDDEN_COMPONENTS.contains(&component.as_str()))
-        {
-            errors.push(Finding::at(
-                &path,
-                format!("forbidden `{component}` path; repositories hold source, never client material or build output"),
-            ));
-        }
-        if is_file {
-            let name = path
-                .file_name()
-                .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-            let extension = path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .unwrap_or_default();
-            if name == ".env" || name.starts_with(".env.") || name.starts_with("answers.") {
-                errors.push(Finding::at(
-                    &path,
-                    "client answers and environment secrets must not be committed",
-                ));
-            }
-            if FORBIDDEN_CREDENTIAL_EXTENSIONS.contains(&extension) {
-                errors.push(Finding::at(
-                    &path,
-                    "credential material must not be committed",
-                ));
-            }
-            if FORBIDDEN_DOCUMENT_EXTENSIONS.contains(&extension) {
-                errors.push(Finding::at(
-                    &path,
-                    "legal documents and rendered output must not be committed",
-                ));
-            }
-        }
+        validate_layout_entry(
+            root,
+            &path,
+            is_file,
+            relative,
+            &components,
+            &mut retired_mirrors,
+            errors,
+        );
     }
     manifest_valid
+}
+
+/// One git-tracked or stageable path's share of [`validate_layout`]'s walk:
+/// the retired-mirror check, the closed root-set check, the `.github` closed
+/// set, the `documents/` pointer-only check, the forbidden-component check,
+/// and the forbidden-extension checks. Split out so `validate_layout` itself
+/// stays a short list of passes rather than the loop body that runs them.
+fn validate_layout_entry(
+    root: &Path,
+    path: &Path,
+    is_file: bool,
+    relative: &Path,
+    components: &[String],
+    retired_mirrors: &mut Vec<PathBuf>,
+    errors: &mut Vec<Finding>,
+) {
+    let Some(first) = components.first() else {
+        return;
+    };
+    let mirrored = retired_mirror(root, components, retired_mirrors, errors);
+    if !mirrored && components.len() == 1 && !ALLOWED_ROOTS.contains(&first.as_str()) {
+        errors.push(Finding::at(
+            path,
+            "path is outside the source-only Project repository layout",
+        ));
+    }
+    if first == ".github" && is_file {
+        validate_github_path(path, relative, errors);
+    }
+    if first == DOCUMENT_DIRECTORY && is_file {
+        let is_pointer = crate::document_sync::is_pointer_path(path);
+        let is_guard = components.len() == 2 && components[1] == ".gitignore";
+        if !is_pointer && !is_guard {
+            errors.push(Finding::at(
+                path,
+                "legal documents and raw document bytes must not be committed; keep only `*.yaml` pointers under `documents/`",
+            ));
+        }
+    }
+    if let Some(component) = components
+        .iter()
+        .find(|component| FORBIDDEN_COMPONENTS.contains(&component.as_str()))
+    {
+        errors.push(Finding::at(
+            path,
+            format!("forbidden `{component}` path; repositories hold source, never client material or build output"),
+        ));
+    }
+    if is_file {
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        let extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or_default();
+        if name == ".env" || name.starts_with(".env.") || name.starts_with("answers.") {
+            errors.push(Finding::at(
+                path,
+                "client answers and environment secrets must not be committed",
+            ));
+        }
+        if FORBIDDEN_CREDENTIAL_EXTENSIONS.contains(&extension) {
+            errors.push(Finding::at(
+                path,
+                "credential material must not be committed",
+            ));
+        }
+        if FORBIDDEN_DOCUMENT_EXTENSIONS.contains(&extension) {
+            errors.push(Finding::at(
+                path,
+                "legal documents and rendered output must not be committed",
+            ));
+        }
+    }
 }
 
 /// The phrase a Project `AGENTS.md` must carry so a CLI gap is filed on the
@@ -1160,13 +1313,22 @@ fn validate_application(application: &Path, errors: &mut Vec<Finding>) {
 /// for one convention is a rename waiting to leave one of them stale.
 pub(crate) const PROJECT_GATE_WORKFLOW: &str =
     "neon-law-source-code/navigator/.github/workflows/project-gate.yml@";
-/// Just enough of a workflow to find one step and read its inputs.
+/// Just enough of a workflow to check its trigger, its top-level
+/// permissions, and each job's reusable-workflow call.
 ///
-/// Deliberately permissive: every field is optional and unknown keys are
-/// ignored, because this gate speaks about one step and must not fail on an
-/// unrelated addition elsewhere in the file.
+/// Unlike the old permissive reader this replaces, every field named here is
+/// closed against: an unrecognized job, an added trigger, or a widened
+/// `permissions` block is exactly what [`validate_workflow`] and
+/// [`validate_cd_workflow`] exist to reject. `#[serde(default)]` on each
+/// field only lets a workflow that omits it (no `on:`, no `permissions:`)
+/// parse at all — the validators still treat the omission as a finding where
+/// the canonical generator would have written something.
 #[derive(serde::Deserialize)]
 struct Workflow {
+    #[serde(default, rename = "on")]
+    on: Option<serde_yaml::Value>,
+    #[serde(default)]
+    permissions: Option<BTreeMap<String, String>>,
     #[serde(default)]
     jobs: BTreeMap<String, WorkflowJob>,
 }
@@ -1177,6 +1339,10 @@ struct WorkflowJob {
     uses: Option<String>,
     #[serde(default)]
     with: BTreeMap<String, serde_yaml::Value>,
+    #[serde(default)]
+    needs: Option<serde_yaml::Value>,
+    #[serde(default)]
+    permissions: Option<BTreeMap<String, String>>,
 }
 
 /// A YAML scalar as the string a workflow input actually carries.
@@ -1192,8 +1358,271 @@ fn scalar(value: &serde_yaml::Value) -> Option<String> {
     }
 }
 
-/// Hold the CI gate to calling Navigator's reusable project-gate workflow at
-/// an exact release tag matching the repository manifest.
+/// Every trigger name an `on:` value declares, reading either the mapping
+/// shape (`on:\n  pull_request:`) or the shorthand sequence
+/// (`on: [pull_request]`) as the same set — GitHub Actions treats them as the
+/// same trigger, so a caller that prefers one spelling over the other is a
+/// harmless formatting difference, not a structural one.
+fn trigger_names(on: &serde_yaml::Value) -> Option<Vec<String>> {
+    match on {
+        serde_yaml::Value::Mapping(map) => Some(
+            map.keys()
+                .filter_map(|key| key.as_str().map(str::to_string))
+                .collect(),
+        ),
+        serde_yaml::Value::Sequence(sequence) => Some(
+            sequence
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect(),
+        ),
+        serde_yaml::Value::String(value) => Some(vec![value.clone()]),
+        _ => None,
+    }
+}
+
+/// The CI caller triggers on `pull_request` and nothing else.
+///
+/// `pull_request_target` is named explicitly because it is not a formatting
+/// variant of `pull_request` — it runs with the base repository's token and
+/// secrets against a fork's checked-out code, which is exactly the
+/// privilege escalation a thin, unreviewed caller must not be able to gain by
+/// a one-word edit.
+fn validate_ci_trigger(path: &Path, on: Option<&serde_yaml::Value>, errors: &mut Vec<Finding>) {
+    let Some(names) = on.and_then(trigger_names) else {
+        errors.push(Finding::at(
+            path,
+            "CI gate must trigger on `pull_request` and nothing else",
+        ));
+        return;
+    };
+    if names.iter().any(|name| name == "pull_request_target") {
+        errors.push(Finding::at(
+            path,
+            "CI gate must trigger on `pull_request`, not `pull_request_target`, which runs \
+             with the base repository's secrets and write token against a fork's code",
+        ));
+        return;
+    }
+    if names != ["pull_request"] {
+        errors.push(Finding::at(
+            path,
+            format!("CI gate must trigger on exactly `pull_request`; found {names:?}"),
+        ));
+    }
+}
+
+/// The CD caller triggers on a push to `main` and `workflow_dispatch`, and
+/// nothing else — the shorthand sequence spelling is refused here rather than
+/// accepted the way [`validate_ci_trigger`] accepts it, because that shape
+/// cannot express `branches: [main]`: a `cd.yml` that triggers on every
+/// branch push mints the deployment token far wider than the manifest's one
+/// host was ever granted.
+fn validate_cd_trigger(path: &Path, on: Option<&serde_yaml::Value>, errors: &mut Vec<Finding>) {
+    let Some(serde_yaml::Value::Mapping(map)) = on else {
+        errors.push(Finding::at(
+            path,
+            "CD workflow must trigger on a `push` to `main` and `workflow_dispatch`",
+        ));
+        return;
+    };
+    let mut names: Vec<String> = map
+        .keys()
+        .filter_map(|key| key.as_str().map(str::to_string))
+        .collect();
+    if names
+        .iter()
+        .any(|name| name == "pull_request" || name == "pull_request_target")
+    {
+        errors.push(Finding::at(
+            path,
+            "CD workflow must not trigger on a pull request event; only a push to `main` and \
+             `workflow_dispatch` mint the deployment token",
+        ));
+        return;
+    }
+    names.sort();
+    if names != ["push".to_string(), "workflow_dispatch".to_string()] {
+        errors.push(Finding::at(
+            path,
+            format!(
+                "CD workflow must trigger on exactly `push` and `workflow_dispatch`; found {names:?}"
+            ),
+        ));
+        return;
+    }
+    let branches: Vec<String> = map
+        .get("push")
+        .and_then(|push| push.get("branches"))
+        .and_then(|value| value.as_sequence())
+        .map(|sequence| {
+            sequence
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if branches != ["main".to_string()] {
+        errors.push(Finding::at(
+            path,
+            format!(
+                "CD workflow's `push` trigger must be scoped to `branches: [main]`; found {branches:?}"
+            ),
+        ));
+    }
+}
+
+/// The CI caller declares no `permissions` of its own — the reusable
+/// workflow it calls mints its own token, and a caller-level grant could only
+/// widen what that called workflow receives.
+fn validate_ci_permissions(
+    path: &Path,
+    permissions: Option<&BTreeMap<String, String>>,
+    errors: &mut Vec<Finding>,
+) {
+    if permissions.is_some_and(|map| !map.is_empty()) {
+        errors.push(Finding::at(
+            path,
+            "CI gate must not declare `permissions`; the reusable workflow mints its own \
+             token and a caller-level grant would only widen it",
+        ));
+    }
+}
+
+/// The exact scope the CD caller's token needs: read the checkout and mint
+/// the OIDC token the reusable publisher exchanges for a deployment session.
+/// Nothing wider — `contents: write` in particular is the privilege
+/// escalation a compromised or careless edit would reach for.
+const CD_PERMISSIONS: &[(&str, &str)] = &[("contents", "read"), ("id-token", "write")];
+
+fn validate_cd_permissions(
+    path: &Path,
+    permissions: Option<&BTreeMap<String, String>>,
+    errors: &mut Vec<Finding>,
+) {
+    let found = permissions.cloned().unwrap_or_default();
+    let expected: BTreeMap<String, String> = CD_PERMISSIONS
+        .iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+    if found != expected {
+        errors.push(Finding::at(
+            path,
+            format!(
+                "CD workflow must declare exactly `permissions: {{contents: read, id-token: write}}`; found {found:?}"
+            ),
+        ));
+    }
+}
+
+/// Every name `needs:` lists, reading either the bare-string shape
+/// (`needs: gate`) or the sequence shape (`needs: [gate]`) as the same
+/// dependency.
+fn needs_list(needs: Option<&serde_yaml::Value>) -> Vec<String> {
+    match needs {
+        Some(serde_yaml::Value::String(value)) => vec![value.clone()],
+        Some(serde_yaml::Value::Sequence(sequence)) => sequence
+            .iter()
+            .filter_map(|value| value.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// One job's reusable-workflow call: it names no `permissions` of its own, it
+/// calls `expected_prefix` at a pinned release, and its `project`/`host`
+/// inputs agree with the repository's manifest.
+///
+/// Shared by [`validate_workflow`] (the sole `ci` job, calling
+/// [`PROJECT_GATE_WORKFLOW`]) and [`validate_cd_workflow`] (the `gate` and
+/// `publish` jobs, calling [`PROJECT_GATE_WORKFLOW`] and
+/// [`PROJECT_PUBLISH_WORKFLOW`] respectively).
+fn validate_gate_call(
+    path: &Path,
+    job_name: &str,
+    job: &WorkflowJob,
+    expected_prefix: &str,
+    manifest: Option<&super::manifest::Manifest>,
+    errors: &mut Vec<Finding>,
+) {
+    if job.permissions.as_ref().is_some_and(|map| !map.is_empty()) {
+        errors.push(Finding::at(
+            path,
+            format!("job `{job_name}` must not declare its own `permissions`"),
+        ));
+    }
+    let Some(uses) = job.uses.as_deref().map(str::trim) else {
+        errors.push(Finding::at(
+            path,
+            format!("job `{job_name}` must call `{expected_prefix}` at a pinned release"),
+        ));
+        return;
+    };
+    let Some(action_version) = uses.strip_prefix(expected_prefix) else {
+        errors.push(Finding::at(
+            path,
+            format!(
+                "job `{job_name}` must call `{expected_prefix}` at a pinned release; found `{uses}`"
+            ),
+        ));
+        return;
+    };
+    let Some(input_project) = job.with.get("project").and_then(scalar) else {
+        errors.push(Finding::at(
+            path,
+            format!("job `{job_name}` must pass the repository Project code as `project`"),
+        ));
+        return;
+    };
+    let Some(input_host) = job.with.get("host").and_then(scalar) else {
+        errors.push(Finding::at(
+            path,
+            format!("job `{job_name}` must pass the deployment hostname as `host`"),
+        ));
+        return;
+    };
+    if let Some(expected_project) = manifest.and_then(|manifest| manifest.project.as_deref()) {
+        if input_project != expected_project {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "job `{job_name}` `project` input `{input_project}` must equal manifest project `{expected_project}`"
+                ),
+            ));
+        }
+    }
+    if let Some(expected_host) = manifest.and_then(|manifest| manifest.host.as_deref()) {
+        if input_host != expected_host {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "job `{job_name}` `host` input `{input_host}` must equal manifest host `{expected_host}`"
+                ),
+            ));
+        }
+    }
+    if let Some(expected_version) = manifest.and_then(|manifest| manifest.version.as_deref()) {
+        if action_version != expected_version {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "job `{job_name}` ref `{action_version}` must equal manifest version `{expected_version}`"
+                ),
+            ));
+        }
+    }
+    if !is_release_tag(action_version) {
+        errors.push(Finding::at(
+            path,
+            format!("job `{job_name}` ref `{action_version}` must be {RELEASE_TAG_SHAPE}"),
+        ));
+    }
+}
+
+/// Hold the CI gate to exactly one job, named [`REQUIRED_CHECK`], triggered
+/// only by `pull_request`, carrying no `permissions`, and calling
+/// Navigator's pinned reusable project-gate workflow at an exact release tag
+/// matching the repository manifest.
 fn validate_workflow(
     path: &Path,
     contents: &str,
@@ -1211,65 +1640,94 @@ fn validate_workflow(
         }
     };
 
-    let job = workflow.jobs.values().find(|job| {
-        job.uses
-            .as_deref()
-            .is_some_and(|uses| uses.trim().starts_with(PROJECT_GATE_WORKFLOW))
-    });
-    let Some(job) = job else {
+    validate_ci_trigger(path, workflow.on.as_ref(), errors);
+    validate_ci_permissions(path, workflow.permissions.as_ref(), errors);
+
+    if workflow.jobs.len() != 1 {
+        let mut names: Vec<&String> = workflow.jobs.keys().collect();
+        names.sort();
         errors.push(Finding::at(
             path,
-            "CI gate must call Navigator's pinned project-gate reusable workflow",
+            format!(
+                "CI gate must define exactly one job, the pinned project-gate caller named \
+                 `{REQUIRED_CHECK}`; found {names:?}"
+            ),
+        ));
+        return;
+    }
+    let Some(job) = workflow.jobs.get(REQUIRED_CHECK) else {
+        errors.push(Finding::at(
+            path,
+            format!("CI gate's one job must be named `{REQUIRED_CHECK}`"),
         ));
         return;
     };
+    validate_gate_call(
+        path,
+        REQUIRED_CHECK,
+        job,
+        PROJECT_GATE_WORKFLOW,
+        manifest,
+        errors,
+    );
+}
 
-    let action_version = job
-        .uses
-        .as_deref()
-        .unwrap_or_default()
-        .trim()
-        .strip_prefix(PROJECT_GATE_WORKFLOW)
-        .unwrap_or_default();
-    let Some(input_project) = job.with.get("project").and_then(scalar) else {
+/// Hold the CD workflow to exactly the `gate` and `publish` jobs, triggered
+/// only by a push to `main` and `workflow_dispatch`, carrying exactly
+/// `permissions: {contents: read, id-token: write}`, `publish` needing
+/// `gate`, and each job calling its pinned reusable workflow at an exact
+/// release tag matching the repository manifest.
+fn validate_cd_workflow(
+    path: &Path,
+    contents: &str,
+    manifest: Option<&super::manifest::Manifest>,
+    errors: &mut Vec<Finding>,
+) {
+    let workflow: Workflow = match serde_yaml::from_str(contents) {
+        Ok(workflow) => workflow,
+        Err(error) => {
+            errors.push(Finding::at(
+                path,
+                format!("CD workflow is not valid YAML: {error}"),
+            ));
+            return;
+        }
+    };
+
+    validate_cd_trigger(path, workflow.on.as_ref(), errors);
+    validate_cd_permissions(path, workflow.permissions.as_ref(), errors);
+
+    let mut names: Vec<String> = workflow.jobs.keys().cloned().collect();
+    names.sort();
+    if names != vec!["gate".to_string(), "publish".to_string()] {
         errors.push(Finding::at(
             path,
-            "CI gate must pass the repository Project code as `project`",
+            format!(
+                "CD workflow must define exactly the `gate` and `publish` jobs; found {names:?}"
+            ),
         ));
         return;
-    };
-    if job.with.get("host").and_then(scalar).is_none() {
-        errors.push(Finding::at(
-            path,
-            "CI gate must pass the deployment hostname as `host`",
-        ));
-    }
-    if let Some(expected_project) = manifest.and_then(|manifest| manifest.project.as_deref()) {
-        if input_project != expected_project {
-            errors.push(Finding::at(
-                path,
-                format!(
-                    "project-gate workflow `project` input `{input_project}` must equal manifest project `{expected_project}`"
-                ),
-            ));
-        }
     }
 
-    if let Some(expected_version) = manifest.and_then(|manifest| manifest.version.as_deref()) {
-        if action_version != expected_version {
+    if let Some(gate) = workflow.jobs.get("gate") {
+        validate_gate_call(path, "gate", gate, PROJECT_GATE_WORKFLOW, manifest, errors);
+    }
+    if let Some(publish) = workflow.jobs.get("publish") {
+        validate_gate_call(
+            path,
+            "publish",
+            publish,
+            PROJECT_PUBLISH_WORKFLOW,
+            manifest,
+            errors,
+        );
+        let needs = needs_list(publish.needs.as_ref());
+        if needs != vec!["gate".to_string()] {
             errors.push(Finding::at(
                 path,
-                format!(
-                    "project-gate workflow ref `{action_version}` must equal manifest version `{expected_version}`"
-                ),
+                format!("CD workflow's `publish` job must declare `needs: gate`; found {needs:?}"),
             ));
         }
-    }
-    if !is_release_tag(action_version) {
-        errors.push(Finding::at(
-            path,
-            format!("project-gate workflow ref `{action_version}` must be {RELEASE_TAG_SHAPE}"),
-        ));
     }
 }
 
@@ -1629,55 +2087,9 @@ fn tests_readme() -> String {
         .to_string()
 }
 
-/// The pinned actions every generated workflow installs Node and pnpm with.
-///
-/// SHA-pinned per `docs/gitops.md`, each resolved from the tag named in its
-/// trailing comment via the GitHub API rather than typed from memory: a wrong
-/// SHA is indistinguishable from a correct one until the run that needs it.
 /// The pinned publish action a Project repository's CD workflow calls.
 const PROJECT_PUBLISH_WORKFLOW: &str =
     "neon-law-source-code/navigator/.github/workflows/project-publish.yml@";
-
-/// The tree-derived condition for generated application steps.
-///
-/// Both patterns are load-bearing: the first discovers every direct app and
-/// the second keeps the root-portal transition green. This gates tool setup on
-/// repositories that actually need Node; the shell loop below still derives
-/// the complete list independently rather than trusting a declared matrix.
-#[allow(dead_code)]
-const IF_APPLICATION_PRESENT: &str =
-    "hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''";
-
-/// The standard install/lint/typecheck/build/test sequence, one line per
-/// script, package-manager-agnostic in what it checks but pnpm in what it
-/// runs: every Project repository observed today uses pnpm, and a repository
-/// that genuinely needs a different one remains free to hand-edit the
-/// generated file, the same way it is already free to add anything else.
-#[allow(dead_code)]
-fn pnpm_step(name: &str, script: &str) -> String {
-    format!(
-        r#"      - name: {name}
-        if: {IF_APPLICATION_PRESENT}
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          package_manifests=(apps/*/package.json)
-          if [ -f portal/package.json ]; then
-              package_manifests+=(portal/package.json)
-          fi
-          if [ -f package.json ] && {{ [ -f vite.config.ts ] || [ -f vite.config.js ]; }}; then
-              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
-                  package_manifests+=(package.json)
-              fi
-          fi
-          for package_json in "${{package_manifests[@]}}"; do
-              app_dir="${{package_json%/package.json}}"
-              pnpm --dir "${{app_dir}}" {script}
-          done
-"#
-    )
-}
 
 /// A thin `ci.yml` caller: one required job named [`REQUIRED_CHECK`] that
 /// calls Navigator's reusable project-gate workflow at `action_version`.
@@ -1764,9 +2176,9 @@ jobs:
 mod tests {
     use super::{
         agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
-        placeholder_template, repository_name, scaffold, validate_layout, validate_workflow,
-        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST,
-        SYNCED_SKILLS, WORKFLOW,
+        placeholder_template, repository_name, scaffold, validate_cd_workflow, validate_layout,
+        validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE,
+        PROJECT_MANIFEST, RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW, SYNCED_SKILLS, WORKFLOW,
     };
     use crate::projects::manifest::Manifest;
     use std::fs;
@@ -1786,6 +2198,24 @@ mod tests {
         let mut errors: Vec<Finding> = Vec::new();
         validate_workflow(Path::new("gate.yml"), contents, None, &mut errors);
         errors.into_iter().map(|error| error.message).collect()
+    }
+
+    /// The messages `validate_cd_workflow` reports for one CD file.
+    fn cd_findings(contents: &str) -> Vec<String> {
+        let mut errors: Vec<Finding> = Vec::new();
+        validate_cd_workflow(Path::new("cd.yml"), contents, None, &mut errors);
+        errors.into_iter().map(|error| error.message).collect()
+    }
+
+    /// The warnings `validate_layout` reports for one checkout.
+    fn layout_warnings(root: &Path) -> Vec<String> {
+        let mut errors: Vec<Finding> = Vec::new();
+        let mut warnings: Vec<Finding> = Vec::new();
+        validate_layout(root, &mut errors, &mut warnings);
+        warnings
+            .into_iter()
+            .map(|warning| warning.message)
+            .collect()
     }
 
     /// The smallest checkout `validate_layout` accepts, so a test adding one
@@ -2749,6 +3179,308 @@ jobs:
                 .iter()
                 .all(|error| !error.message.starts_with(ENTITY_CODE)),
             "{errors:?}"
+        );
+    }
+
+    /// The generated CD caller passes its own structural validation, the same
+    /// invariant `the_scaffolded_gate_passes_its_own_validation` proves for
+    /// `ci.yml`: the generator and the validator must agree.
+    #[test]
+    fn the_scaffolded_cd_workflow_passes_its_own_validation() {
+        assert_eq!(cd_findings(&cd_workflow(FIXTURE_PIN)), Vec::<String>::new());
+    }
+
+    /// ENG-675 reproduction 4: `pull_request_target` runs with the base
+    /// repository's secrets and write token against a fork's checked-out
+    /// code, so a caller that swaps it in for `pull_request` must be refused
+    /// by name, not merely by shape.
+    #[test]
+    fn a_ci_gate_triggered_by_pull_request_target_is_refused() {
+        let contents = r#"name: ci
+on:
+  pull_request_target:
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+"#;
+        let found = findings(contents);
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("pull_request_target")),
+            "{found:?}"
+        );
+    }
+
+    /// ENG-675 reproduction 3: an extra job with `contents: write` and
+    /// `id-token: write` next to the thin project-gate caller is a second,
+    /// unreviewed door into the same required check, so a CI gate must be
+    /// exactly one job.
+    #[test]
+    fn a_ci_gate_carrying_an_extra_privileged_job_is_refused() {
+        let contents = r#"name: ci
+on:
+  pull_request:
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+  smuggled:
+    permissions:
+      contents: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo pwned
+"#;
+        let found = findings(contents);
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("exactly one job")),
+            "{found:?}"
+        );
+    }
+
+    /// A CI gate that declares its own `permissions` could only widen what
+    /// the reusable workflow it calls receives.
+    #[test]
+    fn a_ci_gate_declaring_permissions_is_refused() {
+        let contents = r#"name: ci
+on:
+  pull_request:
+permissions:
+  contents: write
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+"#;
+        let found = findings(contents);
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("must not declare `permissions`")),
+            "{found:?}"
+        );
+    }
+
+    /// ENG-675 reproduction 5: a `host` input that disagrees with the
+    /// manifest is a repository whose CI gate deploys somewhere the
+    /// repository never declared.
+    #[test]
+    fn a_ci_gate_host_mismatch_against_the_manifest_is_refused() {
+        let contents = r#"name: ci
+on:
+  pull_request:
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      project: "acme"
+      host: "attacker.example.com"
+"#;
+        let manifest = Manifest {
+            version: Some("26.7.27".to_string()),
+            project: Some("acme".to_string()),
+            host: Some("staging.neonlaw.com".to_string()),
+            ..Manifest::default()
+        };
+        let mut errors = Vec::new();
+        validate_workflow(Path::new("ci.yml"), contents, Some(&manifest), &mut errors);
+        let found: Vec<String> = errors.into_iter().map(|error| error.message).collect();
+        assert!(
+            found.iter().any(|message| message.contains("`host` input")
+                && message.contains("attacker.example.com")
+                && message.contains("staging.neonlaw.com")),
+            "{found:?}"
+        );
+    }
+
+    /// ENG-675 reproduction 2: an arbitrary replacement `cd.yml` — an
+    /// unrelated job with none of the pinned reusable-workflow calls — must
+    /// be refused by the same structural check that closes `ci.yml`.
+    #[test]
+    fn an_arbitrary_cd_workflow_is_refused() {
+        let contents = r"name: cd
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./deploy.sh
+";
+        let found = cd_findings(contents);
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("exactly the `gate` and `publish` jobs")),
+            "{found:?}"
+        );
+    }
+
+    /// A `cd.yml` that triggers on every branch push, not only `main`, mints
+    /// the deployment token far wider than the manifest's one host was ever
+    /// granted.
+    #[test]
+    fn a_cd_workflow_not_scoped_to_main_is_refused() {
+        let contents = r#"name: cd
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  gate:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+  publish:
+    needs: gate
+    uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.7.27
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+"#;
+        let found = cd_findings(contents);
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("branches: [main]")),
+            "{found:?}"
+        );
+    }
+
+    /// A `cd.yml` widened to `contents: write` is the privilege escalation
+    /// the closed permissions set exists to catch.
+    #[test]
+    fn a_cd_workflow_with_contents_write_is_refused() {
+        let contents = r#"name: cd
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  gate:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+  publish:
+    needs: gate
+    uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.7.27
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+"#;
+        let found = cd_findings(contents);
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("permissions: {contents: read, id-token: write}")),
+            "{found:?}"
+        );
+    }
+
+    /// ENG-675 reproduction 1: an extra file under `.github/` — this
+    /// repository holds only CODEOWNERS and the two thin callers, so
+    /// anything else is a path the closed set has to name and reject.
+    #[test]
+    fn an_extra_github_file_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::write(root.path().join(".github/extra.txt"), "scratch\n").unwrap();
+
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains(".github/extra.txt")
+                    && message.contains("closed `.github` file set")),
+            "{found:?}"
+        );
+    }
+
+    /// The retired `gate.yml`/`publish.yml` filenames are still accepted —
+    /// removing that transition without notice is what this warning exists
+    /// to prevent — but a repository carrying either one is told to rename it
+    /// before the next release refuses it outright.
+    #[test]
+    fn a_retired_workflow_filename_is_accepted_with_a_warning() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        let ci_contents = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
+        std::fs::remove_file(root.path().join(WORKFLOW)).unwrap();
+        std::fs::write(root.path().join(RETIRED_WORKFLOW), &ci_contents).unwrap();
+
+        assert_eq!(layout_findings(root.path()), Vec::<String>::new());
+        let warnings = layout_warnings(root.path());
+        assert!(
+            warnings
+                .iter()
+                .any(|message| message.contains(RETIRED_WORKFLOW)
+                    && message.contains(WORKFLOW)
+                    && message.contains("next Navigator CLI release refuses it")),
+            "{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn a_retired_cd_workflow_filename_is_accepted_with_a_warning() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        let cd_contents = std::fs::read_to_string(root.path().join(CD_WORKFLOW)).unwrap();
+        std::fs::remove_file(root.path().join(CD_WORKFLOW)).unwrap();
+        std::fs::write(root.path().join(RETIRED_CD_WORKFLOW), &cd_contents).unwrap();
+
+        assert_eq!(layout_findings(root.path()), Vec::<String>::new());
+        let warnings = layout_warnings(root.path());
+        assert!(
+            warnings
+                .iter()
+                .any(|message| message.contains(RETIRED_CD_WORKFLOW)
+                    && message.contains(CD_WORKFLOW)),
+            "{warnings:?}"
+        );
+    }
+
+    /// A `.yaml` spelling of the CI gate reports the extension it actually
+    /// found and the one Navigator reads, not a bare "missing" that sends the
+    /// operator looking for a typo they already made correctly.
+    #[test]
+    fn a_yaml_extension_ci_workflow_reports_the_expected_extension() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        let ci_contents = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
+        std::fs::remove_file(root.path().join(WORKFLOW)).unwrap();
+        std::fs::write(root.path().join(".github/workflows/ci.yaml"), ci_contents).unwrap();
+
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains(".github/workflows/ci.yaml")
+                    && message.contains(WORKFLOW)),
+            "{found:?}"
         );
     }
 }

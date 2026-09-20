@@ -170,19 +170,29 @@ dnsimple records create "$ZONE" -a "$ACCT" --type URL --name "" --content "https
 The redirector serves plain HTTP out of the box, but **HTTPS needs two things: a certificate for the apex, and a
 DNSimple Teams plan or higher.** HTTPS redirects are a Teams-tier feature — on the Solo plan the redirector answers port
 80 only, and `https://<zone>` fails the TLS handshake no matter what. On Teams, DNSimple still does not auto-issue a
-certificate for a `URL` record, so you issue a free, auto-renewing Let's Encrypt certificate for the domain (its default
-covers both the apex and `www`):
+certificate for a `URL` record, so `--redirect-apex-to-www` also reconciles a free, auto-renewing Let's Encrypt
+certificate for the bare apex (`name: ""`, never `www` — GKE's own `ManagedCertificate` already covers that host; see
+[Grounding TLS in the release inventory](#grounding-tls-in-the-release-inventory) below):
+
+- No certificate exists yet → order one and report the new certificate's id.
+- A certificate is pending → request issuance, in case domain-control validation already completed.
+- A certificate is already active → report it and do nothing.
+- A certificate cannot be advanced automatically (still pending after an issue attempt, or in some other non-active
+  state) → report the exact remediation, never a bare exit code.
+
+This is `cli::devx::dns::ensure_apex_certificate`, and it is idempotent and safe to rerun exactly like the record
+reconciliation above — rerunning `ops dns setup --redirect-apex-to-www` is how you both check on a pending certificate's
+issuance and re-request it. It never issues an ECDSA/RSA choice or an alternate name on your behalf: it orders and
+checks a certificate, it does not invent settings you did not ask for. Issuance is asynchronous — Let's Encrypt
+validates through the DNSimple-delegated zone, and a certificate's own state moves from `new` through `requesting` to
+`issued`. If the automated order/issue exhausts what it can do from your account's own state (a plan without Teams, or a
+certificate parked in an unexpected state), the command names the manual fallback:
 
 ```bash
 # order → note the returned certificate id → issue it
 dnsimple certificates order-letsencrypt "$ZONE" -a "$ACCT" --auto-renew
 dnsimple certificates issue-letsencrypt   "$ZONE" -a "$ACCT" <certificate-id>
 ```
-
-Issuance is asynchronous (Let's Encrypt validates through the DNSimple-delegated zone); the certificate state moves from
-`new` through `requesting` to `issued`, after which the redirector serves the apex over HTTPS. The
-`--redirect-apex-to-www` flag writes the `URL` record and prints this same certificate reminder — it does not issue the
-certificate for you.
 
 ### Reconciling a family of domains in one run
 
@@ -217,8 +227,10 @@ Two things must both be true before the apex is actually reachable, and neither 
 
 1. The account is on **Teams or higher**. HTTPS redirects are a Teams-tier feature; below it the redirector serves port
    80 only, and no certificate changes that.
-2. A **certificate exists for that domain**. Teams does not issue one for a `URL` record, and `--redirect-apex-to-www`
-   does not either — it only prints the reminder.
+2. A **certificate exists for that domain and is active**. Teams does not issue one for a `URL` record on its own;
+   `--redirect-apex-to-www` orders and requests issuance for you, but issuance is asynchronous and can still be pending
+   the first time you check — read its printed report (or rerun `navigator ops brand-readiness`, below) rather than
+   assuming the flag alone finished the job.
 
 Check the tier once per account and the certificate once per domain, since a single account holding several domains will
 have certificates for some and not others:
@@ -310,6 +322,67 @@ The result: a sender emails `support@your-domain.example` → Workspace rewrites
 Parse POSTs it to Navigator's webhook. Lawyer mail to every other address on the domain is untouched and lands in
 Workspace as usual.
 
+## Grounding TLS in the release inventory
+
+A next release must carry every registered house brand's certificate, not only the launched ones.
+`views::brand::BrandKey::ALL` names eight compiled keys today; `views::brand::release_brand_hosts()` is those keys
+crossed with the hosts each one serves (`www.<domain>` and `staging.<domain>`) — the **release inventory**
+`cli::devx::ship` reads to render every brand's `ManagedCertificate` and Ingress rule, in both environments, whether or
+not that brand has launched.
+
+This is a deliberate split from `views::brand::BrandKey::LIVE`, the **launch gate** — the shorter list that still, and
+only, controls the request router's host admission, the crawler's `robots.txt`/sitemap base, the apex redirect, and the
+footer's "Our Family" row. Before ENG-808 the certificate/Ingress render read the launch gate too, so a held-out brand
+had no TLS at all until the very change that launched it. That coupled two decisions that do not belong together: a
+certificate is release infrastructure that should already be valid, trusted, and serving the right SAN well before a
+launch is approved. Now a held-out brand's host still serves a real, trusted certificate — it just answers `404`
+(`views::brand::held_out_host`) instead of the brand's page, never a TLS handshake failure. Each family keeps its own
+isolated `ManagedCertificate` regardless (ENG-768), so an unpointed or held-out name in `Provisioning` never holds
+another family's certificate hostage.
+
+### Verifying it — `navigator ops brand-readiness`
+
+A rendered manifest and a successful `kubectl apply` are a request, not proof: a `ManagedCertificate` can sit in
+`Provisioning` indefinitely, and the old primary-host smoke check only ever looked at one of sixteen production/staging
+hosts. `navigator ops brand-readiness --deployment <name>` is the receipt:
+
+```bash
+cargo run -p cli -- ops brand-readiness --deployment neon-law-stg
+cargo run -p cli -- ops brand-readiness --deployment neon-production
+```
+
+For every host the release inventory names on that deployment's environment, it performs a real TLS handshake through
+the host's ordinary trust store — **never `-k`/insecure** — and checks the actual response:
+
+- a **live** brand must answer `200` with its own `og:site_name` (the same marker
+  [`features/brand_routing.feature`](../features/tests/features/brand_routing.feature) already asserts on every route);
+- a **held-out** brand must answer `404` — a `200` there is a host-admission regression, not a pass;
+- on the production run only, every **live** brand's apex must redirect to its own canonical `www` host (apex checks
+  are skipped on staging, which carries no apex at all — see [The apex redirect is not done when the `URL` record
+  lands](#the-apex-redirect-is-not-done-when-the-url-record-lands) above).
+
+It is bounded (one `curl` per host, `--max-time`-limited, no retry loop and no polling for a certificate to become
+`Active`) and it mutates nothing, so it is safe to run as part of every staging-first handoff and as many times after
+that as you like. It exits nonzero and names every failing host — missing, pending, or otherwise invalid — the moment
+any one of them is not ready; it never reports success from the certificate manifests alone.
+
+### Staging-first release handoff
+
+1. Render and ship staging (`navigator ops ship --deployment neon-law-stg --tag <tag>`), then run
+   `navigator ops brand-readiness --deployment neon-law-stg` and confirm every host is `Ready`.
+2. Only once staging is fully green, ship the same immutable tag to production
+   (`navigator ops ship --deployment neon-production --tag <tag>`) and run `navigator ops brand-readiness --deployment
+   neon-production`.
+3. **Production apply remains operator-run.** Neither `ops ship` nor `ops brand-readiness` runs unattended against
+   production; an operator holding the release tag and cluster credentials runs both commands themselves, in that order,
+   and reads the readiness receipt before calling the release done.
+4. **Renewal is automatic and needs no rerun of this flow.** GKE reissues each `ManagedCertificate` on its own before
+   expiry, and a DNSimple Let's Encrypt certificate ordered with `--auto-renew` (the default this command passes) does
+   the same for the apex. `ops brand-readiness` is how you confirm a renewal actually landed, not how you trigger one.
+5. **Rollback** is the same command against the previous tag (`ops ship --deployment <name> --tag <previous-tag>`);
+   certificates are per-brand-family and untouched by which application tag is running, so a rollback never re-triggers
+   issuance.
+
 ## Verify
 
 ```bash
@@ -318,10 +391,12 @@ dig +short www.your-domain.example          # → the gateway IP
 curl -sI https://your-domain.example        # → 301 to https://www.your-domain.example (redirector + cert)
 dig +short your-domain.example MX           # → smtp.google.com (Workspace)
 dig +short parse.your-domain.example MX     # → mx.sendgrid.net (Inbound Parse)
+navigator ops brand-readiness --deployment <name>   # the full per-brand TLS/content receipt, see above
 ```
 
 ## Related
 
 - [`third-party-integrations.md`](third-party-integrations.md) — where DNSimple, SendGrid, and Google sit in the vendor
   model. [`email-events-pipeline.md`](email-events-pipeline.md) — the inbound/outbound email-event pipeline that Inbound
-  Parse feeds into. [`gke-prod.md`](gke-prod.md) — the static gateway IP the `www` record points at.
+  Parse feeds into. [`gke-prod.md`](gke-prod.md) — the static gateway IP the `www` record points at, and the release
+  inventory's `ManagedCertificate`/Ingress render.

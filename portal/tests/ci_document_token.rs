@@ -221,30 +221,55 @@ async fn a_minted_document_token_refuses_cross_project_downloads_writes_and_rout
     let token = minted["token"].as_str().unwrap();
     let auth = bearer(token);
 
-    for (method, uri, body) in [
-        (
-            "GET",
-            format!(
-                "/app/api/projects/{}/documents/revisions?slug=agreement",
-                fixture.other_project_id
+    for (authorization, cookie) in [(Some(auth.as_str()), None), (None, Some(token))] {
+        for (method, uri, body) in [
+            (
+                "GET",
+                format!(
+                    "/app/api/projects/{}/documents/revisions?slug=agreement",
+                    fixture.other_project_id
+                ),
+                Body::empty(),
             ),
-            Body::empty(),
-        ),
-        (
-            "GET",
-            format!("/app/projects/acme/documents/{}/download", Uuid::new_v4()),
-            Body::empty(),
-        ),
-        (
-            "POST",
-            format!("/app/api/projects/{}/documents", fixture.project_id),
-            Body::from("{}"),
-        ),
-        ("GET", "/app/api/people".to_string(), Body::empty()),
-    ] {
-        let (status, body) = request(&fixture.app, method, &uri, Some(&auth), None, body).await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {body}");
-        assert_eq!(body["error"], "scope_violation");
+            (
+                "GET",
+                format!("/app/projects/acme/documents/{}/download", Uuid::new_v4()),
+                Body::empty(),
+            ),
+            (
+                "GET",
+                format!(
+                    "/app/lawyer/notations/{}/documents/document",
+                    Uuid::new_v4()
+                ),
+                Body::empty(),
+            ),
+            (
+                "POST",
+                format!("/app/api/projects/{}/documents", fixture.project_id),
+                Body::from("{}"),
+            ),
+            (
+                "POST",
+                "/app/projects/acme/documents/upload".to_string(),
+                Body::empty(),
+            ),
+            ("GET", "/app/api/people".to_string(), Body::empty()),
+        ] {
+            let (status, body) =
+                request(&fixture.app, method, &uri, authorization, cookie, body).await;
+            let body_text = body.to_string();
+            assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {body_text}");
+            assert_eq!(body["error"], "scope_violation");
+            assert!(
+                !body_text.contains("synthetic bytes"),
+                "{method} {uri}: {body_text}"
+            );
+            assert!(
+                !body_text.contains("https://"),
+                "{method} {uri}: {body_text}"
+            );
+        }
     }
 }
 

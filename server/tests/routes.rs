@@ -5788,6 +5788,27 @@ async fn transition(
         .unwrap()
 }
 
+async fn file_offboarding(surreal: &store::surreal::SurrealDb, project_id: uuid::Uuid) {
+    let mut response = surreal
+        .query(
+            "CREATE $asset SET project_id = $project_id, storage_key = 'test', \
+             content_type = 'application/pdf', byte_size = 1, sha256_hex = $sha, \
+             kind = 'offboarding', visibility = 'internal', metadata = NONE",
+        )
+        .bind((
+            "asset",
+            store::surreal::record_id("asset", uuid::Uuid::now_v7()),
+        ))
+        .bind((
+            "project_id",
+            store::surreal::record_id("project", project_id),
+        ))
+        .bind(("sha", format!("sha-{project_id}")))
+        .await
+        .unwrap();
+    let _: Option<serde_json::Value> = response.take(0).unwrap();
+}
+
 #[tokio::test]
 async fn api_projects_lifecycle_authorizes_only_lawyer_and_admin() {
     // Same shape as the bare PATCH/DELETE matter path: tier-only, not scoped
@@ -5828,10 +5849,11 @@ async fn api_projects_lifecycle_authorizes_only_lawyer_and_admin() {
 
     for (label, role, status, error) in cases {
         let matter = seeded_matter(&surreal).await;
+        file_offboarding(&surreal, matter).await;
         let resp = transition(
             &app,
             matter,
-            serde_json::json!({ "transition": "close" }),
+            serde_json::json!({ "transition": "close", "reason": "pitch_declined" }),
             role,
         )
         .await;
@@ -5858,13 +5880,14 @@ async fn api_projects_lifecycle_closes_reopens_and_archives() {
         .await
         .unwrap();
     let matter = seeded_matter(&surreal).await;
+    file_offboarding(&surreal, matter).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let lawyer = Some(store::persons::Role::Lawyer);
 
     let resp = transition(
         &app,
         matter,
-        serde_json::json!({ "transition": "close" }),
+        serde_json::json!({ "transition": "close", "reason": "pitch_declined" }),
         lawyer,
     )
     .await;
@@ -5879,7 +5902,7 @@ async fn api_projects_lifecycle_closes_reopens_and_archives() {
     let resp = transition(
         &app,
         matter,
-        serde_json::json!({ "transition": "close" }),
+        serde_json::json!({ "transition": "close", "reason": "pitch_declined" }),
         lawyer,
     )
     .await;
@@ -5898,6 +5921,7 @@ async fn api_projects_lifecycle_closes_reopens_and_archives() {
     let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
     assert_eq!(body["status"], "open");
     assert!(body["closed_at"].is_null());
+    assert!(body["closure_reason"].is_null());
 
     let resp = transition(
         &app,
@@ -5940,6 +5964,7 @@ async fn api_projects_lifecycle_persists_the_supplied_effective_date() {
         .await
         .unwrap();
     let matter = seeded_matter(&surreal).await;
+    file_offboarding(&surreal, matter).await;
     let mut response = surreal
         .query("UPDATE $id SET inserted_at = $inserted_at")
         .bind(("id", store::surreal::record_id("project", matter)))
@@ -5953,7 +5978,7 @@ async fn api_projects_lifecycle_persists_the_supplied_effective_date() {
     let resp = transition(
         &app,
         matter,
-        serde_json::json!({ "transition": "close", "effective_at": effective_at }),
+        serde_json::json!({ "transition": "close", "reason": "pitch_declined", "effective_at": effective_at }),
         Some(store::persons::Role::Lawyer),
     )
     .await;
@@ -5977,6 +6002,7 @@ async fn api_projects_lifecycle_rejects_invalid_effective_dates_without_writing(
         .await
         .unwrap();
     let matter = seeded_matter(&surreal).await;
+    file_offboarding(&surreal, matter).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let lawyer = Some(store::persons::Role::Lawyer);
 
@@ -5988,7 +6014,7 @@ async fn api_projects_lifecycle_rejects_invalid_effective_dates_without_writing(
         let resp = transition(
             &app,
             matter,
-            serde_json::json!({ "transition": "close", "effective_at": effective_at }),
+            serde_json::json!({ "transition": "close", "reason": "pitch_declined", "effective_at": effective_at }),
             lawyer,
         )
         .await;
@@ -6028,11 +6054,26 @@ async fn api_projects_lifecycle_rejects_unrecognized_fields_and_transition() {
         "a rejected transition leaves the matter unchanged"
     );
 
+    for body in [
+        serde_json::json!({ "transition": "close" }),
+        serde_json::json!({ "transition": "close", "reason": "not-a-reason" }),
+    ] {
+        let resp = transition(&app, matter, body, Some(store::persons::Role::Lawyer)).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let saved = store::projects::find_by_id(&surreal, matter)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.status, "open", "an invalid reason changes nothing");
+        assert!(saved.closure_reason.is_none());
+    }
+
     let resp = transition(
         &app,
         matter,
         serde_json::json!({
             "transition": "close",
+            "reason": "pitch_declined",
             "closed_at": "2001-02-03T04:05:06Z"
         }),
         Some(store::persons::Role::Lawyer),

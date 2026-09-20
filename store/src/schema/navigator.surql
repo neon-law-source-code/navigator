@@ -101,6 +101,9 @@ DEFINE FIELD OVERWRITE repository_url ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE git_initialized_at ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE forge_provisioned_at ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE closed_at ON project TYPE option<string>;
+-- Null means the matter predates closure-reason recording. Historical rows
+-- stay unknown; no reason is inferred from later evidence.
+DEFINE FIELD OVERWRITE closure_reason ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE internal_slack_channel_url ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE external_slack_channel_url ON project TYPE option<string>;
 -- The firm-only Slack Web API channel ID. The bot addresses a channel by this

@@ -477,6 +477,10 @@ enum ProjectsCmd {
     Close {
         /// Project code, resolved only against Projects visible to the login.
         project_code: String,
+        /// Why the matter closed. Pitch reasons require an offboarding document;
+        /// active-matter reasons require an onboarding document.
+        #[arg(long)]
+        reason: store::projects::ClosureReason,
         /// RFC 3339 time when the matter actually closed.
         #[arg(long)]
         effective_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -2569,9 +2573,10 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         }
         ProjectsCmd::Close {
             project_code,
+            reason,
             effective_at,
             host,
-        } => remote::matter_close(host.host.as_deref(), &project_code, effective_at).await,
+        } => remote::matter_close(host.host.as_deref(), &project_code, reason, effective_at).await,
         ProjectsCmd::List { host, json } => remote::projects_list(host.host.as_deref(), json).await,
         ProjectsCmd::Lifecycle { host, json } => {
             remote::projects_lifecycle(host.host.as_deref(), json).await

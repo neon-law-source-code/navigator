@@ -920,6 +920,7 @@ struct ProjectLifecycle {
     code: String,
     status: String,
     closed_at: Option<String>,
+    closure_reason: Option<String>,
     /// Derived by the server from `repository_url`/`forge_provisioned_at`/
     /// `git_initialized_at` — never a stored column. See
     /// `store::project_surfaces::SourceState`.
@@ -954,6 +955,7 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
                         row.code.clone(),
                         row.status.clone(),
                         row.closed_at.clone().unwrap_or_default(),
+                        row.closure_reason.clone().unwrap_or_default(),
                         row.source_state.as_str().to_string(),
                     ]
                 })
@@ -963,6 +965,7 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
                     "code".into(),
                     "status".into(),
                     "closed_at".into(),
+                    "closure_reason".into(),
                     "source_state".into(),
                 ])
                 .chain(table_rows)
@@ -1219,6 +1222,7 @@ pub async fn slack_notify(
 pub async fn matter_close(
     host: Option<&str>,
     project_code: &str,
+    reason: store::projects::ClosureReason,
     effective_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> ExitCode {
     run(async {
@@ -1245,7 +1249,7 @@ pub async fn matter_close(
             .find(|project| project.code == project_code)
             .ok_or_else(|| anyhow!("no visible matter with code `{project_code}`"))?;
         let url = format!("{base}/app/api/projects/{}/lifecycle", project.id);
-        let mut payload = serde_json::json!({ "transition": "close" });
+        let mut payload = serde_json::json!({ "transition": "close", "reason": reason });
         if let Some(effective_at) = effective_at {
             payload["effective_at"] = serde_json::json!(effective_at);
         }
@@ -4019,7 +4023,13 @@ mod tests {
             .await;
 
         assert_eq!(
-            matter_close(Some(server_uri.as_str()), "not-a-matter", None).await,
+            matter_close(
+                Some(server_uri.as_str()),
+                "not-a-matter",
+                store::projects::ClosureReason::PitchDeclined,
+                None
+            )
+            .await,
             ExitCode::from(2)
         );
     }
@@ -4034,8 +4044,8 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/app/api/project-lifecycle"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z", "source_state": "attached"},
-                {"code": "sample", "status": "open", "closed_at": null, "source_state": "not_enabled"}
+                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z", "closure_reason": "engagement_completed", "source_state": "attached"},
+                {"code": "sample", "status": "open", "closed_at": null, "closure_reason": null, "source_state": "not_enabled"}
             ])))
             .expect(2)
             .mount(&server)
@@ -4116,7 +4126,13 @@ mod tests {
             .await;
 
         assert_eq!(
-            matter_close(Some(server_uri.as_str()), "acme", None).await,
+            matter_close(
+                Some(server_uri.as_str()),
+                "acme",
+                store::projects::ClosureReason::EngagementCompleted,
+                None
+            )
+            .await,
             ExitCode::from(2)
         );
     }
@@ -4141,6 +4157,7 @@ mod tests {
             .and(path(format!("/app/api/projects/{project_id}/lifecycle")))
             .and(body_json(serde_json::json!({
                 "transition": "close",
+                "reason": "engagement_completed",
                 "effective_at": "2001-02-03T04:05:06Z"
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -4154,7 +4171,13 @@ mod tests {
             .await;
 
         assert_eq!(
-            matter_close(Some(server_uri.as_str()), "acme", Some(effective_at)).await,
+            matter_close(
+                Some(server_uri.as_str()),
+                "acme",
+                store::projects::ClosureReason::EngagementCompleted,
+                Some(effective_at)
+            )
+            .await,
             ExitCode::SUCCESS
         );
     }
@@ -4446,7 +4469,9 @@ mod tests {
             .await;
         Mock::given(method("POST"))
             .and(path(format!("/app/api/projects/{}/lifecycle", ids.project)))
-            .and(body_json(serde_json::json!({ "transition": "close" })))
+            .and(body_json(
+                serde_json::json!({ "transition": "close", "reason": "engagement_completed" }),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": ids.project,
                 "code": "acme",
@@ -4588,7 +4613,16 @@ mod tests {
     async fn exercise_project_commands(host: Option<&str>) {
         assert_eq!(projects_list(host, true).await, ExitCode::SUCCESS);
         assert_eq!(matter_open(host, "acme").await, ExitCode::SUCCESS);
-        assert_eq!(matter_close(host, "acme", None).await, ExitCode::SUCCESS);
+        assert_eq!(
+            matter_close(
+                host,
+                "acme",
+                store::projects::ClosureReason::EngagementCompleted,
+                None
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
     }
 
     async fn exercise_notation_commands(host: Option<&str>, server_uri: &str, ids: LawyerRouteIds) {

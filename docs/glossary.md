@@ -1540,14 +1540,17 @@ A **[Matter](#matter)** in client English. The durable container every [Notation
 `status` (`open`, `closed`, `archived`) and is **always opened against an [Entity](#entity)** — a legal organization, or
 a `Human` entity for a solo natural person. The `entity_id` FK is `NOT NULL`: a matter without an entity is a bug.
 
-Lifecycle status changes move through the shared transition command (`store::projects::transition_project`): the REST
-door is `POST /app/api/projects/{id}/lifecycle`, which the CLI's `projects close` calls, and the `close_project` MCP
-tool calls the command directly. The descriptive `PATCH /app/api/projects/{id}` never touches `status`; it rejects the
-field outright rather than accepting and forwarding it, so `closed_at` — derived only inside the transition command —
-cannot be bypassed by a partial update reaching it through a second door. Close and archive transitions may carry an RFC
-3339 `effective_at` between matter-open and now; the command derives `closed_at` from that value so an existing
-retention start can be corrected. Without it, a new close starts at the server's current time and an existing stamp is
-preserved. Reopen accepts no effective time and clears `closed_at`.
+Lifecycle status changes move through the shared transition command (`store::projects::transition_project_with_reason`):
+the REST door is `POST /app/api/projects/{id}/lifecycle`, which the CLI's `projects close` calls, and the
+`close_project` MCP tool calls the command directly. The descriptive `PATCH /app/api/projects/{id}` never touches
+`status`; it rejects the field outright rather than accepting and forwarding it, so `closed_at` — derived only inside
+the transition command — cannot be bypassed by a partial update reaching it through a second door. Close and archive
+transitions may carry an RFC 3339 `effective_at` between matter-open and now; the command derives `closed_at` from that
+value so an existing retention start can be corrected. Without it, a new close starts at the server's current time and
+an existing stamp is preserved. A first close requires one of four pitch reasons or three active-matter reasons,
+matching the pre-close onboarding classification; a pitch also requires an offboarding document on file. Reopen accepts
+no effective time and clears both `closed_at` and `closure_reason`. A null reason on a historical closed row remains
+unknown rather than being inferred.
 
 **`source_state`** is a *derived* read-only signal on the lifecycle projection (`GET /app/api/projects/lifecycle`),
 never a stored column — [`store::project_surfaces::source_state`](../store/src/project_surfaces.rs) computes it purely

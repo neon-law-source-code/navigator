@@ -104,6 +104,14 @@ chrono = { workspace = true, optional = true }
 # rather than paying one round trip per row in sequence. Gated behind
 # `server` like `cloud`, whose forge client it awaits.
 futures = { workspace = true, optional = true }
+# Server-only: the notation-document review page (ENG-579) reads the
+# block/anchor manifest `store::notation_documents` persists as
+# `word::BlockManifestEntry` rows, the same typed contract the writing side
+# (`portal::notation_document_review`) produces. Gated behind `server` like
+# `store` — `word` spawns the managed adapter process, which has no wasm32
+# story, and the wasm client never needs outline structure since the
+# server-computed rows ride the wire in the view.
+word = { workspace = true, optional = true }
 
 # The workspace pin carries `v7`, which compiles `uuid`'s `rng` module. On
 # `wasm32-unknown-unknown` that module has no randomness source of its own and
@@ -152,7 +160,7 @@ web = ["dioxus/web"]
 # Selected transitively by `web`; pulls the server-side renderer so
 # `dioxus-server`'s `render_handler` can SSR `App`, plus the `store` query
 # layer the server functions run against and the request-extraction helper.
-server = ["dioxus/server", "dep:store", "dep:dioxus-fullstack-core", "dep:axum", "dep:views", "dep:cloud", "dep:tracing", "dep:dioxus-ssr", "dep:reqwest", "dep:tokio", "dep:rules", "dep:workflows", "dep:chrono", "dep:futures"]
+server = ["dioxus/server", "dep:store", "dep:dioxus-fullstack-core", "dep:axum", "dep:views", "dep:cloud", "dep:tracing", "dep:dioxus-ssr", "dep:reqwest", "dep:tokio", "dep:rules", "dep:workflows", "dep:chrono", "dep:futures", "dep:word"]
 
 [lints]
 workspace = true

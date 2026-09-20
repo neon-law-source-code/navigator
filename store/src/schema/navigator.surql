@@ -1469,6 +1469,26 @@ DEFINE FIELD OVERWRITE updated_at ON notation_document_version TYPE datetime DEF
 -- the id lookups `notation_documents` already indexes by primary key.
 DEFINE INDEX OVERWRITE notation_document_version_document ON notation_document_version FIELDS document_id, inserted_at;
 
+-- `notation_document_comments`: one comment (an analysis finding or an
+-- attorney's own note) anchored to a block within one specific
+-- `notation_document_version` (ENG-579). Anchored to the *version*, not the
+-- document, so an edit that appends a new version cannot silently relocate
+-- an existing comment onto different content — a comment that no longer
+-- applies surfaces as unresolved rather than drifting. `decision` is unset
+-- until `store::notation_documents::decide_comment` records exactly one of
+-- `accepted` / `rejected` / `edited` — there is no bulk-decide write.
+DEFINE TABLE IF NOT EXISTS notation_document_comment SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE version_id ON notation_document_comment TYPE record<notation_document_version>;
+DEFINE FIELD OVERWRITE anchor ON notation_document_comment TYPE string;
+DEFINE FIELD OVERWRITE person_id ON notation_document_comment TYPE record<person>;
+DEFINE FIELD OVERWRITE body ON notation_document_comment TYPE string;
+DEFINE FIELD OVERWRITE decision ON notation_document_comment TYPE option<string>;
+DEFINE FIELD OVERWRITE resolved ON notation_document_comment TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE inserted_at ON notation_document_comment TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON notation_document_comment TYPE datetime DEFAULT time::now();
+-- The only read is "every comment on this version, oldest first".
+DEFINE INDEX OVERWRITE notation_document_comment_version ON notation_document_comment FIELDS version_id, inserted_at;
+
 -- `notation_events`: the append-only journal of every state-machine
 -- transition for every Notation. One row per transition.
 --

@@ -85,6 +85,7 @@ pub mod marketing_page;
 pub mod matter_directory;
 pub mod matter_surface;
 pub mod notation_demo;
+pub mod notation_document_review;
 pub mod notation_outline;
 pub mod notation_preview;
 pub mod notation_workflow;

@@ -101,6 +101,13 @@ spec:
               value: "YOUR_CHATWOOT_WEBSITE_TOKEN"
             - name: NAVIGATOR_CHATWOOT_BASE_URL
               value: "YOUR_CHATWOOT_BASE_URL"
+            # SMTP envelope recipients the inbound-summary lane admits, comma
+            # separated. Optional: empty keeps the lane off. Deploy sets the
+            # production mailbox on the production row and the staging mailbox
+            # on persistent staging — there is no compiled default. `ops ship`
+            # renders a blank when the deployment `config.toml` omits the key.
+            - name: NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS
+              value: "YOUR_SUMMARY_ENVELOPE_RECIPIENTS"
             # NAVIGATOR_STORAGE_ENDPOINT is deliberately omitted in prod:
             # it is a local/test override that the KIND base may set, and
             # the `$patch: replace` above drops the base's whole env list.

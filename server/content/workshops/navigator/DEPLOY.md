@@ -1063,6 +1063,7 @@ alongside it.
 | Attachment scanner | `NAVIGATOR_CLAMD_ADDR` | Required in every deployed profile; private `clamd` only |
 | Event webhook | `SENDGRID_EVENTS_SECRET`, `SENDGRID_EVENTS_PUBLIC_KEY` | Required outside the harness |
 | Threaded mail | `NAVIGATOR_PARSE_HOST`, `NAVIGATOR_LAWYER_NOTIFY_EMAIL` | Both values enable it |
+| Summary env | `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` | Unset: off; blank fails; no compiled default; per Deploy row |
 | DKIM fence | `NAVIGATOR_DKIM_REQUIRE_DOMAIN` | Optional domain pin |
 | Lawyer-sender DKIM check | none (always on) | Must pass for sender's own domain on every lawyer command/relay |
 | Internal ops notices | `SLACK_WEBHOOK_URL` | Optional; otherwise captured in memory |

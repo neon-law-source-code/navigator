@@ -100,8 +100,13 @@ participation row or an email address into an invite, so the Firm's own Slack me
 
 The persistent staging deployment (`NAVIGATOR_ENVIRONMENT=production` and `NAVIGATOR_SIMULATED_MATTERS=true`) appends a
 final `from Staging` line to every outbound Slack body: the ops incoming webhook, the per-Project bot, and Firm-private
-`chat.postMessage` calls. Production holding real matters does not. Local KIND is `dev` and does not. GitHub Actions
-deploy narration is a workflow secret, not this runtime path.
+`chat.postMessage` calls. Restate jobs do not add a second staging parenthetical to those bodies. Production holding
+real matters does not. Local KIND is `dev` and does not. GitHub Actions deploy narration is a workflow secret, not this
+runtime path.
+
+Inbound summary matching reads `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` from the deployment config (comma-separated SMTP
+envelope recipients). Persistent staging sets the staging mailbox there; production sets the live support mailbox. There
+is no compiled default. Unset leaves the signed summary lane off; a present blank value fails boot.
 
 Normal staging requires real non-production SendGrid and DocuSign demo configuration. Each cloud deployment uses the
 matching attachment row described in [`provider-environment-parity.md`](provider-environment-parity.md). Only the

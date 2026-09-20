@@ -499,14 +499,12 @@ pub async fn post_finance_notice(
 /// contact names behind them would put client identities in a channel that
 /// has no need for them.
 ///
-/// `simulated` folds in the staging disclosure, the same signal
-/// `GeneralNag` gives a reader of `#general`.
+/// Staging disclosure is the Slack adapter's last-line `from Staging` mark,
+/// not a rewrite of this body. `simulated` is accepted so callers share one
+/// flag with the rest of the reconcile path.
 #[must_use]
-pub fn finance_message(report: &ReconcileReport, simulated: bool) -> String {
+pub fn finance_message(report: &ReconcileReport, _simulated: bool) -> String {
     let mut body = String::from("Xero mirror, nightly run.");
-    if simulated {
-        body.push_str(" (from the staging account)");
-    }
     body.push_str(&format!(
         "\nInvoices: {} ingested, {} unscoped, {} updated of {} re-checked.",
         report.ingested, report.unscoped, report.updated, report.checked
@@ -965,14 +963,14 @@ mod tests {
         );
     }
 
-    /// A reader of `#finance` can tell a persistent-staging post from a
-    /// production one, the same way `#general` can.
     #[test]
-    fn a_simulated_deployment_discloses_staging() {
-        assert!(super::finance_message(&report(), true).contains("(from the staging account)"));
+    fn finance_copy_does_not_rewrite_for_simulated_matters() {
+        let simulated = super::finance_message(&report(), true);
+        let production = super::finance_message(&report(), false);
+        assert_eq!(simulated, production);
         assert!(
-            !super::finance_message(&report(), false).contains("staging"),
-            "a production run must not claim to be staging"
+            !production.contains("staging"),
+            "the body must not carry a staging parenthetical; the adapter marks staging"
         );
     }
 

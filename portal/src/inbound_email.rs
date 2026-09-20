@@ -23,6 +23,7 @@
 //! event header over the original multipart bytes before parsing; the legacy
 //! lane keeps the path-secret contract unchanged.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,6 +34,7 @@ use axum::http::{HeaderMap, Request, StatusCode};
 use axum::response::IntoResponse;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 use uuid::Uuid;
 
 use cloud::StorageService;
@@ -46,11 +48,61 @@ pub const SUMMARY_TIMESTAMP_HEADER: &str = "x-twilio-email-event-webhook-timesta
 const SUMMARY_TIMESTAMP_MAX_AGE_SECONDS: i64 = 86_400;
 const SUMMARY_TIMESTAMP_MAX_FUTURE_SECONDS: i64 = 300;
 
+/// Comma-separated SMTP envelope recipients the summary lane admits.
+///
+/// Deploy sets this per row: the production mailbox on the production
+/// deployment, the staging mailbox on persistent staging. There is no
+/// compiled default, so a simulated-matters row cannot silently infer from
+/// the production inbox.
+pub const NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS: &str = "NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS";
+
+/// Why [`summary_envelope_recipients_from_lookup`] refused the allowlist.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum SummaryEnvelopeError {
+    #[error("NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS must list at least one envelope recipient")]
+    Empty,
+}
+
+/// Parse [`NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS`]: unset is an empty
+/// allowlist (the summary lane stays off), a present-but-empty value fails.
+pub fn summary_envelope_recipients_from_env() -> Result<Vec<String>, SummaryEnvelopeError> {
+    summary_envelope_recipients_from_lookup(|key| std::env::var(key).ok())
+}
+
+/// Testable seam for [`summary_envelope_recipients_from_env`].
+pub fn summary_envelope_recipients_from_lookup<F: Fn(&str) -> Option<String>>(
+    get: F,
+) -> Result<Vec<String>, SummaryEnvelopeError> {
+    match get(NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS) {
+        None => Ok(Vec::new()),
+        Some(raw) if raw.trim().is_empty() => Err(SummaryEnvelopeError::Empty),
+        Some(raw) => {
+            let mut seen = BTreeSet::new();
+            let mut out = Vec::new();
+            for part in raw.split(',') {
+                let address = normalize_address(part);
+                if address.is_empty() {
+                    continue;
+                }
+                if seen.insert(address.clone()) {
+                    out.push(address);
+                }
+            }
+            if out.is_empty() {
+                Err(SummaryEnvelopeError::Empty)
+            } else {
+                Ok(out)
+            }
+        }
+    }
+}
+
 /// Opt-in authentication and routing for the summary-only intake lane.
 ///
-/// The hosting layer deliberately leaves this absent until the durable
-/// handoff is wired. Tests and the later feature-configuration issue can
-/// provide it explicitly without changing the legacy SendGrid path.
+/// The hosting layer leaves this absent until the durable handoff is wired.
+/// Tests and the later feature-configuration issue can provide it explicitly
+/// without changing the legacy SendGrid path. Envelope matching always
+/// reads [`NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS`] when that wiring lands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryIntakeConfig {
     pub envelope_recipients: Vec<String>,
@@ -922,5 +974,68 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
             .rsplit_once('-')
             .map_or("", |(_, tail)| tail.trim_end_matches(".eml"));
         assert!(slug.len() <= 40, "slug too long: {} chars", slug.len());
+    }
+
+    fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let owned: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        move |key| owned.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    }
+
+    #[test]
+    fn unset_summary_envelope_env_is_an_empty_allowlist() {
+        assert_eq!(
+            super::summary_envelope_recipients_from_lookup(lookup(&[])).unwrap(),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn blank_summary_envelope_env_fails_closed() {
+        assert_eq!(
+            super::summary_envelope_recipients_from_lookup(lookup(&[(
+                super::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS,
+                "  ,  "
+            )])),
+            Err(super::SummaryEnvelopeError::Empty)
+        );
+        assert_eq!(
+            super::summary_envelope_recipients_from_lookup(lookup(&[(
+                super::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS,
+                ""
+            )])),
+            Err(super::SummaryEnvelopeError::Empty)
+        );
+    }
+
+    #[test]
+    fn summary_envelope_env_splits_trims_and_dedupes() {
+        let recipients = super::summary_envelope_recipients_from_lookup(lookup(&[(
+            super::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS,
+            " Support@example.com ,staging@example.com, support@example.com ",
+        )]))
+        .unwrap();
+        assert_eq!(
+            recipients,
+            vec![
+                "support@example.com".to_string(),
+                "staging@example.com".to_string()
+            ]
+        );
+        let config = super::SummaryIntakeConfig {
+            envelope_recipients: recipients,
+            inbound_public_key: "unused".into(),
+            deployment: "example".into(),
+        };
+        assert!(config.matches_envelope(&super::SmtpEnvelope {
+            to: vec!["SUPPORT@example.com".into()],
+            from: None,
+        }));
+        assert!(!config.matches_envelope(&super::SmtpEnvelope {
+            to: vec!["other@example.com".into()],
+            from: None,
+        }));
     }
 }

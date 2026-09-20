@@ -3,10 +3,9 @@
 //! Two journaled posts, so a retry of one never re-runs the other:
 //!
 //! 1. `ctx.run("notify")` — post [`nag_message`] through the worker's Slack
-//!    Web API bot to `SLACK_GENERAL_CHANNEL_ID`. A simulated-matters
-//!    deployment folds the staging disclosure into that line, the same
-//!    wording [`crate::dri_digest::dri_digest_message`] uses, so a reader of
-//!    `#general` can tell a persistent-staging post from a production one.
+//!    Web API bot to `SLACK_GENERAL_CHANNEL_ID`. Persistent staging does not
+//!    rewrite this slogan: the Slack adapter already appends a final
+//!    `from Staging` line to every real post.
 //! 2. `ctx.run("counts")` / `ctx.run("notify_counts")` — a real deployment's
 //!    open-matters/pitches follow-up, posted as a **second** Slack message.
 //!    Never runs for a simulated-matters deployment: that count is a
@@ -41,17 +40,11 @@ pub struct GeneralNagReport {
     pub posted_followup: bool,
 }
 
-/// The daily `#general` jab. `simulated` appends the staging disclosure —
-/// the same signal the site-wide banner gives a browsing visitor, given here
-/// to a reader of `#general` who has no other way to tell a persistent-staging
-/// post from a real production one.
+/// The daily `#general` jab. Staging disclosure is the Slack adapter's
+/// last-line `from Staging` mark, not a rewrite of this slogan.
 #[must_use]
-pub fn nag_message(simulated: bool) -> String {
-    if simulated {
-        "Nobody Cares, Work Harder (from the staging account)".to_string()
-    } else {
-        "Nobody Cares, Work Harder".to_string()
-    }
+pub fn nag_message(_simulated: bool) -> String {
+    "Nobody Cares, Work Harder".to_string()
 }
 
 /// Service registered with the Restate endpoint. Holds a `SurrealDB` clone
@@ -150,20 +143,12 @@ mod tests {
     use crate::dri_digest::open_matters_followup;
 
     #[test]
-    fn a_simulated_run_discloses_the_staging_account() {
-        assert_eq!(
-            nag_message(true),
-            "Nobody Cares, Work Harder (from the staging account)"
-        );
-    }
-
-    #[test]
-    fn a_non_simulated_run_carries_no_staging_suffix() {
-        let msg = nag_message(false);
-        assert_eq!(msg, "Nobody Cares, Work Harder");
+    fn simulated_and_production_nags_share_one_slogan() {
+        assert_eq!(nag_message(true), nag_message(false));
+        assert_eq!(nag_message(false), "Nobody Cares, Work Harder");
         assert!(
-            !msg.contains("staging"),
-            "a real production run must not disclose a staging account: {msg}"
+            !nag_message(true).contains("staging"),
+            "the slogan must not carry a staging parenthetical; the adapter marks staging"
         );
     }
 

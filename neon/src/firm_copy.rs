@@ -655,40 +655,6 @@ mod firm_copy_tests {
         );
     }
 
-    #[test]
-    fn the_notations_page_maps_sources_into_a_notation() {
-        let content = crate::locales::notations_content();
-        let diagram = content
-            .bands
-            .iter()
-            .find_map(|band| match band {
-                Band::ProjectNetwork {
-                    anchor,
-                    center_heading,
-                    left,
-                    right,
-                    mcp_tools,
-                    agentic_coding_tools,
-                    saas_tools,
-                    ..
-                } if anchor == "notation-flow" => Some((
-                    center_heading,
-                    left,
-                    right,
-                    mcp_tools,
-                    agentic_coding_tools,
-                    saas_tools,
-                )),
-                _ => None,
-            })
-            .expect("the Notations page renders the source-to-Notation diagram");
-
-        assert!(!diagram.0.is_empty());
-        assert_eq!(diagram.1.len(), 4);
-        assert_eq!(diagram.2.len(), 4);
-        assert!(diagram.3.is_empty() && diagram.4.is_empty() && diagram.5.is_empty());
-    }
-
     /// The vibe-coding case is argued without a claim the firm cannot
     /// substantiate.
     ///

@@ -2055,6 +2055,14 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
             "img/rust-in-peace/retainer-agreement-preview.png",
             "img/rust-in-peace/rust-community-meetup.png",
             "img/rust-in-peace/tests-checks-passed.png",
+            "img/welcome-to-neon-law/business-support.png",
+            "img/welcome-to-neon-law/common-contracts.png",
+            "img/welcome-to-neon-law/meeting.png",
+            "img/welcome-to-neon-law/navigator.png",
+            "img/welcome-to-neon-law/privacy.png",
+            "img/welcome-to-neon-law/shared-standards.png",
+            "img/welcome-to-neon-law/sound-advice.png",
+            "img/welcome-to-neon-law/transparent-billing.png",
         ]
         .into_iter()
         .map(String::from)

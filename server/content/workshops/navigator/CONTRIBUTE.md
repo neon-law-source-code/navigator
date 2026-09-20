@@ -95,6 +95,37 @@ When creating a new slide image, keep the full-resolution PNG or JPEG at `server
 local preview. Upload that same relative key to staging first and then to production; publishing one bucket never
 publishes the other. Production upload remains an authorized operator action.
 
+### Publish presentation images
+
+Save each finished PNG or JPEG under `server/public/img/<deck-slug>/` and reference it as `img/<deck-slug>/<filename>`
+in the presentation. Run these commands from the Navigator repository root:
+
+```bash
+navigator ops assets upload --dir server/public/img --bucket neon-law-stg-assets
+navigator ops assets verify --base-url https://staging.neonlaw.com/assets
+```
+
+Publish to staging first. Each deployment has its own assets bucket.
+
+---
+
+Presentation image bytes stay out of Git. Keep the full-resolution local copy in the ignored image directory, and commit
+the Markdown reference and accurate alt text. The image key must be identical locally and in each deployment:
+`img/<deck-slug>/<filename>`. The tracked Neon Law logo at `/public/logo.svg` ships with the application and needs no
+bucket upload.
+
+`assets upload` uses Google Application Default Credentials. Its explicit `--bucket` selects the destination without
+changing the active gcloud project. Upload to `neon-law-stg-assets`, confirm the objects' byte lengths and hashes, and
+check the staging public asset origin before the authorized operator repeats the upload for the other deployment's
+assets bucket. Publishing to staging does not publish to another bucket.
+
+The upload command walks every recognized image below `--dir`. To publish just one presentation, prepare a temporary
+directory containing only its `<deck-slug>/` folder and pass that temporary parent as `--dir`; passing the slug folder
+itself would drop the slug from the uploaded keys. Keep the same filenames and relative paths for every deployment.
+
+Uploading images does not deploy the presentation's Markdown or catalog entry. Those changes follow the pull-request and
+release flow on the next slide. Verify the public asset origin after publication and after the application roll.
+
 ### Ship through GitOps
 
 Every change travels through a pull request to `main`. The required checks and resolved review threads protect the

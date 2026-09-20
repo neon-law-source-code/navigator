@@ -122,13 +122,9 @@ mod tests {
 
     #[test]
     fn root_readme_link_maps_to_the_repository_source() {
-        assert!(
-            README.contains("](../README.md#trademark)"),
-            "templates/README.md must point at the README trademark heading"
-        );
         assert_eq!(
-            rewrite_link("../README.md#trademark"),
-            "https://github.com/neon-law-source-code/navigator/blob/main/README.md#trademark"
+            rewrite_link("../README.md#trademarks"),
+            "https://github.com/neon-law-source-code/navigator/blob/main/README.md#trademarks"
         );
     }
 

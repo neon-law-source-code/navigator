@@ -396,8 +396,8 @@ mod tests {
             format!("{REPO}/blob/main/LICENSE")
         );
         assert_eq!(
-            rewrite_link("../README.md#trademark"),
-            format!("{REPO}/blob/main/README.md#trademark")
+            rewrite_link("../README.md#trademarks"),
+            format!("{REPO}/blob/main/README.md#trademarks")
         );
         assert_eq!(
             rewrite_link("../server/content/marketing/mission.md"),

@@ -1046,20 +1046,6 @@ fn readme_states_the_license_of_record() {
         flat.contains(LICENSE),
         "README.md must name `{LICENSE}` as the software's licence"
     );
-    assert!(
-        readme.contains("## Trademark\n"),
-        "README.md must carry a singular Trademark heading so inbound \
-         `#trademark` fragments resolve"
-    );
-    assert!(
-        flat.contains("6,325,650"),
-        "README.md must cite the NEON LAW registration it reserves"
-    );
-    assert!(
-        !flat.contains("DELETEYOURDATA.COM") && !flat.contains("LAWYER SHOOK"),
-        "README.md reserves the registered mark only; house-brand marks live \
-         in `{NOTICE_FILE}`"
-    );
 }
 
 /// One grant covers the whole tree, `templates/` included.

@@ -338,6 +338,140 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     gate(dir.path()).success();
 }
 
+/// ENG-675 reproduction 1: a freshly scaffolded repository's `.github/` tree
+/// is closed to CODEOWNERS and the two thin workflow callers. Every one of
+/// the five mutations below used to exit `0` against the CLI at
+/// `a63c7a91aafa5159bfb5b4cf507537940d030db5`; each is now a real-CLI
+/// regression against the fix.
+#[test]
+fn the_gate_refuses_an_extra_github_file() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::write(dir.path().join(".github/extra.txt"), "scratch\n").unwrap();
+
+    gate(dir.path())
+        .failure()
+        .stderr(str::contains(".github/extra.txt"))
+        .stderr(str::contains("closed `.github` file set"));
+}
+
+/// ENG-675 reproduction 2: an arbitrary replacement `cd.yml` — a repository's
+/// own deploy script standing in for the two pinned reusable-workflow calls
+/// — was never validated at all.
+#[test]
+fn the_gate_refuses_an_arbitrary_replacement_cd_workflow() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::write(
+        dir.path().join(".github/workflows/cd.yml"),
+        "name: cd\n\
+         on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\
+         permissions:\n  contents: read\n  id-token: write\n\
+         jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: ./deploy.sh\n",
+    )
+    .unwrap();
+
+    gate(dir.path())
+        .failure()
+        .stderr(str::contains("exactly the `gate` and `publish` jobs"));
+}
+
+/// ENG-675 reproduction 3: an extra job carrying `contents: write` and
+/// `id-token: write` next to the thin project-gate caller is a second,
+/// unreviewed door into the same required check.
+#[test]
+fn the_gate_refuses_an_extra_privileged_ci_job() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let ci = dir.path().join(".github/workflows/ci.yml");
+    let contents = fs::read_to_string(&ci).unwrap();
+    fs::write(
+        &ci,
+        format!(
+            "{contents}  smuggled:\n    permissions:\n      contents: write\n      id-token: write\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo pwned\n"
+        ),
+    )
+    .unwrap();
+
+    gate(dir.path())
+        .failure()
+        .stderr(str::contains("exactly one job"));
+}
+
+/// ENG-675 reproduction 4: `pull_request_target` runs with the base
+/// repository's secrets and write token against a fork's checked-out code.
+#[test]
+fn the_gate_refuses_pull_request_target() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let ci = dir.path().join(".github/workflows/ci.yml");
+    let contents = fs::read_to_string(&ci).unwrap();
+    fs::write(
+        &ci,
+        contents.replace("pull_request:", "pull_request_target:"),
+    )
+    .unwrap();
+
+    gate(dir.path())
+        .failure()
+        .stderr(str::contains("pull_request_target"));
+}
+
+/// ENG-675 reproduction 5: a `host` input that disagrees with the manifest
+/// is a repository whose CI gate deploys somewhere it never declared.
+#[test]
+fn the_gate_refuses_a_host_that_disagrees_with_the_manifest() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let ci = dir.path().join(".github/workflows/ci.yml");
+    let contents = fs::read_to_string(&ci).unwrap();
+    fs::write(
+        &ci,
+        contents.replace("staging.neonlaw.com", "attacker.example.com"),
+    )
+    .unwrap();
+
+    gate(dir.path())
+        .failure()
+        .stderr(str::contains("`host` input"))
+        .stderr(str::contains("attacker.example.com"));
+}
+
+/// The retired `gate.yml`/`publish.yml` filenames are still read, but a
+/// repository carrying either is warned to rename it before the release that
+/// refuses the retired name outright.
+#[test]
+fn the_gate_warns_on_a_retired_workflow_filename() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let ci = dir.path().join(".github/workflows/ci.yml");
+    fs::rename(&ci, dir.path().join(".github/workflows/gate.yml")).unwrap();
+
+    gate(dir.path())
+        .success()
+        .stdout(str::contains("gate.yml"))
+        .stdout(str::contains("next Navigator CLI release refuses it"));
+}
+
+/// A `.yaml` spelling of either workflow reports the extension it actually
+/// found and the one Navigator reads, not a bare "missing required" that
+/// sends the operator looking for a typo they already made correctly.
+#[test]
+fn the_gate_reports_a_yaml_extension_workflow_precisely() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::rename(
+        dir.path().join(".github/workflows/ci.yml"),
+        dir.path().join(".github/workflows/ci.yaml"),
+    )
+    .unwrap();
+
+    gate(dir.path())
+        .failure()
+        .stderr(str::contains(".github/workflows/ci.yaml"))
+        .stderr(str::contains(".github/workflows/ci.yml"));
+}
+
 #[test]
 fn gate_without_oidc_leaves_the_live_row_alone() {
     let dir = TempDir::new().unwrap();
@@ -852,12 +986,17 @@ fn project_gate_rewrites_a_drifted_documents_gitignore() {
     );
 }
 
+/// `.github/` is now closed to exactly CODEOWNERS and the two thin workflow
+/// callers, so a nested ignore file there would itself be an unenumerated
+/// path; `tests/` carries no such closed set and still proves the same
+/// thing: `git ls-files --exclude-standard` honours a directory's own
+/// `.gitignore`, not only the root one.
 #[test]
 fn gate_honours_a_nested_ignore_file() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
-    fs::write(dir.path().join(".github/.gitignore"), "*.env\n").unwrap();
-    let ignored = dir.path().join(".github/hidden.env");
+    fs::write(dir.path().join("tests/.gitignore"), "*.env\n").unwrap();
+    let ignored = dir.path().join("tests/hidden.env");
     fs::write(&ignored, "synthetic secret\n").unwrap();
 
     navigator()

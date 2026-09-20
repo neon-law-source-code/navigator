@@ -104,6 +104,31 @@ jobs:
       host: "staging.neonlaw.com"
 "#,
     );
+    write(
+        root,
+        ".github/workflows/cd.yml",
+        r#"name: cd
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  gate:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+  publish:
+    needs: gate
+    uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23
+    with:
+      project: "acme"
+      host: "staging.neonlaw.com"
+"#,
+    );
 }
 
 fn pointer(asset_id: Uuid) -> serde_json::Value {

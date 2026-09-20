@@ -90,7 +90,8 @@ no mirror has crept back.
 
 ## Ground every action
 
-Use MCP for every supported action; use shell or UI fallbacks only when no suitable MCP exists.
+Use MCP for every supported action; use shell or UI fallbacks only when no suitable MCP exists. Use the `gh` CLI for
+every GitHub action.
 
 Start with [`docs/glossary.md`](docs/glossary.md), then use [`docs/index.md`](docs/index.md) to find the narrowest
 source of truth. Read the relevant issue or PR from its first comment, the current code, and the covering tests. Do not

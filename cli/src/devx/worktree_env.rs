@@ -398,7 +398,7 @@ fn up_dev(root: &Path, no_deps: bool, runtime: Runtime, base_cfg: &KindConfig) -
         // Native has no KIND containers. The same descriptor read is still
         // protected by the shared Git lock and reserves live worktrees while
         // they are between claim and process startup.
-        Runtime::Native => claimed_worktree_slots(root, &|| Ok(Vec::new()))?,
+        Runtime::Native => super::native::claimed_slots(root)?,
     };
     let slot = choose_worktree_slot(
         root,
@@ -490,7 +490,6 @@ fn up_dev(root: &Path, no_deps: bool, runtime: Runtime, base_cfg: &KindConfig) -
             if no_deps {
                 super::native::restore_environment(root)?;
             }
-            ensure_native_deps_ready(&cfg)?;
         }
     }
 
@@ -507,8 +506,18 @@ fn up_dev(root: &Path, no_deps: bool, runtime: Runtime, base_cfg: &KindConfig) -
         super::sample_project::run_for_root(false, root)?;
     }
 
-    let env_body = super::render_env_for(&cfg, &db_name, cfg.web_port, root);
+    let mut env_body = super::render_env_for(&cfg, &db_name, cfg.web_port, root);
+    if runtime == Runtime::Native {
+        super::native::append_environment(&mut env_body, slot);
+    }
     write_worktree_env(root, &env_body)?;
+
+    if runtime == Runtime::Native {
+        if !no_deps {
+            super::native::start_workflows(root, slot, cfg.restate_admin_port)?;
+        }
+        ensure_native_deps_ready(&cfg, slot)?;
+    }
 
     print_dev_summary(&slug, &db_name, runtime, &cfg);
     Ok(())
@@ -812,7 +821,7 @@ fn worktree_deps_ready(cfg: &KindConfig) -> bool {
 /// The cluster counterpart is [`ensure_worktree_deps_ready`]. This one
 /// covers a strict subset of the same table — not a shorter table — and
 /// reports the difference instead of leaving `up` looking complete.
-fn ensure_native_deps_ready(cfg: &KindConfig) -> Result<()> {
+fn ensure_native_deps_ready(cfg: &KindConfig, slot: u16) -> Result<()> {
     for (name, port) in gate_members(cfg) {
         if super::native::SUPERVISED.contains(&name) {
             super::wait_for_tcp("127.0.0.1", port)
@@ -822,6 +831,8 @@ fn ensure_native_deps_ready(cfg: &KindConfig) -> Result<()> {
     for line in super::native::deferred_lines() {
         eprintln!("{line}");
     }
+    super::wait_for_tcp("127.0.0.1", super::native::worker_listen_port(slot))
+        .context("the native workflows-service listener must be reachable")?;
     Ok(())
 }
 
@@ -859,6 +870,9 @@ fn worktree_slot_has_listener(
         cfg.openobserve_port,
         cfg.openobserve_otlp_port,
         cfg.clamav_port,
+        super::native::restate_fabric_port(slot),
+        super::native::worker_listen_port(slot),
+        super::native::worker_health_port(slot),
     ]
     .into_iter()
     .any(port_in_use)
@@ -923,6 +937,25 @@ fn env_path(root: &Path) -> PathBuf {
 fn read_descriptor(root: &Path) -> Option<WorktreeEnv> {
     let body = std::fs::read_to_string(descriptor_path(root)).ok()?;
     serde_json::from_str(&body).ok()
+}
+
+pub(super) fn is_native(root: &Path) -> bool {
+    read_descriptor(root)
+        .is_some_and(|descriptor| descriptor.mode == "dev" && descriptor.runtime == Runtime::Native)
+}
+
+pub(super) fn native_worker_coordinates(root: &Path, cfg: &KindConfig) -> Result<(u16, u16)> {
+    let descriptor = read_descriptor(root).context("native worktree descriptor is missing")?;
+    if descriptor.mode != "dev" || descriptor.runtime != Runtime::Native {
+        bail!("the current worktree is not using the native dependency tier");
+    }
+    let slot = descriptor
+        .slot
+        .context("native worktree descriptor has no port slot")?;
+    Ok((
+        slot,
+        worktree_kind_config(cfg, root, slot).restate_admin_port,
+    ))
 }
 
 fn write_descriptor(root: &Path, desc: &WorktreeEnv) -> Result<()> {
@@ -1896,8 +1929,8 @@ mod tests {
         print_dev_summary("pr-546", "navigator", Runtime::Kind, &cfg);
     }
 
-    /// The gate covers eleven ports; the native lane supervises four.
-    /// The remaining seven must be *declared* rather than dropped —
+    /// The gate covers ten ports; the native lane supervises five.
+    /// The remaining five must be *declared* rather than dropped —
     /// otherwise a lane that serves a third of the tier reports the same
     /// "ready" as one that serves all of it. This test is what makes
     /// adding a dependency force a decision: a new gate member with no
@@ -1946,7 +1979,13 @@ mod tests {
 
         assert_eq!(
             supervised,
-            BTreeSet::from([cfg.rauthy_port, cfg.garage_s3_port, cfg.surreal_port])
+            BTreeSet::from([
+                cfg.rauthy_port,
+                cfg.garage_s3_port,
+                cfg.surreal_port,
+                cfg.restate_ingress_port,
+                cfg.restate_admin_port,
+            ])
         );
     }
     #[test]
@@ -2711,6 +2750,30 @@ mod tests {
             ..dev
         };
         assert_eq!(demo.dev_slot(), None);
+    }
+
+    #[test]
+    fn native_reload_coordinates_use_the_worktrees_slot() {
+        let temp = tempfile::tempdir().unwrap();
+        write_descriptor(
+            temp.path(),
+            &WorktreeEnv {
+                slug: "native".into(),
+                mode: "dev".into(),
+                db_name: Some("navigator_native".into()),
+                web_port: 20_507,
+                slot: Some(7),
+                runtime: Runtime::Native,
+            },
+        )
+        .unwrap();
+
+        let cfg = KindConfig::from_env();
+        assert!(is_native(temp.path()));
+        assert_eq!(
+            native_worker_coordinates(temp.path(), &cfg).unwrap(),
+            (7, WORKTREE_RESTATE_ADMIN_PORT_BASE + 7)
+        );
     }
 
     #[test]

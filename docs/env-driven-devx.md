@@ -59,12 +59,20 @@ Garage, require no cluster recreation.
 
 ## Native shared runtime
 
-`navigator dev worktree-env up --runtime native` uses the same host lock and descriptor-based slot reservation as KIND
-lane. Restate, workflows-service, and host `web` keep their worktree slot; SurrealDB, Rauthy, and Garage are one shared
-host process set. The native registry records each process's PID, complete command, and process-start identity together
-with each worktree's private SurrealDB database and Garage bucket/key set. A process record is host-wide, so each claim
-also keeps its own copy of the identities it attached to. A second worktree adopts a verified listener, and a recycled
-PID is treated as stale unless all identity fields still match.
+`navigator dev worktree-env up --runtime native` is opt-in; KIND remains the default runtime. The native lane uses the
+same host lock and descriptor-based slot reservation as KIND. Host `web`, one Restate server, and one
+`workflows-service` keep their worktree slot; SurrealDB, Rauthy, and Garage are one shared host process set. Each
+Restate server uses TCP listeners and its own `.devx/restate/data` journal; its fabric, ingress, and admin listeners are
+derived from the worktree slot. Each worker uses its own listen and health ports, is built from the checkout, and is
+registered against that worktree's private Restate admin listener through the same registration machinery used by cloud
+deployments. `dev worker-reload` stops and replaces only the recorded worker, then re-registers it.
+
+The native registry records each process's PID, complete command, and process-start identity together with each
+worktree's private SurrealDB database and Garage bucket/key set. A process record is host-wide, so each claim also keeps
+its own copy of the identities it attached to. A second worktree adopts a verified listener, and a recycled PID is
+treated as stale unless all identity fields still match. The Heartbeat canary can be invoked against the private Restate
+ingress when the native prerequisites are installed; it proves the server journal and worker without needing a database
+or object storage connection.
 
 `down` removes only the calling worktree's database, buckets, and claim. Shared processes remain until the final live
 claim leaves. `worktree-env sweep` is a dry run by default and classifies each native claim on both kinds of evidence: a
@@ -80,7 +88,9 @@ the orphaned tenants and task-owned state, and never a shared process another li
 ## Testing
 
 Tests in `cli/src/devx/mod.rs` require default/override coverage, ports in generated `.devx/env`, byte-identical default
-KIND config, and override diffs limited to `hostPort` lines.
+KIND config, and override diffs limited to `hostPort` lines. Native tests cover distinct worktree slots, TCP-only
+Restate configuration with one partition, process identity, and teardown ownership. `OpenObserve` and `ClamAV` remain
+the explicitly deferred services for ENG-131; they are still reported by the native readiness gate.
 
 ## Related
 

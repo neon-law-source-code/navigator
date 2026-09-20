@@ -161,6 +161,11 @@ pub struct PublicChrome {
     /// registry key that produced the rest of this chrome, so the palette
     /// always matches the identity the header and footer already carry.
     pub tokens_href: String,
+    /// Whether the request's header is one of the firm's launched practice
+    /// brands. The server resolves this from the closed brand registry so the
+    /// wasm client does not need to link the `views` crate.
+    #[serde(default)]
+    pub is_practice: bool,
     /// Brands the current firm wears, in registry order — the footer's "Our
     /// Family" row. Empty or a single entry renders no row.
     #[serde(default)]
@@ -196,9 +201,7 @@ pub struct PublicChrome {
 /// [`crate::components::PublicShell`].
 #[component]
 pub fn PublicFooter(chrome: PublicChrome) -> Element {
-    let practice_footer = views::brand::BrandKey::LIVE
-        .iter()
-        .any(|brand| chrome.tokens_href == crate::brand_style::brand_tokens_href(brand.as_str()));
+    let practice_footer = chrome.is_practice;
     rsx! {
         // The resolved brand's colour, hoisted here because this is the one
         // place that already knows which brand the page wears. Navigator's
@@ -407,6 +410,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
             .to_string(),
         navigator_href: crate::source_repository::NAVIGATOR_HREF.to_string(),
         tokens_href: crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str()),
+        is_practice: views::brand::BrandKey::LIVE.contains(&views::brand::brand_key()),
         // The compiled family — every house brand the firm trades under, the
         // request's own key marked current — so the "Our Family" row is on
         // every page from first boot. The request overlay

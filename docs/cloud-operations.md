@@ -214,18 +214,17 @@ Read-only `SELECT`s are allowed when the user asks for inspection. Before any `C
   Wait for explicit approval for that exact statement. Scope the write with a guard on the old value. Verify it
   afterwards.
 
-The canonical seed is idempotent: it inserts missing rows and does not update existing production rows. A live data fix
-needs a guarded update, a one-shot backfill job, or an app seam.
+The canonical seed is idempotent: it inserts missing rows and does not update existing production rows.
+`store::schema::apply()` may perform a narrow, idempotent, guarded backfill when the missing value has an unambiguous
+write-time default and the operation is cheap enough for every boot and test. It currently materializes the historical
+defaults for `person.email_confirmed`, `person.is_admitted`, and `project.brand` under those guards. A live data fix
+that is expensive, destructive, or requires human judgment about the old value remains an operator-approved one-shot job
+or an explicit application seam.
 
-When a build first ships the explicit person-admission field, materialize its historical default with this idempotent,
-guarded backfill after staging has served the new binary:
-
-```surql
-UPDATE person SET is_admitted = true WHERE is_admitted IS NONE;
-```
-
-The application reads a missing value as admitted during the rollout window, so the backfill is cleanup rather than a
-prerequisite for safe reads. Run it through the approval procedure above; never fold it into the canonical seed.
+`person.email_confirmed` and `person.is_admitted` therefore do not need a separate production-SQL approval step for
+their automatic historical-default path: `apply()` owns that guarded repair. The approval procedure above still governs
+manual fixes, including any update whose value cannot be inferred safely from the old row. Never fold a
+judgment-dependent fix into the canonical seed.
 
 ## Spend reporting
 

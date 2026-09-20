@@ -216,6 +216,45 @@ During local development, `navigator dev up` and `navigator dev worktree-env up`
 project before writing `.devx/env`. The host `web` process therefore starts against the same refreshed portal bundle for
 every developer.
 
+## Firm-private Slack and Notion sync
+
+Four CLI verbs converge one Project's Firm-private Slack channel and Notion page with Navigator, through `POST
+/app/api/integrations/*` (`portal::integrations_api`):
+
+```bash
+navigator project notion ensure <code>       # create-or-adopt the Firm-private Notion page
+navigator project notion reconcile <code>    # validate the recorded page and repair its URL
+navigator project notion ensure --all        # sweep every Project this login's Firm access admits
+navigator project notion reconcile --all
+navigator project slack ensure <code>        # create-or-adopt the Firm-private Slack channel
+navigator project slack notify <code> --event <event>   # post a mechanism-only notice
+```
+
+`slack` has no `--all` sweep and `notify`'s event is one of `project_opened`, `project_closed`, `project_reconciled`,
+`integration_unavailable` — a closed vocabulary refused before any provider call.
+
+**Prerequisite: a Firm credential.** Every door resolves the caller's `FirmCapability::UseIntegrations` against the
+target Project's owning Firm and then reads that Firm's typed provider credential (`store::firm_secrets`) — there is no
+deployment-wide fallback. Until the Firm's Admin DRI has stored a `slack_bot_token` / `notion_token`
+(`/app/admin/firms/{id}` → **Integration secrets**, ENG-491), every one of these commands reports `credential_missing`
+for that Firm's Projects, and a deployment with no runtime KMS key at all reports `runtime_not_configured`.
+
+**Exit codes reflect the typed outcome, not just the HTTP status.** Every door answers HTTP 200 with a per-Project
+`{"project_code", "outcome", "detail"?}` row (`credential_missing`, `provider_unavailable`, `conflict`, `renamed`,
+`archived`, `missing`, `duplicate`, `address_not_recorded`, … are all outcomes, not failures at the transport level),
+and the CLI is the layer that turns that into a process exit code. `created`, `adopted`, `unchanged`, `repaired`, and
+`notified` are the only outcomes that exit `0`; every other named outcome, and any outcome slug this CLI does not
+recognize, exits non-zero — including one failing row inside an `--all` sweep whose other rows succeeded. `--json`
+prints the same report a text-mode run summarizes one line per Project; both modes agree on the exit code.
+
+**Identity is validated, never silently replaced.** `ensure` and `reconcile` look up an already-recorded resource by its
+own id (not by a fresh title/name search) before touching it, because a search cannot see a page or channel that was
+renamed away from its recorded title or archived. A recorded resource that has been renamed, archived, or otherwise
+drifted is reported (`renamed`, `archived`) rather than replaced or duplicated; only a Project with no recorded resource
+at all is eligible for create-or-adopt. Concurrent `ensure` calls for the same Project and provider serialize on an
+in-process lock keyed by `workflows::IntegrationJob::job_id`, so a race cannot create two resources for one Project — a
+single-process guarantee, backed underneath by the provider adapters' own idempotent find-then-create.
+
 ## The organization is configuration, not a name in source
 
 Navigator spells no organization in its source, and one forge host: the named default

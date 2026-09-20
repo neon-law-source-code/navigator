@@ -1,21 +1,30 @@
 //! Pure reconciliation decisions for the environment-selected Notion DB.
 //!
 //! This module never guesses through a stale URL. Missing, duplicate,
-//! moved, deleted, and unshared pages become explicit operator outcomes, and
-//! manual fields are carried as a preserve instruction rather than replaced.
-
-use std::collections::BTreeMap;
+//! moved, renamed, and archived pages become explicit operator outcomes.
+//!
+//! The only Navigator-declared fact this reconciler compares is the page's
+//! canonical URL. It deliberately does not carry a "shared people" or
+//! "manual fields" axis: Notion page sharing is out of scope for the
+//! provider-sync surface this feeds (ENG-807 excludes invitations and
+//! content mirroring), so there is no honest source to compare against yet,
+//! and a field that can never disagree is worse than no field — it is a
+//! silent claim of coverage the reconciler does not have. A repair only ever
+//! patches the title property (see `cloud::notion::NotionClient::
+//! update_private_page`), so every other property on the page — anything a
+//! human added by hand — is preserved structurally, not by an instruction
+//! carried in this decision.
 
 use thiserror::Error;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NotionPageSnapshot {
     pub id: String,
     pub url: String,
     pub project_code: String,
-    pub person_ids: Vec<Uuid>,
-    pub manual_fields: BTreeMap<String, String>,
+    /// Whether this specific recorded page still resolves and is not
+    /// archived — real once produced from [`crate::NotionService::get_page`],
+    /// see the caller in `portal::integrations_api`.
     pub accessible: bool,
 }
 
@@ -23,7 +32,6 @@ pub struct NotionPageSnapshot {
 pub struct NotionProjectInput {
     pub project_code: String,
     pub canonical_url: String,
-    pub person_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,8 +53,6 @@ pub enum NotionRepairDecision {
     Repair {
         page_id: String,
         canonical_url: String,
-        person_ids: Vec<Uuid>,
-        preserve_manual_fields: bool,
     },
 }
 
@@ -105,7 +111,7 @@ pub fn reconcile(input: &NotionProjectInput, pages: &[NotionPageSnapshot]) -> No
             page_id: page.id.clone(),
         };
     }
-    if page.url == input.canonical_url && page.person_ids == input.person_ids {
+    if page.url == input.canonical_url {
         NotionRepairDecision::Unchanged {
             page_id: page.id.clone(),
         }
@@ -113,8 +119,6 @@ pub fn reconcile(input: &NotionProjectInput, pages: &[NotionPageSnapshot]) -> No
         NotionRepairDecision::Repair {
             page_id: page.id.clone(),
             canonical_url: input.canonical_url.clone(),
-            person_ids: input.person_ids.clone(),
-            preserve_manual_fields: true,
         }
     }
 }
@@ -125,14 +129,11 @@ mod tests {
         reconcile, NotionDatabaseConfig, NotionPageSnapshot, NotionProjectInput,
         NotionReconcileError, NotionRepairDecision,
     };
-    use std::collections::BTreeMap;
-    use uuid::Uuid;
 
     fn input() -> NotionProjectInput {
         NotionProjectInput {
             project_code: "sample-project".to_string(),
             canonical_url: "https://notion.example/sample-project".to_string(),
-            person_ids: vec![Uuid::from_u128(7)],
         }
     }
 
@@ -141,14 +142,12 @@ mod tests {
             id: "page-1".to_string(),
             url: url.to_string(),
             project_code: code.to_string(),
-            person_ids: vec![Uuid::from_u128(7)],
-            manual_fields: BTreeMap::from([("status".to_string(), "manual".to_string())]),
             accessible: true,
         }
     }
 
     #[test]
-    fn reconcile_repairs_moved_page_and_preserves_manual_fields() {
+    fn reconcile_repairs_a_moved_page() {
         assert_eq!(
             reconcile(
                 &input(),
@@ -157,8 +156,6 @@ mod tests {
             NotionRepairDecision::Repair {
                 page_id: "page-1".to_string(),
                 canonical_url: "https://notion.example/sample-project".to_string(),
-                person_ids: vec![Uuid::from_u128(7)],
-                preserve_manual_fields: true,
             }
         );
     }
@@ -177,6 +174,21 @@ mod tests {
             reconcile(&input(), &[unavailable]),
             NotionRepairDecision::Unavailable {
                 page_id: "page-1".to_string()
+            }
+        );
+    }
+
+    /// A caller building the snapshot straight from a title search can never
+    /// observe this — the title *is* the query. It is reachable only when
+    /// the caller looks up the specific recorded id directly and finds its
+    /// current title has drifted away from the code Navigator still records.
+    #[test]
+    fn reconcile_reports_a_renamed_page_as_conflict() {
+        assert_eq!(
+            reconcile(&input(), &[page("someone-renamed-this", "a")]),
+            NotionRepairDecision::Conflict {
+                page_id: "page-1".to_string(),
+                observed_code: "someone-renamed-this".to_string(),
             }
         );
     }

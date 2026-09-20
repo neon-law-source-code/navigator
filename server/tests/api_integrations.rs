@@ -888,3 +888,383 @@ async fn an_unconfigured_deployment_reports_the_refusal() {
         "a refusal records no address"
     );
 }
+
+// ---- ENG-807: recorded-identity validation, recovery, and concurrency ----
+
+/// A title search can never see an archived page (Notion excludes archived
+/// pages from `/search`), so before this fix `ensure` would report a fresh
+/// `created` and leave a duplicate beside the archived original. Validating
+/// the recorded id directly catches this instead.
+#[tokio::test]
+async fn notion_ensure_reports_an_archived_recorded_page_instead_of_duplicating_it() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()).await;
+    let page = fx
+        .providers
+        .notion
+        .page(&fx.code)
+        .expect("first ensure recorded a page");
+
+    fx.providers.notion.archive(&page.id);
+
+    let report = json(post(&fx, ALL_DOORS[0], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&report),
+        vec![(fx.code.clone(), "archived".to_string())]
+    );
+    assert_eq!(
+        fx.providers.notion.create_calls(),
+        1,
+        "an archived recorded page is reported, never silently replaced"
+    );
+}
+
+/// Same as the archived case, but for a page someone renamed by hand — a
+/// title search cannot see it either, since the title no longer matches the
+/// query, so this is only catchable by looking up the recorded id directly.
+#[tokio::test]
+async fn notion_ensure_reports_a_renamed_recorded_page_instead_of_duplicating_it() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()).await;
+    let page = fx
+        .providers
+        .notion
+        .page(&fx.code)
+        .expect("first ensure recorded a page");
+
+    fx.providers.notion.rename(&page.id, "someone-renamed-this");
+
+    let report = json(post(&fx, ALL_DOORS[0], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&report),
+        vec![(fx.code.clone(), "renamed".to_string())]
+    );
+    assert_eq!(
+        report["results"][0]["detail"].as_str(),
+        Some("someone-renamed-this")
+    );
+    assert_eq!(fx.providers.notion.create_calls(), 1);
+}
+
+/// The same two identity checks apply through `reconcile`, which already had
+/// its own "leaves a matching page alone" / "duplicate" coverage — this adds
+/// the archived/renamed branch a title search alone cannot reach.
+#[tokio::test]
+async fn notion_reconcile_reports_archived_and_renamed_recorded_pages() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()).await;
+    let page = fx
+        .providers
+        .notion
+        .page(&fx.code)
+        .expect("ensure recorded a page");
+
+    fx.providers.notion.archive(&page.id);
+    let archived = json(post(&fx, ALL_DOORS[1], Some(&fx.admin), body.clone()).await).await;
+    assert_eq!(
+        outcomes(&archived),
+        vec![(fx.code.clone(), "archived".to_string())]
+    );
+
+    // Un-archive and rename instead, to exercise the other branch.
+    fx.providers.notion.rename(&page.id, "someone-renamed-this");
+    let renamed = json(post(&fx, ALL_DOORS[1], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&renamed),
+        vec![(fx.code.clone(), "renamed".to_string())]
+    );
+}
+
+/// Recovery after the provider created the resource but before Navigator
+/// persisted its address: the next `ensure` must adopt the already-created
+/// page rather than creating a second one, and it must repair the row.
+#[tokio::test]
+async fn notion_ensure_recovers_when_the_page_exists_but_the_address_was_never_persisted() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()).await;
+
+    // Simulate the crash: the provider call succeeded (the fake still holds
+    // the page) but the row never recorded it.
+    let project = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    store::projects::update_project(
+        &fx.surreal,
+        project.id,
+        &store::projects::UpdateProjectCommand {
+            private_notion_page_url: Some(String::new()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let report = json(post(&fx, ALL_DOORS[0], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&report),
+        vec![(fx.code.clone(), "adopted".to_string())],
+        "the already-created page is adopted, not duplicated"
+    );
+    assert_eq!(
+        fx.providers.notion.create_calls(),
+        1,
+        "exactly one page was ever created"
+    );
+    let stored = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        stored.private_notion_page_url.is_some(),
+        "the address is repaired on the recovering run"
+    );
+}
+
+/// Concurrent `ensure` calls for the same, never-yet-provisioned Project must
+/// not race into two pages. The per-`(project, provider)` lock in
+/// `portal::integrations_api` is what this exercises.
+#[tokio::test]
+async fn concurrent_notion_ensure_creates_exactly_one_page() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+
+    let (first, second) = tokio::join!(
+        post(&fx, ALL_DOORS[0], Some(&fx.admin), body.clone()),
+        post(&fx, ALL_DOORS[0], Some(&fx.admin), body),
+    );
+    let first_outcome = outcomes(&json(first).await);
+    let second_outcome = outcomes(&json(second).await);
+    let created_count = [&first_outcome, &second_outcome]
+        .iter()
+        .filter(|outcomes| outcomes[0].1 == "created")
+        .count();
+    assert_eq!(
+        created_count, 1,
+        "exactly one of the two concurrent calls created the page: {first_outcome:?} {second_outcome:?}"
+    );
+    assert_eq!(
+        fx.providers.notion.create_calls(),
+        1,
+        "the provider saw exactly one create despite the race"
+    );
+}
+
+/// Slack ensure now records the canonical URL alongside the channel id, and
+/// the two must agree — the concrete fix for the id/URL inconsistency ENG-807
+/// called out.
+#[tokio::test]
+async fn slack_ensure_records_a_url_consistent_with_the_channel_id() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[2], Some(&fx.admin), body).await;
+
+    let stored = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    let channel_id = stored
+        .internal_slack_channel_id
+        .expect("channel id recorded");
+    let channel_url = stored
+        .internal_slack_channel_url
+        .expect("channel URL recorded");
+    assert_eq!(channel_url, cloud::slack_channel_url(&channel_id));
+}
+
+/// A search-based `find_private_channel` cannot see an archived channel —
+/// `conversations.list` excludes archived channels — mirroring the Notion
+/// identity-validation fix.
+#[tokio::test]
+async fn slack_ensure_reports_an_archived_recorded_channel() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[2], Some(&fx.admin), body.clone()).await;
+    let stored = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    let channel_id = stored
+        .internal_slack_channel_id
+        .expect("channel id recorded");
+
+    fx.providers.slack.archive(&channel_id);
+    let archived = json(post(&fx, ALL_DOORS[2], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&archived),
+        vec![(fx.code.clone(), "archived".to_string())]
+    );
+}
+
+/// Same as the archived case, but for a channel someone renamed by hand — a
+/// name search cannot see it either, since the name no longer matches the
+/// query.
+#[tokio::test]
+async fn slack_ensure_reports_a_renamed_recorded_channel() {
+    let fx = build_fixture(true).await;
+    let body = serde_json::json!({ "project_code": fx.code });
+    post(&fx, ALL_DOORS[2], Some(&fx.admin), body.clone()).await;
+    let stored = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    let channel_id = stored
+        .internal_slack_channel_id
+        .expect("channel id recorded");
+
+    fx.providers
+        .slack
+        .rename(&channel_id, "someone-renamed-this");
+    let renamed = json(post(&fx, ALL_DOORS[2], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&renamed),
+        vec![(fx.code.clone(), "renamed".to_string())]
+    );
+    assert_eq!(
+        renamed["results"][0]["detail"].as_str(),
+        Some("someone-renamed-this")
+    );
+}
+
+/// A missing or revoked Firm credential reports its own distinct outcome
+/// through the real resolver (`portal::integrations::FirmIntegrations`), not
+/// only through the fully-stubbed `FakeIntegrations` every other test in this
+/// file uses. This is the acceptance criterion the fakes alone cannot prove:
+/// the store's `SecretStoreError` really does map to `credential_missing`
+/// end to end through the HTTP door.
+#[tokio::test]
+async fn missing_and_revoked_credentials_report_their_own_outcome_through_the_real_resolver() {
+    let surreal = mem_surreal().await;
+    let entity_id = store::test_support::seed_entity(&surreal).await;
+    let dri_id = person(&surreal, "Dri", Role::Admin).await;
+    let firm = store::firms::create(
+        &surreal,
+        &store::firms::NewFirm {
+            name: "Real Resolver Firm".into(),
+            status: "active".into(),
+            entity_id,
+            admin_dri_person_id: dri_id,
+        },
+    )
+    .await
+    .unwrap();
+    let code = format!(
+        "real-resolver-{}",
+        &Uuid::now_v7().simple().to_string()[..12]
+    );
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: code.clone(),
+            name: "Real Resolver Matter".into(),
+            status: "open".into(),
+            entity_id,
+            firm_id: Some(firm.id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, dri_id, "admin")
+        .await
+        .unwrap();
+
+    let kms = cloud::FakeKms::new("real-resolver-test-kms");
+    let mut state = AppState {
+        sessions: SessionStore::new(KEY),
+        ..portal::test_support::app_state(surreal.clone()).await
+    };
+    state.integration_providers = std::sync::Arc::new(portal::integrations::FirmIntegrations::new(
+        std::sync::Arc::new(kms.clone()),
+        "database-1",
+    ));
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let admin = bearer(dri_id, Role::Admin);
+    let body = serde_json::json!({ "project_code": code });
+
+    // Nothing configured yet.
+    let missing = json(post_app(&app, ALL_DOORS[2], Some(&admin), body.clone()).await).await;
+    assert_eq!(
+        outcomes(&missing),
+        vec![(code.clone(), "credential_missing".to_string())]
+    );
+
+    // Configure, then revoke: the resolver must stop finding it.
+    store::firm_secrets::put(
+        &surreal,
+        store::firm_secrets::SecretPutRequest {
+            actor_role: Role::Admin,
+            actor_person_id: Some(dri_id),
+            firm_id: firm.id,
+            provider: store::firm_secrets::IntegrationProvider::Slack,
+            kind: store::firm_secrets::IntegrationSecretKind::SlackBotToken,
+            value: "real-resolver-slack-token",
+        },
+        &kms,
+    )
+    .await
+    .unwrap();
+    store::firm_secrets::revoke(
+        &surreal,
+        Role::Admin,
+        Some(dri_id),
+        firm.id,
+        store::firm_secrets::IntegrationProvider::Slack,
+        store::firm_secrets::IntegrationSecretKind::SlackBotToken,
+    )
+    .await
+    .unwrap();
+    let revoked = json(post_app(&app, ALL_DOORS[2], Some(&admin), body).await).await;
+    assert_eq!(
+        outcomes(&revoked),
+        vec![(code, "credential_missing".to_string())],
+        "a revoked credential resolves the same as one never configured"
+    );
+}
+
+/// [`post`] takes an [`AppFixture`]; this test builds its own router directly
+/// rather than adding a third fixture shape, so it posts to the raw
+/// `axum::Router` instead.
+async fn post_app(
+    app: &axum::Router,
+    path: &str,
+    auth: Option<&str>,
+    body: serde_json::Value,
+) -> axum::http::Response<Body> {
+    let mut req = Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("content-type", "application/json");
+    if let Some(auth) = auth {
+        req = req.header("authorization", auth);
+    }
+    app.clone()
+        .oneshot(req.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+/// A Slack name collision the fake never created (a channel the bot cannot
+/// see) is reported as its own `conflict` outcome, not folded into the
+/// generic `provider_unavailable` slug.
+#[tokio::test]
+async fn slack_ensure_reports_a_name_collision_as_conflict() {
+    let fx = build_fixture(true).await;
+    fx.providers.slack.simulate_name_taken(&fx.code);
+    let body = serde_json::json!({ "project_code": fx.code });
+
+    let report = json(post(&fx, ALL_DOORS[2], Some(&fx.admin), body).await).await;
+    assert_eq!(
+        outcomes(&report),
+        vec![(fx.code.clone(), "conflict".to_string())]
+    );
+    let stored = store::projects::find_by_code(&fx.surreal, &fx.code)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.internal_slack_channel_id.is_none());
+}

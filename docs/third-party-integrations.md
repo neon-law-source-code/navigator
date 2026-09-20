@@ -59,9 +59,10 @@ configuration key. Staging manifests and operator documentation may describe the
 does not apply IAM or write cloud state. Provider clients receive a resolved credential through an injected trait and
 tests use fakes, so local verification needs no live provider account.
 
-Notion reconciliation uses the explicitly selected `NAVIGATOR_NOTION_DATABASE_ID`. A missing, moved, deleted, duplicate,
-or unshared page is an operator-visible repair outcome; the reconciler never silently creates a second page. It writes
-the canonical Project code and stable Person IDs while preserving manual Notion fields.
+Notion reconciliation uses the explicitly selected `NAVIGATOR_NOTION_DATABASE_ID`. A missing, duplicate, renamed, or
+archived page is an operator-visible repair outcome; the reconciler never silently creates a second page or replaces one
+it cannot positively identify. It writes the canonical Project code and URL; page sharing and manual Notion fields are
+out of scope for this surface (no invitations, no content mirroring) and untouched by it.
 
 ### The Firm integration doors
 
@@ -79,6 +80,10 @@ policy rule admits any authenticated caller several segments deep, so a provisio
 policy-reachable by a client even though the handler refuses one. The tier matches `project-surfaces` too — creating or
 adopting a Project's external resources is one kind of act — and `--all` sweeps only the Projects visible to the calling
 login, never every row in the deployment.
+
+See [`project-repositories.md`](project-repositories.md#firm-private-slack-and-notion-sync) for the credential
+prerequisite, the full outcome vocabulary, and how the CLI's exit code follows the typed outcome rather than the HTTP
+status.
 
 Each response is one outcome slug per Project and nothing else. No page id, no channel id, no provider URL: those are
 the Firm-private coordinates this boundary exists to keep on the firm side, and they are recorded on the Project row for

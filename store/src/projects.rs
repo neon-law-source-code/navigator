@@ -19,6 +19,7 @@ use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 /// same shape — see [`is_valid_code`].
 pub const PROJECT_CODE_MAX_LEN: usize = cloud::workspace::SLUG_MAX_LEN;
 const SLACK_CHANNEL_ID_INVALID: &str = "Slack channel id is invalid.";
+const SLACK_CHANNEL_URL_INVALID: &str = "Slack channel URL is invalid.";
 const JURISDICTION_UNKNOWN: &str = "That jurisdiction does not exist.";
 const NOTION_PAGE_URL_INVALID: &str = "Notion page URL is invalid.";
 
@@ -1672,6 +1673,49 @@ pub async fn set_internal_slack_channel_id(
         ))
         .bind(("id", record_id(PROJECT_TABLE, project_id)))
         .bind(("channel_id", channel_id.to_string()))
+        .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    let updated: Option<ProjectRow> = response
+        .take(0)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    Ok(updated.and_then(ProjectRow::into_project))
+}
+
+/// Record the canonical Slack URL for a matter's private firm-side channel,
+/// alongside [`set_internal_slack_channel_id`]. Kept as a second setter
+/// rather than folded into the id write: the id is the only coordinate a
+/// provider call needs, while the URL exists purely so a human can click
+/// through, and the two are written together by every caller that has just
+/// resolved a channel (`portal::integrations_api`) so they never disagree.
+///
+/// # Errors
+/// Returns [`ProjectCommandError::Invalid`] for an empty or malformed URL,
+/// and propagates a database error.
+pub async fn set_internal_slack_channel_url(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    channel_url: &str,
+) -> Result<Option<Project>, ProjectCommandError> {
+    let channel_url = channel_url.trim();
+    if channel_url.is_empty() || !is_valid_resource_url(channel_url) {
+        return Err(ProjectCommandError::Invalid(SLACK_CHANNEL_URL_INVALID));
+    }
+    if find_by_id(surreal, project_id)
+        .await
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let mut response = surreal
+        .query(format!(
+            "UPDATE $id SET internal_slack_channel_url = $channel_url, updated_at = $updated_at \
+             RETURN {PROJECT_SELECT}"
+        ))
+        .bind(("id", record_id(PROJECT_TABLE, project_id)))
+        .bind(("channel_url", channel_url.to_string()))
         .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
         .await
         .and_then(surrealdb::IndexedResults::check)

@@ -51,7 +51,8 @@ pub use kms::{
     KmsTokenSource, NoRuntimeKms, RuntimeKms, WrappedDataKey,
 };
 pub use notion::{
-    ensure_private_page, FakeNotion, NotionClient, NotionError, NotionPage, NotionService,
+    ensure_private_page, extract_page_id as notion_page_id_from_url, FakeNotion, NotionClient,
+    NotionError, NotionPage, NotionService,
 };
 pub use notion_reconcile::{
     reconcile as reconcile_notion_project, NotionDatabaseConfig, NotionPageSnapshot,
@@ -59,9 +60,10 @@ pub use notion_reconcile::{
 };
 pub use s3::{S3Storage, S3StorageConfig};
 pub use slack::{
-    ensure_private_channel, labels_slack_from_staging_env, labels_slack_from_staging_from,
-    outbound_slack_text, FakeSlack, SlackChannel as FirmSlackChannel, SlackClient, SlackError,
-    SlackMemberId, SlackService, SLACK_STAGING_MARK,
+    channel_url as slack_channel_url, ensure_private_channel, labels_slack_from_staging_env,
+    labels_slack_from_staging_from, outbound_slack_text, FakeSlack,
+    SlackChannel as FirmSlackChannel, SlackClient, SlackError, SlackMemberId, SlackService,
+    SLACK_STAGING_MARK,
 };
 pub use speech::{GoogleSpeechConfig, GoogleSpeechTranscriptProvider, SpeechError};
 pub use vertex::{

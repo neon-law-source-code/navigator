@@ -3,8 +3,11 @@
 
 use std::fs;
 #[cfg(unix)]
+use std::os::unix::fs::symlink;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::time::Duration;
 
 use assert_cmd::Command;
 use base64::Engine as _;
@@ -26,6 +29,21 @@ fn navigator() -> Command {
     let mut command = Command::cargo_bin("navigator").unwrap();
     command.env_remove("GITHUB_REPOSITORY");
     command
+}
+
+#[cfg(windows)]
+fn junction(target: &Path, link: &Path) {
+    let output = std::process::Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "mklink failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn write(root: &Path, relative: &str, bytes: impl AsRef<[u8]>) {
@@ -160,6 +178,17 @@ fn pointer_with_kind_visibility(asset_id: Uuid, kind: &str, visibility: &str) ->
     pointer
 }
 
+async fn mount_project_lookup(server: &MockServer, project_id: Uuid) {
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() {
     let server = MockServer::start().await;
@@ -208,7 +237,11 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
             "visibility": "internal",
             "slug": "pleadings/summons.pdf"
         })))
-        .respond_with(ResponseTemplate::new(201).set_body_json(pointer(asset_id)))
+        .respond_with(ResponseTemplate::new(201).set_body_json(pointer_with_sha(
+            asset_id,
+            &sha256(b"synthetic pleading"),
+            i64::try_from(b"synthetic pleading".len()).unwrap(),
+        )))
         .expect(1)
         .mount(&server)
         .await;
@@ -308,10 +341,16 @@ async fn sync_preserves_existing_pointer_kind_when_uploading_new_bytes() {
             "visibility": "client",
             "slug": "pleadings/motion.pdf"
         })))
-        .respond_with(
-            ResponseTemplate::new(201)
-                .set_body_json(pointer_with_kind_visibility(asset_id, "pleading", "client")),
-        )
+        .respond_with(ResponseTemplate::new(201).set_body_json({
+            let mut pointer = pointer_with_sha(
+                asset_id,
+                &sha256(b"replacement pleading"),
+                i64::try_from(b"replacement pleading".len()).unwrap(),
+            );
+            pointer["kind"] = serde_json::Value::String("pleading".to_string());
+            pointer["visibility"] = serde_json::Value::String("client".to_string());
+            pointer
+        }))
         .expect(1)
         .mount(&server)
         .await;
@@ -356,6 +395,336 @@ fn sync_dry_run_lists_work_without_writing_or_needing_a_login() {
         .join("documents/exhibits/photo.png.yml")
         .exists());
     assert!(!root.path().join("documents/.gitignore").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_refuses_a_symlinked_documents_root_before_network_or_writes() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    write(outside.path(), "pleadings/outside.pdf", b"outside bytes");
+    symlink(outside.path(), root.path().join("documents")).unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+
+    assert_eq!(
+        fs::read(outside.path().join("pleadings/outside.pdf")).unwrap(),
+        b"outside bytes"
+    );
+    assert!(!outside.path().join(".gitignore").exists());
+}
+
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_refuses_a_junctioned_documents_root_before_network_or_writes() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    write(outside.path(), "pleadings/outside.pdf", b"outside bytes");
+    junction(outside.path(), &root.path().join("documents"));
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+
+    assert_eq!(
+        fs::read(outside.path().join("pleadings/outside.pdf")).unwrap(),
+        b"outside bytes"
+    );
+    assert!(!outside.path().join(".gitignore").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn sync_dry_run_refuses_a_nested_symlink_instead_of_reporting_an_empty_tree() {
+    let root = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(outside.path(), "nested.pdf", b"outside bytes");
+    fs::create_dir_all(root.path().join("documents")).unwrap();
+    symlink(outside.path(), root.path().join("documents/exhibits")).unwrap();
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+
+    assert!(!root.path().join("documents/.gitignore").exists());
+    assert_eq!(
+        fs::read(outside.path().join("nested.pdf")).unwrap(),
+        b"outside bytes"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn sync_dry_run_refuses_a_symlinked_source_path() {
+    let root = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(outside.path(), "source.pdf", b"outside bytes");
+    fs::create_dir_all(root.path().join("documents/pleadings")).unwrap();
+    symlink(
+        outside.path().join("source.pdf"),
+        root.path().join("documents/pleadings/source.pdf"),
+    )
+    .unwrap();
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+
+    assert!(!root.path().join("documents/.gitignore").exists());
+    assert_eq!(
+        fs::read(outside.path().join("source.pdf")).unwrap(),
+        b"outside bytes"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_refuses_a_symlinked_pointer_target_before_network_or_writes() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    write(
+        root.path(),
+        "documents/pleadings/source.pdf",
+        b"source bytes",
+    );
+    write(outside.path(), "pointer.yaml", b"existing pointer bytes");
+    symlink(
+        outside.path().join("pointer.yaml"),
+        root.path().join("documents/pleadings/source.pdf.yaml"),
+    )
+    .unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+
+    assert_eq!(
+        fs::read(root.path().join("documents/pleadings/source.pdf")).unwrap(),
+        b"source bytes"
+    );
+    assert_eq!(
+        fs::read(outside.path().join("pointer.yaml")).unwrap(),
+        b"existing pointer bytes"
+    );
+    assert!(!root.path().join("documents/.gitignore").exists());
+}
+
+async fn assert_receipt_rejected_without_consuming_source(
+    response: ResponseTemplate,
+    existing_pointer: bool,
+) {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let source = root.path().join("documents/pleadings/receipt.pdf");
+    let source_bytes = b"receipt source bytes";
+    write(root.path(), "documents/pleadings/receipt.pdf", source_bytes);
+    let project_id = Uuid::now_v7();
+    let existing_asset = Uuid::now_v7();
+    let existing_path = root.path().join("documents/pleadings/receipt.pdf.yaml");
+    let before_pointer = serde_yaml::to_string(&pointer_with_sha(
+        existing_asset,
+        &sha256(b"old receipt bytes"),
+        17,
+    ))
+    .unwrap();
+    if existing_pointer {
+        write(
+            root.path(),
+            "documents/pleadings/receipt.pdf.yaml",
+            &before_pointer,
+        );
+    }
+
+    mount_project_lookup(&server, project_id).await;
+    if existing_pointer {
+        Mock::given(method("PATCH"))
+            .and(path(format!(
+                "/app/api/projects/{project_id}/documents/{existing_asset}"
+            )))
+            .and(body_json(serde_json::json!({"visibility": "internal"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "changed": false
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .respond_with(response)
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .failure();
+
+    assert_eq!(fs::read(&source).unwrap(), source_bytes);
+    if existing_pointer {
+        assert_eq!(fs::read(existing_path).unwrap(), before_pointer.as_bytes());
+    } else {
+        assert!(!existing_path.exists());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_rejects_a_receipt_with_a_wrong_digest() {
+    let source_bytes = b"receipt source bytes";
+    assert_receipt_rejected_without_consuming_source(
+        ResponseTemplate::new(201).set_body_json(pointer_with_sha(
+            Uuid::now_v7(),
+            &"0".repeat(64),
+            i64::try_from(source_bytes.len()).unwrap(),
+        )),
+        false,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_rejects_a_receipt_with_a_wrong_byte_count_and_keeps_the_pointer() {
+    let source_bytes = b"receipt source bytes";
+    assert_receipt_rejected_without_consuming_source(
+        ResponseTemplate::new(201).set_body_json(pointer_with_sha(
+            Uuid::now_v7(),
+            &sha256(source_bytes),
+            i64::try_from(source_bytes.len()).unwrap() + 1,
+        )),
+        true,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_rejects_a_malformed_receipt_and_keeps_the_pointer() {
+    assert_receipt_rejected_without_consuming_source(
+        ResponseTemplate::new(201).set_body_string("not a pointer"),
+        true,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_keeps_changed_source_bytes_when_upload_finishes_late() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let source = root.path().join("documents/pleadings/race.pdf");
+    let uploaded_bytes = b"bytes sent before the race";
+    write(root.path(), "documents/pleadings/race.pdf", uploaded_bytes);
+    let project_id = Uuid::now_v7();
+    mount_project_lookup(&server, project_id).await;
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "race.pdf",
+            "content_base64": base64_of(uploaded_bytes),
+            "content_type": "application/pdf",
+            "kind": "filing",
+            "visibility": "internal",
+            "slug": "pleadings/race.pdf"
+        })))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_delay(Duration::from_millis(800))
+                .set_body_json(pointer_with_sha(
+                    Uuid::now_v7(),
+                    &sha256(uploaded_bytes),
+                    i64::try_from(uploaded_bytes.len()).unwrap(),
+                )),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let child = std::process::Command::new(env!("CARGO_BIN_EXE_navigator"))
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "sync"])
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    fs::write(&source, b"changed while upload was in flight").unwrap();
+    let output = child.wait_with_output().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(
+        fs::read(&source).unwrap(),
+        b"changed while upload was in flight"
+    );
+    assert!(!root
+        .path()
+        .join("documents/pleadings/race.pdf.yaml")
+        .exists());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -431,7 +800,11 @@ async fn an_interrupted_multi_file_sync_resumes_without_refiling_completed_work(
             "visibility": "internal",
             "slug": "pleadings/a.pdf"
         })))
-        .respond_with(ResponseTemplate::new(201).set_body_json(pointer(first_asset)))
+        .respond_with(ResponseTemplate::new(201).set_body_json(pointer_with_sha(
+            first_asset,
+            &sha256(b"one"),
+            3,
+        )))
         .expect(1)
         .mount(&first_server)
         .await;
@@ -493,7 +866,11 @@ async fn an_interrupted_multi_file_sync_resumes_without_refiling_completed_work(
             "visibility": "internal",
             "slug": "pleadings/b.pdf"
         })))
-        .respond_with(ResponseTemplate::new(201).set_body_json(pointer(second_asset)))
+        .respond_with(ResponseTemplate::new(201).set_body_json(pointer_with_sha(
+            second_asset,
+            &sha256(b"two"),
+            3,
+        )))
         .expect(1)
         .mount(&second_server)
         .await;
@@ -553,7 +930,7 @@ async fn pull_round_trips_synced_bytes_and_a_second_pull_writes_nothing() {
         .respond_with(ResponseTemplate::new(201).set_body_json(pointer_with_sha(
             asset_a,
             &sha256(b"synthetic filing a"),
-            19,
+            18,
         )))
         .expect(1)
         .mount(&server)

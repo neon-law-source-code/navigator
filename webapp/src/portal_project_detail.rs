@@ -20,6 +20,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::{Choice, Field, FormCard, Heading, Tab, Tabs};
 use crate::people::ViewerRole;
 use crate::portal_project_list::PersonId;
 
@@ -174,6 +175,35 @@ pub struct ClientTestimonialView {
     pub public_requested: bool,
 }
 
+/// Which panel the documents/testimonial tab region server-renders.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum MatterDetailTab {
+    #[default]
+    Documents,
+    Testimonial,
+}
+
+/// Consent copy aligned with the public homepage: the quote plus the chosen
+/// attribution, and nothing inferred from the stored Person record.
+const TESTIMONIAL_CONSENT: &str = "You can keep this testimonial private or request that the firm consider it for the public homepage. If the firm publishes it, the homepage shows the quote and the attribution you enter here. It does not show your stored name, title, or profile image. Leave attribution blank to publish the quote without a name. Public use requires your consent and the firm's approval.";
+
+#[cfg(feature = "server")]
+#[derive(Deserialize, Default)]
+struct ProjectDetailQuery {
+    #[serde(default)]
+    tab: Option<String>,
+}
+
+#[cfg(any(test, feature = "server"))]
+fn parse_matter_tab(raw: Option<&str>, can_edit_testimonial: bool) -> MatterDetailTab {
+    match raw.map(str::trim) {
+        Some(value) if can_edit_testimonial && value.eq_ignore_ascii_case("testimonial") => {
+            MatterDetailTab::Testimonial
+        }
+        _ => MatterDetailTab::Documents,
+    }
+}
+
 /// The rendered matter-detail view — every field wasm-safe (plain scalars; no
 /// `store`/`SeaORM`/`cloud` type crosses to the client build).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -224,6 +254,10 @@ pub struct ProjectDetailView {
     pub testimonial: Option<ClientTestimonialView>,
     #[serde(default)]
     pub can_edit_testimonial: bool,
+    /// The selected documents/testimonial panel. Absent or unrecognised `?tab=`
+    /// values render Documents. Testimonial is only selectable for a client DRI.
+    #[serde(default)]
+    pub selected_tab: MatterDetailTab,
 }
 
 /// Client-friendly status for a notation, derived from its workflow state,
@@ -309,6 +343,13 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     let axum::extract::Path(code) =
         dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Path<String>, _>()
             .await?;
+    let query = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::extract::Query<ProjectDetailQuery>,
+        _,
+    >()
+    .await
+    .map(|axum::extract::Query(query)| query)
+    .unwrap_or_default();
     let PersonId(person_id) =
         dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<PersonId>, _>()
             .await
@@ -486,6 +527,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         pending_intake,
         testimonial,
         can_edit_testimonial,
+        selected_tab: parse_matter_tab(query.tab.as_deref(), can_edit_testimonial),
     })
 }
 
@@ -672,8 +714,57 @@ pub fn ClientProjectDetail() -> Element {
         }
     };
 
+    rsx! {
+        ClientProjectDetailPage { view }
+    }
+}
+
+fn testimonial_fields(view: &ProjectDetailView) -> Vec<Field> {
+    let quote = view
+        .testimonial
+        .as_ref()
+        .map(|row| row.quote.clone())
+        .unwrap_or_default();
+    let attribution = view
+        .testimonial
+        .as_ref()
+        .map(|row| row.attribution.clone())
+        .unwrap_or_default();
+    let publication = if view
+        .testimonial
+        .as_ref()
+        .is_some_and(|row| row.public_requested)
+    {
+        "public"
+    } else {
+        "private"
+    };
+    vec![
+        Field::textarea("Quote", "quote", quote, 5).required(),
+        Field::text("Attribution", "attribution", attribution)
+            .placeholder("Name or title to show publicly"),
+        Field::radio(
+            "Public use",
+            "publication",
+            vec![
+                Choice::new("private", "Keep private"),
+                Choice::new("public", "Request public use"),
+            ],
+            Some(publication.to_string()),
+        ),
+    ]
+}
+
+/// The pure matter-detail page. Prop-driven so SSR tests can render it without
+/// a server future.
+#[component]
+pub fn ClientProjectDetailPage(view: ProjectDetailView) -> Element {
     let has_documents = !view.documents.is_empty();
     let has_review_docs = !view.review_docs.is_empty();
+    let show_testimonial_tab = view.can_edit_testimonial;
+    let testimonial_selected =
+        show_testimonial_tab && view.selected_tab == MatterDetailTab::Testimonial;
+    let testimonial_fields = testimonial_fields(&view);
 
     rsx! {
         document::Title { "{view.name}" }
@@ -692,73 +783,6 @@ pub fn ClientProjectDetail() -> Element {
             p { span { class: "status-chip", "{view.status}" } }
 
             crate::project_resources::ProjectResourcesPanel { view: view.resources.clone() }
-
-            if view.can_edit_testimonial {
-                section { class: "portal-detail__section", "aria-labelledby": "testimonial-heading",
-                    h2 { id: "testimonial-heading", "Share your experience" }
-                    p { class: "nav-muted",
-                        "You can keep this testimonial private or request that the firm consider it for the public homepage. Public use requires your consent and the firm's approval."
-                    }
-                    form {
-                        method: "post",
-                        action: "/app/projects/{view.code}/testimonial",
-                        class: "portal-form testimonial-form",
-                        input { type: "hidden", name: "_csrf", value: "{view.csrf_token}" }
-                        label { r#for: "testimonial-quote", "Quote"
-                            textarea {
-                                id: "testimonial-quote",
-                                name: "quote",
-                                required: true,
-                                maxlength: "2000",
-                                rows: "5",
-                                placeholder: "What would you tell someone considering the firm?",
-                                if let Some(testimonial) = view.testimonial.as_ref() { "{testimonial.quote}" }
-                            }
-                        }
-                        label { r#for: "testimonial-attribution", "Attribution"
-                            input {
-                                id: "testimonial-attribution",
-                                name: "attribution",
-                                value: view.testimonial.as_ref().map(|t| t.attribution.clone()).unwrap_or_default(),
-                                placeholder: "Name or title to show publicly",
-                            }
-                        }
-                        fieldset {
-                            legend { "Public use" }
-                            label {
-                                input {
-                                    type: "radio",
-                                    name: "publication",
-                                    value: "private",
-                                    checked: !view.testimonial.as_ref().is_some_and(|t| t.public_requested),
-                                }
-                                " Keep private"
-                            }
-                            label {
-                                input {
-                                    type: "radio",
-                                    name: "publication",
-                                    value: "public",
-                                    checked: view.testimonial.as_ref().is_some_and(|t| t.public_requested),
-                                }
-                                " Request public use"
-                            }
-                        }
-                        button { class: "nav-btn nav-btn--primary", type: "submit", "Save testimonial" }
-                    }
-                }
-            }
-
-            if has_documents {
-                p { class: "portal-detail__actions",
-                    a {
-                        class: "nav-btn nav-btn--secondary",
-                        href: "/app/projects/{view.code}/documents.zip",
-                        role: "button",
-                        "Download all my documents"
-                    }
-                }
-            }
 
             if !view.invoices.is_empty() {
                 section { class: "portal-detail__section",
@@ -877,16 +901,56 @@ pub fn ClientProjectDetail() -> Element {
                 }
             }
 
-            section { class: "portal-detail__section",
-                h2 { "Your documents" }
-                div { class: "nav-table-wrap",
-                    table { class: "nav-table",
-                        thead {
-                            tr { th { scope: "col", "Document" } }
+            if show_testimonial_tab {
+                Tabs {
+                    aria_label: "Matter sections".to_string(),
+                    tabs: vec![
+                        Tab::new(
+                            "Documents",
+                            format!("/app/projects/{}?tab=documents", view.code),
+                            !testimonial_selected,
+                        ),
+                        Tab::new(
+                            "Testimonial",
+                            format!("/app/projects/{}?tab=testimonial", view.code),
+                            testimonial_selected,
+                        ),
+                    ],
+                }
+            }
+
+            if testimonial_selected {
+                FormCard {
+                    title: "Share your experience".to_string(),
+                    action: format!("/app/projects/{}/testimonial", view.code),
+                    submit_label: "Save testimonial".to_string(),
+                    heading: Heading::H2,
+                    csrf_token: Some(view.csrf_token.clone()),
+                    intro: rsx! { p { "{TESTIMONIAL_CONSENT}" } },
+                    fields: testimonial_fields.clone(),
+                }
+            } else {
+                if has_documents {
+                    p { class: "portal-detail__actions",
+                        a {
+                            class: "nav-btn nav-btn--secondary",
+                            href: "/app/projects/{view.code}/documents.zip",
+                            role: "button",
+                            "Download all my documents"
                         }
-                        tbody {
-                            for filename in view.documents.iter() {
-                                tr { td { "{filename}" } }
+                    }
+                }
+                section { class: "portal-detail__section",
+                    h2 { "Your documents" }
+                    div { class: "nav-table-wrap",
+                        table { class: "nav-table",
+                            thead {
+                                tr { th { scope: "col", "Document" } }
+                            }
+                            tbody {
+                                for filename in view.documents.iter() {
+                                    tr { td { "{filename}" } }
+                                }
                             }
                         }
                     }
@@ -927,6 +991,132 @@ pub fn ClientProjectDetail() -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod render_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static VIEW: RefCell<ProjectDetailView> = RefCell::new(ProjectDetailView::default());
+    }
+
+    fn app() -> Element {
+        let view = VIEW.with(|slot| slot.borrow().clone());
+        rsx! { ClientProjectDetailPage { view } }
+    }
+
+    fn render_page(view: ProjectDetailView) -> String {
+        VIEW.with(|slot| *slot.borrow_mut() = view);
+        let mut vdom = VirtualDom::new(app);
+        vdom.rebuild_in_place();
+        dioxus_ssr::render(&vdom)
+    }
+
+    fn saved_testimonial_view() -> ProjectDetailView {
+        ProjectDetailView {
+            code: "acme".into(),
+            name: "Sample Matter".into(),
+            csrf_token: "csrf-token".into(),
+            can_edit_testimonial: true,
+            selected_tab: MatterDetailTab::Testimonial,
+            testimonial: Some(ClientTestimonialView {
+                quote: "Saved quote.".into(),
+                attribution: "Chosen Label".into(),
+                public_requested: true,
+            }),
+            documents: vec!["retainer.pdf".into()],
+            ..ProjectDetailView::default()
+        }
+    }
+
+    #[test]
+    fn parse_matter_tab_defaults_and_requires_client_dri() {
+        assert_eq!(parse_matter_tab(None, true), MatterDetailTab::Documents);
+        assert_eq!(
+            parse_matter_tab(Some("unknown"), true),
+            MatterDetailTab::Documents
+        );
+        assert_eq!(
+            parse_matter_tab(Some("testimonial"), true),
+            MatterDetailTab::Testimonial
+        );
+        assert_eq!(
+            parse_matter_tab(Some("testimonial"), false),
+            MatterDetailTab::Documents
+        );
+    }
+
+    #[test]
+    fn testimonial_form_uses_formcard_fields_and_round_trips_saved_values() {
+        let html = render_page(saved_testimonial_view());
+        assert!(html.contains("nav-form-card"), "{html}");
+        assert!(html.contains("nav-field"), "{html}");
+        assert!(html.contains(r#"name="quote""#), "{html}");
+        assert!(html.contains("Saved quote."), "{html}");
+        assert!(html.contains(r#"name="attribution""#), "{html}");
+        assert!(html.contains("Chosen Label"), "{html}");
+        assert!(html.contains(r#"name="publication""#), "{html}");
+        assert!(html.contains(r#"value="private""#), "{html}");
+        assert!(html.contains(r#"value="public""#), "{html}");
+        assert!(html.contains(r#"name="_csrf""#), "{html}");
+        assert!(html.contains("csrf-token"), "{html}");
+        assert!(
+            html.contains("the homepage shows the quote and the attribution you enter here"),
+            "{html}"
+        );
+        assert!(
+            html.contains("It does not show your stored name, title, or profile image"),
+            "{html}"
+        );
+        assert!(!html.contains("portal-form"), "{html}");
+        assert!(!html.contains("testimonial-form"), "{html}");
+        assert!(!html.contains("Your documents"), "{html}");
+    }
+
+    #[test]
+    fn documents_tab_is_the_default_panel() {
+        let html = render_page(ProjectDetailView {
+            code: "acme".into(),
+            name: "Sample Matter".into(),
+            can_edit_testimonial: true,
+            selected_tab: MatterDetailTab::Documents,
+            documents: vec!["retainer.pdf".into()],
+            ..ProjectDetailView::default()
+        });
+        assert!(html.contains("Your documents"), "{html}");
+        assert!(html.contains("retainer.pdf"), "{html}");
+        assert!(html.contains("nav-tabs"), "{html}");
+        assert!(html.contains("Testimonial"), "{html}");
+        assert!(!html.contains("nav-form-card"), "{html}");
+    }
+
+    #[test]
+    fn a_client_without_testimonial_access_sees_no_testimonial_tab() {
+        let html = render_page(ProjectDetailView {
+            code: "acme".into(),
+            name: "Sample Matter".into(),
+            can_edit_testimonial: false,
+            selected_tab: MatterDetailTab::Testimonial,
+            documents: vec!["retainer.pdf".into()],
+            ..ProjectDetailView::default()
+        });
+        assert!(html.contains("Your documents"), "{html}");
+        assert!(!html.contains("Share your experience"), "{html}");
+        assert!(!html.contains("nav-tabs"), "{html}");
+        assert!(!html.contains(">Testimonial<"), "{html}");
+    }
+
+    #[test]
+    fn obsolete_form_class_names_are_gone() {
+        let source = include_str!("portal_project_detail.rs")
+            .split("mod render_tests")
+            .next()
+            .expect("page source before tests");
+        assert!(!source.contains("portal-form"));
+        assert!(!source.contains("testimonial-form"));
     }
 }
 

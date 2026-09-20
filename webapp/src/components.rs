@@ -61,6 +61,7 @@ pub mod sample_matters_banner;
 pub mod site_footer;
 pub mod site_header;
 pub mod social;
+pub mod tabs;
 pub mod testimonial;
 pub mod toast;
 
@@ -118,6 +119,7 @@ pub use site_footer::{
 pub(crate) use site_footer::{mailto_href, tel_href};
 pub use site_header::{SiteHeader, SiteNavLink};
 pub use social::SocialMeta;
+pub use tabs::{Tab, Tabs};
 pub use testimonial::{TestimonialCard, TestimonialSection};
 pub use toast::{Toast, ToastTone};
 
@@ -369,7 +371,6 @@ mod control_contract {
         ("catalog_slides.rs", 2),
         ("conversation.rs", 1),
         ("auth_pages.rs", 5),
-        ("portal_project_detail.rs", 4),
         ("services_search.rs", 1),
     ];
 

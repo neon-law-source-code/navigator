@@ -39,8 +39,8 @@ use crate::components::{
     NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs, PersonChoice, PersonPicker,
     PricingCard, PricingSection, Progress, PublicShell, QuestionStage, RowActions, RunParagraph,
     SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage,
-    StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast,
-    ToastTone, THEME_STYLESHEET_HREF,
+    StageWidth, StepMeta, Stepper, StepperPanel, Tab, Tabs, TestimonialCard, TestimonialSection,
+    Toast, ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -406,6 +406,7 @@ pub fn DesignGallery() -> Element {
             }
 
             AccordionSection {}
+            TabsSection {}
 
             section {
                 h2 { "Toasts" }
@@ -1761,6 +1762,28 @@ fn AccordionSection() -> Element {
     }
 }
 
+/// The `Tabs` gallery section.
+#[component]
+fn TabsSection() -> Element {
+    rsx! {
+        section {
+            h2 { "Tabs" }
+            p {
+                "Link-driven tabs — each item is a plain "
+                code { "href" }
+                ", so the selected panel is in the HTML before hydration. The client matter page uses these for Documents and Testimonial."
+            }
+            Tabs {
+                aria_label: "Matter sections".to_string(),
+                tabs: vec![
+                    Tab::new("Documents", "/design?tab=documents", true),
+                    Tab::new("Testimonial", "/design?tab=testimonial", false),
+                ],
+            }
+        }
+    }
+}
+
 /// A real notation's YAML frontmatter, grounding [`CodeBlock`]'s `lang` prop
 /// the same way [`SNIPPETS`] grounds its Rust source: [`yaml_snippet_is_a_real_frontmatter`]
 /// fails the build if this ever drifts from the actual file.
@@ -1919,6 +1942,7 @@ mod tests {
             "SiteFooterLegal",
             "SiteHeader",
             "SocialMeta",
+            "Tabs",
             "TestimonialSection",
             "Toast",
         ] {

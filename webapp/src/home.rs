@@ -184,19 +184,29 @@ pub async fn home_page_view() -> Result<HomePageView, ServerFnError> {
         .await
         .map_err(|error| ServerFnError::new(error.to_string()))?
         .into_iter()
-        .map(|testimonial| TestimonialCard {
-            quote: testimonial.quote,
-            attribution: testimonial.person_name,
-            detail: testimonial.attribution_label.or(testimonial.person_title),
-            profile_image_url: testimonial.profile_image_url,
-            product_label: None,
-        })
+        .map(home_testimonial_card)
         .collect();
     Ok(HomePageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
         testimonials,
     })
+}
+
+/// Map a published store row onto the homepage card. Attribution is only the
+/// client's chosen label; a blank choice publishes the quote without a name,
+/// title, or profile image.
+#[cfg(feature = "server")]
+fn home_testimonial_card(
+    testimonial: store::testimonials::PublishedTestimonial,
+) -> TestimonialCard {
+    TestimonialCard {
+        quote: testimonial.quote,
+        attribution: testimonial.attribution_label.unwrap_or_default(),
+        detail: None,
+        profile_image_url: None,
+        product_label: None,
+    }
 }
 
 /// The page's route entry.
@@ -679,6 +689,31 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("Synthetic Client"), "{out}");
+    }
+
+    #[test]
+    fn blank_public_attribution_omits_the_byline() {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome::default(),
+                    content: HomeContent::default(),
+                    testimonials: vec![TestimonialCard {
+                        quote: "The quote stands alone.".into(),
+                        attribution: String::new(),
+                        detail: None,
+                        profile_image_url: None,
+                        product_label: None,
+                    }],
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+        assert!(out.contains("The quote stands alone."), "{out}");
+        assert!(!out.contains("testimonial-card__name"), "{out}");
+        assert!(!out.contains("testimonial-card__avatar"), "{out}");
     }
 
     /// The page opens on the question, and nothing sits above it. A skyline
@@ -1237,5 +1272,34 @@ mod tests {
         let mut dom = VirtualDom::new(app);
         dom.rebuild_in_place();
         dioxus_ssr::render(&dom)
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn home_card_uses_chosen_attribution_only() {
+        let card = home_testimonial_card(store::testimonials::PublishedTestimonial {
+            id: uuid::Uuid::nil(),
+            quote: "Chosen quote.".into(),
+            attribution_label: Some("Chosen Label".into()),
+        });
+        assert_eq!(card.quote, "Chosen quote.");
+        assert_eq!(card.attribution, "Chosen Label");
+        assert!(card.detail.is_none());
+        assert!(card.profile_image_url.is_none());
+        assert!(card.product_label.is_none());
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn home_card_blank_attribution_carries_no_identity() {
+        let card = home_testimonial_card(store::testimonials::PublishedTestimonial {
+            id: uuid::Uuid::nil(),
+            quote: "Standalone quote.".into(),
+            attribution_label: None,
+        });
+        assert_eq!(card.quote, "Standalone quote.");
+        assert!(card.attribution.is_empty());
+        assert!(card.detail.is_none());
+        assert!(card.profile_image_url.is_none());
     }
 }

@@ -20,14 +20,12 @@ pub struct Testimonial {
     pub display_order: i32,
 }
 
+/// The homepage projection of a published testimonial. Identity stays on the
+/// private row: public output is the quote plus the client's chosen
+/// attribution, and nothing inferred from the Person record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublishedTestimonial {
     pub id: Uuid,
-    pub project_id: Uuid,
-    pub person_id: Uuid,
-    pub person_name: String,
-    pub person_title: Option<String>,
-    pub profile_image_url: Option<String>,
     pub quote: String,
     pub attribution_label: Option<String>,
 }
@@ -346,30 +344,11 @@ pub async fn published_for_home(
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     let rows: Vec<TestimonialRow> = response.take(0)?;
-    let person_ids: Vec<Uuid> = rows
-        .iter()
-        .filter_map(|row| record_uuid(&row.person_id))
-        .collect();
-    let people: std::collections::HashMap<Uuid, crate::persons::Person> =
-        persons::find_by_ids(surreal, &person_ids)
-            .await?
-            .into_iter()
-            .map(|person| (person.id, person))
-            .collect();
     Ok(rows
         .into_iter()
         .filter_map(|row| {
-            let id = record_uuid(&row.id)?;
-            let project_id = record_uuid(&row.project_id)?;
-            let person_id = record_uuid(&row.person_id)?;
-            let person = people.get(&person_id)?;
             Some(PublishedTestimonial {
-                id,
-                project_id,
-                person_id,
-                person_name: person.name.clone(),
-                person_title: person.title.clone(),
-                profile_image_url: person.profile_image_url.clone(),
+                id: record_uuid(&row.id)?,
                 quote: row.quote,
                 attribution_label: row.attribution_label,
             })
@@ -447,11 +426,105 @@ mod tests {
         let rows = published_for_home(&surreal, 10).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].quote, "Published quote.");
+        let public = format!("{:?}", rows[0]);
         assert!(
-            !format!("{:?}", rows[0]).contains("Published matter"),
+            !public.contains("Published matter"),
             "public testimonial data must not carry its matter title"
         );
-        assert_eq!(rows[0].person_title.as_deref(), Some("Founder"));
+        assert!(
+            !public.contains("A. Client"),
+            "public projection must not carry the stored Person name: {public}"
+        );
+        assert!(
+            !public.contains("Founder"),
+            "public projection must not fall back to the stored Person title: {public}"
+        );
+        assert!(
+            !public.contains("/images/testimonial.webp"),
+            "public projection must not carry a profile image: {public}"
+        );
+        assert!(rows[0].attribution_label.is_none());
+    }
+
+    #[tokio::test]
+    async fn public_projection_uses_chosen_attribution_and_omits_blank_identity() {
+        let surreal = mem_surreal().await;
+        let person = persons::create(
+            &surreal,
+            &crate::persons::NewPerson {
+                title: Some("Stored Title".into()),
+                profile_image_url: Some("/images/stored-identity.webp".into()),
+                ..crate::persons::NewPerson::new(
+                    "Stored Identity",
+                    "testimonial-chosen@example.com",
+                )
+            },
+        )
+        .await
+        .unwrap();
+        let project = create(
+            &surreal,
+            &NewProject {
+                code: "testimonial-chosen".into(),
+                name: "Chosen attribution matter".into(),
+                status: "closed".into(),
+                entity_id: Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        find_or_create(
+            &surreal,
+            &NewTestimonial {
+                project_id: project.id,
+                person_id: person.id,
+                quote: "Use the label I chose.",
+                attribution_label: Some("Chosen Label".into()),
+                consented_at: Some("2026-06-23T00:00:00Z".into()),
+                published_at: Some("2026-06-24T00:00:00Z".into()),
+                display_order: 1,
+            },
+        )
+        .await
+        .unwrap();
+        find_or_create(
+            &surreal,
+            &NewTestimonial {
+                project_id: project.id,
+                person_id: person.id,
+                quote: "Publish the quote without a name.",
+                attribution_label: None,
+                consented_at: Some("2026-06-23T00:00:00Z".into()),
+                published_at: Some("2026-06-25T00:00:00Z".into()),
+                display_order: 2,
+            },
+        )
+        .await
+        .unwrap();
+        let rows = published_for_home(&surreal, 10).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        let chosen = rows
+            .iter()
+            .find(|row| row.quote == "Use the label I chose.")
+            .expect("chosen attribution row");
+        assert_eq!(chosen.attribution_label.as_deref(), Some("Chosen Label"));
+        let blank = rows
+            .iter()
+            .find(|row| row.quote == "Publish the quote without a name.")
+            .expect("blank attribution row");
+        assert!(blank.attribution_label.is_none());
+        let public = format!("{rows:?}");
+        for leaked in [
+            "Stored Identity",
+            "Stored Title",
+            "/images/stored-identity.webp",
+        ] {
+            assert!(
+                !public.contains(leaked),
+                "public projection leaked `{leaked}`: {public}"
+            );
+        }
     }
 
     #[tokio::test]

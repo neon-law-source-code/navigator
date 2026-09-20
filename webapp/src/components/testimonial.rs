@@ -43,26 +43,28 @@ pub fn TestimonialSection(heading: String, lead: String, cards: Vec<TestimonialC
                             blockquote { class: "testimonial-card__quote",
                                 p { "\u{201C}{card.quote}\u{201D}" }
                             }
-                            div { class: "testimonial-card__by",
-                                if let Some(url) = &card.profile_image_url {
-                                    img {
-                                        class: "testimonial-card__avatar",
-                                        src: "{url}",
-                                        alt: "{card.attribution} profile image",
-                                        width: "56",
-                                        height: "56",
+                            if !card.attribution.trim().is_empty() {
+                                div { class: "testimonial-card__by",
+                                    if let Some(url) = &card.profile_image_url {
+                                        img {
+                                            class: "testimonial-card__avatar",
+                                            src: "{url}",
+                                            alt: "{card.attribution} profile image",
+                                            width: "56",
+                                            height: "56",
+                                        }
+                                    } else {
+                                        div {
+                                            class: "testimonial-card__avatar testimonial-card__avatar--initials",
+                                            "aria-hidden": "true",
+                                            "{initials(&card.attribution)}"
+                                        }
                                     }
-                                } else {
                                     div {
-                                        class: "testimonial-card__avatar testimonial-card__avatar--initials",
-                                        "aria-hidden": "true",
-                                        "{initials(&card.attribution)}"
-                                    }
-                                }
-                                div {
-                                    p { class: "testimonial-card__name", "{card.attribution}" }
-                                    if let Some(detail) = &card.detail {
-                                        p { class: "nav-text-muted testimonial-card__detail", "{detail}" }
+                                        p { class: "testimonial-card__name", "{card.attribution}" }
+                                        if let Some(detail) = &card.detail {
+                                            p { class: "nav-text-muted testimonial-card__detail", "{detail}" }
+                                        }
                                     }
                                 }
                             }
@@ -106,6 +108,31 @@ mod tests {
         assert!(html.contains("They opened my matter in a day."), "{html}");
         assert!(html.contains("initials"), "{html}");
         assert!(html.contains(">AR<") || html.contains("AR"), "{html}");
+    }
+
+    #[test]
+    fn blank_attribution_omits_name_initials_and_image() {
+        fn app() -> Element {
+            rsx! {
+                TestimonialSection {
+                    heading: "What clients say".to_string(),
+                    lead: "Shared quotes.".to_string(),
+                    cards: vec![TestimonialCard {
+                        quote: "The quote stands alone.".to_string(),
+                        attribution: String::new(),
+                        detail: Some("must not render".to_string()),
+                        profile_image_url: Some("/images/must-not-publish.webp".to_string()),
+                        product_label: None,
+                    }],
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains("The quote stands alone."), "{html}");
+        assert!(!html.contains("testimonial-card__by"), "{html}");
+        assert!(!html.contains("must not render"), "{html}");
+        assert!(!html.contains("/images/must-not-publish.webp"), "{html}");
+        assert!(!html.contains("initials"), "{html}");
     }
 
     #[test]

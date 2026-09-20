@@ -8997,6 +8997,104 @@ async fn client_project_detail_shows_no_service_panel_and_no_price() {
         body.contains("Your documents"),
         "the matter page always lists documents: {body}",
     );
+    assert!(
+        !body.contains("Share your experience"),
+        "a client without DRI participation has no testimonial form: {body}",
+    );
+    assert!(
+        !body.contains("nav-tabs"),
+        "a lone documents panel is not wrapped in a tab stub: {body}",
+    );
+}
+
+#[tokio::test]
+async fn client_dri_matter_detail_tabs_select_the_server_rendered_panel() {
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, project_code, cookie) = client_project_fixture(&surreal).await;
+    let client_id = test_sessions()
+        .decode(cookie.trim_start_matches("navigator_session="))
+        .and_then(|session| session.person_id)
+        .expect("fixture cookie carries the client person id");
+    store::projects::designate_dri_in_surreal(
+        &surreal,
+        project_id,
+        client_id,
+        store::projects::DriSide::Client,
+    )
+    .await
+    .unwrap();
+    store::testimonials::save_for_client_dri(
+        &surreal,
+        client_id,
+        project_id,
+        &store::testimonials::TestimonialSubmission {
+            quote: "Saved quote.",
+            attribution_label: Some("Chosen Label".into()),
+            request_public: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let documents = get_with_cookie(
+        app.clone(),
+        &format!("/app/projects/{project_code}"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(documents.status(), StatusCode::OK);
+    let documents_body = body_string(documents).await;
+    assert!(
+        documents_body.contains("nav-tabs"),
+        "the DRI page renders the documents/testimonial tabs: {documents_body}"
+    );
+    assert!(
+        documents_body.contains("Your documents"),
+        "the default panel is documents: {documents_body}"
+    );
+    assert!(
+        !documents_body.contains("Saved quote."),
+        "the unselected testimonial panel is not in the default body: {documents_body}"
+    );
+
+    let unknown = get_with_cookie(
+        app.clone(),
+        &format!("/app/projects/{project_code}?tab=unknown"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(unknown.status(), StatusCode::OK);
+    let unknown_body = body_string(unknown).await;
+    assert!(
+        unknown_body.contains("Your documents"),
+        "an unrecognised tab still renders documents: {unknown_body}"
+    );
+
+    let testimonial = get_with_cookie(
+        app,
+        &format!("/app/projects/{project_code}?tab=testimonial"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(testimonial.status(), StatusCode::OK);
+    let testimonial_body = body_string(testimonial).await;
+    assert!(
+        testimonial_body.contains("nav-form-card"),
+        "the testimonial panel uses FormCard: {testimonial_body}"
+    );
+    assert!(
+        testimonial_body.contains("Saved quote."),
+        "saved quote round-trips: {testimonial_body}"
+    );
+    assert!(
+        testimonial_body.contains("Chosen Label"),
+        "saved attribution round-trips: {testimonial_body}"
+    );
+    assert!(
+        !testimonial_body.contains("Your documents"),
+        "the unselected documents panel is not in the testimonial body: {testimonial_body}"
+    );
 }
 
 #[tokio::test]

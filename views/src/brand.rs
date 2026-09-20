@@ -987,24 +987,32 @@ impl BrandKey {
     ///
     /// A brand is built, registered, and serving its copy from this
     /// repository long before anyone can visit it. This is the flag that
-    /// separates the two, and it has two consequences that must not drift
-    /// apart.
+    /// separates the two.
     ///
-    /// **It gates the certificate.** `cli::devx::ship` derives a
-    /// `ManagedCertificate` and an Ingress host per live family from this
-    /// registry. An unpointed hostname on its own certificate sits in
-    /// `Provisioning` without taking another family's certificate down;
-    /// it still must not appear on Ingress or in the footer until DNS
-    /// points at the load balancer.
+    /// **It no longer gates the certificate.** Before ENG-808, `cli::devx::ship`
+    /// derived a `ManagedCertificate` and an Ingress host per *live* family
+    /// from this registry, so a held-out brand had no TLS at all until its
+    /// launch. That coupled two decisions that do not belong together: a
+    /// certificate is release infrastructure that should be ready — issued,
+    /// trusted, serving the right SAN — well before a launch is approved, not
+    /// requested by the same change that approves it. `cli::devx::ship` now
+    /// derives certificates and Ingress rules from [`release_brand_hosts`],
+    /// the full registry, so every key carries a valid, isolated certificate
+    /// family (ENG-768) in both environments regardless of `is_live()`.
     ///
-    /// **It gates the footer.** "Our Family" is a set of links. Listing a
-    /// brand whose host serves nothing advertises a practice a reader cannot
-    /// reach — and for the NYC summons practice it would be worse than a
-    /// dead link, because holding out a New York practice before admission
-    /// is not merely untidy.
+    /// **It still gates the footer and host admission.** "Our Family" is a
+    /// set of links, and [`admitted_brand_key`]/[`admitted_brand_key_for_apex`]
+    /// are what a public request path must call. Listing or serving a brand
+    /// whose launch is not approved advertises a practice a reader should not
+    /// yet be able to reach — and for the NYC summons practice that would be
+    /// worse than a dead link, because holding out a New York practice before
+    /// admission is not merely untidy. A held-out host now answers with a
+    /// valid TLS handshake and then [`held_out_host`]'s `404`, rather than a
+    /// TLS error — the certificate and the launch decision are independent,
+    /// and only the second one is what this flag still decides.
     ///
-    /// Flip it in the same change that makes the site reachable — never
-    /// earlier, and never as a batch.
+    /// Flip it in the same change that makes the site's *content* reachable
+    /// — never earlier, and never as a batch.
     #[must_use]
     pub fn is_live(self) -> bool {
         Self::LIVE.contains(&self)
@@ -1117,17 +1125,25 @@ pub fn registered_brand_key(host: &str) -> Option<BrandKey> {
 // --- The launch gate --------------------------------------------------------
 //
 // [`BrandKey::LIVE`] is the approved launch set, and everything below is the
-// single seam every public surface reads it through: the request router's
-// host admission, the apex redirect, the crawler's `robots.txt` / sitemap
-// base, the footer's family row, the `ManagedCertificate` render, and the
-// Ingress render. Five surfaces that each filtered `BrandKey::ALL` on
-// `is_live()` in their own way is exactly how the router and the deploy
-// render came apart — they agreed by coincidence rather than by
-// construction, and only four of the five kept agreeing.
+// single seam every public *content* surface reads it through: the request
+// router's host admission, the apex redirect, the crawler's `robots.txt` /
+// sitemap base, and the footer's family row. Four surfaces that each filtered
+// `BrandKey::ALL` on `is_live()` in their own way is exactly how the router
+// and the deploy render once came apart — they agreed by coincidence rather
+// than by construction.
 //
 // Adding a surface that decides whether a host is public means calling one of
 // these, never re-deriving the filter. `the_launch_gate_admits_exactly_the_live_set`
-// and the cross-crate invariant tests hold each surface to this list.
+// and the cross-crate invariant tests hold each content surface to this list.
+//
+// The `ManagedCertificate` render and the Ingress render (`cli::devx::ship`)
+// are deliberately *not* on this list as of ENG-808. TLS is release
+// infrastructure, not a launch decision: [`release_brand_hosts`] below is the
+// seam they read instead, and it covers the full registry, live or not. A
+// held-out host therefore serves a valid, trusted certificate and then
+// [`held_out_host`]'s `404` — never a TLS handshake failure — which is the
+// whole point of separating "the certificate exists" from "the practice may
+// be advertised."
 
 /// Every (key, host) pair the launch gate admits, in registry order: the
 /// approved set crossed with the hosts each approved key serves.
@@ -1152,6 +1168,27 @@ pub fn live_brand_apexes() -> Vec<(BrandKey, &'static str)> {
         .iter()
         .copied()
         .map(|key| (key, key.apex()))
+        .collect()
+}
+
+/// Every (key, host) pair the compiled registry names, across every key —
+/// live or held out. This is the **release inventory**: what a next release
+/// must provision a valid, isolated `ManagedCertificate` and Ingress rule
+/// for, per `cli::devx::ship`. It is [`BrandKey::ALL`] crossed with the hosts
+/// each key serves, the same shape as [`live_brand_hosts`] with the `is_live`
+/// filter removed — TLS coverage is deliberately wider than content
+/// admission (see the launch-gate note above [`live_brand_hosts`]).
+///
+/// A key added to [`BrandKey::ALL`] therefore reaches this list — and so a
+/// next release's certificate/Ingress render — with no second hostname list
+/// to keep in sync, the same property [`live_brand_hosts`] already gives the
+/// launch gate.
+#[must_use]
+pub fn release_brand_hosts() -> Vec<(BrandKey, &'static str)> {
+    BrandKey::ALL
+        .iter()
+        .copied()
+        .flat_map(|key| key.hosts().iter().copied().map(move |host| (key, host)))
         .collect()
 }
 
@@ -2437,6 +2474,51 @@ mod tests {
             BrandKey::LIVE.len(),
             "one apex per live key"
         );
+    }
+
+    /// [`super::release_brand_hosts`] is the TLS/Ingress release inventory:
+    /// every registered key crossed with its hosts, unfiltered by
+    /// `is_live()`. It must be a strict superset of [`super::live_brand_hosts`]
+    /// — every live host still gets a certificate — while also covering every
+    /// held-out brand's hosts, which `live_brand_hosts` deliberately omits.
+    #[test]
+    fn release_brand_hosts_is_the_full_registry_crossed_with_its_hosts() {
+        let released = super::release_brand_hosts();
+        let expected: Vec<(BrandKey, &str)> = BrandKey::ALL
+            .iter()
+            .copied()
+            .flat_map(|key| key.hosts().iter().copied().map(move |host| (key, host)))
+            .collect();
+        assert_eq!(released, expected);
+        assert_eq!(
+            released.len(),
+            BrandKey::ALL.len() * 2,
+            "every registered key serves exactly a production and a staging host"
+        );
+        for pair in super::live_brand_hosts() {
+            assert!(
+                released.contains(&pair),
+                "{pair:?} is live and must still be in the release inventory"
+            );
+        }
+        let held_out: Vec<(BrandKey, &str)> = released
+            .iter()
+            .copied()
+            .filter(|(key, _)| !key.is_live())
+            .collect();
+        assert!(
+            !held_out.is_empty(),
+            "the release inventory must cover at least one held-out brand, or this test proves nothing"
+        );
+        for (key, host) in held_out {
+            assert_eq!(
+                super::admitted_brand_key(host),
+                None,
+                "{host} is in the release inventory (gets a certificate) but must stay refused \
+                 at the router until {} launches",
+                key.as_str(),
+            );
+        }
     }
 
     /// A `Host:` header is not case-sensitive. A crawler sending

@@ -1257,7 +1257,7 @@ Neon Law IP LLC ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE), [`licensing`](l
 
 *Matter work product* produced from the templates belongs to the client and the matter; the *name and marks* — "Neon
 Law", "Navigator", "Neon Law Navigator", and the Neon Law logos — are reserved. **NEON LAW** is a registered trademark
-of Neon Law IP LLC, U.S. Reg. No. 6,325,650. See the [Trademarks note in `README`](../README.md#trademarks).
+of Neon Law IP LLC, U.S. Reg. No. 6,325,650. See the [Trademark note in `README`](../README.md#trademark).
 
 ## Notarization
 

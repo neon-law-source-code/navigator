@@ -44,16 +44,29 @@ pub(crate) fn PracticeCard(
     heading: String,
     body: String,
     href: String,
+    #[props(default)] logo_href: String,
+    #[props(default)] font_family: String,
     heading_id: String,
 ) -> Element {
+    let style = (!font_family.is_empty()).then(|| format!("font-family: {font_family};"));
     rsx! {
         a {
             class: "neon-card home-practice",
             href: "{href}",
             "aria-labelledby": "{heading_id}",
-            PracticeMarkGlyph {
-                mark,
-                class: "home-practice__mark".to_string(),
+            style: style,
+            if logo_href.is_empty() {
+                PracticeMarkGlyph {
+                    mark,
+                    class: "home-practice__mark".to_string(),
+                }
+            } else {
+                img {
+                    class: "home-practice__logo",
+                    src: "{logo_href}",
+                    alt: "",
+                    aria_hidden: "true",
+                }
             }
             h3 { id: "{heading_id}", class: "home-practice__heading", "{heading}" }
             if !body.is_empty() {
@@ -174,5 +187,29 @@ mod tests {
             html.contains(r#"d="M12 2v3M12 19v3M2 12h3M19 12h3""#),
             "{html}"
         );
+    }
+
+    #[test]
+    fn a_branded_card_uses_its_logo_and_typeface() {
+        fn app() -> Element {
+            rsx! {
+                PracticeCard {
+                    mark: PracticeMark::Scales,
+                    heading: "Vesta Estate Planning".to_string(),
+                    body: "A Shook Law PLLC practice.".to_string(),
+                    href: "https://www.vestaestateplanning.com".to_string(),
+                    logo_href: "/public/brand/vesta.svg".to_string(),
+                    font_family: "EB Garamond, serif".to_string(),
+                    heading_id: "practice-vesta".to_string(),
+                }
+            }
+        }
+
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let html = dioxus_ssr::render(&dom);
+        assert!(html.contains(r#"src="/public/brand/vesta.svg""#), "{html}");
+        assert!(html.contains("font-family: EB Garamond, serif;"), "{html}");
+        assert!(!html.contains("data-practice-mark"), "{html}");
     }
 }

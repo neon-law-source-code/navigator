@@ -53,6 +53,12 @@ pub struct PracticeLink {
     pub heading: String,
     pub body: String,
     pub href: String,
+    /// Optional identity mark for a parent-brand directory card.
+    #[serde(default)]
+    pub logo_href: String,
+    /// Optional display face for a parent-brand directory card.
+    #[serde(default)]
+    pub font_family: String,
 }
 
 /// The decorative mark a provenance step opens on, drawn by the view and
@@ -573,6 +579,8 @@ fn PracticeLinks(heading: String, practices: Vec<PracticeLink>) -> Element {
                         heading: practice.heading.clone(),
                         body: practice.body.clone(),
                         href: practice.href.clone(),
+                        logo_href: practice.logo_href.clone(),
+                        font_family: practice.font_family.clone(),
                         heading_id: format!("home-practice-heading-{index}"),
                     }
                 }
@@ -624,6 +632,8 @@ mod tests {
                             heading: "Litigation".to_string(),
                             body: "We try cases on both sides of the v.".to_string(),
                             href: "/disputes".to_string(),
+                            logo_href: String::new(),
+                            font_family: String::new(),
                         }],
                         service: Some(ServiceSection {
                             heading: "What we do".to_string(),
@@ -1248,6 +1258,8 @@ mod tests {
                             heading: "Data-deletion requests".to_string(),
                             body: "One scoped request.".to_string(),
                             href: "/services".to_string(),
+                            logo_href: String::new(),
+                            font_family: String::new(),
                         }],
                         ..HomeContent::default()
                     },

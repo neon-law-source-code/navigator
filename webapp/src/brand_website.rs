@@ -30,29 +30,29 @@ const COMPILED_SITES: &[CompiledSite] = &[
         live: true,
     },
     CompiledSite {
-        key: "lawyer-shook",
-        www: "www.lawyershook.com",
-        live: true,
-    },
-    CompiledSite {
         key: "vesta",
         www: "www.vestaestateplanning.com",
-        live: false,
+        live: true,
     },
     CompiledSite {
         key: "misericordia",
         www: "www.misericordialaw.com",
-        live: false,
+        live: true,
     },
     CompiledSite {
         key: "abhaya",
         www: "www.abhayaimmigration.com",
-        live: false,
+        live: true,
     },
     CompiledSite {
         key: "delete-your-debt",
         www: "www.deleteyourdebt.com",
-        live: false,
+        live: true,
+    },
+    CompiledSite {
+        key: "lawyer-shook",
+        www: "www.lawyershook.com",
+        live: true,
     },
     CompiledSite {
         key: "summons",
@@ -139,14 +139,14 @@ mod tests {
 
     #[test]
     fn a_held_out_compiled_key_keeps_its_www_host_and_says_not_live() {
-        let site = BrandWebsite::from_key("vesta");
-        assert_eq!(site.production_host, Some("www.vestaestateplanning.com"));
+        let site = BrandWebsite::from_key("summons");
+        assert_eq!(site.production_host, Some("www.summonsdefense.nyc"));
         assert!(!site.live);
         assert_eq!(
             site.attached_line(),
-            "vesta (www.vestaestateplanning.com, not live)"
+            "summons (www.summonsdefense.nyc, not live)"
         );
-        assert_eq!(site.host_line(), "www.vestaestateplanning.com (not live)");
+        assert_eq!(site.host_line(), "www.summonsdefense.nyc (not live)");
     }
 
     #[test]
@@ -175,7 +175,15 @@ mod tests {
             .collect();
         assert_eq!(
             live,
-            ["neon", "delete-your-data", "lawyer-shook"],
+            [
+                "neon",
+                "delete-your-data",
+                "vesta",
+                "misericordia",
+                "abhaya",
+                "delete-your-debt",
+                "lawyer-shook",
+            ],
             "the live listing set is the launched house brands"
         );
     }
@@ -184,8 +192,8 @@ mod tests {
     fn attached_lines_join_keys_and_name_an_empty_firm() {
         assert_eq!(attached_lines(&[]), "No house brands attached.");
         assert_eq!(
-            attached_lines(&["neon".to_string(), "vesta".to_string()]),
-            "neon (www.neonlaw.com), vesta (www.vestaestateplanning.com, not live)"
+            attached_lines(&["neon".to_string(), "summons".to_string()]),
+            "neon (www.neonlaw.com), summons (www.summonsdefense.nyc, not live)"
         );
     }
 }

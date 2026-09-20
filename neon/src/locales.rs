@@ -740,6 +740,8 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
                     heading,
                     body,
                     href,
+                    logo_href: String::new(),
+                    font_family: String::new(),
                 },
             )
             .collect(),

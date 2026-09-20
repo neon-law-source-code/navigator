@@ -120,12 +120,16 @@ mod tests {
                 heading: "Litigation".into(),
                 body: String::new(),
                 href: "/disputes".into(),
+                logo_href: String::new(),
+                font_family: String::new(),
             },
             PracticeLink {
                 mark: PracticeMark::Technology,
                 heading: "Personal Plan".into(),
                 body: String::new(),
                 href: "/personal".into(),
+                logo_href: String::new(),
+                font_family: String::new(),
             },
         ]
     }

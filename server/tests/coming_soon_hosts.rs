@@ -1,5 +1,5 @@
-//! The four unlaunched practices each render one "Coming Soon" landing page,
-//! wearing their own typeface and palette, and publish nothing else.
+//! The held-out summons channel renders one "Coming Soon" landing page,
+//! wearing its own typeface and palette, and publishes nothing else.
 //!
 //! Router-driven rather than unit-level on purpose: the thing under test is
 //! the product of the brand resolver, the home router, and the
@@ -7,8 +7,8 @@
 //! this covers the wiring.
 //!
 //! **These pages are not public, and this file must not be read as saying
-//! they are.** All four keys are held out of [`BrandKey::LIVE`], so
-//! `portal::canonical_host` refuses their real hostnames with a `404` before
+//! they are.** The key is held out of [`BrandKey::LIVE`], so
+//! `portal::canonical_host` refuses its real hostname with a `404` before
 //! any of this renders — [`the_launch_gate_still_refuses_every_one_of_these_hosts`]
 //! pins that, and `server::tests::routes`'s launch-gate tests assert it over
 //! the whole registry. What is under test here is what each host will serve
@@ -28,26 +28,11 @@ use views::brand::BrandKey;
 /// whole point.
 const PREVIEW_PORT: u16 = 20_641;
 
-/// Every unlaunched practice, as `(key, public host, site name)`.
+/// The held-out channel, as `(key, public host, site name)`.
 ///
 /// Staging hosts throughout: this repository names only staging, and the
 /// registry serves the same brand on both.
 const UNLAUNCHED: &[(BrandKey, &str, &str)] = &[
-    (
-        BrandKey::Abhaya,
-        "staging.abhayaimmigration.com",
-        "Abhaya Immigration",
-    ),
-    (
-        BrandKey::DeleteYourDebt,
-        "staging.deleteyourdebt.com",
-        "DeleteYourDebt.com",
-    ),
-    (
-        BrandKey::Misericordia,
-        "staging.misericordialaw.com",
-        "Misericordia Injury Law",
-    ),
     // The NYC host wears the firm's own name: New York Rule 7.5(b) bars a
     // trade name for private practice.
     (
@@ -159,8 +144,7 @@ async fn the_notice_keeps_the_attorney_advertisement_disclaimer() {
     }
 }
 
-/// One landing page and nothing under it. `/services` and `/contact` still
-/// ship their copy and still load; they simply do not answer yet.
+/// One landing page and nothing under it.
 ///
 /// Read through the preview door deliberately: on the public host every path
 /// `404`s because the *gate* refuses the host, which would make this pass
@@ -179,33 +163,21 @@ async fn nothing_but_the_landing_page_answers_for_an_unlaunched_practice() {
     }
 }
 
-/// The stub must not leak the unlaunched marketing copy it sits in front of.
+/// The stub must not leak the held-out marketing copy it sits in front of.
 #[tokio::test]
 async fn the_notice_does_not_publish_the_unlaunched_offer() {
-    let (_, abhaya) = preview(BrandKey::Abhaya, "/").await;
-    for withheld in ["USCIS filing fees are separate", "What this practice does"] {
-        assert!(
-            !abhaya.contains(withheld),
-            "the stub must not publish {withheld:?}"
-        );
-    }
-
-    // No practice cards: a page that has not launched must not advertise its
-    // siblings' sites.
-    let (_, debt) = preview(BrandKey::DeleteYourDebt, "/").await;
+    let (_, summons) = preview(BrandKey::Summons, "/").await;
     assert!(
-        !debt.contains("home-practice"),
-        "the stub lists no practice cards"
+        !summons.contains("home-practice"),
+        "the held-out stub lists no sibling practice cards"
     );
 }
 
 /// Authoring the holding page does not publish it.
 ///
-/// `BrandKey::LIVE` is unchanged, so every one of these hostnames is still
-/// refused outright — no notice, no brand, no redirect. Flipping a key live
-/// belongs in the change that points its DNS at the load balancer, and this
-/// assertion is what keeps the four pages above from being mistaken for four
-/// sites that went up.
+/// The held-out hostname is refused outright — no notice, no brand, no
+/// redirect. Launching a key belongs in the change that makes its content
+/// reachable.
 #[tokio::test]
 async fn the_launch_gate_still_refuses_every_one_of_these_hosts() {
     for (key, host, site_name) in UNLAUNCHED {

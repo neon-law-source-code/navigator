@@ -763,6 +763,10 @@ mod tests {
             [
                 "Emerging Technologies Counsel",
                 "Protect your info",
+                "DeleteYourDebt.com",
+                "Vesta Estate Planning",
+                "Misericordia Injury Law",
+                "Abhaya Immigration",
                 "Lawyer Shook"
             ]
         );

@@ -125,6 +125,28 @@ pub struct CanonicalBlock {
     pub children: Vec<CanonicalBlock>,
 }
 
+impl CanonicalBlock {
+    /// Whether this block is a supported target for [`CanonicalDocument::with_block_text`] —
+    /// ordinary or numbered prose whose inline sequence is nothing but
+    /// [`CanonicalInline::Text`] runs. `Text` is the one inline
+    /// [`crate::notation::to_markdown`] never turns into a structural
+    /// comment (see that module's doc), so a block made of Text runs alone
+    /// carries no embedded structure at all — no bookmark, hyperlink, field,
+    /// tab, break, existing revision, or comment reference. A table, section
+    /// break, or signature block is never editable this way, regardless of
+    /// its inlines.
+    #[must_use]
+    pub fn is_editable(&self) -> bool {
+        matches!(
+            self.kind,
+            CanonicalBlockKind::Paragraph | CanonicalBlockKind::Outline
+        ) && self
+            .inlines
+            .iter()
+            .all(|inline| matches!(inline, CanonicalInline::Text { .. }))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CanonicalBlockKind {
@@ -204,6 +226,134 @@ impl CanonicalDocument {
     #[must_use]
     pub fn from_markdown(source: &crate::notation::TrustedNotationMarkdown) -> Self {
         crate::notation::from_markdown(source)
+    }
+
+    /// Replace one supported block's visible prose, leaving its anchor,
+    /// outline identity, list identity, inline structure, and children
+    /// untouched. Returns a new document; `self` is not mutated.
+    ///
+    /// A block is a supported edit target when it is a [`CanonicalBlockKind::Paragraph`]
+    /// or [`CanonicalBlockKind::Outline`] block carrying no embedded inline
+    /// structure at all — no bookmark, hyperlink, field, existing revision,
+    /// or comment reference (see [`CanonicalBlock::is_editable`]). A table, a
+    /// section break, a signature block, or a block whose prose carries such
+    /// structure is refused rather than silently truncated: the caller's
+    /// plain-text edit becomes exactly one `String` assignment, never a
+    /// concatenation into Markdown, so it can carry no structural authority
+    /// of its own regardless of its content.
+    ///
+    /// # Errors
+    /// [`BlockEditError::AnchorNotFound`] when no block in the document
+    /// carries `anchor`; [`BlockEditError::Unsupported`] when that block is
+    /// not a supported edit target.
+    pub fn with_block_text(&self, anchor: &str, new_text: &str) -> Result<Self, BlockEditError> {
+        let mut document = self.clone();
+        let mut found = false;
+        let mut unsupported = false;
+        for story in &mut document.stories {
+            replace_block_text(
+                &mut story.blocks,
+                anchor,
+                new_text,
+                &mut found,
+                &mut unsupported,
+            );
+            if found {
+                break;
+            }
+        }
+        if unsupported {
+            return Err(BlockEditError::Unsupported(anchor.to_string()));
+        }
+        if !found {
+            return Err(BlockEditError::AnchorNotFound(anchor.to_string()));
+        }
+        Ok(document)
+    }
+}
+
+/// One row of the block/anchor manifest ENG-578 asks every document version
+/// to persist alongside its Markdown: a flattened, document-order list of
+/// every block's anchor, outline identity, and whether it is a supported
+/// edit target. Consumed read-only by the review surface (ENG-579) for
+/// outline navigation; `store::notation_documents` never inspects a
+/// manifest's contents — this is the producing caller's typed contract for
+/// what it writes there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockManifestEntry {
+    pub anchor: String,
+    pub kind: CanonicalBlockKind,
+    pub depth: Option<u8>,
+    pub marker: Option<String>,
+    /// The cumulative outline path (e.g. `II.B.1`), `None` for a block with
+    /// no outline identity.
+    pub path: Option<String>,
+    pub editable: bool,
+}
+
+impl CanonicalDocument {
+    /// Flatten every block across every story (recursively, document order)
+    /// into its manifest row.
+    #[must_use]
+    pub fn block_manifest(&self) -> Vec<BlockManifestEntry> {
+        let mut rows = Vec::new();
+        for story in &self.stories {
+            manifest_rows(&story.blocks, &mut rows);
+        }
+        rows
+    }
+}
+
+fn manifest_rows(blocks: &[CanonicalBlock], rows: &mut Vec<BlockManifestEntry>) {
+    for block in blocks {
+        rows.push(BlockManifestEntry {
+            anchor: block.anchor.clone(),
+            kind: block.kind,
+            depth: block.outline.as_ref().map(|unit| unit.depth),
+            marker: block.outline.as_ref().map(|unit| unit.marker.clone()),
+            path: block.outline.as_ref().map(|unit| unit.path.clone()),
+            editable: block.is_editable(),
+        });
+        manifest_rows(&block.children, rows);
+    }
+}
+
+/// Why [`CanonicalDocument::with_block_text`] refused an edit.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum BlockEditError {
+    #[error("no block with anchor `{0}`")]
+    AnchorNotFound(String),
+    #[error(
+        "block `{0}` is not a supported edit target (a table, a section break, a signature \
+         block, or a block carrying embedded inline structure)"
+    )]
+    Unsupported(String),
+}
+
+fn replace_block_text(
+    blocks: &mut [CanonicalBlock],
+    anchor: &str,
+    new_text: &str,
+    found: &mut bool,
+    unsupported: &mut bool,
+) {
+    for block in blocks {
+        if block.anchor == anchor {
+            *found = true;
+            if block.is_editable() {
+                block.text = new_text.to_string();
+                block.inlines = vec![CanonicalInline::Text {
+                    text: new_text.to_string(),
+                }];
+            } else {
+                *unsupported = true;
+            }
+            return;
+        }
+        replace_block_text(&mut block.children, anchor, new_text, found, unsupported);
+        if *found {
+            return;
+        }
     }
 }
 
@@ -1204,5 +1354,158 @@ mod tests {
             "{:?}",
             canonical.diagnostics
         );
+    }
+
+    #[test]
+    fn with_block_text_replaces_plain_prose_and_keeps_outline_identity() {
+        let blocks = vec![paragraph("p0", Some(0), "original clause text")];
+        let document = model(blocks, vec![level(0, "upperRoman", "%1.")]).canonical_outline();
+
+        let edited = document
+            .with_block_text("p0", "edited clause text")
+            .unwrap();
+        let block = &edited.stories[0].blocks[0];
+        assert_eq!(block.text, "edited clause text");
+        assert_eq!(
+            block.outline.as_ref().unwrap().marker,
+            "I",
+            "outline identity survives the edit"
+        );
+        assert_eq!(block.anchor, "p0");
+
+        // The original document is untouched.
+        assert_eq!(document.stories[0].blocks[0].text, "original clause text");
+    }
+
+    #[test]
+    fn with_block_text_round_trips_through_markdown() {
+        let blocks = vec![paragraph("p0", Some(0), "original clause text")];
+        let document = model(blocks, vec![level(0, "upperRoman", "%1.")]).canonical_outline();
+        let edited = document
+            .with_block_text("p0", "edited clause text")
+            .unwrap();
+
+        let markdown = edited.to_markdown();
+        let reparsed = super::CanonicalDocument::from_markdown(&markdown);
+        assert_eq!(reparsed.stories[0].blocks[0].text, "edited clause text");
+        assert_eq!(
+            reparsed.stories[0].blocks[0]
+                .outline
+                .as_ref()
+                .unwrap()
+                .marker,
+            "I"
+        );
+    }
+
+    #[test]
+    fn with_block_text_refuses_an_unknown_anchor() {
+        let blocks = vec![paragraph("p0", None, "text")];
+        let document = model(blocks, vec![]).canonical_outline();
+        assert!(matches!(
+            document.with_block_text("missing", "x"),
+            Err(super::BlockEditError::AnchorNotFound(anchor)) if anchor == "missing"
+        ));
+    }
+
+    #[test]
+    fn with_block_text_refuses_a_table() {
+        let blocks = vec![Block::Table(Table {
+            anchor: "t0".into(),
+            style_id: None,
+            rows: vec![TableRow {
+                cells: vec![TableCell {
+                    blocks: vec![paragraph("t0-p0", None, "cell text")],
+                }],
+            }],
+            revisions: Vec::new(),
+        })];
+        let document = model(blocks, vec![]).canonical_outline();
+        assert!(matches!(
+            document.with_block_text("t0", "x"),
+            Err(super::BlockEditError::Unsupported(anchor)) if anchor == "t0"
+        ));
+    }
+
+    #[test]
+    fn with_block_text_reaches_a_nested_table_cell_paragraph() {
+        let blocks = vec![Block::Table(Table {
+            anchor: "t0".into(),
+            style_id: None,
+            rows: vec![TableRow {
+                cells: vec![TableCell {
+                    blocks: vec![paragraph("t0-p0", None, "cell text")],
+                }],
+            }],
+            revisions: Vec::new(),
+        })];
+        let document = model(blocks, vec![]).canonical_outline();
+        let edited = document.with_block_text("t0-p0", "new cell text").unwrap();
+        let table = &edited.stories[0].blocks[0];
+        assert_eq!(table.children[0].text, "new cell text");
+    }
+
+    #[test]
+    fn with_block_text_refuses_a_block_carrying_a_hyperlink() {
+        let mut blocks = vec![paragraph("p0", None, "click here")];
+        let Block::Paragraph(p) = &mut blocks[0] else {
+            unreachable!()
+        };
+        p.nodes.push(Inline::Hyperlink {
+            relationship_id: Some("rId1".into()),
+            anchor: None,
+            children: vec![Inline::Text {
+                text: "a link".into(),
+                style_id: None,
+                revision: None,
+            }],
+        });
+        let document = model(blocks, vec![]).canonical_outline();
+        assert!(!document.stories[0].blocks[0].is_editable());
+        assert!(matches!(
+            document.with_block_text("p0", "x"),
+            Err(super::BlockEditError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn is_editable_is_true_for_a_plain_paragraph_with_no_numbering() {
+        let blocks = vec![paragraph("p0", None, "plain prose")];
+        let document = model(blocks, vec![]).canonical_outline();
+        assert!(document.stories[0].blocks[0].is_editable());
+    }
+
+    #[test]
+    fn block_manifest_flattens_document_order_including_table_cells() {
+        let blocks = vec![
+            paragraph("p0", Some(0), "clause one"),
+            Block::Table(Table {
+                anchor: "t0".into(),
+                style_id: None,
+                rows: vec![TableRow {
+                    cells: vec![TableCell {
+                        blocks: vec![paragraph("t0-p0", None, "cell text")],
+                    }],
+                }],
+                revisions: Vec::new(),
+            }),
+        ];
+        let document = model(blocks, vec![level(0, "upperRoman", "%1.")]).canonical_outline();
+        let manifest = document.block_manifest();
+        let anchors: Vec<&str> = manifest.iter().map(|row| row.anchor.as_str()).collect();
+        assert_eq!(anchors, vec!["p0", "t0", "t0-p0"]);
+
+        let root = &manifest[0];
+        assert_eq!(root.path.as_deref(), Some("I"));
+        assert_eq!(root.marker.as_deref(), Some("I"));
+        assert!(root.editable);
+
+        let table = &manifest[1];
+        assert_eq!(table.kind, CanonicalBlockKind::Table);
+        assert!(table.path.is_none());
+        assert!(!table.editable);
+
+        let cell_paragraph = &manifest[2];
+        assert!(cell_paragraph.editable);
     }
 }

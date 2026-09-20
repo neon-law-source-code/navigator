@@ -23,9 +23,9 @@ pub use model::{
 };
 pub use notation::{to_markdown, TrustedNotationMarkdown};
 pub use outline::{
-    CanonicalBlock, CanonicalBlockKind, CanonicalDocument, CanonicalInline, CanonicalStory,
-    ListIdentity, NumberingLevel, OutlineScheme, OutlineUnit, HARVARD_OUTLINE_PATTERN,
-    MARKER_GROUPS, MAX_DEPTH,
+    BlockEditError, BlockManifestEntry, CanonicalBlock, CanonicalBlockKind, CanonicalDocument,
+    CanonicalInline, CanonicalStory, ListIdentity, NumberingLevel, OutlineScheme, OutlineUnit,
+    HARVARD_OUTLINE_PATTERN, MARKER_GROUPS, MAX_DEPTH,
 };
 pub use preflight::is_docx_filename;
 pub use render::{render_notation, RenderError, RenderLetterhead, RenderOptions};

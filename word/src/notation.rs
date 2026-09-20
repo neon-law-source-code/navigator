@@ -61,6 +61,22 @@ impl TrustedNotationMarkdown {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Rehydrate Markdown this crate itself emitted via [`to_markdown`] and a
+    /// caller's own governed, internal asset store (`store::notation_documents`)
+    /// persisted byte-for-byte.
+    ///
+    /// **Never** call this with text that passed through an editable surface,
+    /// an upload, a network request, or any other untrusted origin — that is
+    /// exactly the structural-comment injection this type exists to prevent
+    /// (see the module doc's "Why the structure rides in comments"). The only
+    /// legitimate caller is a governed round trip: bytes this crate produced,
+    /// stored unmodified, and is now reading back to project into
+    /// [`from_markdown`].
+    #[must_use]
+    pub fn from_governed_store(markdown: String) -> Self {
+        Self(markdown)
+    }
 }
 
 impl AsRef<str> for TrustedNotationMarkdown {

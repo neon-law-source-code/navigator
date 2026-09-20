@@ -97,7 +97,7 @@ pub(super) fn read_ledger(root: &Path) -> Vec<Started> {
         .unwrap_or_default()
 }
 
-fn write_ledger(root: &Path, records: &[Started]) -> Result<()> {
+pub(super) fn write_ledger(root: &Path, records: &[Started]) -> Result<()> {
     let path = ledger_path(root);
     let parent = path.parent().context("ledger path has no parent")?;
     fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;

@@ -61,8 +61,9 @@ pub use worktree_env::WorktreeEnvCmd;
 use orchestrate::{
     align_rauthy_public_url, configure_worktree_kubeconfig, deploy, down, down_in,
     hydrate_garage_environment, kind_down_only, kind_up_only, kustomize_render, logs, print_env,
-    rauthy_deployment_exists, reload_worker, require_auth, require_tools, run, status, undeploy,
-    up, up_in, use_kind_context, wait_for_condition, wait_for_tcp, wait_rollout,
+    rauthy_deployment_exists, reload_worker as reload_worker_in_kind, require_auth, require_tools,
+    run, status, undeploy, up, up_in, use_kind_context, wait_for_condition, wait_for_tcp,
+    wait_rollout, workspace_root,
 };
 
 // KIND/local defaults. Each pairs with a `KindConfig` field and a
@@ -739,6 +740,15 @@ pub enum RestateCmd {
     },
 }
 
+fn reload_worker(cfg: &KindConfig) -> Result<()> {
+    let root = workspace_root()?;
+    if worktree_env::is_native(&root) {
+        let (slot, admin_port) = worktree_env::native_worker_coordinates(&root, cfg)?;
+        return native::reload_workflows(&root, slot, admin_port);
+    }
+    reload_worker_in_kind(cfg)
+}
+
 /// Dispatch the local `dev` and operator `ops` subsets of the `navigator` CLI.
 /// `main` loads `.env` + `.devx/env` before parsing ordinary local commands,
 /// so this only resolves the KIND config and routes. Deployment-scoped
@@ -1330,6 +1340,15 @@ fn restate_register(url_override: Option<&str>) -> Result<()> {
         .arg("list"))
 }
 
+/// Register a native worker against its private Restate server. This keeps the
+/// discovery and retry machinery shared with cloud registration while leaving
+/// cloud credentials and `restate` CLI state out of the native lane.
+pub(super) fn restate_register_local(admin_port: u16, worker_port: u16) -> Result<()> {
+    let admin = format!("http://127.0.0.1:{admin_port}");
+    let worker = format!("http://127.0.0.1:{worker_port}");
+    register_via_admin_api(&admin, "", &worker)
+}
+
 /// Force-register the worker deployment via the Restate Cloud admin REST
 /// API (`POST {admin}/deployments` with `force: true`), bearer-authenticated.
 /// `force` re-runs discovery against the live worker, so every service it
@@ -1468,13 +1487,13 @@ async fn register_attempt(
     worker_url: &str,
 ) -> std::result::Result<Vec<String>, RegisterAttemptError> {
     let body = serde_json::json!({ "uri": worker_url, "force": true });
-    let resp = match client
-        .post(endpoint)
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .await
-    {
+    let request = client.post(endpoint).json(&body);
+    let request = if token.is_empty() {
+        request
+    } else {
+        request.bearer_auth(token)
+    };
+    let resp = match request.send().await {
         Ok(resp) => resp,
         Err(err) => {
             return Err(RegisterAttemptError {

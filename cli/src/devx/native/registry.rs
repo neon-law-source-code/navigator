@@ -476,6 +476,46 @@ mod tests {
     }
 
     #[test]
+    fn releasing_one_worktree_returns_only_its_task_owned_processes() {
+        let mut registry = NativeRegistry::default();
+        let first = Path::new("/tmp/native-first");
+        let second = Path::new("/tmp/native-second");
+        let first_restate = started("restate-server", 101);
+        let first_worker = started("workflows-service", 102);
+        let second_restate = started("restate-server", 201);
+        let second_worker = started("workflows-service", 202);
+
+        claim(
+            &mut registry,
+            first,
+            1,
+            "navigator_first".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            vec![first_restate.clone(), first_worker.clone()],
+        );
+        claim(
+            &mut registry,
+            second,
+            2,
+            "navigator_second".into(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            vec![second_restate.clone(), second_worker.clone()],
+        );
+
+        let (released, final_claim, shared_to_stop) =
+            release(&mut registry, first).expect("the first worktree has a claim");
+        assert!(!final_claim);
+        assert!(shared_to_stop.is_empty());
+        assert_eq!(released.processes, vec![first_restate, first_worker]);
+        assert_eq!(
+            registry.claims[&key(second)].processes,
+            vec![second_restate, second_worker]
+        );
+    }
+
+    #[test]
     fn sweep_marks_missing_worktrees_orphaned_and_live_worktrees_live() {
         let mut registry = NativeRegistry::default();
         for root in [Path::new("/tmp/live"), Path::new("/tmp/gone")] {

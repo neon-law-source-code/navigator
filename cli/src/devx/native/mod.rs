@@ -1,7 +1,7 @@
 //! The native dependency tier — every local dependency as a host
 //! process instead of a pod.
 //!
-//! This is the default local lane; `--runtime kind` selects the cluster
+//! This is the opt-in host lane; `--runtime kind` remains the default local
 //! lane in [`super::orchestrate`]. Both write the same `.devx/env` and
 //! `.devx/worktree.json`, so everything downstream — `dev grant-lawyer`,
 //! `dev browser-e2e`, `cargo run -p neon` — is identical under either.
@@ -24,25 +24,27 @@
 //! namespace or environment concept, and a service name resolves to one
 //! active deployment endpoint — so a second worktree registering
 //! `workflows-service` would silently take over the first worktree's
-//! invocations and execute them against its own store handle. The SDK
-//! offers no runtime rename either: `restate_sdk::service::ServiceDefinition`
-//! keeps its `discovery` field crate-private and exposes only `options`.
-//! One `restate-server` per worktree is the fix, and it is cheap next to
-//! the cluster it replaces.
+//! invocations and execute them against its own store handle. The SDK does
+//! expose a doc-hidden runtime rename seam through
+//! `service::macro_support::service_definition` and the public discovery
+//! module, but it varies the declared service names, depends on non-public
+//! API under a caret pin, and fails open on a typo. One `restate-server` per
+//! worktree is the fix, and it is cheap next to the cluster it replaces.
 //!
-//! Two members of the tier have no host process yet. `restate-server`
-//! and `workflows-service` are ENG-130; `OpenObserve` and `ClamAV` are
-//! ENG-131. Both gaps are declared in [`DEFERRED`] rather than dropped
-//! from the readiness gate — see [`super::worktree_env`]'s gate table
-//! and the test that forces every gated port to be either supervised
-//! here or attributed to the issue that will supervise it.
+//! `OpenObserve` and `ClamAV` remain deferred to ENG-131. That gap is
+//! declared in [`DEFERRED`] rather than dropped from the readiness gate —
+//! see [`super::worktree_env`]'s gate table and the test that forces every
+//! gated port to be either supervised here or attributed to the issue that
+//! will supervise it.
 
 mod garage;
 mod preflight;
 mod rauthy;
 mod registry;
+mod restate;
 mod supervisor;
 mod surreal;
+mod worker;
 
 use std::path::{Path, PathBuf};
 
@@ -54,6 +56,8 @@ use super::KindConfig;
 const RAUTHY_LABEL: &str = "rauthy";
 const GARAGE_LABEL: &str = "garage";
 const SURREAL_LABEL: &str = "surreal";
+const RESTATE_LABEL: &str = "restate-server";
+const WORKFLOWS_LABEL: &str = "workflows-service";
 
 /// Ports the tier binds that nothing outside it connects to.
 ///
@@ -64,13 +68,26 @@ const GARAGE_RPC_PORT_BASE: u16 = 21_300;
 const GARAGE_ADMIN_PORT_BASE: u16 = 21_400;
 const RAUTHY_RAFT_PORT_BASE: u16 = 21_500;
 const RAUTHY_API_PORT_BASE: u16 = 21_600;
+const RESTATE_FABRIC_PORT_BASE: u16 = 21_700;
+const WORKFLOWS_SERVICE_LISTEN_PORT_BASE: u16 = 21_800;
+const WORKFLOWS_SERVICE_HEALTH_PORT_BASE: u16 = 21_900;
+
+fn is_worktree_process(record: &supervisor::Started) -> bool {
+    matches!(record.label.as_str(), RESTATE_LABEL | WORKFLOWS_LABEL)
+}
 
 /// Readiness-gate members this lane starts and health-gates.
 ///
 /// Spelled exactly as [`super::worktree_env`]'s gate table spells them —
 /// the two lists are compared by a test, so a typo here is a failing
 /// build rather than a port that silently answers for nothing.
-pub(super) const SUPERVISED: &[&str] = &["Rauthy", "Garage", "SurrealDB"];
+pub(super) const SUPERVISED: &[&str] = &[
+    "Rauthy",
+    "Garage",
+    "SurrealDB",
+    "Restate ingress",
+    "Restate admin",
+];
 
 /// Readiness-gate members this lane has no host process for yet, and the
 /// issue that gives each one.
@@ -84,8 +101,6 @@ pub(super) const SUPERVISED: &[&str] = &["Rauthy", "Garage", "SurrealDB"];
 pub(super) const DEFERRED: &[(&str, &str)] = &[
     ("KIND ingress HTTP", "ENG-132"),
     ("KIND ingress HTTPS", "ENG-132"),
-    ("Restate ingress", "ENG-130"),
-    ("Restate admin", "ENG-130"),
     ("OpenObserve", "ENG-131"),
     ("OpenObserve OTLP", "ENG-131"),
     ("ClamAV", "ENG-131"),
@@ -121,6 +136,40 @@ pub(super) fn database_name(root: &Path, slug: &str) -> String {
     format!("navigator_{}_{}", slug.replace('-', "_"), fingerprint(root))
 }
 
+pub(super) fn restate_fabric_port(slot: u16) -> u16 {
+    RESTATE_FABRIC_PORT_BASE + slot
+}
+
+pub(super) fn worker_listen_port(slot: u16) -> u16 {
+    worker::ports(slot).listen
+}
+
+pub(super) fn worker_health_port(slot: u16) -> u16 {
+    worker::ports(slot).health
+}
+
+pub(super) fn append_environment(body: &mut String, slot: u16) {
+    use std::fmt::Write as _;
+
+    let ports = worker::ports(slot);
+    let _ = writeln!(body, "WORKFLOWS_SERVICE_LISTEN=127.0.0.1:{}", ports.listen);
+    let _ = writeln!(
+        body,
+        "WORKFLOWS_SERVICE_HEALTH_LISTEN=127.0.0.1:{}",
+        ports.health
+    );
+}
+
+pub(super) fn claimed_slots(root: &Path) -> Result<std::collections::BTreeSet<u16>> {
+    let state = loaded(&registry::path())?;
+    Ok(state
+        .claims
+        .values()
+        .filter(|claim| claim.root != root)
+        .map(|claim| claim.slot)
+        .collect())
+}
+
 fn fingerprint(root: &Path) -> String {
     let mut hash = 0x811c_9dc5_u32;
     for byte in root.display().to_string().bytes() {
@@ -147,6 +196,12 @@ fn apply_environment(claim: &registry::NativeClaim) {
     }
 }
 
+fn remove_worktree_process_state(root: &Path) {
+    let _ = std::fs::remove_file(supervisor::ledger_path(root));
+    let _ = std::fs::remove_dir_all(root.join(".devx/native"));
+    let _ = std::fs::remove_dir_all(root.join(".devx/restate"));
+}
+
 pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig, database: &str) -> Result<()> {
     preflight::ensure(std::env::consts::OS)?;
     let registry_path = registry::path();
@@ -154,7 +209,7 @@ pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig, database: &str) -> Re
     let mut state = loaded(&registry_path)?;
     let buckets = garage::bucket_names(database);
     registry::ensure_tenant_available(&state, root, database, &buckets)?;
-    let services = [
+    let shared_services = [
         surreal::service(&shared_root, cfg.surreal_port)?,
         garage::service(
             &shared_root,
@@ -170,8 +225,31 @@ pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig, database: &str) -> Re
         )?,
     ];
     let registered: Vec<_> = state.services.values().cloned().collect();
-    let records = supervisor::ensure_all_with_existing(&shared_root, &services, &registered)?;
-    state.services = records
+    let shared_records =
+        supervisor::ensure_all_with_existing(&shared_root, &shared_services, &registered)?;
+    let previous_worktree_processes = state
+        .claims
+        .get(&registry::key(root))
+        .map(|claim| claim.processes.clone())
+        .unwrap_or_default();
+    let restate_service = restate::service(
+        root,
+        cfg.restate_ingress_port,
+        cfg.restate_admin_port,
+        restate_fabric_port(slot),
+    )?;
+    let restate_record = supervisor::ensure_all_with_existing(
+        root,
+        &[restate_service],
+        &previous_worktree_processes,
+    )?;
+    super::wait_for_tcp("127.0.0.1", cfg.restate_admin_port)
+        .context("the native Restate admin listener must be reachable")?;
+    super::wait_for_tcp("127.0.0.1", restate_fabric_port(slot))
+        .context("the native Restate fabric listener must be reachable")?;
+    let mut records = shared_records.clone();
+    records.extend(restate_record);
+    state.services = shared_records
         .iter()
         .map(|record| (record.label.clone(), record.clone()))
         .collect();
@@ -197,6 +275,61 @@ pub(super) fn up(root: &Path, slot: u16, cfg: &KindConfig, database: &str) -> Re
         .context("native claim disappeared after registration")?;
     apply_environment(claim);
     Ok(())
+}
+
+/// Build, start, and register this worktree's worker after `.devx/env` exists.
+/// Registration goes through the same admin API machinery as cloud re-register,
+/// but targets this claim's private Restate admin and worker ports.
+pub(super) fn start_workflows(root: &Path, slot: u16, admin_port: u16) -> Result<()> {
+    let binary = worker::build(root)?;
+    let path = registry::path();
+    let mut state = loaded(&path)?;
+    let previous = state
+        .claims
+        .get(&registry::key(root))
+        .map(|claim| {
+            claim
+                .processes
+                .iter()
+                .filter(|record| is_worktree_process(record))
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let service = worker::service(root, slot, binary);
+    let record = supervisor::ensure_all_with_existing(root, &[service], &previous)?;
+    let record = record.into_iter().next().context("worker record missing")?;
+    let mut ledger = previous;
+    ledger.retain(|existing| existing.label != WORKFLOWS_LABEL);
+    ledger.push(record.clone());
+    supervisor::write_ledger(root, &ledger)?;
+    let claim = state
+        .claims
+        .get_mut(&registry::key(root))
+        .context("native worktree has no claim for workflows-service")?;
+    claim
+        .processes
+        .retain(|existing| existing.label != WORKFLOWS_LABEL);
+    claim.processes.push(record);
+    registry::save(&path, &state)?;
+    let ports = worker::ports(slot);
+    super::wait_for_tcp("127.0.0.1", ports.health)
+        .context("the native workflows-service health listener must be reachable")?;
+    super::restate_register_local(admin_port, ports.listen)
+}
+
+pub(super) fn reload_workflows(root: &Path, slot: u16, admin_port: u16) -> Result<()> {
+    let path = registry::path();
+    let state = loaded(&path)?;
+    if let Some(record) = state.claims.get(&registry::key(root)).and_then(|claim| {
+        claim
+            .processes
+            .iter()
+            .find(|record| record.label == WORKFLOWS_LABEL)
+    }) {
+        supervisor::stop(record);
+    }
+    start_workflows(root, slot, admin_port)
 }
 
 pub(super) fn restore_environment(root: &Path) -> Result<()> {
@@ -229,6 +362,11 @@ pub(super) fn down(root: &Path, cfg: &KindConfig) -> Result<()> {
     };
     garage::remove_tenant(&shared_root, &tenant).context("remove native Garage tenant")?;
     surreal::remove_database(cfg, &claim.database)?;
+    for process in &claim.processes {
+        if is_worktree_process(process) {
+            supervisor::stop(process);
+        }
+    }
     let Some((_, final_claim, services)) = registry::release(&mut state, root) else {
         return Ok(());
     };
@@ -239,6 +377,7 @@ pub(super) fn down(root: &Path, cfg: &KindConfig) -> Result<()> {
         }
         let _ = std::fs::remove_dir_all(&shared_root);
     }
+    remove_worktree_process_state(root);
     Ok(())
 }
 
@@ -283,12 +422,18 @@ pub(super) fn apply_sweep(
         let Some((claim, _, _)) = registry::release(&mut state, &orphan.claim.root) else {
             continue;
         };
+        for process in &claim.processes {
+            if is_worktree_process(process) {
+                supervisor::stop(process);
+            }
+        }
         let tenant = garage::Tenant {
             buckets: claim.buckets.clone(),
             env: claim.garage_env.clone(),
         };
         garage::remove_tenant(&shared_root, &tenant)?;
         surreal::remove_database(cfg, &claim.database)?;
+        remove_worktree_process_state(&claim.root);
     }
     if state.claims.is_empty() {
         for service in &services {
@@ -301,7 +446,7 @@ pub(super) fn apply_sweep(
 }
 
 /// `status` lines for the processes this worktree started.
-pub(super) fn status_lines(_root: &Path) -> Vec<String> {
+pub(super) fn status_lines(root: &Path) -> Vec<String> {
     let state = match registry::load(&registry::path()) {
         registry::Load::Loaded(value) => value,
         registry::Load::Absent => return Vec::new(),
@@ -309,9 +454,15 @@ pub(super) fn status_lines(_root: &Path) -> Vec<String> {
             return vec![format!("  native registry: unreadable ({error})")]
         }
     };
-    state
-        .services
-        .into_values()
+    let claim_processes = state
+        .claims
+        .get(&registry::key(root))
+        .map(|claim| claim.processes.clone())
+        .unwrap_or_default();
+    let mut records = state.services.into_values().collect::<Vec<_>>();
+    records.extend(claim_processes.into_iter().filter(is_worktree_process));
+    records
+        .into_iter()
         .map(|record| {
             let live = supervisor::is_live(&record);
             let label = record.label;
@@ -344,8 +495,10 @@ pub(super) fn deferred_lines() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        database_name, deferred_lines, garage, registry, DEFERRED, GARAGE_ADMIN_PORT_BASE,
-        GARAGE_RPC_PORT_BASE, RAUTHY_API_PORT_BASE, RAUTHY_RAFT_PORT_BASE, SUPERVISED,
+        database_name, deferred_lines, garage, registry, remove_worktree_process_state, restate,
+        supervisor, worker, DEFERRED, GARAGE_ADMIN_PORT_BASE, GARAGE_RPC_PORT_BASE,
+        RAUTHY_API_PORT_BASE, RAUTHY_RAFT_PORT_BASE, RESTATE_FABRIC_PORT_BASE, SUPERVISED,
+        WORKFLOWS_SERVICE_HEALTH_PORT_BASE, WORKFLOWS_SERVICE_LISTEN_PORT_BASE,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::Path;
@@ -400,6 +553,9 @@ mod tests {
             GARAGE_ADMIN_PORT_BASE,
             RAUTHY_RAFT_PORT_BASE,
             RAUTHY_API_PORT_BASE,
+            RESTATE_FABRIC_PORT_BASE,
+            WORKFLOWS_SERVICE_LISTEN_PORT_BASE,
+            WORKFLOWS_SERVICE_HEALTH_PORT_BASE,
         ] {
             assert!(base >= 21_300, "{base} overlaps the slot table");
         }
@@ -415,9 +571,12 @@ mod tests {
             GARAGE_ADMIN_PORT_BASE,
             RAUTHY_RAFT_PORT_BASE,
             RAUTHY_API_PORT_BASE,
+            RESTATE_FABRIC_PORT_BASE,
+            WORKFLOWS_SERVICE_LISTEN_PORT_BASE,
+            WORKFLOWS_SERVICE_HEALTH_PORT_BASE,
         ]);
 
-        assert_eq!(bases.len(), 4);
+        assert_eq!(bases.len(), 7);
         let ordered: Vec<u16> = bases.into_iter().collect();
         for pair in ordered.windows(2) {
             assert!(
@@ -463,5 +622,38 @@ mod tests {
             assert!(printed.contains(member), "{printed}");
             assert!(printed.contains(issue), "{printed}");
         }
+    }
+
+    #[test]
+    fn restate_recipe_is_tcp_only_and_tuned_for_one_partition() {
+        let args = restate::start_args(std::path::Path::new("/tmp/native"));
+        assert!(args.windows(2).any(|pair| pair == ["--listen-mode", "tcp"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--default-num-partitions", "1"]));
+    }
+
+    #[test]
+    fn worker_ports_are_distinct_for_two_worktrees() {
+        let first = worker::ports(3);
+        let second = worker::ports(4);
+        assert_ne!(first, second);
+        assert_ne!(first.listen, first.health);
+        assert_ne!(second.listen, second.health);
+    }
+
+    #[test]
+    fn private_process_state_is_removed_without_touching_shared_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        std::fs::create_dir_all(root.join(".devx/native/workflows-service")).unwrap();
+        std::fs::create_dir_all(root.join(".devx/restate/data")).unwrap();
+        std::fs::write(supervisor::ledger_path(root), "[]").unwrap();
+
+        remove_worktree_process_state(root);
+
+        assert!(!supervisor::ledger_path(root).exists());
+        assert!(!root.join(".devx/native").exists());
+        assert!(!root.join(".devx/restate").exists());
     }
 }

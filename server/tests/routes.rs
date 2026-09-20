@@ -621,6 +621,7 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         billing_provider: std::sync::Arc::new(portal::billing::StubBillingProvider::new()),
         contract_reviewer: std::sync::Arc::new(portal::contract_review::StubContractReviewer),
         integration_providers: std::sync::Arc::new(portal::integrations::UnconfiguredIntegrations),
+        runtime_kms: std::sync::Arc::new(cloud::NoRuntimeKms),
         esignature_webhook_secret: None,
         esignature_hmac_key: None,
         email: std::sync::Arc::new(portal::email::CapturingEmail::new()),

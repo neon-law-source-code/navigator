@@ -207,6 +207,27 @@ impl IntegrationProviders for FirmIntegrations {
     }
 }
 
+/// Build the runtime KMS client from the environment, or the fail-closed
+/// [`cloud::NoRuntimeKms`] arm when no dedicated key is configured or no
+/// workload-identity credential resolves. Shared by [`from_env`] (the
+/// resolver) and the Firm settings door (`portal::admin`'s
+/// create/replace/revoke handlers), which needs the same KMS handle without
+/// also requiring a Notion database id.
+pub async fn runtime_kms_from_env() -> Arc<dyn cloud::RuntimeKms> {
+    let Ok(config) = cloud::GoogleKmsConfig::from_env() else {
+        tracing::info!("runtime KMS: unconfigured (NAVIGATOR_RUNTIME_KMS_KEY unset)");
+        return Arc::new(cloud::NoRuntimeKms);
+    };
+    let Ok(tokens) = cloud::AdcTokenSource::new().await else {
+        tracing::warn!(
+            "runtime KMS: unconfigured (a runtime KMS key is set but no \
+             application-default credential resolved)"
+        );
+        return Arc::new(cloud::NoRuntimeKms);
+    };
+    Arc::new(cloud::GoogleKms::new(config, Arc::new(tokens)))
+}
+
 /// Select the resolver from the environment.
 ///
 /// Both coordinates are required together. A runtime KMS key with no parent

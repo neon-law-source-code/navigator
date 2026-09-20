@@ -393,6 +393,15 @@ pub struct AppState {
     /// [`integrations::UnconfiguredIntegrations`] is the default and refuses,
     /// which is the correct answer for a checkout with no provider account.
     pub integration_providers: Arc<dyn integrations::IntegrationProviders>,
+    /// The runtime KMS handle used to envelope-encrypt a Firm's own
+    /// integration secrets (ENG-491) — the same client
+    /// [`integrations::FirmIntegrations`] holds privately for resolving one,
+    /// exposed here so the write-only settings door
+    /// (`admin::firm_secrets_put`/`firm_secrets_revoke`) can call
+    /// `store::firm_secrets::put`/`revoke` without a second KMS client.
+    /// [`cloud::NoRuntimeKms`] is the default and refuses, matching
+    /// [`Self::integration_providers`]'s unconfigured default.
+    pub runtime_kms: Arc<dyn cloud::RuntimeKms>,
     /// Pluggable billing provider. The stub is the default; the real
     /// `XeroBillingProvider` drops in behind the same trait when the
     /// `XERO_*` env is configured. No `web` handler raises an invoice
@@ -867,6 +876,7 @@ pub fn bootstrap(
         sessions: state.sessions.clone(),
         secure_cookies: secure_cookies(&state),
         attachment_scanner: state.attachment_scanner.clone(),
+        runtime_kms: state.runtime_kms.clone(),
     };
     // #956 Phase 4: the client self-serve intake page renders through Dioxus at
     // /app/projects/{project_code}/intake/{notation_id}. Its pre-layer resolves the

@@ -70,6 +70,7 @@ async fn harness() -> Harness {
         sessions: portal::SessionStore::new(portal::test_support::TEST_SESSION_KEY),
         secure_cookies: false,
         attachment_scanner: Arc::new(portal::attachment_scanner::FakeAttachmentScanner::clean()),
+        runtime_kms: Arc::new(cloud::NoRuntimeKms),
     };
     let state = AppState {
         storage: storage.clone(),

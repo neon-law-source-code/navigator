@@ -145,6 +145,12 @@ pub struct AdminState {
     /// Malware scanner every brand logo/font upload is checked against
     /// (ENG-586) — same `Arc` as `AppState.attachment_scanner`.
     pub attachment_scanner: Arc<dyn crate::attachment_scanner::AttachmentScanner>,
+    /// Runtime KMS handle for Firm integration-secret envelope encryption
+    /// (ENG-491) — same `Arc` as `AppState.runtime_kms`. Used only by the
+    /// `firm_secrets_*` doors below; every other handler on this state goes
+    /// through `store::firm_secrets::resolve_project_credential` indirectly,
+    /// via `AppState.integration_providers`, and never touches this field.
+    pub runtime_kms: Arc<dyn cloud::RuntimeKms>,
 }
 
 impl FromRef<AdminState> for store::surreal::SurrealDb {
@@ -592,6 +598,14 @@ fn register_firm_matter_routes(r: Router<AdminState>, prefix: &str) -> Router<Ad
 /// entities, playbooks, schedules, and the people directory export.
 fn register_firm_admin_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminState> {
     r.route(&format!("{prefix}/firms/{{id}}/edit"), post(firms_update))
+        .route(
+            &format!("{prefix}/firms/{{id}}/secrets"),
+            post(firm_secrets_put),
+        )
+        .route(
+            &format!("{prefix}/firms/{{id}}/secrets/revoke"),
+            post(firm_secrets_revoke),
+        )
         .route(&format!("{prefix}/people.csv"), get(people_csv))
         .route(&format!("{prefix}/entities"), post(entities_create))
         .route(&format!("{prefix}/entities.csv"), get(entities_csv))
@@ -2318,6 +2332,137 @@ async fn firms_update(
             let mut query = String::new();
             push_query(&mut query, "error", &e.user_message());
             Redirect::to(&format!("/app/admin/firms/{id}/edit?{query}")).into_response()
+        }
+    }
+}
+
+// ---- Firm integration secrets (ENG-491) ----
+
+fn back_to_firm_show(id: Uuid, query: &str) -> Response {
+    if query.is_empty() {
+        Redirect::to(&format!("/app/admin/firms/{id}")).into_response()
+    } else {
+        Redirect::to(&format!("/app/admin/firms/{id}?{query}")).into_response()
+    }
+}
+
+/// Map a form-submitted `kind` slug to its typed pair, deriving `provider`
+/// from `kind` rather than trusting a second submitted field — a form can
+/// only ever offer a `(provider, kind)` pair that already agrees, so there is
+/// nothing for a mismatched pair to mean except a malformed request.
+fn parse_secret_kind(
+    kind: &str,
+) -> Option<(
+    store::firm_secrets::IntegrationProvider,
+    store::firm_secrets::IntegrationSecretKind,
+)> {
+    let kind = store::firm_secrets::parse_kind(kind)?;
+    Some((kind.provider(), kind))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct FirmSecretPutInput {
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    value: String,
+}
+
+/// `POST /app/admin/firms/{id}/secrets` — create or replace (rotate) one
+/// typed provider credential. `store::firm_secrets::put` is the only writer
+/// and re-authorizes `ManageIntegrationSecrets` itself (the Firm's own Admin
+/// DRI, never Owner), so this handler adds no authorization of its own — it
+/// only maps the closed secret-kind vocabulary and reports the outcome. Every
+/// path back to the caller is a redirect to the Firm show page, which renders
+/// metadata only: the submitted value is never echoed, on success or on
+/// refusal.
+pub(crate) async fn firm_secrets_put(
+    State(state): State<AdminState>,
+    Path(id): Path<Uuid>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<FirmSecretPutInput>,
+) -> Response {
+    let Some(Extension(session_data)) = session else {
+        return not_found_response();
+    };
+    let Some((provider, kind)) = parse_secret_kind(&input.kind) else {
+        let mut query = String::new();
+        push_query(&mut query, "secret_error", "Unknown secret kind.");
+        return back_to_firm_show(id, &query);
+    };
+    match store::firm_secrets::put(
+        &state.surreal,
+        store::firm_secrets::SecretPutRequest {
+            actor_role: session_data.role,
+            actor_person_id: session_data.person_id,
+            firm_id: id,
+            provider,
+            kind,
+            value: &input.value,
+        },
+        state.runtime_kms.as_ref(),
+    )
+    .await
+    {
+        Ok(saved) => {
+            let mut query = String::new();
+            push_query(&mut query, "secret_saved", saved.kind.as_str());
+            back_to_firm_show(id, &query)
+        }
+        Err(store::firm_secrets::SecretStoreError::NotAuthorized) => not_found_response(),
+        Err(error) => {
+            let mut query = String::new();
+            push_query(&mut query, "secret_error", &error.to_string());
+            back_to_firm_show(id, &query)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct FirmSecretRevokeInput {
+    #[serde(default)]
+    kind: String,
+}
+
+/// `POST /app/admin/firms/{id}/secrets/revoke` — revoke the current version.
+/// Navigator stops offering the credential to a Project's provider client on
+/// the very next call (`portal::integrations::FirmIntegrations` never caches
+/// one); it does not call the provider to revoke access there, which the
+/// settings view states.
+pub(crate) async fn firm_secrets_revoke(
+    State(state): State<AdminState>,
+    Path(id): Path<Uuid>,
+    session: Option<Extension<SessionData>>,
+    Form(input): Form<FirmSecretRevokeInput>,
+) -> Response {
+    let Some(Extension(session_data)) = session else {
+        return not_found_response();
+    };
+    let Some((provider, kind)) = parse_secret_kind(&input.kind) else {
+        let mut query = String::new();
+        push_query(&mut query, "secret_error", "Unknown secret kind.");
+        return back_to_firm_show(id, &query);
+    };
+    match store::firm_secrets::revoke(
+        &state.surreal,
+        session_data.role,
+        session_data.person_id,
+        id,
+        provider,
+        kind,
+    )
+    .await
+    {
+        Ok(()) => {
+            let mut query = String::new();
+            push_query(&mut query, "secret_revoked", kind.as_str());
+            back_to_firm_show(id, &query)
+        }
+        Err(store::firm_secrets::SecretStoreError::NotAuthorized) => not_found_response(),
+        Err(error) => {
+            let mut query = String::new();
+            push_query(&mut query, "secret_error", &error.to_string());
+            back_to_firm_show(id, &query)
         }
     }
 }

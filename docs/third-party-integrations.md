@@ -47,10 +47,12 @@ own set from its own namespaced Kubernetes Secret; no two deployments share one.
 ## Firm-owned integration credentials
 
 Notion and other Firm integrations are not deployment-wide credentials. A Firm's Admin DRI writes a typed provider
-secret through the Navigator secret boundary; the value is envelope-encrypted with the dedicated runtime KMS key and is
-never returned in JSON, logs, traces, or durable payloads. The resolver selects the credential from the Project's
-`firm_id`, so a Project cannot fall back to another Firm or to a deployment environment variable. Owner governance may
-inspect metadata and appoint the DRI, but Owner is not a secret writer.
+secret at `/app/admin/firms/{id}` (the **Integration secrets** section — create, replace/rotate, and revoke; a value is
+never shown again after it is submitted) through the Navigator secret boundary (`store::firm_secrets`); the value is
+envelope-encrypted with the dedicated runtime KMS key and is never returned in JSON, logs, traces, or durable payloads.
+The resolver selects the credential from the Project's `firm_id`, so a Project cannot fall back to another Firm or to a
+deployment environment variable. Owner may view the same page's metadata (kind, status, version, last-updated) and
+appoints the DRI, but Owner is not a secret writer — `ManageIntegrationSecrets` admits only the Firm's own Admin DRI.
 
 The runtime KMS coordinate is `NAVIGATOR_RUNTIME_KMS_KEY`. It must name a dedicated runtime key, never the deployment
 configuration key. Staging manifests and operator documentation may describe the workload permission; this repository

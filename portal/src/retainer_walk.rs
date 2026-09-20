@@ -4093,6 +4093,7 @@ Sign: {{client.signature}}";
             sessions: app.sessions,
             secure_cookies: false,
             attachment_scanner: app.attachment_scanner,
+            runtime_kms: app.runtime_kms,
         };
         (state, surreal)
     }

@@ -47,6 +47,7 @@ async fn admin_state(surreal: store::surreal::SurrealDb) -> portal::admin::Admin
         sessions: portal::SessionStore::new("test-session-key-not-for-production"),
         secure_cookies: false,
         attachment_scanner: Arc::new(portal::attachment_scanner::FakeAttachmentScanner::clean()),
+        runtime_kms: Arc::new(cloud::NoRuntimeKms),
     }
 }
 

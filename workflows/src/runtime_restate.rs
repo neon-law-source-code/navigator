@@ -106,10 +106,21 @@ impl RestateRuntime {
     }
 
     fn authed(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match &self.auth_token {
+        let mut req = match &self.auth_token {
             Some(token) => req.bearer_auth(token),
             None => req,
+        };
+        // Every notation operation shares the caller's trace, including reads
+        // whose Restate contract forbids a body and Content-Type.
+        for (name, value) in telemetry::current_trace_context_headers() {
+            if let (Ok(name), Ok(value)) = (
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+                reqwest::header::HeaderValue::from_str(&value),
+            ) {
+                req = req.header(name, value);
+            }
         }
+        req
     }
 
     fn handler_url(&self, kind: MachineKind, notation_id: Uuid, handler: &str) -> String {
@@ -375,6 +386,70 @@ END: {}
 
     fn questionnaire() -> QuestionnaireSpec {
         QuestionnaireSpec::from_yaml(QUESTIONNAIRE).unwrap()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn runtime_propagates_current_trace_on_writes_and_bodyless_reads() {
+        use opentelemetry::trace::TracerProvider as _;
+        use tracing::Instrument as _;
+        use tracing_subscriber::prelude::*;
+
+        opentelemetry::global::set_text_map_propagator(
+            opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+        );
+        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder().build();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_opentelemetry::layer().with_tracer(provider.tracer("runtime-propagation-test")),
+        );
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let broker = MockServer::start().await;
+        let runtime = RestateRuntime::new(broker.uri(), "notation")
+            .with_auth_token(Some("synthetic-token".into()));
+        let span = tracing::info_span!("http.request");
+        telemetry::set_span_parent(
+            &span,
+            Some("00-0102030405060708090a0b0c0d0e0f10-1112131415161718-01"),
+            None,
+        );
+        async {
+            let expected = telemetry::current_trace_context_headers()
+                .into_iter()
+                .find(|(name, _)| name == "traceparent")
+                .expect("active trace")
+                .1;
+            for handler in [
+                "workflow_start",
+                "workflow_signal",
+                "workflow_current_state",
+            ] {
+                Mock::given(method("POST"))
+                    .and(path(format!("/notation/{N7_PATH}/{handler}")))
+                    .and(header("traceparent", expected.as_str()))
+                    .and(header("authorization", "Bearer synthetic-token"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                        "next_state": "END", "state": "END"
+                    })))
+                    .expect(1)
+                    .mount(&broker)
+                    .await;
+            }
+            StateMachineRuntime::start(&runtime, MachineKind::Workflow, N7, &spec())
+                .await
+                .expect("start response");
+            StateMachineRuntime::signal(&runtime, MachineKind::Workflow, N7, "approve", None)
+                .await
+                .expect("signal response");
+            StateMachineRuntime::current_state(&runtime, MachineKind::Workflow, N7)
+                .await
+                .expect("state response");
+            let requests = broker.received_requests().await.expect("captured requests");
+            assert_eq!(requests.len(), 3);
+            assert!(requests[2].body.is_empty());
+            assert!(!requests[2].headers.contains_key("content-type"));
+            assert!(requests.iter().all(|r| !r.headers.contains_key("baggage")));
+        }
+        .instrument(span)
+        .await;
     }
 
     #[test]

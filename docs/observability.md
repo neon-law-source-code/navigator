@@ -54,6 +54,16 @@ so a Project code or person id in the URL never rides a span attribute), and `ht
 the handler answers). All three are on the collector's allow-list already, so a Dash0 span query grouped by
 `http.response.status_code` works without a collector change.
 
+The HTTP request span extracts W3C `traceparent` and `tracestate` headers. Missing or invalid context starts a fresh
+trace. The notation runtime injects the current context on starts, signals, and bodyless reads; the worker attaches its
+handler span to that parent. `workflows::start_workflow` uses the same propagation helpers for scheduled and
+event-driven workflow submissions. No baggage, request body, or resolved URL is propagated as trace metadata.
+
+Propagation connects the application spans; collector sampling still governs which spans reach the backend. The example
+collector has two replicas with independent tail samplers. Complete cross-service sampling requires every span of a
+trace to reach the same sampler, using trace-ID routing or another consistent sampling design. See the [OpenTelemetry
+collector deployment guidance](https://opentelemetry.io/docs/collector/deploy/other/agent-to-gateway/).
+
 `store::surreal::ping` — the readiness probe's one query — runs on its own `tokio::spawn`ed task rather than inline
 (ENG-709). `readyz`'s caller is a kubelet HTTP probe with a short timeout; when it fires before the query answers,
 kubelet drops the connection and axum drops the handler future that was awaiting `ping`. Awaited inline, that drop would
@@ -134,7 +144,7 @@ retention and access policy is a separate deployment control, not the privacy bo
 The `examples/deploy` process path uses the plain collector contract: binaries send OTLP/gRPC to the in-cluster
 collector Service without OpenObserve credentials. The collector runs the existing `memory_limiter`, resource detection,
 fail-closed `redaction`, and `batch` processors before the exporters. Traces also retain tail sampling. Dash0 is an
-optional, staging-only integration declared by a nonblank `DASH0_ENDPOINT` in the selected deployment row's `[env]`
+optional per-deployment integration declared by a nonblank `DASH0_ENDPOINT` in the selected deployment row's `[env]`
 coordinates. A row without that endpoint need not carry `DASH0_DATASET` or `DASH0_TOKEN`; the deployment plan reports
 the token as `integration not declared by this deployment` and `ops ship` removes it from that row's
 `SecretProviderClass`. When the endpoint is present, `DASH0_DATASET` must also be a nonblank coordinate and
@@ -151,11 +161,11 @@ The collector's own metrics (`otelcol_exporter_sent_*`, `otelcol_exporter_send_f
 Managed Prometheus's separate external scrape of the same port) only. `exporter` is on the allow-list for this reason —
 it names a collector component (e.g. `otlp/dash0`), never client data.
 
-The collector exporter uses OTLP/gRPC with `Authorization: Bearer …` and a `Dash0-Dataset` header. The transport and
-header names are inferred from the repository's OTLP/gRPC seam and the implementation brief; confirm the account's exact
-endpoint and header contract before rollout. The account is time-boxed, so the operator must choose the environment and
-complete the configuration before relying on a live export. The existing staging direct OpenObserve contract remains
-available and unchanged.
+The collector exporter uses OTLP/gRPC with `Authorization: Bearer …` and a `Dash0-Dataset` header, following the [Dash0
+exporter contract](https://www.dash0.com/guides/otlp-grpc-exporter). Select the account's regional endpoint and
+deployment-specific dataset and token before rollout. Verify the collector's running configuration and backend receipt
+after applying changes; application image rollout alone does not apply the collector manifest. Direct OpenObserve
+remains a separate supported export contract.
 
 The Iceberg archive ([iceberg-archive guide](iceberg-archive.md)) remains distinct. Its nightly `Archives` workflow
 snapshots SurrealDB tables to Parquet on GCS for BigQuery external-table analysis; it is not an operational telemetry

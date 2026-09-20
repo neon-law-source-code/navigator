@@ -143,9 +143,13 @@ internal static class WordPackageExporter
 
     private static string? EmbeddedAnchor(string partUri, Paragraph paragraph)
     {
-        var id = paragraph.GetAttributes()
-            .FirstOrDefault(attribute => attribute.LocalName == "paraId")?.Value;
-        return id is null ? null : $"{partUri}:paragraph:{id}";
+        var paraId = paragraph.GetAttributes()
+            .FirstOrDefault(attribute => attribute.LocalName == "paraId");
+        if (string.IsNullOrEmpty(paraId.Value))
+        {
+            return null;
+        }
+        return $"{partUri}:paragraph:{paraId.Value}";
     }
 
     private static bool ReplaceSimpleParagraph(Paragraph paragraph, ExportChange change, uint revisionId)

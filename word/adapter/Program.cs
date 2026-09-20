@@ -204,7 +204,7 @@ internal static class WordPackageVerifier
             return error is null
                 ? new VerifyResponse(Protocol.Version, true, null)
                 : new VerifyResponse(Protocol.Version, false,
-                    Diagnostic.Rejected("open_xml_validation", error.Path?.ToString() ?? "package"));
+                    Diagnostic.Rejected("open_xml_validation", error.Description ?? "package"));
         }
         catch (FormatException)
         {

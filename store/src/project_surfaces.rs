@@ -702,6 +702,7 @@ mod tests {
             git_initialized_at: git_initialized_at.map(str::to_string),
             forge_provisioned_at: forge_provisioned_at.map(str::to_string),
             closed_at: None,
+            closure_reason: None,
             internal_slack_channel_url: None,
             external_slack_channel_url: None,
             internal_slack_channel_id: None,

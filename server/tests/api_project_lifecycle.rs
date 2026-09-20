@@ -10,7 +10,9 @@ use http_body_util::BodyExt;
 use portal::session::SessionData;
 use portal::{AppState, SessionStore};
 use store::persons::Role;
-use store::projects::{transition_project, NewProject, Transition};
+use store::projects::{
+    transition_project, transition_project_with_reason, ClosureReason, NewProject, Transition,
+};
 use store::test_support::{mem_surreal, seed_entity};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -61,9 +63,26 @@ async fn build_fixture() -> Fixture {
             .id,
         );
     }
-    transition_project(&surreal, ids[1], Transition::Close, None)
+    let mut response = surreal
+        .query(
+            "CREATE $asset SET project_id = $project_id, storage_key = 'test', \
+             content_type = 'application/pdf', byte_size = 1, sha256_hex = 'fixture-sha', \
+             kind = 'offboarding', visibility = 'internal', metadata = NONE",
+        )
+        .bind(("asset", store::surreal::record_id("asset", Uuid::now_v7())))
+        .bind(("project_id", store::surreal::record_id("project", ids[1])))
         .await
         .unwrap();
+    let _: Option<serde_json::Value> = response.take(0).unwrap();
+    transition_project_with_reason(
+        &surreal,
+        ids[1],
+        Transition::Close,
+        Some(ClosureReason::PitchDeclined),
+        None,
+    )
+    .await
+    .unwrap();
     transition_project(&surreal, ids[2], Transition::Archive, None)
         .await
         .unwrap();
@@ -117,7 +136,13 @@ async fn admin_reads_every_project_lifecycle_without_matter_content() {
         .collect();
     assert_eq!(
         fields,
-        BTreeSet::from(["code", "status", "closed_at", "source_state"])
+        BTreeSet::from([
+            "code",
+            "status",
+            "closed_at",
+            "closure_reason",
+            "source_state"
+        ])
     );
 
     let by_code = rows
@@ -128,8 +153,10 @@ async fn admin_reads_every_project_lifecycle_without_matter_content() {
     assert!(by_code[&fx.codes[0]]["closed_at"].is_null());
     assert_eq!(by_code[&fx.codes[1]]["status"], "closed");
     assert!(by_code[&fx.codes[1]]["closed_at"].is_string());
+    assert_eq!(by_code[&fx.codes[1]]["closure_reason"], "pitch_declined");
     assert_eq!(by_code[&fx.codes[2]]["status"], "archived");
     assert!(by_code[&fx.codes[2]]["closed_at"].is_string());
+    assert!(by_code[&fx.codes[2]]["closure_reason"].is_null());
 
     // None of the three fixture matters ever recorded a repository, which is
     // a legitimate resting state distinct from a stalled or failed one.

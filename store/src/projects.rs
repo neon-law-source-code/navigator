@@ -68,6 +68,10 @@ pub struct Project {
     pub git_initialized_at: Option<String>,
     pub forge_provisioned_at: Option<String>,
     pub closed_at: Option<String>,
+    /// Why this matter was closed. `None` is retained for rows closed before
+    /// closure reasons were recorded, rather than guessing a reason from
+    /// later lifecycle evidence.
+    pub closure_reason: Option<String>,
     /// The lawyer-only Slack channel for this matter, shown as a button on the
     /// lawyer workbench. Distinct from [`Self::external_slack_channel_url`]
     /// because a channel shared with the client carries different posting
@@ -119,6 +123,7 @@ struct ProjectRow {
     git_initialized_at: Option<String>,
     forge_provisioned_at: Option<String>,
     closed_at: Option<String>,
+    closure_reason: Option<String>,
     internal_slack_channel_url: Option<String>,
     external_slack_channel_url: Option<String>,
     internal_slack_channel_id: Option<String>,
@@ -151,6 +156,7 @@ impl ProjectRow {
             git_initialized_at: self.git_initialized_at,
             forge_provisioned_at: self.forge_provisioned_at,
             closed_at: self.closed_at,
+            closure_reason: self.closure_reason,
             internal_slack_channel_url: self.internal_slack_channel_url,
             external_slack_channel_url: self.external_slack_channel_url,
             internal_slack_channel_id: self.internal_slack_channel_id,
@@ -169,7 +175,7 @@ const PERSON_PROJECT_ROLE_TABLE: &str = "person_project_role";
 const PROJECT_SELECT: &str = "id, code, name, status, brand, entity_id, firm_id, \
                               jurisdiction_id, description, \
                               drive_folder_id, repository_url, git_initialized_at, \
-                              forge_provisioned_at, closed_at, \
+                              forge_provisioned_at, closed_at, closure_reason, \
                               internal_slack_channel_url, external_slack_channel_url, \
                               internal_slack_channel_id, \
                               private_notion_page_url, shared_notion_page_url, \
@@ -1430,13 +1436,16 @@ pub async fn close_for_notation(
     if p.status == "closed" || p.status == "archived" {
         return Ok(Some(project_id));
     }
-    let now = chrono::Utc::now().to_rfc3339();
-    surreal
-        .query("UPDATE $id SET status = 'closed', closed_at = $closed_at, updated_at = $closed_at")
-        .bind(("id", record_id(PROJECT_TABLE, project_id)))
-        .bind(("closed_at", now))
+    let (has_engagement, _) = matter_lifecycle_sets(surreal, std::slice::from_ref(&p))
         .await
-        .and_then(surrealdb::IndexedResults::check)
+        .map_err(|error| error.clone())?;
+    let reason = if has_engagement.contains(&p.id) {
+        ClosureReason::EngagementCompleted
+    } else {
+        ClosureReason::PitchDeclined
+    };
+    transition_project_with_reason(surreal, project_id, Transition::Close, Some(reason), None)
+        .await
         .map_err(|error| error.to_string())?;
     Ok(Some(project_id))
 }
@@ -1469,6 +1478,67 @@ pub enum Transition {
     Archive,
 }
 
+/// The closed vocabulary of reasons for a direct matter close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClosureReason {
+    PitchDeclined,
+    PitchLapsed,
+    PitchWithdrawn,
+    PitchSuperseded,
+    EngagementCompleted,
+    ClientTerminated,
+    FirmWithdrew,
+}
+
+impl ClosureReason {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PitchDeclined => "pitch_declined",
+            Self::PitchLapsed => "pitch_lapsed",
+            Self::PitchWithdrawn => "pitch_withdrawn",
+            Self::PitchSuperseded => "pitch_superseded",
+            Self::EngagementCompleted => "engagement_completed",
+            Self::ClientTerminated => "client_terminated",
+            Self::FirmWithdrew => "firm_withdrew",
+        }
+    }
+
+    #[must_use]
+    pub const fn is_pitch(self) -> bool {
+        matches!(
+            self,
+            Self::PitchDeclined | Self::PitchLapsed | Self::PitchWithdrawn | Self::PitchSuperseded
+        )
+    }
+
+    #[must_use]
+    pub const fn is_active(self) -> bool {
+        matches!(
+            self,
+            Self::EngagementCompleted | Self::ClientTerminated | Self::FirmWithdrew
+        )
+    }
+}
+
+impl std::str::FromStr for ClosureReason {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "pitch_declined" => Ok(Self::PitchDeclined),
+            "pitch_lapsed" => Ok(Self::PitchLapsed),
+            "pitch_withdrawn" => Ok(Self::PitchWithdrawn),
+            "pitch_superseded" => Ok(Self::PitchSuperseded),
+            "engagement_completed" => Ok(Self::EngagementCompleted),
+            "client_terminated" => Ok(Self::ClientTerminated),
+            "firm_withdrew" => Ok(Self::FirmWithdrew),
+            _ => Err(format!("unknown closure reason `{value}`")),
+        }
+    }
+}
+
 impl Transition {
     /// The status this transition lands the matter in.
     #[must_use]
@@ -1497,9 +1567,9 @@ impl Transition {
 /// error, so a double-submitted lawyer form does not churn the row unless it
 /// supplies a different valid effective time.
 ///
-/// This is the direct lawyer path. [`close_for_notation`] remains the
-/// *ceremonial* path — the closing-letter workflow side effect — and is
-/// unchanged.
+/// This is the direct lawyer path. [`close_for_notation`] is the
+/// *ceremonial* path — the closing-letter workflow side effect — and routes
+/// through the same lifecycle validation.
 ///
 /// # Errors
 /// [`ProjectCommandError::NotFound`] when no matter has that id, and
@@ -1510,6 +1580,21 @@ pub async fn transition_project(
     surreal: &SurrealDb,
     id: Uuid,
     transition: Transition,
+    effective_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Project, ProjectCommandError> {
+    transition_project_with_reason(surreal, id, transition, None, effective_at).await
+}
+
+/// Move a matter through its lifecycle with an optional close reason.
+///
+/// `reason` is required for a first close, and its allowed values are checked
+/// against the matter's pre-close lifecycle class. A repeated close never
+/// invents or replaces a reason already stored on the row.
+pub async fn transition_project_with_reason(
+    surreal: &SurrealDb,
+    id: Uuid,
+    transition: Transition,
+    reason: Option<ClosureReason>,
     effective_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Project, ProjectCommandError> {
     let row = find_by_id(surreal, id)
@@ -1548,6 +1633,32 @@ pub async fn transition_project(
         ));
     }
 
+    if transition == Transition::Close && row.status == "open" {
+        let (has_engagement, has_offboarding) =
+            matter_lifecycle_sets(surreal, std::slice::from_ref(&row))
+                .await
+                .map_err(ProjectCommandError::Db)?;
+        let reason = reason.ok_or(ProjectCommandError::Invalid("A close reason is required."))?;
+        if has_engagement.contains(&row.id) {
+            if !reason.is_active() {
+                return Err(ProjectCommandError::Invalid(
+                    "That close reason applies only to a pitch.",
+                ));
+            }
+        } else {
+            if !reason.is_pitch() {
+                return Err(ProjectCommandError::Invalid(
+                    "That close reason applies only to an active matter.",
+                ));
+            }
+            if !has_offboarding.contains(&row.id) {
+                return Err(ProjectCommandError::Invalid(
+                    "A pitch requires an offboarding document before it can be closed.",
+                ));
+            }
+        }
+    }
+
     let existing_close = row.closed_at.clone();
     let closed_at = match transition {
         // Open matters carry no close date at all.
@@ -1562,23 +1673,29 @@ pub async fn transition_project(
                 .unwrap_or_else(|| now.to_rfc3339()),
         ),
     };
+    let closure_reason = match transition {
+        Transition::Reopen => None,
+        Transition::Close if row.status == "open" => reason.map(|value| value.as_str().to_string()),
+        Transition::Archive | Transition::Close => row.closure_reason.clone(),
+    };
     let target = transition.target_status();
 
     // Already there with the requested stamp: nothing to write. Guarded
     // after the terminal check so reopening an archived matter still
     // reports why. A supplied correction is a write only when it differs.
-    if row.status == target && row.closed_at == closed_at {
+    if row.status == target && row.closed_at == closed_at && row.closure_reason == closure_reason {
         return Ok(row);
     }
 
     let mut response = surreal
         .query(format!(
-            "UPDATE $id SET status = $status, closed_at = $closed_at, updated_at = $updated_at \
+            "UPDATE $id SET status = $status, closed_at = $closed_at, closure_reason = $closure_reason, updated_at = $updated_at \
              RETURN {PROJECT_SELECT}"
         ))
         .bind(("id", record_id(PROJECT_TABLE, id)))
         .bind(("status", target.to_string()))
         .bind(("closed_at", closed_at))
+        .bind(("closure_reason", closure_reason))
         .bind(("updated_at", now.to_rfc3339()))
         .await
         .and_then(surrealdb::IndexedResults::check)

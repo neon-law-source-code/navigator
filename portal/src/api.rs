@@ -980,6 +980,7 @@ struct ProjectLifecycleEntry {
     code: String,
     status: String,
     closed_at: Option<String>,
+    closure_reason: Option<String>,
     /// Derived, never a stored column — see
     /// [`store::project_surfaces::SourceState`]. Carries no repository
     /// content: not the URL, not the Drive folder id, only which of six
@@ -1014,6 +1015,7 @@ async fn project_lifecycle_door(
             code: project.code,
             status: project.status,
             closed_at: project.closed_at,
+            closure_reason: project.closure_reason,
         })
         .collect::<Vec<_>>();
     Ok((StatusCode::OK, Json(lifecycle)).into_response())
@@ -1777,6 +1779,7 @@ async fn update_project(
 #[serde(deny_unknown_fields)]
 struct TransitionProjectRequest {
     transition: store::projects::Transition,
+    reason: Option<store::projects::ClosureReason>,
     effective_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -1796,10 +1799,11 @@ async fn transition_matter(
     Path(id): Path<Uuid>,
     JsonOrForm(input): JsonOrForm<TransitionProjectRequest>,
 ) -> Result<Json<store::projects::Project>, ApiError> {
-    let updated = store::projects::transition_project(
+    let updated = store::projects::transition_project_with_reason(
         &state.surreal,
         id,
         input.transition,
+        input.reason,
         input.effective_at,
     )
     .await?;

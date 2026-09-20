@@ -159,7 +159,9 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
     use store::documents::{DocumentIdentity, IngestArgs};
-    use store::projects::{create, transition_project, NewProject, Transition};
+    use store::projects::{
+        create, transition_project_with_reason, ClosureReason, NewProject, Transition,
+    };
     use store::test_support::{mem_surreal, seed_entity};
     use uuid::Uuid;
 
@@ -185,9 +187,30 @@ mod tests {
         )
         .await
         .expect("create project");
-        transition_project(surreal, created.id, Transition::Close, None)
+        let mut response = surreal
+            .query(
+                "CREATE $asset SET project_id = $project_id, storage_key = 'test', \
+                 content_type = 'application/pdf', byte_size = 1, sha256_hex = $sha, \
+                 kind = 'onboarding', visibility = 'internal', metadata = NONE",
+            )
+            .bind(("asset", store::surreal::record_id("asset", Uuid::now_v7())))
+            .bind((
+                "project_id",
+                store::surreal::record_id("project", created.id),
+            ))
+            .bind(("sha", format!("sha-{}", created.id)))
             .await
-            .expect("close project");
+            .expect("onboarding asset");
+        let _: Option<serde_json::Value> = response.take(0).expect("asset result");
+        transition_project_with_reason(
+            surreal,
+            created.id,
+            Transition::Close,
+            Some(ClosureReason::EngagementCompleted),
+            None,
+        )
+        .await
+        .expect("close project");
         (created.id, code)
     }
 

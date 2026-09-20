@@ -687,17 +687,18 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/project-lifecycle": {
           "get": {
             "summary": "Read every matter's lifecycle fields (admin)",
-            "description":
-              "Returns one minimal row per matter with its `code`, `status`, `closed_at`, and \
+              "description":
+              "Returns one minimal row per matter with its `code`, `status`, `closed_at`, `closure_reason`, and \
                derived `source_state`. This is a deployment-wide oversight read, not a \
                participation-scoped matter read, and returns no matter content — no repository \
                URL, no Drive folder id. Authorization: admin-tier only (`owner`/`admin`).",
             "responses": {
               "200": { "description": "The lifecycle rows", "content": { "application/json": {
-                "schema": { "type": "array", "items": { "type": "object", "required": ["code", "status", "closed_at", "source_state"], "properties": {
+                "schema": { "type": "array", "items": { "type": "object", "required": ["code", "status", "closed_at", "closure_reason", "source_state"], "properties": {
                   "code": { "type": "string" },
                   "status": { "type": "string", "enum": ["open", "closed", "archived"] },
                   "closed_at": { "type": ["string", "null"], "format": "date-time" },
+                  "closure_reason": { "type": ["string", "null"], "enum": ["pitch_declined", "pitch_lapsed", "pitch_withdrawn", "pitch_superseded", "engagement_completed", "client_terminated", "firm_withdrew", null] },
                   "source_state": { "type": "string",
                     "enum": ["not_enabled", "pending", "unknown", "attached", "initialized", "failed"],
                     "description": "Derived from repository_url/forge_provisioned_at/git_initialized_at — never a stored column. See docs/glossary.md#project." }
@@ -2984,6 +2985,11 @@ pub fn document_with_base(base: &str) -> Value {
                 "description": "When a close or archive actually took effect. Optional; rejected for \
                                 reopen, in the future, or before matter-open. A supplied valid value \
                                 replaces an existing close stamp so the retention start can be corrected."
+              },
+              "reason": {
+                "type": ["string", "null"],
+                "enum": ["pitch_declined", "pitch_lapsed", "pitch_withdrawn", "pitch_superseded", "engagement_completed", "client_terminated", "firm_withdrew", null],
+                "description": "Required for a first close. Pitch reasons apply only before onboarding; active-matter reasons apply only after onboarding. A pitch also requires an offboarding document."
               }
             },
             "example": {

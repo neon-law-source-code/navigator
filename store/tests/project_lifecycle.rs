@@ -7,7 +7,10 @@
 //! as closed, or the reverse. These tests assert the pair together after
 //! every transition, never `status` alone.
 
-use store::projects::{transition_project, NewProject, Project, ProjectCommandError, Transition};
+use store::projects::{
+    transition_project, transition_project_with_reason, ClosureReason, NewProject, Project,
+    ProjectCommandError, Transition,
+};
 use store::test_support::{mem_surreal, seed_entity};
 use uuid::Uuid;
 
@@ -48,6 +51,120 @@ async fn set_opened_at(surreal: &store::surreal::SurrealDb, id: Uuid, opened_at:
     let _: Option<serde_json::Value> = response.take(0).expect("updated matter");
 }
 
+async fn file_asset(surreal: &store::surreal::SurrealDb, project_id: Uuid, kind: &str) {
+    let mut response = surreal
+        .query(
+            "CREATE $id SET project_id = $project_id, storage_key = $storage_key, \
+             content_type = 'application/pdf', byte_size = 1, sha256_hex = $sha, \
+             kind = $kind, visibility = 'internal', metadata = NONE",
+        )
+        .bind(("id", store::surreal::record_id("asset", Uuid::now_v7())))
+        .bind((
+            "project_id",
+            store::surreal::record_id("project", project_id),
+        ))
+        .bind((
+            "storage_key",
+            format!("projects/{project_id}/documents/test"),
+        ))
+        .bind(("sha", format!("sha-{project_id}")))
+        .bind(("kind", kind.to_string()))
+        .await
+        .expect("asset write");
+    let _: Option<serde_json::Value> = response.take(0).expect("asset result");
+}
+
+async fn close_active(
+    surreal: &store::surreal::SurrealDb,
+    id: Uuid,
+    effective_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Project, ProjectCommandError> {
+    file_asset(surreal, id, "onboarding").await;
+    transition_project_with_reason(
+        surreal,
+        id,
+        Transition::Close,
+        Some(ClosureReason::EngagementCompleted),
+        effective_at,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn close_reasons_follow_the_pre_close_lifecycle_and_pitch_offboarding_gate() {
+    let surreal = mem_surreal().await;
+    let pitch = open_matter(&surreal, "pitch-reason").await;
+
+    assert!(matches!(
+        transition_project_with_reason(&surreal, pitch, Transition::Close, None, None,).await,
+        Err(ProjectCommandError::Invalid(_))
+    ));
+    assert!(matches!(
+        transition_project_with_reason(
+            &surreal,
+            pitch,
+            Transition::Close,
+            Some(ClosureReason::EngagementCompleted),
+            None,
+        )
+        .await,
+        Err(ProjectCommandError::Invalid(_))
+    ));
+
+    file_asset(&surreal, pitch, "offboarding").await;
+    let closed = transition_project_with_reason(
+        &surreal,
+        pitch,
+        Transition::Close,
+        Some(ClosureReason::PitchDeclined),
+        None,
+    )
+    .await
+    .expect("pitch close");
+    assert_eq!(closed.closure_reason.as_deref(), Some("pitch_declined"));
+}
+
+#[tokio::test]
+async fn close_reason_is_exposed_and_reopen_clears_it_without_touching_historical_rows() {
+    let surreal = mem_surreal().await;
+    let id = open_matter(&surreal, "reason-round-trip").await;
+    file_asset(&surreal, id, "onboarding").await;
+
+    let closed = transition_project_with_reason(
+        &surreal,
+        id,
+        Transition::Close,
+        Some(ClosureReason::ClientTerminated),
+        None,
+    )
+    .await
+    .expect("active close");
+    assert_eq!(closed.closure_reason.as_deref(), Some("client_terminated"));
+
+    let reopened = transition_project(&surreal, id, Transition::Reopen, None)
+        .await
+        .expect("reopen");
+    assert!(reopened.closure_reason.is_none());
+
+    let historical = open_matter(&surreal, "historical-close").await;
+    let mut response = surreal
+        .query("UPDATE $id SET status = 'closed', closed_at = '2001-02-03T04:05:06Z'")
+        .bind(("id", store::surreal::record_id("project", historical)))
+        .await
+        .expect("historical write");
+    let _: Option<serde_json::Value> = response.take(0).expect("historical result");
+    let unchanged = transition_project_with_reason(
+        &surreal,
+        historical,
+        Transition::Close,
+        Some(ClosureReason::PitchDeclined),
+        None,
+    )
+    .await
+    .expect("repeat historical close");
+    assert!(unchanged.closure_reason.is_none());
+}
+
 /// The invariant, asserted as a pair: an `open` matter carries no close
 /// date, and a `closed`/`archived` one carries exactly one.
 fn assert_invariant(row: &Project) {
@@ -71,9 +188,7 @@ async fn closing_stamps_the_close_date_that_starts_retention() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "close-me").await;
 
-    let closed = transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close");
+    let closed = close_active(&surreal, id, None).await.expect("close");
     assert_eq!(closed.status, "closed");
     assert!(closed.closed_at.is_some());
     assert_invariant(&closed);
@@ -84,14 +199,15 @@ async fn an_effective_date_corrects_an_already_closed_matter() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "correct-close").await;
     set_opened_at(&surreal, id, "2000-01-01T00:00:00Z").await;
-    transition_project(&surreal, id, Transition::Close, None)
+    close_active(&surreal, id, None)
         .await
         .expect("initial close");
 
-    let corrected = transition_project(
+    let corrected = transition_project_with_reason(
         &surreal,
         id,
         Transition::Close,
+        Some(ClosureReason::EngagementCompleted),
         Some(at("2001-02-03T04:05:06Z")),
     )
     .await
@@ -127,14 +243,21 @@ async fn effective_dates_are_bounded_by_matter_open_and_now() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "bounded-close").await;
     set_opened_at(&surreal, id, "2000-01-01T00:00:00Z").await;
+    file_asset(&surreal, id, "onboarding").await;
 
     for (label, effective_at) in [
         ("before matter-open", "1999-12-31T23:59:59Z"),
         ("in the future", "9999-01-01T00:00:00Z"),
     ] {
-        let error = transition_project(&surreal, id, Transition::Close, Some(at(effective_at)))
-            .await
-            .expect_err(label);
+        let error = transition_project_with_reason(
+            &surreal,
+            id,
+            Transition::Close,
+            Some(ClosureReason::EngagementCompleted),
+            Some(at(effective_at)),
+        )
+        .await
+        .expect_err(label);
         assert!(
             matches!(error, ProjectCommandError::Invalid(_)),
             "{error:?}"
@@ -150,9 +273,7 @@ async fn reopening_rejects_an_effective_date() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "dated-reopen").await;
     set_opened_at(&surreal, id, "2000-01-01T00:00:00Z").await;
-    transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close");
+    close_active(&surreal, id, None).await.expect("close");
 
     let error = transition_project(
         &surreal,
@@ -174,9 +295,7 @@ async fn reopening_clears_the_close_date() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "reopen-me").await;
 
-    transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close");
+    close_active(&surreal, id, None).await.expect("close");
     let reopened = transition_project(&surreal, id, Transition::Reopen, None)
         .await
         .expect("reopen");
@@ -196,9 +315,7 @@ async fn archiving_a_closed_matter_preserves_its_original_close_date() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "archive-closed").await;
 
-    let closed = transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close");
+    let closed = close_active(&surreal, id, None).await.expect("close");
     let original = closed.closed_at.clone().expect("stamped");
 
     let archived = transition_project(&surreal, id, Transition::Archive, None)
@@ -263,14 +380,18 @@ async fn re_applying_a_transition_is_a_no_op() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "idempotent").await;
 
-    let first = transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close");
+    let first = close_active(&surreal, id, None).await.expect("close");
     let stamp = first.closed_at.clone().expect("stamped");
 
-    let second = transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close again");
+    let second = transition_project_with_reason(
+        &surreal,
+        id,
+        Transition::Close,
+        Some(ClosureReason::EngagementCompleted),
+        None,
+    )
+    .await
+    .expect("close again");
     assert_eq!(
         second.closed_at.as_deref(),
         Some(stamp.as_str()),
@@ -295,9 +416,7 @@ async fn closing_after_a_reopen_starts_a_fresh_retention_window() {
     let surreal = mem_surreal().await;
     let id = open_matter(&surreal, "round-trip").await;
 
-    let first = transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close");
+    let first = close_active(&surreal, id, None).await.expect("close");
     let first_stamp = first.closed_at.clone().expect("stamped");
 
     let reopened = transition_project(&surreal, id, Transition::Reopen, None)
@@ -311,9 +430,15 @@ async fn closing_after_a_reopen_starts_a_fresh_retention_window() {
         "the reopen must clear the date, or the next close preserves the old window"
     );
 
-    let second = transition_project(&surreal, id, Transition::Close, None)
-        .await
-        .expect("close again");
+    let second = transition_project_with_reason(
+        &surreal,
+        id,
+        Transition::Close,
+        Some(ClosureReason::EngagementCompleted),
+        None,
+    )
+    .await
+    .expect("close again");
     let second_stamp = second.closed_at.clone().expect("stamped");
 
     assert!(

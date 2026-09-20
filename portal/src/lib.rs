@@ -3386,12 +3386,22 @@ fn http_request_span(req: &Request<axum::body::Body>) -> tracing::Span {
         .extensions()
         .get::<MatchedPath>()
         .map_or("unmatched", MatchedPath::as_str);
-    tracing::info_span!(
+    let span = tracing::info_span!(
         "http.request",
         "http.request.method" = %req.method(),
         "http.route" = %route,
         "http.response.status_code" = tracing::field::Empty,
-    )
+    );
+    telemetry::set_span_parent(
+        &span,
+        req.headers()
+            .get("traceparent")
+            .and_then(|value| value.to_str().ok()),
+        req.headers()
+            .get("tracestate")
+            .and_then(|value| value.to_str().ok()),
+    );
+    span
 }
 
 /// [`http_request_span`]'s other half: the status code is only known once
@@ -3689,6 +3699,65 @@ mod http_semconv_span_tests {
         axum::extract::Path(_id): axum::extract::Path<String>,
     ) -> axum::http::StatusCode {
         axum::http::StatusCode::CREATED
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn request_trace_continues_remote_parent_without_propagating_baggage() {
+        use opentelemetry::trace::TracerProvider as _;
+
+        opentelemetry::global::set_text_map_propagator(
+            opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+        );
+        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder().build();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_opentelemetry::layer().with_tracer(provider.tracer("http-propagation-test")),
+        );
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let app = Router::new()
+            .route(
+                "/widgets/{id}",
+                post(|| async { axum::Json(telemetry::current_trace_context_headers()) }),
+            )
+            .layer(TraceLayer::new_for_http().make_span_with(http_request_span));
+        let incoming = "00-0102030405060708090a0b0c0d0e0f10-1112131415161718-01";
+
+        for parent in [Some(incoming), Some("invalid"), None] {
+            let mut request = axum::http::Request::builder()
+                .method("POST")
+                .uri("/widgets/opaque-id")
+                .header("baggage", "email=sender@example.com");
+            if let Some(parent) = parent {
+                request = request
+                    .header("traceparent", parent)
+                    .header("tracestate", "vendor=opaque");
+            }
+            let response = app
+                .clone()
+                .oneshot(request.body(axum::body::Body::empty()).expect("request"))
+                .await
+                .expect("router response");
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            let body = axum::body::to_bytes(response.into_body(), 1024)
+                .await
+                .expect("response bytes");
+            let headers: Vec<(String, String)> = serde_json::from_slice(&body).expect("headers");
+            let traceparent = headers
+                .iter()
+                .find(|(name, _)| name == "traceparent")
+                .map(|(_, value)| value)
+                .expect("request has trace context");
+            assert_eq!(traceparent.len(), incoming.len());
+            if parent == Some(incoming) {
+                assert_eq!(&traceparent[3..35], &incoming[3..35]);
+                assert_ne!(&traceparent[36..52], &incoming[36..52]);
+                assert!(headers
+                    .iter()
+                    .any(|(name, value)| name == "tracestate" && value == "vendor=opaque"));
+            } else {
+                assert_ne!(&traceparent[3..35], &incoming[3..35]);
+            }
+            assert!(!headers.iter().any(|(name, _)| name == "baggage"));
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

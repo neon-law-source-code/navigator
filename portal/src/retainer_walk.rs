@@ -3067,7 +3067,7 @@ async fn build_answer_context(
         (ChoiceRendering::Labels, Some(n)) => store::templates::find_by_id(surreal, n.template_id)
             .await?
             .and_then(|t| workflows::catalog_spec_yaml(&t.code))
-            .and_then(|yaml| workflows::merged_choices_from_yaml(yaml).ok())
+            .and_then(|yaml| workflows::choices_from_yaml(yaml).ok())
             .unwrap_or_default(),
         // Key rendering (AcroForm fill) and the no-notation case both leave
         // choices unmapped, so answers keep their raw stored value.

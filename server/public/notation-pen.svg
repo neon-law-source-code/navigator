@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="256" height="256"
+     fill="none" stroke="#007C91" stroke-width="1.5" stroke-linecap="round"
+     stroke-linejoin="round" role="img" aria-labelledby="title desc">
+  <title id="title">Notation pen</title>
+  <desc id="desc">A fountain pen nib poised to write.</desc>
+  <path d="M4 20 7 8 16 4 20 8 16 17 4 20Z"/>
+  <path d="m16 4 2-2 4 4-2 2M4 20l7-7"/>
+  <circle cx="12" cy="12" r="1.5"/>
+</svg>

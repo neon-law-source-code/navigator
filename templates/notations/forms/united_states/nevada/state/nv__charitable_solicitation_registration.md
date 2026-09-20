@@ -14,14 +14,13 @@ questionnaire:
   custom_text__fundraising_activities:
     _: END
   END: {}
-custom_questions:
+prompts:
+  annual_or_amended: Is this an original annual application or is it an amendment to a previous application?
+  fundraising_activities: What are the fundraising activities?
+choices:
   annual_or_amended:
-    prompt: Is this an original annual application or is it an amendment to a previous application?
-    choices:
-      original: Original Application
-      amended: Amendment to Previous Application
-  fundraising_activities:
-    prompt: What are the fundraising activities?
+    original: Original Application
+    amended: Amendment to Previous Application
 workflow:
   BEGIN:
     _: lawyer_review

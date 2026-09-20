@@ -1,10 +1,8 @@
 //! `/workshops`, `/presentations`, and `/notations` — the firm's material indexes.
 //!
-//! One page shape serves every category. The heading, the lede, and the list
-//! are injected per request by the portal pre-layer, so the category is a
-//! content decision rather than a second component: a reader arriving at
-//! `/workshops`, `/presentations`, or `/notations` sees the same page rendered
-//! from different material.
+//! Categories share the public shell and material list. The portal pre-layer
+//! injects each category's content; Notations also carries a format introduction
+//! above its templates.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -32,6 +30,9 @@ pub struct CatalogMaterial {
 pub struct CatalogIndexContent {
     /// The category's heading, and the page title after the brand name.
     pub title: String,
+    /// Optional long-form introduction above the material catalog.
+    #[serde(default)]
+    pub introduction: Option<crate::marketing_page::PageContent>,
     /// The hero paragraph, reused as the page's meta description.
     pub lede: String,
     pub materials: Vec<CatalogMaterial>,
@@ -128,10 +129,18 @@ pub fn CatalogIndexPage(chrome: PublicChrome, content: CatalogIndexContent) -> E
         }
         document::Stylesheet { href: CATALOG_STYLESHEET_HREF }
         PublicShell { header, footer,
-            CatalogHero {
-                eyebrow: chrome.brand_name.clone(),
-                title: content.title.clone(),
-                lede: content.lede.clone(),
+            if let Some(introduction) = content.introduction.clone() {
+                NotationsIntroduction { content: introduction }
+            } else {
+                CatalogHero {
+                    eyebrow: chrome.brand_name.clone(),
+                    title: content.title.clone(),
+                    lede: content.lede.clone(),
+                }
+            }
+            section { id: "templates", class: "catalog-library",
+            if content.introduction.is_some() {
+                h2 { "Explore the templates" }
             }
             if content.materials.is_empty() {
                 p { class: "catalog-empty",
@@ -145,6 +154,43 @@ pub fn CatalogIndexPage(chrome: PublicChrome, content: CatalogIndexContent) -> E
                     p { class: "catalog-more", "{content.footnote}" }
                 }
             }
+            }
+        }
+    }
+}
+
+/// The format's opening specimen, followed by the shared marketing bands.
+#[component]
+fn NotationsIntroduction(content: crate::marketing_page::PageContent) -> Element {
+    let specimen = "---\nkind: agreement\ntitle: Sample agreement\nprompts:\n  delivery: How should notices arrive?\nchoices:\n  delivery:\n    email: By email\n    post: By post\nquestionnaire:\n  BEGIN: { _: custom_single_choice__delivery }\n  custom_single_choice__delivery: { _: END }\n  END: {}\n# … workflow and other metadata\n---\n\n## I. Notices\n\nDelivery method: {{custom_single_choice__delivery}}.";
+    rsx! {
+        document::Stylesheet { href: crate::marketing_page::MARKETING_STYLESHEET_HREF }
+        document::Stylesheet { href: "/public/css/notations.css" }
+        div { class: "notations-page",
+            section { class: "notations-hero",
+                div { class: "notations-hero__copy",
+                    h1 { "{content.tagline}" }
+                    div { class: "notations-lead",
+                        crate::marketing_page::Prose { runs: content.hero_lead_runs.clone() }
+                    }
+                    div { class: "notations-actions",
+                        if let Some(cta) = &content.hero_cta {
+                            a { class: "nav-btn nav-btn--primary", href: "{cta.href}", "{cta.label} ↗" }
+                        }
+                        a { href: "#notation-flow", "Follow the format ↓" }
+                    }
+                }
+                figure { class: "notations-specimen", id: "notation-source",
+                    figcaption { span { "agreement.md" } }
+                    pre { code { "{specimen}" } }
+                    div { class: "notations-specimen__footer",
+                        span { "YAML Frontmatter" }
+                        span { "+" }
+                        span { "Markdown body" }
+                    }
+                }
+            }
+            crate::marketing_page::Bands { items: content.bands, notation_mark: true }
         }
     }
 }
@@ -189,6 +235,7 @@ mod tests {
     fn workshops() -> CatalogIndexContent {
         CatalogIndexContent {
             title: "Workshops".to_string(),
+            introduction: None,
             lede: "Hands-on classes.".to_string(),
             materials: vec![
                 material("Using Neon Law Navigator", "/workshops/use-the-navigator"),
@@ -273,6 +320,7 @@ mod tests {
         fn app() -> Element {
             let content = CatalogIndexContent {
                 title: "Notations".to_string(),
+                introduction: None,
                 lede: "One markdown file is the template, questionnaire, and workflow.".to_string(),
                 materials: vec![
                     CatalogMaterial {

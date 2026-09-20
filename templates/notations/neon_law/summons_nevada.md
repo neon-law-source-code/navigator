@@ -13,9 +13,8 @@ questionnaire:
   custom_datetime__issuance_date:
     _: END
   END: {}
-custom_questions:
-  issuance_date:
-    prompt: On what date is this summons issued?
+prompts:
+  issuance_date: On what date is this summons issued?
 workflow:
   BEGIN:
     _: lawyer_review

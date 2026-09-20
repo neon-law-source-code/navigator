@@ -6,12 +6,12 @@ questionnaire:
   people__managers:
     _: END
   END: {}
-custom_questions:
+prompts:
+  annual_or_amended: Is this an original annual application or is it an amendment to a previous application?
+choices:
   annual_or_amended:
-    prompt: Is this an original annual application or is it an amendment to a previous application?
-    choices:
-      original: Original Application
-      amended: Amendment to Previous Application
+    original: Original Application
+    amended: Amendment to Previous Application
 workflow:
   BEGIN:
     _: lawyer_review

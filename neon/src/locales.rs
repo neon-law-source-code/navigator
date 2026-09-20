@@ -30,6 +30,7 @@ const SHARED_CATALOG_YAML: &str = include_str!("../locales/en/shared.yaml");
 const NEON_HOME_YAML: &str = include_str!("../locales/en/neon/home.yaml");
 const NEON_LITIGATION_YAML: &str = include_str!("../locales/en/neon/litigation.yaml");
 const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractional-gc.yaml");
+const NEON_NOTATIONS_YAML: &str = include_str!("../locales/en/neon/notations.yaml");
 const NEON_NAVIGATOR_YAML: &str = include_str!("../locales/en/neon/navigator.yaml");
 const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
@@ -87,6 +88,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Summons, "services") => Some(SUMMONS_SERVICES_YAML),
         (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
         (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
+        (BrandKey::Neon, "notations") => Some(NEON_NOTATIONS_YAML),
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
@@ -178,6 +180,7 @@ fn copy_run_to_marketing(run: CopyRun) -> Run {
     Run {
         text: run.text,
         emphasis: run.emphasis,
+        code: run.code,
         href: run.href,
     }
 }
@@ -573,7 +576,7 @@ fn project_network_band(copy: BandCopy) -> Band {
         description,
         center_eyebrow: network_label(center_eyebrow, "The Project center"),
         center_heading: network_label(center_heading, "Navigator"),
-        center_detail: network_label(center_detail, "Web API MCP CLI"),
+        center_detail,
         left_lane_label: network_label(
             left_lane_label,
             "Project resources to the left of Navigator",
@@ -603,6 +606,11 @@ fn marketing_page(
         tagline: copy.tagline,
         hero_lines: copy.hero_lines.iter().map(hero_words).collect(),
         hero_lead: copy.hero_lead,
+        hero_lead_runs: copy
+            .hero_lead_runs
+            .into_iter()
+            .map(copy_run_to_marketing)
+            .collect(),
         hero_cta: copy
             .hero_cta
             .map(|HeroCtaCopy { href, label }| HeroCta { href, label }),
@@ -871,6 +879,12 @@ pub fn legal_services(branding: &views::brand::Branding) -> PageContent {
         services_catalog(branding).as_ref(),
         branding,
     )
+}
+
+/// The public notation format explanation, loaded from the English catalog.
+pub(crate) fn notations_content() -> PageContent {
+    let branding = &views::brand::DEFAULT_BRANDING;
+    marketing_page(load_page(branding, "notations"), None, branding)
 }
 
 #[cfg(test)]

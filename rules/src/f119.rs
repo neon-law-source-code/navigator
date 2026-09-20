@@ -145,13 +145,7 @@ struct FrontmatterShape {
     #[serde(default)]
     questionnaire: Option<BTreeMap<String, BTreeMap<String, String>>>,
     #[serde(default)]
-    custom_questions: BTreeMap<String, CustomQuestionShape>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct CustomQuestionShape {
-    #[serde(default)]
-    choices: BTreeMap<String, String>,
+    choices: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl Rule for F119GithubNotation {
@@ -192,7 +186,7 @@ impl Rule for F119GithubNotation {
         };
 
         Self::check_required_states(file, &questionnaire, &mut violations);
-        Self::check_change_surface_choices(file, &parsed.custom_questions, &mut violations);
+        Self::check_change_surface_choices(file, &parsed.choices, &mut violations);
         violations
     }
 }
@@ -293,20 +287,20 @@ impl F119GithubNotation {
     /// no missing value, no invented one.
     fn check_change_surface_choices(
         file: &SourceFile,
-        custom_questions: &BTreeMap<String, CustomQuestionShape>,
+        choices: &BTreeMap<String, BTreeMap<String, String>>,
         violations: &mut Vec<Violation>,
     ) {
         let Some(role) = CHANGE_SURFACE_STATE.split_once("__").map(|(_, r)| r) else {
             return;
         };
-        // A missing definition is `N104`'s finding (every `custom_*` state
-        // needs a `custom_questions` entry); N119 only judges the options of
+        // A missing definition is `N104`'s finding (every custom choice state
+        // needs a `choices` entry); N119 only judges the options of
         // one that exists, so the two never double-flag the same line.
-        let Some(question) = custom_questions.get(role) else {
+        let Some(options) = choices.get(role) else {
             return;
         };
 
-        let declared: Vec<&str> = question.choices.keys().map(String::as_str).collect();
+        let declared: Vec<&str> = options.keys().map(String::as_str).collect();
         let expected: Vec<&str> = CHANGE_SURFACES.iter().map(|(key, _, _)| *key).collect();
 
         let missing: Vec<&str> = expected
@@ -326,7 +320,7 @@ impl F119GithubNotation {
                 file,
                 line,
                 format!(
-                    "`custom_questions.{role}.choices` is missing the change surface(s) {} — \
+                    "`choices.{role}` is missing the change surface(s) {} — \
                      the four surfaces are the four gates, so none of them may be dropped",
                     quoted(&missing)
                 ),
@@ -337,7 +331,7 @@ impl F119GithubNotation {
                 file,
                 line,
                 format!(
-                    "`custom_questions.{role}.choices` declares unknown change surface(s) {} — \
+                    "`choices.{role}` declares unknown change surface(s) {} — \
                      expected exactly {}. Add the surface to the rules crate's \
                      `CHANGE_SURFACES` (with the gate it implies) before using it here",
                     quoted(&unknown),
@@ -382,7 +376,7 @@ fn questionnaire_line(contents: &str) -> usize {
         .map_or(1, |idx| idx + 1)
 }
 
-/// The line of a `custom_questions.<role>:` entry, so a choices finding
+/// The line of a `choices.<role>:` entry, so a choices finding
 /// underlines the question it is about.
 fn custom_question_line(contents: &str, role: &str) -> usize {
     let key = format!("{role}:");
@@ -421,18 +415,16 @@ questionnaire:
   custom_text__change_summary:
     _: END
   END: {}
-custom_questions:
+prompts:
+  change_surface: What does this change touch?
+  engineering_council: Should the Engineering Council review this before work starts?
+  change_summary: Describe the change.
+choices:
   change_surface:
-    prompt: What does this change touch?
-    choices:
-      web: Web feature
-      api: API feature
-      infrastructure: Infrastructure
-      form: Government form
-  engineering_council:
-    prompt: Should the Engineering Council review this before work starts?
-  change_summary:
-    prompt: Describe the change.
+    web: Web feature
+    api: API feature
+    infrastructure: Infrastructure
+    form: Government form
 "
         .to_string()
     }
@@ -539,7 +531,7 @@ custom_questions:
 
     #[test]
     fn flags_a_dropped_change_surface() {
-        let fm = valid_frontmatter().replace("      form: Government form\n", "");
+        let fm = valid_frontmatter().replace("    form: Government form\n", "");
         let v = F119GithubNotation.lint(&at("templates/github/create_issue.md", &fm));
         assert_eq!(v.len(), 1, "{v:?}");
         assert!(v[0]
@@ -550,8 +542,8 @@ custom_questions:
     #[test]
     fn flags_an_invented_change_surface() {
         let fm = valid_frontmatter().replace(
-            "      form: Government form\n",
-            "      form: Government form\n      mobile: Mobile app\n",
+            "    form: Government form\n",
+            "    form: Government form\n    mobile: Mobile app\n",
         );
         let v = F119GithubNotation.lint(&at("templates/github/create_issue.md", &fm));
         assert_eq!(v.len(), 1, "{v:?}");
@@ -561,16 +553,14 @@ custom_questions:
 
     #[test]
     fn undefined_change_surface_question_is_left_to_n104() {
-        // N104 owns "every custom_* state needs a custom_questions entry".
+        // N104 requires a choices map for every custom choice state.
         // N119 must stay silent so one mistake is not flagged twice.
         let fm = valid_frontmatter().replace(
             "  change_surface:
-    prompt: What does this change touch?
-    choices:
-      web: Web feature
-      api: API feature
-      infrastructure: Infrastructure
-      form: Government form
+    web: Web feature
+    api: API feature
+    infrastructure: Infrastructure
+    form: Government form
 ",
             "",
         );

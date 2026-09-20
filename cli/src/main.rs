@@ -3796,7 +3796,7 @@ fn run_render(
     // A choice answer is *stored* as its declared key (`nevada`), but the
     // body interpolates it as prose ("the law of Nevada"). Resolve the key
     // back to its label through the template's own `choices:` /
-    // `custom_questions.<key>.choices` frontmatter — the same merged map
+    // `choices.<key>` frontmatter — the same map
     // `portal::retainer_walk::render_context_from_answers` resolves a
     // generated document against, so a preview renders the document the
     // matter will actually get rather than a second, differently-worded
@@ -3804,7 +3804,7 @@ fn run_render(
     // them, keeps its answer verbatim (`choice_label` returns `None`), so
     // free text is untouched.
     let choices = rules::frontmatter::extract(&contents)
-        .and_then(|fm| workflows::merged_choices_from_yaml(fm).ok())
+        .and_then(|fm| workflows::choices_from_yaml(fm).ok())
         .unwrap_or_default();
     let answer_context = answers
         .iter()

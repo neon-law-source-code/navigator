@@ -8,7 +8,7 @@
 //! `store` at all — see `cli/tests/brand_crate_dependencies.rs` — so the
 //! public preview page, which resolves entirely from `include_str!`'d
 //! markdown with no database in the loop, needs its own small, pure reader of
-//! the same `questionnaire:`/`custom_questions:` frontmatter shape. This
+//! the same `questionnaire:`/`prompts:`/`choices:` frontmatter shape. This
 //! module owns exactly that: walk the linear `BEGIN → … → END` chain (already
 //! guaranteed by the `N118` rule at authoring time — this reader stops rather
 //! than loops on anything else) and pair each `custom_*` state with its own
@@ -54,15 +54,9 @@ struct QuestionnaireFrontmatter {
     #[serde(default)]
     questionnaire: BTreeMap<String, BTreeMap<String, String>>,
     #[serde(default)]
-    custom_questions: BTreeMap<String, CustomQuestion>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct CustomQuestion {
+    prompts: BTreeMap<String, String>,
     #[serde(default)]
-    prompt: String,
-    #[serde(default)]
-    choices: BTreeMap<String, String>,
+    choices: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 const BEGIN: &str = "BEGIN";
@@ -91,7 +85,7 @@ pub fn parse(frontmatter: &str) -> Vec<PreviewQuestion> {
         if next == END || !visited.insert(next.clone()) {
             break;
         }
-        ordered.push(question_for_state(next, &doc.custom_questions));
+        ordered.push(question_for_state(next, &doc.prompts, &doc.choices));
         current = next.clone();
     }
     ordered
@@ -102,20 +96,17 @@ pub fn parse(frontmatter: &str) -> Vec<PreviewQuestion> {
 /// explanation of what it does.
 fn question_for_state(
     state: &str,
-    custom_questions: &BTreeMap<String, CustomQuestion>,
+    prompts: &BTreeMap<String, String>,
+    options: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> PreviewQuestion {
     let (answer_type, role) = state
         .split_once("__")
         .map_or((state, state), |(prefix, role)| (prefix, role));
-    let custom = custom_questions.get(role);
+    let custom = prompts.get(role);
     let readable_role = role.replace('_', " ");
-    let prompt = custom.map_or_else(
-        || default_prompt(answer_type, &readable_role),
-        |question| question.prompt.clone(),
-    );
-    let choices = custom.map_or_else(Vec::new, |question| {
-        question
-            .choices
+    let prompt = custom.map_or_else(|| default_prompt(answer_type, &readable_role), Clone::clone);
+    let choices = options.get(role).map_or_else(Vec::new, |options| {
+        options
             .iter()
             .map(|(value, label)| (value.clone(), label.clone()))
             .collect()
@@ -144,17 +135,15 @@ mod tests {
     use super::*;
 
     const ONBOARDING_LETTER_FRONTMATTER: &str = r"
-custom_questions:
-  engagement_scope:
-    prompt: In a sentence or two, what is the minimum scope of this engagement.
-  engagement_start_date:
-    prompt: When does this engagement begin?
+prompts:
+  engagement_scope: In a sentence or two, what is the minimum scope of this engagement.
+  engagement_start_date: When does this engagement begin?
+  governing_law: Which state's law governs this engagement?
+choices:
   governing_law:
-    prompt: Which state's law governs this engagement?
-    choices:
-      nevada: Nevada
-      california: California
-      washington: Washington
+    nevada: Nevada
+    california: California
+    washington: Washington
 questionnaire:
   BEGIN:
     _: entity

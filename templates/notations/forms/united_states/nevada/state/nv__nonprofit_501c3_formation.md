@@ -18,9 +18,7 @@ questionnaire:
   END: {}
 prompts:
   registered_agent: Who is the registered agent for?
-custom_questions:
-  mission_statement:
-    prompt: What is the mission statement?
+  mission_statement: What is the mission statement?
 workflow:
   BEGIN:
     _: board_signatures

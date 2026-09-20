@@ -13,9 +13,8 @@ questionnaire:
   custom_datetime__answer_date:
     _: END
   END: {}
-custom_questions:
-  answer_date:
-    prompt: On what date is this answer to the counterclaim filed?
+prompts:
+  answer_date: On what date is this answer to the counterclaim filed?
 workflow:
   BEGIN:
     _: lawyer_review

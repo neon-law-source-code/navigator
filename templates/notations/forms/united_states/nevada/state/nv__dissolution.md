@@ -14,11 +14,9 @@ questionnaire:
   custom_yes_no__final_debts_settled:
     _: END
   END: {}
-custom_questions:
-  dissolution_reason:
-    prompt: What is the dissolution reason?
-  final_debts_settled:
-    prompt: Have all final debts been settled?
+prompts:
+  dissolution_reason: What is the dissolution reason?
+  final_debts_settled: Have all final debts been settled?
 workflow:
   BEGIN:
     _: member_signatures

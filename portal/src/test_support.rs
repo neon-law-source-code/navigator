@@ -280,20 +280,16 @@ fn synthetic_field_specs(form: &forms::FormMeta) -> Vec<pdf::FieldSpec> {
         .collect()
 }
 
-/// The sibling notation's `custom_questions:` options — the on-state
+/// The sibling notation's `choices:` options — the on-state
 /// vocabulary a re-authored radio group carries, keyed by the custom
-/// question's `__<key>` and read from its nested `choices`.
+/// question's `__<key>` and read from its top-level `choices`.
 fn notation_choices(object_path: &str) -> std::collections::BTreeMap<String, Vec<String>> {
     #[derive(serde::Deserialize)]
     struct Fm {
         #[serde(default)]
-        custom_questions: std::collections::BTreeMap<String, CustomQuestion>,
+        choices: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     }
-    #[derive(serde::Deserialize)]
-    struct CustomQuestion {
-        #[serde(default)]
-        choices: std::collections::BTreeMap<String, String>,
-    }
+
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("templates")
@@ -305,10 +301,10 @@ fn notation_choices(object_path: &str) -> std::collections::BTreeMap<String, Vec
         .and_then(|rest| rest.find("\n---").map(|end| &rest[..end]))
         .expect("notation frontmatter");
     let fm: Fm = serde_yaml::from_str(fm).expect("notation frontmatter parses");
-    fm.custom_questions
+    fm.choices
         .into_iter()
-        .filter(|(_, q)| !q.choices.is_empty())
-        .map(|(role, q)| (role, q.choices.into_keys().collect()))
+        .filter(|(_, q)| !q.is_empty())
+        .map(|(role, q)| (role, q.into_keys().collect()))
         .collect()
 }
 

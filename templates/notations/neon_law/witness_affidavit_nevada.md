@@ -17,13 +17,10 @@ questionnaire:
   custom_datetime__discovery_date:
     _: END
   END: {}
-custom_questions:
-  offer_date:
-    prompt: On what date was the doughnut offered at the hedge?
-  completion_date:
-    prompt: On what date was the remainder consumed?
-  discovery_date:
-    prompt: On what date did the client first mention the soul-conveyance term?
+prompts:
+  offer_date: On what date was the doughnut offered at the hedge?
+  completion_date: On what date was the remainder consumed?
+  discovery_date: On what date did the client first mention the soul-conveyance term?
 workflow:
   BEGIN:
     _: lawyer_review

@@ -64,22 +64,11 @@ struct FrontmatterShape {
     #[serde(default)]
     questionnaire: Option<BTreeMap<String, BTreeMap<String, String>>>,
     #[serde(default)]
-    custom_questions: BTreeMap<String, CustomQuestionShape>,
+    prompts: BTreeMap<String, String>,
     #[serde(default)]
-    choices: BTreeMap<String, serde_yaml::Value>,
+    choices: BTreeMap<String, BTreeMap<String, String>>,
     #[serde(default)]
     workflow: Option<BTreeMap<String, BTreeMap<String, String>>>,
-}
-
-/// The N104 view of a `custom_questions` entry: the wording and, for a
-/// choice type, its options. Kept local so `rules` stays free of a
-/// `workflows` dependency.
-#[derive(Debug, Deserialize)]
-struct CustomQuestionShape {
-    #[serde(default)]
-    prompt: String,
-    #[serde(default)]
-    choices: BTreeMap<String, String>,
 }
 
 /// The two custom types that carry a one-off option list; every other
@@ -112,17 +101,11 @@ impl Rule for F104FlowQuestionCodes {
             }
             None => None,
         };
-        if !parsed.choices.is_empty() {
-            violations.push(violation(
-                file,
-                "`choices:` is retired — define a custom question's options inside \
-                 `custom_questions.<key>.choices`",
-            ));
-        }
         self.validate_questionnaire(
             file,
             &questionnaire,
-            &parsed.custom_questions,
+            &parsed.prompts,
+            &parsed.choices,
             &mut violations,
         );
         // A declared `workflow:` is validated whether or not it was
@@ -164,7 +147,8 @@ impl F104FlowQuestionCodes {
         &self,
         file: &SourceFile,
         map: &BTreeMap<String, BTreeMap<String, String>>,
-        custom_questions: &BTreeMap<String, CustomQuestionShape>,
+        prompts: &BTreeMap<String, String>,
+        choices: &BTreeMap<String, BTreeMap<String, String>>,
         violations: &mut Vec<Violation>,
     ) {
         if !Self::validate_common_shape(file, map, "questionnaire", violations) {
@@ -188,13 +172,13 @@ impl F104FlowQuestionCodes {
                 ));
             }
             if prefix.starts_with("custom_") {
-                Self::validate_custom_question(file, state, prefix, custom_questions, violations);
+                Self::validate_custom_question(file, state, prefix, prompts, choices, violations);
             }
         }
     }
 
     /// A `custom_*` state gets its wording (and, for a choice type, its
-    /// options) from a `custom_questions.<prompt_key>` entry — the bank
+    /// options) from `prompts.<prompt_key>` and `choices.<prompt_key>` — the bank
     /// supplies nothing for a one-off. Enforce that the entry exists and
     /// that its `choices` presence matches the type: choice types require
     /// options, every other custom primitive forbids them.
@@ -202,49 +186,48 @@ impl F104FlowQuestionCodes {
         file: &SourceFile,
         state: &str,
         prefix: &str,
-        custom_questions: &BTreeMap<String, CustomQuestionShape>,
+        prompts: &BTreeMap<String, String>,
+        choices: &BTreeMap<String, BTreeMap<String, String>>,
         violations: &mut Vec<Violation>,
     ) {
         let Some((_, prompt_key)) = state.split_once("__") else {
             violations.push(violation(
                 file,
                 format!(
-                    "Custom question state `{state}` must use `custom_*__prompt_key` and define `custom_questions.<prompt_key>`"
+                    "Custom question state `{state}` must use `custom_*__prompt_key` and define `prompts.<prompt_key>`"
                 ),
             ));
             return;
         };
-        let Some(question) = custom_questions.get(prompt_key) else {
+        let Some(prompt) = prompts.get(prompt_key) else {
             violations.push(violation(
                 file,
                 format!(
-                    "Custom question state `{state}` is missing required `custom_questions.{prompt_key}`"
+                    "Custom question state `{state}` is missing required `prompts.{prompt_key}`"
                 ),
             ));
             return;
         };
-        if question.prompt.trim().is_empty() {
+        if prompt.trim().is_empty() {
             violations.push(violation(
                 file,
-                format!(
-                    "Custom question `custom_questions.{prompt_key}` needs a non-empty `prompt`"
-                ),
+                format!("Custom question `prompts.{prompt_key}` needs a non-empty `prompt`"),
             ));
         }
         let is_choice_type = CHOICE_CUSTOM_TYPES.contains(&prefix);
-        if is_choice_type && question.choices.is_empty() {
+        if is_choice_type && choices.get(prompt_key).is_none_or(BTreeMap::is_empty) {
             violations.push(violation(
                 file,
                 format!(
                     "Custom question state `{state}` is a choice type and needs \
-                     `custom_questions.{prompt_key}.choices`"
+                     `choices.{prompt_key}`"
                 ),
             ));
-        } else if !is_choice_type && !question.choices.is_empty() {
+        } else if !is_choice_type && !choices.get(prompt_key).is_none_or(BTreeMap::is_empty) {
             violations.push(violation(
                 file,
                 format!(
-                    "Custom question `custom_questions.{prompt_key}` (`{prefix}`) must not define \
+                    "Custom question `prompts.{prompt_key}` (`{prefix}`) must not define \
                      `choices` — only custom_single_choice / custom_multiple_choice may"
                 ),
             ));
@@ -342,6 +325,14 @@ workflow:
     }
 
     #[test]
+    fn custom_states_read_top_level_prompts_and_choices() {
+        let source = file("---\nquestionnaire:\n  BEGIN: { _: custom_single_choice__delivery }\n  custom_single_choice__delivery: { _: END }\n  END: {}\nprompts:\n  delivery: How should it arrive?\nchoices:\n  delivery:\n    email: By email\n    post: By post\n---\n");
+        let findings =
+            F104FlowQuestionCodes::questionnaire_only(["custom_single_choice"]).lint(&source);
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    #[test]
     fn missing_questionnaire_key_is_a_violation() {
         let body = "---\nworkflow:\n  BEGIN:\n    a: END\n  END: {}\n---\n";
         let v = rule().lint(&file(body));
@@ -419,7 +410,7 @@ workflow:
     }
 
     #[test]
-    fn custom_question_states_require_a_custom_questions_entry() {
+    fn custom_question_states_require_a_prompt() {
         let body = "---
 questionnaire:
   BEGIN:
@@ -438,11 +429,11 @@ workflow:
         let v = F104FlowQuestionCodes::new(["custom_text"]).lint(&file(body));
         assert!(v.iter().any(|x| x
             .message
-            .contains("missing required `custom_questions.fundraising_activities`")));
+            .contains("missing required `prompts.fundraising_activities`")));
     }
 
     #[test]
-    fn custom_question_states_accept_a_matching_custom_questions_entry() {
+    fn custom_question_states_accept_a_matching_prompt() {
         let body = "---
 questionnaire:
   BEGIN:
@@ -450,9 +441,8 @@ questionnaire:
   custom_text__fundraising_activities:
     answered: END
   END: {}
-custom_questions:
-  fundraising_activities:
-    prompt: What are the fundraising activities?
+prompts:
+  fundraising_activities: What are the fundraising activities?
 workflow:
   BEGIN:
     created: lawyer_review
@@ -475,9 +465,8 @@ questionnaire:
   custom_text__note:
     answered: END
   END: {}
-custom_questions:
-  note:
-    prompt: '   '
+prompts:
+  note: '   '
 workflow:
   BEGIN:
     created: lawyer_review
@@ -503,9 +492,8 @@ questionnaire:
   custom_single_choice__basis:
     answered: END
   END: {}
-custom_questions:
-  basis:
-    prompt: Which basis applies?
+prompts:
+  basis: Which basis applies?
 workflow:
   BEGIN:
     created: lawyer_review
@@ -531,11 +519,11 @@ questionnaire:
   custom_datetime__formation_date:
     answered: END
   END: {}
-custom_questions:
+prompts:
+  formation_date: When was the formation date?
+choices:
   formation_date:
-    prompt: When was the formation date?
-    choices:
-      today: Today
+    today: Today
 workflow:
   BEGIN:
     created: lawyer_review
@@ -560,12 +548,12 @@ questionnaire:
   custom_single_choice__basis:
     answered: END
   END: {}
-custom_questions:
+prompts:
+  basis: Which basis applies?
+choices:
   basis:
-    prompt: Which basis applies?
-    choices:
-      a: Option A
-      b: Option B
+    a: Option A
+    b: Option B
 workflow:
   BEGIN:
     created: lawyer_review
@@ -580,39 +568,6 @@ workflow:
     }
 
     #[test]
-    fn top_level_choices_key_is_retired() {
-        let body = "---
-questionnaire:
-  BEGIN:
-    created: custom_single_choice__basis
-  custom_single_choice__basis:
-    answered: END
-  END: {}
-custom_questions:
-  basis:
-    prompt: Which basis applies?
-    choices:
-      a: Option A
-choices:
-  basis:
-    a: Option A
-workflow:
-  BEGIN:
-    created: lawyer_review
-  lawyer_review:
-    approved: END
-  END: {}
----
-";
-        let v = F104FlowQuestionCodes::new(["custom_single_choice"]).lint(&file(body));
-        assert!(
-            v.iter()
-                .any(|x| x.message.contains("`choices:` is retired")),
-            "got {v:?}"
-        );
-    }
-
-    #[test]
     fn bare_custom_question_state_is_invalid_without_a_prompt_discriminator() {
         let body = "---
 questionnaire:
@@ -621,9 +576,8 @@ questionnaire:
   custom_text:
     answered: END
   END: {}
-custom_questions:
-  custom_text:
-    prompt: What custom text?
+prompts:
+  custom_text: What custom text?
 workflow:
   BEGIN:
     created: lawyer_review

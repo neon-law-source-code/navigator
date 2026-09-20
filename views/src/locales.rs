@@ -31,6 +31,7 @@ pub const KNOWN_PAGES: &[&str] = &[
     "home",
     "litigation",
     "navigator",
+    "notations",
     "services",
 ];
 
@@ -47,6 +48,8 @@ pub struct CopyRun {
     pub text: String,
     #[serde(default)]
     pub emphasis: bool,
+    #[serde(default)]
+    pub code: bool,
     #[serde(default)]
     pub href: Option<String>,
 }
@@ -446,6 +449,8 @@ pub struct MarketingPageCopy {
     #[serde(default)]
     pub hero_lead: String,
     #[serde(default)]
+    pub hero_lead_runs: Paragraph,
+    #[serde(default)]
     pub hero_cta: Option<HeroCtaCopy>,
     #[serde(default)]
     pub skin: PageSkin,
@@ -474,7 +479,7 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "home" => Some(LocalePageKind::Home),
         "litigation" => Some(LocalePageKind::Litigation),
         "fractional-gc" => Some(LocalePageKind::Transactional),
-        "navigator" | "services" => Some(LocalePageKind::Marketing),
+        "navigator" | "notations" | "services" => Some(LocalePageKind::Marketing),
         shared::SHARED_CATALOG_STEM => Some(LocalePageKind::Shared),
         services::SERVICES_CATALOG_STEM => Some(LocalePageKind::ServicesCatalog),
         _ => None,

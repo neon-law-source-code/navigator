@@ -1730,10 +1730,10 @@ async fn blog_kebab_slug_is_served_without_redirect() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-// ---- Notations catalog (same hero as workshops and presentations) ----
+// ---- Notations format introduction and template catalog ----
 
 #[tokio::test]
-async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() {
+async fn notations_page_explains_the_format_and_links_the_letters_and_forms() {
     let app = site_app().await;
     let resp = anon_get(&app, "/notations").await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1743,9 +1743,41 @@ async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() 
         "brand-prefixed document title: {body}"
     );
     assert!(
-        body.contains(r#"class="catalog-hero""#),
-        "catalog hero: {body}"
+        body.contains("notations-page"),
+        "notation format page: {body}"
     );
+    for section in ["notation-flow", "notation-source", "rules", "templates"] {
+        assert!(
+            body.contains(&format!("id=\"{section}\"")),
+            "missing {section}"
+        );
+    }
+    assert!(body.contains("Executable Legal Writing."));
+    assert!(body.contains("Markdown + Frontmatter"));
+    assert!(body.contains("/public/notation-pen.svg"));
+    assert!(!body.contains("/public/navigator-wheel.svg"));
+    assert!(!body.contains("notations-eyebrow"));
+    assert!(!body.contains("On this page"));
+    assert!(!body.contains("front matter"));
+    assert!(!body.contains("Read · check · revise · render"));
+    assert!(!body.contains("fm-chip"));
+    assert!(!body.contains("The anatomy of a notation"));
+    assert!(!body.contains("A kind is a declaration"));
+    assert!(!body.contains("Say what the document is."));
+    assert!(!body.contains("The same rules, wherever you write"));
+    assert!(body.contains(">Body<"));
+    assert!(!body.contains("A passing check validates structure; a lawyer reviews the substance."));
+    assert!(body.contains("<code>navigator project gate</code>"));
+    assert!(body.contains("<code>navigator notations preview</code>"));
+    assert!(body.contains("<code>navigator notations run</code>"));
+    assert!(body.contains("<code>navigator-lsp</code>"));
+    assert!(body.contains("Typst rendering engine"));
+    assert!(!body.contains("id=\"review\""));
+    assert!(body.contains("Neon Law Notations are a way to write legal agreements in markdown"));
+    assert!(body.contains("href=\"/navigator\">Navigator</a>"));
+    assert!(body.contains("/public/css/notations.css"));
+    let navigator = body_string(anon_get(&app, "/navigator").await).await;
+    assert!(!navigator.contains("id=\"notation-flow\""));
     assert!(body.contains(">Notations<"), "page heading: {body}");
     // Every card's default link opens the notation's own show page now — the
     // raw GitHub source lives on that page, not the catalog card.

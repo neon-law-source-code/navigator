@@ -1,0 +1,84 @@
+.notations-page {
+  --notation-ink: var(--nav-teal-950);
+  --notation-accent: var(--nav-teal-400);
+  color: var(--notation-ink);
+  background: #f7fcfd;
+}
+
+.notations-hero {
+  max-width: 1440px;
+  margin: auto;
+  padding: clamp(3rem, 7vw, 7rem) clamp(1.25rem, 5vw, 5rem);
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: clamp(2rem, 5vw, 5rem);
+  align-items: center;
+}
+
+.notations-specimen figcaption,
+.notations-specimen__footer {
+  font-family: ui-monospace, monospace;
+  font-size: .8rem;
+  letter-spacing: .06em;
+}
+
+.notations-hero h1 {
+  font-size: clamp(3.3rem, 6.3vw, 6.7rem);
+  letter-spacing: -.065em;
+  line-height: 1.02;
+  font-weight: 650;
+  max-width: 10ch;
+  margin: 1.5rem 0;
+}
+.notations-lead { font-size: 1.15rem; line-height: 1.75; max-width: 43ch; }
+.notations-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; margin-top: 2rem; }
+.notations-actions a { color: inherit; }
+.notations-actions .nav-btn { color: white; background: var(--notation-ink); border-color: var(--notation-ink); }
+.notations-specimen {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--nav-teal-600);
+  border-radius: 14px;
+  background: var(--notation-ink);
+  color: var(--nav-teal-subtle);
+  box-shadow: 14px 14px 0 var(--notation-accent);
+  transform: rotate(1deg);
+}
+.notations-specimen figcaption, .notations-specimen__footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 1.1rem 1.4rem;
+  gap: .5rem;
+}
+.notations-specimen figcaption { border-bottom: 1px solid var(--nav-teal-500); }
+.notations-specimen pre { background: transparent; color: inherit; border: 0; padding: 1.4rem; margin: 0; overflow-x: auto; font-size: clamp(.76rem, .95vw, .9rem); line-height: 1.8; }
+.notations-specimen code { background: transparent; color: inherit; }
+.notations-specimen__footer { background: var(--notation-accent); color: var(--notation-ink); border-radius: 0 0 12px 12px; letter-spacing: 0; }
+.notations-page .fm-band { padding-block: clamp(3rem, 7vw, 7rem); }
+.notations-page .fm-band__inner { max-width: 1280px; }
+.notations-page h2 { font-size: clamp(2.3rem, 4.2vw, 4.5rem); letter-spacing: -.045em; line-height: 1.1; }
+.notations-page .fm-band__description, .notations-page .fm-card__body p,
+.notations-page .fm-project-network__node p { color: var(--nav-teal-700); }
+.notations-page .fm-card, .notations-page .fm-step { background: #ffffff; color: var(--notation-ink); border-color: #c7e3e8; }
+.notations-page .fm-card__link, .notations-page .fm-overline { color: var(--nav-teal-600); }
+.notations-page code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: .92em; }
+.notations-page #notation-flow { background: var(--nav-teal-subtle); }
+.notations-page .fm-project-network { margin-top: 3rem; }
+.notations-page .fm-project-network__core { background: var(--notation-ink); color: white; border-color: var(--notation-ink); border-radius: 20px; box-shadow: 0 0 0 12px #b5e9f0; }
+.notations-page .fm-project-network__core h3 { color: var(--notation-accent); font-size: 2rem; line-height: 1.1; }
+.notations-page .fm-project-network__core p { color: var(--nav-teal-subtle); }
+.notations-page .fm-project-network__wheel { width: 68px; height: 68px; background: var(--nav-teal-subtle); border-radius: 50%; padding: 8px; }
+.notations-page .fm-project-network__node { background: #f7fcfd; border-radius: 10px; }
+.notations-page #rules { background: #f1fafc; }
+.catalog-library { padding-block: 3rem; }
+.catalog-library > h2 { max-width: 1120px; margin: 1rem auto 2rem; padding-inline: 1.5rem; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -.04em; }
+.notations-page a:focus-visible { outline: 3px solid var(--nav-teal-600); outline-offset: 5px; }
+@media (min-width: 1000px) {
+  .notations-page #anatomy .fm-cards, .notations-page #rules .fm-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 850px) {
+  .notations-hero { grid-template-columns: 1fr; }
+  .notations-hero h1 { max-width: 13ch; }
+  .notations-specimen { transform: none; margin-right: 12px; }
+  .notations-specimen pre { font-size: .76rem; }
+}

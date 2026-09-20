@@ -92,7 +92,7 @@ mod tests {
     fn reads_both_declared_blocks_out_of_one_template() {
         let src = "---\ntitle: Sample Letter\ncode: sample__letter\nquestionnaire:\n  BEGIN:\n    \
                    _: custom_text__client_name\n  custom_text__client_name:\n    _: END\n  END: \
-                   {}\ncustom_questions:\n  client_name:\n    prompt: What is your \
+                   {}\nprompts:\n  client_name: What is your \
                    name?\nworkflow:\n  BEGIN:\n    intake_submitted: \
                    lawyer_review\n  lawyer_review:\n    approved: END\n  END: {}\n---\n\n# Sample \
                    Letter\n\nBody prose.\n";

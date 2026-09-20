@@ -22,6 +22,12 @@ prompts:
   client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
   project_name: What is the project name for this engagement?
   lawyer_dri: Which lawyer is directly responsible for this engagement?
+  engagement_scope: >-
+    In a sentence or two, what is the minimum scope of this engagement.
+  engagement_start_date: When does this engagement begin?
+  governing_law: >-
+    Which state's law governs this engagement? Nevada, unless the Firm has
+    agreed otherwise; California and Washington are the alternatives available.
 audiences:
   client_name: client
   project_name: lawyer
@@ -31,20 +37,11 @@ audiences:
   engagement_scope: lawyer
   entity: lawyer
   principal_office: lawyer
-custom_questions:
-  engagement_scope:
-    prompt: >-
-      In a sentence or two, what is the minimum scope of this engagement.
-  engagement_start_date:
-    prompt: When does this engagement begin?
+choices:
   governing_law:
-    prompt: >-
-      Which state's law governs this engagement? Nevada, unless the Firm has
-      agreed otherwise; California and Washington are the alternatives available.
-    choices:
-      nevada: Nevada
-      california: California
-      washington: Washington
+    nevada: Nevada
+    california: California
+    washington: Washington
 workflow:
   BEGIN:
     intake_submitted: intake_persisted__client

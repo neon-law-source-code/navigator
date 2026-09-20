@@ -17,19 +17,15 @@ questionnaire:
 prompts:
   client_name: What is the client's full legal name?
   project_name: What is the project name for this engagement?
-custom_questions:
-  matter_summary:
-    prompt: Summarize the matter and the work the firm completed.
+  matter_summary: Summarize the matter and the work the firm completed.
+  fee_status: What is the fee status as the matter closes?
+  file_retention: How will the client's file be retained or returned?
+  next_obligation: What is the client's next obligation or deadline, if any?
+choices:
   fee_status:
-    prompt: What is the fee status as the matter closes?
-    choices:
-      paid_in_full: Paid in full
-      balance_due: Balance due
-      waived: Fees waived
-  file_retention:
-    prompt: How will the client's file be retained or returned?
-  next_obligation:
-    prompt: What is the client's next obligation or deadline, if any?
+    paid_in_full: Paid in full
+    balance_due: Balance due
+    waived: Fees waived
 workflow:
   BEGIN:
     close_requested: lawyer_review

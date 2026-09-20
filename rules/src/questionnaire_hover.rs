@@ -18,7 +18,7 @@ use crate::frontmatter;
 /// Where a state's effective prompt comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptProvenance {
-    /// A `custom_questions:` entry defines this one-off question.
+    /// A `prompts:` entry defines this one-off question.
     Custom,
     /// A `prompts:` entry overrides the bank wording for a bank-backed state.
     Overridden,
@@ -47,14 +47,6 @@ pub struct ResolvedPrompt {
 struct HoverFrontmatter {
     #[serde(default)]
     prompts: BTreeMap<String, String>,
-    #[serde(default)]
-    custom_questions: BTreeMap<String, CustomQuestion>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CustomQuestion {
-    #[serde(default)]
-    prompt: String,
 }
 
 /// The bank-override alias keys a bank-backed state accepts, mirroring
@@ -90,10 +82,10 @@ pub fn resolve_prompt(frontmatter_yaml: &str, state: &str) -> Option<ResolvedPro
     let parsed: HoverFrontmatter = serde_yaml::from_str(frontmatter_yaml).unwrap_or_default();
 
     if ty.starts_with("custom_") {
-        if let Some(cq) = parsed.custom_questions.get(role) {
-            if !cq.prompt.trim().is_empty() {
+        if let Some(cq) = parsed.prompts.get(role) {
+            if !cq.trim().is_empty() {
                 return Some(ResolvedPrompt {
-                    prompt: cq.prompt.clone(),
+                    prompt: cq.clone(),
                     provenance: PromptProvenance::Custom,
                 });
             }
@@ -157,11 +149,10 @@ questionnaire:
   END: {}
 prompts:
   client_name: What is the client's full legal name?
-custom_questions:
+  management_structure: How will the company be managed?
+choices:
   management_structure:
-    prompt: How will the company be managed?
-    choices:
-      members: Managed by its members
+    members: Managed by its members
 workflow:
   BEGIN:
     _: lawyer_review
@@ -210,9 +201,8 @@ Body.
         // Defined but empty `prompt` — the resolver still shows the bank's
         // generic wording (N104 separately flags the empty entry).
         let doc = "---
-custom_questions:
-  blank:
-    prompt: '   '
+prompts:
+  blank: '   '
 ---
 Body.
 ";

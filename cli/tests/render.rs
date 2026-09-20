@@ -450,7 +450,7 @@ fn the_format_flag_is_retired_and_cannot_reframe_an_instrument() {
 }
 
 /// A choice question whose options carry the prose the body reads.
-/// `custom_questions.<key>.choices` is a `value: label` map, and the body
+/// `choices.<key>` is a `value: label` map, and the body
 /// interpolates the state — so the rendered instrument must read the
 /// label ("Nevada"), never the stored key ("nevada").
 const VALID_CHOICE: &str = "\
@@ -460,12 +460,12 @@ title: Governed Demand
 respondent_type: entity
 code: test__governed_demand
 confidential: true
-custom_questions:
+prompts:
+  governing_law: Which state's law governs this engagement?
+choices:
   governing_law:
-    prompt: Which state's law governs this engagement?
-    choices:
-      nevada: Nevada
-      california: California
+    nevada: Nevada
+    california: California
 questionnaire:
   BEGIN:
     _: custom_single_choice__governing_law

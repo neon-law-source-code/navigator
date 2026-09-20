@@ -535,9 +535,9 @@ mod tests {
         let mut runner = ScriptedRunner::new(vec![ok_headers_and_body(404, "not found")]);
         let report = check_host(
             &mut runner,
-            BrandKey::Vesta,
-            "www.vestaestateplanning.com",
-            "Vesta Estate Planning",
+            BrandKey::Summons,
+            "www.summonsdefense.nyc",
+            "Shook Law PLLC",
             10,
         );
         assert_eq!(report.verdict, Verdict::Ready);
@@ -547,13 +547,13 @@ mod tests {
     fn a_held_out_brand_answering_200_is_a_regression_not_a_pass() {
         let mut runner = ScriptedRunner::new(vec![ok_headers_and_body(
             200,
-            r#"<meta property="og:site_name" content="Vesta Estate Planning">"#,
+            r#"<meta property="og:site_name" content="Shook Law PLLC">"#,
         )]);
         let report = check_host(
             &mut runner,
-            BrandKey::Vesta,
-            "www.vestaestateplanning.com",
-            "Vesta Estate Planning",
+            BrandKey::Summons,
+            "www.summonsdefense.nyc",
+            "Shook Law PLLC",
             10,
         );
         assert_eq!(report.verdict, Verdict::UnexpectedlyLive);
@@ -564,9 +564,9 @@ mod tests {
         let mut runner = ScriptedRunner::new(vec![ok_headers_and_body(500, "boom")]);
         let report = check_host(
             &mut runner,
-            BrandKey::Vesta,
-            "www.vestaestateplanning.com",
-            "Vesta Estate Planning",
+            BrandKey::Summons,
+            "www.summonsdefense.nyc",
+            "Shook Law PLLC",
             10,
         );
         assert_eq!(report.verdict, Verdict::UnexpectedStatus);

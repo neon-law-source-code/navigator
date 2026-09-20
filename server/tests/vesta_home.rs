@@ -90,18 +90,21 @@ async fn vesta_offers_lifetime_edits_and_the_shared_booking_calendar() {
 }
 
 #[tokio::test]
-async fn lawyer_shook_has_two_brand_cards_and_keeps_the_firm_notice() {
+async fn lawyer_shook_lists_the_launched_family_and_keeps_the_firm_notice() {
     let html = page("staging.lawyershook.com", "/").await;
     for expected in [
         "holding-page",
         "Unless you have an active retainer",
         "home-practice",
         "Neon Law",
+        "DeleteYourData.com",
+        "DeleteYourDebt.com",
         "Vesta Estate Planning",
-        "emerging technology companies",
-        "$5,000",
-        "unlimited edits",
+        "Misericordia Injury Law",
+        "Abhaya Immigration",
+        "emerging tech",
         "site-footer",
+        "https://www.deleteyourdata.com",
         "https://www.vestaestateplanning.com",
     ] {
         assert!(html.contains(expected), "missing {expected}");

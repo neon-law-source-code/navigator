@@ -277,6 +277,31 @@ pub async fn ingest_bytes(
     ingest_bytes_as(db, storage, args, &DocumentIdentity::default(), bytes).await
 }
 
+/// Ingest one artifact exactly once for a `(Project, filename, content)`
+/// identity. Restate replay may run the caller again after the asset row was
+/// committed; returning that row prevents a second internal document record
+/// while retaining the ordinary content-addressed storage semantics.
+pub async fn ingest_bytes_exactly_once(
+    db: &SurrealDb,
+    storage: &Arc<dyn StorageService>,
+    args: &IngestArgs<'_>,
+    bytes: &[u8],
+) -> Result<IngestedDocument, IngestError> {
+    let sha_hex = crate::assets::sha256_hex(bytes);
+    if let Some(existing) =
+        crate::assets::find_filed_copy(db, args.project_id, args.filename, &sha_hex).await?
+    {
+        return Ok(IngestedDocument {
+            asset_id: existing.id,
+            storage_key: existing.storage_key,
+            sha256_hex: existing.sha256_hex,
+            byte_size: existing.byte_size,
+            reused: true,
+        });
+    }
+    ingest_bytes(db, storage, args, bytes).await
+}
+
 /// [`ingest_bytes`], filing the bytes as a revision of the document named
 /// by `identity`.
 ///
@@ -650,6 +675,30 @@ mod tests {
         let assets = crate::assets::for_project(&db, project_id).await.unwrap();
         assert_eq!(assets.len(), 2);
         assert_eq!(assets[0].storage_key, assets[1].storage_key);
+    }
+
+    #[tokio::test]
+    async fn exact_once_ingest_reuses_the_committed_document_row_on_replay() {
+        let (db, storage, _tmp, project_id) = fixtures().await;
+        let args = IngestArgs {
+            project_id,
+            source: "generated",
+            filename: "reviewed-contract.docx",
+            kind: "inbound_contract",
+            content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            description: Some("Attorney-reviewed Word contract"),
+            secondary_storage_key: None,
+            visibility: visibility::INTERNAL,
+        };
+        let first = ingest_bytes_exactly_once(&db, &storage, &args, b"reviewed bytes")
+            .await
+            .unwrap();
+        let second = ingest_bytes_exactly_once(&db, &storage, &args, b"reviewed bytes")
+            .await
+            .unwrap();
+        assert_eq!(first.asset_id, second.asset_id);
+        assert!(!first.reused);
+        assert!(second.reused);
     }
 
     #[tokio::test]

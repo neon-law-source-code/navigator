@@ -590,6 +590,18 @@ fn register_firm_matter_routes(r: Router<AdminState>, prefix: &str) -> Router<Ad
             &format!("{prefix}/contract-reviews/{{id}}/reject"),
             post(crate::admin_contract_reviews::reject),
         )
+        .route(
+            &format!("{prefix}/contract-reviews/{{id}}/document/edit"),
+            post(crate::admin_contract_reviews::save_document_edit_route),
+        )
+        .route(
+            &format!("{prefix}/contract-reviews/{{id}}/document/comments"),
+            post(crate::admin_contract_reviews::add_document_comment_route),
+        )
+        .route(
+            &format!("{prefix}/contract-reviews/{{id}}/document/comments/{{comment_id}}/decide"),
+            post(crate::admin_contract_reviews::decide_document_comment_route),
+        )
 }
 
 /// Register firm-administration writes under `{prefix}` (`/app/admin`).

@@ -1357,6 +1357,13 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
     );
+    let dioxus_notation_document_review = dioxus_app::notation_document_review_router(
+        state.surreal.clone(),
+        state.storage.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
     // #641 Phase 3 (admin cluster): the "add entity" create form renders through
     // Dioxus — the first CRUD create form, on the shared `FormCard` + CSRF page
     // router. It posts to the unchanged `/app/admin/entities` create handler.
@@ -1778,6 +1785,7 @@ pub fn bootstrap(
         dioxus_expunge_queue,
         dioxus_expunge_document,
         dioxus_contract_review,
+        dioxus_notation_document_review,
         dioxus_entity_new,
         // The "start a retainer walk" form (#956 Phase 4) renders through
         // Dioxus at `/app/lawyer/retainers/new`; the `POST` on the same path stays

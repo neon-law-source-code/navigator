@@ -45,6 +45,15 @@ impl Document {
         self.canonical_outline().to_markdown()
     }
 
+    /// Serialize the governed block/anchor manifest paired with
+    /// [`notation_markdown`](Self::notation_markdown). The manifest is derived
+    /// from the same canonical projection as the Markdown, so persistence
+    /// cannot accidentally pair source bytes with a second, independently
+    /// guessed anchor list.
+    pub fn anchor_manifest(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self.canonical_outline().block_manifest())
+    }
+
     /// The Word accepted view: insertions and move-to content are readable,
     /// deleted and move-from content is not. Revision nodes stay in `model`.
     #[must_use]
@@ -467,6 +476,7 @@ pub enum DiagnosticCode {
     ZipEntryCountExceeded,
     ZipEntryUncompressedSizeExceeded,
     ZipTotalUncompressedSizeExceeded,
+    OpenXmlValidation,
     UnsupportedNumbering,
     AmbiguousOutline,
     DepthOverflow,

@@ -3697,6 +3697,14 @@ fn review_action_response(
             })),
         )
             .into_response()),
+        Err(E::DocumentCommentsUnacted) => Ok((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": "document_comments_unacted",
+                "message": "Every document comment must be accepted, rejected, or edited before the memo can be approved."
+            })),
+        )
+            .into_response()),
         Err(e @ E::Db(_)) => {
             tracing::error!(error = %e, %review_id, "api contract-review action failed");
             Err(ApiError::Db("the contract-review action failed".into()))

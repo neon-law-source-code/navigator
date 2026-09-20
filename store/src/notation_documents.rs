@@ -1220,6 +1220,49 @@ pub async fn comments_for_version(
     many_comments(response)
 }
 
+/// Carry comments forward when an attorney saves a child version. Anchors
+/// that still exist remain resolved; anchors that disappeared are copied with
+/// `resolved = false` so the review surface can show the unresolved finding
+/// instead of silently attaching it to nearby text.
+pub async fn carry_comments_to_version(
+    db: &SurrealDb,
+    project_id: Uuid,
+    notation_id: Uuid,
+    parent_version_id: Uuid,
+    child_version_id: Uuid,
+    anchors: &[String],
+) -> Result<Vec<NotationDocumentComment>, NotationDocumentError> {
+    let comments = comments_for_version(db, project_id, notation_id, parent_version_id).await?;
+    let mut carried = Vec::with_capacity(comments.len());
+    for comment in comments {
+        let resolved = anchors.iter().any(|anchor| anchor == &comment.anchor);
+        let decision = resolved.then(|| comment.decision.clone()).flatten();
+        let id = Uuid::now_v7();
+        let mut response = db
+            .query(format!(
+                "CREATE $id SET version_id = $version_id, anchor = $anchor, \
+                 person_id = $person_id, body = $body, decision = $decision, \
+                 resolved = $resolved RETURN {COMMENT_SELECT}"
+            ))
+            .bind(("id", record_id(COMMENT_TABLE, id)))
+            .bind(("version_id", record_id(VERSION_TABLE, child_version_id)))
+            .bind(("anchor", comment.anchor.clone()))
+            .bind(("person_id", record_id("person", comment.person_id)))
+            .bind(("body", comment.body.clone()))
+            .bind(("decision", decision))
+            .bind(("resolved", resolved))
+            .await
+            .and_then(surrealdb::IndexedResults::check)?;
+        carried.push(
+            response
+                .take::<Option<CommentRow>>(0)?
+                .and_then(CommentRow::into_comment)
+                .ok_or(NotationDocumentError::WriteReturnedNothing)?,
+        );
+    }
+    Ok(carried)
+}
+
 /// Why [`decide_comment`] refused.
 #[derive(Debug, thiserror::Error)]
 pub enum DecideCommentError {
@@ -1260,6 +1303,13 @@ pub async fn decide_comment(
         .and_then(surrealdb::IndexedResults::check)
         .map_err(NotationDocumentError::from)?;
     let comment = one_comment(response)?.ok_or(DecideCommentError::NotFound(comment_id))?;
+    if find_version(db, project_id, notation_id, comment.version_id)
+        .await
+        .map_err(DecideCommentError::Document)?
+        .is_none()
+    {
+        return Err(DecideCommentError::NotFound(comment_id));
+    }
     if comment.decision.is_some() {
         return Err(DecideCommentError::AlreadyDecided(comment_id));
     }
@@ -2165,8 +2215,9 @@ mod protected_token_tests {
 #[cfg(test)]
 mod comment_tests {
     use super::{
-        add_comment, all_comments_decided, comments_for_version, decide_comment,
-        DecideCommentError, ImportRoot, DECISION_ACCEPTED,
+        add_comment, all_comments_decided, append_edit, carry_comments_to_version,
+        comments_for_version, decide_comment, AppendEdit, DecideCommentError, ImportRoot,
+        DECISION_ACCEPTED,
     };
     use crate::surreal::test_support::mem;
     use uuid::Uuid;
@@ -2432,5 +2483,105 @@ mod comment_tests {
             .await,
             Err(DecideCommentError::InvalidDecision(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn comments_are_carried_only_when_their_anchor_survives() {
+        let surreal = mem().await;
+        let storage = fs_storage().await;
+        let (notation_id, project_id, person_id, version_id) =
+            seeded_version(&surreal, &storage).await;
+        add_comment(
+            &surreal,
+            project_id,
+            notation_id,
+            version_id,
+            "kept",
+            person_id,
+            "keep this thread",
+        )
+        .await
+        .unwrap();
+        add_comment(
+            &surreal,
+            project_id,
+            notation_id,
+            version_id,
+            "removed",
+            person_id,
+            "this anchor disappeared",
+        )
+        .await
+        .unwrap();
+        let child = append_edit(
+            &surreal,
+            &storage,
+            AppendEdit {
+                project_id,
+                notation_id,
+                expected_parent_version_id: version_id,
+                markdown: b"# changed",
+                anchor_manifest: b"[]",
+                parser_version: "word-crate-1",
+                schema_version: 1,
+                authored_by_person_id: person_id,
+                recorded_at: "2026-09-19T12:00:00+00:00",
+            },
+        )
+        .await
+        .unwrap();
+        let carried = carry_comments_to_version(
+            &surreal,
+            project_id,
+            notation_id,
+            version_id,
+            child.id,
+            &["kept".to_string()],
+        )
+        .await
+        .unwrap();
+        assert_eq!(carried.len(), 2);
+        assert!(carried.iter().any(|comment| {
+            comment.anchor == "kept" && comment.resolved && comment.decision.is_none()
+        }));
+        assert!(carried.iter().any(|comment| {
+            comment.anchor == "removed" && !comment.resolved && comment.decision.is_none()
+        }));
+    }
+
+    #[tokio::test]
+    async fn a_comment_id_cannot_be_decided_through_another_notation_scope() {
+        let surreal = mem().await;
+        let storage = fs_storage().await;
+        let (notation_id, project_id, person_id, version_id) =
+            seeded_version(&surreal, &storage).await;
+        let comment_id = add_comment(
+            &surreal,
+            project_id,
+            notation_id,
+            version_id,
+            "p0",
+            person_id,
+            "scoped comment",
+        )
+        .await
+        .unwrap();
+        let other_notation_id = crate::test_support::seed_notation(&surreal).await;
+        let other = crate::notations::find_by_id(&surreal, other_notation_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let error = decide_comment(
+            &surreal,
+            other.project_id,
+            other_notation_id,
+            comment_id,
+            DECISION_ACCEPTED,
+            person_id,
+            "2026-09-19T12:00:00+00:00",
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, DecideCommentError::NotFound(id) if id == comment_id));
     }
 }

@@ -19,24 +19,32 @@ internal static class Program
     {
         try
         {
-            var request = JsonSerializer.Deserialize<AdapterRequest>(
-                await Console.In.ReadToEndAsync(), Json);
-            if (request is null || request.protocol_version != Protocol.Version)
+            var input = await Console.In.ReadToEndAsync();
+            var operation = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault() ?? "parse";
+            if (operation == "export")
             {
-                Write(new AdapterResponse(Protocol.Version, false, null,
-                    Diagnostic.Protocol()));
+                WriteExport(WordPackageExporter.Export(
+                    JsonSerializer.Deserialize<ExportRequest>(input, Json)));
+                return 0;
+            }
+            if (operation == "verify")
+            {
+                WriteVerify(WordPackageVerifier.Verify(
+                    JsonSerializer.Deserialize<VerifyRequest>(input, Json)));
                 return 0;
             }
 
-            byte[] bytes;
-            try
+            var request = JsonSerializer.Deserialize<AdapterRequest>(input, Json);
+            if (request is null || request.protocol_version != Protocol.Version)
             {
-                bytes = Convert.FromBase64String(request.bytes_base64);
+                Write(new AdapterResponse(Protocol.Version, false, null, Diagnostic.Protocol()));
+                return 0;
             }
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String(request.bytes_base64); }
             catch (FormatException)
             {
-                Write(new AdapterResponse(Protocol.Version, false, null,
-                    Diagnostic.Corrupt("package")));
+                Write(new AdapterResponse(Protocol.Version, false, null, Diagnostic.Corrupt("package")));
                 return 0;
             }
 
@@ -57,6 +65,12 @@ internal static class Program
     {
         Console.Write(JsonSerializer.Serialize(response, Json));
     }
+
+    private static void WriteExport(ExportResponse response) =>
+        Console.Write(JsonSerializer.Serialize(response, Json));
+
+    private static void WriteVerify(VerifyResponse response) =>
+        Console.Write(JsonSerializer.Serialize(response, Json));
 }
 
 internal static class Protocol
@@ -65,6 +79,147 @@ internal static class Protocol
 }
 
 internal sealed record AdapterRequest(int protocol_version, string bytes_base64);
+
+internal sealed record ExportChange(string anchor, string replacement_text, string author);
+internal sealed record ExportRequest(int protocol_version, string original_bytes_base64,
+    List<ExportChange> changes);
+internal sealed record ExportResponse(int protocol_version, bool ok, string? bytes_base64,
+    Diagnostic? diagnostic);
+internal sealed record VerifyRequest(int protocol_version, string bytes_base64);
+internal sealed record VerifyResponse(int protocol_version, bool ok, Diagnostic? diagnostic);
+
+internal static class WordPackageExporter
+{
+    public static ExportResponse Export(ExportRequest? request)
+    {
+        if (request is null || request.protocol_version != Protocol.Version)
+        {
+            return new ExportResponse(Protocol.Version, false, null, Diagnostic.Protocol());
+        }
+        try
+        {
+            var bytes = Convert.FromBase64String(request.original_bytes_base64);
+            using var input = new MemoryStream();
+            input.Write(bytes, 0, bytes.Length);
+            input.Position = 0;
+            using (var package = WordprocessingDocument.Open(input, true))
+            {
+                var main = package.MainDocumentPart;
+                if (main?.Document?.Body is null)
+                {
+                    return Refused("missing_main_document", "package");
+                }
+
+                var sequence = 1U;
+                foreach (var change in request.changes)
+                {
+                    var matches = main.Document.Body.Descendants<Paragraph>()
+                        .Where(paragraph => EmbeddedAnchor(main.Uri.ToString(), paragraph) == change.anchor)
+                        .ToList();
+                    if (matches.Count != 1)
+                    {
+                        return Refused(matches.Count == 0 ? "anchor_not_found" : "ambiguous_anchor",
+                            change.anchor);
+                    }
+                    if (!ReplaceSimpleParagraph(matches[0], change, sequence++))
+                    {
+                        return Refused("unsupported_edit_target", change.anchor);
+                    }
+                }
+                main.Document.Save();
+            }
+            return new ExportResponse(Protocol.Version, true,
+                Convert.ToBase64String(input.ToArray()), null);
+        }
+        catch (FormatException)
+        {
+            return Refused("corrupt_package", "package");
+        }
+        catch (OpenXmlPackageException)
+        {
+            return Refused("corrupt_package", "package");
+        }
+    }
+
+    private static string? EmbeddedAnchor(string partUri, Paragraph paragraph)
+    {
+        var paraId = paragraph.GetAttributes()
+            .FirstOrDefault(attribute => attribute.LocalName == "paraId");
+        if (string.IsNullOrEmpty(paraId.Value))
+        {
+            return null;
+        }
+        return $"{partUri}:paragraph:{paraId.Value}";
+    }
+
+    private static bool ReplaceSimpleParagraph(Paragraph paragraph, ExportChange change, uint revisionId)
+    {
+        if (paragraph.Descendants<BookmarkStart>().Any()
+            || paragraph.Descendants<BookmarkEnd>().Any()
+            || paragraph.Descendants<Hyperlink>().Any()
+            || paragraph.Descendants<FieldCode>().Any()
+            || paragraph.Descendants<FootnoteReference>().Any()
+            || paragraph.Descendants<CommentReference>().Any()
+            || paragraph.Descendants<InsertedRun>().Any()
+            || paragraph.Descendants<DeletedRun>().Any())
+        {
+            return false;
+        }
+        var text = string.Concat(paragraph.Descendants<Text>().Select(node => node.Text));
+        var firstRun = paragraph.Elements<Run>().FirstOrDefault();
+        var runProperties = firstRun?.RunProperties?.CloneNode(true) as RunProperties;
+        paragraph.RemoveAllChildren<Run>();
+
+        var deletedRun = new Run();
+        if (runProperties is not null) deletedRun.Append(runProperties.CloneNode(true));
+        deletedRun.Append(new DeletedText(text) { Space = SpaceProcessingModeValues.Preserve });
+        var deletion = new DeletedRun { Id = revisionId.ToString(), Author = change.author, Date = DateTime.UtcNow };
+        deletion.Append(deletedRun);
+
+        var insertedRun = new Run();
+        if (runProperties is not null) insertedRun.Append(runProperties);
+        insertedRun.Append(new Text(change.replacement_text) { Space = SpaceProcessingModeValues.Preserve });
+        var insertion = new InsertedRun { Id = (revisionId + 1).ToString(), Author = change.author, Date = DateTime.UtcNow };
+        insertion.Append(insertedRun);
+        paragraph.Append(deletion);
+        paragraph.Append(insertion);
+        return true;
+    }
+
+    private static ExportResponse Refused(string code, string anchor) =>
+        new(Protocol.Version, false, null, new Diagnostic(code, "error", anchor));
+}
+
+internal static class WordPackageVerifier
+{
+    public static VerifyResponse Verify(VerifyRequest? request)
+    {
+        if (request is null || request.protocol_version != Protocol.Version)
+        {
+            return new VerifyResponse(Protocol.Version, false, Diagnostic.Protocol());
+        }
+        try
+        {
+            var bytes = Convert.FromBase64String(request.bytes_base64);
+            using var stream = new MemoryStream(bytes, writable: false);
+            using var package = WordprocessingDocument.Open(stream, false);
+            var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator();
+            var error = validator.Validate(package).FirstOrDefault();
+            return error is null
+                ? new VerifyResponse(Protocol.Version, true, null)
+                : new VerifyResponse(Protocol.Version, false,
+                    Diagnostic.Rejected("open_xml_validation", error.Description ?? "package"));
+        }
+        catch (FormatException)
+        {
+            return new VerifyResponse(Protocol.Version, false, Diagnostic.Corrupt("package"));
+        }
+        catch (OpenXmlPackageException)
+        {
+            return new VerifyResponse(Protocol.Version, false, Diagnostic.Corrupt("package"));
+        }
+    }
+}
 
 internal sealed record AdapterResponse(
     int protocol_version,

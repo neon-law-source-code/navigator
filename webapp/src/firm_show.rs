@@ -11,6 +11,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::{Choice, Field, FormCard, Heading};
 use crate::people::ViewerRole;
 
 /// The path segment base; `{id}` is appended by the route and by every link
@@ -20,6 +21,31 @@ use crate::people::ViewerRole;
 /// scoped to their own Firm too — the fine-grained check is
 /// `store::firm_capability::FirmCapability::ViewDirectory`, not the route.
 pub const FIRM_SHOW_PATH: &str = "/app/admin/firms";
+
+/// The `?secret_error=`/`secret_saved=`/`secret_revoked=` flash the
+/// create/replace/revoke doors in `portal::admin` redirect back with.
+/// Post/redirect/get, exactly like [`crate::firm_edit::FirmEditQuery`] —
+/// nothing about the submitted value rides in the query, only an outcome.
+#[derive(Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+pub struct FirmShowQuery {
+    #[serde(default)]
+    pub secret_error: Option<String>,
+    #[serde(default)]
+    pub secret_saved: Option<String>,
+    #[serde(default)]
+    pub secret_revoked: Option<String>,
+}
+
+/// One row of the Firm's integration-secret metadata (ENG-491) — the
+/// Doppler-like listing. Never a value, ciphertext, or wrapped key.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SecretMetadataRow {
+    pub provider: String,
+    pub kind: String,
+    pub status: String,
+    pub version: i64,
+    pub updated_at: String,
+}
 
 /// One person's membership on this Firm.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -81,6 +107,32 @@ pub struct FirmFields {
     /// `ViewDirectory` has already gated `fields` to `Some`.
     #[serde(default)]
     pub invoices: crate::firm_invoice_graphs::FirmInvoiceGraphsView,
+    /// The Firm's integration-secret metadata (ENG-491) — populated only when
+    /// `FirmCapability::ViewIntegrationSecretMetadata` resolves `Allowed` for
+    /// this caller (Owner, or the Firm's own Admin DRI). Empty for anyone
+    /// else, and the section renders nothing rather than an empty table in
+    /// that case (see [`Self::can_view_secrets`]).
+    #[serde(default)]
+    pub secrets: Vec<SecretMetadataRow>,
+    /// Whether this caller may even see the metadata section — distinct from
+    /// `secrets.is_empty()`, which is also true for a DRI who has configured
+    /// nothing yet.
+    #[serde(default)]
+    pub can_view_secrets: bool,
+    /// Whether this caller may create/replace/revoke — `ManageIntegrationSecrets`,
+    /// which only the Firm's own Admin DRI holds. Owner can view metadata
+    /// above but never gets this: Owner appoints the DRI and is not an
+    /// ordinary secret writer.
+    #[serde(default)]
+    pub can_manage_secrets: bool,
+    #[serde(default)]
+    pub csrf_token: String,
+    #[serde(default)]
+    pub secret_error: Option<String>,
+    #[serde(default)]
+    pub secret_saved: Option<String>,
+    #[serde(default)]
+    pub secret_revoked: Option<String>,
 }
 
 #[cfg(feature = "server")]
@@ -92,6 +144,22 @@ fn store_role(role: ViewerRole) -> store::persons::Role {
         ViewerRole::Clerk => store::persons::Role::Clerk,
         ViewerRole::Client => store::persons::Role::Client,
     }
+}
+
+/// The closed secret-kind vocabulary as `(slug, label)` pairs for the "add a
+/// secret" select. Plain strings rather than `store::firm_secrets` types: this
+/// function also runs in the client wasm bundle (pre-hydration), which does
+/// not link `store`. Kept in the same order as
+/// `store::firm_secrets::ALL_KINDS`; a store test pins that the sets agree.
+fn secret_kind_choices() -> Vec<Choice> {
+    vec![
+        Choice::new("xero_client_id", "Xero client ID"),
+        Choice::new("xero_client_secret", "Xero client secret"),
+        Choice::new("xero_refresh_token", "Xero refresh token"),
+        Choice::new("slack_bot_token", "Slack bot token"),
+        Choice::new("notion_token", "Notion token"),
+        Choice::new("github_app_private_key", "GitHub App private key"),
+    ]
 }
 
 #[cfg(feature = "server")]
@@ -233,6 +301,68 @@ pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
             .map_err(|error| ServerFnError::new(error.to_string()))?
             .into();
 
+    // Integration-secret metadata (ENG-491): a separate, stricter capability
+    // than `ViewDirectory` above. Owner holds it (governance without
+    // plaintext); a non-DRI Admin does not, even though they can see
+    // everything else on this page.
+    let can_view_secrets = matches!(
+        store::firm_capability::resolve(
+            &surreal,
+            store_role(role),
+            actor_person_id,
+            id,
+            store::firm_capability::FirmCapability::ViewIntegrationSecretMetadata,
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?,
+        store::firm_capability::FirmCapabilityDecision::Allowed
+    );
+    let secrets = if can_view_secrets {
+        store::firm_secrets::list_metadata_for_firm(&surreal, store_role(role), actor_person_id, id)
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?
+            .into_iter()
+            .map(|m| SecretMetadataRow {
+                provider: m.provider.as_str().to_string(),
+                kind: m.kind.as_str().to_string(),
+                status: m.status,
+                version: m.version,
+                updated_at: m.updated_at,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let can_manage_secrets = can_view_secrets
+        && matches!(
+            store::firm_capability::resolve(
+                &surreal,
+                store_role(role),
+                actor_person_id,
+                id,
+                store::firm_capability::FirmCapability::ManageIntegrationSecrets,
+            )
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?,
+            store::firm_capability::FirmCapabilityDecision::Allowed
+        );
+    let csrf_token = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::Extension<crate::csrf::CsrfToken>,
+        _,
+    >()
+    .await
+    .map(|axum::Extension(token)| token.0)
+    .unwrap_or_default();
+    let FirmShowQuery {
+        secret_error,
+        secret_saved,
+        secret_revoked,
+    } = dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Query<FirmShowQuery>, _>(
+    )
+    .await
+    .map(|axum::extract::Query(q)| q)
+    .unwrap_or_default();
+
     Ok(FirmShowView {
         fields: Some(FirmFields {
             name: firm.name,
@@ -244,6 +374,13 @@ pub async fn get_firm_show() -> Result<FirmShowView, ServerFnError> {
             members,
             can_edit,
             invoices,
+            secrets,
+            can_view_secrets,
+            can_manage_secrets,
+            csrf_token,
+            secret_error,
+            secret_saved,
+            secret_revoked,
         }),
         ..base
     })
@@ -344,6 +481,82 @@ pub fn firm_show_body(view: &FirmShowView) -> Element {
                     },
                 }
             }
+            if fields.can_view_secrets {
+                section { id: "firm-secrets",
+                    h2 { "Integration secrets" }
+                    p { class: "nav-muted",
+                        "Write-only: a value is never shown again after it is submitted. \
+                         Revoking here stops Navigator from using the credential; it does \
+                         not revoke access on the provider's own side."
+                    }
+                    if let Some(error) = fields.secret_error.as_ref() {
+                        p { class: "nav-form-error", role: "alert", "{error}" }
+                    }
+                    if let Some(kind) = fields.secret_saved.as_ref() {
+                        p { role: "status", "Saved {kind}." }
+                    }
+                    if let Some(kind) = fields.secret_revoked.as_ref() {
+                        p { role: "status", "Revoked {kind}." }
+                    }
+                    if fields.secrets.is_empty() {
+                        p { "No integration secrets are configured yet." }
+                    } else {
+                        div { class: "nav-table-wrap",
+                            table { class: "nav-table",
+                                thead {
+                                    tr {
+                                        th { "Provider" }
+                                        th { "Kind" }
+                                        th { "Status" }
+                                        th { "Version" }
+                                        th { "Updated" }
+                                        if fields.can_manage_secrets {
+                                            th { "" }
+                                        }
+                                    }
+                                }
+                                tbody {
+                                    for row in fields.secrets.iter().cloned() {
+                                        tr { class: "firm-secret-row", key: "{row.provider}-{row.kind}",
+                                            td { "{row.provider}" }
+                                            td { "{row.kind}" }
+                                            td { "{row.status}" }
+                                            td { "{row.version}" }
+                                            td { "{row.updated_at}" }
+                                            if fields.can_manage_secrets {
+                                                td {
+                                                    form {
+                                                        class: "nav-form",
+                                                        method: "post",
+                                                        action: "/app/admin/firms/{view.id}/secrets/revoke",
+                                                        "aria-label": "Revoke {row.kind}",
+                                                        input { r#type: "hidden", name: "_csrf", value: "{fields.csrf_token}" }
+                                                        input { r#type: "hidden", name: "kind", value: "{row.kind}" }
+                                                        button { class: "nav-btn nav-btn--secondary", r#type: "submit", "Revoke" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if fields.can_manage_secrets {
+                        FormCard {
+                            title: "Add or replace a secret".to_string(),
+                            action: format!("/app/admin/firms/{}/secrets", view.id),
+                            submit_label: "Save".to_string(),
+                            heading: Heading::H2,
+                            csrf_token: Some(fields.csrf_token.clone()),
+                            fields: vec![
+                                Field::select("Secret", "kind", secret_kind_choices(), None),
+                                Field::input("Value", "value", "", "password").required(),
+                            ],
+                        }
+                    }
+                }
+            }
             section { id: "firm-members",
                 h2 { "People" }
                 if fields.members.is_empty() {
@@ -381,7 +594,7 @@ pub fn firm_show_body(view: &FirmShowView) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{firm_show_body, FirmFields, FirmShowView, MemberRow};
+    use super::{firm_show_body, FirmFields, FirmShowView, MemberRow, SecretMetadataRow};
     use crate::firm_invoice_graphs::{
         CurrencyInvoiceGraphsView, FirmInvoiceGraphsView, InvoiceBarView,
     };
@@ -496,6 +709,7 @@ mod tests {
                     by_lawyer_dri: vec![],
                 }],
             },
+            ..Default::default()
         }));
         assert!(html.contains(r#"id="firm-invoice-graphs""#), "{html}");
         assert!(html.contains("Neon Law invoiced: $100"), "{html}");
@@ -527,5 +741,70 @@ mod tests {
         let html = render(None);
         assert!(html.contains("Firm not found"), "{html}");
         assert!(!html.contains("firm-member-row"), "{html}");
+    }
+
+    /// A caller who cannot even view metadata (a non-DRI Admin) sees no
+    /// secrets section at all — not an empty one, which would disclose that
+    /// the Firm has (or lacks) integration secrets configured.
+    #[test]
+    fn hides_the_secrets_section_from_a_caller_who_cannot_view_metadata() {
+        let html = render(Some(FirmFields {
+            name: "Quiet Practice".to_string(),
+            status: "active".to_string(),
+            entity_name: "Quiet Entity".to_string(),
+            can_view_secrets: false,
+            ..Default::default()
+        }));
+        assert!(!html.contains(r#"id="firm-secrets""#), "{html}");
+    }
+
+    /// Owner (or the Firm's own Admin DRI) sees the metadata table — never a
+    /// value, only provider/kind/status/version/updated — and only the DRI
+    /// also sees the write forms.
+    #[test]
+    fn renders_secret_metadata_without_a_value_and_gates_the_write_forms_on_management() {
+        let secrets = vec![SecretMetadataRow {
+            provider: "notion".to_string(),
+            kind: "notion_token".to_string(),
+            status: "active".to_string(),
+            version: 2,
+            updated_at: "2026-09-19T00:00:00Z".to_string(),
+        }];
+
+        let owner_view = render(Some(FirmFields {
+            name: "Viewed Practice".to_string(),
+            status: "active".to_string(),
+            entity_name: "Viewed Entity".to_string(),
+            can_view_secrets: true,
+            can_manage_secrets: false,
+            secrets: secrets.clone(),
+            ..Default::default()
+        }));
+        assert!(owner_view.contains(r#"id="firm-secrets""#), "{owner_view}");
+        assert!(owner_view.contains("notion_token"), "{owner_view}");
+        assert!(owner_view.contains(">active<"), "{owner_view}");
+        assert!(
+            !owner_view.contains("Add or replace a secret"),
+            "{owner_view}"
+        );
+        assert!(!owner_view.contains("Revoke"), "{owner_view}");
+
+        let dri_view = render(Some(FirmFields {
+            name: "Managed Practice".to_string(),
+            status: "active".to_string(),
+            entity_name: "Managed Entity".to_string(),
+            can_view_secrets: true,
+            can_manage_secrets: true,
+            secrets,
+            csrf_token: "CSRF-TOKEN".to_string(),
+            ..Default::default()
+        }));
+        assert!(dri_view.contains("Add or replace a secret"), "{dri_view}");
+        assert!(dri_view.contains("Revoke"), "{dri_view}");
+        assert!(dri_view.contains(r#"value="CSRF-TOKEN""#), "{dri_view}");
+        assert!(
+            dri_view.contains(r#"action="/app/admin/firms/firm-1/secrets""#),
+            "{dri_view}"
+        );
     }
 }

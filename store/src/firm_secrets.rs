@@ -39,6 +39,19 @@ impl IntegrationProvider {
     }
 }
 
+/// Every kind in the closed vocabulary, in declaration order. The settings
+/// view builds its "create a secret" choices from this rather than a
+/// hand-kept second list, so a new kind cannot be added to the enum without
+/// also appearing there.
+pub const ALL_KINDS: [IntegrationSecretKind; 6] = [
+    IntegrationSecretKind::XeroClientId,
+    IntegrationSecretKind::XeroClientSecret,
+    IntegrationSecretKind::XeroRefreshToken,
+    IntegrationSecretKind::SlackBotToken,
+    IntegrationSecretKind::NotionToken,
+    IntegrationSecretKind::GitHubAppPrivateKey,
+];
+
 /// The closed, typed credential vocabulary. A webhook is deliberately absent:
 /// Project automation uses the Firm bot/API credentials, not the deployment
 /// operations notifier.
@@ -185,7 +198,10 @@ struct MetadataRow {
     updated_at: String,
 }
 
-fn parse_provider(value: &str) -> Option<IntegrationProvider> {
+/// Parse the wire/form spelling of a provider. `pub` so the settings door and
+/// its form share this one allowlist rather than each re-deriving it.
+#[must_use]
+pub fn parse_provider(value: &str) -> Option<IntegrationProvider> {
     match value {
         "xero" => Some(IntegrationProvider::Xero),
         "slack" => Some(IntegrationProvider::Slack),
@@ -195,7 +211,10 @@ fn parse_provider(value: &str) -> Option<IntegrationProvider> {
     }
 }
 
-fn parse_kind(value: &str) -> Option<IntegrationSecretKind> {
+/// Parse the wire/form spelling of a secret kind. `pub` for the same reason
+/// as [`parse_provider`].
+#[must_use]
+pub fn parse_kind(value: &str) -> Option<IntegrationSecretKind> {
     match value {
         "xero_client_id" => Some(IntegrationSecretKind::XeroClientId),
         "xero_client_secret" => Some(IntegrationSecretKind::XeroClientSecret),
@@ -390,6 +409,38 @@ pub async fn metadata_for_firm(
         .map(metadata)
         .transpose()?
         .ok_or_else(|| not_configured(provider, kind))
+}
+
+/// Read metadata for every provider/kind this Firm currently has an active
+/// version of — the Doppler-like settings list. Still no plaintext, ciphertext,
+/// or wrapped-key field; same authorization as [`metadata_for_firm`], which
+/// this does not replace: that one still answers "the current version of this
+/// one kind" for a resolver or a narrower read.
+pub async fn list_metadata_for_firm(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    firm_id: Uuid,
+) -> Result<Vec<SecretMetadata>, SecretStoreError> {
+    authorize(
+        surreal,
+        actor_role,
+        actor_person_id,
+        firm_id,
+        FirmCapability::ViewIntegrationSecretMetadata,
+    )
+    .await?;
+    let mut response = surreal
+        .query(format!(
+            "SELECT firm_id, provider, kind, version, kms_key_version, status, actor_id, \
+             created_at, updated_at FROM {TABLE} WHERE firm_id = $firm_id AND status = 'active' \
+             ORDER BY provider, kind"
+        ))
+        .bind(("firm_id", record_id(FIRM_TABLE, firm_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<MetadataRow> = response.take(0)?;
+    rows.into_iter().map(metadata).collect()
 }
 
 /// Revoke a current credential without calling the provider. Provider-side

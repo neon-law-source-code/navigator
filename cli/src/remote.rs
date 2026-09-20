@@ -974,6 +974,90 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
     .await
 }
 
+/// One Project's result from an `/app/api/integrations/*` door — mirrors
+/// `portal::integrations_api::ProjectOutcome`.
+#[derive(Debug, Deserialize)]
+struct IntegrationOutcome {
+    project_code: String,
+    outcome: String,
+    #[serde(default)]
+    detail: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IntegrationReportBody {
+    results: Vec<IntegrationOutcome>,
+}
+
+/// The closed set of outcomes an integration door reports as success.
+/// Everything else — a named failure slug (`credential_missing`,
+/// `provider_unavailable`, `conflict`, `renamed`, `archived`, `missing`,
+/// `duplicate`, `address_not_recorded`, …) or a slug this CLI has never
+/// seen — fails closed: an unrecognized outcome never reads as success just
+/// because the HTTP status was 200.
+const INTEGRATION_SUCCESS_OUTCOMES: &[&str] =
+    &["created", "adopted", "unchanged", "repaired", "notified"];
+
+fn integration_outcome_succeeded(outcome: &IntegrationOutcome) -> bool {
+    INTEGRATION_SUCCESS_OUTCOMES.contains(&outcome.outcome.as_str())
+}
+
+fn describe_integration_outcome(outcome: &IntegrationOutcome) -> String {
+    match &outcome.detail {
+        Some(detail) => format!("{}: {} ({detail})", outcome.project_code, outcome.outcome),
+        None => format!("{}: {}", outcome.project_code, outcome.outcome),
+    }
+}
+
+/// Parse an integration door's JSON body into its per-Project outcomes. A
+/// body that does not parse as the expected shape is itself a failure: an
+/// HTTP-200 response this CLI cannot interpret must never be treated as
+/// success, so this returns `Err` rather than an empty list.
+fn parse_integration_report(body: &str) -> Result<Vec<IntegrationOutcome>> {
+    serde_json::from_str::<IntegrationReportBody>(body)
+        .map(|report| report.results)
+        .with_context(|| {
+            format!(
+                "the server returned a body this CLI could not interpret: {}",
+                first_line(body)
+            )
+        })
+}
+
+/// Print each outcome in text mode and, when every one succeeded, return
+/// `Ok(())`; otherwise `Err` naming exactly which Project/outcome pairs
+/// failed, so a mixed `--all` result still fails the whole command even
+/// though most rows are fine. An empty result set (an `--all` sweep that
+/// matched nothing) is not a failure — there was simply nothing to do.
+fn report_integration_outcomes(door: &str, json: bool, body: &str) -> Result<()> {
+    let results = parse_integration_report(body)?;
+    if json {
+        println!("{body}");
+    } else if results.is_empty() {
+        println!("{door}: nothing to do");
+    } else {
+        for outcome in &results {
+            println!("{}", describe_integration_outcome(outcome));
+        }
+    }
+    let failed: Vec<&IntegrationOutcome> = results
+        .iter()
+        .filter(|outcome| !integration_outcome_succeeded(outcome))
+        .collect();
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "{door} did not fully succeed: {}",
+            failed
+                .iter()
+                .map(|outcome| describe_integration_outcome(outcome))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ))
+    }
+}
+
 /// `navigator project notion <ensure|reconcile>` — post one Project
 /// code, or `--all`, to the server's Notion integration door. The Firm's
 /// provider credential is resolved server-side from the Project's `firm_id`,
@@ -1009,15 +1093,7 @@ async fn notion_command(
                 first_line(&body)
             ));
         }
-        if json {
-            println!("{body}");
-        } else {
-            println!("Notion {action} completed");
-            if !body.trim().is_empty() {
-                println!("{}", first_line(&body));
-            }
-        }
-        Ok(())
+        report_integration_outcomes(&format!("Notion {action}"), json, &body)
     })
     .await
 }
@@ -1083,15 +1159,7 @@ async fn slack_command(
                 first_line(&body)
             ));
         }
-        if json {
-            println!("{body}");
-        } else {
-            println!("Slack {action} completed for {project_code}");
-            if !body.trim().is_empty() {
-                println!("{}", first_line(&body));
-            }
-        }
-        Ok(())
+        report_integration_outcomes(&format!("Slack {action}"), json, &body)
     })
     .await
 }
@@ -2846,10 +2914,11 @@ mod tests {
         clause_list, document_upload, ensure_no_unused_selections, fetch_status, mail_file,
         matter_close, matter_open, notation_answers, notation_approve, notation_create,
         notation_document, notation_list, notation_request_changes, notation_status,
-        notation_update, parse_scripted_selection, picker_selection_fields, projects_create,
-        projects_lifecycle, projects_list, retainer_approve, retainer_send,
-        scripted_picker_selection_fields, seed, seed_directory, select_candidate, CoverageSummary,
-        DocumentClient, SeedCredential, StepQuestion, StepResponse,
+        notation_update, notion_ensure, notion_reconcile, parse_scripted_selection,
+        picker_selection_fields, projects_create, projects_lifecycle, projects_list,
+        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
+        select_candidate, slack_ensure, CoverageSummary, DocumentClient, SeedCredential,
+        StepQuestion, StepResponse,
     };
     use super::{
         exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, parse_csv,
@@ -3137,6 +3206,219 @@ mod tests {
 
         let gate_failure = anyhow::anyhow!("2 of 2 pointer(s) failed live verification");
         assert_eq!(exit_code_for(&gate_failure), ExitCode::from(2));
+    }
+
+    /// ENG-807: the CLI must fail closed on an HTTP-200 outcome it cannot
+    /// call success, in both text and `--json` mode. Each case here mirrors a
+    /// row of the issue's own reproduction table (`credential_missing`,
+    /// `provider_unavailable`, `conflict`) plus the "not a slug I've ever
+    /// seen" and "not even valid JSON" cases the acceptance criteria add.
+    mod integration_outcome_exit_codes {
+        use super::{
+            notion_ensure, notion_reconcile, slack_ensure, CredentialsEnv, ExitCode, MockServer,
+            CREDENTIALS_ENV_LOCK,
+        };
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, ResponseTemplate};
+
+        async fn mount_notion_ensure(server: &MockServer, body: serde_json::Value) {
+            Mock::given(method("POST"))
+                .and(path("/app/api/integrations/notion/ensure"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(server)
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_credential_missing_outcome_exits_nonzero_in_text_and_json_mode() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            mount_notion_ensure(
+                &server,
+                serde_json::json!({ "results": [
+                    { "project_code": "acme", "outcome": "credential_missing" }
+                ]}),
+            )
+            .await;
+
+            for json in [false, true] {
+                assert_ne!(
+                    notion_ensure(Some(server_uri.as_str()), Some("acme"), false, json).await,
+                    ExitCode::SUCCESS,
+                    "json={json}"
+                );
+            }
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_provider_unavailable_outcome_exits_nonzero() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            mount_notion_ensure(
+                &server,
+                serde_json::json!({ "results": [
+                    { "project_code": "acme", "outcome": "provider_unavailable" }
+                ]}),
+            )
+            .await;
+
+            assert_ne!(
+                notion_ensure(Some(server_uri.as_str()), Some("acme"), false, true).await,
+                ExitCode::SUCCESS
+            );
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_conflict_outcome_exits_nonzero() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            Mock::given(method("POST"))
+                .and(path("/app/api/integrations/notion/reconcile"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "results": [
+                        { "project_code": "acme", "outcome": "conflict", "detail": "2 pages carry this code" }
+                    ]
+                })))
+                .mount(&server)
+                .await;
+
+            assert_ne!(
+                notion_reconcile(Some(server_uri.as_str()), Some("acme"), false, true).await,
+                ExitCode::SUCCESS
+            );
+        }
+
+        /// A slug this CLI has never been told about must never read as
+        /// success merely because the HTTP status was 200 — fail closed
+        /// rather than fail open on an unrecognized future outcome.
+        #[tokio::test(flavor = "current_thread")]
+        async fn an_unknown_outcome_slug_exits_nonzero() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            mount_notion_ensure(
+                &server,
+                serde_json::json!({ "results": [
+                    { "project_code": "acme", "outcome": "something_nobody_named_yet" }
+                ]}),
+            )
+            .await;
+
+            assert_ne!(
+                notion_ensure(Some(server_uri.as_str()), Some("acme"), false, false).await,
+                ExitCode::SUCCESS
+            );
+        }
+
+        /// A 200 body that isn't even the expected shape is a malformed
+        /// response, not a silent success.
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_malformed_body_exits_nonzero() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            mount_notion_ensure(&server, serde_json::json!({ "not_results_at_all": true })).await;
+
+            assert_ne!(
+                notion_ensure(Some(server_uri.as_str()), Some("acme"), false, false).await,
+                ExitCode::SUCCESS
+            );
+        }
+
+        /// A genuinely successful outcome still exits zero — the fix must not
+        /// turn every ensure into a failure.
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_created_outcome_exits_zero() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            mount_notion_ensure(
+                &server,
+                serde_json::json!({ "results": [
+                    { "project_code": "acme", "outcome": "created" }
+                ]}),
+            )
+            .await;
+
+            assert_eq!(
+                notion_ensure(Some(server_uri.as_str()), Some("acme"), false, true).await,
+                ExitCode::SUCCESS
+            );
+        }
+
+        /// `--all` mixing one success with one failure must fail the whole
+        /// command — a caller scripting `ensure --all` cannot tell a mixed
+        /// result apart from full success unless the exit code disagrees.
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_mixed_all_result_exits_nonzero() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            mount_notion_ensure(
+                &server,
+                serde_json::json!({ "results": [
+                    { "project_code": "acme", "outcome": "created" },
+                    { "project_code": "beta", "outcome": "credential_missing" }
+                ]}),
+            )
+            .await;
+
+            for json in [false, true] {
+                assert_ne!(
+                    notion_ensure(Some(server_uri.as_str()), None, true, json).await,
+                    ExitCode::SUCCESS,
+                    "json={json}"
+                );
+            }
+        }
+
+        /// An `--all` sweep that legitimately matched nothing is not a
+        /// failure — there was simply nothing to do.
+        #[tokio::test(flavor = "current_thread")]
+        async fn an_empty_all_sweep_exits_zero() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            mount_notion_ensure(&server, serde_json::json!({ "results": [] })).await;
+
+            assert_eq!(
+                notion_ensure(Some(server_uri.as_str()), None, true, true).await,
+                ExitCode::SUCCESS
+            );
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn slack_ensure_also_fails_closed_on_credential_missing() {
+            let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+            let server = MockServer::start().await;
+            let server_uri = server.uri();
+            let _env = CredentialsEnv::new(&server_uri);
+            Mock::given(method("POST"))
+                .and(path("/app/api/integrations/slack/ensure"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "results": [
+                        { "project_code": "acme", "outcome": "credential_missing" }
+                    ]
+                })))
+                .mount(&server)
+                .await;
+
+            assert_ne!(
+                slack_ensure(Some(server_uri.as_str()), "acme", true).await,
+                ExitCode::SUCCESS
+            );
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

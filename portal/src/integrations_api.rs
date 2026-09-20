@@ -43,7 +43,8 @@
 //! needs to know what happened, not where it happened — the coordinate is
 //! already recorded on the Project row for the surfaces that may read it.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -53,6 +54,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{AdminSession, ApiError, ApiState};
 use crate::integrations::IntegrationError;
+
+/// Per-`(project, provider)` async locks, keyed by
+/// [`workflows::IntegrationJob::job_id`] — the same stable id a durable
+/// worker would key a replay-safe invocation on, given its first real caller
+/// here. Concurrent `ensure` requests for the same Project and provider
+/// serialize on this instead of racing find-then-create against each other,
+/// which is what turns a double-submitted or double-scheduled `ensure` into
+/// two provider resources instead of one.
+///
+/// This is a single-process guarantee — the boundary a test harness (one
+/// `axum::Router` in one process) can actually exercise and assert against.
+/// A multi-replica deployment still needs the provider's own idempotent
+/// find-then-create (`cloud::ensure_private_page`/`ensure_private_channel`),
+/// which every call here already goes through.
+static ENSURE_LOCKS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+async fn ensure_lock(job_id: String) -> tokio::sync::OwnedMutexGuard<()> {
+    let lock = ENSURE_LOCKS
+        .lock()
+        .expect("ensure-lock registry poisoned")
+        .entry(job_id)
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone();
+    lock.lock_owned().await
+}
 
 /// One Project's result. `outcome` is a closed slug; `detail` is present only
 /// for the outcomes that name a mechanism the operator has to act on.
@@ -237,6 +264,8 @@ pub(crate) async fn notion_ensure_door(
 }
 
 async fn ensure_one_page(state: &ApiState, project: &store::projects::Project) -> ProjectOutcome {
+    let _guard =
+        ensure_lock(workflows::IntegrationJob::notion(project.id, &project.code).job_id).await;
     let notion = match state
         .integration_providers
         .notion(&state.surreal, project.id)
@@ -245,6 +274,44 @@ async fn ensure_one_page(state: &ApiState, project: &store::projects::Project) -
         Ok(notion) => notion,
         Err(error) => return unavailable(project, &error),
     };
+    // A recorded page is validated by its own id, never rediscovered by
+    // title search: a search cannot see a page after it was renamed away
+    // from the recorded title or archived, so treating "the search found
+    // nothing" as "nothing was ever provisioned" would create a duplicate
+    // beside a page that still exists. Only a genuinely unrecorded or
+    // unresolvable coordinate falls through to create-or-adopt below.
+    if let Some(recorded_url) = project.private_notion_page_url.clone() {
+        if let Some(page_id) = cloud::notion_page_id_from_url(&recorded_url) {
+            match notion.get_page(&page_id).await {
+                Ok(Some(page)) => {
+                    let decision = cloud::reconcile_notion_project(
+                        &cloud::NotionProjectInput {
+                            project_code: project.code.clone(),
+                            canonical_url: recorded_url,
+                        },
+                        std::slice::from_ref(&cloud::NotionPageSnapshot {
+                            accessible: !page.archived,
+                            id: page.id,
+                            url: page.url,
+                            project_code: page.project_code,
+                        }),
+                    );
+                    return apply_notion_decision(
+                        state,
+                        project,
+                        notion.as_ref(),
+                        decision,
+                        "adopted",
+                    )
+                    .await;
+                }
+                Ok(None) => { /* the recorded id is gone; fall through */ }
+                Err(_) => {
+                    return ProjectOutcome::plain(project.code.clone(), "provider_unavailable")
+                }
+            }
+        }
+    }
     let Ok((page, created)) = cloud::ensure_private_page(notion.as_ref(), &project.code).await
     else {
         return ProjectOutcome::plain(project.code.clone(), "provider_unavailable");
@@ -262,6 +329,62 @@ async fn ensure_one_page(state: &ApiState, project: &store::projects::Project) -
         project.code.clone(),
         if created { "created" } else { "adopted" },
     )
+}
+
+/// Map a reconcile decision to the reported outcome, applying the one
+/// decision that is a repair. Shared by `ensure` (which validates a
+/// recorded page before falling back to create-or-adopt) and `reconcile`
+/// (which validates first via a broad title search, then this same single-id
+/// path when that search sees nothing). `unchanged_slug` is the only axis
+/// the two doors disagree on: `ensure` calls its steady state `"adopted"`,
+/// `reconcile` calls it `"unchanged"`.
+async fn apply_notion_decision(
+    state: &ApiState,
+    project: &store::projects::Project,
+    notion: &dyn cloud::NotionService,
+    decision: cloud::NotionRepairDecision,
+    unchanged_slug: &'static str,
+) -> ProjectOutcome {
+    match decision {
+        // Unreachable from either caller here (both always pass exactly one
+        // snapshot), kept exhaustive rather than panicking on a future
+        // caller that passes more.
+        cloud::NotionRepairDecision::Missing => {
+            ProjectOutcome::plain(project.code.clone(), "missing")
+        }
+        cloud::NotionRepairDecision::Duplicate { page_ids } => ProjectOutcome::with_detail(
+            project.code.clone(),
+            "duplicate",
+            format!("{} pages carry this code", page_ids.len()),
+        ),
+        cloud::NotionRepairDecision::Conflict { observed_code, .. } => {
+            ProjectOutcome::with_detail(project.code.clone(), "renamed", observed_code)
+        }
+        cloud::NotionRepairDecision::Unavailable { .. } => {
+            ProjectOutcome::plain(project.code.clone(), "archived")
+        }
+        cloud::NotionRepairDecision::Unchanged { .. } => {
+            ProjectOutcome::plain(project.code.clone(), unchanged_slug)
+        }
+        cloud::NotionRepairDecision::Repair { page_id, .. } => {
+            match notion.update_private_page(&page_id, &project.code).await {
+                Ok(page) => {
+                    if store::projects::set_private_notion_page_url(
+                        &state.surreal,
+                        project.id,
+                        &page.url,
+                    )
+                    .await
+                    .is_err()
+                    {
+                        return ProjectOutcome::plain(project.code.clone(), "address_not_recorded");
+                    }
+                    ProjectOutcome::plain(project.code.clone(), "repaired")
+                }
+                Err(_) => ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
+            }
+        }
+    }
 }
 
 /// `POST /app/api/integrations/notion/reconcile` — compare each selected
@@ -291,68 +414,58 @@ async fn reconcile_one_page(
         Ok(notion) => notion,
         Err(error) => return unavailable(project, &error),
     };
-    let Ok(pages) = notion.list_private_pages(&project.code).await else {
-        return ProjectOutcome::plain(project.code.clone(), "provider_unavailable");
-    };
-    let snapshots: Vec<cloud::NotionPageSnapshot> = pages
-        .iter()
-        .map(|page| cloud::NotionPageSnapshot {
-            id: page.id.clone(),
-            url: page.url.clone(),
-            project_code: page.project_code.clone(),
-            person_ids: Vec::new(),
-            manual_fields: std::collections::BTreeMap::new(),
-            accessible: true,
-        })
-        .collect();
     // The recorded address is the canonical one. Reconciliation never guesses
-    // through a stale URL, so a Project with no recorded page is `missing`
+    // through a stale URL, so a Project with no recorded page is `not_recorded`
     // even when the provider holds one — adopting it is `ensure`'s decision,
     // not a repair.
     let Some(canonical) = project.private_notion_page_url.clone() else {
         return ProjectOutcome::plain(project.code.clone(), "not_recorded");
     };
-    let input = cloud::NotionProjectInput {
-        project_code: project.code.clone(),
-        canonical_url: canonical,
-        person_ids: Vec::new(),
+    let Ok(pages) = notion.list_private_pages(&project.code).await else {
+        return ProjectOutcome::plain(project.code.clone(), "provider_unavailable");
     };
-    match cloud::reconcile_notion_project(&input, &snapshots) {
-        cloud::NotionRepairDecision::Missing => {
-            ProjectOutcome::plain(project.code.clone(), "missing")
+    if !pages.is_empty() {
+        let snapshots: Vec<cloud::NotionPageSnapshot> = pages
+            .into_iter()
+            .map(|page| cloud::NotionPageSnapshot {
+                accessible: !page.archived,
+                id: page.id,
+                url: page.url,
+                project_code: page.project_code,
+            })
+            .collect();
+        let input = cloud::NotionProjectInput {
+            project_code: project.code.clone(),
+            canonical_url: canonical,
+        };
+        let decision = cloud::reconcile_notion_project(&input, &snapshots);
+        return apply_notion_decision(state, project, notion.as_ref(), decision, "unchanged").await;
+    }
+    // A title search cannot see a page that was renamed away from its
+    // recorded title or archived — Notion excludes archived pages from
+    // `/search`, and a rename means the title no longer matches the query.
+    // Before reporting the recorded page truly missing, look it up by its
+    // own id directly.
+    let Some(page_id) = cloud::notion_page_id_from_url(&canonical) else {
+        return ProjectOutcome::plain(project.code.clone(), "missing");
+    };
+    match notion.get_page(&page_id).await {
+        Ok(Some(page)) => {
+            let input = cloud::NotionProjectInput {
+                project_code: project.code.clone(),
+                canonical_url: canonical,
+            };
+            let snapshot = cloud::NotionPageSnapshot {
+                accessible: !page.archived,
+                id: page.id,
+                url: page.url,
+                project_code: page.project_code,
+            };
+            let decision = cloud::reconcile_notion_project(&input, std::slice::from_ref(&snapshot));
+            apply_notion_decision(state, project, notion.as_ref(), decision, "unchanged").await
         }
-        cloud::NotionRepairDecision::Duplicate { page_ids } => ProjectOutcome::with_detail(
-            project.code.clone(),
-            "duplicate",
-            format!("{} pages carry this code", page_ids.len()),
-        ),
-        cloud::NotionRepairDecision::Conflict { .. } => {
-            ProjectOutcome::plain(project.code.clone(), "conflict")
-        }
-        cloud::NotionRepairDecision::Unavailable { .. } => {
-            ProjectOutcome::plain(project.code.clone(), "unavailable")
-        }
-        cloud::NotionRepairDecision::Unchanged { .. } => {
-            ProjectOutcome::plain(project.code.clone(), "unchanged")
-        }
-        cloud::NotionRepairDecision::Repair { page_id, .. } => {
-            match notion.update_private_page(&page_id, &project.code).await {
-                Ok(page) => {
-                    if store::projects::set_private_notion_page_url(
-                        &state.surreal,
-                        project.id,
-                        &page.url,
-                    )
-                    .await
-                    .is_err()
-                    {
-                        return ProjectOutcome::plain(project.code.clone(), "address_not_recorded");
-                    }
-                    ProjectOutcome::plain(project.code.clone(), "repaired")
-                }
-                Err(_) => ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
-            }
-        }
+        Ok(None) => ProjectOutcome::plain(project.code.clone(), "missing"),
+        Err(_) => ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
     }
 }
 
@@ -370,35 +483,71 @@ pub(crate) async fn slack_ensure_door(
 ) -> Result<Response, ApiError> {
     let visible = visible_for(&state, &authed).await?;
     let project = one_target(&state, &authed, visible, &request.project_code).await?;
+    Ok(report_one(ensure_one_channel(&state, &project).await))
+}
+
+async fn ensure_one_channel(
+    state: &ApiState,
+    project: &store::projects::Project,
+) -> ProjectOutcome {
+    let _guard =
+        ensure_lock(workflows::IntegrationJob::slack(project.id, &project.code).job_id).await;
     let slack = match state
         .integration_providers
         .slack(&state.surreal, project.id)
         .await
     {
         Ok(slack) => slack,
-        Err(error) => return Ok(report_one(unavailable(&project, &error))),
+        Err(error) => return unavailable(project, &error),
     };
-    let Ok((channel, created)) =
-        cloud::ensure_private_channel(slack.as_ref(), &project.code, &[]).await
-    else {
-        return Ok(report_one(ProjectOutcome::plain(
-            project.code.clone(),
-            "provider_unavailable",
-        )));
-    };
+    // A recorded channel is validated by its own id, never rediscovered by
+    // name search: `conversations.list` excludes archived channels and a
+    // rename means the name no longer matches the query, so treating "the
+    // search found nothing" as "nothing was ever provisioned" would create a
+    // duplicate beside a channel that still exists.
+    if let Some(recorded_id) = project.internal_slack_channel_id.clone() {
+        match slack.get_channel(&recorded_id).await {
+            Ok(Some(channel)) if channel.is_archived => {
+                return ProjectOutcome::plain(project.code.clone(), "archived")
+            }
+            Ok(Some(channel)) if channel.name != project.code => {
+                return ProjectOutcome::with_detail(project.code.clone(), "renamed", channel.name)
+            }
+            Ok(Some(_)) => return ProjectOutcome::plain(project.code.clone(), "adopted"),
+            Ok(None) => { /* the recorded id is gone; fall through */ }
+            Err(_) => return ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
+        }
+    }
+    let (channel, created) =
+        match cloud::ensure_private_channel(slack.as_ref(), &project.code, &[]).await {
+            Ok(result) => result,
+            // A name collision is reported as its own outcome — an operator
+            // decision (something already holds this name) — never folded into
+            // the generic provider-outage slug.
+            Err(cloud::SlackError::NameTaken) => {
+                return ProjectOutcome::plain(project.code.clone(), "conflict")
+            }
+            Err(_) => return ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
+        };
+    // Record the id and its canonical URL together so the two coordinates the
+    // Project row carries for this channel never disagree (ENG-807).
     if store::projects::set_internal_slack_channel_id(&state.surreal, project.id, &channel.id)
         .await
         .is_err()
+        || store::projects::set_internal_slack_channel_url(
+            &state.surreal,
+            project.id,
+            &cloud::slack_channel_url(&channel.id),
+        )
+        .await
+        .is_err()
     {
-        return Ok(report_one(ProjectOutcome::plain(
-            project.code.clone(),
-            "address_not_recorded",
-        )));
+        return ProjectOutcome::plain(project.code.clone(), "address_not_recorded");
     }
-    Ok(report_one(ProjectOutcome::plain(
+    ProjectOutcome::plain(
         project.code.clone(),
         if created { "created" } else { "adopted" },
-    )))
+    )
 }
 
 /// `POST /app/api/integrations/slack/notify` — post one closed-vocabulary,

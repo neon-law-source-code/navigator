@@ -47,19 +47,22 @@ own set from its own namespaced Kubernetes Secret; no two deployments share one.
 ## Firm-owned integration credentials
 
 Notion and other Firm integrations are not deployment-wide credentials. A Firm's Admin DRI writes a typed provider
-secret through the Navigator secret boundary; the value is envelope-encrypted with the dedicated runtime KMS key and is
-never returned in JSON, logs, traces, or durable payloads. The resolver selects the credential from the Project's
-`firm_id`, so a Project cannot fall back to another Firm or to a deployment environment variable. Owner governance may
-inspect metadata and appoint the DRI, but Owner is not a secret writer.
+secret at `/app/admin/firms/{id}` (the **Integration secrets** section — create, replace/rotate, and revoke; a value is
+never shown again after it is submitted) through the Navigator secret boundary (`store::firm_secrets`); the value is
+envelope-encrypted with the dedicated runtime KMS key and is never returned in JSON, logs, traces, or durable payloads.
+The resolver selects the credential from the Project's `firm_id`, so a Project cannot fall back to another Firm or to a
+deployment environment variable. Owner may view the same page's metadata (kind, status, version, last-updated) and
+appoints the DRI, but Owner is not a secret writer — `ManageIntegrationSecrets` admits only the Firm's own Admin DRI.
 
 The runtime KMS coordinate is `NAVIGATOR_RUNTIME_KMS_KEY`. It must name a dedicated runtime key, never the deployment
 configuration key. Staging manifests and operator documentation may describe the workload permission; this repository
 does not apply IAM or write cloud state. Provider clients receive a resolved credential through an injected trait and
 tests use fakes, so local verification needs no live provider account.
 
-Notion reconciliation uses the explicitly selected `NAVIGATOR_NOTION_DATABASE_ID`. A missing, moved, deleted, duplicate,
-or unshared page is an operator-visible repair outcome; the reconciler never silently creates a second page. It writes
-the canonical Project code and stable Person IDs while preserving manual Notion fields.
+Notion reconciliation uses the explicitly selected `NAVIGATOR_NOTION_DATABASE_ID`. A missing, duplicate, renamed, or
+archived page is an operator-visible repair outcome; the reconciler never silently creates a second page or replaces one
+it cannot positively identify. It writes the canonical Project code and URL; page sharing and manual Notion fields are
+out of scope for this surface (no invitations, no content mirroring) and untouched by it.
 
 ### The Firm integration doors
 
@@ -77,6 +80,10 @@ policy rule admits any authenticated caller several segments deep, so a provisio
 policy-reachable by a client even though the handler refuses one. The tier matches `project-surfaces` too — creating or
 adopting a Project's external resources is one kind of act — and `--all` sweeps only the Projects visible to the calling
 login, never every row in the deployment.
+
+See [`project-repositories.md`](project-repositories.md#firm-private-slack-and-notion-sync) for the credential
+prerequisite, the full outcome vocabulary, and how the CLI's exit code follows the typed outcome rather than the HTTP
+status.
 
 Each response is one outcome slug per Project and nothing else. No page id, no channel id, no provider URL: those are
 the Firm-private coordinates this boundary exists to keep on the firm side, and they are recorded on the Project row for

@@ -267,6 +267,10 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
     // a Firm credential has no deployment-wide fallback, so "not configured"
     // is the honest answer rather than a provider that pretends.
     let integration_providers = crate::integrations::from_env().await;
+    // The same fail-closed runtime KMS handle, exposed separately so the
+    // Firm settings door can encrypt/decrypt directly through
+    // `store::firm_secrets` without a Notion database id.
+    let runtime_kms = crate::integrations::runtime_kms_from_env().await;
 
     // Real Xero provider when the env is configured; otherwise the stub
     // (KIND / local dev), so a fork boots and self-tests without a Xero
@@ -392,6 +396,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         signature_provider,
         billing_provider,
         integration_providers,
+        runtime_kms,
         // Inbound-contract reviewer: Vertex Gemini when configured, else
         // the deterministic stub — selected here exactly like the A2A
         // router (chosen inside `bootstrap`). The

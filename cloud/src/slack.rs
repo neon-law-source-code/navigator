@@ -82,10 +82,17 @@ pub enum SlackError {
     NameTaken,
 }
 
+/// `is_archived` is `false` on every channel `find_private_channel` can
+/// return — `conversations.list` is called with `exclude_archived: true`, so
+/// a search result is never stale in that dimension. It only ever reads
+/// `true` on the result of [`SlackService::get_channel`], which looks up an
+/// already-recorded id directly rather than by name and so can observe a
+/// channel a search would silently hide.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlackChannel {
     pub id: String,
     pub name: String,
+    pub is_archived: bool,
 }
 
 /// An ID issued by Slack for an eligible Firm participant. It is deliberately
@@ -121,6 +128,21 @@ pub trait SlackService: Send + Sync {
         members: &[SlackMemberId],
     ) -> Result<(), SlackError>;
     async fn post_message(&self, channel_id: &str, text: &str) -> Result<(), SlackError>;
+    /// Look up the exact channel Navigator already recorded, by id. Unlike a
+    /// name search, this sees a channel even after it has been renamed away
+    /// from its recorded name or archived — the two states a search-based
+    /// lookup cannot distinguish from "never existed". `Ok(None)` means the
+    /// id no longer resolves to any channel (deleted, or a foreign/malformed
+    /// id).
+    async fn get_channel(&self, channel_id: &str) -> Result<Option<SlackChannel>, SlackError>;
+}
+
+/// The canonical URL for a private channel, from its id. Slack's own
+/// `/archives/{id}` form works for a channel the caller is a member of,
+/// public or private, so it needs no workspace subdomain.
+#[must_use]
+pub fn channel_url(channel_id: &str) -> String {
+    format!("https://slack.com/archives/{channel_id}")
 }
 
 /// Idempotent find-then-create channel provisioning. A failed lookup never
@@ -141,12 +163,24 @@ pub async fn ensure_private_channel<S: SlackService + ?Sized>(
     Ok((channel, created))
 }
 
+/// Storage is keyed by id, not by project code: a renamed channel keeps its
+/// id but no longer carries the name that would let a name search find it,
+/// and an archived channel keeps its id but drops out of every name search
+/// too (`conversations.list` excludes archived channels). Both are real
+/// Slack behaviors this fake has to reproduce for [`SlackService::get_channel`]
+/// to be worth testing against.
 #[derive(Debug, Clone, Default)]
 pub struct FakeSlack {
-    channels: Arc<Mutex<BTreeMap<String, SlackChannel>>>,
+    by_id: Arc<Mutex<BTreeMap<String, SlackChannel>>>,
     members: Arc<Mutex<BTreeMap<String, BTreeSet<String>>>>,
     messages: Arc<Mutex<Vec<(String, String)>>>,
     unavailable: Arc<Mutex<bool>>,
+    next_id: Arc<Mutex<usize>>,
+    /// Project codes whose name Slack reports as already taken by something
+    /// this fake does not otherwise know about — a channel the bot cannot
+    /// see (wrong workspace, or a scope the bot lacks), which is a real
+    /// Slack refusal distinct from "unavailable".
+    name_taken: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl FakeSlack {
@@ -177,6 +211,56 @@ impl FakeSlack {
             .clone()
     }
 
+    /// Simulate a name Slack refuses on create with `name_taken` — a
+    /// channel the bot cannot see, not a transport failure.
+    pub fn simulate_name_taken(&self, project_code: &str) {
+        self.name_taken
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .insert(project_code.to_string());
+    }
+
+    /// Simulate someone archiving the channel by hand in Slack. It keeps its
+    /// id (so [`SlackService::get_channel`] still finds it) but stops
+    /// appearing in any name search, exactly like a real archived channel.
+    pub fn archive(&self, channel_id: &str) {
+        if let Some(channel) = self
+            .by_id
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .get_mut(channel_id)
+        {
+            channel.is_archived = true;
+        }
+    }
+
+    /// Simulate someone renaming the channel away from the Project code by
+    /// hand. It keeps its id, so `get_channel` still finds it under its new
+    /// name, but a name search for the old code no longer will.
+    pub fn rename(&self, channel_id: &str, new_name: &str) {
+        if let Some(channel) = self
+            .by_id
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .get_mut(channel_id)
+        {
+            channel.name = new_name.to_string();
+        }
+    }
+
+    /// The current channel findable under `project_code` — `None` once that
+    /// channel has been renamed or archived, matching what a name search
+    /// would see.
+    #[must_use]
+    pub fn channel(&self, project_code: &str) -> Option<SlackChannel> {
+        self.by_id
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .values()
+            .find(|channel| !channel.is_archived && channel.name == project_code)
+            .cloned()
+    }
+
     fn check_available(&self) -> Result<(), SlackError> {
         if *self.unavailable.lock().expect("Slack fake lock poisoned") {
             Err(SlackError::Transport)
@@ -193,25 +277,33 @@ impl SlackService for FakeSlack {
         project_code: &str,
     ) -> Result<Option<SlackChannel>, SlackError> {
         self.check_available()?;
-        Ok(self
-            .channels
-            .lock()
-            .expect("Slack fake lock poisoned")
-            .get(project_code)
-            .cloned())
+        Ok(self.channel(project_code))
     }
 
     async fn create_private_channel(&self, project_code: &str) -> Result<SlackChannel, SlackError> {
         self.check_available()?;
-        let mut channels = self.channels.lock().expect("Slack fake lock poisoned");
-        if let Some(channel) = channels.get(project_code) {
-            return Ok(channel.clone());
+        if let Some(channel) = self.channel(project_code) {
+            return Ok(channel);
         }
+        if self
+            .name_taken
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .contains(project_code)
+        {
+            return Err(SlackError::NameTaken);
+        }
+        let mut next_id = self.next_id.lock().expect("Slack fake lock poisoned");
+        *next_id += 1;
         let channel = SlackChannel {
-            id: format!("C{:016X}", channels.len() + 1),
+            id: format!("C{:016X}", *next_id),
             name: project_code.to_string(),
+            is_archived: false,
         };
-        channels.insert(project_code.to_string(), channel.clone());
+        self.by_id
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .insert(channel.id.clone(), channel.clone());
         Ok(channel)
     }
 
@@ -235,6 +327,16 @@ impl SlackService for FakeSlack {
             .push((channel_id.to_string(), text.to_string()));
         Ok(())
     }
+
+    async fn get_channel(&self, channel_id: &str) -> Result<Option<SlackChannel>, SlackError> {
+        self.check_available()?;
+        Ok(self
+            .by_id
+            .lock()
+            .expect("Slack fake lock poisoned")
+            .get(channel_id)
+            .cloned())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -250,6 +352,8 @@ struct ChannelResponse {
 struct SlackChannelBody {
     id: String,
     name: String,
+    #[serde(default)]
+    is_archived: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -391,6 +495,7 @@ impl SlackService for SlackClient {
                 return Ok(Some(SlackChannel {
                     id: channel.id,
                     name: channel.name,
+                    is_archived: channel.is_archived,
                 }));
             }
             // An empty `next_cursor` is how Slack says "last page"; it is
@@ -427,6 +532,7 @@ impl SlackService for SlackClient {
         Ok(SlackChannel {
             id: channel.id,
             name: channel.name,
+            is_archived: channel.is_archived,
         })
     }
 
@@ -475,6 +581,35 @@ impl SlackService for SlackClient {
         } else {
             Err(SlackError::Api)
         }
+    }
+
+    /// `conversations.info` — the direct lookup [`SlackService::get_channel`]
+    /// promises. Slack answers a dead id with `ok: false, error:
+    /// "channel_not_found"`, which maps to `Ok(None)` rather than an error
+    /// since "gone" is an answer this call is specifically meant to give;
+    /// every other refusal is a real transport/API failure.
+    async fn get_channel(&self, channel_id: &str) -> Result<Option<SlackChannel>, SlackError> {
+        let body = self
+            .get("conversations.info", &[("channel", channel_id.to_string())])
+            .await?;
+        let response: ChannelResponse =
+            serde_json::from_value(body).map_err(|_| SlackError::IncompleteResponse)?;
+        if !response.ok {
+            // Only a dead id means "gone". Every other refusal (a revoked
+            // scope, a bad token) is a real failure and must not be reported
+            // as if the channel had simply disappeared.
+            return if response.error.as_deref() == Some("channel_not_found") {
+                Ok(None)
+            } else {
+                Err(SlackError::Api)
+            };
+        }
+        let channel = response.channel.ok_or(SlackError::IncompleteResponse)?;
+        Ok(Some(SlackChannel {
+            id: channel.id,
+            name: channel.name,
+            is_archived: channel.is_archived,
+        }))
     }
 }
 
@@ -696,5 +831,62 @@ mod tests {
             .post_message("C1", "A client viewed this Project in the portal.")
             .await
             .unwrap();
+    }
+
+    /// A name search can never see an archived or renamed channel —
+    /// `conversations.list` is called with `exclude_archived: true`, and a
+    /// rename means the name no longer matches the query. `get_channel` is
+    /// the only lookup that still finds either, by going straight to the
+    /// recorded id.
+    #[tokio::test]
+    async fn get_channel_sees_an_archived_or_renamed_channel_a_search_would_miss() {
+        let slack = FakeSlack::new();
+        let (channel, _) = ensure_private_channel(&slack, "sample-project", &[])
+            .await
+            .unwrap();
+
+        slack.archive(&channel.id);
+        assert_eq!(
+            slack.find_private_channel("sample-project").await.unwrap(),
+            None
+        );
+        let looked_up = slack
+            .get_channel(&channel.id)
+            .await
+            .unwrap()
+            .expect("still resolves by id");
+        assert!(looked_up.is_archived);
+        assert_eq!(looked_up.name, "sample-project");
+
+        let slack = FakeSlack::new();
+        let (channel, _) = ensure_private_channel(&slack, "renamed-project", &[])
+            .await
+            .unwrap();
+        slack.rename(&channel.id, "someone-renamed-this");
+        assert_eq!(
+            slack.find_private_channel("renamed-project").await.unwrap(),
+            None
+        );
+        let looked_up = slack
+            .get_channel(&channel.id)
+            .await
+            .unwrap()
+            .expect("still resolves by id");
+        assert!(!looked_up.is_archived);
+        assert_eq!(looked_up.name, "someone-renamed-this");
+    }
+
+    #[tokio::test]
+    async fn get_channel_returns_none_for_an_id_that_was_never_created() {
+        let slack = FakeSlack::new();
+        assert_eq!(slack.get_channel("never-created").await.unwrap(), None);
+    }
+
+    #[test]
+    fn channel_url_is_the_archives_form() {
+        assert_eq!(
+            super::channel_url("C0123456789"),
+            "https://slack.com/archives/C0123456789"
+        );
     }
 }

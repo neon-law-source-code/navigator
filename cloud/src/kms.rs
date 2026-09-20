@@ -139,6 +139,32 @@ pub fn open(ciphertext: &[u8], data_key: &[u8], context: &KmsContext) -> Result<
         .map_err(|_| KmsError::ContextMismatch)
 }
 
+/// The runtime KMS arm for a deployment with no configured key. It refuses
+/// every operation rather than falling back to an ambient or default key —
+/// the same fail-closed shape [`crate::integrations`] and
+/// `store::firm_secrets` expect from an unconfigured provider resolver.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoRuntimeKms;
+
+#[async_trait]
+impl RuntimeKms for NoRuntimeKms {
+    async fn wrap_data_key(
+        &self,
+        _data_key: &[u8],
+        _context: &KmsContext,
+    ) -> Result<WrappedDataKey, KmsError> {
+        Err(KmsError::MissingConfiguration)
+    }
+
+    async fn unwrap_data_key(
+        &self,
+        _wrapped: &WrappedDataKey,
+        _context: &KmsContext,
+    ) -> Result<Vec<u8>, KmsError> {
+        Err(KmsError::MissingConfiguration)
+    }
+}
+
 /// A deterministic in-process KMS fake. It exercises the same envelope,
 /// context, key-version, and unavailable-service paths as the runtime client.
 #[derive(Clone)]

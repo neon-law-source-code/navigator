@@ -2,8 +2,8 @@ use cloud::{FakeKms, KmsContext, RuntimeKms};
 use serde_json::Value;
 use store::firm_capability::FirmCapability;
 use store::firm_secrets::{
-    metadata_for_firm, put, resolve_project_credential, revoke, IntegrationProvider,
-    IntegrationSecretKind, SecretPutRequest, SecretStoreError,
+    list_metadata_for_firm, metadata_for_firm, put, resolve_project_credential, revoke,
+    IntegrationProvider, IntegrationSecretKind, SecretPutRequest, SecretStoreError, ALL_KINDS,
 };
 use store::firms::{self, FirmMembership, NewFirm, NewPersonFirmRole};
 use store::persons::{self, NewPerson, Role};
@@ -258,6 +258,81 @@ async fn only_the_firm_admin_dri_writes_and_owner_never_resolves_plaintext() {
         .await
         .expect("Owner metadata decision")
         .is_allowed());
+}
+
+/// The settings list is scoped per-Firm, sees every provider a Firm has
+/// configured (not just one kind), never a plaintext field, and is refused
+/// for a caller with no reach into the Firm — exactly the same
+/// `ViewIntegrationSecretMetadata` gate `metadata_for_firm` already proves for
+/// one kind at a time.
+#[tokio::test]
+async fn list_metadata_for_firm_lists_every_configured_kind_and_is_firm_scoped() {
+    let db = mem_surreal().await;
+    let (firm_a, dri_a) = firm_with_dri(&db, "alpha").await;
+    let (firm_b, _dri_b) = firm_with_dri(&db, "beta").await;
+    let outsider = person(&db, "outsider", Role::Admin).await;
+    let kms =
+        FakeKms::new("projects/fixture/locations/global/keyRings/runtime/cryptoKeys/integration");
+
+    for (provider, kind, value) in [
+        (
+            IntegrationProvider::Notion,
+            IntegrationSecretKind::NotionToken,
+            "notion-token",
+        ),
+        (
+            IntegrationProvider::Slack,
+            IntegrationSecretKind::SlackBotToken,
+            "slack-token",
+        ),
+    ] {
+        put(
+            &db,
+            SecretPutRequest {
+                actor_role: Role::Admin,
+                actor_person_id: Some(dri_a.id),
+                firm_id: firm_a.id,
+                provider,
+                kind,
+                value,
+            },
+            &kms,
+        )
+        .await
+        .expect("DRI writes each kind");
+    }
+
+    let listed = list_metadata_for_firm(&db, Role::Owner, None, firm_a.id)
+        .await
+        .expect("Owner lists metadata");
+    assert_eq!(listed.len(), 2);
+    let rendered = serde_json::to_string(&listed).expect("metadata serializes");
+    assert!(!rendered.contains("notion-token"));
+    assert!(!rendered.contains("slack-token"));
+
+    // A Firm with nothing configured lists empty, not an error.
+    assert!(list_metadata_for_firm(&db, Role::Owner, None, firm_b.id)
+        .await
+        .expect("Owner lists an unconfigured Firm")
+        .is_empty());
+
+    // An Admin outside both Firms is refused, same as a single-kind read.
+    assert!(matches!(
+        list_metadata_for_firm(&db, Role::Admin, Some(outsider.id), firm_a.id).await,
+        Err(SecretStoreError::NotAuthorized)
+    ));
+}
+
+/// `ALL_KINDS` is what a settings view builds its "add a secret" choices
+/// from; a kind added to the enum but not here would be silently
+/// unreachable from any write door.
+#[test]
+fn all_kinds_covers_the_closed_vocabulary_with_no_duplicates() {
+    assert_eq!(ALL_KINDS.len(), 6);
+    let mut slugs: Vec<&str> = ALL_KINDS.iter().map(|kind| kind.as_str()).collect();
+    slugs.sort_unstable();
+    slugs.dedup();
+    assert_eq!(slugs.len(), ALL_KINDS.len());
 }
 
 #[tokio::test]

@@ -526,6 +526,7 @@ fn edit_form(view: &NotationDocumentReviewView) -> Element {
                     for row in view.protected_counts.iter() {
                         label { class: "nav-checkbox-label",
                             input {
+                                class: "nav-checkbox",
                                 r#type: "checkbox",
                                 name: "locked_kinds",
                                 value: "{row.kind}",

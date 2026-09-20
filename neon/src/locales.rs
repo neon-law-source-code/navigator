@@ -675,8 +675,6 @@ fn privacy_content(copy: views::locales::PrivacyCopy) -> webapp::home::PrivacyCo
         price_term: copy.price_term,
         offer_note: copy.offer_note,
         gift_link: copy.gift_link,
-        animation_label: copy.animation_label,
-        animation_note: copy.animation_note,
         pause_label: copy.pause_label,
         benefits_heading: copy.benefits_heading,
         record_label: copy.record_label,

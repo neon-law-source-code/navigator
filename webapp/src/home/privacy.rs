@@ -12,8 +12,6 @@ pub struct PrivacyContent {
     pub price_term: String,
     pub offer_note: String,
     pub gift_link: String,
-    pub animation_label: String,
-    pub animation_note: String,
     pub pause_label: String,
     pub benefits_heading: String,
     pub record_label: String,
@@ -48,9 +46,8 @@ pub(super) fn PrivacyHome(content: HomeContent, privacy: PrivacyContent) -> Elem
                     p { class: "privacy-small", "{privacy.offer_note}" }
                 }
             }
-            section { class: "privacy-exhibition", "aria-label": "{privacy.animation_label}",
+            section { class: "privacy-exhibition",
                 div { class: "privacy-exhibition__bar",
-                    p { class: "privacy-eyebrow", "{privacy.animation_label}" }
                     {Field::checkbox(privacy.pause_label.clone(), "pause-privacy-motion", "paused", false).id("pause-privacy-motion").render()}
                 }
                 div { class: "privacy-scene", "aria-hidden": "true",
@@ -60,7 +57,6 @@ pub(super) fn PrivacyHome(content: HomeContent, privacy: PrivacyContent) -> Elem
                         div { class: "privacy-node privacy-node--{index}" }
                     }
                     Cloak {}
-                    span { class: "privacy-scene__label", "{privacy.animation_note}" }
                 }
             }
             section { class: "privacy-benefits", "aria-labelledby": "privacy-benefits-title",

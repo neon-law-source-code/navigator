@@ -9,8 +9,6 @@ pub struct PrivacyCopy {
     pub price_term: String,
     pub offer_note: String,
     pub gift_link: String,
-    pub animation_label: String,
-    pub animation_note: String,
     pub pause_label: String,
     pub benefits_heading: String,
     pub record_label: String,

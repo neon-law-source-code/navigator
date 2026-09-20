@@ -33,6 +33,40 @@ pub use preflight::is_docx_filename;
 pub use protocol::{ExportChange, ExportReply, ExportRequest, VerifyReply, VerifyRequest};
 pub use render::{render_notation, RenderError, RenderLetterhead, RenderOptions};
 
+/// Verify that a native export retained the governed block identity and
+/// structural kind of the imported baseline. Text may change and revision
+/// nodes may be added; anchors and block topology may not silently drift.
+pub fn verify_outline_preserved(
+    baseline: &Document,
+    exported: &Document,
+) -> Result<(), VerificationError> {
+    let before = baseline.canonical_outline().block_manifest();
+    let after = exported.canonical_outline().block_manifest();
+    if before.len() != after.len() {
+        return Err(VerificationError::BlockCount {
+            expected: before.len(),
+            actual: after.len(),
+        });
+    }
+    for (expected, actual) in before.iter().zip(after.iter()) {
+        if expected.anchor != actual.anchor || expected.kind != actual.kind {
+            return Err(VerificationError::BlockIdentity {
+                expected: expected.anchor.clone(),
+                actual: actual.anchor.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum VerificationError {
+    #[error("exported package block count changed from {expected} to {actual}")]
+    BlockCount { expected: usize, actual: usize },
+    #[error("exported package changed block identity from `{expected}` to `{actual}`")]
+    BlockIdentity { expected: String, actual: String },
+}
+
 /// Export attorney-approved edits through the managed native Open XML
 /// adapter. The original package remains the baseline; the adapter applies
 /// only anchor-addressed changes and emits native Word revisions.
@@ -196,6 +230,38 @@ mod tests {
 
     fn empty_model() -> DocumentModel {
         DocumentModel::empty()
+    }
+
+    #[test]
+    fn outline_verification_rejects_a_changed_anchor() {
+        let baseline = Document::from_source(&valid_zip(), model_with_paragraph("a"));
+        let exported = Document::from_source(&valid_zip(), model_with_paragraph("b"));
+        let error = super::verify_outline_preserved(&baseline, &exported)
+            .expect_err("changed anchors must fail closed");
+        assert!(matches!(
+            error,
+            super::VerificationError::BlockIdentity { .. }
+        ));
+    }
+
+    fn model_with_paragraph(anchor: &str) -> DocumentModel {
+        let mut model = empty_model();
+        model.stories.push(Story {
+            kind: StoryKind::MainDocument,
+            part_uri: "word/document.xml".into(),
+            blocks: vec![Block::Paragraph(Paragraph {
+                anchor: anchor.into(),
+                style_id: None,
+                numbering: None,
+                nodes: vec![Inline::Text {
+                    text: "body".into(),
+                    style_id: None,
+                    revision: None,
+                }],
+                revisions: Vec::new(),
+            })],
+        });
+        model
     }
 
     #[tokio::test]

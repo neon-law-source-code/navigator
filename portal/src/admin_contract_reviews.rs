@@ -838,6 +838,8 @@ async fn export_and_verify_review_document(
     let changes = changed_blocks(&edited, &parsed.canonical_outline());
     let exported = word::export_with_adapter(&adapter, "reviewed.docx", &original, changes).await?;
     word::verify_with_adapter(&adapter, "reviewed.docx", &exported).await?;
+    let exported_document = word::parse_with_adapter(&adapter, "reviewed.docx", &exported).await?;
+    word::verify_outline_preserved(&parsed, &exported_document)?;
     store::documents::ingest_bytes(
         surreal,
         storage,

@@ -13,6 +13,7 @@
 //! | `projects create` | `POST /app/api/projects` (plus `GET /app/api/people`, `/entities`, `/entity-types`, `/jurisdictions`) |
 //! | `project open`   | `GET /app/projects/:code` |
 //! | `projects close` | `POST /app/api/projects/{id}/lifecycle` |
+//! | `project setup` | `GET /app/api/projects` plus the authenticated surface, Slack, and Notion setup doors |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
 //! | `navigator site import` | `POST /app/api/seed` (optional `POST /auth/ci/seed-token`) |
@@ -976,17 +977,45 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
 
 /// One Project's result from an `/app/api/integrations/*` door — mirrors
 /// `portal::integrations_api::ProjectOutcome`.
-#[derive(Debug, Deserialize)]
-struct IntegrationOutcome {
-    project_code: String,
-    outcome: String,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub(crate) struct IntegrationOutcome {
+    pub(crate) project_code: String,
+    pub(crate) outcome: String,
     #[serde(default)]
-    detail: Option<String>,
+    pub(crate) detail: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct IntegrationReportBody {
-    results: Vec<IntegrationOutcome>,
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct IntegrationReportBody {
+    pub(crate) results: Vec<IntegrationOutcome>,
+}
+
+/// Post one of the authenticated Firm-integration doors and parse its
+/// per-Project report. Setup composes these existing doors; it does not carry
+/// provider credentials or bypass the server's AdminSession/Firm checks.
+pub(crate) async fn post_integration_door(
+    base: &str,
+    token: &str,
+    path: &str,
+    payload: serde_json::Value,
+) -> Result<IntegrationReportBody> {
+    let url = format!("{base}{path}");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .json(&payload)
+        .send()
+        .await
+        .with_context(|| format!("POST {url}"))?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "integration door failed: {status}: {}",
+            first_line(&body)
+        ));
+    }
+    serde_json::from_str(&body).with_context(|| format!("parse POST {url}"))
 }
 
 /// The closed set of outcomes an integration door reports as success.
@@ -1058,10 +1087,11 @@ fn report_integration_outcomes(door: &str, json: bool, body: &str) -> Result<()>
     }
 }
 
-/// `navigator project notion <ensure|reconcile>` — post one Project
-/// code, or `--all`, to the server's Notion integration door. The Firm's
-/// provider credential is resolved server-side from the Project's `firm_id`,
-/// so no provider token is read, accepted, or printed by the CLI.
+/// Internal Notion-door client retained for callers that need the provider
+/// endpoint directly. The public Project CLI uses `project setup`, which
+/// composes this door with the surface and Slack doors. The Firm's provider
+/// credential is resolved server-side from the Project's `firm_id`, so no
+/// provider token is read, accepted, or printed by the CLI.
 async fn notion_command(
     host: Option<&str>,
     action: &str,
@@ -1116,10 +1146,10 @@ pub async fn notion_reconcile(
     notion_command(host, "reconcile", project_code, all, json).await
 }
 
-/// `navigator project slack <ensure|notify>` — post one Project code,
-/// and for `notify` one closed event kind, to the server's Slack integration
-/// door. The event vocabulary is validated here so an unsupported kind fails
-/// before the request, and no free-text message body is accepted.
+/// Internal Slack-door client retained for the mechanism-notice lane. Public
+/// setup uses the ensure door directly; the event vocabulary is validated here
+/// so an unsupported kind fails before the request, and no free-text message
+/// body is accepted.
 async fn slack_command(
     host: Option<&str>,
     action: &str,

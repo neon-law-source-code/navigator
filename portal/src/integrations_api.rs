@@ -2,8 +2,7 @@
 //!
 //! Four operations, all admin-tier: ensure or reconcile a Project's
 //! Firm-private Notion page, and ensure or notify its Firm-private Slack
-//! channel. They are the server half of `navigator project notion` and
-//! `navigator project slack`.
+//! channel. They are the server half of `navigator project setup`.
 //!
 //! ## Why its own noun
 //!
@@ -284,6 +283,9 @@ async fn ensure_one_page(state: &ApiState, project: &store::projects::Project) -
         if let Some(page_id) = cloud::notion_page_id_from_url(&recorded_url) {
             match notion.get_page(&page_id).await {
                 Ok(Some(page)) => {
+                    if !notion.is_expected_parent(&page) {
+                        return ProjectOutcome::plain(project.code.clone(), "wrong_parent");
+                    }
                     let decision = cloud::reconcile_notion_project(
                         &cloud::NotionProjectInput {
                             project_code: project.code.clone(),
@@ -305,16 +307,22 @@ async fn ensure_one_page(state: &ApiState, project: &store::projects::Project) -
                     )
                     .await;
                 }
-                Ok(None) => { /* the recorded id is gone; fall through */ }
+                Ok(None) => {
+                    return ProjectOutcome::plain(project.code.clone(), "recorded_resource_missing")
+                }
                 Err(_) => {
                     return ProjectOutcome::plain(project.code.clone(), "provider_unavailable")
                 }
             }
         }
+        return ProjectOutcome::plain(project.code.clone(), "recorded_resource_missing");
     }
-    let Ok((page, created)) = cloud::ensure_private_page(notion.as_ref(), &project.code).await
-    else {
-        return ProjectOutcome::plain(project.code.clone(), "provider_unavailable");
+    let (page, created) = match cloud::ensure_private_page(notion.as_ref(), &project.code).await {
+        Ok(result) => result,
+        Err(cloud::NotionError::WrongParent) => {
+            return ProjectOutcome::plain(project.code.clone(), "wrong_parent")
+        }
+        Err(_) => return ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
     };
     // Record the address before reporting success. The row is what every
     // later surface reads; an ensure that provisioned a page and lost its
@@ -369,6 +377,9 @@ async fn apply_notion_decision(
         cloud::NotionRepairDecision::Repair { page_id, .. } => {
             match notion.update_private_page(&page_id, &project.code).await {
                 Ok(page) => {
+                    if !notion.is_expected_parent(&page) {
+                        return ProjectOutcome::plain(project.code.clone(), "wrong_parent");
+                    }
                     if store::projects::set_private_notion_page_url(
                         &state.surreal,
                         project.id,
@@ -424,6 +435,9 @@ async fn reconcile_one_page(
     let Ok(pages) = notion.list_private_pages(&project.code).await else {
         return ProjectOutcome::plain(project.code.clone(), "provider_unavailable");
     };
+    if pages.iter().any(|page| !notion.is_expected_parent(page)) {
+        return ProjectOutcome::plain(project.code.clone(), "wrong_parent");
+    }
     if !pages.is_empty() {
         let snapshots: Vec<cloud::NotionPageSnapshot> = pages
             .into_iter()
@@ -451,6 +465,9 @@ async fn reconcile_one_page(
     };
     match notion.get_page(&page_id).await {
         Ok(Some(page)) => {
+            if !notion.is_expected_parent(&page) {
+                return ProjectOutcome::plain(project.code.clone(), "wrong_parent");
+            }
             let input = cloud::NotionProjectInput {
                 project_code: project.code.clone(),
                 canonical_url: canonical,
@@ -510,11 +527,37 @@ async fn ensure_one_channel(
             Ok(Some(channel)) if channel.is_archived => {
                 return ProjectOutcome::plain(project.code.clone(), "archived")
             }
+            Ok(Some(channel)) if !channel.is_private => {
+                return ProjectOutcome::plain(project.code.clone(), "not_private")
+            }
             Ok(Some(channel)) if channel.name != project.code => {
                 return ProjectOutcome::with_detail(project.code.clone(), "renamed", channel.name)
             }
-            Ok(Some(_)) => return ProjectOutcome::plain(project.code.clone(), "adopted"),
-            Ok(None) => { /* the recorded id is gone; fall through */ }
+            Ok(Some(channel)) => {
+                let canonical_url = cloud::slack_channel_url(&channel.id);
+                if project
+                    .internal_slack_channel_url
+                    .as_deref()
+                    .is_some_and(|url| url != canonical_url)
+                {
+                    return ProjectOutcome::plain(project.code.clone(), "address_mismatch");
+                }
+                if store::projects::set_internal_slack_channel(
+                    &state.surreal,
+                    project.id,
+                    &channel.id,
+                    &canonical_url,
+                )
+                .await
+                .is_err()
+                {
+                    return ProjectOutcome::plain(project.code.clone(), "address_not_recorded");
+                }
+                return ProjectOutcome::plain(project.code.clone(), "adopted");
+            }
+            Ok(None) => {
+                return ProjectOutcome::plain(project.code.clone(), "recorded_resource_missing")
+            }
             Err(_) => return ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
         }
     }
@@ -527,20 +570,21 @@ async fn ensure_one_channel(
             Err(cloud::SlackError::NameTaken) => {
                 return ProjectOutcome::plain(project.code.clone(), "conflict")
             }
+            Err(cloud::SlackError::NotPrivate) => {
+                return ProjectOutcome::plain(project.code.clone(), "not_private")
+            }
             Err(_) => return ProjectOutcome::plain(project.code.clone(), "provider_unavailable"),
         };
     // Record the id and its canonical URL together so the two coordinates the
     // Project row carries for this channel never disagree (ENG-807).
-    if store::projects::set_internal_slack_channel_id(&state.surreal, project.id, &channel.id)
-        .await
-        .is_err()
-        || store::projects::set_internal_slack_channel_url(
-            &state.surreal,
-            project.id,
-            &cloud::slack_channel_url(&channel.id),
-        )
-        .await
-        .is_err()
+    if store::projects::set_internal_slack_channel(
+        &state.surreal,
+        project.id,
+        &channel.id,
+        &cloud::slack_channel_url(&channel.id),
+    )
+    .await
+    .is_err()
     {
         return ProjectOutcome::plain(project.code.clone(), "address_not_recorded");
     }

@@ -66,14 +66,11 @@ out of scope for this surface (no invitations, no content mirroring) and untouch
 
 ### The Firm integration doors
 
-Four admin-tier operations act on a Firm's own provider resources, and the `navigator` CLI is their only client today:
+The consolidated setup command is the CLI client for these admin-tier provider doors:
 
 | Command | Door |
 | --- | --- |
-| `navigator project notion ensure <code>` / `--all` | `POST /app/api/integrations/notion/ensure` |
-| `navigator project notion reconcile <code>` / `--all` | `POST /app/api/integrations/notion/reconcile` |
-| `navigator project slack ensure <code>` | `POST /app/api/integrations/slack/ensure` |
-| `navigator project slack notify <code> --event <kind>` | `POST /app/api/integrations/slack/notify` |
+| `navigator project setup <code>` / `--all` | Composes the authenticated surface, Slack, and Notion doors |
 
 They carry their own noun rather than nesting under `projects`, for the reason `project-surfaces` does: the `projects`
 policy rule admits any authenticated caller several segments deep, so a provisioning path nested there would be
@@ -81,22 +78,19 @@ policy-reachable by a client even though the handler refuses one. The tier match
 adopting a Project's external resources is one kind of act — and `--all` sweeps only the Projects visible to the calling
 login, never every row in the deployment.
 
-See [`project-repositories.md`](project-repositories.md#firm-private-slack-and-notion-sync) for the credential
-prerequisite, the full outcome vocabulary, and how the CLI's exit code follows the typed outcome rather than the HTTP
-status.
+See [`project-repositories.md`](project-repositories.md#existing-project-setup) for the credential prerequisite, the
+full outcome vocabulary, and how the CLI's exit code follows the typed outcome rather than the HTTP status.
 
-Each response is one outcome slug per Project and nothing else. No page id, no channel id, no provider URL: those are
-the Firm-private coordinates this boundary exists to keep on the firm side, and they are recorded on the Project row for
-the surfaces entitled to read them. `ensure` reports `created` or `adopted`, so an operator can tell a first
-provisioning from a re-run; `reconcile` reports `unchanged`, `repaired`, `missing`, `duplicate`, `conflict`, or
-`unavailable`, and only a repair writes. A deployment with no runtime KMS key reports `runtime_not_configured` rather
-than falling back to a deployment-wide token — a Project must never reach a credential its Firm did not write.
+Each provider response is one outcome slug per Project and nothing else. No page id, no channel id, no provider URL:
+those are the Firm-private coordinates this boundary exists to keep on the firm side, and they are recorded on the
+Project row for the surfaces entitled to read them. Setup reports `created` or `adopted` for provider resources and
+`created` or `present` for the Drive/repository resources; a deployment with no runtime KMS key reports
+`runtime_not_configured` rather than falling back to a deployment-wide token — a Project must never reach a credential
+its Firm did not write.
 
-`slack notify` accepts only the closed event vocabulary (`project_opened`, `project_closed`, `project_reconciled`,
-`integration_unavailable`) and derives the message from the kind, so no caller-supplied prose reaches a channel. It
-never provisions: a Project with no channel reports `no_channel` so `ensure` stays a deliberate act. `slack ensure`
-invites nobody — the adapter takes only provider-issued member ids, Navigator stores none, and it will not turn a
-participation row or an email address into an invite, so the Firm's own Slack membership governs who joins.
+The Slack ensure door invites nobody — the adapter takes only provider-issued member ids, Navigator stores none, and it
+will not turn a participation row or an email address into an invite, so the Firm's own Slack membership governs who
+joins. The setup command retries each resource independently and exits nonzero for any required failure.
 
 The persistent staging deployment (`NAVIGATOR_ENVIRONMENT=production` and `NAVIGATOR_SIMULATED_MATTERS=true`) appends a
 final `from Staging` line to every outbound Slack body: the ops incoming webhook, the per-Project bot, and Firm-private

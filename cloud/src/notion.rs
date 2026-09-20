@@ -38,6 +38,8 @@ pub enum NotionError {
     Api,
     #[error("Notion returned an incomplete page")]
     IncompleteResponse,
+    #[error("Notion page is outside the configured Projects database")]
+    WrongParent,
 }
 
 /// The internal page coordinate returned by Notion. It is intentionally not
@@ -55,6 +57,7 @@ pub struct NotionPage {
     pub url: String,
     pub project_code: String,
     pub archived: bool,
+    pub parent_database_id: Option<String>,
 }
 
 /// Pull the 32-lowercase-hex-character id off the end of a Notion page URL
@@ -102,6 +105,12 @@ pub trait NotionService: Send + Sync {
     /// lookup cannot distinguish from "never existed". `Ok(None)` means the
     /// id no longer resolves to any page (deleted, or a foreign/malformed id).
     async fn get_page(&self, page_id: &str) -> Result<Option<NotionPage>, NotionError>;
+
+    /// Whether this response belongs to the configured Projects database.
+    /// The REST adapter checks the provider response; fakes default to true.
+    fn is_expected_parent(&self, _page: &NotionPage) -> bool {
+        true
+    }
 }
 
 /// Find-then-create is the idempotency boundary. A failed lookup never falls
@@ -111,9 +120,16 @@ pub async fn ensure_private_page<S: NotionService + ?Sized>(
     project_code: &str,
 ) -> Result<(NotionPage, bool), NotionError> {
     if let Some(page) = service.find_private_page(project_code).await? {
+        if !service.is_expected_parent(&page) {
+            return Err(NotionError::WrongParent);
+        }
         return Ok((page, false));
     }
-    Ok((service.create_private_page(project_code).await?, true))
+    let page = service.create_private_page(project_code).await?;
+    if !service.is_expected_parent(&page) {
+        return Err(NotionError::WrongParent);
+    }
+    Ok((page, true))
 }
 
 /// Deterministic fake used by provider and durable-workflow tests.
@@ -132,6 +148,7 @@ pub struct FakeNotion {
     create_calls: Arc<Mutex<usize>>,
     update_calls: Arc<Mutex<usize>>,
     unavailable: Arc<Mutex<bool>>,
+    wrong_parent: Arc<Mutex<bool>>,
 }
 
 impl FakeNotion {
@@ -142,6 +159,10 @@ impl FakeNotion {
 
     pub fn set_unavailable(&self, unavailable: bool) {
         *self.unavailable.lock().expect("Notion fake lock poisoned") = unavailable;
+    }
+
+    pub fn set_wrong_parent(&self, wrong_parent: bool) {
+        *self.wrong_parent.lock().expect("Notion fake lock poisoned") = wrong_parent;
     }
 
     /// Seed a second page carrying `project_code`, as a Firm's workspace can
@@ -157,6 +178,7 @@ impl FakeNotion {
                 url: format!("https://notion.example/{page_id}"),
                 project_code: project_code.to_string(),
                 archived: false,
+                parent_database_id: Some("fake-database".to_string()),
             });
     }
 
@@ -186,6 +208,15 @@ impl FakeNotion {
         {
             page.project_code = new_title.to_string();
         }
+    }
+
+    /// Simulate the provider deleting the page while its URL remains on the
+    /// Project row.
+    pub fn remove(&self, page_id: &str) {
+        self.by_id
+            .lock()
+            .expect("Notion fake lock poisoned")
+            .remove(page_id);
     }
 
     #[must_use]
@@ -271,6 +302,7 @@ impl NotionService for FakeNotion {
             id,
             project_code: project_code.to_string(),
             archived: false,
+            parent_database_id: Some("fake-database".to_string()),
         };
         self.by_id
             .lock()
@@ -291,6 +323,7 @@ impl NotionService for FakeNotion {
             url: format!("https://notion.example/{project_code}-{page_id}"),
             project_code: project_code.to_string(),
             archived: false,
+            parent_database_id: Some("fake-database".to_string()),
         };
         self.by_id
             .lock()
@@ -307,6 +340,10 @@ impl NotionService for FakeNotion {
             .expect("Notion fake lock poisoned")
             .get(page_id)
             .cloned())
+    }
+
+    fn is_expected_parent(&self, _page: &NotionPage) -> bool {
+        !*self.wrong_parent.lock().expect("Notion fake lock poisoned")
     }
 }
 
@@ -328,6 +365,14 @@ struct PageResponse {
     properties: serde_json::Value,
     #[serde(default)]
     archived: bool,
+    #[serde(default)]
+    parent: Option<ParentResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ParentResponse {
+    #[serde(default)]
+    database_id: Option<String>,
 }
 
 /// Read the whole `Project code` title out of one search result.
@@ -457,6 +502,7 @@ impl NotionService for NotionClient {
                         url: result.url,
                         project_code: project_code.to_string(),
                         archived: result.archived,
+                        parent_database_id: result.parent.and_then(|parent| parent.database_id),
                     },
                 )
             }));
@@ -479,12 +525,17 @@ impl NotionService for NotionClient {
             .json::<PageResponse>()
             .await
             .map_err(|_| NotionError::Transport)?;
-        Ok(NotionPage {
+        let page = NotionPage {
             id: page.id,
             url: page.url,
             project_code: project_code.to_string(),
             archived: page.archived,
-        })
+            parent_database_id: page.parent.and_then(|parent| parent.database_id),
+        };
+        if !self.is_expected_parent(&page) {
+            return Err(NotionError::WrongParent);
+        }
+        Ok(page)
     }
 
     async fn update_private_page(
@@ -501,12 +552,17 @@ impl NotionService for NotionClient {
             .json::<PageResponse>()
             .await
             .map_err(|_| NotionError::Transport)?;
-        Ok(NotionPage {
+        let page = NotionPage {
             id: page.id,
             url: page.url,
             project_code: project_code.to_string(),
             archived: page.archived,
-        })
+            parent_database_id: page.parent.and_then(|parent| parent.database_id),
+        };
+        if !self.is_expected_parent(&page) {
+            return Err(NotionError::WrongParent);
+        }
+        Ok(page)
     }
 
     /// `GET /pages/{page_id}` — the direct lookup [`NotionService::get_page`]
@@ -538,7 +594,12 @@ impl NotionService for NotionClient {
             id: page.id,
             url: page.url,
             archived: page.archived,
+            parent_database_id: page.parent.and_then(|parent| parent.database_id),
         }))
+    }
+
+    fn is_expected_parent(&self, page: &NotionPage) -> bool {
+        page.parent_database_id.as_deref() == Some(self.parent_database_id.as_str())
     }
 }
 
@@ -674,6 +735,16 @@ mod tests {
             Err(NotionError::Transport)
         ));
         assert_eq!(notion.create_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_page_outside_the_projects_database_is_refused() {
+        let notion = FakeNotion::new();
+        notion.set_wrong_parent(true);
+        assert!(matches!(
+            ensure_private_page(&notion, "sample-project").await,
+            Err(NotionError::WrongParent)
+        ));
     }
 
     #[tokio::test]

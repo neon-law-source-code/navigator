@@ -1,9 +1,9 @@
-//! `navigator project surfaces` — create or adopt a Project's three handles.
+//! HTTP helpers for the surface leg of `navigator project setup`.
 //!
-//! Opening a Project records its identity. This command then creates or
+//! Opening a Project records its identity. The setup command then creates or
 //! adopts the documents-bucket prefix, the Drive ingest folder, and the
 //! source repository that identity names. Matter-open already runs the same
-//! pass best-effort; this is the operator retry when Drive or the forge is
+//! pass best-effort; setup is the operator retry when Drive or the forge is
 //! down, or when a legacy row never received one.
 //!
 //! This is an HTTP client, not a database client: it authenticates like every
@@ -16,55 +16,17 @@
 //! server's Drive/forge credentials are what run the reconcile, not this
 //! process.
 
-use std::process::ExitCode;
-
 use anyhow::{anyhow, Context, Result};
 use uuid::Uuid;
 
-use crate::palette;
-use store::project_surfaces::{ProjectSurfaces, SurfaceStatus};
-
-/// The label `navigator project surfaces reconcile` prints for a
-/// surface this pass never attempts — the documents-bucket prefix is a key
-/// convention derived from the code, and the code itself is the input that
-/// named which matter reconcile ran against. Neither is created, adopted, or
-/// skipped for lack of configuration; both simply are, so both print this.
-const NOT_APPLICABLE: &str = "not applicable";
-
-fn status_label(status: SurfaceStatus) -> &'static str {
-    match status {
-        SurfaceStatus::Created => "created",
-        SurfaceStatus::Present => "present",
-        SurfaceStatus::Skipped => "skipped",
-    }
-}
-
-fn print_surface_row(status_text: &str, name: &str, value: Option<&str>) {
-    println!(
-        "{}  {:<20}  {}",
-        palette::highlight(format!("{status_text:<15}")),
-        name,
-        value.unwrap_or("—")
-    );
-}
-
-/// Print one provisioned surface's row and report whether it is an
-/// inconsistent "expected but not produced" state — attempted (`created` or
-/// `present`) yet carrying no value, which reconcile's own contract never
-/// leaves behind but a caller reading this report must be able to catch
-/// rather than trust.
-fn print_provisioned_surface(status: SurfaceStatus, name: &str, value: Option<&str>) -> bool {
-    print_surface_row(status_label(status), name, value);
-    let expected = matches!(status, SurfaceStatus::Created | SurfaceStatus::Present);
-    expected && value.is_none()
-}
+use store::project_surfaces::ProjectSurfaces;
 
 /// One entry from `GET /app/api/projects` — only the two fields this command
 /// needs to turn a human-typed code into the id the reconcile door takes.
 #[derive(Debug, serde::Deserialize)]
-struct VisibleProject {
-    id: Uuid,
-    code: String,
+pub(crate) struct VisibleProject {
+    pub(crate) id: Uuid,
+    pub(crate) code: String,
 }
 
 /// The first line of a response body, for a one-line error.
@@ -76,7 +38,7 @@ fn first_line(body: &str) -> &str {
 /// door `navigator project close` reads. The reconcile door itself
 /// takes an id, not a code, because a Project code is not guaranteed unique
 /// across the id space at the route layer the way it is at the store layer.
-async fn resolve_project_id(base: &str, token: &str, project_code: &str) -> Result<Uuid> {
+pub(crate) async fn list_visible_projects(base: &str, token: &str) -> Result<Vec<VisibleProject>> {
     let response = reqwest::Client::new()
         .get(format!("{base}/app/api/projects"))
         .bearer_auth(token)
@@ -91,8 +53,15 @@ async fn resolve_project_id(base: &str, token: &str, project_code: &str) -> Resu
             first_line(&body)
         ));
     }
-    let projects: Vec<VisibleProject> =
-        serde_json::from_str(&body).context("parse GET /app/api/projects")?;
+    serde_json::from_str(&body).context("parse GET /app/api/projects")
+}
+
+pub(crate) async fn resolve_project_id(
+    base: &str,
+    token: &str,
+    project_code: &str,
+) -> Result<Uuid> {
+    let projects = list_visible_projects(base, token).await?;
     // Never interpolate the CLI's own project-code argument into a message:
     // it is read out of the same clap `Commands` enum a `Secrets` variant
     // lives on, which CodeQL's cleartext-logging query treats as tainted —
@@ -106,7 +75,11 @@ async fn resolve_project_id(base: &str, token: &str, project_code: &str) -> Resu
 
 /// Create or adopt the Project's three handles through the admin-tier
 /// reconcile door, `POST /app/api/project-surfaces/{id}`.
-async fn post_reconcile(base: &str, token: &str, project_id: Uuid) -> Result<ProjectSurfaces> {
+pub(crate) async fn post_reconcile(
+    base: &str,
+    token: &str,
+    project_id: Uuid,
+) -> Result<ProjectSurfaces> {
     let url = format!("{base}/app/api/project-surfaces/{project_id}");
     let response = reqwest::Client::new()
         .post(&url)
@@ -125,63 +98,10 @@ async fn post_reconcile(base: &str, token: &str, project_id: Uuid) -> Result<Pro
     serde_json::from_str(&body).context("parse POST /app/api/project-surfaces/{id}")
 }
 
-/// `navigator project surfaces reconcile --project <code> [--host h]`.
-pub async fn reconcile(host: Option<&str>, project_code: &str) -> ExitCode {
-    if !store::projects::is_valid_code(project_code) {
-        eprintln!("navigator: invalid project code");
-        return ExitCode::from(2);
-    }
-    let (base, token) = match crate::remote::resolve(host) {
-        Ok(pair) => pair,
-        Err(error) => {
-            eprintln!("navigator: {error:#}");
-            return ExitCode::from(2);
-        }
-    };
-    let project_id = match resolve_project_id(&base, &token, project_code).await {
-        Ok(id) => id,
-        Err(error) => {
-            eprintln!("navigator: {error:#}");
-            return ExitCode::from(2);
-        }
-    };
-    match post_reconcile(&base, &token, project_id).await {
-        Ok(surfaces) => {
-            print_surface_row(NOT_APPLICABLE, "code", Some(&surfaces.code));
-            print_surface_row(
-                NOT_APPLICABLE,
-                "documents prefix",
-                Some(&surfaces.documents_prefix),
-            );
-            let drive_incomplete = print_provisioned_surface(
-                surfaces.drive_status,
-                "drive folder",
-                surfaces.drive_folder_id.as_deref(),
-            );
-            let repository_incomplete = print_provisioned_surface(
-                surfaces.repository_status,
-                "repository",
-                surfaces.repository_url.as_deref(),
-            );
-            if drive_incomplete || repository_incomplete {
-                eprintln!(
-                    "navigator: a surface reconcile attempted produced no value; retry \
-                     or check the deployment's Drive/forge configuration"
-                );
-                return ExitCode::from(2);
-            }
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("navigator: {error:#}");
-            ExitCode::from(2)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use store::project_surfaces::SurfaceStatus;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -196,11 +116,6 @@ mod tests {
             !production.contains("{project_code}"),
             "echoing the CLI project argument trips CodeQL cleartext-logging because Command also carries Secrets"
         );
-    }
-
-    #[tokio::test]
-    async fn invalid_code_is_refused_without_a_request() {
-        assert_eq!(reconcile(None, "NOT A CODE").await, ExitCode::from(2));
     }
 
     #[tokio::test]
@@ -291,49 +206,5 @@ mod tests {
 
         assert!(rendered.contains("403"), "{rendered}");
         assert!(rendered.contains("admin tier"), "{rendered}");
-    }
-
-    #[test]
-    fn every_status_prints_a_distinct_label() {
-        assert_eq!(status_label(SurfaceStatus::Created), "created");
-        assert_eq!(status_label(SurfaceStatus::Present), "present");
-        assert_eq!(status_label(SurfaceStatus::Skipped), "skipped");
-    }
-
-    #[test]
-    fn a_produced_value_is_never_reported_incomplete() {
-        assert!(!print_provisioned_surface(
-            SurfaceStatus::Created,
-            "drive folder",
-            Some("folder-1")
-        ));
-        assert!(!print_provisioned_surface(
-            SurfaceStatus::Present,
-            "repository",
-            Some("https://forge.example/acme")
-        ));
-    }
-
-    #[test]
-    fn skipping_for_lack_of_configuration_is_not_a_failure() {
-        assert!(!print_provisioned_surface(
-            SurfaceStatus::Skipped,
-            "drive folder",
-            None
-        ));
-    }
-
-    #[test]
-    fn an_attempted_surface_with_no_value_is_reported_incomplete() {
-        assert!(print_provisioned_surface(
-            SurfaceStatus::Created,
-            "drive folder",
-            None
-        ));
-        assert!(print_provisioned_surface(
-            SurfaceStatus::Present,
-            "repository",
-            None
-        ));
     }
 }

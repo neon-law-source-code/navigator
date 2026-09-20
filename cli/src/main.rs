@@ -609,18 +609,23 @@ enum ProjectsCmd {
         #[arg(long)]
         manifest: bool,
     },
-    /// Create or adopt the three handles a Project opens with.
+    /// Complete an existing Project's Drive, repository, Slack, and Notion setup.
     ///
-    /// The documents-bucket prefix `projects/<code>/documents`, the Drive
-    /// ingest folder named for the code, and one private source repository
-    /// named for the code. Matter-open already runs this pass best-effort; this
-    /// command is the operator retry when Drive or the forge is down, or when
-    /// a legacy row never received one. Talks to the logged-in deployment's
-    /// admin API, the same as every other `navigator site` command — never a
-    /// direct `SurrealDb` connection, even against a local deployment.
-    Surfaces {
-        #[command(subcommand)]
-        action: SurfacesAction,
+    /// Each resource is attempted through the logged-in deployment's existing
+    /// authenticated door and reported separately. A failed resource is safe
+    /// to retry; already-recorded provider identities are never replaced.
+    Setup {
+        /// Project code. Omit only when `--all` is supplied.
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        project_code: Option<String>,
+        /// Complete every Project visible to this login.
+        #[arg(long)]
+        all: bool,
+        /// Emit one JSON result per Project and resource.
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        host: HostOpt,
     },
     /// Archive a closed Project's repository as a `closed_repository`
     /// document: zip the working tree at HEAD (no git history), record the
@@ -633,88 +638,6 @@ enum ProjectsCmd {
         /// The local checkout to archive. Defaults to the current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-    /// Ensure or reconcile Firm-private Notion Project pages.
-    Notion {
-        #[command(subcommand)]
-        action: NotionAction,
-    },
-    /// Ensure a Firm-private Slack channel or post a mechanism-only notice.
-    Slack {
-        #[command(subcommand)]
-        action: SlackAction,
-    },
-}
-
-#[derive(Subcommand)]
-enum NotionAction {
-    /// Create or adopt the private page for one Project or every Project.
-    Ensure {
-        /// Project code. Omit only when `--all` is supplied.
-        #[arg(required_unless_present = "all", conflicts_with = "all")]
-        project_code: Option<String>,
-        /// Ensure every Project visible to this login.
-        #[arg(long)]
-        all: bool,
-        /// Emit the server's structured result.
-        #[arg(long)]
-        json: bool,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-    /// Reconcile the environment-selected Notion database for one or every Project.
-    Reconcile {
-        /// Project code. Omit only when `--all` is supplied.
-        #[arg(required_unless_present = "all", conflicts_with = "all")]
-        project_code: Option<String>,
-        /// Reconcile every Project visible to this login.
-        #[arg(long)]
-        all: bool,
-        /// Emit the server's structured result.
-        #[arg(long)]
-        json: bool,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-}
-
-#[derive(Subcommand)]
-enum SlackAction {
-    /// Create or adopt the private Slack channel for one Project.
-    Ensure {
-        /// Project code.
-        project_code: String,
-        /// Emit the server's structured result.
-        #[arg(long)]
-        json: bool,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-    /// Post one closed-vocabulary mechanism notice to a Project channel.
-    Notify {
-        /// Project code.
-        project_code: String,
-        /// Closed event kind, such as `project_opened` or `project_reconciled`.
-        #[arg(long)]
-        event: String,
-        /// Emit the server's structured result.
-        #[arg(long)]
-        json: bool,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-}
-
-#[derive(Subcommand)]
-enum SurfacesAction {
-    /// Create or adopt this Project's Drive ingest folder and source
-    /// repository, and name its documents-bucket prefix.
-    Reconcile {
-        /// Project code, e.g. `acme`.
-        #[arg(long)]
-        project: String,
         #[command(flatten)]
         host: HostOpt,
     },
@@ -932,6 +855,7 @@ enum NotationsCmd {
 #[derive(Subcommand)]
 enum SiteCmd {
     /// Upload staged `documents/` bytes through Navigator and retain YAML pointers.
+    #[command(after_long_help = DOCUMENT_SYNC_HELP)]
     Sync {
         /// List staged uploads without logging in or changing files.
         #[arg(long)]
@@ -2680,49 +2604,17 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         ProjectsCmd::Gate { ci } => run_gate(ci).await,
         ProjectsCmd::Build { dir } => projects::build::run(&dir),
         ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
-        ProjectsCmd::Surfaces { action } => match action {
-            SurfacesAction::Reconcile { project, host } => {
-                projects::surfaces::reconcile(host.host.as_deref(), &project).await
-            }
-        },
+        ProjectsCmd::Setup {
+            project_code,
+            all,
+            json,
+            host,
+        } => projects::setup::run(host.host.as_deref(), project_code.as_deref(), all, json).await,
         ProjectsCmd::ArchiveRepository {
             project_code,
             dir,
             host,
         } => remote::archive_repository(host.host.as_deref(), &project_code, &dir).await,
-        ProjectsCmd::Notion { action } => match action {
-            NotionAction::Ensure {
-                project_code,
-                all,
-                json,
-                host,
-            } => {
-                remote::notion_ensure(host.host.as_deref(), project_code.as_deref(), all, json)
-                    .await
-            }
-            NotionAction::Reconcile {
-                project_code,
-                all,
-                json,
-                host,
-            } => {
-                remote::notion_reconcile(host.host.as_deref(), project_code.as_deref(), all, json)
-                    .await
-            }
-        },
-        ProjectsCmd::Slack { action } => match action {
-            SlackAction::Ensure {
-                project_code,
-                json,
-                host,
-            } => remote::slack_ensure(host.host.as_deref(), &project_code, json).await,
-            SlackAction::Notify {
-                project_code,
-                event,
-                json,
-                host,
-            } => remote::slack_notify(host.host.as_deref(), &project_code, &event, json).await,
-        },
     }
 }
 
@@ -3748,6 +3640,8 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
 }
 
 const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, unclassified.";
+
+const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, and everything else to unclassified. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
 
 /// Render one notation template to PDF or editable Word. Validates the file against the
 /// notation rule set, resolves the render frame (`output:` frontmatter →

@@ -287,7 +287,7 @@ writes the matter row. Immediately after submitting, `/app/projects/<code>` name
 Close that gap from the matter page's admin retry, or from the CLI:
 
 ```bash
-navigator project surfaces reconcile --project <code>
+navigator project setup <code>
 ```
 
 This creates — or adopts, if one already exists — an empty private GitHub repository and Drive folder, and records the

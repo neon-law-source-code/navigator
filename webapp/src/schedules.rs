@@ -112,9 +112,8 @@ const JOB_COPY: &[JobCopy] = &[
         cron_name: "general-nag",
         name: "General channel nag",
         cadence: "Daily · 17:11 PST (prior day)",
-        description:
-            "Posts the daily jab to the firm's general Slack channel. A simulated-matters \
-                      deployment discloses that the post is from the staging account; a real \
+        description: "Posts the daily jab to the firm's general Slack channel. Persistent staging \
+                      is marked by the Slack adapter's final from Staging line; a real \
                       deployment follows with how many neon-brand matters are open and how many \
                       of those are still pitches.",
         manual_slug: None,

@@ -4,8 +4,8 @@
 # no separate nag worker. This CronJob is a thin trigger that POSTs to the
 # Restate Cloud ingress and exits in seconds. Restate owns the retry schedule.
 #
-# `GeneralNag` posts the daily jab to `#general`. A simulated-matters
-# deployment discloses that the post is from the staging account; a real
+# `GeneralNag` posts the daily jab to `#general`. Persistent staging is
+# marked by the Slack adapter's final `from Staging` line; a real
 # deployment follows with how many neon-brand matters are open and how many
 # of those are still pitches.
 #

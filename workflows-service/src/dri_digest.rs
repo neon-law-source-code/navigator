@@ -15,11 +15,11 @@
 //!    projects as a bulleted list, not a fixed-width table, so it needs no
 //!    fencing.
 //!
-//! A deployment that discloses simulated matters (`store::sample_matters`,
-//! the same flag driving the site-wide banner) gets that disclosure folded
-//! into the digest header instead — see [`dri_digest_message`]. A deployment
-//! that does not gets two further steps a simulated run never runs, because
-//! the count they post is a real-matter-only signal:
+//! Persistent staging does not rewrite the digest header: the Slack adapter
+//! already appends a final `from Staging` line to every real post. A
+//! deployment that does not disclose simulated matters gets two further
+//! steps a simulated run never runs, because the count they post is a
+//! real-matter-only signal:
 //!
 //! 3. `ctx.run("counts")` — [`store::projects::matter_open_pitch_counts`]:
 //!    how many of the firm's own `"neon"`-brand matters are open, and how
@@ -61,23 +61,14 @@ pub struct DriDigestReport {
 /// a side is unassigned so the gap reads as a gap rather than a blank. Pure
 /// and exposed so the message is unit-tested without a workflow context.
 ///
-/// `simulated` appends the staging disclosure to the header — the same
-/// signal the site-wide banner gives a browsing visitor, given here to a
-/// reader of the firm-ops Slack channel who has no other way to tell a
-/// persistent-staging post from a real production one.
+/// Staging disclosure is the Slack adapter's last-line `from Staging` mark,
+/// not a rewrite of this header. `simulated` is accepted so callers share
+/// one flag with [`open_matters_followup`].
 #[must_use]
-pub fn dri_digest_message(projects: &[ProjectDriSummary], simulated: bool) -> String {
+pub fn dri_digest_message(projects: &[ProjectDriSummary], _simulated: bool) -> String {
     use std::fmt::Write as _;
 
-    let suffix = if simulated {
-        " (from the staging account)"
-    } else {
-        ""
-    };
-    let mut out = format!(
-        "*Project DRI digest — {} projects*{suffix}\n",
-        projects.len()
-    );
+    let mut out = format!("*Project DRI digest — {} projects*\n", projects.len());
     for project in projects {
         let lawyer = names_or_none(&project.lawyer_dris);
         let client = names_or_none(&project.client_dris);
@@ -283,20 +274,20 @@ mod tests {
         assert_eq!(msg, "*Project DRI digest — 0 projects*");
     }
 
-    /// The staging disclosure — a deployment that discloses simulated
-    /// matters gets the same signal in the digest header that the site-wide
-    /// banner gives a browsing visitor, so a reader of the firm-ops channel
-    /// can't mistake a staging post for a real production one.
     #[test]
-    fn a_simulated_run_discloses_the_staging_account_in_the_header() {
-        let msg = dri_digest_message(&[], true);
+    fn a_simulated_run_does_not_rewrite_the_digest_header() {
         assert_eq!(
-            msg,
-            "*Project DRI digest — 0 projects* (from the staging account)"
+            dri_digest_message(&[], true),
+            dri_digest_message(&[], false)
+        );
+        assert_eq!(
+            dri_digest_message(&[], true),
+            "*Project DRI digest — 0 projects*"
         );
     }
 
-    /// A non-simulated run's header carries no staging suffix at all.
+    /// A production run's header carries no staging wording; simulated
+    /// copy matches it because the adapter owns the staging mark.
     #[test]
     fn a_non_simulated_run_carries_no_staging_suffix() {
         let msg = dri_digest_message(&[], false);

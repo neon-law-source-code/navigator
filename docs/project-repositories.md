@@ -666,6 +666,20 @@ repository. The same `validate` walk extracts `navigator …` invocations from t
 against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit that
 introduced the rename.
 
+**`AGENTS.md` has two halves, and only one of them is the repository's.** Everything above `## One contract, one
+catalog` is about that Project — its code, where its apps mount, what its templates are named — and the gate compares it
+to nothing. The sections from that heading to the end of the file are Navigator's: the same sentences in every
+repository, written once by `scaffold` from bytes compiled into the CLI. The gate holds that half to those bytes, the
+way it already holds each synced skill to its canonical copy, because boilerplate nobody re-reads is boilerplate that
+drifts — and a contract saying different things in different repositories is worse than one saying nothing, since an
+agent believes whichever copy it was handed.
+
+Drift in that half is reported as a **warning**, not an error. No verb repairs `AGENTS.md` in place yet: `sync-skills`
+overwrites whole files, and half of this one belongs to the matter, so today's remedy is an operator restoring the block
+by hand. Failing a repository over prose it cannot fix with a single command would make the pin bump that first delivers
+this check turn the fleet red. Missing `AGENTS.md`, and an `AGENTS.md` that does not name where CLI feedback goes, both
+remain errors.
+
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that
 version: a downloaded release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a

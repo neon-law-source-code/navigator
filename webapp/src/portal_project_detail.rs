@@ -187,12 +187,14 @@ pub enum MatterDetailTab {
 /// attribution, and nothing inferred from the stored Person record.
 const TESTIMONIAL_CONSENT: &str = "You can keep this testimonial private or request that the firm consider it for the public homepage. If the firm publishes it, the homepage shows the quote and the attribution you enter here. It does not show your stored name, title, or profile image. Leave attribution blank to publish the quote without a name. Public use requires your consent and the firm's approval.";
 
+#[cfg(feature = "server")]
 #[derive(Deserialize, Default)]
 struct ProjectDetailQuery {
     #[serde(default)]
     tab: Option<String>,
 }
 
+#[cfg(any(test, feature = "server"))]
 fn parse_matter_tab(raw: Option<&str>, can_edit_testimonial: bool) -> MatterDetailTab {
     match raw.map(str::trim) {
         Some(value) if can_edit_testimonial && value.eq_ignore_ascii_case("testimonial") => {

@@ -4,6 +4,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt;
+
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -99,6 +102,7 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
     let (project, host) = read_manifest(root)?;
     let documents = root.join("documents");
     let (binaries, pointers) = discover(&documents)?;
+    let pointer_paths = preflight_sync_paths(root, &documents, &binaries, &pointers)?;
     if dry_run {
         for path in &binaries {
             println!("would upload {}", display_relative(root, path));
@@ -109,7 +113,9 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
 
     std::fs::create_dir_all(&documents)
         .with_context(|| format!("create {}", documents.display()))?;
+    ensure_documents_tree_is_safe(&documents)?;
     let ignore = documents.join(".gitignore");
+    ensure_document_path_is_safe(root, &ignore, true, false)?;
     if !ignore.exists() {
         std::fs::write(&ignore, DOCUMENTS_GITIGNORE)
             .with_context(|| format!("write {}", ignore.display()))?;
@@ -120,6 +126,7 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
     // A committed visibility edit is desired state. Replaying it is safe and
     // lets the server's ordinary API audit record every reconciliation.
     for path in pointers {
+        ensure_document_path_is_safe(root, &path, false, true)?;
         let raw =
             std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
         let pointer = store::document_pointers::DocumentPointer::from_yaml(&raw)
@@ -130,21 +137,26 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
     }
 
     let mut uploaded = 0usize;
-    for path in binaries {
+    for (path, pointer_path, has_existing_pointer) in pointer_paths {
+        ensure_document_path_is_safe(root, &path, false, true)?;
+        let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
         let relative = path
             .strip_prefix(&documents)
             .map_err(|_| anyhow!("{} is outside documents/", path.display()))?;
         let slug = slash_path(relative)?;
-        // Read whichever spelling this repository already carries, so a
-        // re-sync updates the pointer in place instead of filing a second
-        // one beside it under the new extension.
-        let existing_pointer = POINTER_READ_EXTENSIONS
-            .iter()
-            .map(|extension| PathBuf::from(format!("{}.{extension}", path.display())))
-            .find(|candidate| candidate.exists())
-            .unwrap_or_else(|| PathBuf::from(format!("{}.{POINTER_EXTENSION}", path.display())));
-        let existing_path = existing_pointer.clone();
-        let existing_pointer = read_pointer(&existing_pointer)?;
+        let existing_pointer_raw = if has_existing_pointer {
+            Some(
+                std::fs::read_to_string(&pointer_path)
+                    .with_context(|| format!("read {}", pointer_path.display()))?,
+            )
+        } else {
+            None
+        };
+        let existing_pointer = existing_pointer_raw
+            .as_deref()
+            .map(store::document_pointers::DocumentPointer::from_yaml)
+            .transpose()
+            .with_context(|| format!("validate {}", pointer_path.display()))?;
         let kind = existing_pointer
             .as_ref()
             .map_or_else(|| inferred_kind(relative), |pointer| pointer.kind.as_str());
@@ -152,25 +164,37 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
             || "internal".to_string(),
             |pointer| pointer.visibility.clone(),
         );
+        let filename = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| anyhow!("file path has no filename"))?;
         let pointer = client
-            .upload(
-                &path,
+            .upload_bytes(
+                filename,
+                &bytes,
                 kind,
                 Some(&desired_visibility),
                 None,
                 Some(content_type(&path)),
                 Some(&slug),
+                None,
             )
             .await?;
-        // Keep an existing pointer at the spelling it already has; a new one
-        // is written as `.yaml`. Renaming a repository's pointers is a
-        // deliberate migration, not a side effect of the next upload.
-        let pointer_path = if existing_path.exists() {
-            existing_path
-        } else {
-            PathBuf::from(format!("{}.{POINTER_EXTENSION}", path.display()))
-        };
-        write_pointer_atomically(&pointer_path, &pointer.to_yaml()?)?;
+        validate_upload_receipt(&pointer, &bytes)?;
+        ensure_source_is_unchanged(&path, &bytes)?;
+        let pointer_yaml = pointer.to_yaml()?;
+        ensure_document_path_is_safe(root, &pointer_path, !has_existing_pointer, false)?;
+        write_pointer_atomically(&pointer_path, &pointer_yaml)?;
+        if let Err(error) = ensure_source_is_unchanged(&path, &bytes) {
+            restore_pointer_after_source_change(
+                &pointer_path,
+                existing_pointer_raw.as_deref(),
+                has_existing_pointer,
+            )
+            .map_err(|restore| anyhow!("{error:#}; restore pointer: {restore:#}"))?;
+            return Err(error);
+        }
         std::fs::remove_file(&path).with_context(|| format!("remove staged {}", path.display()))?;
         uploaded += 1;
     }
@@ -342,7 +366,7 @@ fn ensure_pull_target_parent_is_safe(root: &Path, target: &Path) -> Result<()> {
             break;
         }
         match std::fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
+            Ok(metadata) if metadata_is_symlink_or_reparse(&metadata) => {
                 return Err(anyhow!(
                     "refusing to write through symlink {}",
                     current.display()
@@ -364,7 +388,7 @@ fn ensure_pull_target_parent_is_safe(root: &Path, target: &Path) -> Result<()> {
 fn ensure_pull_target_is_safe(root: &Path, target: &Path) -> Result<()> {
     ensure_pull_target_parent_is_safe(root, target)?;
     match std::fs::symlink_metadata(target) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(anyhow!(
+        Ok(metadata) if metadata_is_symlink_or_reparse(&metadata) => Err(anyhow!(
             "refusing to write through symlink {}",
             target.display()
         )),
@@ -737,14 +761,226 @@ async fn pull(root: &Path, dry_run: bool) -> Result<()> {
     }
 }
 
+fn metadata_is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+fn ensure_documents_tree_is_safe(documents: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(documents) {
+        Ok(metadata) if metadata_is_symlink_or_reparse(&metadata) => {
+            return Err(anyhow!(
+                "refusing to use symlinked documents root {}",
+                documents.display()
+            ));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(anyhow!("{} is not a directory", documents.display()));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("inspect {}", documents.display()))
+        }
+    }
+    for entry in walkdir::WalkDir::new(documents).follow_links(false) {
+        let entry = entry.with_context(|| format!("walk {}", documents.display()))?;
+        let metadata = std::fs::symlink_metadata(entry.path())
+            .with_context(|| format!("inspect {}", entry.path().display()))?;
+        if metadata_is_symlink_or_reparse(&metadata) {
+            return Err(anyhow!(
+                "refusing to use symlink in documents tree: {}",
+                entry.path().display()
+            ));
+        }
+        if !metadata.is_file() && !metadata.is_dir() {
+            return Err(anyhow!(
+                "refusing unsupported documents tree entry {}",
+                entry.path().display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_document_path_is_safe(
+    root: &Path,
+    path: &Path,
+    leaf_may_be_missing: bool,
+    leaf_must_be_file: bool,
+) -> Result<()> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| anyhow!("{} is outside {}", path.display(), root.display()))?;
+    let components = relative.components().collect::<Vec<_>>();
+    let mut current = root.to_path_buf();
+    for (index, component) in components.iter().enumerate() {
+        current.push(component);
+        let leaf = index + 1 == components.len();
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata_is_symlink_or_reparse(&metadata) => {
+                return Err(anyhow!(
+                    "refusing to use symlink path {}",
+                    current.display()
+                ));
+            }
+            Ok(metadata) if !leaf && !metadata.is_dir() => {
+                return Err(anyhow!("{} is not a directory", current.display()));
+            }
+            Ok(metadata) if leaf && leaf_must_be_file && !metadata.is_file() => {
+                return Err(anyhow!("{} is not a regular file", current.display()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && leaf => {
+                if leaf_may_be_missing {
+                    return Ok(());
+                }
+                return Err(error).with_context(|| format!("inspect {}", current.display()));
+            }
+            Err(error) => {
+                return Err(error).with_context(|| format!("inspect {}", current.display()));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn pointer_path_for_source(path: &Path) -> Result<(PathBuf, bool)> {
+    for extension in POINTER_READ_EXTENSIONS {
+        let candidate = PathBuf::from(format!("{}.{extension}", path.display()));
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(metadata) if metadata_is_symlink_or_reparse(&metadata) => {
+                return Err(anyhow!(
+                    "refusing to use symlink pointer path {}",
+                    candidate.display()
+                ));
+            }
+            Ok(metadata) if !metadata.is_file() => {
+                return Err(anyhow!("{} is not a regular file", candidate.display()));
+            }
+            Ok(_) => return Ok((candidate, true)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| format!("inspect {}", candidate.display()))
+            }
+        }
+    }
+    Ok((
+        PathBuf::from(format!("{}.{POINTER_EXTENSION}", path.display())),
+        false,
+    ))
+}
+
+fn preflight_sync_paths(
+    root: &Path,
+    documents: &Path,
+    binaries: &[PathBuf],
+    pointers: &[PathBuf],
+) -> Result<Vec<(PathBuf, PathBuf, bool)>> {
+    ensure_documents_tree_is_safe(documents)?;
+    for path in pointers {
+        ensure_document_path_is_safe(root, path, false, true)?;
+    }
+    binaries
+        .iter()
+        .map(|path| {
+            ensure_document_path_is_safe(root, path, false, true)?;
+            let (pointer_path, has_existing_pointer) = pointer_path_for_source(path)?;
+            ensure_document_path_is_safe(root, &pointer_path, true, false)?;
+            Ok((path.clone(), pointer_path, has_existing_pointer))
+        })
+        .collect()
+}
+
+fn validate_upload_receipt(
+    pointer: &store::document_pointers::DocumentPointer,
+    bytes: &[u8],
+) -> Result<()> {
+    pointer
+        .validate()
+        .map_err(|error| anyhow!("invalid upload pointer: {error}"))?;
+    let expected_sha256 = store::documents::sha256_hex(bytes);
+    if pointer.current_version.sha256 != expected_sha256 {
+        return Err(anyhow!(
+            "upload pointer sha256 mismatch: expected {expected_sha256}, received {}",
+            pointer.current_version.sha256
+        ));
+    }
+    let expected_size =
+        i64::try_from(bytes.len()).context("uploaded byte count does not fit in pointer")?;
+    if pointer.current_version.size_bytes != expected_size {
+        return Err(anyhow!(
+            "upload pointer byte count mismatch: expected {expected_size}, received {}",
+            pointer.current_version.size_bytes
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_source_is_unchanged(path: &Path, expected: &[u8]) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(path)
+        .with_context(|| format!("inspect source {}", path.display()))?;
+    if metadata_is_symlink_or_reparse(&metadata) {
+        return Err(anyhow!(
+            "source changed during upload: {} is now a symlink",
+            path.display()
+        ));
+    }
+    if !metadata.is_file() {
+        return Err(anyhow!(
+            "source changed during upload: {} is not a regular file",
+            path.display()
+        ));
+    }
+    let actual = std::fs::read(path).with_context(|| format!("read source {}", path.display()))?;
+    if actual != expected {
+        return Err(anyhow!("source changed during upload: {}", path.display()));
+    }
+    Ok(())
+}
+
+fn restore_pointer_after_source_change(
+    path: &Path,
+    previous: Option<&str>,
+    had_previous: bool,
+) -> Result<()> {
+    if had_previous {
+        write_pointer_atomically(
+            path,
+            previous.ok_or_else(|| anyhow!("previous pointer bytes are missing"))?,
+        )
+    } else {
+        std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))
+    }
+}
+
 fn discover(documents: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
-    if !documents.exists() {
+    ensure_documents_tree_is_safe(documents)?;
+    if !documents.is_dir() {
         return Ok((Vec::new(), Vec::new()));
     }
     let mut binaries = Vec::new();
     let mut pointers = Vec::new();
     for entry in walkdir::WalkDir::new(documents).follow_links(false) {
         let entry = entry.with_context(|| format!("walk {}", documents.display()))?;
+        let metadata = std::fs::symlink_metadata(entry.path())
+            .with_context(|| format!("inspect {}", entry.path().display()))?;
+        if metadata_is_symlink_or_reparse(&metadata) {
+            return Err(anyhow!(
+                "refusing to use symlink in documents tree: {}",
+                entry.path().display()
+            ));
+        }
         if !entry.file_type().is_file() || entry.file_name() == ".gitignore" {
             continue;
         }

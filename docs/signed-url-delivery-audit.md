@@ -35,7 +35,7 @@ its name says.
 | 7 | Portal CSP: proxy the bytes same-origin; do not admit the storage origin. **Landed.** | Medium |
 | 8 | Publisher isolation holds, but staging runs a hand-made generation the code does not describe. | Medium |
 | 9 | A successful signed-URL issuance leaves no audit event; only failures are logged. | Medium |
-| 10 | The CI document session is main-only and single-use, but unscoped and attributed to the lawyer DRI. | Medium |
+| 10 | The CI document session is main-only, single-use, and Project-scoped. | Informational |
 
 ## Finding 1: the project-document TTL
 
@@ -397,40 +397,30 @@ output.
 
 ## Finding 10: the CI document session
 
-**Severity: Medium.**
+**Severity: Informational. The control is in place.**
 
 A Project repository's CI verifies its committed pointers against the live records. On push to `main` with a configured
 host, the `document-verify` action ([`action.yml:124`](../.github/actions/document-verify/action.yml)) runs the CLI's
 `document verify --ci`, which exchanges the runner's GitHub OIDC token at `POST /auth/ci/document-token`
-([`portal/src/ci_auth.rs`](../portal/src/ci_auth.rs)). On a pull request it runs the offline half only. That split is
-deliberate and now holds fleet-wide: the reusable gate runs live verification only on push to `main` since ENG-654
-landed.
+([`portal/src/ci_auth.rs`](../portal/src/ci_auth.rs)). On a pull request it runs the offline half only. Live
+verification therefore remains main-only.
 
-What the mint checks ([`ci_auth.rs:126`](../portal/src/ci_auth.rs) onward):
+The mint checks the deployment's canonical host as audience, requires `refs/heads/main` with a `push` or
+`workflow_dispatch` event, spends the token's `jti` once, and binds the repository to exactly one live Project whose
+`repository_url` names it. The session is attributed to that Project's lawyer DRI and expires in ten minutes
+([`portal/src/session.rs`](../portal/src/session.rs)).
 
-- The token verifies against the deployment's canonical host as audience.
-- `ref` must be `refs/heads/main` and the event a `push` or `workflow_dispatch` (line 172). Any other ref is a `403`.
-- The token's `jti` is spent once, so a captured token cannot be replayed.
-- The repository resolves to exactly one live Project whose `repository_url` names it; the owner must match the
-  token's `repository_owner`.
-- The session is attributed to that Project's lawyer DRI, expires in ten minutes
-  ([`portal/src/session.rs:40`](../portal/src/session.rs)), and is minted with `scope: None`. The seed mint sets a scope
-  that `refuse_scoped_elsewhere` ([`portal/src/api.rs:1273`](../portal/src/api.rs)) enforces; the document mint does
-  not, on the reasoning that it only reads.
+The document session carries an explicit [`DocumentScope`](../portal/src/session.rs):
 
-**The deferred question: should the mint accept pull-request refs?** No. A pull-request ref is minted by whoever can
-push a branch or open a pull request, and the session it would yield is a lawyer's, unscoped, on every route that lawyer
-can reach. `main` is the one ref whose contents passed review. The offline validation a pull request already runs
-catches pointer-shape errors; the live comparison can wait for the push. If a pull-request lane is ever wanted, it must
-come with a read-only scope, not with a widened ref check.
+- `GET /app/api/projects` returns only the minted Project's `id` and `code`, the lookup fields the CLI needs.
+- `GET /app/api/projects/{id}/documents/revisions?slug=` is allowed only for that exact Project id and returns revision
+  metadata.
+- Document downloads, signed-download issuance, writes, unrelated routes, and every other Project are refused before a
+  handler runs. The same check applies when the credential is presented as a bearer token or as the session cookie.
+- A CI session without an explicit scope is invalid, so an old unscoped document credential fails closed.
 
-**The scope gap on `main`.** Even main-only, ten minutes of an unscoped session attributed to the DRI is more than
-`document verify` needs, and it runs on a hosted runner. A session compromised there could call any lawyer-tier route
-the DRI can. The seed mint already has the mechanism; the document mint should scope itself to the revision-chain read
-and the download route, and `refuse_scoped_elsewhere` should learn a set of allowed paths rather than one endpoint.
-
-**Follow-up.** Scope the CI document session to the two read routes `document verify` uses, and record the
-pull-request-ref decision in `docs/project-repositories.md`.
+The separate PR-ref policy remains open in LAW-10. This control does not mint for pull-request refs or change workflow
+guards; any future PR lane needs its own server-enforced read-only policy and seed dry-run decision.
 
 ## What this audit did not do
 

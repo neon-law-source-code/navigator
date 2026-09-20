@@ -388,8 +388,28 @@ pub async fn require_session(
         return axum::response::Redirect::to(&login).into_response();
     };
 
+    if session.is_legacy_unscoped_ci() {
+        return session_scope_refusal();
+    }
+    if let Some(scope) = &session.scope {
+        if !scope.allows_request(req.method().as_str(), req.uri().path()) {
+            return session_scope_refusal();
+        }
+    }
+
     req.extensions_mut().insert(session);
     next.run(req).await
+}
+
+fn session_scope_refusal() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        axum::Json(serde_json::json!({
+            "error": "scope_violation",
+            "message": "this CI session is not authorized for this route",
+        })),
+    )
+        .into_response()
 }
 
 /// Resolve the session cookie into a [`SessionData`] request extension *without*
@@ -421,6 +441,12 @@ pub async fn inject_optional_session(
             .get(crate::session::SESSION_COOKIE_NAME)
             .and_then(|cookie| sessions.decode(cookie.value()))
             .filter(|session| !session.is_expired())
+            .filter(|session| {
+                !session.is_legacy_unscoped_ci()
+                    && session.scope.as_ref().is_none_or(|scope| {
+                        scope.allows_request(req.method().as_str(), req.uri().path())
+                    })
+            })
         {
             req.extensions_mut().insert(session);
         }
@@ -466,6 +492,14 @@ pub async fn inject_bearer_session(
             .and_then(|v| v.strip_prefix("Bearer "))
             .and_then(|blob| sessions.decode(blob))
         {
+            if data.is_legacy_unscoped_ci() {
+                return next.run(req).await;
+            }
+            if let Some(scope) = &data.scope {
+                if !scope.allows_request(req.method().as_str(), req.uri().path()) {
+                    return session_scope_refusal();
+                }
+            }
             req.extensions_mut().insert(AuthClaims {
                 sub: data.sub.clone(),
                 exp: data.exp,

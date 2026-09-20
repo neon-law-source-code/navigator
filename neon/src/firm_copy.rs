@@ -656,8 +656,8 @@ mod firm_copy_tests {
     }
 
     #[test]
-    fn the_navigator_page_maps_sources_into_a_notation() {
-        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
+    fn the_notations_page_maps_sources_into_a_notation() {
+        let content = crate::locales::notations_content();
         let diagram = content
             .bands
             .iter()
@@ -681,16 +681,21 @@ mod firm_copy_tests {
                 )),
                 _ => None,
             })
-            .expect("the Navigator page renders the source-to-Notation diagram");
+            .expect("the Notations page renders the source-to-Notation diagram");
 
-        assert_eq!(diagram.0, "One Notation");
+        assert_eq!(diagram.0, "Markdown + Frontmatter");
         assert_eq!(
             diagram
                 .1
                 .iter()
                 .map(|node| node.label.as_str())
                 .collect::<Vec<_>>(),
-            ["Email", "Text messages", "Conversations", "Questionnaire"]
+            [
+                "Conversations",
+                "Questionnaires",
+                "Word documents",
+                "Markdown templates"
+            ]
         );
         assert_eq!(
             diagram
@@ -698,7 +703,12 @@ mod firm_copy_tests {
                 .iter()
                 .map(|node| node.label.as_str())
                 .collect::<Vec<_>>(),
-            ["Estate package", "Employee onboarding", "Contract revision"]
+            [
+                "Word revisions",
+                "Typst",
+                "Government forms",
+                "Browser previews"
+            ]
         );
         assert!(diagram.3.is_empty() && diagram.4.is_empty() && diagram.5.is_empty());
     }

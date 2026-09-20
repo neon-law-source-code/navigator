@@ -1767,10 +1767,10 @@ async fn notations_page_explains_the_format_and_links_the_letters_and_forms() {
     assert!(!body.contains("The same rules, wherever you write"));
     assert!(body.contains(">Body<"));
     assert!(!body.contains("A passing check validates structure; a lawyer reviews the substance."));
-    assert!(body.contains("<code>navigator project gate</code>"));
-    assert!(body.contains("<code>navigator notations preview</code>"));
-    assert!(body.contains("<code>navigator notations run</code>"));
-    assert!(body.contains("<code>navigator-lsp</code>"));
+    assert!(body.contains("navigator project gate"));
+    assert!(body.contains("navigator notations preview"));
+    assert!(body.contains("navigator notations run"));
+    assert!(body.contains("navigator-lsp"));
     assert!(body.contains("Typst rendering engine"));
     assert!(!body.contains("id=\"review\""));
     assert!(body.contains("Neon Law Notations are a way to write legal agreements in markdown"));

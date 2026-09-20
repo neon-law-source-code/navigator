@@ -83,6 +83,16 @@ const NAVIGATOR_MANIFEST: &[ManifestEntry] = &[
         benefit: "You walk out with a short study loop, original prompts you can copy into your own notes, and a way to review a missed question without saving anything here.",
         filename: "LSAT.md",
     },
+    ManifestEntry {
+        category: "presentations",
+        slug: "welcome-to-neon-law",
+        title: "Welcome to Neon Law",
+        description: "A short introduction to Neon Law and Neon Law Navigator.",
+        audience: "For emerging technology companies",
+        benefit: "Meet Nick and learn about the firm's approach to legal work, billing, \
+                  common contracts, and the software behind the practice.",
+        filename: "WELCOME_TO_NEON_LAW.md",
+    },
     // A conference talk. Every code slide is an exact copy of the workspace
     // file it cites; the
     // `rust_in_peace_snippets_are_exact_copies_of_cited_sources` test fails
@@ -913,6 +923,35 @@ mod tests {
             verify_cited_snippets("### A slide\n\nProse only.\n", "/no/such/root"),
             Ok(0)
         );
+    }
+
+    #[test]
+    fn welcome_to_neon_law_is_one_chapter_with_ten_illustrated_slides() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../server/content/workshops");
+        let materials = load_navigator(std::path::Path::new(root)).unwrap();
+        let talk = materials
+            .iter()
+            .find(|material| material.slug == "welcome-to-neon-law")
+            .expect("the welcome presentation must appear in the catalog");
+        assert_eq!(talk.category, "presentations");
+        assert_eq!(talk.title, "Welcome to Neon Law");
+        assert_eq!(talk.chapters.len(), 1);
+        assert_eq!(talk.chapters[0].section_start, 0);
+        assert_eq!(talk.chapters[0].section_count, 10);
+        assert_eq!(talk.sections.len(), 10);
+        for section in [&talk.sections[0], &talk.sections[9]] {
+            assert!(section.body_html.contains("src=\"/public/logo.svg\""));
+        }
+        for section in &talk.sections[1..9] {
+            assert!(section.body_html.contains("img/welcome-to-neon-law/"));
+            assert!(section.body_html.contains("alt=\"Ferris"));
+        }
+        assert!(talk.sections[0]
+            .notes_html
+            .contains("My name is nick and someday, I might be your attorney."));
+        assert!(talk.sections[9]
+            .notes_html
+            .contains("Thanks for watching, and I hope you have a wonderful day."));
     }
 
     #[test]

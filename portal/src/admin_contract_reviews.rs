@@ -840,7 +840,7 @@ async fn export_and_verify_review_document(
     word::verify_with_adapter(&adapter, "reviewed.docx", &exported).await?;
     let exported_document = word::parse_with_adapter(&adapter, "reviewed.docx", &exported).await?;
     word::verify_outline_preserved(&parsed, &exported_document)?;
-    store::documents::ingest_bytes(
+    store::documents::ingest_bytes_exactly_once(
         surreal,
         storage,
         &store::documents::IngestArgs {

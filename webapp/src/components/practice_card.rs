@@ -7,6 +7,8 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::is_external_href;
+
 /// Which decorative line mark opens a practice card.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PracticeMark {
@@ -49,12 +51,15 @@ pub(crate) fn PracticeCard(
     heading_id: String,
 ) -> Element {
     let style = (!font_family.is_empty()).then(|| format!("font-family: {font_family};"));
+    let is_external = is_external_href(&href);
     rsx! {
         a {
             class: "neon-card home-practice",
             href: "{href}",
             "aria-labelledby": "{heading_id}",
             style: style,
+            target: if is_external { Some("_blank") } else { None },
+            rel: if is_external { Some("noopener noreferrer") } else { None },
             if logo_href.is_empty() {
                 PracticeMarkGlyph {
                     mark,

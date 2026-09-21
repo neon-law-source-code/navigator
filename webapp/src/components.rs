@@ -90,7 +90,7 @@ pub use form::{
 pub use github_stars::GitHubStars;
 pub use honeypot::Honeypot;
 pub use icon::{Icon, IconName, LIBRA_SCALES};
-pub use links::ExternalLink;
+pub use links::{is_external_href, ExternalLink};
 pub use navigator_chrome::{
     NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
 };

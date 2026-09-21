@@ -67,3 +67,21 @@ Feature: /app/projects/:code — single matter detail, scoped to the caller
     And a project "Other Client's Matter" with no participants
     When "sagittarius@example.com" opens the detail page for "Other Client's Matter"
     Then the response status is 404
+
+  Scenario: A supervised clerk reads the matter's read-only coordination view
+    Given a seeded person "lawyer@neonlaw.com" with role "lawyer"
+    And a seeded person "clerk@neonlaw.com" with role "clerk"
+    And a project "Orion Ventures" with "lawyer@neonlaw.com" as the supervising lawyer DRI
+    And a project "Orion Ventures" with "clerk@neonlaw.com" as a supervised clerk
+    When "clerk@neonlaw.com" opens the detail page for "Orion Ventures"
+    Then the response status is 200
+    And the response body contains "Orion Ventures"
+    And the response body contains "Supervising lawyer"
+    And the response body does not contain "Upload documents"
+    And the response body does not contain "Edit project"
+
+  Scenario: A clerk who isn't supervised on the matter gets a 404
+    Given a seeded person "clerk@neonlaw.com" with role "clerk"
+    And a project "Pegasus Holdings" with no participants
+    When "clerk@neonlaw.com" opens the detail page for "Pegasus Holdings"
+    Then the response status is 404

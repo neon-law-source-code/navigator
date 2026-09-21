@@ -60,7 +60,17 @@ use crate::surreal::SurrealDb;
 /// The version of the fixture this module writes. Bump when the manifest
 /// below changes shape; a stale reader can then tell it apart from an
 /// earlier apply.
-pub const PORTFOLIO_VERSION: u32 = 1;
+///
+/// `2` added the lifecycle/participation scenario set below: an open pitch,
+/// a closed-active matter, a closed pitch carrying its required offboarding
+/// artifact, an archived matter, and a matter closed then reopened — each
+/// with its own synthetic client, closed through
+/// [`crate::projects::transition_project_with_reason`] and the closure
+/// vocabulary `store::projects::ClosureReason` defines. It also adds a
+/// supervised Clerk (added once the reopened matter is active again) and an
+/// Admin who participates in nothing, both sharing the fixture's one lawyer
+/// and entity type.
+pub const PORTFOLIO_VERSION: u32 = 2;
 
 /// The one literal an operator may pass to apply the portfolio. Nothing
 /// else — not a deployment name, not a value derived from
@@ -105,6 +115,166 @@ const IOLTA_XERO_TRANSACTION_ID: &str = "synthetic-portfolio-withdrawal";
 const PORTAL_INDEX: &str = "<!doctype html>\n<title>Synthetic Portfolio</title>\n\
      <p>Fixture portal for the versioned synthetic staging portfolio matter. \
      Nothing on this page is a real client.</p>\n";
+
+/// An Admin who participates in no matter here, demonstrating the ENG-81
+/// participation-only rendering `docs/access-model.md#admin` describes: the
+/// tier still resolves every code below (route-admission bypass), but
+/// `store::access::matter_viewer` answers `None` for every one of them, same
+/// as anyone else with no row.
+const ADMIN_NAME: &str = "Simone Okafor";
+const ADMIN_EMAIL: &str = "simone.okafor@synthetic-portfolio.example";
+
+/// One matter of a versioned lifecycle/participation scenario: its own
+/// synthetic client, whether it carries onboarding and/or offboarding
+/// artifacts, whether and how it closes, and whether it is archived,
+/// reopened, or handed a supervised Clerk once it reaches its final state.
+///
+/// Every scenario shares the fixture's one lawyer, designated that matter's
+/// lawyer DRI ([`plan_lawyer_dri`]) — several of the shapes below need a
+/// flagged, currently-licensed lawyer DRI (the Clerk supervision contract
+/// does), and there is exactly one lawyer in this fixture, so every matter
+/// simply names them.
+struct LifecycleScenario {
+    client_name: &'static str,
+    client_email: &'static str,
+    entity_name: &'static str,
+    project_code: &'static str,
+    project_name: &'static str,
+    project_description: &'static str,
+    /// `Some((filename, content))` files a `kind: "onboarding"` asset before
+    /// any close — this matter reads [`crate::projects::MatterLifecycle::OnboardingOnFile`]
+    /// rather than [`crate::projects::MatterLifecycle::NeedsOnboarding`], and
+    /// a subsequent close may use an active-side [`crate::projects::ClosureReason`].
+    onboarding: Option<(&'static str, &'static str)>,
+    /// `Some((filename, content))` files a `kind: "offboarding"` asset before
+    /// any close — LAW-36's gate requires this on file before a pitch (a
+    /// matter with no onboarding artifact) may close.
+    offboarding: Option<(&'static str, &'static str)>,
+    /// `Some(reason)` closes the matter with that reason, after any
+    /// onboarding/offboarding artifacts above are filed.
+    close_reason: Option<crate::projects::ClosureReason>,
+    /// Archive the matter after closing it. Terminal — mutually exclusive
+    /// with `reopen` in this fixture.
+    archive: bool,
+    /// Reopen the matter after closing it, clearing `closed_at` and
+    /// `closure_reason` per the lifecycle contract.
+    reopen: bool,
+    /// `Some((name, email))` adds a supervised Clerk once the matter has
+    /// reached its final state above.
+    clerk: Option<(&'static str, &'static str)>,
+}
+
+/// The lifecycle/participation scenario set: an open pitch, a closed-active
+/// matter, a closed pitch with its required offboarding artifact, an
+/// archived matter, and a matter closed then reopened with a supervised
+/// Clerk added once it is active again.
+const LIFECYCLE_SCENARIOS: &[LifecycleScenario] = &[
+    // An open pitch: no onboarding artifact on file, never closed.
+    LifecycleScenario {
+        client_name: "Perry Halcyon",
+        client_email: "perry.halcyon@synthetic-portfolio.example",
+        entity_name: "Fixture Halcyon Ventures, Inc.",
+        project_code: "synthetic-portfolio-pitch",
+        project_name: "Fixture Halcyon Ventures — Pitch",
+        project_description: "Versioned synthetic staging portfolio fixture matter: an open \
+            pitch with no onboarding artifact on file. Every party and document on it is \
+            invented.",
+        onboarding: None,
+        offboarding: None,
+        close_reason: None,
+        archive: false,
+        reopen: false,
+        clerk: None,
+    },
+    // A closed active matter: papered, then closed as a completed engagement.
+    LifecycleScenario {
+        client_name: "Cora Ashworth",
+        client_email: "cora.ashworth@synthetic-portfolio.example",
+        entity_name: "Fixture Ashworth Logistics, Inc.",
+        project_code: "synthetic-portfolio-closed-active",
+        project_name: "Fixture Ashworth Logistics — Closed Engagement",
+        project_description: "Versioned synthetic staging portfolio fixture matter: a \
+            representation that ran to completion and closed with an `engagement_completed` \
+            reason. Every party and document on it is invented.",
+        onboarding: Some((
+            "synthetic-portfolio-closed-active-onboarding.md",
+            "# Onboarding\n\nInvented engagement letter content for the closed-active \
+             synthetic portfolio fixture matter.\n",
+        )),
+        offboarding: None,
+        close_reason: Some(crate::projects::ClosureReason::EngagementCompleted),
+        archive: false,
+        reopen: false,
+        clerk: None,
+    },
+    // A closed pitch: never papered, closed with its required offboarding
+    // artifact and a pitch-side reason.
+    LifecycleScenario {
+        client_name: "Milo Fenwick",
+        client_email: "milo.fenwick@synthetic-portfolio.example",
+        entity_name: "Fixture Fenwick Robotics, Inc.",
+        project_code: "synthetic-portfolio-closed-pitch",
+        project_name: "Fixture Fenwick Robotics — Declined Pitch",
+        project_description: "Versioned synthetic staging portfolio fixture matter: a pitch \
+            that never converted, closed with a `pitch_declined` reason and the offboarding \
+            artifact LAW-36 requires before a pitch may close. Every party and document on it \
+            is invented.",
+        onboarding: None,
+        offboarding: Some((
+            "synthetic-portfolio-closed-pitch-offboarding.md",
+            "# Offboarding\n\nInvented offboarding letter content closing out the declined \
+             synthetic portfolio fixture pitch.\n",
+        )),
+        close_reason: Some(crate::projects::ClosureReason::PitchDeclined),
+        archive: false,
+        reopen: false,
+        clerk: None,
+    },
+    // An archived matter: papered, closed, then archived — terminal.
+    LifecycleScenario {
+        client_name: "Talia Moorcroft",
+        client_email: "talia.moorcroft@synthetic-portfolio.example",
+        entity_name: "Fixture Moorcroft Textiles, Inc.",
+        project_code: "synthetic-portfolio-archived",
+        project_name: "Fixture Moorcroft Textiles — Archived Matter",
+        project_description: "Versioned synthetic staging portfolio fixture matter: a \
+            completed representation closed and then archived. Every party and document on \
+            it is invented.",
+        onboarding: Some((
+            "synthetic-portfolio-archived-onboarding.md",
+            "# Onboarding\n\nInvented engagement letter content for the archived synthetic \
+             portfolio fixture matter.\n",
+        )),
+        offboarding: None,
+        close_reason: Some(crate::projects::ClosureReason::EngagementCompleted),
+        archive: true,
+        reopen: false,
+        clerk: None,
+    },
+    // A reopened matter: papered, closed, then reopened — clearing
+    // `closed_at` and `closure_reason` — with a supervised Clerk added once
+    // it is active again.
+    LifecycleScenario {
+        client_name: "Devon Ashgrove",
+        client_email: "devon.ashgrove@synthetic-portfolio.example",
+        entity_name: "Fixture Ashgrove Analytics, Inc.",
+        project_code: "synthetic-portfolio-reopened",
+        project_name: "Fixture Ashgrove Analytics — Reopened Matter",
+        project_description: "Versioned synthetic staging portfolio fixture matter: closed \
+            as a terminated client relationship, then reopened, clearing its closed timestamp \
+            and reason. Every party and document on it is invented.",
+        onboarding: Some((
+            "synthetic-portfolio-reopened-onboarding.md",
+            "# Onboarding\n\nInvented engagement letter content for the reopened synthetic \
+             portfolio fixture matter.\n",
+        )),
+        offboarding: None,
+        close_reason: Some(crate::projects::ClosureReason::ClientTerminated),
+        archive: false,
+        reopen: true,
+        clerk: Some(("Riley Doyle", "riley.doyle@synthetic-portfolio.example")),
+    },
+];
 
 /// Why an operator-supplied portfolio target was refused, before any write.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -327,9 +497,62 @@ async fn run(
             )
         })?;
 
-    let lawyer_id = plan_person(
+    let lawyer_id = plan_primary_matter(
+        surreal,
+        storage,
+        &mut plan,
+        mode,
+        jurisdiction.id,
+        entity_type.id,
+        template.id,
+    )
+    .await?;
+
+    for scenario in LIFECYCLE_SCENARIOS {
+        plan_lifecycle_scenario(
+            surreal,
+            storage,
+            &mut plan,
+            mode,
+            lawyer_id,
+            entity_type.id,
+            jurisdiction.id,
+            scenario,
+        )
+        .await?;
+    }
+
+    // An Admin who participates in nothing above — see [`ADMIN_NAME`].
+    plan_person(
         surreal,
         &mut plan,
+        mode,
+        ADMIN_NAME,
+        ADMIN_EMAIL,
+        crate::persons::Role::Admin,
+    )
+    .await?;
+
+    Ok(plan)
+}
+
+/// Plan and (in [`Mode::Apply`]) write the original fixture matter this
+/// module shipped with (ENG-818): one lawyer and client, its entity and
+/// project, an onboarding document and notation, and the invoice/trust/IOLTA
+/// chain the versioned lifecycle scenarios below do not touch. Returns the
+/// fixture's lawyer id, shared as every [`LifecycleScenario`]'s DRI.
+async fn plan_primary_matter(
+    surreal: &SurrealDb,
+    storage: &Arc<dyn cloud::StorageService>,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    jurisdiction_id: Uuid,
+    entity_type_id: Uuid,
+    template_id: Uuid,
+) -> anyhow::Result<Uuid> {
+    let lawyer_id = plan_person(
+        surreal,
+        plan,
         mode,
         LAWYER_NAME,
         LAWYER_EMAIL,
@@ -338,7 +561,7 @@ async fn run(
     .await?;
     let client_id = plan_person(
         surreal,
-        &mut plan,
+        plan,
         mode,
         CLIENT_NAME,
         CLIENT_EMAIL,
@@ -346,28 +569,75 @@ async fn run(
     )
     .await?;
 
-    let entity_id = plan_entity(surreal, &mut plan, mode, entity_type.id, jurisdiction.id).await?;
+    let entity_id = plan_entity(
+        surreal,
+        plan,
+        mode,
+        CLIENT_ENTITY_NAME,
+        entity_type_id,
+        jurisdiction_id,
+    )
+    .await?;
 
-    let project_id = plan_project(surreal, &mut plan, mode, entity_id, jurisdiction.id).await?;
+    let (project_id, _) = plan_project(
+        surreal,
+        plan,
+        mode,
+        PROJECT_CODE,
+        PROJECT_NAME,
+        PROJECT_DESCRIPTION,
+        entity_id,
+        jurisdiction_id,
+    )
+    .await?;
 
-    plan_participation(surreal, &mut plan, mode, project_id, lawyer_id, "lawyer").await?;
-    plan_participation(surreal, &mut plan, mode, project_id, client_id, "client").await?;
+    plan_participation(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        PROJECT_CODE,
+        lawyer_id,
+        "lawyer",
+    )
+    .await?;
+    plan_participation(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        PROJECT_CODE,
+        client_id,
+        "client",
+    )
+    .await?;
 
-    plan_document(surreal, storage, &mut plan, mode, project_id).await?;
+    plan_document(
+        surreal,
+        storage,
+        plan,
+        mode,
+        project_id,
+        DOCUMENT_FILENAME,
+        DOCUMENT_CONTENT,
+        "onboarding",
+        "Synthetic portfolio intake note",
+    )
+    .await?;
 
-    plan_notation(surreal, &mut plan, mode, project_id, template.id, lawyer_id).await?;
+    plan_notation(surreal, plan, mode, project_id, template_id, lawyer_id).await?;
 
-    plan_trust_deposit(surreal, &mut plan, mode, project_id).await?;
+    plan_trust_deposit(surreal, plan, mode, project_id).await?;
 
-    plan_invoice(surreal, &mut plan, mode, project_id).await?;
+    plan_invoice(surreal, plan, mode, project_id).await?;
 
-    plan_iolta_account(surreal, &mut plan, mode, jurisdiction.id).await?;
+    plan_iolta_account(surreal, plan, mode, jurisdiction_id).await?;
 
-    plan_iolta_withdrawal(surreal, &mut plan, mode).await?;
+    plan_iolta_withdrawal(surreal, plan, mode).await?;
 
-    plan_portal_bundle(storage, &mut plan, mode).await?;
+    plan_portal_bundle(storage, plan, mode).await?;
 
-    Ok(plan)
+    Ok(lawyer_id)
 }
 
 async fn plan_person(
@@ -396,12 +666,12 @@ async fn plan_entity(
     surreal: &SurrealDb,
     plan: &mut PortfolioPlan,
     mode: Mode,
+    name: &str,
     entity_type_id: Uuid,
     jurisdiction_id: Uuid,
 ) -> anyhow::Result<Uuid> {
-    let existing =
-        crate::entities::find_by_name_and_type(surreal, CLIENT_ENTITY_NAME, entity_type_id).await?;
-    plan.record("entity", CLIENT_ENTITY_NAME, action_for(existing.is_some()));
+    let existing = crate::entities::find_by_name_and_type(surreal, name, entity_type_id).await?;
+    plan.record("entity", name, action_for(existing.is_some()));
     if mode.is_apply() {
         if let Some(row) = existing {
             return Ok(row.id);
@@ -409,7 +679,7 @@ async fn plan_entity(
         let row = crate::entities::create(
             surreal,
             &crate::entities::NewEntity {
-                name: CLIENT_ENTITY_NAME.to_string(),
+                name: name.to_string(),
                 entity_type_id,
                 jurisdiction_id,
                 phone: None,
@@ -425,20 +695,44 @@ async fn plan_entity(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+/// Plan (and in [`Mode::Apply`] write) a matter's row, and report whether it
+/// already existed before this call — `true` on every apply from the second
+/// onward, since a code this fixture writes is otherwise unclaimed.
+///
+/// A [`LifecycleScenario`] that closes, archives, or reopens its matter reads
+/// that flag to run its transitions exactly once: a reopened matter's
+/// settled row looks identical to one that was never closed (`"open"`, no
+/// `closed_at`), so nothing about its *current* fields can tell an already-
+/// applied fixture apart from a fresh one — only "did this row already
+/// exist" can.
 async fn plan_project(
     surreal: &SurrealDb,
     plan: &mut PortfolioPlan,
     mode: Mode,
+    code: &str,
+    name: &str,
+    description: &str,
     entity_id: Uuid,
     jurisdiction_id: Uuid,
-) -> anyhow::Result<Uuid> {
-    let existing = crate::projects::find_by_code(surreal, PROJECT_CODE).await?;
-    plan.record("project", PROJECT_CODE, action_for(existing.is_some()));
+) -> anyhow::Result<(Uuid, bool)> {
+    let existing = crate::projects::find_by_code(surreal, code).await?;
+    let already_existed = existing.is_some();
+    plan.record("project", code, action_for(already_existed));
     if mode.is_apply() {
+        // A fresh matter opens `"open"`; an existing one keeps whatever
+        // status it already carries. This upsert runs on every apply, and
+        // several `LIFECYCLE_SCENARIOS` below move their matter out of
+        // `"open"` afterward — hardcoding `"open"` here would silently
+        // reset a closed/archived/reopened matter's status back on the very
+        // next apply, fighting the transition this module just wrote.
+        let status = existing
+            .as_ref()
+            .map_or_else(|| "open".to_string(), |row| row.status.clone());
         let input = crate::projects::NewProject {
-            code: PROJECT_CODE.to_string(),
-            name: PROJECT_NAME.to_string(),
-            status: "open".to_string(),
+            code: code.to_string(),
+            name: name.to_string(),
+            status,
             brand: PROJECT_BRAND.to_string(),
             entity_id,
             firm_id: None,
@@ -447,7 +741,7 @@ async fn plan_project(
             // (`crate::iolta_accounts::for_project`) — unlike the dev
             // sample-matter fixture, this one must set it.
             jurisdiction_id: Some(jurisdiction_id),
-            description: Some(PROJECT_DESCRIPTION.to_string()),
+            description: Some(description.to_string()),
         };
         let row = match existing {
             Some(row) => crate::projects::upsert_with_id(surreal, row.id, &input).await?,
@@ -455,9 +749,9 @@ async fn plan_project(
                 crate::projects::find_or_create_by_code(surreal, Uuid::now_v7(), &input).await?
             }
         };
-        Ok(row.id)
+        Ok((row.id, already_existed))
     } else {
-        Ok(existing.map_or(Uuid::nil(), |row| row.id))
+        Ok((existing.map_or(Uuid::nil(), |row| row.id), already_existed))
     }
 }
 
@@ -466,6 +760,7 @@ async fn plan_participation(
     plan: &mut PortfolioPlan,
     mode: Mode,
     project_id: Uuid,
+    project_code: &str,
     person_id: Uuid,
     participation: &str,
 ) -> anyhow::Result<()> {
@@ -473,7 +768,7 @@ async fn plan_participation(
         crate::projects::participation_for_person(surreal, person_id, project_id).await?;
     plan.record(
         "participation",
-        format!("{participation}:{person_id}"),
+        format!("{project_code}:{participation}:{person_id}"),
         action_for(existing.is_some()),
     );
     if mode.is_apply() && existing.is_none() {
@@ -482,21 +777,57 @@ async fn plan_participation(
     Ok(())
 }
 
+/// Add the fixture's lawyer to a matter as its accountable lawyer DRI in one
+/// step, through [`crate::projects::designate_dri_in_surreal`]: idempotent
+/// on `(person, project)`, it creates the participation row when absent and
+/// otherwise only flags an existing one. Several [`LifecycleScenario`]s need
+/// a flagged, currently-licensed lawyer DRI — the Clerk supervision contract
+/// in `docs/access-model.md#clerk` reads for one — and this fixture has
+/// exactly one lawyer, so every new matter simply names them.
+async fn plan_lawyer_dri(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    project_id: Uuid,
+    project_code: &str,
+    lawyer_id: Uuid,
+) -> anyhow::Result<()> {
+    let existing =
+        crate::projects::participation_for_person(surreal, lawyer_id, project_id).await?;
+    let already_dri = existing.is_some_and(|row| row.is_lawyer_dri);
+    plan.record(
+        "participation",
+        format!("{project_code}:lawyer_dri:{lawyer_id}"),
+        action_for(already_dri),
+    );
+    if mode.is_apply() && !already_dri {
+        crate::projects::designate_dri_in_surreal(
+            surreal,
+            project_id,
+            lawyer_id,
+            crate::projects::DriSide::Lawyer,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn plan_document(
     surreal: &SurrealDb,
     storage: &Arc<dyn cloud::StorageService>,
     plan: &mut PortfolioPlan,
     mode: Mode,
     project_id: Uuid,
+    filename: &str,
+    content: &str,
+    kind: &str,
+    description: &str,
 ) -> anyhow::Result<()> {
-    let sha256_hex = crate::assets::sha256_hex(DOCUMENT_CONTENT.as_bytes());
+    let sha256_hex = crate::assets::sha256_hex(content.as_bytes());
     let existing =
-        crate::assets::find_filed_copy(surreal, project_id, DOCUMENT_FILENAME, &sha256_hex).await?;
-    plan.record(
-        "document",
-        DOCUMENT_FILENAME,
-        action_for(existing.is_some()),
-    );
+        crate::assets::find_filed_copy(surreal, project_id, filename, &sha256_hex).await?;
+    plan.record("document", filename, action_for(existing.is_some()));
     if mode.is_apply() {
         crate::documents::ingest_bytes_exactly_once(
             surreal,
@@ -504,17 +835,289 @@ async fn plan_document(
             &crate::documents::IngestArgs {
                 project_id,
                 source: "generated",
-                filename: DOCUMENT_FILENAME,
-                kind: "onboarding",
+                filename,
+                kind,
                 content_type: "text/markdown",
-                description: Some("Synthetic portfolio intake note"),
+                description: Some(description),
                 secondary_storage_key: None,
                 visibility: crate::documents::visibility::CLIENT,
             },
-            DOCUMENT_CONTENT.as_bytes(),
+            content.as_bytes(),
         )
         .await?;
     }
+    Ok(())
+}
+
+/// Close a matter with `reason`, unless `project_already_existed`.
+///
+/// A reopened matter's settled row (`"open"`, no `closed_at`) is
+/// indistinguishable from one that was never closed, so the *current* row
+/// cannot tell a fresh apply apart from a repeat one — only whether this
+/// code already named a row before [`plan_project`] ran this pass can, which
+/// is exactly what `project_already_existed` carries. Skipping the repeat
+/// also sidesteps a real refusal: closing an already-`archived` matter is
+/// rejected by [`crate::projects::transition_project_with_reason`] as a
+/// transition out of a terminal state.
+async fn plan_close(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    project_id: Uuid,
+    project_code: &str,
+    reason: crate::projects::ClosureReason,
+    project_already_existed: bool,
+) -> anyhow::Result<()> {
+    plan.record(
+        "project_close",
+        format!("{project_code}:{}", reason.as_str()),
+        action_for(project_already_existed),
+    );
+    if mode.is_apply() && !project_already_existed {
+        crate::projects::transition_project_with_reason(
+            surreal,
+            project_id,
+            crate::projects::Transition::Close,
+            Some(reason),
+            None,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Archive an already-closed matter, unless `project_already_existed` — see
+/// [`plan_close`] for why the matter's current row cannot answer that on its
+/// own for a scenario that also reopens.
+async fn plan_archive(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    project_id: Uuid,
+    project_code: &str,
+    project_already_existed: bool,
+) -> anyhow::Result<()> {
+    plan.record(
+        "project_archive",
+        project_code,
+        action_for(project_already_existed),
+    );
+    if mode.is_apply() && !project_already_existed {
+        crate::projects::transition_project_with_reason(
+            surreal,
+            project_id,
+            crate::projects::Transition::Archive,
+            None,
+            None,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Reopen a closed matter, clearing `closed_at` and `closure_reason`, unless
+/// `project_already_existed` — see [`plan_close`] for why the matter's
+/// current row cannot answer that on its own once it is back to `"open"`.
+async fn plan_reopen(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    project_id: Uuid,
+    project_code: &str,
+    project_already_existed: bool,
+) -> anyhow::Result<()> {
+    plan.record(
+        "project_reopen",
+        project_code,
+        action_for(project_already_existed),
+    );
+    if mode.is_apply() && !project_already_existed {
+        crate::projects::transition_project_with_reason(
+            surreal,
+            project_id,
+            crate::projects::Transition::Reopen,
+            None,
+            None,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Plan and (in [`Mode::Apply`]) write one [`LifecycleScenario`]: its
+/// client, entity, and matter; the fixture lawyer as that matter's DRI; any
+/// onboarding/offboarding artifacts; the close/archive/reopen sequence the
+/// scenario declares; and a supervised Clerk once the matter has reached its
+/// final state.
+#[allow(clippy::too_many_arguments)]
+async fn plan_lifecycle_scenario(
+    surreal: &SurrealDb,
+    storage: &Arc<dyn cloud::StorageService>,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    lawyer_id: Uuid,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+    scenario: &LifecycleScenario,
+) -> anyhow::Result<()> {
+    let client_id = plan_person(
+        surreal,
+        plan,
+        mode,
+        scenario.client_name,
+        scenario.client_email,
+        crate::persons::Role::Client,
+    )
+    .await?;
+    let entity_id = plan_entity(
+        surreal,
+        plan,
+        mode,
+        scenario.entity_name,
+        entity_type_id,
+        jurisdiction_id,
+    )
+    .await?;
+    let (project_id, project_already_existed) = plan_project(
+        surreal,
+        plan,
+        mode,
+        scenario.project_code,
+        scenario.project_name,
+        scenario.project_description,
+        entity_id,
+        jurisdiction_id,
+    )
+    .await?;
+
+    plan_lawyer_dri(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        scenario.project_code,
+        lawyer_id,
+    )
+    .await?;
+    plan_participation(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        scenario.project_code,
+        client_id,
+        "client",
+    )
+    .await?;
+
+    plan_lifecycle_transitions(
+        surreal,
+        storage,
+        plan,
+        mode,
+        project_id,
+        project_already_existed,
+        scenario,
+    )
+    .await
+}
+
+/// The artifact-filing, close/archive/reopen, and Clerk-assignment half of
+/// [`plan_lifecycle_scenario`], split out only to keep each function under
+/// this workspace's line-count lint.
+async fn plan_lifecycle_transitions(
+    surreal: &SurrealDb,
+    storage: &Arc<dyn cloud::StorageService>,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    project_id: Uuid,
+    project_already_existed: bool,
+    scenario: &LifecycleScenario,
+) -> anyhow::Result<()> {
+    if let Some((filename, content)) = scenario.onboarding {
+        plan_document(
+            surreal,
+            storage,
+            plan,
+            mode,
+            project_id,
+            filename,
+            content,
+            "onboarding",
+            "Synthetic onboarding artifact",
+        )
+        .await?;
+    }
+    if let Some((filename, content)) = scenario.offboarding {
+        plan_document(
+            surreal,
+            storage,
+            plan,
+            mode,
+            project_id,
+            filename,
+            content,
+            "offboarding",
+            "Synthetic offboarding artifact",
+        )
+        .await?;
+    }
+    if let Some(reason) = scenario.close_reason {
+        plan_close(
+            surreal,
+            plan,
+            mode,
+            project_id,
+            scenario.project_code,
+            reason,
+            project_already_existed,
+        )
+        .await?;
+    }
+    if scenario.archive {
+        plan_archive(
+            surreal,
+            plan,
+            mode,
+            project_id,
+            scenario.project_code,
+            project_already_existed,
+        )
+        .await?;
+    }
+    if scenario.reopen {
+        plan_reopen(
+            surreal,
+            plan,
+            mode,
+            project_id,
+            scenario.project_code,
+            project_already_existed,
+        )
+        .await?;
+    }
+    if let Some((clerk_name, clerk_email)) = scenario.clerk {
+        let clerk_id = plan_person(
+            surreal,
+            plan,
+            mode,
+            clerk_name,
+            clerk_email,
+            crate::persons::Role::Clerk,
+        )
+        .await?;
+        plan_participation(
+            surreal,
+            plan,
+            mode,
+            project_id,
+            scenario.project_code,
+            clerk_id,
+            "clerk",
+        )
+        .await?;
+    }
+
     Ok(())
 }
 
@@ -996,6 +1599,278 @@ mod tests {
             0,
             "the withdrawal drew exactly the deposit; a second apply must not draw again"
         );
+    }
+
+    /// One resolved lifecycle scenario, read back by its stable code.
+    struct ResolvedScenario {
+        project: crate::projects::Project,
+        client_id: uuid::Uuid,
+    }
+
+    async fn resolve_scenario(
+        surreal: &SurrealDb,
+        scenario: &LifecycleScenario,
+    ) -> ResolvedScenario {
+        let project = crate::projects::find_by_code(surreal, scenario.project_code)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("{} must exist after apply", scenario.project_code));
+        let client_id = crate::persons::find_by_email_ci(surreal, scenario.client_email)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("{} must exist after apply", scenario.client_email))
+            .id;
+        ResolvedScenario { project, client_id }
+    }
+
+    /// Status and the closure fields each scenario's transitions must leave
+    /// behind — the direct proof of the LAW-36 reason contract and of the
+    /// reopen-clears-both-fields rule.
+    async fn assert_lifecycle_status_and_closure(surreal: &SurrealDb, s: &LifecycleScenarios) {
+        assert_eq!(s.pitch.project.status, "open");
+        assert_eq!(s.pitch.project.closure_reason, None);
+
+        assert_eq!(s.closed_active.project.status, "closed");
+        assert_eq!(
+            s.closed_active.project.closure_reason.as_deref(),
+            Some("engagement_completed")
+        );
+
+        assert_eq!(s.closed_pitch.project.status, "closed");
+        assert_eq!(
+            s.closed_pitch.project.closure_reason.as_deref(),
+            Some("pitch_declined")
+        );
+        let (_, has_closing) = crate::projects::matter_lifecycle_sets(
+            surreal,
+            std::slice::from_ref(&s.closed_pitch.project),
+        )
+        .await
+        .unwrap();
+        assert!(
+            has_closing.contains(&s.closed_pitch.project.id),
+            "the closed pitch must carry the offboarding artifact LAW-36 requires before it \
+             could close at all"
+        );
+
+        assert_eq!(s.archived.project.status, "archived");
+
+        // Reopen clears both the closed timestamp and the reason, per the
+        // lifecycle contract — not just one of the two.
+        assert_eq!(s.reopened.project.status, "open");
+        assert_eq!(s.reopened.project.closed_at, None);
+        assert_eq!(s.reopened.project.closure_reason, None);
+    }
+
+    /// The list pill every scenario renders, computed the same way
+    /// `webapp::project_list::project_row` does — proven rather than
+    /// assumed, since an archived matter's pill is not itself "closed" under
+    /// the current shipped derivation (`matter_lifecycle` only special-cases
+    /// the literal `"closed"` status; archived matters still branch on
+    /// `missing_onboarding`, same as an open one).
+    async fn assert_lifecycle_pill_labels(surreal: &SurrealDb, s: &LifecycleScenarios) {
+        for resolved in s.all_scenarios() {
+            let (has_engagement, has_closing) = crate::projects::matter_lifecycle_sets(
+                surreal,
+                std::slice::from_ref(&resolved.project),
+            )
+            .await
+            .unwrap();
+            let (missing_onboarding, missing_offboarding_letter) = crate::projects::matter_flags(
+                has_engagement.contains(&resolved.project.id),
+                &resolved.project.status,
+                has_closing.contains(&resolved.project.id),
+            );
+            let lifecycle = crate::projects::matter_lifecycle(
+                &resolved.project.status,
+                missing_onboarding,
+                missing_offboarding_letter,
+            );
+            let expected = if resolved.project.status == "closed" {
+                "closed"
+            } else if missing_onboarding {
+                "pitch"
+            } else {
+                "active"
+            };
+            assert_eq!(
+                lifecycle.label(),
+                expected,
+                "{} lifecycle label",
+                resolved.project.code
+            );
+        }
+    }
+
+    /// Every synthetic client sees only their own matter, never another
+    /// scenario's — the participation gate the access model documents,
+    /// exercised across the whole scenario set rather than one pair.
+    async fn assert_clients_fail_closed_across_matters(
+        surreal: &SurrealDb,
+        s: &LifecycleScenarios,
+    ) {
+        let all = s.all_projects();
+        for owner in s.all_scenarios() {
+            for candidate in all {
+                let viewer = crate::access::matter_viewer(
+                    surreal,
+                    Some(owner.client_id),
+                    crate::persons::Role::Client,
+                    candidate.id,
+                )
+                .await
+                .unwrap();
+                if candidate.id == owner.project.id {
+                    assert!(
+                        matches!(viewer, Some(crate::access::MatterViewer::Client)),
+                        "{} must see their own matter",
+                        candidate.code
+                    );
+                } else {
+                    assert!(
+                        viewer.is_none(),
+                        "{} must not see {}'s matter (cross-project fail-closed)",
+                        candidate.code,
+                        owner.project.code
+                    );
+                }
+            }
+        }
+    }
+
+    /// The supervised Clerk: sees the one matter it was added to as
+    /// `MatterViewer::Clerk`, and fails closed on every other one.
+    async fn assert_supervised_clerk_fails_closed(surreal: &SurrealDb, s: &LifecycleScenarios) {
+        let clerk_id =
+            crate::persons::find_by_email_ci(surreal, "riley.doyle@synthetic-portfolio.example")
+                .await
+                .unwrap()
+                .expect("clerk exists")
+                .id;
+        for candidate in s.all_projects() {
+            let viewer = crate::access::matter_viewer(
+                surreal,
+                Some(clerk_id),
+                crate::persons::Role::Clerk,
+                candidate.id,
+            )
+            .await
+            .unwrap();
+            if candidate.id == s.reopened.project.id {
+                assert!(
+                    matches!(viewer, Some(crate::access::MatterViewer::Clerk)),
+                    "the supervised Clerk must resolve on the reopened matter it was added to"
+                );
+            } else {
+                assert!(
+                    viewer.is_none(),
+                    "the supervised Clerk must not resolve on {} (cross-project fail-closed)",
+                    candidate.code
+                );
+            }
+        }
+    }
+
+    /// The unassigned Admin: participates in nothing, so `matter_viewer`
+    /// answers `None` on every one of these matters — the same ENG-81
+    /// participation-only shape the detail dispatcher renders instead of the
+    /// row this predicate alone would otherwise deny.
+    async fn assert_unassigned_admin_resolves_nowhere(surreal: &SurrealDb, s: &LifecycleScenarios) {
+        let admin_id = crate::persons::find_by_email_ci(surreal, ADMIN_EMAIL)
+            .await
+            .unwrap()
+            .expect("admin exists")
+            .id;
+        for candidate in s.all_projects() {
+            assert_eq!(
+                crate::projects::participation_for_person(surreal, admin_id, candidate.id)
+                    .await
+                    .unwrap(),
+                None,
+                "the unassigned Admin must hold no participation row on {}",
+                candidate.code
+            );
+            let viewer = crate::access::matter_viewer(
+                surreal,
+                Some(admin_id),
+                crate::persons::Role::Admin,
+                candidate.id,
+            )
+            .await
+            .unwrap();
+            assert!(
+                viewer.is_none(),
+                "the unassigned Admin must not resolve to a matter viewer on {}",
+                candidate.code
+            );
+        }
+    }
+
+    /// The five resolved [`LifecycleScenario`] rows, in `LIFECYCLE_SCENARIOS`
+    /// order, threaded through the assertion helpers above rather than five
+    /// loose local bindings.
+    struct LifecycleScenarios {
+        pitch: ResolvedScenario,
+        closed_active: ResolvedScenario,
+        closed_pitch: ResolvedScenario,
+        archived: ResolvedScenario,
+        reopened: ResolvedScenario,
+    }
+
+    impl LifecycleScenarios {
+        fn all_scenarios(&self) -> [&ResolvedScenario; 5] {
+            [
+                &self.pitch,
+                &self.closed_active,
+                &self.closed_pitch,
+                &self.archived,
+                &self.reopened,
+            ]
+        }
+
+        fn all_projects(&self) -> [&crate::projects::Project; 5] {
+            self.all_scenarios().map(|s| &s.project)
+        }
+    }
+
+    /// Every lifecycle/participation scenario `LIFECYCLE_SCENARIOS` declares,
+    /// proven against a single apply: the matter status and closure fields
+    /// each scenario's transitions must leave behind, the lifecycle pill each
+    /// renders through the same [`crate::projects::matter_lifecycle`] the
+    /// Projects list uses, the supervised-Clerk and unassigned-Admin
+    /// participation shapes, and that `store::access::matter_viewer` fails
+    /// closed across every pair of these matters — no synthetic client, the
+    /// Clerk, or the Admin resolves to anything on a matter they do not
+    /// participate in.
+    #[tokio::test]
+    async fn apply_produces_every_lifecycle_and_participation_scenario() {
+        let surreal = mem_surreal().await;
+        let storage = fs_storage().await;
+        canonical(&surreal, &storage).await;
+
+        apply_with(
+            &surreal,
+            &storage,
+            Production,
+            Some(STAGING_TARGET),
+            discloses("true"),
+        )
+        .await
+        .expect("apply");
+
+        let scenarios = LifecycleScenarios {
+            pitch: resolve_scenario(&surreal, &LIFECYCLE_SCENARIOS[0]).await,
+            closed_active: resolve_scenario(&surreal, &LIFECYCLE_SCENARIOS[1]).await,
+            closed_pitch: resolve_scenario(&surreal, &LIFECYCLE_SCENARIOS[2]).await,
+            archived: resolve_scenario(&surreal, &LIFECYCLE_SCENARIOS[3]).await,
+            reopened: resolve_scenario(&surreal, &LIFECYCLE_SCENARIOS[4]).await,
+        };
+
+        assert_lifecycle_status_and_closure(&surreal, &scenarios).await;
+        assert_lifecycle_pill_labels(&surreal, &scenarios).await;
+        assert_clients_fail_closed_across_matters(&surreal, &scenarios).await;
+        assert_supervised_clerk_fails_closed(&surreal, &scenarios).await;
+        assert_unassigned_admin_resolves_nowhere(&surreal, &scenarios).await;
     }
 
     /// The persistent-staging distinction the acceptance criteria calls

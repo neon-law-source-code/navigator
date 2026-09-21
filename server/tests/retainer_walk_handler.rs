@@ -161,7 +161,7 @@ async fn step_get_at_begin_renders_the_first_question() {
     let html = body_string(resp).await;
     // First question after BEGIN is the entity record.
     assert!(html.contains("entity"), "html: {html}");
-    assert!(html.contains("Step 1 of 8"));
+    assert!(html.contains("Step 1 of 7"));
     assert!(html.contains(format!("/app/lawyer/notations/{nid}/step").as_str()));
 }
 
@@ -300,7 +300,7 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
     assert!(html.contains("address__principal_office"));
-    assert!(html.contains("Step 2 of 8"));
+    assert!(html.contains("Step 2 of 7"));
 }
 
 #[tokio::test]
@@ -410,8 +410,8 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
         assert_eq!(resp.status(), StatusCode::SEE_OTHER, "value={value}");
     }
 
-    // Runtime: BEGIN → entity → principal office → client → firm DRI →
-    // project → start date → scope → governing law → END = 9 events on the
+    // Runtime: BEGIN → entity → principal office → client →
+    // project → start date → scope → governing law → END = 8 events on the
     // questionnaire timeline. The walker no longer writes `notation_events`
     // — in production the workflows-service worker does, via
     // `ctx.run`; here, the InMemoryRuntime is the source of truth.
@@ -419,8 +419,8 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
         StateMachineRuntime::events(runtime.as_ref(), MachineKind::Questionnaire, nid).await;
     assert_eq!(
         events.len(),
-        9,
-        "expected 9 questionnaire transitions, got {events:?}"
+        8,
+        "expected 8 questionnaire transitions, got {events:?}"
     );
     assert_eq!(events.last().unwrap().to, StateName::end());
 

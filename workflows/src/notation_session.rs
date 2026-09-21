@@ -1929,7 +1929,6 @@ mod tests {
                 "entity".to_string(),
                 "address__principal_office".to_string(),
                 "person__client".to_string(),
-                "person__lawyer_dri".to_string(),
                 "project__engagement".to_string(),
                 "custom_datetime__engagement_start_date".to_string(),
                 "custom_text__engagement_scope".to_string(),
@@ -1951,7 +1950,6 @@ mod tests {
             "entity".to_string(),
             "address__principal_office".to_string(),
             "person__client".to_string(),
-            "person__lawyer_dri".to_string(),
             "project__engagement".to_string(),
             "custom_datetime__engagement_start_date".to_string(),
             "custom_text__engagement_scope".to_string(),
@@ -2205,10 +2203,10 @@ mod tests {
         .unwrap();
         match next {
             NextStep::NeedsAnswer { question } => {
-                assert_eq!(question.code, "person__lawyer_dri");
+                assert_eq!(question.code, "project__engagement");
             }
             NextStep::QuestionnaireComplete => {
-                panic!("expected NeedsAnswer(person__lawyer_dri), got QuestionnaireComplete");
+                panic!("expected NeedsAnswer(project__engagement), got QuestionnaireComplete");
             }
         }
     }
@@ -2276,7 +2274,6 @@ mod tests {
             ("entity", TEST_ENTITY_NAME),
             ("address__principal_office", TEST_ENTITY_ADDRESS),
             ("person__client", "Libra"),
-            ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
             ("custom_datetime__engagement_start_date", "2026-09-01"),
             (
@@ -2336,7 +2333,6 @@ mod tests {
             ("entity", TEST_ENTITY_NAME),
             ("address__principal_office", TEST_ENTITY_ADDRESS),
             ("person__client", "Libra"),
-            ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
             ("custom_datetime__engagement_start_date", "2026-09-01"),
             (
@@ -2453,13 +2449,13 @@ mod tests {
         )
         .await
         .unwrap();
-        // After one answer: should be person__lawyer_dri.
+        // After person__client: should be project__engagement.
         match current_step(&surreal, &runtime, None, id).await.unwrap() {
             NextStep::NeedsAnswer { question } => {
-                assert_eq!(question.code, "person__lawyer_dri");
+                assert_eq!(question.code, "project__engagement");
             }
             NextStep::QuestionnaireComplete => {
-                panic!("expected NeedsAnswer(person__lawyer_dri), got QuestionnaireComplete");
+                panic!("expected NeedsAnswer(project__engagement), got QuestionnaireComplete");
             }
         }
     }
@@ -3202,7 +3198,6 @@ mod tests {
             ("entity", TEST_ENTITY_NAME),
             ("address__principal_office", TEST_ENTITY_ADDRESS),
             ("person__client", "Libra"),
-            ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
             ("custom_datetime__engagement_start_date", "2026-09-01"),
             (

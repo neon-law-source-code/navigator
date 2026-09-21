@@ -14,20 +14,16 @@ Feature: Closing letter walk
   Scenario: First GET renders the first question
     When the lawyer visits /app/lawyer/notations/:id/step
     Then the response status is 200
-    And the page asks the "person__client" question
-    And the page shows "What is the client's full legal name?"
+    And the page asks the "entity" question
     And the page shows "Closing Letter"
-    And the page shows "Step 1 of 6"
+    And the page shows "Step 1 of 3"
 
-  Scenario: Walking all six questions drives the questionnaire through END
+  Scenario: Walking all three questions drives the questionnaire through END
     When the lawyer submits the full questionnaire:
-      | value                             |
-      | Libra                             |
-      | Estate plan                       |
-      | Wound up the family LLC           |
-      | paid_in_full                      |
-      | Returned on request, kept 7 years |
-      | None                              |
+      | value        |
+      | Libra Trust  |
+      | Libra        |
+      | Estate plan  |
     Then the final response status is 303
-    And the questionnaire runtime has recorded 7 transitions
+    And the questionnaire runtime has recorded 4 transitions
     And the last transition lands on "END"

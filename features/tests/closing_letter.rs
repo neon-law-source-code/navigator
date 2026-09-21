@@ -3,7 +3,7 @@
 //! Drives the admin walker (`/app/lawyer/notations/:id/step`) over an
 //! `offboarding__letter` notation. The walker is generic over the bound
 //! template's questionnaire, so this mirrors `retainer_intake.rs` with
-//! the offboarding template's six-question walk — the firm-signed bookend
+//! the offboarding template's three-question walk — the firm-signed bookend
 //! to the client-signed onboarding letter.
 
 // Cucumber's step-attribute macros require `async fn`, so assertion

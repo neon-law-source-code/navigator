@@ -3358,14 +3358,14 @@ mod tests {
 
     #[test]
     fn progress_for_begin_is_step_1() {
-        // Eight questions: entity, principal office, client identity, firm
-        // DRI, engagement name, engagement start date, engagement scope,
+        // Seven questions: entity, principal office, client identity,
+        // engagement name, engagement start date, engagement scope,
         // governing law (N120 grounded the four bare placeholders the
         // retainer body used to leave undeclared).
         let spec = retainer_intake_questionnaire();
         assert_eq!(
             progress_from_chain(&questionnaire_chain(&spec), &StateName::begin()),
-            (1, 8)
+            (1, 7)
         );
     }
 
@@ -3373,11 +3373,11 @@ mod tests {
     fn progress_for_client_state_is_step_2() {
         // After answering the entity question, the next question is the
         // entity's principal office — the walker should display "step 2 of
-        // 8."
+        // 7."
         let spec = retainer_intake_questionnaire();
         assert_eq!(
             progress_from_chain(&questionnaire_chain(&spec), &StateName::from("entity")),
-            (2, 8)
+            (2, 7)
         );
     }
 
@@ -3389,7 +3389,7 @@ mod tests {
                 &questionnaire_chain(&spec),
                 &StateName::from("custom_single_choice__governing_law")
             ),
-            (8, 8)
+            (7, 7)
         );
     }
 

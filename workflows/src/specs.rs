@@ -416,7 +416,7 @@ mod tests {
     #[test]
     fn retainer_intake_questionnaire_walks_client_to_project_engagement() {
         let q = retainer_intake_questionnaire();
-        // BEGIN → entity → principal office → client → firm DRI →
+        // BEGIN → entity → principal office → client →
         // engagement → start date → scope → governing law → END. Walk via
         // the `_` condition.
         let mut here = StateName::begin();
@@ -424,7 +424,6 @@ mod tests {
             "entity",
             "address__principal_office",
             "person__client",
-            "person__lawyer_dri",
             "project__engagement",
             "custom_datetime__engagement_start_date",
             "custom_text__engagement_scope",

@@ -58,11 +58,13 @@ fn read_tracked(path: &str) -> String {
 }
 
 /// `DATABASE_URL` names a Postgres connection string. It must not appear
-/// in the Secret Manager catalog, a deployment fixture, or a Kubernetes
-/// example — those are the files `ops secrets apply` and `ops ship` read.
+/// in the Secret Manager catalog, an env template, a deployment fixture, or
+/// a Kubernetes example — those are the files `ops secrets apply` and
+/// `ops ship` read or operators copy into them.
 #[test]
 fn secret_catalogs_do_not_name_database_url() {
     let catalog_prefixes = [
+        ".env.example",
         "examples/deploy/",
         "k8s/",
         "cli/tests/fixtures/deployment-tree/",
@@ -84,7 +86,7 @@ fn secret_catalogs_do_not_name_database_url() {
     }
     assert!(
         hits.is_empty(),
-        "Secret Manager catalog and deployment fixtures must not name DATABASE_URL:\n{}",
+        "Secret Manager catalogs, env templates, and deployment fixtures must not name DATABASE_URL:\n{}",
         hits.join("\n")
     );
 }

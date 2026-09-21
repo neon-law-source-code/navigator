@@ -130,8 +130,8 @@ Every step follows the same conventions:
 
 Live environment setup prints eleven numbered, secret-free stages. Long-running REST writes additionally print their
 service, operation ID, scoped polling path, and completion. These lines may name projects, regions, buckets, networks,
-SQL instances, service accounts, and clusters; they must never include database URLs, passwords, tokens, credentials, or
-any decrypted secret value.
+service accounts, and clusters; they must never include database URLs, passwords, tokens, credentials, or any decrypted
+secret value.
 
 All four deployment buckets stay private. The deployment Google service account receives `roles/storage.objectAdmin` on
 each bucket, and Workload Identity maps both `navigator-web` and `workflows-service` to that principal. Marketing assets
@@ -252,6 +252,29 @@ This rule applies in local and Cloud OpenObserve, Cloud Logging, BigQuery, and a
 Use `navigator ops doctor`, OpenObserve, the Restate console, and the six-hourly Heartbeat email to debug missing
 periodic jobs or durable workflow failures. The architecture details live in [`observability.md`](observability.md) and
 [`durable-workflows.md`](durable-workflows.md).
+
+### Staging: confirm a store credential is dead
+
+The store password lives at the SurrealDB provider. Setup creates no Cloud SQL instance, and `ops secrets apply` writes
+no `DATABASE_URL`. Confirm on `neon-law-stg` that those objects are absent; an empty result is the rotation.
+
+Pin `gcloud` to staging and confirm, without printing payloads:
+
+```bash
+gcloud config set project neon-law-stg
+gcloud sql instances list
+gcloud secrets list --filter='name~DATABASE_URL'
+```
+
+An empty instance list and no `DATABASE_URL` secret is the whole rotation: the credential is dead. If the secret still
+exists, destroy it (`gcloud secrets delete DATABASE_URL`) rather than minting a replacement. Do not reuse the value.
+
+Cloud Logging holds stdout. Search by metadata only (`insertId`, timestamp, `logName`), never `textPayload` or
+`jsonPayload` in the output format, then delete matching entries if the bucket allows it. If retention is locked, record
+the `retentionDays` from `gcloud logging buckets describe _Default --location=global` as the expiry. The same check
+applies to objects in `gs://neon-law-stg-logs`: list names and timestamps, do not `cat` them.
+
+Production remains propose-only. Run the same confirmation there yourself.
 
 ## Website publication
 

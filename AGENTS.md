@@ -382,7 +382,8 @@ supporting checks inside them.
 - Run Markdown validation for Markdown changes, and check whether the prose you touched is compiled in and asserted by
   a Rust test — `git grep` a distinctive removed phrase before calling a change Markdown-only. Capture and embed a live
   walkthrough for public or portal UI changes.
-- Push and open the PR against `main`; auto-merge lands it after the required checks pass and review threads resolve.
+- Push and open the PR against `main` ready for review, not as a draft; auto-merge lands it after the required checks
+  pass and review threads resolve.
 
 ### 4. Address a pull request comment
 

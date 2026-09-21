@@ -1,7 +1,7 @@
 //! Long-running operation polling.
 //!
 //! GCP control-plane writes (`services.batchEnable`,
-//! `compute.networks.insert`, `sql.instances.insert`,
+//! `compute.networks.insert`,
 //! `run.projects.locations.services.create`, …) return an
 //! `Operation` resource that becomes `done: true` minutes later.
 //! Every step in `setup` follows the same recipe: parse the

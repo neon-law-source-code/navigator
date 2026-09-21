@@ -1,18 +1,19 @@
 ---
 name: implement-issue
 description: >
-  Ground and implement one Linear issue in its own Navigator worktree. Use when the user asks to implement, pick up,
-  start, or build ENG-NN, whether or not it has already been triaged. Refresh from origin/main, read the full issue,
-  verify it against shipped code and tests, adjudicate it, then make the smallest test-driven change. Do not use for
-  portfolio triage, a plan-only request, or opening the pull request itself.
+  Ground and implement one Linear issue in its own Navigator worktree, then open a ready pull request. Use when the user
+  asks to implement, pick up, start, or build ENG-NN, whether or not it has already been triaged. Refresh from
+  origin/main, read the full issue, verify it against shipped code and tests, adjudicate it, make the smallest
+  test-driven change, and open the PR ready for review. Do not use for portfolio triage or a plan-only request.
 ---
 
 # `/implement-issue` — ground and implement one issue
 
-Turn one issue identifier into one grounded, minimal, proven implementation in one session. This skill owns both the
-grounding and implementation loop. Use the deprecated [`triage-issue`](../triage-issue/SKILL.md) compatibility command
-only when the user explicitly wants a Linear plan without code, and [`create-pr`](../create-pr/SKILL.md) when a ready
-working tree needs to ship.
+Turn one issue identifier into one grounded, minimal, proven implementation and one ready pull request in one session.
+This skill owns the grounding, implementation, and ship loop. Use the deprecated
+[`triage-issue`](../triage-issue/SKILL.md) compatibility command only when the user explicitly wants a Linear plan
+without code. Follow [`create-pr`](../create-pr/SKILL.md) for grouping, gates, the Linear trailer, and opening the PR
+ready for review, not as a draft.
 
 ## Start current
 
@@ -74,14 +75,15 @@ Document the present system only: describe current behavior, contracts, and inva
 instructions when the change replaces them; do not add retrospective decision history, compatibility narration, or "used
 to" prose.
 
-## Verify and hand off
+## Verify and open the PR
 
 Run `cargo run -p cli --quiet -- project gate` after the change, plus the focused test and every gate the changed
 surface requires under `docs/agent-workflows.md`. For Rust or runtime changes, run formatting, clippy with warnings
 denied, the workspace tests, and coverage as that document requires. Verify user-facing changes through the documented
 browser loop.
 
-Before handoff, rebase with `git rebase -S origin/main` again and rerun the affected checks. Keep the issue identifier
-out of public prose except the bare identifier permitted by `docs/agent-workflows.md`; do not push, change Linear, or
-open a pull request unless the user asks. Hand a green, narrowly scoped working tree to `create-pr` when it is ready to
-ship.
+Before opening the PR, rebase with `git rebase -S origin/main` again and rerun the affected checks. Keep the issue
+identifier out of public prose except the bare identifier permitted by `docs/agent-workflows.md`. Then follow
+[`create-pr`](../create-pr/SKILL.md): push and open a pull request against `main`, ready for review, not as a draft.
+Auto-merge is armed only on a non-draft open. Do not stop at a green worktree, and do not open a draft to hold the
+change unless the user asked to hold it.

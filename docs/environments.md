@@ -38,8 +38,8 @@ graph LR
 ## Canonical deployment matrix
 
 Every value in the resource columns is also the corresponding `config.toml` coordinate. `NAVIGATOR_GCP_LOCATION` is
-intentionally omitted from the table because it is chosen per installation; use the same region for a row's SQL
-instance, buckets, and cluster.
+intentionally omitted from the table because it is chosen per installation; use the same region for a row's buckets and
+cluster.
 
 | Deployment | GCP project | Public host | Matters | Image | Resource prefix |
 | --- | --- | --- | --- | --- | --- |
@@ -65,10 +65,11 @@ Production is a rollable deployment. Its `deployments/<name>/` directory in the 
 `deploy.yml` posts to `#navigator`, from a checkout of that repository. See
 [`gitops.md`](gitops.md#the-deploy-is-a-human-act).
 
-Its substrate is provisioned in its own project under its own prefix: the Autopilot cluster, the `<prefix>-pg` Cloud SQL
-instance, and the `<prefix>-gateway-ip` global address. That address is a deployment coordinate, not a fact about
-Navigator: it lives in the deployment's `config.toml` as `NAVIGATOR_GATEWAY_IP`, and `gcloud compute addresses describe
-<prefix>-gateway-ip --global --format='value(address)'` prints the current value.
+Its substrate is provisioned in its own project under its own prefix: the Autopilot cluster and the
+`<prefix>-gateway-ip` global address. The store is a hosted SurrealDB instance provisioned at the store provider, not by
+this repository. The gateway address is a deployment coordinate, not a fact about Navigator: it lives in the
+deployment's `config.toml` as `NAVIGATOR_GATEWAY_IP`, and `gcloud compute addresses describe <prefix>-gateway-ip
+--global --format='value(address)'` prints the current value.
 
 `www.neonlaw.com` and `workflows.neonlaw.com` both resolve to that address and are served by this deployment's Ingress,
 each with its own `ManagedCertificate` Active, and every other registered brand host the same way — the release

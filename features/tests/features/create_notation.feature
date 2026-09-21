@@ -44,11 +44,6 @@ Feature: Navigator MCP walks a notation to END under a lawyer's authorization
     When the LLM names the answer_notation skill with code "person__client" value "Libra"
     And the firm authorizes the pending action
     Then the task completes with status "needs_answer"
-    And the next question is "person__lawyer_dri"
-
-    When the LLM names the answer_notation skill with code "person__lawyer_dri" value "Firm Principal"
-    And the firm authorizes the pending action
-    Then the task completes with status "needs_answer"
     And the next question is "project__engagement"
 
     When the LLM names the answer_notation skill with code "project__engagement" value "Apollo"

@@ -146,9 +146,9 @@ notice and subject to any approval a court requires. Suspension does not affect 
 
 ## IV. Staffing
 
-Write to contact@neonlaw.com or call/text our office at 1.510.800.2080. We may use other lawyers, contract lawyers,
-paralegals, staff, and outside vendors where that suits the work. We protect your confidences as the law and the
-applicable professional rules require.
+Write to contact@neonlaw.com, or call or text the office line on this letterhead. We may use other lawyers, contract
+lawyers, paralegals, staff, and outside vendors where that suits the work. We protect your confidences as the law and
+the applicable professional rules require.
 
 ## V. Response times
 

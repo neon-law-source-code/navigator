@@ -32,11 +32,10 @@ const KEY: &str = "api-notation-answer-test-key";
 /// The template's declared questionnaire, in order, with an answer for each
 /// step — the same walk `workflows::notation_session`'s own full-walk test
 /// uses.
-const WALK: [(&str, &str); 8] = [
+const WALK: [(&str, &str); 7] = [
     ("entity", "Apollo LLC"),
     ("address__principal_office", "1 Example Way, Reno, NV 89501"),
     ("person__client", "Libra"),
-    ("person__lawyer_dri", "Firm Principal"),
     ("project__engagement", "Apollo"),
     ("custom_datetime__engagement_start_date", "2026-09-01"),
     (

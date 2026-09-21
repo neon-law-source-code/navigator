@@ -53,15 +53,9 @@ struct Matter {
     originating_template: Option<&'static str>,
 }
 
-/// The six closing-letter answers, in walk order.
-const CLOSING_ANSWERS: [&str; 6] = [
-    "Capricorn",
-    "The engagement",
-    "Wound up the engagement",
-    "paid_in_full",
-    "Returned on request, kept 7 years",
-    "None",
-];
+/// The three closing-letter answers, in walk order: the client entity, the
+/// client's directly responsible individual, then the project being closed.
+const CLOSING_ANSWERS: [&str; 3] = ["Capricorn Holdings LLC", "Capricorn", "The engagement"];
 
 /// Seed one matter of the given shape with its client, returning
 /// `(project_id, project_code, client_id)` — the id for the assertions and the

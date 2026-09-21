@@ -1,31 +1,16 @@
 questionnaire:
   BEGIN:
+    _: entity
+  entity:
     _: person__client
   person__client:
-    _: project__engagement
-  project__engagement:
-    _: custom_text__matter_summary
-  custom_text__matter_summary:
-    _: custom_single_choice__fee_status
-  custom_single_choice__fee_status:
-    _: custom_text__file_retention
-  custom_text__file_retention:
-    _: custom_text__next_obligation
-  custom_text__next_obligation:
+    _: project
+  project:
     _: END
   END: {}
 prompts:
-  client_name: What is the client's full legal name?
-  project_name: What is the project name for this engagement?
-  matter_summary: Summarize the matter and the work the firm completed.
-  fee_status: What is the fee status as the matter closes?
-  file_retention: How will the client's file be retained or returned?
-  next_obligation: What is the client's next obligation or deadline, if any?
-choices:
-  fee_status:
-    paid_in_full: Paid in full
-    balance_due: Balance due
-    waived: Fees waived
+  client_name: Who is the Client's directly responsible individual, the one person the Firm writes to?
+  project: What is the project being closed?
 workflow:
   BEGIN:
     close_requested: lawyer_review

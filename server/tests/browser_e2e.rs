@@ -289,10 +289,10 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     };
     login_as_lawyer(&c).await;
 
-    // The eight answers we'll submit, in walker order (entity →
-    // address__principal_office → person__client → person__lawyer_dri →
-    // project__engagement → custom_datetime__engagement_start_date →
-    // custom_text__engagement_scope → custom_single_choice__governing_law).
+    // The seven answers we'll submit, in walker order (entity →
+    // address__principal_office → person__client → project__engagement →
+    // custom_datetime__engagement_start_date → custom_text__engagement_scope
+    // → custom_single_choice__governing_law).
     // Not every step ends up rendering the literal string here — see
     // `set_step_answer_script` below — but each is unique enough that
     // whatever the walk actually submits can be fished back out of the
@@ -305,18 +305,16 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // `entity` and `address__principal_office` fall through
     // `question_fields`'s default arm to the same plain `<input name="value">`
     // as `project__engagement` (no dedicated `answer_type` branch exists for
-    // either). `person__client` and `person__lawyer_dri` are `person`
-    // questions instead: `start_post` seeds the client and the lawyer DRI as
-    // project participants before the walk's first question ever renders, so
-    // `question_fields`'s `"person"` arm always finds a non-empty candidate
-    // list and renders a `<select>`, never the plain input this comment used
-    // to promise (#329/ENG-454).
+    // either). `person__client` is a `person` question instead: `start_post`
+    // seeds the client as a project participant before the walk's first
+    // question ever renders, so `question_fields`'s `"person"` arm always
+    // finds a non-empty candidate list and renders a `<select>`, never the
+    // plain input this comment used to promise (#329/ENG-454).
     let client_email = format!("walk-{}@example.com", std::process::id());
     let answers = [
         "Aurora Ridge Holdings LLC",
         "742 Meridian Ave, Reno, NV 89502",
         "Libra",
-        "Firm Principal",
         "Estate Plan — Libra",
         "2026-09-01T00:00",
         "Draft and file the matter documents.",
@@ -392,12 +390,12 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         tokio::time::sleep(Duration::from_millis(200)).await;
     };
 
-    // --- Steps 1–8: walk the questionnaire -------------------
+    // --- Steps 1–7: walk the questionnaire -------------------
     // ENG-454 (#329) taught `question_fields` to render a real `<select>`
-    // for a `person` question with project-scoped candidates (both
-    // `person__client` and `person__lawyer_dri` always have at least the
-    // client and the lawyer DRI to offer, seeded by `start_post` before the
-    // walk even begins) and a `<input type="radio">` group for a `radio`
+    // for a `person` question with project-scoped candidates
+    // (`person__client` always has at least the client to offer, seeded by
+    // `start_post` before the walk even begins) and a `<input type="radio">`
+    // group for a `radio`
     // question (`custom_single_choice__governing_law`'s own choices) — a
     // plain `input[name="value"], textarea[name="value"]` no longer exists
     // on every step — and each `Field::radio` option is itself an
@@ -577,16 +575,15 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         .expect("read notation_event from surreal");
     events.retain(|e| e.machine_kind == store::notation_events::MACHINE_QUESTIONNAIRE);
 
-    // Nine rows: BEGIN → entity → address__principal_office → person__client →
-    // person__lawyer_dri → project__engagement →
-    // custom_datetime__engagement_start_date → custom_text__engagement_scope →
-    // custom_single_choice__governing_law → END. The walker signals the worker
-    // once per question (eight times) and once more for the trailer-to-END in
-    // the last POST.
+    // Eight rows: BEGIN → entity → address__principal_office → person__client →
+    // project__engagement → custom_datetime__engagement_start_date →
+    // custom_text__engagement_scope → custom_single_choice__governing_law →
+    // END. The walker signals the worker once per question (seven times) and
+    // once more for the trailer-to-END in the last POST.
     assert_eq!(
         events.len(),
-        9,
-        "expected 9 questionnaire transitions for notation {notation_id}, got {events:?}",
+        8,
+        "expected 8 questionnaire transitions for notation {notation_id}, got {events:?}",
     );
     let states: Vec<(&str, &str, &str)> = events
         .iter()
@@ -604,8 +601,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
             ("BEGIN", "entity", "_"),
             ("entity", "address__principal_office", "_"),
             ("address__principal_office", "person__client", "_"),
-            ("person__client", "person__lawyer_dri", "_"),
-            ("person__lawyer_dri", "project__engagement", "_"),
+            ("person__client", "project__engagement", "_"),
             (
                 "project__engagement",
                 "custom_datetime__engagement_start_date",

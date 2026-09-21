@@ -4314,7 +4314,6 @@ Sign: {{client.signature}}";
                 "100 Innovation Way, Reno, NV 89501",
             ),
             ("person__client", "Libra"),
-            ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
             ("custom_datetime__engagement_start_date", "2026-09-01"),
             (

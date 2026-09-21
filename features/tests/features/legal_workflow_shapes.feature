@@ -12,15 +12,14 @@ Feature: Bundled-template questionnaire composition
   `END:` excised must fail to parse with `MissingEnd`, so the parser's
   guardrails stay load-bearing.
 
-  Scenario: Engagement letter questionnaire walks entity → office → client → lawyer → project → terms → END
+  Scenario: Engagement letter questionnaire walks entity → office → client → project → terms → END
     Given the bundled template "notations/neon_law/onboarding.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                                    | to                                      |
       | BEGIN                                   | entity                                  |
       | entity                                  | address__principal_office               |
       | address__principal_office               | person__client                          |
-      | person__client                          | person__lawyer_dri                      |
-      | person__lawyer_dri                      | project__engagement                     |
+      | person__client                          | project__engagement                     |
       | project__engagement                     | custom_datetime__engagement_start_date  |
       | custom_datetime__engagement_start_date  | custom_text__engagement_scope           |
       | custom_text__engagement_scope           | custom_single_choice__governing_law     |
@@ -30,17 +29,14 @@ Feature: Bundled-template questionnaire composition
     Given the bundled template "notations/neon_law/onboarding.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error
 
-  Scenario: Closing letter questionnaire walks client → project → summary → fees → file → next → END
+  Scenario: Closing letter questionnaire walks entity → client → project → END
     Given the bundled template "notations/neon_law/offboarding.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                               | to                                 |
-      | BEGIN                              | person__client                     |
-      | person__client                     | project__engagement                |
-      | project__engagement                | custom_text__matter_summary        |
-      | custom_text__matter_summary        | custom_single_choice__fee_status   |
-      | custom_single_choice__fee_status   | custom_text__file_retention        |
-      | custom_text__file_retention        | custom_text__next_obligation       |
-      | custom_text__next_obligation       | END                                |
+      | BEGIN                              | entity                             |
+      | entity                             | person__client                     |
+      | person__client                     | project                            |
+      | project                            | END                                |
 
   Scenario: Closing letter template with END stripped fails to parse
     Given the bundled template "notations/neon_law/offboarding.md" with the workflow END declaration removed

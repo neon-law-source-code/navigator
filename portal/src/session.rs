@@ -28,11 +28,11 @@ pub const SESSION_COOKIE_NAME: &str = "navigator_session";
 /// Default session lifetime — 8 hours.
 pub const DEFAULT_SESSION_TTL_SECS: i64 = 8 * 60 * 60;
 
-/// CLI bearer-token lifetime — 1 hour. Much tighter than the browser
-/// session: a CLI token is a portable file credential
-/// (`~/.navigator.json`), so a leak should expire fast. Bounds the
-/// blast radius until granular server-side revocation lands.
-pub const CLI_SESSION_TTL_SECS: i64 = 60 * 60;
+/// CLI bearer-token lifetime — 8 hours. Matches the browser session so a
+/// laptop login lasts a working day; a CLI token is a portable file
+/// credential (`~/.navigator.json`), so this still bounds the blast radius
+/// until granular server-side revocation lands.
+pub const CLI_SESSION_TTL_SECS: i64 = 8 * 60 * 60;
 
 /// CI seed-token lifetime — 10 minutes. A seed reconcile needs far less
 /// than a laptop login, and a replayed GitHub OIDC JWT must not yield a

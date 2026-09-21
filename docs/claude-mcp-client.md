@@ -166,7 +166,7 @@ navigator project setup <code>
 
 - **stdio is per-laptop.** This serves Claude Code and Claude Desktop. It does not serve claude.ai on the web or mobile,
   which would need OAuth protected-resource metadata and dynamic client registration.
-- **The token lasts one hour** (`CLI_SESSION_TTL_SECS`). When it ages out, calls come back as a tool error. Run
+- **The token lasts eight hours** (`CLI_SESSION_TTL_SECS`). When it ages out, calls come back as a tool error. Run
   `navigator site login` again; the credential is read from disk per call, so re-login lands without restarting the
   server or the client.
 - **Registering before logging in is fine.** The server starts, lists its tools, and explains the missing login on the

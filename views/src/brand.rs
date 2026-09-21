@@ -1633,12 +1633,17 @@ pub fn firm_trademark() -> (&'static str, &'static str, &'static str) {
 /// The public pages the footer links rather than the header — Navigator, Blog,
 /// Notations, and the rest. See [`FIRM_FOOTER_NAV`].
 ///
-/// Not brand-scoped: a white-label deploy renames the wordmark and re-points the
-/// addresses, but these routes are Navigator's own public surface and are the
-/// same wherever the firm's footer renders.
+/// Brand-scoped to [`BrandKey::Neon`]: these routes are Navigator's own public
+/// surface, published under the firm's own domain, so only the firm's own
+/// brand links them. A white-label deploy renames the wordmark and re-points
+/// the addresses, and its footer carries none of this row.
 #[must_use]
 pub fn firm_footer_nav() -> &'static [NavLink] {
-    FIRM_FOOTER_NAV
+    if current().brand_key == BrandKey::Neon {
+        FIRM_FOOTER_NAV
+    } else {
+        &[]
+    }
 }
 
 /// The firm's legal-advice disclaimer, shown in the footer of every page. The
@@ -2223,6 +2228,23 @@ mod tests {
                 .iter()
                 .all(|link| !link.is_dropdown()),
             "every footer link is a flat leaf"
+        );
+    }
+
+    /// The firm's own footer row is Neon's alone: a white-label brand's
+    /// footer carries none of it.
+    #[tokio::test]
+    async fn the_footer_nav_is_empty_off_the_firms_own_brand() {
+        scope(&super::ABHAYA_BRANDING, async {
+            assert!(
+                super::firm_footer_nav().is_empty(),
+                "a white-label brand's footer links none of the firm's own routes"
+            );
+        })
+        .await;
+        assert!(
+            !super::firm_footer_nav().is_empty(),
+            "leaving the scope restores the firm's own footer row"
         );
     }
 

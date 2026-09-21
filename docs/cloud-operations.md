@@ -10,7 +10,7 @@ Rego, Restate, SendGrid, Kubernetes, and `portal::agent_router::AgentRouter`.
 
 ## Coverage
 
-- **KIND local dev** — source of truth: [`AGENTS.md`](../AGENTS.md#local-kind-development) and
+- **KIND local dev** — source of truth: [`kind-local-dev`](../.agents/skills/kind-local-dev/SKILL.md) and
   [`test-database.md`](test-database.md).
 - **GCP REST setup** — source of truth: [`oss-install.md`](oss-install.md), this page, and `cli/src/devx/gcp/` module
   docs.
@@ -21,7 +21,7 @@ Rego, Restate, SendGrid, Kubernetes, and `portal::agent_router::AgentRouter`.
   **Observability/OpenObserve** — source of truth: [`observability.md`](observability.md) and
   [`durable-workflows.md`](durable-workflows.md).
 - **OIDC/embedded Rego/Rauthy** — source of truth: [`oidc.md`](oidc.md), [`access-model.md`](access-model.md), and
-  [`AGENTS.md`](../AGENTS.md#authentication-and-lawyer-access).
+  [`open-admin-server`](../.agents/skills/open-admin-server/SKILL.md).
 
 The collapse rule is simple: durable policy, invariants, architecture, and operator recipes live in `docs/`.
 
@@ -55,7 +55,7 @@ cargo run --release -p cli -- dev down                # full teardown — only f
 `dev up` brings up SurrealDB, Rauthy, Garage, Restate, `workflows-service`, and OpenObserve in KIND. It writes
 `.devx/env` for the host-side `web` process. The cluster is a **persistent dev fixture**: leave it up between sessions
 and re-run `dev up` to restore port-forwards after a sleep or reboot (it reuses the existing cluster). See
-[`AGENTS.md`](../AGENTS.md#the-shared-dependency-tier).
+[`kind-local-dev`](../.agents/skills/kind-local-dev/SKILL.md).
 
 Scratch artifacts go under `/tmp`, never the repo. Screenshots normally go under `/tmp/navigator-screenshots/`.
 

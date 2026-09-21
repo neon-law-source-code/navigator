@@ -13,11 +13,11 @@ description: >
 # KIND-based local development
 
 The `navigator` CLI (`cli::devx`) drives both the "host runs `web`" developer loop and the "full stack in KIND"
-CI-shaped flow — there is no Makefile. Everything factual — the cluster config and `extraPortMappings`, the port-forward
-table, the registry pull/retag/`kind load` image flow, the per-worktree environment, and the teardown — lives in
-[`AGENTS.md`](../../../AGENTS.md#local-kind-development); read it and keep it, not this skill, authoritative. In-cluster
-Store specifics are in [`AGENTS.md`](../../../AGENTS.md#the-shared-dependency-tier) and
-[`docs/test-database.md`](../../../docs/test-database.md).
+CI-shaped flow — there is no Makefile. This skill is the authority for that loop. The facts it does not restate live
+where they are executable rather than described: the cluster config and `extraPortMappings` in
+[`k8s/kind-config.yaml`](../../../k8s/kind-config.yaml), and the port-forward table, the registry pull/retag/`kind load`
+image flow, the per-worktree environment, and the teardown in `cli::devx` — read them through `cargo run -p cli -- dev
+--help`. In-cluster Store specifics are in [`docs/test-database.md`](../../../docs/test-database.md).
 
 ## How to treat it (the load-bearing rules)
 

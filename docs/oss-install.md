@@ -83,8 +83,8 @@ with Docker Desktop, which is exactly why the remaining two are easy to miss:
   Nothing in this repository pins it and CI takes whatever its runner image ships, so there is no version to cite here
   the way there is for the tools above; v4.2.4 is known to pull the pinned chart.
 
-[`../AGENTS.md#local-kind-development`](../AGENTS.md#local-kind-development) documents what that lane brings up, the
-ports it claims, and how to tear it down again.
+[`kind-local-dev`](../.agents/skills/kind-local-dev/SKILL.md) documents what that lane brings up, the ports it claims,
+and how to tear it down again.
 
 **Optional, for the browser suites:** a matching Chrome/ChromeDriver pair. The browser and e2e tests self-skip without
 one, so this can wait until you need it.

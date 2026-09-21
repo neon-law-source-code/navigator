@@ -5,8 +5,7 @@ description: Prepare a local authenticated administrator session for Navigator d
 
 # Open local admin
 
-Read [`AGENTS.md`](../../../AGENTS.md#authentication-and-lawyer-access),
-[`docs/access-model.md`](../../../docs/access-model.md), and
+Read [`kind-local-dev`](../kind-local-dev/SKILL.md), [`docs/access-model.md`](../../../docs/access-model.md), and
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md).
 
 - Use only the documented local KIND environment and fixture identities; never hand-write a session cookie.

@@ -205,7 +205,7 @@ jobs:
   # green. Keep it outside the `ci` aggregator so the existing required gate
   # does not adopt an unproven runner as a merge requirement.
   windows-cli-lsp:
-    name: cargo check (cli + lsp, Windows)
+    name: cargo check + integration tests (cli + lsp, Windows)
     needs: [changes]
     if: needs.changes.outputs.windows == 'true'
     runs-on: windows-latest
@@ -223,6 +223,8 @@ jobs:
           shared-key: windows-cli-lsp
       - name: cargo check (cli + lsp)
         run: cargo check --locked -p cli -p lsp
+      - name: cli integration tests
+        run: cargo test --locked -p cli --test project_repository --test gate
 
   word-adapter:
     name: test managed Word adapter

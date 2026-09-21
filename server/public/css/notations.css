@@ -31,22 +31,24 @@
   margin: 1.5rem 0;
 }
 .notations-lead { font-size: 1.15rem; line-height: 1.75; max-width: 43ch; }
+.nav-theme .notations-lead a {
+  color: var(--nav-teal-600);
+  text-decoration: underline;
+  text-underline-offset: .18em;
+}
 .notations-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; margin-top: 2rem; }
-/* Qualified with `.nav-theme` rather than left bare: `theme.css` carries
-   `.nav-theme a { color: var(--nav-color-link) }` at the same specificity
-   (0,1,1), so which one wins came down to stylesheet load order. In dark
-   mode `--nav-color-link` resolves to the light `--nav-teal-400` — meant for
-   the dark `--nav-color-bg` — but `.notations-page` keeps a fixed light
-   background in both schemes, so the tie surfaced as unreadable teal-on-white
-   text. `.nav-theme .notations-actions a` (0,2,1) settles it on specificity.
-   The `Prose`-rendered inline link inside `.notations-lead` inherits the same
-   `.nav-theme a` rule and sits over the same fixed light background, so it
-   needs the identical treatment. */
+/* The shared dark theme uses bright link colours, while this page keeps a
+   fixed light canvas. Scope the hero links above the shared selectors so
+   stylesheet order and the visitor's colour scheme cannot erase them. */
 .nav-theme .notations-actions a:not(.nav-btn),
-.nav-theme .notations-actions a:not(.nav-btn):hover,
-.nav-theme .notations-lead a,
-.nav-theme .notations-lead a:hover { color: inherit; }
-.notations-actions .nav-btn { color: white; background: var(--notation-ink); border-color: var(--notation-ink); }
+.nav-theme .notations-actions a:not(.nav-btn):hover { color: var(--notation-ink); }
+.nav-theme .notations-actions .nav-btn,
+.nav-theme .notations-actions .nav-btn:hover,
+.nav-theme .notations-actions .nav-btn:focus-visible {
+  color: white;
+  background: var(--notation-ink);
+  border-color: var(--notation-ink);
+}
 .notations-specimen {
   min-width: 0;
   margin: 0;

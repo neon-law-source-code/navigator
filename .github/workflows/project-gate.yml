@@ -69,9 +69,14 @@ jobs:
   # repository declares, then runs the one gate over the whole tree.
   verify:
     needs: read-manifest
-    permissions:
-      contents: read
-      id-token: write
+    # No `permissions:` here on purpose. A called workflow cannot request more
+    # than its caller granted, and a Project's `ci.yml` grants nothing — the
+    # gate rejects a `permissions:` block on that caller. Declaring OIDC here
+    # would therefore fail every pull request at startup, before a single job
+    # runs. The live steps below are the only ones that need a token and they
+    # are already guarded on a push to `main`, which `cd.yml` serves with
+    # `contents: read` and `id-token: write`. Inheriting is what makes one
+    # workflow answer both callers.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -121,9 +126,14 @@ jobs:
 
   documents:
     needs: read-manifest
-    permissions:
-      contents: read
-      id-token: write
+    # No `permissions:` here on purpose. A called workflow cannot request more
+    # than its caller granted, and a Project's `ci.yml` grants nothing — the
+    # gate rejects a `permissions:` block on that caller. Declaring OIDC here
+    # would therefore fail every pull request at startup, before a single job
+    # runs. The live steps below are the only ones that need a token and they
+    # are already guarded on a push to `main`, which `cd.yml` serves with
+    # `contents: read` and `id-token: write`. Inheriting is what makes one
+    # workflow answer both callers.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -159,9 +169,14 @@ jobs:
   # on that.
   seeds:
     needs: read-manifest
-    permissions:
-      contents: read
-      id-token: write
+    # No `permissions:` here on purpose. A called workflow cannot request more
+    # than its caller granted, and a Project's `ci.yml` grants nothing — the
+    # gate rejects a `permissions:` block on that caller. Declaring OIDC here
+    # would therefore fail every pull request at startup, before a single job
+    # runs. The live steps below are the only ones that need a token and they
+    # are already guarded on a push to `main`, which `cd.yml` serves with
+    # `contents: read` and `id-token: write`. Inheriting is what makes one
+    # workflow answer both callers.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

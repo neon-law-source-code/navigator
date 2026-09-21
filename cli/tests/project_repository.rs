@@ -109,6 +109,30 @@ fn the_reusable_gate_runs_the_gate_exactly_once() {
     );
 }
 
+/// **The regression this pins.** 26.9.21 shipped a rule rejecting a `permissions:`
+/// block on a Project's `ci.yml` while every job here still requested
+/// `id-token: write`. A called workflow cannot request more than its caller
+/// granted, so the pair deadlocked: the caller the rule demands produced a
+/// `startup_failure` at 0s with no jobs and no annotations, and the caller that
+/// started was red on the rule. Both halves passed their own tests. Only the
+/// pair failed, which is why this test reads the two files against each other.
+#[test]
+fn no_job_here_asks_for_more_than_a_bare_caller_can_grant() {
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&project_gate_source()).expect("project gate parses as YAML");
+    let jobs = workflow["jobs"].as_mapping().expect("jobs");
+    let asking: Vec<&str> = jobs
+        .iter()
+        .filter(|(_, job)| !job["permissions"].is_null())
+        .filter_map(|(name, _)| name.as_str())
+        .collect();
+    assert!(
+        asking.is_empty(),
+        "these jobs declare their own `permissions`, so a caller that declares none — which is \
+         what the CI gate rule requires of `ci.yml` — fails at startup: {asking:?}"
+    );
+}
+
 /// The live row is checked only where a session can be minted. That rule now
 /// lives in the CLI, which reads the ref and the event itself, so the workflow
 /// carries no branch for it and the gate reads the same everywhere.
@@ -117,10 +141,10 @@ fn the_project_gate_needs_no_branch_to_stay_offline_on_prs() {
     let workflow: serde_yaml::Value =
         serde_yaml::from_str(&project_gate_source()).expect("project gate parses as YAML");
     let verify = &workflow["jobs"]["verify"];
-    assert_eq!(
-        verify["permissions"]["id-token"].as_str(),
-        Some("write"),
-        "the gate mints the live-row session from this job"
+    assert!(
+        verify["permissions"].is_null(),
+        "the gate inherits the caller's token: `cd.yml` grants the OIDC that mints the \
+         live-row session, and `ci.yml` grants nothing because the pull-request path is offline"
     );
     let steps = verify["steps"].as_sequence().expect("verify steps");
     let gate = steps

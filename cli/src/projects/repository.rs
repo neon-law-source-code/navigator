@@ -1503,9 +1503,11 @@ fn validate_cd_trigger(path: &Path, on: Option<&serde_yaml::Value>, errors: &mut
     }
 }
 
-/// The CI caller declares no `permissions` of its own — the reusable
-/// workflow it calls mints its own token, and a caller-level grant could only
-/// widen what that called workflow receives.
+/// The CI caller declares no `permissions` of its own. The reusable gate's
+/// jobs declare none either, so whatever this caller grants is what every one
+/// of them receives — and the pull-request path needs nothing: its live steps
+/// are guarded on a push to `main`, which `cd.yml` serves. A grant here would
+/// hand a fork's pull request a token the gate never has to spend.
 fn validate_ci_permissions(
     path: &Path,
     permissions: Option<&BTreeMap<String, String>>,
@@ -1514,8 +1516,8 @@ fn validate_ci_permissions(
     if permissions.is_some_and(|map| !map.is_empty()) {
         errors.push(Finding::at(
             path,
-            "CI gate must not declare `permissions`; the reusable workflow mints its own \
-             token and a caller-level grant would only widen it",
+            "CI gate must not declare `permissions`; the reusable gate's jobs inherit this \
+             caller's token and the pull-request path spends none",
         ));
     }
 }

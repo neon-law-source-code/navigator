@@ -59,7 +59,7 @@ dioxus-server = "0.7.9"
 # The fullstack core exposes `extract` (read axum extractors inside a server
 # function); `dioxus::fullstack::extract` resolves to axum's module instead.
 dioxus-fullstack-core = "0.7.9"
-arrow = { version = "59", default-features = false }
+arrow = { version = "60", default-features = false }
 assert_cmd = "2"
 async-trait = "0.1"
 axum = "0.8"
@@ -75,7 +75,7 @@ include_dir = "0.7"
 # populate fillable government forms (AcroForm `/Fields`). Distinct from
 # the Typst `render` path, which only emits fresh PDFs.
 lopdf = "0.45"
-parquet = { version = "59", default-features = false, features = ["arrow", "snap"] }
+parquet = { version = "60", default-features = false, features = ["arrow", "snap"] }
 # Plain-text extraction from an arbitrary PDF, for `navigator site document diff`
 # (#485) — distinct from `lopdf` (read-modify-write for AcroForm filling) and
 # from `pdf`'s Typst-based render path (fresh PDFs only); neither reads text

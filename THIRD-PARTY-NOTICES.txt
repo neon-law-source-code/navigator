@@ -2121,30 +2121,31 @@ These files were ported from the Java Caffeine library and are not dual-licensed
 Please refer to the LICENSE-APACHE file for more details on the Apache License 2.0.
 
 ----------------------------------------------------------------------------------------
-arrow 59.3.0
+arrow 60.0.0
 arrow-arith 58.4.0
-arrow-arith 59.3.0
+arrow-arith 60.0.0
 arrow-array 58.4.0
-arrow-array 59.3.0
+arrow-array 60.0.0
 arrow-buffer 58.4.0
-arrow-buffer 59.3.0
+arrow-buffer 60.0.0
 arrow-cast 58.4.0
-arrow-cast 59.3.0
+arrow-cast 60.0.0
+arrow-cmp 60.0.0
 arrow-data 58.4.0
-arrow-data 59.3.0
+arrow-data 60.0.0
 arrow-ipc 58.4.0
-arrow-ipc 59.3.0
+arrow-ipc 60.0.0
 arrow-ord 58.4.0
-arrow-ord 59.3.0
-arrow-row 59.3.0
+arrow-ord 60.0.0
+arrow-row 60.0.0
 arrow-schema 58.4.0
-arrow-schema 59.3.0
+arrow-schema 60.0.0
 arrow-select 58.4.0
-arrow-select 59.3.0
+arrow-select 60.0.0
 arrow-string 58.4.0
-arrow-string 59.3.0
+arrow-string 60.0.0
 parquet 58.4.0
-parquet 59.3.0
+parquet 60.0.0
 
 Apache Arrow
 Copyright 2016-2026 The Apache Software Foundation
@@ -5853,28 +5854,29 @@ Apache License
    limitations under the License.
 
 ----------------------------------------------------------------------------------------
-arrow 59.3.0
+arrow 60.0.0
 arrow-arith 58.4.0
-arrow-arith 59.3.0
+arrow-arith 60.0.0
 arrow-array 58.4.0
-arrow-array 59.3.0
+arrow-array 60.0.0
 arrow-buffer 58.4.0
-arrow-buffer 59.3.0
+arrow-buffer 60.0.0
 arrow-cast 58.4.0
-arrow-cast 59.3.0
+arrow-cast 60.0.0
+arrow-cmp 60.0.0
 arrow-data 58.4.0
-arrow-data 59.3.0
+arrow-data 60.0.0
 arrow-ipc 58.4.0
-arrow-ipc 59.3.0
+arrow-ipc 60.0.0
 arrow-ord 58.4.0
-arrow-ord 59.3.0
-arrow-row 59.3.0
+arrow-ord 60.0.0
+arrow-row 60.0.0
 arrow-schema 58.4.0
-arrow-schema 59.3.0
+arrow-schema 60.0.0
 arrow-select 58.4.0
-arrow-select 59.3.0
+arrow-select 60.0.0
 arrow-string 58.4.0
-arrow-string 59.3.0
+arrow-string 60.0.0
 as-any 0.3.2
 charset 0.1.5
 ciborium 0.2.2
@@ -5899,7 +5901,7 @@ nohash-hasher 0.2.0
 ntapi 0.4.3
 object_store 0.13.2
 parquet 58.4.0
-parquet 59.3.0
+parquet 60.0.0
 peniko 0.6.1
 polycool 0.4.0
 quinn 0.11.11
@@ -27968,6 +27970,7 @@ SOFTWARE.
 
 ----------------------------------------------------------------------------------------
 atoi 2.0.0
+atoi 3.1.0
 cookie_store 0.22.1
 
 MIT License
@@ -29056,7 +29059,7 @@ SOFTWARE.
 
 ----------------------------------------------------------------------------------------
 arrow-array 58.4.0
-arrow-array 59.3.0
+arrow-array 60.0.0
 
 MIT License
 

@@ -78,3 +78,10 @@ cargo nextest run --workspace --test-threads 4 && cargo test -p features
 ```
 
 Start SurrealDB and set `NAVIGATOR_SURREAL_*` (root/root) to include the server-mode lane; otherwise it self-skips.
+
+## Configured MCP servers
+
+- `codex_app`
+- `codex_apps` — Linear, GitHub, Google Drive, Gmail, Google Calendar, Notion, Slack,
+  Sites, Descript, and legal research
+- `node_repl`

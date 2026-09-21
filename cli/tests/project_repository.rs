@@ -69,11 +69,11 @@ fn project_gate_source() -> String {
 }
 
 #[test]
-fn the_reusable_gate_keeps_live_work_out_of_the_required_check() {
+fn the_reusable_gate_requires_live_checks_and_seed_validation() {
     let source = project_gate_source();
     assert!(source.contains("navigator project gate --ci"));
     assert!(!source.contains("enable-automerge:"));
-    assert!(source.contains("needs: [read-manifest, verify, documents]"));
+    assert!(source.contains("needs: [read-manifest, verify, documents, seeds]"));
 }
 
 /// The gate is one job, because it is one command: `verify` builds every
@@ -109,9 +109,9 @@ fn the_reusable_gate_runs_the_gate_exactly_once() {
     );
 }
 
-/// The live row is checked only where a session can be minted. That rule now
-/// lives in the CLI, which reads the ref and the event itself, so the workflow
-/// carries no branch for it and the gate reads the same everywhere.
+/// The live row is checked on main and pull-request merge refs. That rule lives
+/// in the CLI, which reads the ref and event itself, so the workflow carries
+/// the same guarded shape for document verification.
 #[test]
 fn the_project_gate_needs_no_branch_to_stay_offline_on_prs() {
     let workflow: serde_yaml::Value =
@@ -139,23 +139,22 @@ fn the_project_gate_needs_no_branch_to_stay_offline_on_prs() {
     );
 }
 
-/// The `seeds` job reconciles `seeds/` on a push to `main`, is offline on a
-/// pull request (the gate already covers the shape), never overwrites, no-ops
-/// cleanly with no `seeds/` directory, and stays outside the required `ci`
-/// job's dependencies — its live half needs a reachable deployment, and the
-/// always-required check must never depend on that.
+/// The `seeds` job reconciles `seeds/` on a push to `main`, performs a
+/// server-enforced dry-run on a pull request, never overwrites, and no-ops
+/// cleanly with no `seeds/` directory. Its result is part of the required
+/// `ci` check, so a failed live validation cannot surface only after merge.
 #[test]
 fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
     let source = project_gate_source();
     assert!(source.contains("  seeds:"));
     assert!(source.contains("no seeds — nothing to reconcile"));
     assert!(source.contains(
-        r#"if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then"#
+        r#"elif { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; then"#
     ));
+    assert!(source.contains("navigator site import --dry-run --ci --host \"${HOST}\" --dir seeds"));
     assert!(source.contains(r#"navigator site import --ci --host "${HOST}" --dir seeds"#));
     assert!(source.contains("needs: read-manifest"));
-    assert!(source.contains("needs: [read-manifest, verify, documents]"));
-    assert!(!source.contains("needs: [read-manifest, verify, documents, seeds]"));
+    assert!(source.contains("needs: [read-manifest, verify, documents, seeds]"));
 }
 
 fn gate(dir: &Path) -> assert_cmd::assert::Assert {
@@ -300,7 +299,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(!workflow.contains("project_repository: true"));
     let workflow_yaml: serde_yaml::Value =
         serde_yaml::from_str(&workflow).expect("scaffolded ci.yml parses as YAML");
-    assert!(workflow_yaml["permissions"].is_null());
+    assert_eq!(
+        workflow_yaml["permissions"],
+        serde_yaml::from_str::<serde_yaml::Value>("{contents: read, id-token: write}").unwrap()
+    );
     assert!(workflow.contains("project: \"example-project\""));
     assert!(workflow.contains("host: \"staging.neonlaw.com\""));
     let cd = fs::read_to_string(dir.path().join(".github/workflows/cd.yml")).unwrap();
@@ -484,14 +486,13 @@ fn gate_without_oidc_leaves_the_live_row_alone() {
         .env("GITHUB_EVENT_NAME", "push")
         .assert()
         .success()
-        .stdout(str::contains("only a push to main mints a CI session"));
+        .stdout(str::contains("this event/ref cannot mint a CI session"));
 }
 
-/// The live row is checked only where a session can be minted: a push to
-/// `main`. Anywhere else the gate finishes its offline work and says why it
-/// stopped, rather than spending a request the server would refuse.
+/// A malformed PR ref remains offline; only the exact merge-ref shape reaches
+/// the OIDC door.
 #[test]
-fn gate_ci_off_main_leaves_the_live_row_alone() {
+fn gate_ci_malformed_pr_ref_leaves_the_live_row_alone() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     navigator()
@@ -499,11 +500,11 @@ fn gate_ci_off_main_leaves_the_live_row_alone() {
         .args(["project", "gate", "--ci"])
         .env("ACTIONS_ID_TOKEN_REQUEST_URL", "http://127.0.0.1/oidc")
         .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "token")
-        .env("GITHUB_REF", "refs/pull/7/merge")
+        .env("GITHUB_REF", "refs/heads/topic")
         .env("GITHUB_EVENT_NAME", "pull_request")
         .assert()
         .success()
-        .stdout(str::contains("only a push to main mints a CI session"));
+        .stdout(str::contains("this event/ref cannot mint a CI session"));
 }
 
 /// All three shapes validate: templates only, a portal only, and both.

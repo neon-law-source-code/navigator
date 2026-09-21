@@ -499,6 +499,11 @@ pub enum ScopeViolation {
     /// The session's scope does not list the requested [`SeedModel`].
     #[error("this session's scope does not cover the {0} model")]
     ModelNotScoped(&'static str),
+    /// A pull-request CI session is a validation capability, never a live
+    /// reconciliation capability. The API checks this before parsing or
+    /// dispatching the requested seed.
+    #[error("this CI session permits seed validation only: dry_run must be true and overwrite must be false")]
+    DryRunOnly,
     /// The session's scope names a project code with no matching `project`
     /// row — the common case while a repository has no live Project yet.
     #[error("no live project carries code {0:?}")]

@@ -63,6 +63,10 @@ pub struct SeedScope {
     pub models: Vec<SeedModel>,
     /// The `project.code` this session's writes are confined to.
     pub project_code: String,
+    /// A pull-request CI session may validate seed documents but may not
+    /// perform a live write. Main reconciliation sessions leave this false.
+    #[serde(default)]
+    pub dry_run_only: bool,
 }
 
 /// The read-only fields and route needed by the document verifier for one

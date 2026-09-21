@@ -1503,19 +1503,30 @@ fn validate_cd_trigger(path: &Path, on: Option<&serde_yaml::Value>, errors: &mut
     }
 }
 
-/// The CI caller declares no `permissions` of its own — the reusable
-/// workflow it calls mints its own token, and a caller-level grant could only
-/// widen what that called workflow receives.
+/// When declared, the CI caller grants only checkout and OIDC token
+/// permissions. Older repository fixtures may omit the block; generated
+/// callers declare this exact minimum, and no declared write permission is
+/// accepted.
+const CI_PERMISSIONS: &[(&str, &str)] = &[("contents", "read"), ("id-token", "write")];
+
 fn validate_ci_permissions(
     path: &Path,
     permissions: Option<&BTreeMap<String, String>>,
     errors: &mut Vec<Finding>,
 ) {
-    if permissions.is_some_and(|map| !map.is_empty()) {
+    let Some(found) = permissions else {
+        return;
+    };
+    let expected: BTreeMap<String, String> = CI_PERMISSIONS
+        .iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+    if *found != expected {
         errors.push(Finding::at(
             path,
-            "CI gate must not declare `permissions`; the reusable workflow mints its own \
-             token and a caller-level grant would only widen it",
+            format!(
+                "CI gate must declare exactly `permissions: {{contents: read, id-token: write}}`; found {found:?}"
+            ),
         ));
     }
 }
@@ -1651,7 +1662,7 @@ fn validate_gate_call(
 }
 
 /// Hold the CI gate to exactly one job, named [`REQUIRED_CHECK`], triggered
-/// only by `pull_request`, carrying no `permissions`, and calling
+/// only by `pull_request`, carrying the minimal checkout/OIDC `permissions`, and calling
 /// Navigator's pinned reusable project-gate workflow at an exact release tag
 /// matching the repository manifest.
 fn validate_workflow(
@@ -2160,6 +2171,10 @@ pub(crate) fn workflow_for(action_version: &str, project_code: &str, host: &str)
 on:
   pull_request:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   {REQUIRED_CHECK}:
     uses: {PROJECT_GATE_WORKFLOW}{action_version}
@@ -2202,8 +2217,9 @@ permissions:
   id-token: write
 
 # The reusable publisher mints its deployment token only on this main-only
-# caller. The PR caller above has no permissions block: a called workflow
-# cannot widen the token the caller granted it. `gate` needs the same token
+# caller. The PR caller grants only checkout and OIDC permissions; the server
+# scopes every PR token to read-only verification or seed dry-run authority.
+# `gate` needs the same token
 # to exercise project-gate.yml's live document verification, live Project
 # gate, and seed import, which only run on a push to `main`.
 
@@ -2882,7 +2898,7 @@ jobs:
         assert!(generated.contains("project: \"acme\""));
         assert!(generated.contains("host: \"staging.neonlaw.com\""));
         assert!(!generated.contains("push:"));
-        assert!(!generated.contains("permissions:"));
+        assert!(generated.contains("permissions:\n  contents: read\n  id-token: write"));
         assert!(!generated.contains("project_repository: true"));
     }
 
@@ -2925,7 +2941,7 @@ jobs:
             );
         }
         assert!(
-            generated.contains("\n  ci:\n    needs: [read-manifest, verify, documents]\n"),
+            generated.contains("\n  ci:\n    needs: [read-manifest, verify, documents, seeds]\n"),
             "{generated}"
         );
     }
@@ -2934,7 +2950,7 @@ jobs:
     fn the_required_check_asserts_every_dependencys_result() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(generated.contains("if: always()"), "{generated}");
-        for job in ["read-manifest", "verify", "documents"] {
+        for job in ["read-manifest", "verify", "documents", "seeds"] {
             assert!(
                 generated.contains(&format!("needs.{job}.result")),
                 "the required check does not check `{job}`'s result:\n{generated}"
@@ -3380,8 +3396,8 @@ jobs:
         );
     }
 
-    /// A CI gate that declares its own `permissions` could only widen what
-    /// the reusable workflow it calls receives.
+    /// A CI gate may declare only the minimal checkout and OIDC permissions;
+    /// write-capable or otherwise different grants are refused.
     #[test]
     fn a_ci_gate_declaring_permissions_is_refused() {
         let contents = r#"name: ci
@@ -3389,6 +3405,7 @@ on:
   pull_request:
 permissions:
   contents: write
+  id-token: write
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
@@ -3400,7 +3417,7 @@ jobs:
         assert!(
             found
                 .iter()
-                .any(|message| message.contains("must not declare `permissions`")),
+                .any(|message| message.contains("must declare exactly `permissions")),
             "{found:?}"
         );
     }

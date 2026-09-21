@@ -6,7 +6,8 @@
 //! status). It mints through GitHub Actions OIDC at
 //! `POST /auth/ci/document-token`, and never falls back to a stored login: the
 //! door opens only where the server would honour it — a push or dispatch on
-//! `refs/heads/main` — and says it skipped everywhere else.
+//! `refs/heads/main`, or a pull request merge ref — and says it skipped
+//! everywhere else.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -28,8 +29,8 @@ pub(crate) async fn live_status(dir: &Path) -> ExitCode {
     let Some(host) = manifest_host(dir) else {
         return ExitCode::SUCCESS;
     };
-    if !on_main_push() || std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_err() {
-        println!("Skipped the live row: only a push to main mints a CI session");
+    if !can_mint_ci_session() || std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_err() {
+        println!("Skipped the live row: this event/ref cannot mint a CI session");
         return ExitCode::SUCCESS;
     }
     match check_live(dir, &host).await {
@@ -54,10 +55,27 @@ fn manifest_host(dir: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-fn on_main_push() -> bool {
-    std::env::var("GITHUB_REF").is_ok_and(|git_ref| git_ref == "refs/heads/main")
-        && std::env::var("GITHUB_EVENT_NAME")
-            .is_ok_and(|event| matches!(event.as_str(), "push" | "workflow_dispatch"))
+fn can_mint_ci_session() -> bool {
+    let git_ref = std::env::var("GITHUB_REF").unwrap_or_default();
+    let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
+    can_mint_ci_session_for(&git_ref, &event)
+}
+
+fn can_mint_ci_session_for(git_ref: &str, event: &str) -> bool {
+    (git_ref == "refs/heads/main" && matches!(event, "push" | "workflow_dispatch"))
+        || (event == "pull_request" && is_pull_request_merge_ref(git_ref))
+}
+
+fn is_pull_request_merge_ref(git_ref: &str) -> bool {
+    let Some(number) = git_ref
+        .strip_prefix("refs/pull/")
+        .and_then(|reference| reference.strip_suffix("/merge"))
+    else {
+        return false;
+    };
+    !number.is_empty()
+        && number.bytes().all(|byte| byte.is_ascii_digit())
+        && number.parse::<u64>().is_ok_and(|number| number > 0)
 }
 
 #[derive(Debug, Deserialize)]
@@ -163,7 +181,7 @@ fn repository_urls_agree(live: &str, here: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{disagreement, LiveMatter};
+    use super::{can_mint_ci_session_for, disagreement, is_pull_request_merge_ref, LiveMatter};
     use std::sync::LazyLock;
     use wiremock::matchers::{body_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -258,6 +276,28 @@ mod tests {
             Some("https://github.com/org/acme"),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn only_a_pull_request_merge_ref_can_open_the_pr_live_check() {
+        assert!(is_pull_request_merge_ref("refs/pull/7/merge"));
+        assert!(!is_pull_request_merge_ref("refs/pull/0/merge"));
+        assert!(!is_pull_request_merge_ref("refs/pull/7/head"));
+        assert!(!is_pull_request_merge_ref("refs/heads/main"));
+    }
+
+    #[test]
+    fn live_check_events_pair_with_their_intended_refs() {
+        assert!(can_mint_ci_session_for("refs/pull/7/merge", "pull_request"));
+        assert!(!can_mint_ci_session_for(
+            "refs/pull/7/merge",
+            "pull_request_target"
+        ));
+        assert!(can_mint_ci_session_for(
+            "refs/heads/main",
+            "workflow_dispatch"
+        ));
+        assert!(!can_mint_ci_session_for("refs/heads/topic", "push"));
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -938,8 +938,15 @@ fn retired_mirror(
 /// descent. It closes which *paths* may exist; `.github/CODEOWNERS`'s
 /// content is [`validate_codeowners`]'s job, and each workflow's content is
 /// [`validate_workflow`]'s or [`validate_cd_workflow`]'s.
+fn slash_separated_path(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn validate_github_path(path: &Path, relative: &Path, errors: &mut Vec<Finding>) {
-    let relative = relative.to_string_lossy();
+    let relative = slash_separated_path(relative);
     let allowed = [
         ".github/CODEOWNERS",
         WORKFLOW,
@@ -2220,14 +2227,14 @@ jobs:
 mod tests {
     use super::{
         agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
-        placeholder_template, repository_name, scaffold, validate_cd_workflow, validate_layout,
-        validate_workflow, workflow, Finding, AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW,
-        CLI_FEEDBACK_NEEDLE, ENTITY_CODE, PROJECT_MANIFEST, RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW,
-        SYNCED_SKILLS, WORKFLOW,
+        placeholder_template, repository_name, scaffold, validate_cd_workflow,
+        validate_github_path, validate_layout, validate_workflow, workflow, Finding,
+        AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, CLI_FEEDBACK_NEEDLE, ENTITY_CODE,
+        PROJECT_MANIFEST, RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW, SYNCED_SKILLS, WORKFLOW,
     };
     use crate::projects::manifest::Manifest;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     /// The pin the fixtures below scaffold with.
     ///
@@ -3544,6 +3551,27 @@ jobs:
                     && message.contains("closed `.github` file set")),
             "{found:?}"
         );
+    }
+
+    #[test]
+    fn canonical_github_paths_are_accepted_regardless_of_separator() {
+        let paths = [
+            PathBuf::from(".github/workflows/ci.yml"),
+            PathBuf::from_iter([".github", "workflows", "ci.yml"]),
+        ];
+        for relative in paths {
+            let mut errors = Vec::new();
+            validate_github_path(Path::new("ci.yml"), &relative, &mut errors);
+            assert!(errors.is_empty(), "{relative:?}: {errors:?}");
+        }
+
+        let mut errors = Vec::new();
+        validate_github_path(
+            Path::new("other.yml"),
+            &PathBuf::from_iter([".github", "other.yml"]),
+            &mut errors,
+        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
     }
 
     /// The retired `gate.yml`/`publish.yml` filenames are still accepted —

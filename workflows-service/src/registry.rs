@@ -26,6 +26,7 @@
 /// (enforced by `workflow_service_names_are_pascal_case`). Keep in lockstep
 /// with the `.bind(...)` calls in `main.rs`.
 pub const WORKFLOW_SERVICES: &[&str] = &[
+    "EmailSummary",
     "Archives",
     "BillingCanary",
     "BillingDigest",

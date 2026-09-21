@@ -1,7 +1,7 @@
 //! Persistent idempotency records for authenticated inbound summary mail.
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use surrealdb::types::SurrealValue;
 use uuid::Uuid;
 
@@ -12,7 +12,7 @@ pub const PROCESSING_PENDING: &str = "pending";
 pub const PROCESSING_ARCHIVED: &str = "archived";
 pub const DELIVERY_NOT_ATTEMPTED: &str = "not_attempted";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmailReceipt {
     pub id: Uuid,
     pub receiving_mailbox: String,
@@ -164,6 +164,20 @@ pub async fn find(
         .bind(("receiving_mailbox", receiving_mailbox.to_string()))
         .bind(("deployment", deployment.to_string()))
         .bind(("raw_digest", raw_digest.to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let row: Option<EmailReceiptRow> = response.take(0)?;
+    Ok(row.and_then(EmailReceiptRow::into_receipt))
+}
+
+/// Find a receipt by its opaque durable-workflow key.
+pub async fn find_by_id(
+    db: &SurrealDb,
+    id: Uuid,
+) -> Result<Option<EmailReceipt>, EmailReceiptError> {
+    let mut response = db
+        .query(format!("SELECT {SELECT} FROM $id LIMIT 1"))
+        .bind(("id", record_id(TABLE, id)))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     let row: Option<EmailReceiptRow> = response.take(0)?;

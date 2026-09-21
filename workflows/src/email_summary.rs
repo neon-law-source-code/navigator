@@ -27,6 +27,20 @@ pub struct EmailSummaryRunConfig {
     pub max_output_tokens: u32,
 }
 
+/// Opaque durable-workflow input for one archived support receipt.
+///
+/// The receipt ID and immutable run configuration are enough for the worker to
+/// reload the archived bytes; the webhook never places email content in the
+/// Restate key or request body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmailSummaryRequest {
+    pub receipt_id: uuid::Uuid,
+    pub project_id: String,
+    pub channel_id: String,
+    pub gemini: EmailSummaryRunConfig,
+    pub claude: EmailSummaryRunConfig,
+}
+
 impl EmailSummaryRunConfig {
     /// Validate and capture the choices used by one invocation.
     pub fn new(

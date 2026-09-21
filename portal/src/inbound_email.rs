@@ -99,15 +99,21 @@ pub fn summary_envelope_recipients_from_lookup<F: Fn(&str) -> Option<String>>(
 
 /// Opt-in authentication and routing for the summary-only intake lane.
 ///
-/// The hosting layer leaves this absent until the durable handoff is wired.
-/// Tests and the later feature-configuration issue can provide it explicitly
-/// without changing the legacy SendGrid path. Envelope matching always
-/// reads [`NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS`] when that wiring lands.
+/// Hosting supplies this only when the opt-in feature configuration is
+/// complete. The legacy SendGrid path stays unchanged while this lane
+/// authenticates, archives, and submits an opaque receipt to Restate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryIntakeConfig {
     pub envelope_recipients: Vec<String>,
     pub inbound_public_key: String,
     pub deployment: String,
+    pub workflow_ingress: String,
+    pub project_id: String,
+    pub channel_id: String,
+    pub gemini_model: String,
+    pub gemini_location: String,
+    pub claude_model: String,
+    pub claude_location: String,
 }
 
 impl SummaryIntakeConfig {
@@ -227,6 +233,10 @@ pub enum InboundError {
     UnauthorizedSignature,
     #[error("attachment scanner failed: {0}")]
     Scanner(#[from] ScanError),
+    #[error("durable summary handoff failed: {0}")]
+    WorkflowStart(String),
+    #[error("durable summary configuration is incomplete: {0}")]
+    WorkflowConfig(String),
 }
 
 impl IntoResponse for InboundError {
@@ -235,7 +245,10 @@ impl IntoResponse for InboundError {
             Self::MissingField(_) | Self::InvalidEnvelope | Self::Multipart(_) => {
                 StatusCode::BAD_REQUEST
             }
-            Self::NoMailroom | Self::Scanner(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::NoMailroom
+            | Self::Scanner(_)
+            | Self::WorkflowStart(_)
+            | Self::WorkflowConfig(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Storage(_) | Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Unauthorized | Self::UnauthorizedSignature => StatusCode::UNAUTHORIZED,
         };
@@ -717,6 +730,44 @@ pub async fn persist_summary(
     Ok(receipt)
 }
 
+fn summary_workflow_request(
+    config: &SummaryIntakeConfig,
+    receipt: &store::email_receipts::EmailReceipt,
+) -> Result<workflows::EmailSummaryRequest, InboundError> {
+    for (name, value) in [
+        ("workflow_ingress", config.workflow_ingress.as_str()),
+        ("project_id", config.project_id.as_str()),
+        ("channel_id", config.channel_id.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(InboundError::WorkflowConfig(name.to_string()));
+        }
+    }
+    let gemini = workflows::EmailSummaryRunConfig::new(
+        workflows::SummaryProvider::Gemini,
+        &config.gemini_model,
+        &config.gemini_location,
+        workflows::SUMMARY_PROMPT_VERSION,
+        &receipt.raw_digest,
+    )
+    .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?;
+    let claude = workflows::EmailSummaryRunConfig::new(
+        workflows::SummaryProvider::Claude,
+        &config.claude_model,
+        &config.claude_location,
+        workflows::SUMMARY_PROMPT_VERSION,
+        &receipt.raw_digest,
+    )
+    .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?;
+    Ok(workflows::EmailSummaryRequest {
+        receipt_id: receipt.id,
+        project_id: config.project_id.clone(),
+        channel_id: config.channel_id.clone(),
+        gemini,
+        claude,
+    })
+}
+
 /// Webhook handler — verifies the path-embedded secret, parses the
 /// multipart, persists, returns 200.
 ///
@@ -779,7 +830,19 @@ pub async fn webhook(
     );
     if summary_eligible {
         if let Some(config) = summary_config {
-            persist_summary(&state.surreal, &state.storage, config, &email).await?;
+            let receipt = persist_summary(&state.surreal, &state.storage, config, &email).await?;
+            let request = summary_workflow_request(config, &receipt)?;
+            workflows::start_workflow(
+                &config.workflow_ingress,
+                std::env::var("RESTATE_AUTH_TOKEN").ok().as_deref(),
+                "EmailSummary",
+                &receipt.id.to_string(),
+                "run",
+                &request,
+                true,
+            )
+            .await
+            .map_err(|error| InboundError::WorkflowStart(error.to_string()))?;
         }
         return Ok(StatusCode::ACCEPTED);
     }
@@ -1028,6 +1091,13 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
             envelope_recipients: recipients,
             inbound_public_key: "unused".into(),
             deployment: "example".into(),
+            workflow_ingress: "http://restate.test".into(),
+            project_id: "synthetic-project".into(),
+            channel_id: "C-SYNTHETIC".into(),
+            gemini_model: "gemini-test".into(),
+            gemini_location: "global".into(),
+            claude_model: "claude-test".into(),
+            claude_location: "global".into(),
         };
         assert!(config.matches_envelope(&super::SmtpEnvelope {
             to: vec!["SUPPORT@example.com".into()],

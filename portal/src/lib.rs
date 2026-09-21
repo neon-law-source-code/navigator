@@ -432,8 +432,8 @@ pub struct AppState {
     /// path token); required in production via
     /// `enforce_deployment_invariants`. Loaded from `SENDGRID_INBOUND_SECRET`.
     pub inbound_email_secret: Option<String>,
-    /// Opt-in authenticated summary intake. Kept absent until the durable
-    /// handoff is wired; the legacy SendGrid path remains unchanged.
+    /// Opt-in authenticated summary intake. The legacy SendGrid path remains
+    /// unchanged when this is absent.
     pub summary_intake: Option<inbound_email::SummaryIntakeConfig>,
     /// Shared secret SendGrid's Event Webhook must include in the
     /// delivery-event URL path (`/webhook/email-events/{secret}`). Same

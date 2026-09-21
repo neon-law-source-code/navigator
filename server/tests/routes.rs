@@ -21,6 +21,8 @@ use std::sync::{Arc, Mutex, Once};
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use tracing_subscriber::prelude::*;
+use wiremock::matchers::{method, path_regex};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// An `AppState` over a fresh pair of stores.
 async fn state_with_engines() -> (AppState, store::surreal::SurrealDb) {
@@ -14654,8 +14656,16 @@ async fn sendgrid_inbound_webhook_persists_letter_and_stores_raw_email() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
     let (mut state, surreal) = state_with_engines().await;
+    let restate = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/EmailSummary/[^/]+/run/send$"))
+        .respond_with(ResponseTemplate::new(202))
+        .expect(2)
+        .mount(&restate)
+        .await;
     state.storage = Arc::new(
         cloud::FsStorage::new(
             std::env::temp_dir().join(format!("navigator-summary-{}", uuid::Uuid::now_v7())),
@@ -14684,6 +14694,13 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
         envelope_recipients: vec!["support@example.com".into()],
         inbound_public_key: public_key,
         deployment: "staging".into(),
+        workflow_ingress: restate.uri(),
+        project_id: "synthetic-project".into(),
+        channel_id: "C-SYNTHETIC".into(),
+        gemini_model: "gemini-test".into(),
+        gemini_location: "global".into(),
+        claude_model: "claude-test".into(),
+        claude_location: "global".into(),
     });
     let raw = b"Message-ID: <receipt@example.com>\r\nFrom: aries@example.com\r\nTo: forged@example.com\r\nSubject: Summary\r\n\r\nBody";
     let (content_type, body) = build_inbound_multipart_with_envelope(
@@ -14760,6 +14777,13 @@ async fn summary_intake_rejects_tampered_body_and_missing_envelope() {
         envelope_recipients: vec!["support@example.com".into()],
         inbound_public_key: public_key,
         deployment: "staging".into(),
+        workflow_ingress: "http://127.0.0.1:9".into(),
+        project_id: "synthetic-project".into(),
+        channel_id: "C-SYNTHETIC".into(),
+        gemini_model: "gemini-test".into(),
+        gemini_location: "global".into(),
+        claude_model: "claude-test".into(),
+        claude_location: "global".into(),
     });
     let raw = b"From: aries@example.com\r\nTo: support@example.com\r\nSubject: Summary\r\n\r\nBody";
     let (content_type, body) = build_inbound_multipart_with_envelope(

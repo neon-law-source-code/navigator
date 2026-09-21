@@ -54,8 +54,8 @@ pub use email::{
     DEFAULT_FROM_EMAIL,
 };
 pub use email_summary::{
-    build_prompt, normalize_email, parse_summary, EmailSummary, EmailSummaryRunConfig,
-    NormalizedEmail, SummaryError, SummaryProvider, DEFAULT_MAX_INPUT_CHARS,
+    build_prompt, normalize_email, parse_summary, EmailSummary, EmailSummaryRequest,
+    EmailSummaryRunConfig, NormalizedEmail, SummaryError, SummaryProvider, DEFAULT_MAX_INPUT_CHARS,
     DEFAULT_MAX_OUTPUT_TOKENS, SUMMARY_PROMPT_VERSION,
 };
 pub use email_summary_delivery::{

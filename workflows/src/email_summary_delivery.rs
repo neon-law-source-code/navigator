@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -10,13 +11,13 @@ use crate::notify::{SlackBot, SlackBotError, SlackMessageReceipt};
 
 const MAX_SLACK_CHARS: usize = 3_500;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProviderDelivery {
     Succeeded { model: String, result: EmailSummary },
     Failed { model: String, status: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SummaryDeliveryMessage {
     pub receipt_id: Uuid,
     pub gemini: ProviderDelivery,

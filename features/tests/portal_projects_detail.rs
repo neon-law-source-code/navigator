@@ -83,6 +83,7 @@ async fn seed_person(world: &mut DetailWorld, email: String, role: String) {
         "owner" => store::persons::Role::Owner,
         "admin" => store::persons::Role::Admin,
         "lawyer" => store::persons::Role::Lawyer,
+        "clerk" => store::persons::Role::Clerk,
         _ => store::persons::Role::Client,
     };
     let inserted = store::test_support::ensure_person(
@@ -120,6 +121,40 @@ async fn seed_project_with_participant(
 #[given(regex = r#"^a project "([^"]+)" with no participants$"#)]
 async fn seed_project_no_participants(world: &mut DetailWorld, project_name: String) {
     ensure_project(world, &project_name).await;
+}
+
+#[given(regex = r#"^a project "([^"]+)" with "([^"]+)" as the supervising lawyer DRI$"#)]
+async fn seed_lawyer_dri(world: &mut DetailWorld, project_name: String, lawyer_email: String) {
+    let project_id = ensure_project(world, &project_name).await;
+    let lawyer_id = *world
+        .persons
+        .get(&lawyer_email)
+        .expect("lawyer was seeded earlier");
+    store::projects::designate_dri_in_surreal(
+        &features::shared_surreal().await,
+        project_id,
+        lawyer_id,
+        store::projects::DriSide::Lawyer,
+    )
+    .await
+    .expect("designate lawyer DRI");
+}
+
+#[given(regex = r#"^a project "([^"]+)" with "([^"]+)" as a supervised clerk$"#)]
+async fn seed_supervised_clerk(world: &mut DetailWorld, project_name: String, clerk_email: String) {
+    let project_id = ensure_project(world, &project_name).await;
+    let clerk_id = *world
+        .persons
+        .get(&clerk_email)
+        .expect("clerk was seeded earlier");
+    store::projects::add_participation(
+        &features::shared_surreal().await,
+        project_id,
+        clerk_id,
+        "clerk",
+    )
+    .await
+    .expect("insert clerk participation");
 }
 
 async fn ensure_project(world: &mut DetailWorld, project_name: &str) -> Uuid {

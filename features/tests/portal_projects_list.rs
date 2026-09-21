@@ -78,6 +78,7 @@ async fn seed_person(world: &mut ListWorld, email: String, role: String) {
         "owner" => store::persons::Role::Owner,
         "admin" => store::persons::Role::Admin,
         "lawyer" => store::persons::Role::Lawyer,
+        "clerk" => store::persons::Role::Clerk,
         _ => store::persons::Role::Client,
     };
     let inserted = store::test_support::ensure_person(
@@ -93,13 +94,109 @@ async fn seed_person(world: &mut ListWorld, email: String, role: String) {
 
 #[given(regex = r#"^a project "([^"]+)" with no participants$"#)]
 async fn seed_project_no_participants(world: &mut ListWorld, project_name: String) {
+    ensure_project(world, &project_name).await;
+}
+
+#[given(regex = r#"^a project "([^"]+)" with an onboarding document$"#)]
+async fn seed_project_with_onboarding(world: &mut ListWorld, project_name: String) {
+    let project_id = ensure_project(world, &project_name).await;
+    let surreal = features::shared_surreal().await;
+    let storage = fs_storage("portal-projects-list-onboarding").await;
+    let content = format!("# Onboarding\n\nFixture engagement letter for {project_name}.\n");
+    store::documents::ingest_bytes_exactly_once(
+        &surreal,
+        &storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: "generated",
+            filename: "onboarding.md",
+            kind: "onboarding",
+            content_type: "text/markdown",
+            description: None,
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::CLIENT,
+        },
+        content.as_bytes(),
+    )
+    .await
+    .expect("ingest onboarding document");
+}
+
+#[given(regex = r#"^a project "([^"]+)" is closed$"#)]
+async fn close_project(world: &mut ListWorld, project_name: String) {
+    let project_id = ensure_project(world, &project_name).await;
+    let surreal = features::shared_surreal().await;
+    store::projects::transition_project_with_reason(
+        &surreal,
+        project_id,
+        store::projects::Transition::Close,
+        Some(store::projects::ClosureReason::EngagementCompleted),
+        None,
+    )
+    .await
+    .expect("close project");
+}
+
+#[given(regex = r#"^a project "([^"]+)" is archived$"#)]
+async fn archive_project(world: &mut ListWorld, project_name: String) {
+    let project_id = ensure_project(world, &project_name).await;
+    let surreal = features::shared_surreal().await;
+    store::projects::transition_project_with_reason(
+        &surreal,
+        project_id,
+        store::projects::Transition::Archive,
+        None,
+        None,
+    )
+    .await
+    .expect("archive project");
+}
+
+#[given(regex = r#"^a project "([^"]+)" with "([^"]+)" as the supervising lawyer DRI$"#)]
+async fn seed_lawyer_dri(world: &mut ListWorld, project_name: String, lawyer_email: String) {
+    let project_id = ensure_project(world, &project_name).await;
+    let lawyer_id = *world
+        .persons
+        .get(&lawyer_email)
+        .expect("lawyer was seeded earlier");
+    store::projects::designate_dri_in_surreal(
+        &features::shared_surreal().await,
+        project_id,
+        lawyer_id,
+        store::projects::DriSide::Lawyer,
+    )
+    .await
+    .expect("designate lawyer DRI");
+}
+
+#[given(regex = r#"^a project "([^"]+)" with "([^"]+)" as a supervised clerk$"#)]
+async fn seed_supervised_clerk(world: &mut ListWorld, project_name: String, clerk_email: String) {
+    let project_id = ensure_project(world, &project_name).await;
+    let clerk_id = *world
+        .persons
+        .get(&clerk_email)
+        .expect("clerk was seeded earlier");
+    store::projects::add_participation(
+        &features::shared_surreal().await,
+        project_id,
+        clerk_id,
+        "clerk",
+    )
+    .await
+    .expect("insert clerk participation");
+}
+
+async fn ensure_project(world: &mut ListWorld, project_name: &str) -> Uuid {
+    if let Some(id) = world.projects.get(project_name) {
+        return *id;
+    }
     let surreal = features::shared_surreal().await;
     let code = format!("test-{}", Uuid::now_v7().simple());
     let inserted = store::projects::create(
         &surreal,
         &store::projects::NewProject {
             code,
-            name: project_name.clone(),
+            name: project_name.to_string(),
             status: "open".into(),
             entity_id: store::test_support::seed_entity(&surreal).await,
             ..Default::default()
@@ -107,11 +204,21 @@ async fn seed_project_no_participants(world: &mut ListWorld, project_name: Strin
     )
     .await
     .expect("insert project");
-    world.projects.insert(project_name, inserted.id);
+    world.projects.insert(project_name.to_string(), inserted.id);
+    inserted.id
 }
 
 #[when(regex = r#"^"([^"]+)" opens the projects list$"#)]
 async fn open_list(world: &mut ListWorld, email: String) {
+    open_list_at(world, email, "/app/projects").await;
+}
+
+#[when(regex = r#"^"([^"]+)" opens the closed projects list$"#)]
+async fn open_closed_list(world: &mut ListWorld, email: String) {
+    open_list_at(world, email, "/app/projects/closed").await;
+}
+
+async fn open_list_at(world: &mut ListWorld, email: String, uri: &str) {
     let person_id = *world.persons.get(&email).expect("actor was seeded earlier");
     let role = store::persons::find_by_id(&features::shared_surreal().await, person_id)
         .await
@@ -138,7 +245,7 @@ async fn open_list(world: &mut ListWorld, email: String) {
         .app()
         .oneshot(
             Request::builder()
-                .uri("/app/projects")
+                .uri(uri)
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),

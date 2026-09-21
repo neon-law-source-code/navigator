@@ -81,6 +81,108 @@ fn noncanonical_url_is_a_warning_not_an_error() {
         .any(|d| d.severity == Severity::Warning && d.message.contains("canonicalized")));
 }
 
+#[test]
+fn unsupported_version_is_an_error() {
+    let mut payload = parse(SAMPLE).expect("parse sample");
+    payload.version = 99;
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.starts_with("version:") && e.contains("unsupported")));
+}
+
+#[test]
+fn empty_and_duplicate_organization_keys_are_errors() {
+    let empty_key = SAMPLE.replace("\"key\": \"ejp\"", "\"key\": \"  \"");
+    let payload = parse(&empty_key).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("organizations[0].key") && e.contains("must not be empty")));
+
+    let dup = SAMPLE.replace("\"key\": \"mmla\"", "\"key\": \"ejp\"");
+    let payload = parse(&dup).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("duplicate organization key")));
+}
+
+#[test]
+fn empty_organization_name_type_and_person_fields_are_errors() {
+    let no_name = SAMPLE.replace("\"name\": \"Example Justice Project\"", "\"name\": \" \"");
+    let payload = parse(&no_name).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("organizations[0].name")));
+
+    let no_type = SAMPLE.replace(
+        "\"entity_type\": \"501(c)(3) Non-Profit\"",
+        "\"entity_type\": \" \"",
+    );
+    let payload = parse(&no_type).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("organizations[0].entity_type")));
+
+    let no_person_key = SAMPLE.replace("\"key\": \"ada-counsel\"", "\"key\": \"\"");
+    let payload = parse(&no_person_key).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("people[0].key") && e.contains("must not be empty")));
+
+    let dup_person = SAMPLE.replace("\"key\": \"milo-mumgaard\"", "\"key\": \"ada-counsel\"");
+    let payload = parse(&dup_person).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("duplicate person key")));
+
+    let no_person_name = SAMPLE.replace("\"name\": \"Ada Counsel\"", "\"name\": \" \"");
+    let payload = parse(&no_person_name).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("people[0].name")));
+
+    let bad_email = SAMPLE.replace("acounsel@justice.example", "not-an-email");
+    let payload = parse(&bad_email).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("people[0].email")));
+
+    let empty_role = SAMPLE.replace(
+        "\"title\": \"Executive Director\"",
+        "\"entity_role\": \" \", \"title\": \"Executive Director\"",
+    );
+    let payload = parse(&empty_role).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("people[0].entity_role")));
+
+    let empty_org = SAMPLE.replace("\"organization\": \"ejp\"", "\"organization\": \" \"");
+    let payload = parse(&empty_org).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("people[0].organization") && e.contains("must reference")));
+}
+
+#[test]
+fn canonical_url_keeps_an_explicit_port_and_rejects_a_hostless_url() {
+    assert_eq!(
+        canonical_url("https://justice.example:8443/about/").unwrap(),
+        "https://justice.example:8443/about"
+    );
+    assert!(canonical_url("https://").is_err());
+}
+
+#[test]
+fn a_malformed_organization_url_is_an_error() {
+    let bad = SAMPLE.replace(
+        "\"url\": \"https://justice.example\"",
+        "\"url\": \"mailto:ops@example.com\"",
+    );
+    let payload = parse(&bad).expect("parse");
+    assert!(errors(&payload)
+        .iter()
+        .any(|e| e.contains("organizations[0].url")));
+}
+
 /// The six contacts from the original outreach list, four organizations.
 const SAMPLE: &str = r#"{
   "version": 1,

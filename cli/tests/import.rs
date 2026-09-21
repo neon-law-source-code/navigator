@@ -12,6 +12,8 @@
 
 use std::path::PathBuf;
 
+use cli::import as cli_import;
+
 fn fixtures_dir() -> PathBuf {
     // CARGO_MANIFEST_DIR points at cli; the templates live at the
     // repository root under `templates/<category>/<name>.md`.
@@ -314,10 +316,3 @@ Body v1. Prepared for {{person__client.name}}.
         .expect("the retired prior version");
     assert_eq!(retired.kind.as_deref(), Some("filing"));
 }
-
-/// Module shim so the integration test can call into the binary
-/// crate's catalog-seeding function. The cleaner alternative would be a
-/// dedicated library crate; for now expose the import API via a
-/// path-based module include.
-#[path = "../src/import.rs"]
-mod cli_import;

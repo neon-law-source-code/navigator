@@ -77,26 +77,7 @@ pub async fn import_directory(
 ) -> anyhow::Result<ImportReport> {
     let mut report = ImportReport::default();
     let validation_rules = navigator_default_rules_with_codes(&[]);
-    // Catalog seeding applies the notation rule set to every candidate `.md`.
-    // Its explicit filter keeps repository prose such as `templates/README.md`
-    // and a top-level `AGENTS.md` outside the catalog. Files with template
-    // structure still reach the rules, which report a missing `kind:`.
-    let filter = DefaultFileFilter {
-        excluded_names: ["README.md", "AGENTS.md", "CODE_OF_CONDUCT.md", "LICENSE.md"]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-        // `github` is the engineering intake shelf (`kind: github`): a
-        // questionnaire that renders a GitHub issue or pull request body.
-        // It is not a legal template — it has no `code`, jurisdiction, or
-        // respondent — so it must never become a `templates` row. Because
-        // import deliberately skips `kind:` classification, excluding the
-        // directory is what keeps it out.
-        excluded_directories: ["AgentDocumentation", "Blog", rules::GITHUB_SHELF]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-    };
+    let filter = catalog_file_filter();
     for entry in WalkDir::new(dir).follow_links(false) {
         let entry = entry?;
         if !entry.file_type().is_file() {
@@ -134,6 +115,29 @@ pub async fn import_directory(
     Ok(report)
 }
 
+/// Catalog seeding applies the notation rule set to every candidate `.md`.
+/// Its explicit filter keeps repository prose such as `templates/README.md`
+/// and a top-level `AGENTS.md` outside the catalog. Files with template
+/// structure still reach the rules, which report a missing `kind:`.
+fn catalog_file_filter() -> DefaultFileFilter {
+    DefaultFileFilter {
+        excluded_names: ["README.md", "AGENTS.md", "CODE_OF_CONDUCT.md", "LICENSE.md"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        // `github` is the engineering intake shelf (`kind: github`): a
+        // questionnaire that renders a GitHub issue or pull request body.
+        // It is not a legal template — it has no `code`, jurisdiction, or
+        // respondent — so it must never become a `templates` row. Because
+        // import deliberately skips `kind:` classification, excluding the
+        // directory is what keeps it out.
+        excluded_directories: ["AgentDocumentation", "Blog", rules::GITHUB_SHELF]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+    }
+}
+
 fn parse_frontmatter(contents: &str) -> Option<TemplateFrontmatter> {
     let fm = rules::frontmatter::extract(contents)?;
     serde_yaml::from_str(fm).ok()
@@ -148,6 +152,25 @@ fn template_code(path: &Path, fm: &TemplateFrontmatter) -> String {
             .unwrap_or("untitled")
             .to_string()
     })
+}
+
+/// Collect every question code referenced by either map. State keys may
+/// carry a `__label` suffix; the question code is the prefix. `BEGIN` and
+/// `END` are control states and never registered; `lawyer_review` is a
+/// workflow state but we register it so a later `N104` pass keyed on the
+/// populated `questions` table doesn't flag it as unknown.
+fn question_codes_from_frontmatter(fm: &TemplateFrontmatter) -> BTreeSet<String> {
+    let mut codes = BTreeSet::new();
+    for map in [&fm.questionnaire, &fm.workflow].into_iter().flatten() {
+        for state in map.keys() {
+            if state == "BEGIN" || state == "END" {
+                continue;
+            }
+            let prefix = state.split_once("__").map_or(state.as_str(), |(p, _)| p);
+            codes.insert(prefix.to_string());
+        }
+    }
+    codes
 }
 
 async fn persist_template(
@@ -193,23 +216,7 @@ async fn persist_template(
         report.templates_created += 1;
     }
 
-    // Collect every question code referenced by either map. State keys
-    // may carry a `__label` suffix; the question code is the prefix.
-    // `BEGIN` and `END` are control states and never registered;
-    // `lawyer_review` is a workflow state but we register it so a later
-    // `N104` pass keyed on the populated `questions` table doesn't
-    // flag it as unknown.
-    let mut codes: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for map in [&fm.questionnaire, &fm.workflow].into_iter().flatten() {
-        for state in map.keys() {
-            if state == "BEGIN" || state == "END" {
-                continue;
-            }
-            let prefix = state.split_once("__").map_or(state.as_str(), |(p, _)| p);
-            codes.insert(prefix.to_string());
-        }
-    }
-    for q_code in codes {
+    for q_code in question_codes_from_frontmatter(fm) {
         if store::questions::find_by_code(surreal, &q_code)
             .await?
             .is_some()
@@ -230,4 +237,92 @@ async fn persist_template(
         report.questions_created += 1;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        catalog_file_filter, parse_frontmatter, question_codes_from_frontmatter, template_code,
+        TemplateFrontmatter,
+    };
+    use rules::FileFilter;
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    fn empty_fm() -> TemplateFrontmatter {
+        TemplateFrontmatter {
+            title: None,
+            respondent_type: None,
+            code: None,
+            form: None,
+            kind: None,
+            questionnaire: None,
+            workflow: None,
+        }
+    }
+
+    #[test]
+    fn catalog_filter_drops_prose_and_the_github_shelf() {
+        let filter = catalog_file_filter();
+        assert!(!filter.include_file(Path::new("templates/README.md")));
+        assert!(!filter.include_file(Path::new("templates/github/intake.md")));
+        assert!(filter.include_file(Path::new("templates/notations/neon_law/letter.md")));
+    }
+
+    #[test]
+    fn parse_frontmatter_reads_kind_code_and_maps() {
+        let parsed = parse_frontmatter(
+            "---\n\
+title: Letter\n\
+code: onboarding__letter\n\
+kind: onboarding\n\
+---\n\nBody.\n",
+        )
+        .expect("frontmatter parses");
+        assert_eq!(parsed.title.as_deref(), Some("Letter"));
+        assert_eq!(parsed.code.as_deref(), Some("onboarding__letter"));
+        assert_eq!(parsed.kind.as_deref(), Some("onboarding"));
+    }
+
+    #[test]
+    fn parse_frontmatter_rejects_prose_and_broken_yaml() {
+        assert!(parse_frontmatter("# just a heading\n").is_none());
+        assert!(parse_frontmatter("---\n: not yaml\n---\n").is_none());
+    }
+
+    #[test]
+    fn template_code_prefers_frontmatter_then_the_stem() {
+        let mut fm = empty_fm();
+        fm.code = Some("explicit__code".into());
+        assert_eq!(
+            template_code(Path::new("ignored.md"), &fm),
+            "explicit__code"
+        );
+        fm.code = None;
+        assert_eq!(
+            template_code(Path::new("from-filename.md"), &fm),
+            "from-filename"
+        );
+    }
+
+    #[test]
+    fn question_codes_skip_control_states_and_strip_labels() {
+        let mut questionnaire = BTreeMap::new();
+        questionnaire.insert("BEGIN".into(), BTreeMap::new());
+        questionnaire.insert("END".into(), BTreeMap::new());
+        questionnaire.insert("person__client".into(), BTreeMap::new());
+        let mut workflow = BTreeMap::new();
+        workflow.insert("lawyer_review".into(), BTreeMap::new());
+        let fm = TemplateFrontmatter {
+            questionnaire: Some(questionnaire),
+            workflow: Some(workflow),
+            ..empty_fm()
+        };
+        let codes = question_codes_from_frontmatter(&fm);
+        assert!(codes.contains("person"));
+        assert!(codes.contains("lawyer_review"));
+        assert!(!codes.contains("BEGIN"));
+        assert!(!codes.contains("END"));
+        assert!(!codes.contains("person__client"));
+    }
 }

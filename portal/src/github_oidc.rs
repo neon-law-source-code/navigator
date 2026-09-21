@@ -11,14 +11,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::auth::JwksDocument;
 use crate::session::now_unix_secs;
 
 /// Claims GitHub Actions puts on an OIDC ID token.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GitHubActionsClaims {
     /// `repo:owner/name:ref:refs/heads/main`
     pub sub: String,
@@ -85,9 +85,16 @@ impl GitHubOidc {
     /// Production verifier: GitHub's issuer and JWKS.
     #[must_use]
     pub fn github_actions() -> Self {
+        Self::jwks(GITHUB_ACTIONS_ISSUER, GITHUB_ACTIONS_JWKS)
+    }
+
+    /// Verify RS256 against the given issuer and JWKS URL. Tests pin this at a
+    /// mock origin; production uses [`Self::github_actions`].
+    #[must_use]
+    pub fn jwks(issuer: impl Into<String>, jwks_url: impl Into<String>) -> Self {
         Self::with_inner(GitHubOidcInner::Jwks {
-            issuer: GITHUB_ACTIONS_ISSUER.to_string(),
-            jwks_url: GITHUB_ACTIONS_JWKS.to_string(),
+            issuer: issuer.into(),
+            jwks_url: jwks_url.into(),
             cache: Arc::new(AsyncMutex::new(None)),
         })
     }
@@ -241,7 +248,56 @@ impl Default for GitHubActionsClaims {
 
 #[cfg(test)]
 mod tests {
-    use super::{GitHubActionsClaims, GitHubOidc, GitHubOidcError};
+    use super::{
+        decode_with_jwks, GitHubActionsClaims, GitHubOidc, GitHubOidcError, GITHUB_ACTIONS_ISSUER,
+    };
+    use crate::auth::{JwksDocument, JwksKey};
+    use crate::session::now_unix_secs;
+    use crate::test_support::{sign_rs256_claims, test_oidc_jwks_rsa, TEST_OIDC_KID};
+    use serde::Serialize;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[derive(Serialize)]
+    struct SignedGithubClaims<'a> {
+        sub: &'a str,
+        iss: &'a str,
+        aud: &'a str,
+        repository: &'a str,
+        repository_owner: &'a str,
+        #[serde(rename = "ref")]
+        git_ref: &'a str,
+        event_name: &'a str,
+        jti: &'a str,
+        exp: i64,
+    }
+
+    fn signed_claims<'a>(issuer: &'a str, audience: &'a str) -> SignedGithubClaims<'a> {
+        SignedGithubClaims {
+            sub: "repo:neon-law-source-code/navigator:ref:refs/heads/main",
+            iss: issuer,
+            aud: audience,
+            repository: "neon-law-source-code/navigator",
+            repository_owner: "neon-law-source-code",
+            git_ref: "refs/heads/main",
+            event_name: "pull_request",
+            jti: "jti-1",
+            exp: now_unix_secs() + 300,
+        }
+    }
+
+    fn sample_claims(aud_iss: &str) -> GitHubActionsClaims {
+        GitHubActionsClaims {
+            sub: "repo:neon-law-source-code/navigator:ref:refs/heads/main".into(),
+            iss: aud_iss.to_string(),
+            repository: "neon-law-source-code/navigator".into(),
+            repository_owner: "neon-law-source-code".into(),
+            git_ref: "refs/heads/main".into(),
+            event_name: "pull_request".into(),
+            jti: "jti-1".into(),
+            exp: now_unix_secs() + 300,
+        }
+    }
 
     #[tokio::test]
     async fn rejecting_refuses_every_token() {
@@ -261,6 +317,26 @@ mod tests {
         assert!(matches!(err, GitHubOidcError::Missing));
     }
 
+    #[tokio::test]
+    async fn github_actions_verifier_still_rejects_a_blank_token() {
+        let err = GitHubOidc::github_actions()
+            .verify("   ", "https://staging.neonlaw.com")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, GitHubOidcError::Missing));
+    }
+
+    #[tokio::test]
+    async fn fixed_verifier_returns_the_configured_claims() {
+        let claims = sample_claims(GITHUB_ACTIONS_ISSUER);
+        let got = GitHubOidc::fixed(claims.clone())
+            .verify("token", "https://staging.neonlaw.com")
+            .await
+            .expect("fixed verifier accepts any non-empty token");
+        assert_eq!(got.repository, claims.repository);
+        assert_eq!(got.jti, claims.jti);
+    }
+
     #[test]
     fn a_spent_jti_cannot_be_exchanged_again() {
         let oidc = GitHubOidc::fixed(GitHubActionsClaims::default());
@@ -273,6 +349,130 @@ mod tests {
     fn a_blank_jti_is_invalid() {
         let oidc = GitHubOidc::fixed(GitHubActionsClaims::default());
         let err = oidc.spend_jti("  ", 4_000_000_000).unwrap_err();
+        assert!(matches!(err, GitHubOidcError::Invalid(_)));
+    }
+
+    #[test]
+    fn decode_with_jwks_reports_missing_kid_n_and_e() {
+        let token = sign_rs256_claims(
+            TEST_OIDC_KID,
+            &signed_claims(GITHUB_ACTIONS_ISSUER, "https://staging.neonlaw.com"),
+        );
+        let no_kid = JwksDocument {
+            keys: vec![JwksKey {
+                kid: Some("other".into()),
+                ..test_oidc_jwks_rsa()
+            }],
+        };
+        let err = decode_with_jwks(
+            &token,
+            "https://staging.neonlaw.com",
+            GITHUB_ACTIONS_ISSUER,
+            TEST_OIDC_KID,
+            &no_kid,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no JWKS entry"));
+
+        let mut missing_n = test_oidc_jwks_rsa();
+        missing_n.n = None;
+        let err = decode_with_jwks(
+            &token,
+            "https://staging.neonlaw.com",
+            GITHUB_ACTIONS_ISSUER,
+            TEST_OIDC_KID,
+            &JwksDocument {
+                keys: vec![missing_n],
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("missing n"));
+
+        let mut missing_e = test_oidc_jwks_rsa();
+        missing_e.e = None;
+        let err = decode_with_jwks(
+            &token,
+            "https://staging.neonlaw.com",
+            GITHUB_ACTIONS_ISSUER,
+            TEST_OIDC_KID,
+            &JwksDocument {
+                keys: vec![missing_e],
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("missing e"));
+    }
+
+    #[tokio::test]
+    async fn jwks_verifier_accepts_a_signed_github_actions_token() {
+        let server = MockServer::start().await;
+        let issuer = "https://token.actions.test";
+        let audience = "https://staging.neonlaw.com";
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [test_oidc_jwks_rsa()]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let claims = signed_claims(issuer, audience);
+        let token = sign_rs256_claims(TEST_OIDC_KID, &claims);
+        let oidc = GitHubOidc::jwks(issuer, format!("{}/.well-known/jwks", server.uri()));
+        let got = oidc.verify(&token, audience).await.expect("valid token");
+        assert_eq!(got.repository, claims.repository);
+        assert_eq!(got.event_name, "pull_request");
+
+        // Cache hit: a second verify must not fetch JWKS again (mock expect(1)).
+        oidc.verify(&token, audience)
+            .await
+            .expect("cached JWKS still verifies");
+    }
+
+    #[tokio::test]
+    async fn jwks_verifier_refetches_when_the_cached_kid_is_unknown() {
+        let server = MockServer::start().await;
+        let issuer = "https://token.actions.test";
+        let audience = "https://staging.neonlaw.com";
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [{
+                    "kid": "stale",
+                    "kty": "RSA",
+                    "n": test_oidc_jwks_rsa().n,
+                    "e": "AQAB"
+                }]
+            })))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [test_oidc_jwks_rsa()]
+            })))
+            .mount(&server)
+            .await;
+
+        let claims = signed_claims(issuer, audience);
+        let token = sign_rs256_claims(TEST_OIDC_KID, &claims);
+        let oidc = GitHubOidc::jwks(issuer, format!("{}/.well-known/jwks", server.uri()));
+        let got = oidc
+            .verify(&token, audience)
+            .await
+            .expect("refetch finds the kid");
+        assert_eq!(got.jti, "jti-1");
+    }
+
+    #[tokio::test]
+    async fn jwks_verifier_rejects_a_header_without_kid() {
+        let oidc = GitHubOidc::jwks(GITHUB_ACTIONS_ISSUER, "http://127.0.0.1/jwks");
+        let err = oidc
+            .verify("not-a-jwt", "https://staging.neonlaw.com")
+            .await
+            .unwrap_err();
         assert!(matches!(err, GitHubOidcError::Invalid(_)));
     }
 }

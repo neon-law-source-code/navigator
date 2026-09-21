@@ -206,7 +206,16 @@ mod tests {
             http_endpoint("wss://example.surreal.cloud").unwrap(),
             "https://example.surreal.cloud"
         );
+        assert_eq!(
+            http_endpoint("http://localhost:8000").unwrap(),
+            "http://localhost:8000"
+        );
+        assert_eq!(
+            http_endpoint("https://example.surreal.cloud").unwrap(),
+            "https://example.surreal.cloud"
+        );
         assert!(http_endpoint("mem://").is_err());
+        assert!(http_endpoint("file:///tmp/surreal").is_err());
     }
 
     #[test]

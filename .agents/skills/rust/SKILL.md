@@ -10,9 +10,6 @@ description: >
 
 # Rust guardrails
 
-The doc owns the conventions; this skill is the short list of guards that are easy to violate. Read
-[`docs/rust-programming.md`](../../../docs/rust-programming.md) and keep it, not this skill, authoritative.
-
 - **No `unwrap`/`expect`/`panic!` outside `main()` and tests.** Use `?` with `anyhow` (binaries) or `thiserror`
   (libraries); `expect("invariant: …")` only when the invariant is provable in one line for a future reader.
 - **`unsafe_code = "forbid"`** at the workspace level — never reach for `unsafe`.

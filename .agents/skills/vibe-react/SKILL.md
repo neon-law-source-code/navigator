@@ -9,8 +9,6 @@ Read [`docs/vibe-coding.md`](../../../docs/vibe-coding.md),
 [`docs/project-repositories.md`](../../../docs/project-repositories.md), and
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md) first.
 
-> Prototype freely. Publish only source.
-
 - Iterate locally on portal layout, states, copy, and interaction. Use Navigator's read clusters and command boundary;
   do not add a matter-data backend or client-side authorization.
 - Build at the mounted base path, use `import.meta.env.BASE_URL`, and run the repository's lint, typecheck, tests, and

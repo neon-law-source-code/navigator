@@ -1339,7 +1339,9 @@ enum OpsCmd {
         #[arg(long, default_value_t = 15)]
         timeout_seconds: u32,
     },
-    /// Deprecated: use the white-label bundle workflow documented in `navigator.example.yaml`.
+    /// Deprecated: use the white-label bundle workflow documented in
+    /// `docs/oss-install.md`, whose worked manifest is
+    /// `cli/tests/fixtures/navigator.example.yaml`.
     #[command(subcommand)]
     Rebrand(BrandCmd),
     /// Stand up the `OTel` Collector seam in prod and wire the binaries to

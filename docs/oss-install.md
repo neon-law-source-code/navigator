@@ -127,9 +127,14 @@ The deployment operator, not a Navigator application admin, owns a brand bundle.
 and logos into one directory:
 
 ```bash
+cp cli/tests/fixtures/navigator.example.yaml navigator.yaml   # then edit: names, emails, domain, logos
 cargo run -p cli -- ops rebrand build --file navigator.yaml --out /tmp/brand-bundle
 cargo run -p cli -- ops rebrand verify --dir /tmp/brand-bundle
 ```
+
+`cli/tests/fixtures/navigator.example.yaml` is the worked manifest, and it lives under `tests/` because that is where it
+is proven: `cli/tests/brand_example_manifest.rs` builds and verifies a bundle from it on every run, so the example you
+copy is one the CLI accepts.
 
 Branding is Neon Law by default. To ship under your own identity, set `NAVIGATOR_CUSTOM_BRANDING` to the bundle
 directory — `/etc/navigator/brand` for the Kubernetes mount, or any path for a non-Kubernetes install or test. When it

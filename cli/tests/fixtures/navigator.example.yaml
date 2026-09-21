@@ -1,7 +1,9 @@
-# navigator.example.yaml — white-label brand pack.
+# The worked white-label brand pack — and the fixture
+# `cli/tests/brand_example_manifest.rs` builds and verifies, so the example a
+# deployer copies is one the CLI is proven to accept.
 #
-# Copy this to `navigator.yaml`, fill in your organization's identity,
-# drop your logos next to it, and run:
+# Copy it to `navigator.yaml` at the root of your deployment checkout, fill in
+# your organization's identity, drop your logos next to it, and run:
 #
 #     cargo run -p cli -- ops rebrand build --out .devx/brand-bundle
 #     NAVIGATOR_CUSTOM_BRANDING=.devx/brand-bundle cargo run -p neon

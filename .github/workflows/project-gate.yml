@@ -13,7 +13,8 @@ name: project-gate
 # The checkout's `navigator.yaml` supplies the pin. This workflow does not
 # resolve `latest` and does not trust a caller-supplied version.
 # `ops github setup` bumps the caller's pin; it never edits this file.
-# Pull requests run the offline checks. Live verification belongs to `cd.yml`.
+# Pull requests run the live read-only document and Project checks plus seed
+# validation dry-runs. Main pushes additionally reconcile seeds and publish.
 
 on:
   workflow_call:
@@ -23,7 +24,7 @@ on:
         required: true
         type: string
       host:
-        description: Deployment host for live document verification on push to main.
+        description: Deployment host for live Project verification and seed validation.
         required: false
         type: string
         default: ""
@@ -114,7 +115,7 @@ jobs:
       # builds — the origin pass (`Y009`) reading each `dist/`. `--ci` writes
       # nothing, so a file the gate would have fixed fails here rather than
       # being rewritten in a checkout about to be discarded, and it opens the
-      # live-row door on the one ref that can mint a session. The host is the
+      # live-row door on main or a pull-request merge ref. The host is the
       # one `navigator.yaml` declares, so there is nothing to pass here.
       - name: navigator project gate
         run: navigator project gate --ci
@@ -139,24 +140,23 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
+          if [ -n "${HOST}" ] && { { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; } || { [ "${EVENT_NAME}" = "pull_request" ] && [[ "${REF}" =~ ^refs/pull/[1-9][0-9]*/merge$ ]]; }; then
               navigator site document verify . --ci --host "${HOST}"
           else
               navigator site document verify .
           fi
 
-  # Reconciles `seeds/` against the live deployment. `navigator project gate`
+  # Reconciles `seeds/` against the live deployment, or validates them against
+  # the live Project with a server-enforced dry-run on a pull request. `navigator project gate`
   # already covers the offline shape of every `seeds/*.yaml` document (in
   # `verify`, above) on every event, including a pull request from a fork —
-  # so this job mints nothing there. A PR branch cannot mint a scoped token in
-  # any case (`POST /auth/ci/seed-token` only honors `refs/heads/main`), which
-  # is exactly the hole a token mintable from a fork would open. Only a push
-  # to `main` exchanges the runner's OIDC token and reconciles. Never
+  # so this job still validates every seed document offline. The PR token is
+  # scoped to dry-run seed validation only. Only a push or approved dispatch on
+  # `main` exchanges the runner's OIDC token for live reconciliation. Never
   # `--overwrite`: the natural key makes a re-run a no-op, and a CI job that
   # can replace a client's recorded field unattended is not one the firm
-  # wants. Deliberately outside the `ci` job's `needs:` — its live half needs
-  # a reachable deployment, and the always-required check must never depend
-  # on that.
+  # wants. Its result is included in the required `ci` job so a failed live
+  # check cannot surface only after merge.
   seeds:
     needs: read-manifest
     permissions:
@@ -181,14 +181,18 @@ jobs:
               echo "no seeds — nothing to reconcile"
               exit 0
           fi
-          if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
+          if [ -z "${HOST}" ]; then
+              echo "no host — seeds are checked offline"
+          elif [ "${EVENT_NAME}" = "pull_request" ] && [[ "${REF}" =~ ^refs/pull/[1-9][0-9]*/merge$ ]]; then
+              navigator site import --dry-run --ci --host "${HOST}" --dir seeds
+          elif { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; then
               navigator site import --ci --host "${HOST}" --dir seeds
           else
-              echo "seeds/*.yaml is checked offline by navigator project gate; reconciling against a live deployment happens on push to main"
+              echo "seeds/*.yaml is checked offline by navigator project gate; live validation runs only on main or a pull-request merge ref"
           fi
 
   ci:
-    needs: [read-manifest, verify, documents]
+    needs: [read-manifest, verify, documents, seeds]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -197,3 +201,4 @@ jobs:
           test "${{ needs.read-manifest.result }}" = "success"
           test "${{ needs.verify.result }}" = "success"
           test "${{ needs.documents.result }}" = "success"
+          test "${{ needs.seeds.result }}" = "success"

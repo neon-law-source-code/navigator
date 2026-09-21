@@ -1548,6 +1548,9 @@ async fn reconcile_seed(
                         store::seed::ScopeViolation::ModelNotScoped(model.term()),
                     ));
                 }
+                if scope.dry_run_only && (!input.dry_run || input.overwrite) {
+                    return Err(anyhow::Error::new(store::seed::ScopeViolation::DryRunOnly));
+                }
             }
             Some(SessionScope::Document(_)) => {
                 return Err(anyhow::Error::new(

@@ -160,6 +160,7 @@ async fn mint_inner(
                 endpoint: crate::api::SEED_ENDPOINT.to_string(),
                 models: SeedModel::ALL.to_vec(),
                 project_code: project.code.clone(),
+                dry_run_only: is_pull_request_run(&claims),
             }),
             CiSessionKind::Document => SessionScope::Document(DocumentScope {
                 project_id: project.id,
@@ -184,17 +185,36 @@ async fn mint_inner(
 }
 
 fn authorize_github_run(claims: &GitHubActionsClaims) -> Result<(), MintError> {
-    if claims.git_ref != "refs/heads/main" {
-        return Err(MintError::Forbidden(
-            "GitHub Actions OIDC token must be minted for refs/heads/main".into(),
-        ));
+    if claims.git_ref == "refs/heads/main"
+        && matches!(claims.event_name.as_str(), "push" | "workflow_dispatch")
+    {
+        return Ok(());
     }
-    if !matches!(claims.event_name.as_str(), "push" | "workflow_dispatch") {
-        return Err(MintError::Forbidden(
-            "GitHub Actions OIDC token must come from a push or workflow_dispatch on main".into(),
-        ));
+    if is_pull_request_run(claims) {
+        return Ok(());
     }
-    Ok(())
+    Err(MintError::Forbidden(
+        "GitHub Actions OIDC token must come from a push or workflow_dispatch on main, or a pull_request merge ref".into(),
+    ))
+}
+
+fn is_pull_request_run(claims: &GitHubActionsClaims) -> bool {
+    let Some(number) = claims
+        .git_ref
+        .strip_prefix("refs/pull/")
+        .and_then(|reference| reference.strip_suffix("/merge"))
+    else {
+        return false;
+    };
+    if number.is_empty() || !number.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    let Ok(number) = number.parse::<u64>() else {
+        return false;
+    };
+    number > 0
+        && claims.event_name == "pull_request"
+        && claims.sub == format!("repo:{}:pull_request", claims.repository)
 }
 
 /// Shared refusal when this GitHub run cannot be bound to exactly one live
@@ -309,12 +329,55 @@ mod tests {
     }
 
     #[test]
-    fn a_pull_request_run_is_not_a_seed_write() {
+    fn a_pull_request_run_is_authorized_only_for_the_merge_ref_shape() {
         let claims = GitHubActionsClaims {
+            sub: "repo:neon-law-staging/acme:pull_request".into(),
+            repository: "neon-law-staging/acme".into(),
+            repository_owner: "neon-law-staging".into(),
+            git_ref: "refs/pull/42/merge".into(),
             event_name: "pull_request".into(),
             ..GitHubActionsClaims::default()
         };
-        assert!(authorize_github_run(&claims).is_err());
+        assert!(authorize_github_run(&claims).is_ok());
+    }
+
+    #[test]
+    fn a_pull_request_run_rejects_branch_tag_and_untrusted_event_shapes() {
+        for (git_ref, event_name, sub) in [
+            (
+                "refs/heads/main",
+                "pull_request",
+                "repo:neon-law-staging/acme:pull_request",
+            ),
+            (
+                "refs/tags/v1",
+                "pull_request",
+                "repo:neon-law-staging/acme:pull_request",
+            ),
+            (
+                "refs/pull/42/merge",
+                "pull_request",
+                "repo:neon-law-staging/acme:ref:refs/heads/main",
+            ),
+            (
+                "refs/pull/42/merge",
+                "pull_request_target",
+                "repo:neon-law-staging/acme:pull_request",
+            ),
+        ] {
+            let claims = GitHubActionsClaims {
+                sub: sub.into(),
+                repository: "neon-law-staging/acme".into(),
+                repository_owner: "neon-law-staging".into(),
+                git_ref: git_ref.into(),
+                event_name: event_name.into(),
+                ..GitHubActionsClaims::default()
+            };
+            assert!(
+                authorize_github_run(&claims).is_err(),
+                "unexpectedly authorized {event_name} {git_ref} {sub}"
+            );
+        }
     }
 
     #[test]

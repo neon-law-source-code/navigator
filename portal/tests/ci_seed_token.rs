@@ -8,6 +8,20 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 
 async fn fixture_app() -> (axum::Router, String) {
+    fixture_app_with_claims(GitHubActionsClaims {
+        sub: "repo:neon-law-staging/acme:ref:refs/heads/main".into(),
+        repository: "neon-law-staging/acme".into(),
+        repository_owner: "neon-law-staging".into(),
+        git_ref: "refs/heads/main".into(),
+        event_name: "push".into(),
+        jti: "jti-acme-main".into(),
+        exp: 4_000_000_000,
+        ..GitHubActionsClaims::default()
+    })
+    .await
+}
+
+async fn fixture_app_with_claims(claims: GitHubActionsClaims) -> (axum::Router, String) {
     let surreal = mem_surreal().await;
     let project = store::projects::create(
         &surreal,
@@ -45,16 +59,7 @@ async fn fixture_app() -> (axum::Router, String) {
 
     let mut state = portal::test_support::app_state(surreal).await;
     state.canonical_host = portal::CanonicalHost::new(Some("staging.neonlaw.com".into()));
-    state.github_oidc = GitHubOidc::fixed(GitHubActionsClaims {
-        sub: "repo:neon-law-staging/acme:ref:refs/heads/main".into(),
-        repository: "neon-law-staging/acme".into(),
-        repository_owner: "neon-law-staging".into(),
-        git_ref: "refs/heads/main".into(),
-        event_name: "push".into(),
-        jti: "jti-acme-main".into(),
-        exp: 4_000_000_000,
-        ..GitHubActionsClaims::default()
-    });
+    state.github_oidc = GitHubOidc::fixed(claims);
     (portal::router(state), "github-jwt".into())
 }
 
@@ -113,7 +118,7 @@ async fn minting_a_ci_token_scopes_it_to_seed_and_the_named_project() {
                         "model": "person",
                         "yaml": "lookup_fields:\n  - email\nrecords: []\n",
                         "overwrite": false,
-                        "dry_run": true
+                        "dry_run": false
                     }))
                     .unwrap(),
                 ))
@@ -243,18 +248,77 @@ async fn two_projects_sharing_one_repository_url_are_refused() {
 }
 
 #[tokio::test]
-async fn a_pull_request_oidc_token_is_refused() {
-    let surreal = mem_surreal().await;
-    let mut state = portal::test_support::app_state(surreal).await;
-    state.canonical_host = portal::CanonicalHost::new(Some("staging.neonlaw.com".into()));
-    state.github_oidc = GitHubOidc::fixed(GitHubActionsClaims {
+async fn a_pull_request_oidc_token_is_dry_run_only_through_bearer_and_cookie() {
+    let claims = GitHubActionsClaims {
+        sub: "repo:neon-law-staging/acme:pull_request".into(),
         repository: "neon-law-staging/acme".into(),
         repository_owner: "neon-law-staging".into(),
-        git_ref: "refs/heads/main".into(),
+        git_ref: "refs/pull/7/merge".into(),
         event_name: "pull_request".into(),
+        jti: "jti-acme-pr".into(),
+        exp: 4_000_000_000,
         ..GitHubActionsClaims::default()
-    });
-    let app = portal::router(state);
-    let response = mint(&app, "github-jwt").await;
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    };
+    let (app, github_token) = fixture_app_with_claims(claims).await;
+    let response = mint(&app, &github_token).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let minted: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let token = minted["token"].as_str().unwrap();
+
+    for (cookie, authorization, payload, expected) in [
+        (
+            None,
+            Some(format!("Bearer {token}")),
+            serde_json::json!({
+                "model": "person",
+                "yaml": "lookup_fields:\n  - email\nrecords: []\n",
+                "overwrite": false,
+                "dry_run": true,
+            }),
+            StatusCode::OK,
+        ),
+        (
+            Some(token.to_string()),
+            None,
+            serde_json::json!({
+                "model": "person",
+                "yaml": "lookup_fields:\n  - email\nrecords: []\n",
+                "overwrite": false,
+                "dry_run": false,
+            }),
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            Some(token.to_string()),
+            None,
+            serde_json::json!({
+                "model": "person",
+                "yaml": "lookup_fields:\n  - email\nrecords: []\n",
+                "overwrite": true,
+                "dry_run": true,
+            }),
+            StatusCode::FORBIDDEN,
+        ),
+    ] {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri("/app/api/seed")
+            .header(header::HOST, "staging.neonlaw.com")
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(authorization) = authorization {
+            builder = builder.header(header::AUTHORIZATION, authorization);
+        }
+        if let Some(cookie) = cookie {
+            builder = builder.header(header::COOKIE, format!("navigator_session={cookie}"));
+        }
+        let response = app
+            .clone()
+            .oneshot(builder.body(Body::from(payload.to_string())).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
 }

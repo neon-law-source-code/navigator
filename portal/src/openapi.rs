@@ -363,7 +363,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/seed": {
           "post": {
             "summary": "Reconcile a seed document",
-            "description": "Applies one YAML document in Navigator's standard `lookup_fields` / `records` seed format. The model is a supported singular glossary term. Existing lookup matches are unchanged by default; `overwrite` replaces the fields represented in the seed record. `dry_run` performs the same lookups and reference checks, returns a per-record plan, and writes nothing. Authorization: Lawyer tier only. A session minted with a project scope (a CI-obtained token) is further restricted to its own endpoint, models, and project — a write outside that scope is refused as `403 scope_violation`, distinguishable from an ordinary role failure.",
+            "description": "Applies one YAML document in Navigator's standard `lookup_fields` / `records` seed format. The model is a supported singular glossary term. Existing lookup matches are unchanged by default; `overwrite` replaces the fields represented in the seed record. `dry_run` performs the same lookups and reference checks, returns a per-record plan, and writes nothing. Authorization: Lawyer tier only. A session minted with a project scope (a CI-obtained token) is further restricted to its own endpoint, models, and project — a pull-request CI session is additionally dry-run-only and rejects `overwrite`; any request outside that scope is refused as `403 scope_violation`, distinguishable from an ordinary role failure.",
             "requestBody": {
               "required": true,
               "content": { "application/json": {

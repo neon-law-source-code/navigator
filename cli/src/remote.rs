@@ -203,10 +203,9 @@ async fn resolve_ci(host: &str) -> Result<(String, String)> {
 
 /// Exchange the GitHub Actions OIDC ID token for a Navigator session bound to
 /// this repository's live Project, for `navigator site document verify --ci`
-/// (#486). Unlike [`resolve_ci`], this session carries no restricting
-/// `scope` — verification only reads, and the resolved actor is always that
-/// Project's own lawyer DRI, so the session already reaches no more than that
-/// person's ordinary login would.
+/// (#486). The server gives this token only the two Project/document metadata
+/// reads required by verification; lawyer-tier attribution never widens that
+/// capability.
 pub(crate) async fn resolve_ci_document(host: &str) -> Result<(String, String)> {
     let base = credentials::base_url(host);
     let client = reqwest::Client::new();

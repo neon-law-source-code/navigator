@@ -336,7 +336,7 @@ async fn a_document_token_expiry_is_enforced_for_bearer_and_cookie() {
 }
 
 #[tokio::test]
-async fn a_github_oidc_document_mint_is_single_use_and_pr_refs_remain_refused() {
+async fn a_github_oidc_document_mint_is_single_use_and_pr_merge_refs_are_read_only() {
     let fixture = fixture().await;
     let (first, _) = mint(&fixture.app).await;
     assert_eq!(first, StatusCode::OK);
@@ -382,14 +382,28 @@ async fn a_github_oidc_document_mint_is_single_use_and_pr_refs_remain_refused() 
     let mut state = portal::test_support::app_state(surreal).await;
     state.canonical_host = portal::CanonicalHost::new(Some("staging.neonlaw.com".into()));
     state.github_oidc = GitHubOidc::fixed(GitHubActionsClaims {
+        sub: "repo:neon-law-staging/branch:pull_request".into(),
         repository: "neon-law-staging/branch".into(),
         repository_owner: "neon-law-staging".into(),
-        git_ref: "refs/heads/main".into(),
+        git_ref: "refs/pull/17/merge".into(),
         event_name: "pull_request".into(),
         jti: "jti-document-pr".into(),
         exp: 4_000_000_000,
         ..Default::default()
     });
-    let (status, _) = mint(&portal::router(state)).await;
+    let app = portal::router(state);
+    let (status, body) = mint(&app).await;
+    assert_eq!(status, StatusCode::OK);
+    let token = body["token"].as_str().unwrap();
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/app/api/projects/whatever/documents",
+        Some(&bearer(token)),
+        None,
+        Body::from("{}"),
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"], "scope_violation");
 }

@@ -6,31 +6,16 @@ code: offboarding__letter
 jurisdiction: NV
 confidential: true
 prompts:
-  client_name: What is the client's full legal name?
-  project_name: What is the project name for this engagement?
-  matter_summary: Summarize the matter and the work the firm completed.
-  fee_status: What is the fee status as the matter closes?
-  file_retention: How will the client's file be retained or returned?
-  next_obligation: What is the client's next obligation or deadline, if any?
-choices:
-  fee_status:
-    paid_in_full: Paid in full
-    balance_due: Balance due
-    waived: Fees waived
+  client_name: Who is the Client's directly responsible individual, the one person the Firm writes to?
+  project: What is the project being closed?
 questionnaire:
   BEGIN:
+    _: entity
+  entity:
     _: person__client
   person__client:
-    _: project__engagement
-  project__engagement:
-    _: custom_text__matter_summary
-  custom_text__matter_summary:
-    _: custom_single_choice__fee_status
-  custom_single_choice__fee_status:
-    _: custom_text__file_retention
-  custom_text__file_retention:
-    _: custom_text__next_obligation
-  custom_text__next_obligation:
+    _: project
+  project:
     _: END
   END: {}
 workflow:
@@ -48,12 +33,12 @@ workflow:
 
 {{person__client.name}}
 
-Re: Closing Letter — {{project__engagement.name}}
+Re: Closing Letter — {{project.name}}
 
 Dear {{person__client.name}}:
 
-This Closing Letter confirms that Neon Law (the "Firm") has completed its work for {{person__client.name}} (the
-"Client") on the matter referred to as {{project__engagement.name}}.
+This Closing Letter confirms that Shook Law PLLC ("Neon Law") has completed its work for {{entity.name}} (the "Client")
+on the matter referred to as {{project.code}}.
 
 ## I. Representation concluded
 
@@ -62,34 +47,19 @@ matter. Should a new need arise, the Client is welcome to open a new matter with
 
 ## II. Work completed
 
-Summary of the work completed:
-
-> {{custom_text__matter_summary}}
+The Client's project files are available to download from the Neon Law portal for three days after this letter is
+signed.
 
 ## III. Fees at closing
 
-Fee status at closing:
-
-> {{custom_single_choice__fee_status}}
-
-The Client remains responsible only for fees and expenses already incurred and invoiced on this matter. Closing the
-matter itself adds no further charge.
+Please find the attached PDF of the project fee schedule. If you are owed a balance, we will send a check to the address
+on file.
 
 ## IV. Your file
 
-The Client's file will be handled as follows:
+We will make reasonable commercial efforts to store your data for ten years.
 
-> {{custom_text__file_retention}}
+## V. Closing
 
-The Client may request a copy of the file during the retention period at no additional cost.
-
-## V. What remains yours to do
-
-Next steps that belong to the Client:
-
-> {{custom_text__next_obligation}}
-
-## VI. Closing
-
-It has been our privilege to do this work alongside you. This letter is signed on behalf of the Firm by the Neon Law
-lawyer of record for the matter.
+It has been our privilege to do this work alongside you. If you wish to engage us in the future, it will require a new
+retainer for a new project.

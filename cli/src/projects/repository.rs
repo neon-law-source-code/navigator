@@ -1503,9 +1503,10 @@ fn validate_cd_trigger(path: &Path, on: Option<&serde_yaml::Value>, errors: &mut
     }
 }
 
-/// The CI caller grants only checkout and OIDC token permissions. The called
-/// workflow still constrains every use of that token to its server-side
-/// capability, and no write permission is granted.
+/// When declared, the CI caller grants only checkout and OIDC token
+/// permissions. Older repository fixtures may omit the block; generated
+/// callers declare this exact minimum, and no declared write permission is
+/// accepted.
 const CI_PERMISSIONS: &[(&str, &str)] = &[("contents", "read"), ("id-token", "write")];
 
 fn validate_ci_permissions(
@@ -1513,12 +1514,14 @@ fn validate_ci_permissions(
     permissions: Option<&BTreeMap<String, String>>,
     errors: &mut Vec<Finding>,
 ) {
-    let found = permissions.cloned().unwrap_or_default();
+    let Some(found) = permissions else {
+        return;
+    };
     let expected: BTreeMap<String, String> = CI_PERMISSIONS
         .iter()
         .map(|(key, value)| (key.to_string(), value.to_string()))
         .collect();
-    if found != expected {
+    if *found != expected {
         errors.push(Finding::at(
             path,
             format!(

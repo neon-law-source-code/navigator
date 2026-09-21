@@ -140,7 +140,7 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ -n "${HOST}" ] && { { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; } || { [ "${EVENT_NAME}" = "pull_request" ] && [[ "${REF}" =~ ^refs/pull/[1-9][0-9]*/merge$ ]]; }; then
+          if [ -n "${HOST}" ] && { { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; } || [ "${EVENT_NAME}" = "pull_request" ]; then
               navigator site document verify . --ci --host "${HOST}"
           else
               navigator site document verify .
@@ -183,7 +183,7 @@ jobs:
           fi
           if [ -z "${HOST}" ]; then
               echo "no host — seeds are checked offline"
-          elif [ "${EVENT_NAME}" = "pull_request" ] && [[ "${REF}" =~ ^refs/pull/[1-9][0-9]*/merge$ ]]; then
+          elif [ "${EVENT_NAME}" = "pull_request" ]; then
               navigator site import --dry-run --ci --host "${HOST}" --dir seeds
           elif { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; then
               navigator site import --ci --host "${HOST}" --dir seeds

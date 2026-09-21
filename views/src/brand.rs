@@ -885,6 +885,25 @@ impl BrandKey {
         format!("https://{}", self.hosts()[0])
     }
 
+    /// This key's home in the deployment named by `deployment_host`.
+    ///
+    /// Persistent staging runs the production runtime profile, so the
+    /// deployment's public hostname — not `NAVIGATOR_ENVIRONMENT` — selects
+    /// the matching sibling-brand host. Local and unconfigured callers keep
+    /// the production URL.
+    #[must_use]
+    pub fn public_home_href_for(self, deployment_host: Option<&str>) -> String {
+        let staging = deployment_host.is_some_and(|host| host.starts_with("staging."));
+        let prefix = if staging { "staging." } else { "www." };
+        let host = self
+            .hosts()
+            .iter()
+            .copied()
+            .find(|host| host.starts_with(prefix))
+            .unwrap_or_else(|| self.canonical_host());
+        format!("https://{host}")
+    }
+
     /// English catalog stems this key ships under `locales/en/<key>/`.
     ///
     /// This is the list of *files a key ships*, not the list of paths it
@@ -2389,6 +2408,21 @@ mod tests {
                     "{host} should resolve to {key:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn public_home_href_matches_the_deployments_host_family() {
+        for key in BrandKey::ALL {
+            assert_eq!(
+                key.public_home_href_for(Some("www.neonlaw.com")),
+                format!("https://www.{}", key.apex()),
+            );
+            assert_eq!(
+                key.public_home_href_for(Some("staging.neonlaw.com")),
+                format!("https://staging.{}", key.apex()),
+            );
+            assert_eq!(key.public_home_href_for(None), key.public_home_href());
         }
     }
 

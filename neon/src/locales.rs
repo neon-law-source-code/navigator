@@ -702,14 +702,27 @@ fn privacy_content(copy: views::locales::PrivacyCopy) -> webapp::home::PrivacyCo
 ///
 /// `None` while the practice is held out of launch, because
 /// `portal::canonical_host` refuses its hosts and the link would land a
-/// reader on a `404`. `views::brand::BrandKey::public_home_href` builds the
-/// address; the launch gate decides whether there is one to hand out.
-fn sibling_practice_href(key: views::brand::BrandKey) -> Option<String> {
-    key.is_live().then(|| key.public_home_href())
+/// reader on a `404`. `views::brand::BrandKey::public_home_href_for` builds
+/// the address for this deployment; the launch gate decides whether there is
+/// one to hand out.
+fn sibling_practice_href(
+    key: views::brand::BrandKey,
+    deployment_host: Option<&str>,
+) -> Option<String> {
+    key.is_live()
+        .then(|| key.public_home_href_for(deployment_host))
 }
 
 /// The firm home page, resolved from this brand's `home.yaml`.
 pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
+    home_for_host(branding, None)
+}
+
+/// The firm home page, with cross-brand links matched to this deployment.
+pub fn home_for_host(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> webapp::home::HomeContent {
     let copy: HomeCopy = load_page(branding, "home");
     webapp::home::HomeContent {
         head_title: copy.head_title,
@@ -790,8 +803,11 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
             // The launch gate decides whether each sibling's name links. Both
             // practices are real and separately engaged whatever it says;
             // what it governs is whether the page hands a reader an address.
-            immigration_href: sibling_practice_href(views::brand::BrandKey::Abhaya),
-            estate_href: sibling_practice_href(views::brand::BrandKey::Vesta),
+            immigration_href: sibling_practice_href(
+                views::brand::BrandKey::Abhaya,
+                deployment_host,
+            ),
+            estate_href: sibling_practice_href(views::brand::BrandKey::Vesta, deployment_host),
             navigator_heading: copy.navigator_heading,
             navigator_body: copy.navigator_body,
             navigator_link: copy.navigator_link,
@@ -1336,6 +1352,33 @@ mod tests {
         assert!(home(&views::brand::DEFAULT_BRANDING).privacy.is_none());
         assert!(home(&views::brand::VESTA_BRANDING).privacy.is_none());
         assert!(!dyd_page_text(&legal_services(branding)).contains("$10"));
+    }
+
+    #[test]
+    fn neon_home_links_to_each_sibling_in_the_same_deployment() {
+        let production = home_for_host(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"))
+            .company
+            .expect("Neon home has the company section");
+        assert_eq!(
+            production.immigration_href.as_deref(),
+            Some("https://www.abhayaimmigration.com")
+        );
+        assert_eq!(
+            production.estate_href.as_deref(),
+            Some("https://www.vestaestateplanning.com")
+        );
+
+        let staging = home_for_host(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"))
+            .company
+            .expect("Neon home has the company section");
+        assert_eq!(
+            staging.immigration_href.as_deref(),
+            Some("https://staging.abhayaimmigration.com")
+        );
+        assert_eq!(
+            staging.estate_href.as_deref(),
+            Some("https://staging.vestaestateplanning.com")
+        );
     }
 
     // --- ENG-744…749: the practice brands, and the lines that bind them ---

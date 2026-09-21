@@ -469,7 +469,8 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     // The firm's `/team` page: one static statement, no roster and no store
     // read.
     routers.push(dioxus_app::team_index_router("/team"));
-    let home = resolve_firm_home_content(branding);
+    let deployment_host = state.canonical_host.host();
+    let home = resolve_firm_home_content(branding, deployment_host);
     // The home page (`/`): static copy plus the store's approved testimonials.
     // The practice boxes on `/` are the YAML catalog workshop slides
     // reuse — one list, not a second Rust copy. Slides always expand the
@@ -478,7 +479,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         .practices
         .clone();
     let home_copy = branded_map(branding, |resolved| {
-        webapp::home::InjectedHome(resolve_firm_home_content(resolved))
+        webapp::home::InjectedHome(resolve_firm_home_content(resolved, deployment_host))
     });
     routers.push(with_branded(
         dioxus_app::home_router("/", home, state.surreal.clone()),
@@ -691,6 +692,7 @@ fn resolve_firm_contact_content(
 /// costs.
 pub(crate) fn resolve_firm_home_content(
     branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
 ) -> webapp::home::HomeContent {
     match branding.brand_key {
         BrandKey::LawyerShook => lawyer_shook_holding_content(branding),
@@ -700,7 +702,7 @@ pub(crate) fn resolve_firm_home_content(
         | BrandKey::Vesta
         | BrandKey::Misericordia
         | BrandKey::Abhaya
-        | BrandKey::DeleteYourDebt => locales::home(branding),
+        | BrandKey::DeleteYourDebt => locales::home_for_host(branding, deployment_host),
     }
 }
 
@@ -820,8 +822,38 @@ fn portfolio_practices() -> Vec<webapp::home::PracticeLink> {
 
 #[cfg(test)]
 mod coming_soon_page_tests {
-    use super::coming_soon_content;
+    use super::{coming_soon_content, resolve_firm_home_content};
     use views::brand::BrandKey;
+
+    /// Every registered brand has a deliberate home surface: authored design
+    /// copy, a holding statement, or an explicit Coming Soon notice.
+    #[test]
+    fn every_brand_home_has_design_or_a_coming_soon_notice() {
+        for key in BrandKey::ALL {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            let content = resolve_firm_home_content(branding, None);
+            let authored_design = !content.heading.is_empty()
+                && (content.service.is_some()
+                    || content.estate.is_some()
+                    || content.privacy.is_some()
+                    || content.company.is_some()
+                    || !content.practices.is_empty());
+            let holding_design = content
+                .bare
+                .as_ref()
+                .is_some_and(|bare| bare.heading != "Coming Soon" && !bare.paragraph.is_empty());
+            let coming_soon = content
+                .bare
+                .as_ref()
+                .is_some_and(|bare| bare.heading == "Coming Soon");
+
+            assert!(
+                authored_design || holding_design || coming_soon,
+                "{} has no designed or Coming Soon home surface",
+                key.as_str()
+            );
+        }
+    }
 
     /// The held-out summons channel answers the bare notice, wearing its own
     /// name and reviewed one-liner.

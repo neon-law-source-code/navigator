@@ -698,7 +698,7 @@ fn the_repository_root_carries_exactly_one_licence_file() {
 #[test]
 fn contributions_are_closed_but_the_licence_terms_are_stated_anyway() {
     /// Where someone turned away by the notice is told to write instead.
-    const CONTACT: &str = "contact@neonlaw.org";
+    const CONTACT: &str = "contact@neonlaw.com";
 
     let contributing = read("CONTRIBUTING.md");
     let flat = flat_lower(&contributing);

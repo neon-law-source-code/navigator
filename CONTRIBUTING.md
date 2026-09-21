@@ -2,13 +2,9 @@
 
 **Neon Law Navigator is source-available, and it is currently closed to outside contributions.**
 
-Shook Law PLLC, trading as Neon Law, operates this software under a licence from Neon Law IP LLC, the
-intellectual-property holding company that holds the copyright. Issues and pull requests from outside the firm are not
-being accepted right now. This is a capacity decision rather than a licensing one: the software runs a live legal
-practice, every change to it needs review by someone who can weigh the practice consequences, and there is not review
-capacity to offer an outside contributor today.
+This software is owned by Neon Law IP LLC and operated under licence by Shook Law PLLC, trading as Neon Law.
 
-**Write to [contact@neonlaw.org](mailto:contact@neonlaw.org).** Anyone is welcome to — a bug you hit, a security
+**Write to [contact@neonlaw.com](mailto:contact@neonlaw.com).** Anyone is welcome to — a bug you hit, a security
 concern, a fork you are running, a question about the licences, or an interest in contributing when this reopens. The
 address is read by people, and a report that never becomes a pull request is still worth sending.
 
@@ -58,11 +54,3 @@ may sign, so a licensed attorney reviews it before it merges regardless of how m
 
 Neither the licence nor a merged pull request creates an attorney-client relationship with Shook Law PLLC, and nothing
 in this repository is legal advice.
-
-## Working in the tree
-
-For anyone reading the code or running a fork: follow the [workspace layout](docs/workspace-layout.md). Rust owns the
-domain and machine-bound flows, and the browser surface through Dioxus. Generated PDFs use Typst and transactional email
-uses string templates. Every change is test-driven — the covering test lands with the minimal implementation it proves —
-and `cargo fmt`, `cargo clippy` with warnings denied, and `cargo nextest run --workspace` all have to pass before
-review.

@@ -2018,7 +2018,7 @@ Neon Law Navigator runs three registered brands from one binary. A deployment op
 identity without forking source by describing the organization once in a private `navigator.yaml` bundle:
 
 ```bash
-cp navigator.example.yaml navigator.yaml   # then edit: names, emails, domain, logos
+cp cli/tests/fixtures/navigator.example.yaml navigator.yaml   # then edit: names, emails, domain, logos
 cargo run -p cli -- ops rebrand build --out .devx/brand-bundle   # deprecated compatibility command
 cargo run -p cli -- ops rebrand verify --dir .devx/brand-bundle   # deprecated compatibility command
 set -a; source .devx/env; set +a                # object storage and the rest of the runtime env

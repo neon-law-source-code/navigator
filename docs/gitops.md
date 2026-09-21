@@ -533,21 +533,17 @@ So `26.8.22-hotfix.3` is admissible after `26.8.21` and **refused** after `26.8.
 real clients' matters is a separate act a person takes from their own machine — see [The deploy is a human
 act](#the-deploy-is-a-human-act).
 
-**Run the accessibility preflight before you merge the bump.** A green `ci` proves the Rust workspace and says nothing
-about the browser and accessibility suites. Always run the deterministic, KIND-free accessibility guard:
-
-```bash
-cargo nextest run -p server --test vendor_assets
-```
-
-When a worktree's KIND fixture and host `web` are already running, also prove the browser and axe-core suites:
+**Run the full browser and axe-core suite before you merge the bump.** A green `ci` proves the Rust workspace. The
+KIND-free `vendor_assets` test proves stylesheet rules only. Live axe WCAG failures (color-contrast on `/notations`, and
+the rest of `accessibility_e2e`) appear only in `dev browser-e2e`. Bring up the KIND fixture and host `web` if they are
+not running, source `.devx/env`, and run:
 
 ```bash
 cargo run -p cli -- dev browser-e2e
 ```
 
-Without that live harness, do not run the browser suite raw: it intentionally self-skips. Record it as skipped rather
-than treating that skip as a passing browser accessibility audit.
+A harness skip is not a pass. Do not treat `vendor_assets` as a substitute. See
+[`cut-release`](../.agents/skills/cut-release/SKILL.md).
 
 A `kind-ci/<topic>` branch push is the CI-side alternative when the change is to the workflow itself rather than to a
 page — it runs `integration` alone, creates no tag, and publishes nothing.

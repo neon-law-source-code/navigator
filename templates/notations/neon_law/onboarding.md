@@ -8,7 +8,6 @@ confidential: true
 prompts:
   client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
   project_name: What is the project name for this engagement?
-  lawyer_dri: Which lawyer is directly responsible for this engagement?
   engagement_scope: >-
     In a sentence or two, what is the minimum scope of this engagement.
   engagement_start_date: When does this engagement begin?
@@ -19,7 +18,6 @@ audiences:
   client_name: client
   project_name: lawyer
   governing_law: lawyer
-  lawyer_dri: lawyer
   engagement_start_date: lawyer
   engagement_scope: lawyer
   entity: lawyer
@@ -37,8 +35,6 @@ questionnaire:
   address__principal_office:
     _: person__client
   person__client:
-    _: person__lawyer_dri
-  person__lawyer_dri:
     _: project__engagement
   project__engagement:
     _: custom_datetime__engagement_start_date
@@ -86,8 +82,8 @@ We charge flat, pre-approved fees. We do not bill by the hour.
 
 **Our client is {{entity.name}}**, not its people, including you.
 
-**The base engagement.** We act as your base attorney: you can list us publicly, we can become your registered agent in
-certain jurisdictions, and you can call us in an exigent emergency.
+**The base engagement.** We act as the client's base attorney: you can list us publicly, we can become your registered
+agent in certain jurisdictions, and you can call us in an exigent emergency.
 
 **Litigation.** Defending a civil action brought against you, or bringing one on your behalf, for as long as the action
 runs, including an appeal arising from it. Each case is engaged separately. A matter in which you already have counsel
@@ -134,6 +130,9 @@ each invoice when we issue one, and we refund whatever we have not earned when t
 
 ## III. Costs and payment
 
+Our clients are responsible for maintaining a deposit account which must account for one month of our daily fees and any
+work ordered before it is completed. You can replenish it from the Neon Law portal.
+
 For litigation matters, you are responsible for filing and appearance fees, service and discovery costs, court reporter
 and transcript fees, expert and witness fees, and other similar charges. We do not advance them.
 
@@ -147,10 +146,9 @@ notice and subject to any approval a court requires. Suspension does not affect 
 
 ## IV. Staffing
 
-**Your directly responsible individual is {{person__lawyer_dri.name}}**, reachable at {{person__lawyer_dri.email}} and
-through our web portal. Write to contact@neonlaw.com; that address is always open to you. We may use other lawyers,
-contract lawyers, paralegals, staff, and outside vendors where that suits the work. We protect your confidences as the
-law and the applicable professional rules require.
+Write to contact@neonlaw.com, or call or text the office line on this letterhead. We may use other lawyers, contract
+lawyers, paralegals, staff, and outside vendors where that suits the work. We protect your confidences as the law and
+the applicable professional rules require.
 
 ## V. Response times
 
@@ -162,15 +160,14 @@ not run while work is suspended under Section III.
 
 We maintain an up-to-date library of generic and common agreements. They are unreviewed forms, not drafted for your
 transaction or your counterparty. Before using them, you must make a judgment call whether they're in the best interests
-of your business. If you have any questions, please contact us. Sending one for signature on your instruction is
-administrative and is not our approval of it.
+of your business.
 
 If you need a bespoke customization, we will draft it for you for a pre-defined fee.
 
 ## VII. Adding to the scope
 
-We add new work by written agreement, after a conflicts check and a flat-fee quote you accept. We do not start until
-then. An instruction to start work is not itself an engagement, and we may decline a matter we cannot take.
+When you ask us to review or create a legal document, we will first screen it to ensure we can accept it. Then we will
+quote you a flat fee. In order to accept and begin the work order, you must have the required deposit in your account.
 
 ## VIII. Your responsibilities
 
@@ -214,14 +211,13 @@ you. On a financing we act for the company alone.
 
 The law of {{custom_single_choice__governing_law}} governs this letter.
 
-Except for a fee dispute you elect to arbitrate under a statutory fee-arbitration right that cannot be waived — in
-California, the Mandatory Fee Arbitration Act; in Nevada and Washington, the fee-dispute programs of the State Bar of
-Nevada and the Washington State Bar Association — any controversy or claim arising out of or relating to this engagement
-or its breach, including any claim of professional negligence, malpractice, or breach of fiduciary duty, shall be
-settled by final and binding arbitration administered by the American Arbitration Association under its Commercial
-Arbitration Rules, before a single arbitrator, seated in {{custom_single_choice__governing_law}}, and conducted
-confidentially. The AAA's rules and fee schedule govern administrative fees and arbitrator compensation, and judgment on
-the award may be entered in any court of competent jurisdiction.
+Except for a fee dispute you elect to arbitrate under a statutory fee-arbitration right that cannot be waived, any
+controversy or claim arising out of or relating to this engagement or its breach, including any claim of professional
+negligence, malpractice, or breach of fiduciary duty, shall be settled by final and binding arbitration administered by
+the American Arbitration Association under its Commercial Arbitration Rules, before a single arbitrator, seated in
+{{custom_single_choice__governing_law}}, and conducted confidentially. The AAA's rules and fee schedule govern
+administrative fees and arbitrator compensation, and judgment on the award may be entered in any court of competent
+jurisdiction.
 
 The arbitrator applies the same law and may award the same remedies a court would. This clause picks the forum for a
 dispute; it does not limit, cap, or waive our responsibility for our own work, and it does not override a right the law
@@ -234,11 +230,10 @@ is handled, you may consult independent counsel before agreeing to it.
 ## XIII. Ending the engagement
 
 Either of us may end this engagement at any time, in writing, subject to any approval a court requires to withdraw from
-a pending action. If you are acquired, either of us may end it. You remain responsible for fees and costs incurred up to
-that point, including the prorated day rate, the monthly fee on any case then pending, and the negotiation fee for any
-month then running. You sign a substitution of attorney promptly where one is needed. On request, we return your files,
-cooperate in an orderly handover to replacement counsel, and you appoint a replacement registered agent where we were
-acting as yours.
+a pending action. You remain responsible for fees and costs incurred up to that point, including the prorated day rate,
+the monthly fee on any case then pending, and the negotiation fee for any month then running. You sign a substitution of
+attorney promptly where one is needed. On request, we return your files, cooperate in an orderly handover to replacement
+counsel, and you appoint a replacement registered agent where we were acting as yours.
 
 Sections II, III, IX, and XII survive.
 

@@ -263,8 +263,8 @@ refuses the start. Keep the bootstrap Owner address in its secret configuration;
   `client@neonlaw.com` in the KIND fixture below is the sole local exception to that non-firm-address rule.
 - **The KIND-only Rauthy fixture** seeds one account per role, each with password `password`: `owner@neonlaw.com`,
   `admin@neonlaw.com`, `lawyer@neonlaw.com`, `clerk@neonlaw.com`, and `client@neonlaw.com` (per
-  [`AGENTS.md`](../AGENTS.md#authentication-and-lawyer-access)). Four of the five are seeded onto one demo matter,
-  *Cruller v. Prine* (project code `sample-litigation`), so each can be exercised on the same project.
+  [`open-admin-server`](../.agents/skills/open-admin-server/SKILL.md)). Four of the five are seeded onto one demo
+  matter, *Cruller v. Prine* (project code `sample-litigation`), so each can be exercised on the same project.
   `admin@neonlaw.com` deliberately holds **no** participation on it: the fixture Admin demonstrates the ENG-81 decision
   — `/app/projects` still lists the matter (Admin's list is unscoped) and `/app/projects/{code}` still gates its content
   behind the row, rendering only the participation ledger until the fixture Admin grants themself one.

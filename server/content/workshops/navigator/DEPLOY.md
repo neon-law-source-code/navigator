@@ -36,7 +36,7 @@ stack we run. Let's stand it up.
 > `source .devx/env` and
 > `cargo run -p neon` serves it on `localhost`. Boot it locally, inspect the canonical seed, and only
 > come back here when you want it on the public internet. The full local loop is in
-> [`AGENTS.md`](https://github.com/neon-law-source-code/navigator/blob/main/AGENTS.md#local-kind-development).
+> [`AGENTS.md`](https://github.com/neon-law-source-code/navigator/blob/main/AGENTS.md).
 
 **Set the budget alert before you provision** — one command caps the surprise so the bill cannot run away while you
 learn:

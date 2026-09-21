@@ -96,8 +96,8 @@ When a dirty tree is ready to land:
 7. For public or portal UI, capture the running app with headless Chrome and embed the artifact from
    `/tmp/navigator-screenshots/` in the PR description through `pr-image-upload`; never commit it, self-host it, or use
    a raw `/tmp` URL. Rendering tests are not live proof. For authenticated pages, follow
-   [`AGENTS.md`](../AGENTS.md#authentication-and-lawyer-access): grant lawyer against `web`'s database and authenticate
-   through Rauthy, never a hand-written cookie.
+   [`open-admin-server`](../.agents/skills/open-admin-server/SKILL.md): grant lawyer against `web`'s database and
+   authenticate through Rauthy, never a hand-written cookie.
 8. Push and open a PR against `main`, ready for review, not as a draft, linking its Linear issue with a bare
    `Closes ENG-NN` trailer in the body — see [Linking a PR to its Linear issue](#linking-a-pr-to-its-linear-issue).
    Auto-merge is armed only on a non-draft open; a draft holds the PR for a human. CI enables auto-merge on a ready open
@@ -241,9 +241,9 @@ cargo run -p cli -- dev worktree-env up --branch pr-<N>
 ```
 
 Continue in the printed checkout. Source its `.devx/env`, boot `web` as in
-[`AGENTS.md`](../AGENTS.md#default-worktree-loop), and restart the compiled process after a fix. Host `web` and the
-in-cluster worker share that worktree's database and Restate journal; use `--demo` only when published images are the
-subject.
+[`kind-local-dev`](../.agents/skills/kind-local-dev/SKILL.md), and restart the compiled process after a fix. Host `web`
+and the in-cluster worker share that worktree's database and Restate journal; use `--demo` only when published images
+are the subject.
 
 ### Read the requested thread in context
 
@@ -437,7 +437,7 @@ For Docker, KIND, and browser e2e:
 
 - At handoff, run `navigator dev worktree-env down`, then stop task-owned `web` and browser processes. Do not use `dev
   down` for routine cleanup; it deletes the reusable shared cluster. See
-  [`AGENTS.md`](../AGENTS.md#troubleshooting-and-cleanup).
+  [`kind-local-dev`](../.agents/skills/kind-local-dev/SKILL.md).
 - A deleted worktree can leave its KIND cluster, ports, and Docker memory behind. Find and reclaim only such orphans:
 
   ```bash

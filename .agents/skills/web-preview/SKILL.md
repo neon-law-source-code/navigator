@@ -5,8 +5,7 @@ description: Run and verify a Navigator page with automatic rebuilds and browser
 
 # Web preview
 
-Read [`AGENTS.md`](../../../AGENTS.md#local-kind-development),
-[`docs/agent-workflows.md`](../../../docs/agent-workflows.md), and
+Read [`kind-local-dev`](../kind-local-dev/SKILL.md), [`docs/agent-workflows.md`](../../../docs/agent-workflows.md), and
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md).
 
 - Reuse the task's configured worktree runtime and source its generated `.devx/env`. Start interactive previews with

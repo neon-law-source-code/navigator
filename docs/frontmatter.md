@@ -100,7 +100,6 @@ output: letter
 prompts:
   client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
   project_name: What is the project name for this engagement?
-  lawyer_dri: Which lawyer is directly responsible for this engagement?
   engagement_scope: >-
     In a sentence or two, what is the minimum scope of this engagement.
   engagement_start_date: When does this engagement begin?
@@ -111,7 +110,6 @@ audiences:
   client_name: client
   project_name: lawyer
   governing_law: lawyer
-  lawyer_dri: lawyer
   engagement_start_date: lawyer
   engagement_scope: lawyer
   entity: lawyer
@@ -125,8 +123,7 @@ questionnaire:
   BEGIN:                                     { _: entity }
   entity:                                    { _: address__principal_office }
   address__principal_office:                 { _: person__client }
-  person__client:                            { _: person__lawyer_dri }
-  person__lawyer_dri:                        { _: project__engagement }
+  person__client:                            { _: project__engagement }
   project__engagement:                       { _: custom_datetime__engagement_start_date }
   custom_datetime__engagement_start_date:    { _: custom_text__engagement_scope }
   custom_text__engagement_scope:             { _: custom_single_choice__governing_law }

@@ -10,10 +10,10 @@ frontmatter of the [shared onboarding letter](../templates/notations/neon_law/on
 
 1. **Questionnaire walker** — one question per request, one [Answer](notation.md#answer) per advance, one
    [Notation Event](glossary.md#notation-event) per transition. Walks the state chain `BEGIN` → `entity` →
-   `address__principal_office` → `person__client` → `person__lawyer_dri` → `project__engagement` →
-   `custom_datetime__engagement_start_date` → `custom_text__engagement_scope` → `custom_single_choice__governing_law` →
-   `END` — eight questions in all. The matter's scope renders from the clause spliced at `{{custom_clauses}}`, written
-   per client; fees are set in a separate signed fee writing rather than asked here.
+   `address__principal_office` → `person__client` → `project__engagement` → `custom_datetime__engagement_start_date` →
+   `custom_text__engagement_scope` → `custom_single_choice__governing_law` → `END` — seven questions in all. The
+   matter's scope renders from the clause spliced at `{{custom_clauses}}`, written per client; fees are set in a
+   separate signed fee writing rather than asked here.
 2. **Post-intake workflow** — fires once the questionnaire reaches `END`. Walks `intake_persisted__client` →
    `lawyer_review` → `generate_pdf__retainer_pdf` → `sent_for_signature__pending` → `END`, driving render, PDF
    persistence, and "sent for signature".
@@ -29,8 +29,7 @@ stateDiagram-v2
     [*] --> entity : _
     entity --> address__principal_office : _
     address__principal_office --> person__client : _
-    person__client --> person__lawyer_dri : _
-    person__lawyer_dri --> project__engagement : _
+    person__client --> project__engagement : _
     project__engagement --> custom_datetime__engagement_start_date : _
     custom_datetime__engagement_start_date --> custom_text__engagement_scope : _
     custom_text__engagement_scope --> custom_single_choice__governing_law : _

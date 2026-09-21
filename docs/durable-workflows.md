@@ -237,12 +237,12 @@ can't silently recur; when you fix a new one, add its guard in the same PR.
   and `start_workflow` has a 30s HTTP timeout so a hung ingress can't keep a trigger pod alive.
 - **Host `web` and the worker share one database inside their KIND tier.** The Restate worker journals each transition
   to the store its own `NAVIGATOR_SURREAL_*` names — `navigator` in that cluster. Both `dev up` and `dev worktree-env`
-  put host `web` on the worker's database ([AGENTS.md](../AGENTS.md#default-worktree-loop)), so every Restate-backed
-  flow (the retainer walk, contract review) reaches the worker. Point host `web` at any other database and a Notation it
-  commits is invisible to the worker, and the flow 500s with `journal: RecordNotFound`. The `matter_open_restate`
-  regression in `server/tests/` proves the flow reaches the matter when the databases agree. There is currently no
-  automated guard comparing host `web`'s and the worker's databases at `worktree-env status` or `ops doctor` time; a
-  mismatch surfaces only as the `journal: RecordNotFound` 500 above.
+  put host `web` on the worker's database ([kind-local-dev](../.agents/skills/kind-local-dev/SKILL.md)), so every
+  Restate-backed flow (the retainer walk, contract review) reaches the worker. Point host `web` at any other database
+  and a Notation it commits is invisible to the worker, and the flow 500s with `journal: RecordNotFound`. The
+  `matter_open_restate` regression in `server/tests/` proves the flow reaches the matter when the databases agree. There
+  is currently no automated guard comparing host `web`'s and the worker's databases at `worktree-env status` or `ops
+  doctor` time; a mismatch surfaces only as the `journal: RecordNotFound` 500 above.
 - **Debugging stays identifier-and-status only — never client content** (the standing no-content rule; see
   [observability](observability.md)).
 

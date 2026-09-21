@@ -56,11 +56,11 @@ fn run_walks_a_bundled_template_without_deployment_configuration_and_isolated_ru
             "{output}"
         );
         assert!(
-            output.contains("firm questionnaire complete: 8 answer(s)"),
+            output.contains("firm questionnaire complete: 7 answer(s)"),
             "{output}"
         );
         assert!(
-            output.contains("persisted 9 answer(s); workflow state lawyer_review"),
+            output.contains("persisted 8 answer(s); workflow state lawyer_review"),
             "{output}"
         );
         // `InMemoryRuntime` keeps its transition history process-local; the
@@ -69,7 +69,7 @@ fn run_walks_a_bundled_template_without_deployment_configuration_and_isolated_ru
         // count, so a broken journal write fails this run rather than
         // silently keeping the transcript in memory only.
         assert!(
-            output.contains("journaled 11 notation_events row(s)"),
+            output.contains("journaled 10 notation_events row(s)"),
             "{output}"
         );
         assert!(

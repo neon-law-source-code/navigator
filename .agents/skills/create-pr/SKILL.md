@@ -80,9 +80,8 @@ Load-bearing rules from those docs:
   extension, which cannot target this host. **Default to a GIF of the real interaction** ([[web-preview]] §5); use a
   still when the change is genuinely static, with no keypress, click, or state transition to show. A GIF carries the
   input between states that a before/after pair leaves out.
-- For authenticated screenshots, follow the worktree login flow in
-  [`AGENTS.md`](../../../AGENTS.md#authentication-and-lawyer-access): grant lawyer against the same store as `web`, then
-  sign in through Rauthy for a real session cookie.
+- For authenticated screenshots, follow the worktree login flow in [[open-admin-server]]: grant lawyer against the
+  same store as `web`, then sign in through Rauthy for a real session cookie.
 - **Audit the teaching surfaces (advisory).** Before pushing, run [[author-docs]]. It reads the docs, inline comments,
   tests, and workshops against what this branch changed and reports any that describe something the code has moved past.
   Fix the confirmed drift or escalate per its routing, and update the surface that owns each changed fact in the same

@@ -4863,7 +4863,7 @@ records:
             &body[..body.len().min(20)]
         );
         assert!(body.contains("{{person__client.name}}"));
-        assert!(body.contains("{{person__lawyer_dri.email}}"));
+        assert!(body.contains("contact@neonlaw.com"));
         assert!(body.contains("{{project__engagement.name}}"));
         assert!(body.contains("{{custom_clauses}}"));
     }
@@ -4915,9 +4915,6 @@ records:
             "binding arbitration administered by the American Arbitration Association",
             "limit, cap, or waive our responsibility for our own work",
             "consult independent counsel before agreeing to it",
-            "Mandatory Fee Arbitration Act",
-            "State Bar of Nevada",
-            "Washington State Bar Association",
             "Write to contact@neonlaw.com",
             "{{custom_clauses}}",
             "{{client.signature}}",

@@ -20,15 +20,11 @@ fn write(dir: &Path, rel: &str, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
-fn write_agent_contract(dir: &Path, code: &str) {
+fn write_agent_contract(dir: &Path, _code: &str) {
     write(
         dir,
         "AGENTS.md",
-        &format!(
-            "# Working in {code}\n\n\
-             When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team rather than documenting a CLI\n\
-             workaround here.\n"
-        ),
+        include_str!("../src/projects/agent_contract.md"),
     );
 }
 

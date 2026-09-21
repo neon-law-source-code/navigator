@@ -347,7 +347,7 @@ dependencies = [
  "cloud",
  "dotenvy",
  "iceberg",
- "parquet 59.3.0",
+ "parquet 60.0.0",
  "restate-sdk",
  "serde",
  "serde_json",
@@ -493,6 +493,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-array"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51dff6e4b9f158864a0aeb6a131ad53858ecbae7a2fc8989307b9b3c6b2f122e"
+dependencies = [
+ "ahash 0.8.12",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
+ "chrono",
+ "half",
+ "hashbrown 0.17.1",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "arrow-buffer"
 version = "58.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -509,6 +527,18 @@ name = "arrow-buffer"
 version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "097d193003ce7995d5d087089069ec2a6e0187faf5a6f8c9f38af2645d987182"
+dependencies = [
+ "bytes",
+ "half",
+ "num-bigint 0.5.1",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-buffer"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7235b863533e9db3ab86905b4521251de11226275b436ff3cb2d0010558d1c5"
 dependencies = [
  "bytes",
  "half",
@@ -559,6 +589,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-cmp"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73a0e9adb28d95739fabcdae637261a2c14e618caf58ba1b88857120f9ee2687"
+dependencies = [
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-schema 60.0.0",
+]
+
+[[package]]
 name = "arrow-data"
 version = "58.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -585,6 +626,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-data"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aa06d5e22786c4966ffc4d2f171d0cb65d95f6bdea108a14e8c335e9faa437f"
+dependencies = [
+ "arrow-buffer 60.0.0",
+ "arrow-schema 60.0.0",
+ "half",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "arrow-ipc"
 version = "58.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -600,15 +654,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-ipc"
-version = "59.3.0"
+version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcc41681ea80f521df14c36725b74d4c60702c47f0793af2be469c04527e2599"
+checksum = "86c523472d22e31f984df7a44fc36e6323d3c9b05ffe53d267ee4c3aa7c128d2"
 dependencies = [
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "flatbuffers",
 ]
 
@@ -664,6 +718,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10fab8d4563491417ba801fab29d205104d20d4bdf37bda6cd1cf425cff598cd"
 
 [[package]]
+name = "arrow-schema"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f85a9a58cd03560526b0066487574aacb9008e413504fa0ee23d61141e96c338"
+
+[[package]]
 name = "arrow-select"
 version = "58.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -688,6 +748,21 @@ dependencies = [
  "arrow-buffer 59.3.0",
  "arrow-data 59.3.0",
  "arrow-schema 59.3.0",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-select"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba3482b7d03bf4a3bf0b195f08a7f2b071595ccd54897e35b975ac63d3104977"
+dependencies = [
+ "ahash 0.8.12",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-cmp",
+ "arrow-data 60.0.0",
+ "arrow-schema 60.0.0",
  "num-traits",
 ]
 
@@ -8304,17 +8379,17 @@ dependencies = [
 
 [[package]]
 name = "parquet"
-version = "59.3.0"
+version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff322f54b1a0f9288e614ed1f2d329b380af5476420db19f46ffb865e1163d73"
+checksum = "8af83d2940bc0510f9aef86d865f56fdc6095f87ab115ac885a80b7c5226d3ba"
 dependencies = [
  "ahash 0.8.12",
- "arrow-array 59.3.0",
- "arrow-buffer 59.3.0",
- "arrow-data 59.3.0",
- "arrow-ipc 59.3.0",
- "arrow-schema 59.3.0",
- "arrow-select 59.3.0",
+ "arrow-array 60.0.0",
+ "arrow-buffer 60.0.0",
+ "arrow-data 60.0.0",
+ "arrow-ipc 60.0.0",
+ "arrow-schema 60.0.0",
+ "arrow-select 60.0.0",
  "base64 0.23.1",
  "bytes",
  "chrono",
@@ -8790,7 +8865,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "p256 0.14.0",
- "parquet 59.3.0",
+ "parquet 60.0.0",
  "pdf",
  "pulldown-cmark",
  "rand 0.10.2",
@@ -10796,7 +10871,7 @@ dependencies = [
  "mcp",
  "neon",
  "p256 0.14.0",
- "parquet 59.3.0",
+ "parquet 60.0.0",
  "pdf",
  "portal",
  "pulldown-cmark",

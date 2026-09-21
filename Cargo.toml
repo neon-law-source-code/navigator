@@ -59,7 +59,7 @@ dioxus-server = "0.7.9"
 # The fullstack core exposes `extract` (read axum extractors inside a server
 # function); `dioxus::fullstack::extract` resolves to axum's module instead.
 dioxus-fullstack-core = "0.7.9"
-arrow = { version = "59", default-features = false }
+arrow = { version = "60", default-features = false }
 assert_cmd = "2"
 async-trait = "0.1"
 axum = "0.8"

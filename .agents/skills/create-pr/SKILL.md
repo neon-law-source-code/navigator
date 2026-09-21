@@ -45,7 +45,7 @@ Load-bearing rules from those docs:
   cargo nextest run --workspace && cargo test -p features
   ```
 
-  Total line coverage stays ≥ 90.6%, and the default nextest profile prints failures only.
+  Total line coverage stays ≥ 91.0%, and the default nextest profile prints failures only.
 - **Let CI's own scope test decide what "touches Rust" means.** The `changes` job in
   [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) classifies the diff and skips `cargo test (workspace)`
   outright when nothing matches: `*.rs`, `*.surql`, `*.feature`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`,
@@ -57,7 +57,7 @@ Load-bearing rules from those docs:
   catalogs by `views::locales`. Before calling a Markdown PR Markdown-only, `git grep` a distinctive phrase you removed;
   a hit in a `.rs` file means the diff now carries Rust and takes the full cargo gate.
 - **Measure coverage before pushing** — a green `cargo test` reports pass/fail; coverage is a separate read, taken by
-  `cargo llvm-cov --fail-under-lines 90.6` inside the `cargo test (workspace)` check. CI's coverage pass skips
+  `cargo llvm-cov --fail-under-lines 91.0` inside the `cargo test (workspace)` check. CI's coverage pass skips
   harness-gated tests (`new_client_or_skip`, anything needing the KIND stack), so code covered *only* by those counts as
   uncovered. Give handlers and routes a non-gated test through the router. The floor is a workspace total and can stay
   green while your change goes uncovered, so cover what you wrote. Full note in the doc's [Create a

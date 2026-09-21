@@ -38,9 +38,14 @@
    mode `--nav-color-link` resolves to the light `--nav-teal-400` — meant for
    the dark `--nav-color-bg` — but `.notations-page` keeps a fixed light
    background in both schemes, so the tie surfaced as unreadable teal-on-white
-   text. `.nav-theme .notations-actions a` (0,2,1) settles it on specificity. */
+   text. `.nav-theme .notations-actions a` (0,2,1) settles it on specificity.
+   The `Prose`-rendered inline link inside `.notations-lead` inherits the same
+   `.nav-theme a` rule and sits over the same fixed light background, so it
+   needs the identical treatment. */
 .nav-theme .notations-actions a:not(.nav-btn),
-.nav-theme .notations-actions a:not(.nav-btn):hover { color: inherit; }
+.nav-theme .notations-actions a:not(.nav-btn):hover,
+.nav-theme .notations-lead a,
+.nav-theme .notations-lead a:hover { color: inherit; }
 .notations-actions .nav-btn { color: white; background: var(--notation-ink); border-color: var(--notation-ink); }
 .notations-specimen {
   min-width: 0;

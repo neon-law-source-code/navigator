@@ -428,6 +428,12 @@ fn gate_now_scans_readme_and_claude_as_prose() {
 #[test]
 fn gate_root_scans_canonical_skills_without_duplicate_hidden_aliases() {
     let dir = TempDir::new().unwrap();
+    let broken_skill = dir
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("broken")
+        .join("SKILL.md");
     write(
         dir.path(),
         ".agents/skills/broken/SKILL.md",
@@ -458,7 +464,7 @@ fn gate_root_scans_canonical_skills_without_duplicate_hidden_aliases() {
         .assert()
         .failure()
         .code(1)
-        .stdout(str::contains(".agents/skills/broken/SKILL.md"))
+        .stdout(str::contains(broken_skill.display().to_string()))
         .stdout(str::contains("S101"))
         .stdout(str::contains("Scanned 1 file(s)"));
 }

@@ -200,6 +200,13 @@ fn windows_cli_and_lsp_check_is_path_scoped_and_optional() {
     );
     assert!(
         steps.iter().any(|step| {
+            step["run"].as_str()
+                == Some("cargo test --locked -p cli --test project_repository --test gate")
+        }),
+        "Windows must run the focused CLI integration tests"
+    );
+    assert!(
+        steps.iter().any(|step| {
             step["uses"].as_str() == Some("dtolnay/rust-toolchain@stable")
                 && step["with"]["toolchain"].as_str() == Some("1.98.0")
         }),

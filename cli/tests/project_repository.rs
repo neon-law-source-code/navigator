@@ -597,6 +597,7 @@ fn direct_apps_are_discovered_and_each_is_validated() {
     scaffold(dir.path(), "example-project").success();
     write_vite_workspace(dir.path(), "apps/portal");
     write_vite_workspace(dir.path(), "apps/exchange");
+    let exchange = dir.path().join("apps").join("exchange");
     fs::create_dir_all(dir.path().join("apps/shared")).unwrap();
     fs::write(dir.path().join("apps/shared/routes.ts"), "export {};\n").unwrap();
 
@@ -608,19 +609,22 @@ fn direct_apps_are_discovered_and_each_is_validated() {
     gate(dir.path())
         .failure()
         .code(1)
-        .stderr(str::contains("apps/exchange"))
+        .stderr(str::contains(exchange.display().to_string()))
         .stderr(str::contains("is not a Vite workspace"))
         .stderr(str::contains("index.html"));
 
-    fs::write(
-        dir.path().join("apps/exchange/.env.production"),
-        "SECRET=synthetic\n",
-    )
-    .unwrap();
+    fs::write(exchange.join("index.html"), "<!doctype html>\n").unwrap();
+    fs::write(exchange.join(".env.production"), "SECRET=synthetic\n").unwrap();
     gate(dir.path())
         .failure()
         .code(1)
-        .stderr(str::contains("apps/exchange/.env.production"))
+        .stderr(
+            str::is_match(
+                r"(?m)[^\r\n]*[\\/]apps[\\/]exchange[\\/]\.env\.production: error: client answers and environment secrets must not be committed",
+            )
+            .unwrap(),
+        )
+        .stderr(str::contains("is not a Vite workspace").not())
         .stderr(str::contains("must not be committed"));
 }
 

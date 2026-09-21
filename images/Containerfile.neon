@@ -187,7 +187,7 @@ RUN NO_DOWNLOADS=1 dx build --package webapp --platform web --release --debug-sy
 # Build the local, network-free DOCX adapter from the pinned official SDK and
 # the locked DocumentFormat.OpenXml package. The runtime receives a single
 # self-contained executable; no SDK or package restore is present there.
-FROM mcr.microsoft.com/dotnet/sdk:9.0.318-bookworm-slim@sha256:20387c6674c30e46def0cc8cb557bd2a69b35afdf18c19c3694638d0a90897e4 AS word-adapter-builder
+FROM mcr.microsoft.com/dotnet/sdk:9.0.318-bookworm-slim@sha256:01fabc4758d1d74e39eda700c8463dae6241a61481f973683692ddcb59a5eeb7 AS word-adapter-builder
 
 WORKDIR /src
 COPY global.json global.json

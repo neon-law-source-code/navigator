@@ -10,6 +10,16 @@
 //! noun (a person's name/email, a legal actor, a country, a phone) get a
 //! pointed message and can never be allowlisted — a meta-test bars the
 //! tokens from the allowlist itself.
+//!
+//! The allowlist is adjudicated around instruments, and it carries nothing
+//! for the sections an advice memorandum is made of — a question presented,
+//! a short answer, an analysis, open questions. That is deliberate. A
+//! `kind: memo` blueprint collects durable typed inputs at intake and leaves
+//! its substance to body prose the attorney writes at `lawyer_review`,
+//! because the reasoning is attorney work product and asking the client to
+//! supply it at intake inverts what the memorandum is for. So an `N117`
+//! failure on a memo means the section belongs in the body, not that the
+//! list is short; see [`crate::Kind::Memo`].
 
 use std::collections::BTreeMap;
 
@@ -247,6 +257,45 @@ questionnaire:
         assert_eq!(v.len(), 1, "{v:?}");
         assert!(v[0].message.contains("not an allowlisted"), "{v:?}");
         assert!(v[0].message.contains("ALLOWED_CUSTOM_TEXT_ROLES"));
+    }
+
+    /// The memo lane's sections are refused like any other unadjudicated
+    /// role, and that refusal is the design holding rather than an accident
+    /// of an unfinished list — so it is pinned. Without this, the natural
+    /// reading of a memo author's first `N117` failure is "add the four
+    /// roles", which would put attorney work product into intake.
+    #[test]
+    fn refuses_memo_sections_so_analysis_is_not_collected_at_intake() {
+        let body = "---
+questionnaire:
+  BEGIN:
+    _: custom_text__question_presented
+  custom_text__question_presented:
+    _: custom_text__short_answer
+  custom_text__short_answer:
+    _: custom_text__analysis
+  custom_text__analysis:
+    _: custom_text__open_questions
+  custom_text__open_questions:
+    _: END
+  END: {}
+---
+";
+        let v = F117GlossaryBackedCustomText.lint(&file(body));
+        assert_eq!(v.len(), 4, "{v:?}");
+        assert!(v.iter().all(|v| v.message.contains("not an allowlisted")));
+        for role in [
+            "question_presented",
+            "short_answer",
+            "analysis",
+            "open_questions",
+        ] {
+            assert!(
+                !ALLOWED_CUSTOM_TEXT_ROLES.contains(&role),
+                "`{role}` was allowlisted; a memo's substance belongs in the body it is \
+                 written into at lawyer_review, not in the questionnaire"
+            );
+        }
     }
 
     #[test]

@@ -123,7 +123,17 @@ The pointer records `kind`, desired `visibility`, current revision metadata, and
 has one. It never contains an object-storage coordinate or legal-document bytes. Editing a pointer's visibility and
 running sync reconciles that value through the same authorized API; the normal API audit records the actor and
 operation. Folder conventions infer `filing` for `pleadings/`, `exhibit` for `exhibits/`, and `agreement` for
-`agreements/`; other paths use `unclassified`. Visibility defaults to `internal`.
+`agreements/`; other paths use `unclassified`. Visibility defaults to `internal`. A folder outside those three
+conventions is therefore deliberately `unclassified` rather than a rejected path, and `navigator site sync --help` says
+so, so a lawyer who drops a file somewhere the conventions do not name is not left reading a silent pass as a failure.
+
+**The key layout stays content-addressed; a readable slug key is a proposal, not an authorized migration.** Keys remain
+`projects/<code>/documents/<sha256>`, and `site sync` never renames or migrates one — the slug it derives from the
+staging path names the *pointer*, not the object. Content addressing is load-bearing in three places at once: it is what
+makes the `assets` revision chain immutable, what lets the same bytes filed in two matters deduplicate instead of
+diverging, and what lets a governed expunge find every reference to the bytes it is about to destroy. A slug-keyed
+layout has to answer all three before a migration is considered, so flattening these keys is not routine cleanup and no
+part of it rides along with an unrelated change.
 
 The command creates `documents/.gitignore` without overwriting an existing file. `scaffold` writes the same four bytes,
 and `Y014` holds them exact whenever `documents/` exists: deny everything, then re-admit subdirectories, pointer files,
@@ -655,6 +665,20 @@ name the Lawyers team as where a Navigator CLI gap is filed rather than recorded
 repository. The same `validate` walk extracts `navigator …` invocations from the repository's Markdown and checks each
 against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit that
 introduced the rename.
+
+**`AGENTS.md` has two halves, and only one of them is the repository's.** Everything above `## One contract, one
+catalog` is about that Project — its code, where its apps mount, what its templates are named — and the gate compares it
+to nothing. The sections from that heading to the end of the file are Navigator's: the same sentences in every
+repository, written once by `scaffold` from bytes compiled into the CLI. The gate holds that half to those bytes, the
+way it already holds each synced skill to its canonical copy, because boilerplate nobody re-reads is boilerplate that
+drifts — and a contract saying different things in different repositories is worse than one saying nothing, since an
+agent believes whichever copy it was handed.
+
+Drift in that half is reported as a **warning**, not an error. No verb repairs `AGENTS.md` in place yet: `sync-skills`
+overwrites whole files, and half of this one belongs to the matter, so today's remedy is an operator restoring the block
+by hand. Failing a repository over prose it cannot fix with a single command would make the pin bump that first delivers
+this check turn the fleet red. Missing `AGENTS.md`, and an `AGENTS.md` that does not name where CLI feedback goes, both
+remain errors.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

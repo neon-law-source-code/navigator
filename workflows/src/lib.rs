@@ -23,6 +23,7 @@ pub mod dispatch;
 pub mod document;
 pub mod email;
 pub mod email_summary;
+pub mod email_summary_delivery;
 pub mod guardrail;
 pub mod intake;
 pub mod integrations;
@@ -57,6 +58,10 @@ pub use email_summary::{
     NormalizedEmail, SummaryError, SummaryProvider, DEFAULT_MAX_INPUT_CHARS,
     DEFAULT_MAX_OUTPUT_TOKENS, SUMMARY_PROMPT_VERSION,
 };
+pub use email_summary_delivery::{
+    deliver_summary, render_summary_message, DeliveryResult, ProviderDelivery,
+    SummaryDeliveryError, SummaryDeliveryMessage,
+};
 pub use guardrail::{lawyer_review_gates_filing, lawyer_review_precedes_submission, GateViolation};
 pub use intake::{
     dispatch_document_intake, is_document_intake, IntakeArtifact, IntakeError, IntakePayload,
@@ -72,7 +77,8 @@ pub use notation_session::{
 };
 pub use notify::{
     ops_slack_messages, CapturingNotifier, CapturingSlackBot, Notifier, NotifyError, SlackBot,
-    SlackBotClient, SlackBotError, SlackChannel, SlackNotifier, SlackOpsDelivery,
+    SlackBotClient, SlackBotError, SlackChannel, SlackMessageReceipt, SlackNotifier,
+    SlackOpsDelivery,
 };
 pub use post_questionnaire::{PostQuestionnaireDrive, PostQuestionnaireError};
 pub use runtime::{

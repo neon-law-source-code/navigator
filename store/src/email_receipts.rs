@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::surreal::{record_id, record_uuid, SurrealDb};
 
-const TABLE: &str = "email_receipt";
+pub const TABLE: &str = "email_receipt";
 pub const PROCESSING_PENDING: &str = "pending";
 pub const PROCESSING_ARCHIVED: &str = "archived";
 pub const DELIVERY_NOT_ATTEMPTED: &str = "not_attempted";

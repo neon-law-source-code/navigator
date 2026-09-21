@@ -42,6 +42,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
+use std::time::Duration;
 use thiserror::Error;
 
 use crate::email::service::{EmailError, EmailService, OutboundEmail, SendReceipt};
@@ -69,6 +70,12 @@ pub enum SlackBotError {
     /// Slack or its edge rejected the HTTP request.
     #[error("Slack API HTTP status {0}")]
     HttpStatus(u16),
+    /// Slack or its edge returned a transient server failure.
+    #[error("Slack API transient HTTP status {0}")]
+    RetryableHttpStatus(u16),
+    /// Slack rate-limited the request and supplied an optional retry delay.
+    #[error("Slack API rate limited the request")]
+    RateLimited { retry_after_seconds: Option<u64> },
     /// Slack returned a structured API error.
     #[error("Slack API rejected the request: {0}")]
     Api(String),
@@ -85,6 +92,14 @@ pub struct SlackChannel {
     pub name: String,
 }
 
+/// The provider receipt for a successful `chat.postMessage` call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlackMessageReceipt {
+    pub channel_id: String,
+    pub timestamp: String,
+    pub correlation_id: Option<String>,
+}
+
 /// Target-aware Slack delivery for internal Project channels.
 #[async_trait]
 pub trait SlackBot: Send + Sync {
@@ -92,6 +107,22 @@ pub trait SlackBot: Send + Sync {
     async fn create_private_channel(&self, name: &str) -> Result<SlackChannel, SlackBotError>;
     /// Post a short internal notice to a channel ID.
     async fn post_message(&self, channel_id: &str, text: &str) -> Result<(), SlackBotError>;
+    /// Post a message and retain Slack's delivery coordinates. Implementors
+    /// that only support the legacy operation receive an explicit empty
+    /// receipt, so existing operational callers remain unchanged.
+    async fn post_message_with_receipt(
+        &self,
+        channel_id: &str,
+        text: &str,
+        correlation_id: Option<&str>,
+    ) -> Result<SlackMessageReceipt, SlackBotError> {
+        self.post_message(channel_id, text).await?;
+        Ok(SlackMessageReceipt {
+            channel_id: channel_id.to_string(),
+            timestamp: String::new(),
+            correlation_id: correlation_id.map(str::to_string),
+        })
+    }
 }
 
 /// Slack Web API client authenticated with a bot token. The token is held only
@@ -141,8 +172,16 @@ impl SlackBotClient {
         base_url: impl Into<String>,
         from_staging: bool,
     ) -> Self {
+        let http = match reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(20))
+            .build()
+        {
+            Ok(client) => client,
+            Err(_) => reqwest::Client::new(),
+        };
         Self {
-            http: reqwest::Client::new(),
+            http,
             base_url: base_url.into().trim_end_matches('/').to_string(),
             token: token.into(),
             from_staging,
@@ -164,6 +203,19 @@ impl SlackBotClient {
             .map_err(|error| SlackBotError::Transport(error.to_string()))?;
         let status = response.status();
         if !status.is_success() {
+            if status.as_u16() == 429 {
+                let retry_after_seconds = response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok());
+                return Err(SlackBotError::RateLimited {
+                    retry_after_seconds,
+                });
+            }
+            if status.is_server_error() {
+                return Err(SlackBotError::RetryableHttpStatus(status.as_u16()));
+            }
             return Err(SlackBotError::HttpStatus(status.as_u16()));
         }
         response
@@ -186,6 +238,8 @@ struct PostMessageResponse {
     ok: bool,
     #[serde(default)]
     error: Option<String>,
+    channel: Option<String>,
+    ts: Option<String>,
 }
 
 #[async_trait]
@@ -212,11 +266,48 @@ impl SlackBot for SlackBotClient {
         let response: PostMessageResponse = self
             .post(
                 "chat.postMessage",
-                &json!({ "channel": channel_id, "text": text }),
+                &json!({
+                    "channel": channel_id,
+                    "text": text,
+                    "unfurl_links": false,
+                    "unfurl_media": false,
+                }),
             )
             .await?;
         if response.ok {
             Ok(())
+        } else {
+            Err(SlackBotError::Api(
+                response
+                    .error
+                    .unwrap_or_else(|| "unknown_error".to_string()),
+            ))
+        }
+    }
+
+    async fn post_message_with_receipt(
+        &self,
+        channel_id: &str,
+        text: &str,
+        correlation_id: Option<&str>,
+    ) -> Result<SlackMessageReceipt, SlackBotError> {
+        let text = cloud::outbound_slack_text(text, self.from_staging);
+        let mut body = json!({
+            "channel": channel_id,
+            "text": text,
+            "unfurl_links": false,
+            "unfurl_media": false,
+        });
+        if let Some(correlation_id) = correlation_id {
+            body["client_msg_id"] = json!(correlation_id);
+        }
+        let response: PostMessageResponse = self.post("chat.postMessage", &body).await?;
+        if response.ok {
+            Ok(SlackMessageReceipt {
+                channel_id: response.channel.ok_or(SlackBotError::IncompleteResponse)?,
+                timestamp: response.ts.ok_or(SlackBotError::IncompleteResponse)?,
+                correlation_id: correlation_id.map(str::to_string),
+            })
         } else {
             Err(SlackBotError::Api(
                 response
@@ -275,6 +366,20 @@ impl SlackBot for CapturingSlackBot {
             .expect("Slack bot lock poisoned")
             .push((channel_id.to_string(), text.to_string()));
         Ok(())
+    }
+
+    async fn post_message_with_receipt(
+        &self,
+        channel_id: &str,
+        text: &str,
+        correlation_id: Option<&str>,
+    ) -> Result<SlackMessageReceipt, SlackBotError> {
+        self.post_message(channel_id, text).await?;
+        Ok(SlackMessageReceipt {
+            channel_id: channel_id.to_string(),
+            timestamp: format!("{}.000000", self.posted_messages().len()),
+            correlation_id: correlation_id.map(str::to_string),
+        })
     }
 }
 
@@ -560,6 +665,40 @@ mod tests {
         bot.post_message(&channel.id, "hello")
             .await
             .expect("Slack post succeeds");
+    }
+
+    #[tokio::test]
+    async fn receipt_post_returns_coordinates_and_disables_unfurls() {
+        use wiremock::matchers::{body_partial_json, header, method, path};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let server = wiremock::MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .and(header("authorization", "Bearer xoxb-test"))
+            .and(body_partial_json(serde_json::json!({
+                "channel": "C123",
+                "text": "hello",
+                "client_msg_id": "corr-123",
+                "unfurl_links": false,
+                "unfurl_media": false
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"ok":true,"channel":"C123","ts":"1700000000.000001"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let receipt = bot
+            .post_message_with_receipt("C123", "hello", Some("corr-123"))
+            .await
+            .expect("Slack receipt succeeds");
+        assert_eq!(receipt.channel_id, "C123");
+        assert_eq!(receipt.timestamp, "1700000000.000001");
+        assert_eq!(receipt.correlation_id.as_deref(), Some("corr-123"));
     }
 
     #[tokio::test]

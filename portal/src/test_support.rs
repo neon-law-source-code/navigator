@@ -531,3 +531,32 @@ pub fn sign_id_token_with_kid(
         .expect("test OIDC private key parses");
     encode(&header, &claims, &key).expect("sign test id_token")
 }
+
+/// RSA modulus/exponent for [`TEST_OIDC_KID`], base64url without padding,
+/// matching the throwaway test keypair used to sign JWTs in this module.
+#[must_use]
+pub fn test_oidc_jwks_rsa() -> crate::auth::JwksKey {
+    crate::auth::JwksKey {
+        kid: Some(TEST_OIDC_KID.to_string()),
+        kty: "RSA".into(),
+        n: Some(
+            "moadu_HmIwEtxoKi8C98ir7ScJ9ukHoQ2LfOBqgOfBZBAEdtNlWW1FZEgimvBxt9C7MuQTe_wqD9aO8Jeq6_gFeLH9fANTuZO7uhRqwTEqM4MnZiGGwICiE7r3Ng5vRFO9O35jkBHSArh4MiAc_gJuT_IOwVDyFYnO5e4IUTYn6O61h-LvGlpWSMQEcw2ppk0WafOOKZwxtAzRrBhPAyImE6pRK7DsbjViK-Hz0RBjycxksgo4lEQrQ3wW3K9RYiE3_JAf1FyVGmMLbU6ApRs1to5OFBNEC3jIWFw0YxlanEzIQ88mFy-a4klkPLyh12JxQRS8yTBk3sSUWzrZTULw"
+                .into(),
+        ),
+        e: Some("AQAB".into()),
+        crv: None,
+        x: None,
+        y: None,
+        alg: Some("RS256".into()),
+    }
+}
+
+/// Sign arbitrary RS256 claims with the throwaway test key.
+#[must_use]
+pub fn sign_rs256_claims<T: serde::Serialize>(kid: &str, claims: &T) -> String {
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(kid.to_string());
+    let key = EncodingKey::from_rsa_pem(TEST_OIDC_PRIV_PEM.as_bytes())
+        .expect("test OIDC private key parses");
+    encode(&header, claims, &key).expect("sign test claims")
+}

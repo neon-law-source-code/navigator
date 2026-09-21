@@ -73,12 +73,12 @@ When a dirty tree is ready to land:
    cargo test -p features
    ```
 
-   Verify coverage locally; green tests do not prove the 90.6% workspace line floor. Match CI's coverage topology: Each
+   Verify coverage locally; green tests do not prove the 91.0% workspace line floor. Match CI's coverage topology: Each
    test opens its own embedded store; tests requiring KIND, Rauthy, Garage, Restate, or a browser skip and contribute no
    coverage:
 
    ```bash
-   cargo llvm-cov --workspace --fail-under-lines 90.6 \
+   cargo llvm-cov --workspace --fail-under-lines 91.0 \
      --ignore-filename-regex '(cli/src/devx/(browser_e2e|chrome|e2e|garage|orchestrate|staging)|features/src/webdriver)\.rs$'
    ```
 

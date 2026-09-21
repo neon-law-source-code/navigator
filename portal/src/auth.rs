@@ -222,12 +222,12 @@ impl AuthConfig {
 
 /// Minimal JWKS document shape, enough to extract RSA `n`/`e` or EC
 /// `crv`/`x`/`y` coordinates.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JwksDocument {
     pub keys: Vec<JwksKey>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JwksKey {
     pub kid: Option<String>,
     pub kty: String,

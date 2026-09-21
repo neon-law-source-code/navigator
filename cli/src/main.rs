@@ -17,8 +17,6 @@ mod firms_doctor;
 mod format;
 mod forms_sync;
 #[allow(dead_code)]
-mod import;
-#[allow(dead_code)]
 mod intake;
 mod login;
 mod lsp_publish;
@@ -42,6 +40,7 @@ mod sendgrid_openapi;
 mod surreal_archive;
 mod transcribe;
 
+use cli::import;
 use devx::brand::BrandCmd;
 use devx::{DnsCmd, GcpCmd, RestateCmd, StagingAction, WorktreeEnvCmd};
 

@@ -86,9 +86,7 @@ fn write_agent_contract(root: &Path) {
     write(
         root,
         "AGENTS.md",
-        "# Working in acme\n\n\
-         When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team rather than documenting a CLI\n\
-         workaround here.\n",
+        include_str!("../src/projects/agent_contract.md"),
     );
 }
 

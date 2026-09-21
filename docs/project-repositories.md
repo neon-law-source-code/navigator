@@ -666,19 +666,14 @@ repository. The same `validate` walk extracts `navigator …` invocations from t
 against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit that
 introduced the rename.
 
-**`AGENTS.md` has two halves, and only one of them is the repository's.** Everything above `## One contract, one
-catalog` is about that Project — its code, where its apps mount, what its templates are named — and the gate compares it
-to nothing. The sections from that heading to the end of the file are Navigator's: the same sentences in every
-repository, written once by `scaffold` from bytes compiled into the CLI. The gate holds that half to those bytes, the
-way it already holds each synced skill to its canonical copy, because boilerplate nobody re-reads is boilerplate that
-drifts — and a contract saying different things in different repositories is worse than one saying nothing, since an
-agent believes whichever copy it was handed.
+**`AGENTS.md` is one canonical file everywhere.** It carries the same short tool list and Navigator safety contract in
+every Project repository. Project-specific identity and coordinates belong in `navigator.yaml` and the live Project row,
+not in checked-in instructions. The gate compares the file byte-for-byte with the copy compiled into the CLI, just as it
+does each synced skill.
 
-Drift in that half is reported as a **warning**, not an error. No verb repairs `AGENTS.md` in place yet: `sync-skills`
-overwrites whole files, and half of this one belongs to the matter, so today's remedy is an operator restoring the block
-by hand. Failing a repository over prose it cannot fix with a single command would make the pin bump that first delivers
-this check turn the fleet red. Missing `AGENTS.md`, and an `AGENTS.md` that does not name where CLI feedback goes, both
-remain errors.
+Drift is an error and names its repair: `navigator project repository sync-skills` rewrites the canonical `AGENTS.md`
+and the `.agents/skills/` catalog. `scaffold` and `sync-skills` therefore agree from the first commit, and no repository
+needs a hand-written tool list or a second matter-specific contract tree.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that
@@ -700,7 +695,8 @@ than failing it. A Project may legitimately open before either half exists.
 `navigator project repository sync-skills` also migrates a repository that still carries `.claude/skills/`. It checks
 the complete destination first, refuses any same-path file whose bytes differ, copies repository-local skills alongside
 the canonical catalog, and removes only the relocated `skills/` tree. Other ignored `.claude/` state remains in place.
-After a successful migration, rerunning the command is a no-op apart from restoring the canonical skill bytes.
+After a successful migration, rerunning the command is a no-op apart from restoring the canonical contract and skill
+bytes.
 
 ### Delivering a Project pull request
 

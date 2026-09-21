@@ -461,6 +461,11 @@ pub fn sync_skills(root: &Path) -> ExitCode {
         }
     }
 
+    if let Err(error) = write_canonical_agent_contract(root) {
+        eprintln!("navigator: sync canonical AGENTS.md: {error}");
+        return ExitCode::from(2);
+    }
+
     if let Err(error) = write_canonical_skills(root, true) {
         eprintln!("navigator: sync canonical skills: {error}");
         return ExitCode::from(2);
@@ -507,6 +512,10 @@ fn write_canonical_skills(root: &Path, overwrite: bool) -> io::Result<()> {
         println!("synced    {}", path.display());
     }
     Ok(())
+}
+
+fn write_canonical_agent_contract(root: &Path) -> io::Result<()> {
+    fs::write(root.join("AGENTS.md"), AGENT_CONTRACT_BASE)
 }
 
 #[derive(Debug)]
@@ -1108,28 +1117,9 @@ fn validate_layout_entry(
     }
 }
 
-/// The phrase a Project `AGENTS.md` must carry so a CLI gap is filed on the
-/// Lawyers team instead of documented as a workaround in the matter repository.
-/// A `linear.app` URL is a roadmap slug and cannot live in this tree, so the
-/// gate reads this phrase rather than a YAML key or a URL.
-const CLI_FEEDBACK_NEEDLE: &str = "open a Linear issue on the Lawyers team";
-
-/// Hold `AGENTS.md` to two different standards, because it has two halves.
-///
-/// The matter-specific half is the repository's own and is not compared to
-/// anything: a Project's own contract prose is exactly what this file is for.
-/// The CLI-owned half ([`AGENT_CONTRACT_BASE`]) is not the repository's to
-/// vary, so it is compared byte for byte the way a synced skill is.
-///
-/// Presence and the feedback destination stay **errors** — they are today's
-/// floor and every repository already clears them. A drifted or absent base
-/// block is a **warning**, deliberately. There is no verb yet that repairs
-/// `AGENTS.md` in place: `sync-skills` overwrites whole files, and this file
-/// is half the repository's, so the honest remedy today is an operator
-/// editing the block back. Reporting that as an error would turn repositories
-/// red on the pin bump that first delivers this check, with no single command
-/// to clear it. The detection lands first; the repairing verb and the
-/// escalation to an error follow it.
+/// Hold `AGENTS.md` to the one canonical contract every Project repository
+/// receives. Project-specific coordinates belong in `navigator.yaml` and the
+/// live Project row; checked-in agent instructions must not vary by matter.
 fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) {
     let agents_path = root.join("AGENTS.md");
     let Ok(agents) = fs::read_to_string(&agents_path) else {
@@ -1139,22 +1129,13 @@ fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>, warnings: &mu
         ));
         return;
     };
-    if !agents.contains(CLI_FEEDBACK_NEEDLE) {
+    if agents != AGENT_CONTRACT_BASE {
         errors.push(Finding::at(
-            &agents_path,
-            format!(
-                "AGENTS.md must name where Navigator CLI feedback goes ({CLI_FEEDBACK_NEEDLE})"
-            ),
+            agents_path,
+            "AGENTS.md must match the canonical contract; run `navigator project repository sync-skills`",
         ));
     }
-    if !agents.contains(AGENT_CONTRACT_BASE) {
-        warnings.push(Finding::at(
-            &agents_path,
-            "AGENTS.md's Navigator-owned half has drifted from this CLI's copy; the sections \
-             from `## One contract, one catalog` to the end belong to the CLI, not to this \
-             repository. Restore them verbatim and keep this repository's own prose above them",
-        ));
-    }
+    let _ = warnings;
 }
 
 /// Hold a Project repository's `navigator.yaml` to the closed key set and
@@ -2092,56 +2073,13 @@ fn readme(project_code: &str) -> String {
     )
 }
 
-/// The half of a Project repository's `AGENTS.md` that belongs to the CLI
-/// rather than to the matter.
-///
-/// Everything above it in the generated file is about *this* Project — its
-/// code, where its apps mount, what its templates are named. Everything in
-/// here is the same sentence in every repository: one contract and one
-/// catalog, a Project code is client data, and CLI feedback goes to Linear.
-/// Boilerplate that is copied once at scaffold time and then never looked at
-/// again is boilerplate that drifts, and a contract that says different
-/// things in different repositories is worse than one that says nothing,
-/// because an agent reads whichever copy it was handed and believes it.
-///
-/// Named as a constant so the generator and [`validate_agent_contract`] read
-/// the same bytes: `scaffold` writes it, and the gate reports a repository
-/// whose copy no longer matches. That is the same arrangement
-/// [`SYNCED_SKILLS`] and [`validate_skills`] already have, for the same
-/// reason — the check is only worth having if the thing it compares against
-/// is the thing that gets written.
-const AGENT_CONTRACT_BASE: &str = "## One contract, one catalog\n\n\
-     This file is the whole agent contract here, and `.agents/skills/` is the whole skill catalog.\n\n\
-     A `CLAUDE.md`, `.claude/`, or `.codex/` beside them is a retired mirror and fails `navigator project gate`.\n\n\
-     Whichever harness you are, read this file: there is no second copy under another name to keep in sync.\n\n\
-     ## Project codes are client identifiers\n\n\
-     A Project code names a matter and its repository. It identifies a client, so it is client data.\n\n\
-     The one legitimate use here is this repository naming itself, as in `navigator.yaml`, its paths, and its portal mount.\n\n\
-     Do not copy a Project code from another repository into this codebase.\n\n\
-     Do not put it into a commit message, code comment, branch name, or pull-request body.\n\n\
-     A precedent citation is still a breach; cite the governing issue by its bare identifier instead.\n\n\
-     Read matter data through Navigator's `/api` read surfaces and write through its one REST command boundary.\n\n\
-     Do not add a second backend.\n\n\
-     Do not put a legal file, a client upload, an answer, a generated document, or a secret in this repository.\n\n\
-     ## Navigator CLI feedback\n\n\
-     When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team rather than documenting a CLI\n\
-     workaround here.\n";
+/// The one `AGENTS.md` every Project repository carries. Project-specific
+/// coordinates belong in `navigator.yaml` and Navigator's live Project row,
+/// not in checked-in agent instructions.
+const AGENT_CONTRACT_BASE: &str = include_str!("agent_contract.md");
 
-fn agents(project_code: &str) -> String {
-    format!(
-        "# Working in {project_code}\n\n\
-         This is one Project's repository. It holds two kinds of source and nothing else.\n\n\
-         * `templates/` — notation blueprints, one `templates/<code>.md` per notation.\n\
-         * `apps/<app>/` — React + Vite applications, each discovered from its direct `package.json`.\n\n\
-         A filename stem carries no required Project-code prefix; `template.project_id` already scopes it here.\n\n\
-         The stem only has to be unique in this repository, and `code:` matches the stem.\n\n\
-         Navigator imports each template and records the commit SHA as provenance.\n\n\
-         Build each app for `/app/projects/{project_code}/<app>/`; the `apps/` source grouping is not a URL segment.\n\n\
-         Derive every in-app path from `import.meta.env.BASE_URL` rather than writing an absolute path by hand.\n\n\
-         A Vite base rewrites module and asset URLs and never an `href` in source.\n\n\
-         A root `portal/` is also accepted while repositories move that workspace to `apps/portal/`.\n\n\
-         {AGENT_CONTRACT_BASE}"
-    )
+fn agents(_project_code: &str) -> String {
+    AGENT_CONTRACT_BASE.to_owned()
 }
 
 fn tests_readme() -> String {
@@ -2245,8 +2183,8 @@ mod tests {
         agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
         placeholder_template, repository_name, scaffold, validate_cd_workflow,
         validate_github_path, validate_layout, validate_workflow, workflow, Finding,
-        AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, CLI_FEEDBACK_NEEDLE, ENTITY_CODE,
-        PROJECT_MANIFEST, RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW, SYNCED_SKILLS, WORKFLOW,
+        AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST,
+        RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW, SYNCED_SKILLS, WORKFLOW,
     };
     use crate::projects::manifest::Manifest;
     use std::fs;
@@ -2538,17 +2476,15 @@ jobs:
     /// theatre: a freshly scaffolded repository must be clean under the very
     /// rule that reads the file `scaffold` just wrote.
     #[test]
-    fn the_scaffolded_contract_carries_the_cli_owned_half_verbatim() {
+    fn the_scaffolded_contract_is_the_canonical_shared_file() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
-        assert!(agents("acme").contains(AGENT_CONTRACT_BASE));
-        let warnings = layout_warnings(root.path());
-        assert!(
-            !warnings
-                .iter()
-                .any(|warning| warning.contains("Navigator-owned half")),
-            "{warnings:?}"
+        assert_eq!(
+            fs::read_to_string(root.path().join("AGENTS.md")).unwrap(),
+            AGENT_CONTRACT_BASE
         );
+        let warnings = layout_warnings(root.path());
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
     /// The drift this catches is the quiet kind: the contract still *reads*
@@ -2557,7 +2493,7 @@ jobs:
     /// one repository now tells an agent something slightly different from the
     /// other eighteen.
     #[test]
-    fn a_reworded_cli_owned_half_is_reported_as_drift() {
+    fn a_reworded_contract_is_reported_as_an_error() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         let reworded = agents("acme").replace(
@@ -2570,30 +2506,20 @@ jobs:
         let mut warnings = Vec::new();
         validate_layout(root.path(), &mut errors, &mut warnings);
         assert!(
-            warnings
+            errors
                 .iter()
                 .any(|finding| finding.path.ends_with("AGENTS.md")
-                    && finding.message.contains("Navigator-owned half")),
-            "{warnings:?}"
-        );
-        // A warning, not an error: there is no verb that repairs this file in
-        // place yet, so the pin bump that first delivers this check must not
-        // make a repository unmergeable over prose it cannot fix with one
-        // command.
-        assert!(
-            !errors
-                .iter()
-                .any(|finding| finding.message.contains("Navigator-owned half")),
+                    && finding.message.contains("canonical contract")
+                    && finding.message.contains("sync-skills")),
             "{errors:?}"
         );
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
-    /// Dropping the CLI-owned half altogether takes the feedback destination
-    /// with it, so the existing error still fires. Asserted together because
-    /// the two checks read the same file and it would be easy to make the new
-    /// one shadow the old.
+    /// Any hand-written contract is drift, including one that omits the
+    /// canonical feedback and safety guidance.
     #[test]
-    fn a_contract_without_the_cli_owned_half_errors_and_warns() {
+    fn a_contract_without_the_canonical_content_is_refused() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         std::fs::write(root.path().join("AGENTS.md"), "# Working in acme\n").unwrap();
@@ -2604,14 +2530,33 @@ jobs:
         assert!(
             errors
                 .iter()
-                .any(|finding| finding.message.contains(CLI_FEEDBACK_NEEDLE)),
+                .any(|finding| finding.message.contains("canonical contract")),
             "{errors:?}"
         );
-        assert!(
-            warnings
-                .iter()
-                .any(|finding| finding.message.contains("Navigator-owned half")),
-            "{warnings:?}"
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    #[test]
+    fn scaffold_uses_identical_agents_bytes_for_every_project() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        scaffold(
+            first.path(),
+            "first-project",
+            FIXTURE_PIN,
+            "staging.neonlaw.com",
+            false,
+        );
+        scaffold(
+            second.path(),
+            "second-project",
+            FIXTURE_PIN,
+            "staging.neonlaw.com",
+            false,
+        );
+        assert_eq!(
+            fs::read_to_string(first.path().join("AGENTS.md")).unwrap(),
+            fs::read_to_string(second.path().join("AGENTS.md")).unwrap()
         );
     }
 
@@ -2771,7 +2716,7 @@ jobs:
     }
 
     #[test]
-    fn agents_md_must_name_cli_feedback() {
+    fn agents_md_must_match_the_canonical_contract() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         std::fs::write(root.path().join("AGENTS.md"), "# Working in acme\n").unwrap();
@@ -2779,8 +2724,8 @@ jobs:
         assert!(
             found
                 .iter()
-                .any(|finding| finding.contains("CLI feedback")
-                    && finding.contains("Lawyers team")),
+                .any(|finding| finding.contains("canonical contract")
+                    && finding.contains("sync-skills")),
             "{found:?}"
         );
     }

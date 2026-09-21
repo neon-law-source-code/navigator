@@ -260,22 +260,15 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         "# CODEOWNERS\n\n* @shicholas\n"
     );
     let instructions = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
-    assert!(instructions.contains("`apps/<app>/`"));
-    assert!(instructions.contains("source grouping is not a URL segment"));
-    assert!(instructions.contains("root `portal/` is also"));
-    assert!(instructions.contains("carries no required Project-code prefix"));
-    assert!(instructions.contains("`code:` matches the stem"));
-    assert!(instructions.contains("A Project code names a matter and its repository."));
-    assert!(instructions.contains("It identifies a client, so it is client data."));
-    assert!(instructions.contains("The one legitimate use here is this repository naming itself"));
-    assert!(
-        instructions.contains("commit message, code comment, branch name, or pull-request body")
-    );
-    assert!(instructions.contains("A precedent"));
-    assert!(instructions.contains("citation is still a breach"));
+    assert!(instructions.contains("## Tools"));
+    assert!(instructions.contains("**Navigator CLI**"));
+    assert!(instructions.contains("**Gmail**"));
+    assert!(instructions.contains("**CourtListener**"));
+    assert!(instructions.contains("The last four leave the firm."));
     assert!(instructions.contains("`.agents/skills/` is the whole skill catalog"));
     assert!(instructions.contains("`.codex/`"));
     assert!(instructions.contains("fails `navigator project gate`"));
+    assert!(!instructions.contains("example-project"));
     assert!(dir.path().join("templates/onboarding.md").is_file());
     assert!(
         fs::read_to_string(dir.path().join("templates/onboarding.md"))
@@ -1197,10 +1190,14 @@ fn sync_skills_overwrites_a_hand_edited_copy() {
 
     let path = dir.path().join(".agents/skills/council/SKILL.md");
     let canonical = fs::read_to_string(&path).unwrap();
+    let agents = dir.path().join("AGENTS.md");
+    let canonical_agents = fs::read_to_string(&agents).unwrap();
     fs::write(&path, "hand-edited drift").unwrap();
+    fs::write(&agents, "hand-edited contract drift\n").unwrap();
 
     sync_skills(dir.path()).success();
     assert_eq!(fs::read_to_string(&path).unwrap(), canonical);
+    assert_eq!(fs::read_to_string(&agents).unwrap(), canonical_agents);
 }
 
 #[test]

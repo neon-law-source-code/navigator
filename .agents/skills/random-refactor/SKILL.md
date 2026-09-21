@@ -31,28 +31,16 @@ Refuse generated or vendored trees (`target/`, bindgen blobs, `OUT_DIR`). Record
 
 ## 2. Read the references that apply
 
-Keep clones out of the workspace. Reuse `/tmp/navigator-rust-library` and `/tmp/navigator-rust-book` when `.git` is
-there.
+Keep clones out of the workspace. Reuse `/tmp/navigator-rust-library` (sparse `library/std` / `core` / `alloc`) and
+rust-lang/book when `.git` is there; otherwise clone them. If a clone cannot run, fetch the matching chapter from
+<https://doc.rust-lang.org/> and say so. Do not invent a standard-library API from memory.
 
-```bash
-stdlib=/tmp/navigator-rust-library
-[ -d "$stdlib/.git" ] || {
-  git clone --depth 1 --filter=blob:none --sparse https://github.com/rust-lang/rust.git "$stdlib"
-  git -C "$stdlib" sparse-checkout set library/core library/alloc library/std
-}
-book=/tmp/navigator-rust-book
-[ -d "$book/.git" ] || git clone --depth 1 https://github.com/rust-lang/book.git "$book"
-```
-
-If a clone cannot run, fetch the matching rust-lang/book chapter or `library/std` source from
-`https://doc.rust-lang.org/` and say so. Do not invent a standard-library API from memory.
-
-Read only what the file uses. Ownership and modules from rust-lang/book; `Result`, `From`, iterators, `BTreeMap`,
-channels, `Display` from `library/std` / `library/core`. Then the workspace Rust doc and skill, plus the [API
-Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html) and [Style
-Guide](https://doc.rust-lang.org/style-guide/) that `docs/rust-programming.md` already names, and Microsoft's [Pragmatic
-Rust Guidelines](https://microsoft.github.io/rust-guidelines/) (`M-UPSTREAM-GUIDELINES`: follow those first). Search
-`library/std` for the same type before calling a local helper original.
+Read only what the file uses. Ownership and modules from rust-lang/book (Klabnik/Nichols); `Result`, `From`, iterators,
+`BTreeMap`, channels, `Display` from `library/std`. Then the workspace Rust doc and skill, plus the [API
+Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html), [Style
+Guide](https://doc.rust-lang.org/style-guide/), [Rust by Example](https://doc.rust-lang.org/rust-by-example/), and
+Microsoft's [Pragmatic Rust Guidelines](https://microsoft.github.io/rust-guidelines/) (`M-UPSTREAM-GUIDELINES`: follow
+those first). Search `library/std` for the same type before calling a local helper original.
 
 ## 3. Compare similar patterns
 

@@ -169,18 +169,8 @@ const FIRM_NAV: &[NavLink] = &[NavLink::leaf(
 /// for the plainest reason on this list: a reader who wants the manual for the
 /// software has already decided to run it.
 ///
-/// Privacy and Terms sit in this row on the same footing as the Blog and
-/// Notations, not in a smaller strip beneath it. They are the two documents a
-/// reader is entitled to find without hunting, and the legal strip below
-/// already carries the copyright, the bar disclosure, and the advertising
-/// disclaimer — a second, quieter row of legal links there would read as fine
-/// print about fine print. Their bodies already serve at `/privacy` and
-/// `/terms`; this is the link that reaches them.
-///
-/// Contact is a page of its own, not only the `mailto:` CTAs the practice
-/// pages quote through: a reader who scrolled to the bottom of the site
-/// looking for "how do I reach them" gets a page naming the firm's inbox and
-/// voice line rather than having to find a CTA on some other page first.
+/// Privacy, Terms, and Contact are not here — see [`firm_footer_nav`], which
+/// appends them to every brand's row, not only Neon's.
 ///
 /// UX is the one entry here that is not this site's own route. It is the
 /// platform's design showcase, published from its own repository
@@ -202,9 +192,16 @@ const FIRM_NAV: &[NavLink] = &[NavLink::leaf(
 /// footer's own bar-licence disclosure, and it names nobody today — a Team
 /// profile is a contact card, not a substitute for that regulated notice.
 ///
-/// Twelve entries, and the count is part of the design: the footer lays them
-/// out as three even rows of four on a wide viewport and one list of twelve on
-/// a narrow one, so a thirteenth would leave a row uneven.
+/// Every entry here is Navigator's own public surface — the platform itself,
+/// its blog, its docs, its talks and templates and workshops, the firm's own
+/// two-person roster, the design showcase — routes a white-label brand has no
+/// occasion to link, so this row belongs to [`BrandKey::Neon`] alone.
+///
+/// Nine entries. [`firm_footer_nav`] appends Contact, Privacy, and Terms —
+/// present on every brand's row — bringing Neon's own footer to twelve, the
+/// count that shaped the row's layout: three even rows of four on a wide
+/// viewport and one list of twelve on a narrow one, so a thirteenth would
+/// leave a row uneven.
 ///
 /// A "Firm" entry pointing at `/` is deliberately absent. It was one half of a
 /// cross-link pair with the nonprofit's home, and with that page retired the
@@ -212,14 +209,11 @@ const FIRM_NAV: &[NavLink] = &[NavLink::leaf(
 const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("API", "/api"),
     NavLink::leaf("Blog", "/blog"),
-    NavLink::leaf("Contact", "/contact"),
     NavLink::leaf("Docs", "/docs"),
     NavLink::leaf("Navigator", "/navigator"),
     NavLink::leaf("Notations", "/notations"),
     NavLink::leaf("Presentations", "/presentations"),
-    NavLink::leaf("Privacy", "/privacy"),
     NavLink::leaf("Team", "/team"),
-    NavLink::leaf("Terms", "/terms"),
     NavLink::leaf("UX", "https://neon-law-source-code.github.io/navigator-ux/"),
     NavLink::leaf("Workshops", "/workshops"),
 ];
@@ -1630,20 +1624,47 @@ pub fn firm_trademark() -> (&'static str, &'static str, &'static str) {
     )
 }
 
-/// The public pages the footer links rather than the header — Navigator, Blog,
-/// Notations, and the rest. See [`FIRM_FOOTER_NAV`].
+/// The public pages the footer links rather than the header — [`FIRM_FOOTER_NAV`]
+/// (Navigator, Blog, Notations, and the rest of Neon's own public surface),
+/// present only on the compiled default brand itself — [`BrandKey::Neon`],
+/// and not merely a bundle that happens to carry that same registry
+/// placeholder. A mounted manifest always reports `brand_key: BrandKey::Neon`
+/// (see [`Branding::brand_key`]), including one that renames the firm
+/// entirely, so the gate also requires [`firm_family`] to be non-empty —
+/// empty exactly when a manifest renamed the firm, per
+/// [`Branding::firm_family`]. Every other brand's row, house or mounted,
+/// carries only three entries:
 ///
-/// Brand-scoped to [`BrandKey::Neon`]: these routes are Navigator's own public
-/// surface, published under the firm's own domain, so only the firm's own
-/// brand links them. A white-label deploy renames the wordmark and re-points
-/// the addresses, and its footer carries none of this row.
+/// Privacy and Terms sit in this row on the same footing as the Blog and
+/// Notations, not in a smaller strip beneath it. They are the two documents a
+/// reader is entitled to find without hunting, and the legal strip below
+/// already carries the copyright, the bar disclosure, and the advertising
+/// disclaimer — a second, quieter row of legal links there would read as fine
+/// print about fine print. Their hrefs are [`terms_url`] and [`privacy_url`],
+/// resolved per brand: a white-label deploy whose own marketing site already
+/// hosts its terms links out through them instead of serving Neon Law's
+/// bundled text.
+///
+/// Contact is a page of its own, not only the `mailto:` CTAs the practice
+/// pages quote through: a reader who scrolled to the bottom of the site
+/// looking for "how do I reach them" gets a page naming the firm's inbox and
+/// voice line rather than having to find a CTA on some other page first.
+/// Every brand publishes its own channels there — see `firm_email` — so the
+/// link itself, `/contact`, stays the same for every brand.
 #[must_use]
-pub fn firm_footer_nav() -> &'static [NavLink] {
-    if current().brand_key == BrandKey::Neon {
-        FIRM_FOOTER_NAV
+pub fn firm_footer_nav() -> Vec<NavLink> {
+    let branding = current();
+    let is_neon_law = branding.brand_key == BrandKey::Neon && !branding.firm_family.is_empty();
+    let mut nav: Vec<NavLink> = if is_neon_law {
+        FIRM_FOOTER_NAV.to_vec()
     } else {
-        &[]
-    }
+        Vec::new()
+    };
+    nav.push(NavLink::leaf("Contact", "/contact"));
+    nav.push(NavLink::leaf("Privacy", branding.privacy_url));
+    nav.push(NavLink::leaf("Terms", branding.terms_url));
+    nav.sort_by(|a, b| a.label.cmp(b.label));
+    nav
 }
 
 /// The firm's legal-advice disclaimer, shown in the footer of every page. The
@@ -1719,6 +1740,35 @@ mod tests {
         })
         .await;
         assert_eq!(FIRM_BRAND.site_name, DEFAULT_BRANDING.firm.site_name);
+    }
+
+    /// A manifest that hosts its own terms and privacy pages off-site sees
+    /// that carried into the footer row itself, not only into `terms_url`
+    /// and `privacy_url` in isolation.
+    #[tokio::test]
+    async fn a_mounted_manifests_off_site_terms_and_privacy_reach_the_footer_row() {
+        let manifest: BrandManifest = serde_yaml::from_str(
+            "version: 1\nbrand:\n  firm: Acme Law\n  support_email: firm@acme.example\n  firm_address: 1 Main St\n  base_url: https://app.acme.example\n  primary_domain: acme.example\n  consultation_url: https://acme.example/book\n  terms_url: https://acme.example/terms\n  privacy_url: https://acme.example/privacy\nassets:\n  firm_logo: firm.svg\n  firm_logo_raster: firm.png\n",
+        )
+        .unwrap();
+        let branding = Branding::from_manifest(&manifest);
+        scope(branding, async {
+            let footer = super::firm_footer_nav();
+            assert_eq!(
+                footer.iter().map(|n| n.label).collect::<Vec<_>>(),
+                ["Contact", "Privacy", "Terms"],
+                "off Neon, only the firm's own legal surface remains"
+            );
+            assert_eq!(
+                footer.iter().find(|n| n.label == "Terms").unwrap().href,
+                "https://acme.example/terms"
+            );
+            assert_eq!(
+                footer.iter().find(|n| n.label == "Privacy").unwrap().href,
+                "https://acme.example/privacy"
+            );
+        })
+        .await;
     }
 
     /// The footer publishes the one office the firm actually keeps, and the
@@ -2231,20 +2281,35 @@ mod tests {
         );
     }
 
-    /// The firm's own footer row is Neon's alone: a white-label brand's
-    /// footer carries none of it.
+    /// Navigator's own public surface is Neon's alone: a white-label brand's
+    /// footer drops it, but keeps Contact, Privacy, and Terms — its own
+    /// legal surface, not Neon Law's.
     #[tokio::test]
-    async fn the_footer_nav_is_empty_off_the_firms_own_brand() {
+    async fn the_footer_nav_keeps_only_contact_privacy_and_terms_off_the_firms_own_brand() {
         scope(&super::ABHAYA_BRANDING, async {
-            assert!(
-                super::firm_footer_nav().is_empty(),
-                "a white-label brand's footer links none of the firm's own routes"
+            let footer: Vec<&str> = super::firm_footer_nav().iter().map(|n| n.label).collect();
+            assert_eq!(footer, ["Contact", "Privacy", "Terms"]);
+            assert_eq!(
+                super::firm_footer_nav()
+                    .iter()
+                    .find(|n| n.label == "Privacy")
+                    .expect("Privacy leaf present")
+                    .href,
+                super::privacy_url()
+            );
+            assert_eq!(
+                super::firm_footer_nav()
+                    .iter()
+                    .find(|n| n.label == "Terms")
+                    .expect("Terms leaf present")
+                    .href,
+                super::terms_url()
             );
         })
         .await;
         assert!(
-            !super::firm_footer_nav().is_empty(),
-            "leaving the scope restores the firm's own footer row"
+            super::firm_footer_nav().len() > 3,
+            "leaving the scope restores Neon's own Navigator-specific rows"
         );
     }
 
@@ -2288,7 +2353,7 @@ mod tests {
     /// pages, so linking it is the point rather than a regression.
     #[test]
     fn neither_row_links_a_retired_url() {
-        for link in FIRM_BRAND.nav.iter().chain(super::firm_footer_nav()) {
+        for link in FIRM_BRAND.nav.iter().chain(super::firm_footer_nav().iter()) {
             for retired in ["/foundation", "legal-aid", "/mission", "/attorneys"] {
                 assert!(
                     !link.href.starts_with(retired),
@@ -2306,7 +2371,7 @@ mod tests {
     #[test]
     fn contact_is_a_firm_footer_leaf_at_its_own_name() {
         let contact = super::firm_footer_nav()
-            .iter()
+            .into_iter()
             .find(|n| n.label == "Contact")
             .expect("Contact leaf present");
         assert!(!contact.is_dropdown());
@@ -2317,7 +2382,7 @@ mod tests {
     #[test]
     fn presentations_is_a_firm_footer_leaf_at_the_catalogs_own_name() {
         let presentations = super::firm_footer_nav()
-            .iter()
+            .into_iter()
             .find(|n| n.label == "Presentations")
             .expect("Presentations leaf present");
         assert!(!presentations.is_dropdown());
@@ -2332,7 +2397,7 @@ mod tests {
     #[test]
     fn the_public_workshop_catalog_is_linked_from_the_footer() {
         let workshops = super::firm_footer_nav()
-            .iter()
+            .into_iter()
             .find(|n| n.label == "Workshops")
             .expect("the public workshop catalog is linked");
         assert_eq!(workshops.href, "/workshops");

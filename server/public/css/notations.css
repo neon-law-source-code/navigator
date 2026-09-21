@@ -32,7 +32,15 @@
 }
 .notations-lead { font-size: 1.15rem; line-height: 1.75; max-width: 43ch; }
 .notations-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; margin-top: 2rem; }
-.notations-actions a { color: inherit; }
+/* Qualified with `.nav-theme` rather than left bare: `theme.css` carries
+   `.nav-theme a { color: var(--nav-color-link) }` at the same specificity
+   (0,1,1), so which one wins came down to stylesheet load order. In dark
+   mode `--nav-color-link` resolves to the light `--nav-teal-400` — meant for
+   the dark `--nav-color-bg` — but `.notations-page` keeps a fixed light
+   background in both schemes, so the tie surfaced as unreadable teal-on-white
+   text. `.nav-theme .notations-actions a` (0,2,1) settles it on specificity. */
+.nav-theme .notations-actions a:not(.nav-btn),
+.nav-theme .notations-actions a:not(.nav-btn):hover { color: inherit; }
 .notations-actions .nav-btn { color: white; background: var(--notation-ink); border-color: var(--notation-ink); }
 .notations-specimen {
   min-width: 0;

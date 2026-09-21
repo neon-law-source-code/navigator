@@ -557,7 +557,7 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
         tagline: "The Shook Law PLLC holding page.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
         logo_href: "/public/brand/lawyer-shook/logo.svg",
-        social_image: "",
+        social_image: "/public/brand/lawyer-shook/logo.png",
         nav: &[],
         is_law_firm: true,
         legal_entity: "Shook Law PLLC",
@@ -2677,6 +2677,14 @@ mod tests {
         assert_ne!(
             DEFAULT_BRANDING.firm.site_name,
             LAWYER_SHOOK_BRANDING.firm.site_name
+        );
+        assert_eq!(
+            LAWYER_SHOOK_BRANDING.firm.logo_href,
+            "/public/brand/lawyer-shook/logo.svg"
+        );
+        assert_eq!(
+            LAWYER_SHOOK_BRANDING.firm.social_image,
+            "/public/brand/lawyer-shook/logo.png"
         );
         assert_eq!(LAWYER_SHOOK_BRANDING.firm.legal_entity, "Shook Law PLLC");
         assert_eq!(LAWYER_SHOOK_BRANDING.support_domain, "lawyershook.com");

@@ -231,7 +231,7 @@ pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
             // what a crawler reads here too, so this reuses it rather than
             // keeping a second copy of the sentence in step.
             let content =
-                firm_pages::resolve_firm_home_content(&views::brand::LAWYER_SHOOK_BRANDING);
+                firm_pages::resolve_firm_home_content(&views::brand::LAWYER_SHOOK_BRANDING, None);
             let bare = content
                 .bare
                 .as_ref()

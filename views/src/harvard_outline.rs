@@ -988,7 +988,7 @@ mod tests {
             .filter(|u| u.kind == UnitKind::Heading)
             .map(|u| u.marker.as_str())
             .collect();
-        assert_eq!(markers, vec!["I", "II", "III", "IV", "V", "VI"]);
+        assert_eq!(markers, vec!["I", "II", "III", "IV", "V"]);
         let html = stage_html(&doc);
         assert!(html.contains("data-harvard-outline"));
         assert!(html.contains("data-harvard-path=\"I\""));

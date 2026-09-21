@@ -69,9 +69,7 @@ async fn build_transcript_provider(
     match backend {
         "fake" => Ok((Box::new(FakeTranscriptProvider::new()), "fake".to_string())),
         "google" | "gcp" => {
-            let project_id = google_project
-                .or_else(|| std::env::var("GCLOUD_PROJECT").ok())
-                .or_else(|| std::env::var("NAVIGATOR_GCP_PROJECT_ID").ok())
+            let project_id = google_project_id(google_project, |key| std::env::var(key).ok())
                 .ok_or_else(|| {
                     anyhow!(
                         "GOOGLE_CLOUD_PROJECT, GCLOUD_PROJECT, NAVIGATOR_GCP_PROJECT_ID, or --google-project is required with --speech-backend google"
@@ -88,5 +86,82 @@ async fn build_transcript_provider(
             "unknown speech backend {other:?}: expected 'fake' (default) or 'google' \
              (set --speech-backend or NAVIGATOR_SPEECH_BACKEND)"
         ),
+    }
+}
+
+/// Google Cloud project for `--speech-backend google`. `--google-project`
+/// wins; then `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, and
+/// `NAVIGATOR_GCP_PROJECT_ID`. Blank values are absences so an empty export
+/// cannot satisfy the backend. `get` is the process environment in the CLI
+/// and an injected map in tests.
+fn google_project_id(
+    explicit: Option<String>,
+    get: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    [
+        explicit,
+        get("GOOGLE_CLOUD_PROJECT"),
+        get("GCLOUD_PROJECT"),
+        get("NAVIGATOR_GCP_PROJECT_ID"),
+    ]
+    .into_iter()
+    .find_map(|value| {
+        value.and_then(|value| {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::google_project_id;
+
+    fn get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    #[test]
+    fn google_project_id_prefers_flag_then_standard_env_then_navigator() {
+        let env = get(&[
+            ("GOOGLE_CLOUD_PROJECT", "from-google-cloud"),
+            ("GCLOUD_PROJECT", "from-gcloud"),
+            ("NAVIGATOR_GCP_PROJECT_ID", "from-navigator"),
+        ]);
+        assert_eq!(
+            google_project_id(Some("from-flag".into()), &env),
+            Some("from-flag".into())
+        );
+        assert_eq!(
+            google_project_id(None, &env),
+            Some("from-google-cloud".into())
+        );
+        assert_eq!(
+            google_project_id(None, get(&[("GCLOUD_PROJECT", "from-gcloud")])),
+            Some("from-gcloud".into())
+        );
+        assert_eq!(
+            google_project_id(None, get(&[("NAVIGATOR_GCP_PROJECT_ID", "from-navigator")])),
+            Some("from-navigator".into())
+        );
+        assert_eq!(google_project_id(None, get(&[])), None);
+    }
+
+    #[test]
+    fn google_project_id_treats_blank_values_as_absent() {
+        let env = get(&[
+            ("GOOGLE_CLOUD_PROJECT", "   "),
+            ("NAVIGATOR_GCP_PROJECT_ID", "from-navigator"),
+        ]);
+        assert_eq!(
+            google_project_id(Some("  ".into()), &env),
+            Some("from-navigator".into()),
+            "a blank flag must fall through, and a blank GOOGLE_CLOUD_PROJECT must not win"
+        );
     }
 }

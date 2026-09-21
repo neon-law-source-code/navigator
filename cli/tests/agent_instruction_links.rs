@@ -245,7 +245,7 @@ fn redline_skill_preflights_native_word_capabilities() {
 /// before any edit.
 #[test]
 fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
-    const MAX_LINES: usize = 92;
+    const MAX_LINES: usize = 80;
     let root = repo_root();
     let skill_path = root.join(CANONICAL_SKILLS).join("random-refactor/SKILL.md");
     let skill = fs::read_to_string(&skill_path).expect("read canonical random-refactor skill");
@@ -270,6 +270,8 @@ fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
         "similar patterns",
         "api-guidelines",
         "microsoft.github.io/rust-guidelines",
+        "rust-by-example",
+        "Klabnik",
     ] {
         assert!(
             skill.contains(required),

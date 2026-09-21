@@ -1,6 +1,6 @@
 //! One annual privacy offer and a decorative cloak crossing the internet.
 use super::HomeContent;
-use crate::components::Field;
+use crate::components::{is_external_href, Field};
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +29,7 @@ pub struct PrivacyContent {
 #[component]
 pub(super) fn PrivacyHome(content: HomeContent, privacy: PrivacyContent) -> Element {
     let booking_href = content.contact_href.clone();
+    let booking_external = is_external_href(&booking_href);
     rsx! {
         div { class: "privacy-home",
             section { class: "privacy-hero", "aria-labelledby": "privacy-title",
@@ -40,7 +41,13 @@ pub(super) fn PrivacyHome(content: HomeContent, privacy: PrivacyContent) -> Elem
                     p { "{content.lead}" }
                     p { class: "privacy-price", "{privacy.price}" span { " {privacy.price_term}" } }
                     div { class: "privacy-actions",
-                        a { class: "nav-btn nav-btn--primary", href: booking_href.clone(), "{content.contact_label} ↗" }
+                        a {
+                            class: "nav-btn nav-btn--primary",
+                            href: booking_href.clone(),
+                            target: if booking_external { Some("_blank") } else { None },
+                            rel: if booking_external { Some("noopener noreferrer") } else { None },
+                            "{content.contact_label} ↗"
+                        }
                         a { class: "privacy-link", href: "#gift", "{privacy.gift_link}" }
                     }
                     p { class: "privacy-small", "{privacy.offer_note}" }
@@ -87,12 +94,24 @@ pub(super) fn PrivacyHome(content: HomeContent, privacy: PrivacyContent) -> Elem
                     p { class: "privacy-eyebrow", "{privacy.gift_link}" }
                     h2 { id: "privacy-gift-title", "{privacy.gift_heading}" }
                     p { "{privacy.gift_body}" }
-                    a { class: "privacy-link", href: booking_href.clone(), "{privacy.gift_cta} ↗" }
+                    a {
+                        class: "privacy-link",
+                        href: booking_href.clone(),
+                        target: if booking_external { Some("_blank") } else { None },
+                        rel: if booking_external { Some("noopener noreferrer") } else { None },
+                        "{privacy.gift_cta} ↗"
+                    }
                 }
             }
             section { class: "privacy-closing",
                 h2 { "{privacy.closing_heading}" }
-                a { class: "nav-btn nav-btn--primary", href: booking_href, "{content.contact_label} ↗" }
+                a {
+                    class: "nav-btn nav-btn--primary",
+                    href: booking_href,
+                    target: if booking_external { Some("_blank") } else { None },
+                    rel: if booking_external { Some("noopener noreferrer") } else { None },
+                    "{content.contact_label} ↗"
+                }
             }
         }
     }

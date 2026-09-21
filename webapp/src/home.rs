@@ -4,8 +4,8 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta, TestimonialCard,
-    TestimonialSection, THEME_STYLESHEET_HREF,
+    is_external_href, PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
+    TestimonialCard, TestimonialSection, THEME_STYLESHEET_HREF,
 };
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
@@ -352,6 +352,8 @@ pub fn HomePage(
                 a {
                     class: "nav-btn nav-btn--primary home-statement__cta",
                     href: "{content.contact_href}",
+                    target: if is_external_href(&content.contact_href) { Some("_blank") } else { None },
+                    rel: if is_external_href(&content.contact_href) { Some("noopener noreferrer") } else { None },
                     "{content.contact_label}"
                 }
             }

@@ -1,6 +1,7 @@
 //! Company counsel: membership, notation packages, and an illustrative work stream.
 
 use super::HomeContent;
+use crate::components::is_external_href;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +69,13 @@ pub struct CompanyContent {
 fn SiblingPractice(label: String, href: Option<String>) -> Element {
     match href {
         Some(href) => rsx! {
-            a { class: "company-text-link", href: "{href}", "{label} ↗" }
+            a {
+                class: "company-text-link",
+                href: "{href}",
+                target: "_blank",
+                rel: "noopener noreferrer",
+                "{label} ↗"
+            }
         },
         None => rsx! {
             span { class: "company-text-link company-text-link--unlinked", "{label}" }
@@ -78,13 +85,20 @@ fn SiblingPractice(label: String, href: Option<String>) -> Element {
 
 #[component]
 pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Element {
+    let booking_external = is_external_href(&company.booking_href);
     rsx! {
         div { class: "company-home",
             section { class: "company-hero",
                 h1 { "{content.heading}" }
                 p { class: "company-hero__lead", "{content.lead}" }
                 div { class: "company-actions",
-                    a { class: "nav-btn nav-btn--primary", href: "{company.booking_href}", "{content.contact_label}" }
+                    a {
+                        class: "nav-btn nav-btn--primary",
+                        href: "{company.booking_href}",
+                        target: if booking_external { Some("_blank") } else { None },
+                        rel: if booking_external { Some("noopener noreferrer") } else { None },
+                        "{content.contact_label}"
+                    }
                     a { class: "company-text-link", href: "#pricing", "{company.pricing_link} ↗" }
                 }
                 p { class: "company-hero__terms", "{company.hero_note}" }
@@ -167,7 +181,13 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                 div {
                     h2 { id: "company-litigation-title", "{company.litigation_heading}" }
                     p { "{company.litigation_body}" }
-                    a { class: "company-text-link", href: "{company.booking_href}", "{company.litigation_link} ↗" }
+                    a {
+                        class: "company-text-link",
+                        href: "{company.booking_href}",
+                        target: if booking_external { Some("_blank") } else { None },
+                        rel: if booking_external { Some("noopener noreferrer") } else { None },
+                        "{company.litigation_link} ↗"
+                    }
                 }
                 div {
                     p { class: "company-price", "{company.litigation_price}" }
@@ -189,7 +209,12 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                     p { "{company.navigator_body}" }
                     a { class: "company-text-link", href: "/navigator", "{company.navigator_link} ↗" }
                     p { class: "company-note company-source",
-                        a { href: "https://github.com/neon-law-source-code/navigator", "{company.source_label}" }
+                        a {
+                            href: "https://github.com/neon-law-source-code/navigator",
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            "{company.source_label}"
+                        }
                         ". {company.source_note}"
                     }
                 }
@@ -212,7 +237,13 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
             }
             section { class: "company-closing",
                 h2 { "{company.closing_heading}" span { "{company.closing_body}" } }
-                a { class: "nav-btn nav-btn--primary", href: "{company.booking_href}", "{content.contact_label} ↗" }
+                a {
+                    class: "nav-btn nav-btn--primary",
+                    href: "{company.booking_href}",
+                    target: if booking_external { Some("_blank") } else { None },
+                    rel: if booking_external { Some("noopener noreferrer") } else { None },
+                    "{content.contact_label} ↗"
+                }
             }
         }
     }

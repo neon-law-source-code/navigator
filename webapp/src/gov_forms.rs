@@ -141,7 +141,7 @@ pub fn GovForms() -> Element {
                                 }
                                 td { "{row.jurisdiction}" }
                                 td {
-                                    a { href: "{row.origin_url}", rel: "noopener noreferrer",
+                                    a { href: "{row.origin_url}", target: "_blank", rel: "noopener noreferrer",
                                         "government website"
                                     }
                                 }

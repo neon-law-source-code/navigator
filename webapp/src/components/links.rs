@@ -13,6 +13,18 @@ use dioxus::prelude::*;
 
 use crate::components::{Icon, IconName};
 
+/// Whether `href` leaves this deployment's own domains — an absolute
+/// `http(s)://` URL rather than a relative path, `mailto:`, or `tel:` link.
+///
+/// The shared test for whether an anchor needs the OWASP `rel` pair and
+/// `target="_blank"`, for the call sites that render a plain `<a>` instead of
+/// [`ExternalLink`] because the href is only sometimes off-site (a booking
+/// link that is a `mailto:` for one brand and a calendar host for another).
+#[must_use]
+pub fn is_external_href(href: &str) -> bool {
+    href.starts_with("http")
+}
+
 /// An off-site anchor around `children`. `class` sets the `<a>` class (e.g.
 /// `link-secondary` for muted footer links); `title` sets a hover tooltip.
 /// `current` marks this as the active page in a nav row it sits in — the

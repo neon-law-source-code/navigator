@@ -1,5 +1,6 @@
 //! The lifetime estate plan, with an optional future record of a signed version.
 use super::HomeContent;
+use crate::components::is_external_href;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +40,7 @@ pub struct EstateContent {
 
 #[component]
 pub(super) fn EstateHome(content: HomeContent, estate: EstateContent) -> Element {
+    let contact_external = is_external_href(&content.contact_href);
     rsx! {
         div { class: "vesta-home",
             section { class: "vesta-hero", "aria-labelledby": "vesta-title",
@@ -47,7 +49,13 @@ pub(super) fn EstateHome(content: HomeContent, estate: EstateContent) -> Element
                     h1 { id: "vesta-title", "{content.heading}" }
                     p { class: "vesta-lead", "{content.lead}" }
                     div { class: "vesta-actions",
-                        a { class: "nav-btn nav-btn--primary", href: "{content.contact_href}", "{content.contact_label}" }
+                        a {
+                            class: "nav-btn nav-btn--primary",
+                            href: "{content.contact_href}",
+                            target: if contact_external { Some("_blank") } else { None },
+                            rel: if contact_external { Some("noopener noreferrer") } else { None },
+                            "{content.contact_label}"
+                        }
                         a { class: "vesta-text-link", href: "#your-plan", "{estate.process_link}" }
                     }
                 }
@@ -106,7 +114,13 @@ pub(super) fn EstateHome(content: HomeContent, estate: EstateContent) -> Element
                     h2 { id: "vesta-closing-title", "{estate.closing_heading}" }
                     p { "{estate.closing_body}" }
                 }
-                a { class: "nav-btn nav-btn--primary", href: "{content.contact_href}", "{content.contact_label}" }
+                a {
+                    class: "nav-btn nav-btn--primary",
+                    href: "{content.contact_href}",
+                    target: if contact_external { Some("_blank") } else { None },
+                    rel: if contact_external { Some("noopener noreferrer") } else { None },
+                    "{content.contact_label}"
+                }
             }
         }
     }

@@ -581,6 +581,8 @@ pub fn SiteFooterLegal(
                                                 a {
                                                     class: "site-footer__family-link",
                                                     href: "{brand.href}",
+                                                    target: "_blank",
+                                                    rel: "noopener noreferrer",
                                                     "{brand.label}"
                                                 }
                                             }
@@ -1850,9 +1852,9 @@ mod tests {
         );
         assert!(
             family.contains(
-                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com">Protect your info</a>"#
+                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com" target="_blank" rel="noopener noreferrer">Protect your info</a>"#
             ),
-            "other brands link their home host: {family}"
+            "other brands link their home host, off-site, in a new tab: {family}"
         );
         assert!(
             family.contains(r#"href="https://www.lawyershook.com""#),

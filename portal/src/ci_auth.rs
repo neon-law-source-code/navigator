@@ -214,7 +214,21 @@ fn is_pull_request_run(claims: &GitHubActionsClaims) -> bool {
     };
     number > 0
         && claims.event_name == "pull_request"
-        && claims.sub == format!("repo:{}:pull_request", claims.repository)
+        && subject_repository(&claims.sub).as_deref() == Some(claims.repository.as_str())
+}
+
+/// Extract `owner/name` from a `pull_request` subject claim, accepting both
+/// GitHub's classic spelling (`repo:owner/name:pull_request`) and the
+/// immutable-subject spelling (`repo:owner@id/name@id:pull_request`) that
+/// repositories with immutable subject claims enabled send instead. The
+/// subject is parsed field-by-field rather than compared as an opaque
+/// string, since the two spellings are never byte-equal for the same repo.
+fn subject_repository(sub: &str) -> Option<String> {
+    let repo = sub.strip_prefix("repo:")?.strip_suffix(":pull_request")?;
+    let (owner, name) = repo.split_once('/')?;
+    let owner = owner.split('@').next().filter(|part| !part.is_empty())?;
+    let name = name.split('@').next().filter(|part| !part.is_empty())?;
+    Some(format!("{owner}/{name}"))
 }
 
 /// Shared refusal when this GitHub run cannot be bound to exactly one live
@@ -342,6 +356,19 @@ mod tests {
     }
 
     #[test]
+    fn a_pull_request_run_with_an_immutable_subject_is_authorized() {
+        let claims = GitHubActionsClaims {
+            sub: "repo:neon-law-staging@318426496/sample-litigation@1336521864:pull_request".into(),
+            repository: "neon-law-staging/sample-litigation".into(),
+            repository_owner: "neon-law-staging".into(),
+            git_ref: "refs/pull/42/merge".into(),
+            event_name: "pull_request".into(),
+            ..GitHubActionsClaims::default()
+        };
+        assert!(authorize_github_run(&claims).is_ok());
+    }
+
+    #[test]
     fn a_pull_request_run_rejects_branch_tag_and_untrusted_event_shapes() {
         for (git_ref, event_name, sub) in [
             (
@@ -363,6 +390,16 @@ mod tests {
                 "refs/pull/42/merge",
                 "pull_request_target",
                 "repo:neon-law-staging/acme:pull_request",
+            ),
+            (
+                "refs/pull/42/merge",
+                "pull_request",
+                "repo:someone-else/other-repo:pull_request",
+            ),
+            (
+                "refs/pull/42/merge",
+                "pull_request",
+                "repo:someone-else@1/other-repo@2:pull_request",
             ),
         ] {
             let claims = GitHubActionsClaims {

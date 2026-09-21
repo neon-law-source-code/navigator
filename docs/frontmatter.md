@@ -199,9 +199,11 @@ choices. The same keys are read by the questionnaire runtime, document renderer,
 
 ### One rule worth saying twice: `questionnaire` and `workflow` travel together
 
-A notation template has **both** `questionnaire:` and `workflow:`, or neither. If you write one and forget the other,
-the checker stops you. A blueprint with questions but no path — or a path but no questions — is half a document, and a
-half-built document should never reach a client. This is a guardrail, not a nicety.
+A machine-driven notation has **both** `questionnaire:` and `workflow:`, or neither. Attorney-drafted `letter` and
+`memo` blueprints may omit both because their substance is written in the body rather than assembled from answers. If
+either kind declares one machine, it must declare the other: a blueprint with questions but no path — or a path but no
+questions — is half a document, and a half-built document should never reach a client. This is a guardrail, not a
+nicety.
 
 The body below the frontmatter is the legal prose, in English, carrying `{{placeholder}}` slots that the questionnaire
 answers fill in (`{{person__client.name}}`, `{{project__engagement.name}}`, and so on). Authoring that body, and the
@@ -289,8 +291,8 @@ what each code actually checks, its severity, and whether it autofixes, see the 
 | `respondent_type` | yes | `person`, `entity`, `person_and_entity` | N102 |
 | `jurisdiction` | yes | any code seeded in `store/seeds/Jurisdiction.yaml` (e.g. `NV`, `CA`, `US`, `NY`) | N110 |
 | `confidential` | yes | `true` or `false` | N105 |
-| `questionnaire` | yes (paired) | a `BEGIN` → `END` ladder | N104 |
-| `workflow` | yes (paired) | a `BEGIN` → `END` path that includes `lawyer_review` | N104, N106 |
+| `questionnaire` | yes (paired; optional for body-only `letter`/`memo`) | a `BEGIN` → `END` ladder | N104 |
+| `workflow` | yes (paired; optional for body-only `letter`/`memo`) | `BEGIN` → `END`; `lawyer_review` | N104, N106 |
 | `prompts` | with any `custom_*` state; optional for bank questions | wording keyed by question code | N104 |
 | `choices` | with a custom choice state | option values and labels keyed by question code | N104 |
 | `output` | no | `letter`, `agreement`, `pleading`, or `form` (omit for a plain page) | N109 |

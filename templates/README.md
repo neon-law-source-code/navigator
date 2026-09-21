@@ -130,7 +130,7 @@ You do not have to run the gate by hand to find a problem. The same rule engine 
 underlines what is wrong, in place:
 
 - a **red** underline is a blocking error — a missing `title`, an unknown `respondent_type`, a `workflow` with no
-  `lawyer_review`, a notation that declares only one of `questionnaire:` / `workflow:`;
+  `lawyer_review`, or a machine-driven notation that declares only one of `questionnaire:` / `workflow:`;
 - a **yellow** underline is a non-blocking advisory — most often a workflow step that is allowed but not built yet.
 
 Hover any underline for the rule and the fix. The server runs entirely on your machine and sends nothing anywhere — the

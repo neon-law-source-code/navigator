@@ -61,6 +61,10 @@ impl F104FlowQuestionCodes {
 
 #[derive(Debug, Deserialize)]
 struct FrontmatterShape {
+    /// Attorney-drafted `letter` and `memo` blueprints may be body-only.
+    /// Other notation kinds remain machine-driven and require both maps.
+    #[serde(default)]
+    kind: Option<String>,
     #[serde(default)]
     questionnaire: Option<BTreeMap<String, BTreeMap<String, String>>>,
     #[serde(default)]
@@ -90,6 +94,9 @@ impl Rule for F104FlowQuestionCodes {
 
         let mut violations = Vec::new();
         let Some(questionnaire) = parsed.questionnaire else {
+            if parsed.workflow.is_none() && attorney_drafted_kind(parsed.kind.as_deref()) {
+                return violations;
+            }
             violations.push(violation(file, "Missing required `questionnaire` key"));
             return violations;
         };
@@ -116,6 +123,10 @@ impl Rule for F104FlowQuestionCodes {
         }
         violations
     }
+}
+
+fn attorney_drafted_kind(kind: Option<&str>) -> bool {
+    matches!(kind, Some("letter" | "memo"))
 }
 
 impl F104FlowQuestionCodes {
@@ -322,6 +333,48 @@ workflow:
     #[test]
     fn no_frontmatter_means_no_violation() {
         assert!(rule().lint(&file("just body")).is_empty());
+    }
+
+    #[test]
+    fn attorney_drafted_kinds_may_omit_both_machines() {
+        for kind in ["letter", "memo"] {
+            let source = file(&format!(
+                "---\nkind: {kind}\n---\n\nAttorney-drafted body.\n"
+            ));
+            assert!(
+                rule().lint(&source).is_empty(),
+                "{kind} may omit questionnaire and workflow"
+            );
+        }
+    }
+
+    #[test]
+    fn attorney_drafted_kinds_must_omit_both_machines_together() {
+        for machine in ["questionnaire", "workflow"] {
+            let source = file(&format!(
+                "---\nkind: memo\n{machine}:\n  BEGIN:\n    _: END\n  END: {{}}\n---\n"
+            ));
+            let violations = rule().lint(&source);
+            assert_eq!(violations.len(), 1, "{machine}: {violations:?}");
+            assert!(
+                violations[0]
+                    .message
+                    .contains(if machine == "questionnaire" {
+                        "workflow"
+                    } else {
+                        "questionnaire"
+                    }),
+                "{machine}: {violations:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn instrument_kinds_still_require_both_machines() {
+        let source = file("---\nkind: agreement\n---\n");
+        let violations = rule().lint(&source);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("questionnaire"));
     }
 
     #[test]

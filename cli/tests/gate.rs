@@ -277,10 +277,7 @@ fn gate_marks_each_diagnostic_with_its_severity() {
             "    signature_received: END\n",
             "    signature_received: onchain\n",
         )
-        .replace(
-            "  END: {}\n",
-            "  onchain:\n    recorded: END\n  END: {}\n",
-        );
+        .replace("  END: {}\n", "  onchain:\n    recorded: END\n  END: {}\n");
     fs::write(&warning_path, contents).unwrap();
     write(
         dir.path(),

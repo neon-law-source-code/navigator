@@ -427,6 +427,25 @@ pub fn scaffold(
     ExitCode::SUCCESS
 }
 
+/// Whether `dir` is a Project repository: it carries [`PROJECT_MANIFEST`] and
+/// that manifest declares a `project`.
+///
+/// This is the one admission check every write into a repository's agent
+/// contract owes before it touches disk — [`sync_skills`] applies it, and
+/// `cli/src/main.rs` applies the same check before both `project gate`'s
+/// Project-repository layout pass and its own document-pointer pass, so a
+/// tree with no `navigator.yaml` is read as ordinary source, never as a
+/// Project repository missing its manifest.
+pub(crate) fn is_project_repository(dir: &Path) -> bool {
+    let Ok(raw) = fs::read_to_string(dir.join(PROJECT_MANIFEST)) else {
+        return false;
+    };
+    serde_yaml::from_str::<serde_yaml::Value>(&raw)
+        .ok()
+        .and_then(|value| value.get("project").cloned())
+        .is_some()
+}
+
 /// Write Navigator's canonical skill catalog into a Project repository, from
 /// this binary's own compiled-in copies (see [`SYNCED_SKILLS`]).
 ///
@@ -436,7 +455,28 @@ pub fn scaffold(
 /// edit is exactly the drift [`validate`] is meant to catch, and catching it
 /// is only useful if re-running this command is also how an operator fixes
 /// it.
+///
+/// Unlike [`validate_gate`], which runs read-only checks on whatever
+/// repository it is pointed at and reports what it finds, this command
+/// writes — so it owes its own admission check rather than trusting the
+/// caller to have run the gate first. `dir` must already be a Project
+/// repository, checked by [`is_project_repository`] exactly the way `project
+/// gate` decides whether to run the Project-repository layout pass at all
+/// (see `crate::main::run_gate`). A tree with no `navigator.yaml`, or one the
+/// gate itself is walking to check Navigator's own layout, refuses rather
+/// than silently doing nothing: this is a repair tool aimed at whatever
+/// directory it is handed, and the failure mode for skipping the check is a
+/// silent overwrite of that tree's own `AGENTS.md` and `.agents/skills`
+/// catalog (ENG-836).
 pub fn sync_skills(root: &Path) -> ExitCode {
+    if !is_project_repository(root) {
+        eprintln!(
+            "navigator: target is not a Project repository (no `{PROJECT_MANIFEST}` declaring a \
+             `project`); refusing to write its agent contract or skill catalog"
+        );
+        return ExitCode::from(2);
+    }
+
     let legacy_skills = root.join(".claude/skills");
     let canonical_skills = root.join(".agents/skills");
     if legacy_skills.exists() {

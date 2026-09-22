@@ -1083,6 +1083,46 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
         .stdout(str::contains("0 error(s)"));
 }
 
+/// ENG-836: `sync-skills` used to write into whatever directory it was
+/// handed with no admission check, so pointing it at a non-Project directory
+/// — for instance the Navigator repository's own root — overwrote that
+/// directory's own `AGENTS.md` and reached into its `.agents/skills`. It must
+/// refuse instead, loudly, and write nothing.
+#[test]
+fn sync_skills_refuses_a_non_project_directory() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("README.md"), "# not a project\n").unwrap();
+
+    sync_skills(dir.path())
+        .failure()
+        .stderr(str::contains("not a Project repository"));
+
+    assert!(!dir.path().join("AGENTS.md").exists());
+    assert!(!dir.path().join(".agents").exists());
+}
+
+/// The sharpest instance of the bug ENG-836 is filed against: a directory
+/// carrying Navigator's own `AGENTS.md` — this repository's own operating
+/// contract — but no `navigator.yaml`, must be refused exactly the same way,
+/// and its existing `AGENTS.md` must survive byte-for-byte.
+#[test]
+fn sync_skills_refuses_a_directory_carrying_navigators_own_agents_md() {
+    let dir = TempDir::new().unwrap();
+    let navigator_agents_md =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../AGENTS.md")).unwrap();
+    fs::write(dir.path().join("AGENTS.md"), &navigator_agents_md).unwrap();
+
+    sync_skills(dir.path())
+        .failure()
+        .stderr(str::contains("not a Project repository"));
+
+    assert_eq!(
+        fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
+        navigator_agents_md
+    );
+    assert!(!dir.path().join(".agents").exists());
+}
+
 #[test]
 fn scaffold_and_sync_keep_the_project_delivery_skill_canonical() {
     let dir = TempDir::new().unwrap();

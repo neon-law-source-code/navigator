@@ -43,6 +43,7 @@ mod transcribe;
 use cli::import;
 use devx::brand::BrandCmd;
 use devx::{DnsCmd, GcpCmd, RestateCmd, StagingAction, WorktreeEnvCmd};
+use projects::repository::is_project_repository;
 
 /// The version `navigator --version` / `-V` reports.
 ///
@@ -2815,16 +2816,6 @@ const LOCALE_DOCUMENT_CODE: &str = "Y002";
 
 /// `Y003` — a `documents/**/*.yaml` pointer in a Project repository must name a valid asset revision.
 const DOCUMENT_POINTER_CODE: &str = "Y003";
-
-fn is_project_repository(dir: &std::path::Path) -> bool {
-    let Ok(raw) = std::fs::read_to_string(dir.join("navigator.yaml")) else {
-        return false;
-    };
-    serde_yaml::from_str::<serde_yaml::Value>(&raw)
-        .ok()
-        .and_then(|value| value.get("project").cloned())
-        .is_some()
-}
 
 fn document_pointer_path(
     root: &std::path::Path,

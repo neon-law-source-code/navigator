@@ -167,6 +167,12 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         .extensions()
         .get::<webapp::firm_footer::FirmFooterModel>()
         .cloned();
+    // Tests inject a widget here. Production does not, so an unset
+    // `NAVIGATOR_CHATWOOT_WEBSITE_TOKEN` — the local default — stays off.
+    let injected_chat = req
+        .extensions()
+        .get::<crate::chatwoot::ChatwootWidget>()
+        .cloned();
     let response = next.run(req).await;
 
     let is_html = response
@@ -217,10 +223,7 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         html
     };
 
-    // The widget rides public pages only, while the authenticated `/app` and
-    // `/app/lawyer` surfaces render `NavigatorShell` and are left alone, so the
-    // pages that display a client's matter keep the strict same-origin policy.
-    let chat = CHATWOOT.as_ref().filter(|_| is_public_page(&html));
+    let chat = support_chat(&html, injected_chat.as_ref());
     let html = match chat {
         Some(widget) => close_with_script(&html, &widget.script_tags()),
         None => html,
@@ -279,6 +282,22 @@ static SAMPLE_MATTERS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
 /// inbox — local KIND and the staging release ring included.
 static CHATWOOT: std::sync::LazyLock<Option<crate::chatwoot::ChatwootWidget>> =
     std::sync::LazyLock::new(crate::chatwoot::ChatwootWidget::from_env);
+
+/// The support-chat widget for a public page, or nothing.
+///
+/// `injected` is a test-supplied inbox. Production never sets it, so the
+/// once-read deployment widget decides, and that is `None` when
+/// `NAVIGATOR_CHATWOOT_WEBSITE_TOKEN` is unset — local development included.
+/// Authenticated shells are skipped either way: a client's matter page keeps
+/// the strict same-origin policy.
+fn support_chat<'a>(
+    html: &str,
+    injected: Option<&'a crate::chatwoot::ChatwootWidget>,
+) -> Option<&'a crate::chatwoot::ChatwootWidget> {
+    injected
+        .or(CHATWOOT.as_ref())
+        .filter(|_| is_public_page(html))
+}
 
 /// Whether this rendered document is a public page — the surface the
 /// support-chat widget rides.
@@ -4583,24 +4602,25 @@ mod tests {
         .expect("a token resolves a widget")
     }
 
+    /// Puts the fixture widget on the request. Outer layer, so
+    /// [`dioxus_document_head`] sees it. Does not touch the process environment.
+    async fn inject_support_chat(mut req: Request, next: Next) -> Response {
+        req.extensions_mut().insert(chatwoot_widget());
+        next.run(req).await
+    }
+
     /// The middleware's widget branch, end to end: a configured deployment
     /// serving a public page gets the loader in its body and the widened policy
     /// on its header, and an authenticated page from the same process gets
     /// neither.
     ///
-    /// The env var is set inside the test because `CHATWOOT` is resolved once
-    /// per process and nextest runs each test in its own — so this observes a
-    /// freshly configured deployment without leaking into any other test. It is
-    /// the only place the static, the marker check, the injection, and the CSP
-    /// are exercised together, which is what a unit test of each piece cannot
-    /// tell you: that the middleware wires them to the same decision.
+    /// The widget arrives on the request, not through
+    /// `NAVIGATOR_CHATWOOT_WEBSITE_TOKEN`. That variable is read once for the
+    /// process, and `cargo test` runs this binary's tests in one process, so
+    /// setting it here would turn the widget on for every later test. Local
+    /// runs leave the variable unset and publish no widget.
     #[tokio::test]
     async fn a_configured_deployment_boots_the_widget_on_public_pages_only() {
-        std::env::set_var(
-            crate::chatwoot::NAVIGATOR_CHATWOOT_WEBSITE_TOKEN,
-            "tok3n-from-config",
-        );
-
         let public_body = format!(
             "<html><head></head><body><div class=\"{}\">firm page</div></body></html>",
             webapp::components::PUBLIC_SHELL_MARKER
@@ -4622,7 +4642,8 @@ mod tests {
                     )
                 }),
             )
-            .layer(from_fn(dioxus_document_head));
+            .layer(from_fn(dioxus_document_head))
+            .layer(from_fn(inject_support_chat));
 
         let fetch = |uri: &'static str| {
             let router = router.clone();
@@ -4651,7 +4672,7 @@ mod tests {
             "the public page boots the widget: {public_html}"
         );
         assert!(
-            public_html.contains("data-website-token=\"tok3n-from-config\""),
+            public_html.contains("data-website-token=\"tok3n\""),
             "the configured inbox reaches the page: {public_html}"
         );
         // Injected before the close, so the widget follows the page's content.

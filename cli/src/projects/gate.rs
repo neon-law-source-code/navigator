@@ -182,8 +182,12 @@ fn repository_urls_agree(live: &str, here: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{can_mint_ci_session_for, disagreement, is_pull_request_merge_ref, LiveMatter};
+    use axum::body::Body;
+    use axum::http::{header, Request};
+    use portal::github_oidc::{GitHubActionsClaims, GitHubOidc};
     use std::sync::LazyLock;
-    use wiremock::matchers::{body_json, header, method, path, query_param};
+    use tower::ServiceExt;
+    use wiremock::matchers::{body_json, header as header_matcher, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     static ENV_LOCK: LazyLock<tokio::sync::Mutex<()>> =
@@ -340,7 +344,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/app/api/projects"))
-            .and(header("authorization", "Bearer navigator-ci-token"))
+            .and(header_matcher("authorization", "Bearer navigator-ci-token"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!([{
                     "id": "00000000-0000-0000-0000-000000000001",
@@ -449,7 +453,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/app/api/projects"))
-            .and(header("authorization", "Bearer navigator-ci-token"))
+            .and(header_matcher("authorization", "Bearer navigator-ci-token"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!([{
                     "id": "00000000-0000-0000-0000-000000000001",
@@ -487,5 +491,123 @@ mod tests {
             Some(value) => std::env::set_var("GITHUB_REPOSITORY", value),
             None => std::env::remove_var("GITHUB_REPOSITORY"),
         }
+    }
+
+    /// The regression this module exists to catch: a document-scoped CI
+    /// token's real `GET /app/api/projects` response, produced by the actual
+    /// `portal::router` handler rather than hand-written JSON, must
+    /// deserialize into [`LiveMatter`]. The other tests above mock the
+    /// endpoint with a JSON literal that already includes every field this
+    /// struct wants, which is exactly why the server's `DocumentProjectLookup`
+    /// narrowing (introduced in 26.9.21) could drop `status` and
+    /// `repository_url` for two releases without any test here noticing —
+    /// see ENG-842. This test fails the same way `ci / verify` does the
+    /// moment the two shapes diverge again.
+    #[tokio::test]
+    async fn document_scoped_projects_response_deserializes_into_live_matter() {
+        let surreal = store::test_support::mem_surreal().await;
+        let entity_id = store::test_support::seed_entity(&surreal).await;
+        let project_id = store::projects::create(
+            &surreal,
+            &store::projects::NewProject {
+                code: "acme".into(),
+                name: "Acme".into(),
+                status: "open".into(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .id;
+        store::projects::set_repository_url(
+            &surreal,
+            project_id,
+            Some("https://github.com/org/acme"),
+        )
+        .await
+        .unwrap();
+        let lawyer = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Synthetic Lawyer",
+                "ci-lawyer@example.com",
+                store::persons::Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap();
+        store::projects::designate_dri_in_surreal(
+            &surreal,
+            project_id,
+            lawyer.id,
+            store::projects::DriSide::Lawyer,
+        )
+        .await
+        .unwrap();
+
+        let mut state = portal::test_support::app_state(surreal).await;
+        state.canonical_host = portal::CanonicalHost::new(Some("staging.neonlaw.com".into()));
+        state.github_oidc = GitHubOidc::fixed(GitHubActionsClaims {
+            sub: "repo:org/acme:ref:refs/heads/main".into(),
+            repository: "org/acme".into(),
+            repository_owner: "org".into(),
+            git_ref: "refs/heads/main".into(),
+            event_name: "push".into(),
+            jti: "jti-document-acme".into(),
+            exp: 4_000_000_000,
+            ..Default::default()
+        });
+        let app = portal::router(state);
+
+        let mint_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/ci/document-token")
+                    .header(header::HOST, "staging.neonlaw.com")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"token":"github-jwt"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(mint_response.status(), axum::http::StatusCode::OK);
+        let mint_body = axum::body::to_bytes(mint_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let minted: serde_json::Value = serde_json::from_slice(&mint_body).unwrap();
+        let token = minted["token"].as_str().unwrap();
+
+        let projects_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/app/api/projects")
+                    .header(header::HOST, "staging.neonlaw.com")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(projects_response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(projects_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+
+        let matters: Vec<LiveMatter> =
+            serde_json::from_str(&body).expect("the live door's own response must parse");
+        let acme = matters
+            .iter()
+            .find(|matter| matter.code == "acme")
+            .expect("the seeded project is in its own lookup");
+        assert_eq!(acme.status, "open");
+        assert_eq!(
+            acme.repository_url.as_deref(),
+            Some("https://github.com/org/acme")
+        );
     }
 }

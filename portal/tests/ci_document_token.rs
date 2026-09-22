@@ -195,7 +195,16 @@ async fn a_minted_document_token_allows_only_its_project_metadata_for_bearer_and
         assert_eq!(status, StatusCode::OK);
         assert_eq!(projects.as_array().unwrap().len(), 1);
         assert_eq!(projects[0]["code"], "acme");
-        assert_eq!(projects[0].as_object().unwrap().len(), 2);
+        assert_eq!(projects[0]["status"], "open");
+        assert_eq!(
+            projects[0]["repository_url"],
+            "https://github.com/neon-law-staging/acme"
+        );
+        // `id`, `code`, `status`, `repository_url` — the four fields the live
+        // gate (ENG-842) and the document verifier need, and nothing more:
+        // `name`, `brand`, `entity_id`, `description`, and the Slack/Notion
+        // URLs stay off this response.
+        assert_eq!(projects[0].as_object().unwrap().len(), 4);
 
         let (status, revisions) = request(
             &fixture.app,

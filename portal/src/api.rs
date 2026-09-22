@@ -1066,6 +1066,8 @@ async fn list_projects_door(
         let lookup = vec![DocumentProjectLookup {
             id: project.id,
             code: project.code,
+            status: project.status,
+            repository_url: project.repository_url,
         }];
         return Ok((StatusCode::OK, Json(lookup)).into_response());
     }
@@ -1082,12 +1084,17 @@ async fn list_projects_door(
 }
 
 /// The only Project fields the document-verification CLI needs before it asks
-/// for revision metadata. Keeping this response separate from the human
-/// Project payload prevents a CI token from inheriting unrelated fields.
+/// for revision metadata, plus the two fields `navigator project gate --ci`
+/// reconciles against `navigator.yaml` (`status`, `repository_url`). Keeping
+/// this response separate from the human Project payload prevents a CI token
+/// from inheriting unrelated fields such as `name`, `brand`, `entity_id`,
+/// `description`, or the Slack/Notion URLs.
 #[derive(Debug, Serialize)]
 struct DocumentProjectLookup {
     id: Uuid,
     code: String,
+    status: String,
+    repository_url: Option<String>,
 }
 
 /// `GET /app/api/projects/{id}` — one matter, or 404 if the caller may not see it.

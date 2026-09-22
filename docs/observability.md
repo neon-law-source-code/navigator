@@ -145,10 +145,14 @@ The `examples/deploy` process path uses the plain collector contract: binaries s
 collector Service without OpenObserve credentials. The collector runs the existing `memory_limiter`, resource detection,
 fail-closed `redaction`, and `batch` processors before the exporters. Google Cloud keeps its existing sampled trace
 lane. Dash0 receives a separate trace lane that drops successful health, readiness, version, crawler, and static-asset
-request spans before tail sampling. The filter keeps every 4xx/5xx response and keeps spans whose status is unavailable.
-Dash0's tail-sampling percentage is read from `DASH0_TRACE_SAMPLING_PERCENTAGE`, with a default of 20; the selected
-deployment can set a different value for staging or production. The filter and Dash0 sampler never change the Google
-Cloud trace lane. Metrics and logs remain shared fan-out pipelines because trace sampling cannot reduce their billable
+request spans before tail sampling. The filter keeps every 4xx/5xx response, and keeps a span whose status attribute is
+absent because an ordering comparison against nil is false, so the drop condition never matches. Dash0's tail-sampling
+percentage is read from `DASH0_TRACE_SAMPLING_PERCENTAGE`, with a default of 20; the selected deployment can set a
+different value for staging or production. The filter and Dash0 sampler never change the Google Cloud trace lane. A
+processor belongs to exactly one pipeline, so per-backend filtering costs a second trace lane: both lanes receive from
+the same `otlp` receiver, resource detection and redaction therefore run once per lane, and each lane holds its own
+`num_traces` tail-sampling buffer. That is collector CPU and memory spent to reduce Dash0 ingest, and it scales with
+span volume. Metrics and logs remain shared fan-out pipelines because trace sampling cannot reduce their billable
 records.
 
 Dash0 is an optional per-deployment integration declared by a nonblank `DASH0_ENDPOINT` in the selected deployment row's

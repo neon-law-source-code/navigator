@@ -244,8 +244,10 @@ data:
         summary: debug
       # Dash0-only noise filter. These are successful operational or static
       # HTTP requests that carry no application decision. The status guard
-      # keeps every 4xx/5xx response; a missing status is kept because
-      # error_mode=ignore leaves evaluation errors untouched.
+      # keeps every 4xx/5xx response; a span whose status attribute is absent
+      # is also kept, because an ordering comparison against nil is false and
+      # so the drop condition never matches. error_mode=ignore covers the
+      # remaining evaluation errors (a non-string route reaching IsMatch).
       filter/dash0_noise:
         error_mode: ignore
         traces:
@@ -391,7 +393,7 @@ spec:
             # Dash0-only trace sampling. The selected deployment may set a
             # different rate without changing the Google Cloud trace lane.
             - name: DASH0_TRACE_SAMPLING_PERCENTAGE
-              value: YOUR_DASH0_TRACE_SAMPLING_PERCENTAGE
+              value: "YOUR_DASH0_TRACE_SAMPLING_PERCENTAGE"
             # `optional: true` is the repository-wide rule for every
             # `secretKeyRef` against the selected deployment Secret (see
             # docs/cronjobs.md): a missing key must never block a pod from

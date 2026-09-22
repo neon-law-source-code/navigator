@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use serde::Deserialize;
 
-use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
+use crate::{f107, frontmatter, line_byte_range, Rule, SourceFile, Violation};
 
 pub struct F104FlowQuestionCodes {
     valid_codes: HashSet<String>,
@@ -61,8 +61,10 @@ impl F104FlowQuestionCodes {
 
 #[derive(Debug, Deserialize)]
 struct FrontmatterShape {
-    /// Attorney-drafted `letter` and `memo` blueprints may be body-only.
-    /// Other notation kinds remain machine-driven and require both maps.
+    /// Attorney-drafted `letter` and `memo` blueprints may be body-only
+    /// — but only when the body itself is prose-only; see
+    /// [`body_is_binding_or_signable`]. Other notation kinds remain
+    /// machine-driven and require both maps.
     #[serde(default)]
     kind: Option<String>,
     #[serde(default)]
@@ -94,7 +96,10 @@ impl Rule for F104FlowQuestionCodes {
 
         let mut violations = Vec::new();
         let Some(questionnaire) = parsed.questionnaire else {
-            if parsed.workflow.is_none() && attorney_drafted_kind(parsed.kind.as_deref()) {
+            if parsed.workflow.is_none()
+                && attorney_drafted_kind(parsed.kind.as_deref())
+                && !body_is_binding_or_signable(&file.contents)
+            {
                 return violations;
             }
             violations.push(violation(file, "Missing required `questionnaire` key"));
@@ -127,6 +132,44 @@ impl Rule for F104FlowQuestionCodes {
 
 fn attorney_drafted_kind(kind: Option<&str>) -> bool {
     matches!(kind, Some("letter" | "memo"))
+}
+
+/// True when the document's own body marks it as binding or signable,
+/// independent of what `kind:` it declares — a signature placeholder
+/// (`{{<signer>.signature}}` / `{{<signer>.initials}}`, `N107`'s
+/// grammar), a heading naming a signature block, or a manual
+/// "By: ____" signing line. The shipped Nevada engagement letter looks
+/// exactly like the last of these: real binding terms and a hand-signed
+/// block, with no `{{ }}` placeholder at all.
+///
+/// The attorney-drafted bypass above is for a *prose-only* letter or
+/// memo — one nobody signs. A letter that carries one of these markers
+/// is not prose-only, so it may not use the bypass regardless of its
+/// declared `kind:`: trusting `kind: letter` alone would let a
+/// signable instrument validate clean the moment its
+/// `questionnaire:`/`workflow:` metadata is stripped out, which is
+/// exactly the failure mode this check exists to close.
+fn body_is_binding_or_signable(contents: &str) -> bool {
+    let body = frontmatter::split(contents).map_or(contents, |(_, body)| body);
+    if f107::signature_placeholders(body)
+        .iter()
+        .any(|p| p.field == "signature" || p.field == "initials")
+    {
+        return true;
+    }
+    body.lines().any(|line| {
+        let trimmed = line.trim();
+        is_signature_heading(trimmed) || is_manual_signature_line(trimmed)
+    })
+}
+
+fn is_signature_heading(line: &str) -> bool {
+    line.starts_with('#') && line.to_ascii_lowercase().contains("signature")
+}
+
+fn is_manual_signature_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.starts_with("by:") && line.contains("___")
 }
 
 impl F104FlowQuestionCodes {
@@ -346,6 +389,25 @@ workflow:
                 "{kind} may omit questionnaire and workflow"
             );
         }
+    }
+
+    #[test]
+    fn attorney_drafted_letter_with_a_signature_block_still_requires_both_machines() {
+        // A `letter` with real binding terms and a signature block is not
+        // prose-only — the shipped Nevada engagement letter looks exactly
+        // like this: numbered substantive sections, then a "Signatures"
+        // heading with manual "By: ____  Date: ____" lines and no `{{ }}`
+        // placeholder at all. Stripping its questionnaire/workflow
+        // metadata must not let a copy of it validate clean.
+        let body = "---\nkind: letter\n---\n\n## I. Terms\n\nThe Firm will represent you.\n\n\
+                     ## IX. Signatures\n\nBy: ______________________________  Date: ____________\n";
+        let violations = rule().lint(&file(body));
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.message.contains("Missing required `questionnaire`")),
+            "a signable letter body must still require the questionnaire machine: {violations:?}"
+        );
     }
 
     #[test]

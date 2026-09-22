@@ -7,6 +7,25 @@
 //! `portal_invoice_card.rs` — forge a session cookie, send the request,
 //! assert on the rendered card — with trust-ledger setup in place of mirror
 //! rows.
+//!
+//! Every `Given` step here, including the California-pool and
+//! two-invoices-one-matter steps, builds its own minimal, scenario-scoped
+//! fixture directly through `store::iolta_accounts`/`store::xero_invoices`/
+//! `store::iolta_withdrawals` — none of them call
+//! `store::synthetic_portfolio`. That is deliberate, not a gap: this file's
+//! scenarios read as the portal's read side against those store seams
+//! directly, and `synthetic_portfolio` is a much larger, operator-invoked
+//! staging fixture (it needs the canonical seed applied first, and writes
+//! many unrelated matters/participations) that this suite never wires into
+//! its shared, per-binary embedded engine, for the same isolation reasons
+//! `synthetic_portfolio`'s own module docs give for staying decoupled from
+//! any boot path. `plan_ca_trust`/`plan_pooled_draw_matter` — the fixture
+//! builders backing the analogous California-pool and multi-invoice shapes
+//! in `store::synthetic_portfolio`'s own fixture — are exercised directly by
+//! that module's unit tests
+//! (`california_pool_is_independent_of_nevada_and_rejects_a_second_account`,
+//! `apply_produces_one_pooled_withdrawal_across_two_matters_with_protected_balances`)
+//! and by `store::iolta_withdrawals::two_invoices_on_one_matter_draw_their_total_once`.
 
 // Cucumber's step-attribute macros want `async fn` everywhere.
 #![allow(clippy::unused_async)]

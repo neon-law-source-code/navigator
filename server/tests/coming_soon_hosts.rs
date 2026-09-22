@@ -66,6 +66,26 @@ async fn summons_serves_only_coming_soon_on_production_and_staging() {
                 .await
                 .unwrap();
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{host}{path}");
+            assert!(
+                response.headers().get(header::LOCATION).is_none(),
+                "{host}{path} must not redirect anywhere, got Location: {:?}",
+                response.headers().get(header::LOCATION)
+            );
+            let body = String::from_utf8(
+                to_bytes(response.into_body(), usize::MAX)
+                    .await
+                    .unwrap()
+                    .to_vec(),
+            )
+            .unwrap();
+            assert!(
+                !body.contains("Coming Soon"),
+                "{host}{path} must not leak the holding page's own notice"
+            );
+            assert!(
+                !body.contains("Summons Defense | Coming Soon"),
+                "{host}{path} must not wear the holding page's title"
+            );
         }
     }
 }

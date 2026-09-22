@@ -132,6 +132,42 @@ const DASH0_TRACES_PIPELINE: &str = r"        traces/dash0:
           processors: [memory_limiter, resourcedetection, redaction, filter/dash0_noise, tail_sampling/dash0, batch]
           exporters: [otlp/dash0]
 ";
+const DASH0_FILTER_BLOCK: &str = r#"      # Dash0-only noise filter. These are successful operational or static
+      # HTTP requests that carry no application decision. The status guard
+      # keeps every 4xx/5xx response; a missing status is kept because
+      # error_mode=ignore leaves evaluation errors untouched.
+      filter/dash0_noise:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.route"] == "/health" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/readyz" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/app/health" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/app/readyz" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/version" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/robots.txt" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/sitemap.xml" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/llms.txt" and attributes["http.response.status_code"] < 400'
+            - 'IsMatch(attributes["http.route"], "^/(assets|public)/") and attributes["http.response.status_code"] < 400'
+"#;
+const DASH0_TAIL_SAMPLING_BLOCK: &str = r"      tail_sampling/dash0:
+        decision_wait: 10s
+        num_traces: 50000
+        policies:
+          - name: keep-errors
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+          - name: keep-audit
+            type: boolean_attribute
+            boolean_attribute:
+              key: audit
+              value: true
+          - name: probabilistic-rest
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: ${env:DASH0_TRACE_SAMPLING_PERCENTAGE}
+";
 
 /// The narrow GKE control-plane response required to connect a Rust
 /// Kubernetes client without depending on an operator's kubeconfig or a
@@ -768,6 +804,8 @@ fn render_manifest_with_sampling(
             .replace(DASH0_EXPORTER_BLOCK, "")
             .replace(DASH0_COORDINATE_ENV_BLOCK, "")
             .replace(DASH0_TRACES_PIPELINE, "")
+            .replace(DASH0_FILTER_BLOCK, "")
+            .replace(DASH0_TAIL_SAMPLING_BLOCK, "")
             .replace(", otlp/dash0", ""),
     };
     Ok(rendered)
@@ -1107,18 +1145,26 @@ mod tests {
         assert!(google_traces.contains("exporters: [googlecloud]"));
         assert!(!google_traces.contains("filter/dash0_noise"));
 
+        let filter_start = rendered
+            .find("      filter/dash0_noise:\n")
+            .expect("collector is missing the Dash0 noise filter");
+        let filter_end = rendered[filter_start..]
+            .find("      # Tail sampling")
+            .map(|offset| filter_start + offset)
+            .expect("collector is missing the tail-sampling processors");
+        let dash0_filter = &rendered[filter_start..filter_end];
+        assert!(dash0_filter.contains("attributes[\"http.route\"] == \"/health\""));
+        assert!(
+            dash0_filter.contains("attributes[\"http.response.status_code\"] < 400"),
+            "the noise filter must keep 4xx and 5xx responses"
+        );
+
         let dash0_traces_end = rendered
             .find("        metrics:\n")
             .expect("collector is missing the metrics pipeline");
         let dash0_traces = &rendered[traces_end..dash0_traces_end];
-        assert!(dash0_traces.contains("filter/dash0_noise"));
         assert!(dash0_traces.contains("tail_sampling/dash0"));
         assert!(dash0_traces.contains("exporters: [otlp/dash0]"));
-        assert!(dash0_traces.contains("attributes[\"http.route\"] == \"/health\""));
-        assert!(
-            dash0_traces.contains("attributes[\"http.response.status_code\"] < 400"),
-            "the noise filter must keep 4xx and 5xx responses"
-        );
 
         for signal in ["metrics", "logs"] {
             let marker = format!("        {signal}:\n");
@@ -1182,6 +1228,7 @@ mod tests {
         assert!(!rendered.contains("otlp/dash0"));
         assert!(!rendered.contains("traces/dash0:"));
         assert!(!rendered.contains("filter/dash0_noise"));
+        assert!(!rendered.contains("tail_sampling/dash0"));
         assert!(!rendered.contains(DASH0_ENDPOINT_PLACEHOLDER));
         assert!(!rendered.contains(DASH0_DATASET_PLACEHOLDER));
         for signal in ["traces", "metrics", "logs"] {

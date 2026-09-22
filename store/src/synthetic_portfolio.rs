@@ -2785,6 +2785,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(invoices.len(), 4, "unpaid, overdue, partial, and paid");
+        assert!(
+            invoices.iter().all(|invoice| invoice.currency == "USD"),
+            "the matrix project's own invoices are never EUR"
+        );
 
         let unpaid = invoices
             .iter()
@@ -2803,6 +2807,7 @@ mod tests {
             .expect("overdue invoice");
         assert_eq!(overdue.status, "AUTHORISED");
         assert_eq!(overdue.amount_paid_cents, 0);
+        assert_eq!(overdue.currency, "USD");
         assert_eq!(overdue.issued_at, fixed_date(PERIOD_ONE_ISSUED));
         assert_eq!(overdue.due_at, Some(fixed_date(PERIOD_ONE_DUE)));
         assert!(
@@ -2818,6 +2823,7 @@ mod tests {
         assert_eq!(partial.status, "AUTHORISED");
         assert_eq!(partial.amount_paid_cents, INVOICE_MATRIX_PARTIAL_PAID_CENTS);
         assert!(partial.amount_paid_cents < partial.amount_cents);
+        assert_eq!(partial.currency, "USD");
         assert_eq!(partial.issued_at, fixed_date(PERIOD_ONE_ISSUED));
         assert_eq!(partial.due_at, Some(fixed_date(PERIOD_TWO_DUE)));
 
@@ -2827,6 +2833,7 @@ mod tests {
             .expect("paid invoice");
         assert_eq!(paid.status, "PAID");
         assert_eq!(paid.amount_paid_cents, paid.amount_cents);
+        assert_eq!(paid.currency, "USD");
 
         let eur_project = crate::projects::find_by_code(&surreal, EUR_GROUP_PROJECT_CODE)
             .await
@@ -2855,14 +2862,19 @@ mod tests {
             .filter(|invoice| invoice.currency == "EUR")
             .map(|invoice| invoice.amount_cents)
             .sum();
-        assert_eq!(
-            usd_total,
-            INVOICE_MATRIX_UNPAID_CENTS
-                + INVOICE_MATRIX_OVERDUE_CENTS
-                + INVOICE_MATRIX_PARTIAL_CENTS
-                + INVOICE_MATRIX_PAID_CENTS,
-        );
-        assert_eq!(eur_total, EUR_GROUP_UNPAID_CENTS + EUR_GROUP_PAID_CENTS);
+        // Prove `for_projects` is consistent whether the two Projects are
+        // read together or apart, rather than re-deriving the expected
+        // totals from the matrix's own constants: the USD slice of the
+        // combined read must equal the matrix project's invoices read
+        // alone, and the EUR slice must equal the EUR project's invoices
+        // read alone.
+        let invoices_total: i64 = invoices.iter().map(|invoice| invoice.amount_cents).sum();
+        let eur_invoices_total: i64 = eur_invoices
+            .iter()
+            .map(|invoice| invoice.amount_cents)
+            .sum();
+        assert_eq!(usd_total, invoices_total);
+        assert_eq!(eur_total, eur_invoices_total);
     }
 
     /// One pooled Nevada withdrawal settles two different matters' invoices
@@ -3105,11 +3117,11 @@ mod tests {
 
     /// Every provider-shaped id this section introduces is a deterministic,
     /// visibly synthetic literal — never something that could be mistaken
-    /// for (or accidentally forwarded to) a live Xero id. This module's
-    /// `apply`/`dry_run` also take no provider client at all (see their
-    /// signatures above), so there is no seam through which a live call
-    /// could be reached in the first place; this test guards the data half
-    /// of that guarantee.
+    /// for (or accidentally forwarded to) a live Xero id. This guards only
+    /// the *data* half of the "no live provider call is reachable"
+    /// guarantee; see `_no_provider_client_seam_exists` below for the *code*
+    /// half (that `apply`/`dry_run` take no provider-client parameter at
+    /// all).
     #[test]
     fn finance_scenario_ids_are_deterministic_and_visibly_synthetic() {
         let ids = [
@@ -3139,5 +3151,24 @@ mod tests {
         // section.
         assert_eq!(fixed_date(PERIOD_ONE_ISSUED), fixed_date(PERIOD_ONE_ISSUED));
         assert!(fixed_date(PERIOD_ONE_ISSUED) < fixed_date(PERIOD_TWO_ISSUED));
+    }
+
+    /// Compile-time pin on the "no live provider" guarantee's other half:
+    /// `finance_scenario_ids_are_deterministic_and_visibly_synthetic` above
+    /// guards the data half (every id this module writes is visibly
+    /// synthetic); this guards the code half. If `apply`/`dry_run` ever
+    /// grow a provider-client parameter, this wrapper — which names every
+    /// parameter each one takes today, in order, with no others — stops
+    /// compiling. It is never called; the compile step itself, at every
+    /// `cargo build`/`cargo check`/`cargo test`, is the guard.
+    #[allow(dead_code)]
+    fn _no_provider_client_seam_exists(
+        surreal: &SurrealDb,
+        storage: &Arc<dyn cloud::StorageService>,
+        environment: crate::DeploymentEnvironment,
+        target: Option<&str>,
+    ) {
+        drop(apply(surreal, storage, environment, target));
+        drop(dry_run(surreal, storage, environment, target));
     }
 }

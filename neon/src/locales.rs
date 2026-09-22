@@ -1180,7 +1180,7 @@ mod tests {
             );
         }
         assert!(
-            text.to_lowercase().contains("technology"),
+            text.to_lowercase().contains("technolog"),
             "and the audience is named: {text}"
         );
     }

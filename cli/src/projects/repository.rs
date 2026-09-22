@@ -2071,12 +2071,32 @@ fn validate_templates(
 pub const DOCUMENT_GITIGNORE_CODE: &str = "Y014";
 
 /// When `documents/` exists, hold `documents/.gitignore` to
-/// [`crate::document_sync::DOCUMENTS_GITIGNORE`]. Local `project gate` writes
-/// the canonical bytes; `--ci` reports and leaves the file alone.
+/// [`crate::document_sync::DOCUMENTS_GITIGNORE`], and reject any `*.yml` file
+/// underneath — the retired pointer spelling stays readable, never writable.
+/// Local `project gate` writes the canonical bytes; `--ci` reports and leaves
+/// the file alone. Either way, a stray `.yml` file must be renamed by hand:
+/// there is no canonical content to overwrite it with.
 fn validate_documents_gitignore(root: &Path, write_fixes: bool, errors: &mut Vec<Finding>) {
     let documents = root.join(DOCUMENT_DIRECTORY);
     if !documents.is_dir() {
         return;
+    }
+    for entry in walkdir::WalkDir::new(&documents).follow_links(false) {
+        let Ok(entry) = entry else { continue };
+        if entry.file_type().is_file()
+            && entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                == Some("yml")
+        {
+            errors.push(Finding::at(
+                entry.path(),
+                format!(
+                    "{DOCUMENT_GITIGNORE_CODE}: `documents/` must not carry a `.yml` file; rename it to `.yaml`"
+                ),
+            ));
+        }
     }
     let path = documents.join(".gitignore");
     let current = fs::read(&path).ok();
@@ -2097,7 +2117,7 @@ fn validate_documents_gitignore(root: &Path, write_fixes: bool, errors: &mut Vec
     errors.push(Finding::at(
         path,
         format!(
-            "{DOCUMENT_GITIGNORE_CODE}: `documents/.gitignore` must be exactly `*`, `!*/`, `!*.yaml`, `!*.yml`, and `!.gitignore` (one per line, no comments); every other byte leaves the directory ignoring nothing, or only what the root `.gitignore` already covers"
+            "{DOCUMENT_GITIGNORE_CODE}: `documents/.gitignore` must be exactly `*`, `!*/`, `!*.yaml`, and `!.gitignore` (one per line, no comments); every other byte leaves the directory ignoring nothing, or only what the root `.gitignore` already covers"
         ),
     ));
 }

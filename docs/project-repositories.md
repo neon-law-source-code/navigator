@@ -139,8 +139,8 @@ The command creates `documents/.gitignore` without overwriting an existing file.
 and `Y014` holds them exact whenever `documents/` exists: deny everything, then re-admit subdirectories, pointer files,
 and the ignore file itself. A comment or a dropped `*` still parses, and still looks like it is working against a PDF
 the root `.gitignore` already covers, while every other extension lands. The repository gate admits that file and
-`documents/**/*.yml` only; every other file below `documents/` is rejected. Raw legal-document bytes must never be
-committed to a Project repository.
+`documents/**/*.yaml` only; every other file below `documents/`, including a `.yml` pointer, is rejected. Raw
+legal-document bytes must never be committed to a Project repository.
 
 **`navigator site pull` is the inverse: it materialises bytes into a checkout rather than uploading them out of one.**
 It walks every committed pointer below `documents/` — the same set `document verify` reads offline — and for each one

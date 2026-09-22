@@ -121,6 +121,7 @@ pub mod mailrooms;
 pub mod notarizations;
 pub mod notation_clauses;
 pub mod notation_documents;
+pub mod notation_drafts;
 pub mod notation_events;
 pub mod notation_packages;
 pub mod notation_pricing;

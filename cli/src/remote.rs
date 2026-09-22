@@ -16,6 +16,7 @@
 //! | `project setup` | `GET /app/api/projects` plus the authenticated surface, Slack, and Notion setup doors |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
+//! | `notations preview` | `POST /app/projects/{project_code}/notations/draft` |
 //! | `navigator site import` | `POST /app/api/seed` (optional `POST /auth/ci/seed-token`) |
 
 use std::collections::VecDeque;
@@ -1683,6 +1684,49 @@ pub async fn notation_create(
     .await
 }
 
+/// Server response to a notation-draft POST: the draft's path on the
+/// deployment. Joined with `base` to print and open the full URL.
+#[derive(Debug, Deserialize)]
+struct NotationDraftCreated {
+    id: Uuid,
+    path: String,
+}
+
+/// `navigator notations preview <file>` (LAW-29) — push a template as a
+/// **draft** to the Project it belongs to: `POST
+/// /app/projects/{project_code}/notations/draft`. Unlike [`notation_create`],
+/// this creates no Notation and starts no questionnaire — the server-side
+/// handler stores the draft alone (see `store::notation_drafts`). Returns
+/// the draft's id and its full URL on the deployment.
+pub(crate) async fn create_notation_draft(
+    host: Option<&str>,
+    project_code: &str,
+    slug: &str,
+    source: &str,
+) -> Result<(Uuid, String)> {
+    let (base, token) = resolve(host)?;
+    let client = reqwest::Client::new();
+    let url = format!("{base}/app/projects/{project_code}/notations/draft");
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "slug": slug, "source": source }))
+        .send()
+        .await
+        .with_context(|| format!("POST {url}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow!(
+            "could not push a draft (status {status}). The server reported: {}",
+            first_line(&body),
+        ));
+    }
+    let created: NotationDraftCreated =
+        resp.json().await.context("parse notation-draft response")?;
+    Ok((created.id, format!("{base}{}", created.path)))
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct NotationInventoryRow {
     id: Uuid,
@@ -2944,14 +2988,14 @@ mod tests {
 
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
-        clause_list, document_upload, ensure_no_unused_selections, fetch_status, mail_file,
-        matter_close, matter_open, notation_answers, notation_approve, notation_create,
-        notation_document, notation_list, notation_request_changes, notation_status,
-        notation_update, notion_ensure, notion_reconcile, parse_scripted_selection,
-        picker_selection_fields, projects_create, projects_lifecycle, projects_list,
-        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
-        select_candidate, slack_ensure, CoverageSummary, DocumentClient, SeedCredential,
-        StepQuestion, StepResponse,
+        clause_list, create_notation_draft, document_upload, ensure_no_unused_selections,
+        fetch_status, mail_file, matter_close, matter_open, notation_answers, notation_approve,
+        notation_create, notation_document, notation_list, notation_request_changes,
+        notation_status, notation_update, notion_ensure, notion_reconcile,
+        parse_scripted_selection, picker_selection_fields, projects_create, projects_lifecycle,
+        projects_list, retainer_approve, retainer_send, scripted_picker_selection_fields, seed,
+        seed_directory, select_candidate, slack_ensure, CoverageSummary, DocumentClient,
+        SeedCredential, StepQuestion, StepResponse,
     };
     use super::{
         exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, parse_csv,
@@ -3032,6 +3076,67 @@ mod tests {
             err.to_string().contains("expired"),
             "expected an expired-token error, got: {err}"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn create_notation_draft_posts_the_slug_and_source_and_joins_the_returned_path() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let draft_id = Uuid::now_v7();
+
+        Mock::given(method("POST"))
+            .and(path("/app/projects/acme/notations/draft"))
+            .and(body_json(serde_json::json!({
+                "slug": "sample-letter",
+                "source": "# Sample Letter\n",
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": draft_id,
+                "path": format!("/notations/drafts/{draft_id}"),
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let (id, url) = create_notation_draft(
+            Some(&server_uri),
+            "acme",
+            "sample-letter",
+            "# Sample Letter\n",
+        )
+        .await
+        .expect("the draft is pushed");
+
+        assert_eq!(id, draft_id);
+        assert_eq!(url, format!("{server_uri}/notations/drafts/{draft_id}"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn create_notation_draft_reports_the_servers_refusal() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("POST"))
+            .and(path("/app/projects/no-such-matter/notations/draft"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("matter not found"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let err = create_notation_draft(
+            Some(&server_uri),
+            "no-such-matter",
+            "sample-letter",
+            "# Sample Letter\n",
+        )
+        .await
+        .expect_err("a 404 is not a pushed draft");
+
+        assert!(err.to_string().contains("matter not found"), "{err}");
     }
 
     #[tokio::test(flavor = "current_thread")]

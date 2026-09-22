@@ -133,6 +133,7 @@ pub mod lead_capture;
 pub mod marketing;
 pub mod matter_documents;
 pub mod mcp_principal;
+pub mod notation_draft;
 pub mod notation_preview_doc;
 pub mod oauth;
 pub mod openapi;

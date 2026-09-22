@@ -1,44 +1,39 @@
-//! `navigator notations preview <FILE>` — serve one template's
-//! `/notations/{slug}` show page on a local bind, so an author can read what
-//! they are writing as a reader will read it.
+//! `navigator notations preview <FILE>` (LAW-29) — push one template as a
+//! **draft** to the Project repository it sits in, and open that Project's
+//! real portal at it.
 //!
-//! The page is not a second rendering of the template. It is
-//! [`portal::dioxus_app::notation_preview_router`] — the same axum router the
-//! firm's public site mounts — fed by
-//! [`portal::notation_preview_doc::from_markdown`], the same projection that
-//! builds the published page. So the questionnaire section walks the
-//! template's own declared question order with Navigator's real field
-//! controls, and the workflow section draws the template's own declared state
-//! machine. A template that reads badly here reads badly published.
+//! The published show page depends on `@neon-law-source-code/navigator-ux`
+//! to draw a surface Navigator could serve directly, and a from-scratch
+//! local imitation of that page has to be kept in step with it by hand —
+//! easy to let drift, and once it drifts the one thing a preview exists to
+//! prove (that the questionnaire steps the way an author wrote it) is
+//! exactly what it can no longer show. So the default here is not a second
+//! renderer: it is the production one. [`run`] reads the Project and the
+//! deployment host out of `navigator.yaml`, the way `navigator project
+//! gate` does — there is no `--project` flag, because a template is always
+//! previewed as the Project whose repository it sits in — pushes the
+//! template to that deployment as a **draft**, and opens the browser at it.
 //!
-//! **Nothing is persisted and nothing is bound.** There is no Notation row,
-//! no Answer row, no runtime signal, no store connection at all — the two
-//! demo sections are client-side-only by construction (see
-//! `webapp::notation_demo` and `webapp::notation_workflow`). That is what
-//! lets this run offline against a file that has never been imported. To
-//! walk the *real* questionnaire runtime and watch the post-questionnaire
-//! workflow actually start, that is a different command and a different
-//! machine (ENG-688).
+//! A draft is stored and addressable, but explicitly **not run**: creating
+//! one starts no workflow instance, journals no `intake_submitted`, and
+//! renders no PDF — nothing a draft creates could be mistaken for an
+//! executed instrument or a filed document (see `store::notation_drafts`).
 //!
-//! Two things the page needs beyond the router, and both are resolved here
-//! rather than assumed:
+//! # `--offline`
 //!
-//! * **Stylesheets and scripts.** The show page hoists `/public/css/*` and
-//!   `/public/js/*`. An author previewing a template stands in a matter's
-//!   Project repository, which has no `server/public` directory, so those
-//!   bytes are compiled into this binary and served from it.
-//! * **The Dioxus client bundle.** Stepping the questionnaire is hydration,
-//!   and hydration needs the wasm the `dx` build emits. When it is present
-//!   the page steps; when it is not, `dioxus-server` degrades to an SSR-only
-//!   shell and the questions still render, so a missing bundle costs
-//!   interactivity rather than the preview. The command says which of the
-//!   two the reader is looking at rather than leaving them to wonder why
-//!   "Next" does nothing.
+//! Outside a Project repository, or without a login, there is no
+//! deployment to push a draft to. `--offline` covers that case, but it is
+//! a **lint**, not a preview: a from-scratch local render of the same
+//! [`portal::dioxus_app::notation_preview_router`] the firm's public site
+//! mounts, with no store connection, no persistence, and no claim to be
+//! the surface a client will see. Good for catching a malformed
+//! questionnaire or workflow spec before it ever reaches a Project; not a
+//! substitute for opening the real draft.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::extract::Path as PathParam;
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -59,17 +54,113 @@ static PUBLIC_JS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../server/pub
 /// `ServeConfig::new` resolves the index template once, at construction.
 const PUBLIC_PATH_ENV: &str = "DIOXUS_PUBLIC_PATH";
 
-/// Serve `file`'s show page on `port` until the process is interrupted.
+/// `navigator notations preview <file>` (LAW-29).
 ///
-/// `port` `0` asks the OS for a free one, which is what makes two previews
-/// in two checkouts able to run at once; the bound port is printed either
-/// way, so the reader never has to guess.
-pub async fn run(file: &Path, port: u16) -> Result<()> {
+/// Resolves `file` to a template, then either pushes it as a draft to the
+/// Project repository it sits in and opens the real portal at it, or — with
+/// `offline` — renders it locally as a lint. `host_override` is honored only
+/// in the pushed-draft path, and only as an override of `navigator.yaml`'s
+/// own `project.host`, never a replacement for it.
+pub async fn run(file: &Path, offline: bool, port: u16, host_override: Option<&str>) -> Result<()> {
     let here = std::env::current_dir().context("reading the current directory")?;
     let found = resolve_template(&here, file)?;
     let slug = slug_for(&found.path);
+
+    if offline {
+        return run_offline_lint(&found, &slug, port).await;
+    }
+
+    let (project_code, manifest_host) = read_project_manifest(&here)?;
+    let host = host_override.unwrap_or(&manifest_host);
+
     let doc = portal::notation_preview_doc::from_markdown(
         &slug,
+        &found.path.display().to_string(),
+        &found.src,
+    );
+
+    eprintln!("==> {}", doc.title);
+    eprintln!(
+        "    pushing a draft to `{project_code}` from {}{}",
+        found.path.display(),
+        if found.bundled {
+            " (bundled in this binary)"
+        } else {
+            ""
+        }
+    );
+
+    let (draft_id, url) =
+        crate::remote::create_notation_draft(Some(host), &project_code, &slug, &found.src)
+            .await
+            .context("pushing the draft")?;
+
+    eprintln!("    draft {draft_id} — not run: no notation, no workflow, no PDF");
+    eprintln!("==> {url}");
+    if open_browser(&url) {
+        eprintln!("    opened in your browser.");
+    } else {
+        eprintln!("    open that URL in a browser to see the draft.");
+    }
+    Ok(())
+}
+
+/// Read the Project and the deployment host out of `navigator.yaml` two
+/// directories up, the way `navigator project gate` does. Refuses outside a
+/// Project repository rather than falling back to a local render — asking
+/// the author to name the Project or the host invites naming the wrong one,
+/// when the repository they are standing in already answers both.
+fn read_project_manifest(root: &Path) -> Result<(String, String)> {
+    let (project, host) = crate::document_sync::read_manifest(root).map_err(|error| {
+        anyhow!(
+            "`navigator notations preview` pushes a draft to the Project repository it runs \
+             in, and this does not look like one: {error:#}. Run it from a Project repository \
+             root, or pass `--offline` to lint the template locally instead."
+        )
+    })?;
+    let host = host.ok_or_else(|| {
+        anyhow!(
+            "{} names a Project but no host to preview against — add `project.host` to \
+             navigator.yaml, or pass `--host` to override it",
+            crate::projects::manifest::FILE
+        )
+    })?;
+    Ok((project, host))
+}
+
+/// Best-effort: open `url` in the reader's default browser. Returns whether
+/// it worked, but opening is convenience, not a contract — the URL is
+/// printed either way, so a failure here never loses the one thing the
+/// reader actually needs.
+///
+/// macOS's `open`, Linux's `xdg-open`, and Windows' `cmd /c start` cover
+/// every platform this binary ships for without a crate dependency. A
+/// failure here (headless CI, a missing binary, no display) is silently
+/// non-fatal — the printed URL is the real interface.
+fn open_browser(url: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    let opened = std::process::Command::new("open").arg(url).status();
+    #[cfg(target_os = "linux")]
+    let opened = std::process::Command::new("xdg-open").arg(url).status();
+    #[cfg(target_os = "windows")]
+    let opened = std::process::Command::new("cmd")
+        .args(["/c", "start", "", url])
+        .status();
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    let opened: std::io::Result<std::process::ExitStatus> =
+        Err(std::io::Error::other("no known browser-open command"));
+
+    opened.is_ok_and(|status| status.success())
+}
+
+/// Render `found`'s show page on `port` until the process is interrupted —
+/// the offline lint. Named for what it is: a local render of the same
+/// router the public site mounts, with no store connection and no claim to
+/// be the surface a client will see. `port` `0` asks the OS for a free one,
+/// so two lints can run at once.
+async fn run_offline_lint(found: &Resolved, slug: &str, port: u16) -> Result<()> {
+    let doc = portal::notation_preview_doc::from_markdown(
+        slug,
         &found.path.display().to_string(),
         &found.src,
     );
@@ -92,7 +183,7 @@ pub async fn run(file: &Path, port: u16) -> Result<()> {
         .with_context(|| format!("binding {addr}"))?;
     let bound = listener.local_addr().context("reading the bound port")?;
 
-    eprintln!("==> {title}");
+    eprintln!("==> lint (offline): {title}");
     eprintln!(
         "    {} question(s), {} workflow state(s), from {}{}",
         questions,
@@ -104,6 +195,7 @@ pub async fn run(file: &Path, port: u16) -> Result<()> {
             ""
         }
     );
+    eprintln!("    this is a local render, not the Project's portal — nothing is pushed.");
     match &bundle {
         Some(dir) => eprintln!("    client bundle: {}", dir.display()),
         None => eprintln!(
@@ -119,7 +211,7 @@ pub async fn run(file: &Path, port: u16) -> Result<()> {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
-        .context("serving the preview")?;
+        .context("serving the lint")?;
     Ok(())
 }
 
@@ -131,6 +223,7 @@ fn router(doc: webapp::notation_preview::PreviewDoc) -> Router {
     let mut app = portal::dioxus_app::notation_preview_router(
         vec![doc],
         webapp::notation_preview::NotationPreviewMode::Local,
+        None,
     );
     // Mounts the wasm and the wasm-bindgen glue at the paths the bundle's own
     // `index.html` references. `None` when no bundle is staged, which is the
@@ -335,7 +428,7 @@ fn slug_for(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalized_stem, resolve_template, router, slug_for};
+    use super::{normalized_stem, read_project_manifest, resolve_template, router, slug_for};
     use std::path::Path;
 
     const TEMPLATE: &str = "---\ntitle: Sample Letter\ncode: sample__letter\nquestionnaire:\n  \
@@ -577,5 +670,56 @@ mod tests {
         let found = found.expect("the name resolves");
         assert_eq!(found.path, dir.path().join("templates/sample__letter.md"));
         assert!(!found.bundled, "a checkout outranks the bundled catalog");
+    }
+
+    /// LAW-29's gate: outside a Project repository there is nothing to push
+    /// a draft to, and the command refuses rather than falling back to a
+    /// local render.
+    #[test]
+    fn preview_refuses_outside_a_project_repository() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let error = read_project_manifest(dir.path())
+            .expect_err("a directory with no navigator.yaml is not a Project repository");
+        let message = error.to_string();
+        assert!(message.contains("navigator.yaml"), "{message}");
+        assert!(message.contains("--offline"), "{message}");
+    }
+
+    /// A `navigator.yaml` that names a Project but no host is refused too —
+    /// there is nowhere to push the draft.
+    #[test]
+    fn preview_refuses_a_manifest_with_no_host() {
+        // The nested `project: {host, name}` shape requires `host` at parse
+        // time, so a manifest missing it entirely has to use the deprecated
+        // flat shape to reach `read_project_manifest`'s own host check
+        // rather than `manifest::parse`'s.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("navigator.yaml"),
+            "version: 26.9.17\nproject: acme\n",
+        )
+        .expect("write manifest");
+
+        let error = read_project_manifest(dir.path())
+            .expect_err("a manifest naming no host cannot resolve a deployment");
+        assert!(error.to_string().contains("host"), "{error}");
+        assert!(error.to_string().contains("navigator.yaml"), "{error}");
+    }
+
+    /// The success path: a real manifest resolves to the Project code and
+    /// host it names, read the same way `navigator project gate` reads them.
+    #[test]
+    fn preview_reads_the_project_and_host_navigator_yaml_names() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("navigator.yaml"),
+            "version: 26.9.17\nproject:\n  host: www.neonlaw.com\n  name: acme\n",
+        )
+        .expect("write manifest");
+
+        let (project, host) = read_project_manifest(dir.path()).expect("manifest resolves");
+        assert_eq!(project, "acme");
+        assert_eq!(host, "www.neonlaw.com");
     }
 }

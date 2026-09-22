@@ -393,8 +393,9 @@ enum Command {
         #[command(subcommand)]
         action: ProjectsCmd,
     },
-    /// The notation author's offline workbench for everything under
-    /// `templates/notations/`.
+    /// The notation author's workbench: a Project repository's
+    /// `templates/<stem>.md` (the fleet layout), or Navigator's own bundled
+    /// catalog under `templates/notations/`.
     Notations {
         #[command(subcommand)]
         action: NotationsCmd,
@@ -714,27 +715,46 @@ enum NotationsCmd {
         /// File to format in place.
         file: PathBuf,
     },
-    /// Serve one template's `/notations/{slug}` show page on a local
-    /// bind — the same page the firm's public site publishes, fed by the
-    /// same projection, so what reads badly here reads badly published.
+    /// Push one template as a **draft** to the Project it belongs to and
+    /// open that Project's real portal at it — the production renderer,
+    /// production chrome, and production questionnaire engine, rather
+    /// than a second local imitation that has to be kept in step with it.
     ///
-    /// The questionnaire section walks the template's own declared
-    /// question order with Navigator's real field controls, and the
-    /// workflow section draws its declared state machine. Both are
-    /// client-side only: no Notation is created, no answer is saved, and
-    /// no workflow runs. Stepping the questions needs the Dioxus client
-    /// bundle (`navigator dev build-webapp`); without one the page still
-    /// renders every question, it just does not advance.
+    /// Reads the Project and the deployment host from `navigator.yaml`
+    /// two directories up, the way `navigator project gate` does. There
+    /// is no `--project` to pass and no `--host` to require: a template
+    /// is always previewed as the Project whose repository it sits in,
+    /// against the host that repository targets. Refuses outside a
+    /// Project repository rather than falling back to a local render.
+    ///
+    /// The draft is stored and addressable but explicitly **not run**: no
+    /// Notation row, no workflow instance, no `intake_submitted`, no
+    /// PDF — nothing that could be mistaken for an executed instrument or
+    /// a filed document. It carries a short TTL rather than accumulating.
     Preview {
-        /// The template to serve: a path, or a notation `code` looked up
+        /// The template to push: a path, or a notation `code` looked up
         /// under `templates/` and then `templates/notations/`. Underscores
         /// and hyphens are interchangeable in a name.
         file: PathBuf,
-        /// Port to bind on `127.0.0.1`. Defaults to an OS-assigned free
-        /// port, so two previews can run at once; the bound URL is
-        /// printed either way.
+        /// Render locally instead of pushing a draft. A **lint**, not a
+        /// preview: nothing is pushed and nothing is stored, and the
+        /// questionnaire steps only with a Dioxus client bundle
+        /// (`navigator dev build-webapp`) — without one the page still
+        /// renders every question, it just does not advance. Works
+        /// outside a Project repository, since nothing is pushed anywhere.
+        #[arg(long)]
+        offline: bool,
+        /// Port to bind on `127.0.0.1` for `--offline`. Defaults to an
+        /// OS-assigned free port, so two lints can run at once; the bound
+        /// URL is printed either way. Ignored without `--offline`.
         #[arg(long, default_value_t = 0)]
         port: u16,
+        /// Override the deployment host `navigator.yaml` names — for
+        /// previewing against a non-production deployment. `navigator.yaml`
+        /// is still the source; this is an override, not a replacement for
+        /// it. Ignored with `--offline`.
+        #[arg(long)]
+        host: Option<String>,
     },
     /// Write the notation catalog compiled into this binary out to a
     /// directory.
@@ -2385,9 +2405,17 @@ fn main() -> ExitCode {
         },
         Command::Notations { action } => match action {
             NotationsCmd::Format { file } => format::run(&file),
-            NotationsCmd::Preview { file, port } => {
-                devx_result(runtime().block_on(notations_preview::run(&file, port)))
-            }
+            NotationsCmd::Preview {
+                file,
+                offline,
+                port,
+                host,
+            } => devx_result(runtime().block_on(notations_preview::run(
+                &file,
+                offline,
+                port,
+                host.as_deref(),
+            ))),
             NotationsCmd::Export { out, force } => devx_result(notations_export::run(&out, force)),
             NotationsCmd::Run { file } => {
                 devx_result(runtime().block_on(notations_run::run(&file)))

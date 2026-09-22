@@ -945,12 +945,20 @@ mod lawyer_shook_holding_page_tests {
                 "Vesta Estate Planning",
                 "Misericordia Injury Law",
                 "Abhaya Immigration",
+                "Shook Law PLLC",
             ]
         );
         assert!(content
             .practices
             .iter()
             .all(|practice| !practice.logo_href.is_empty() && !practice.font_family.is_empty()));
+        let summons = content
+            .practices
+            .iter()
+            .find(|practice| practice.href == "https://www.summonsdefense.nyc")
+            .expect("Lawyer Shook links its Summons Defense NYC practice");
+        assert_eq!(summons.heading, "Shook Law PLLC");
+        assert_eq!(summons.body, "NYC summonses and OATH hearings");
         assert!(content.provenance.is_none());
         // The one link on the page: an existing client's way to `/app`.
         let sign_in_text: String = bare.sign_in.iter().map(|run| run.text.as_str()).collect();

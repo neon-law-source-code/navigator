@@ -342,13 +342,18 @@ mod tests {
                 "Vesta Estate Planning",
                 "Misericordia Injury Law",
                 "Abhaya Immigration",
-                "Lawyer Shook"
+                "Lawyer Shook",
+                "Shook Law PLLC"
             ]
         );
         let current: Vec<bool> = model.brands.iter().map(|b| b.current).collect();
-        assert_eq!(current, [false, true, false, false, false, false, false]);
+        assert_eq!(
+            current,
+            [false, true, false, false, false, false, false, false]
+        );
         assert_eq!(model.brands[0].href, "https://www.neonlaw.com");
         assert_eq!(model.brands[6].href, "https://www.lawyershook.com");
+        assert_eq!(model.brands[7].href, "https://www.summonsdefense.nyc");
         assert_eq!(model.legal_entity, "Shook Law PLLC");
     }
 

@@ -767,7 +767,8 @@ mod tests {
                 "Vesta Estate Planning",
                 "Misericordia Injury Law",
                 "Abhaya Immigration",
-                "Lawyer Shook"
+                "Lawyer Shook",
+                "Shook Law PLLC"
             ]
         );
         assert!(chrome.brands[0].current, "the default brand is current");

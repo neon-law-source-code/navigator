@@ -2,10 +2,9 @@
 //!
 //! This module deliberately does not store documents: working files and
 //! client-facing artifacts remain [`crate::StorageService`] assets. A
-//! [`DriveService`] only manages the per-Project ingest folder and its
-//! Workspace permissions so people can drop files in. The service is
-//! constructed for one Workspace at a time, so callers must select the
-//! Project's owning entity before they call it.
+//! [`DriveService`] manages the per-Project ingest folder and its Workspace
+//! permissions, and exposes the bounded file read used by the operator import
+//! lane. The portal never calls that read path.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -17,6 +16,10 @@ use thiserror::Error;
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
 const DRIVE_BASE_URL: &str = "https://www.googleapis.com/drive/v3";
 const FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
+// The importer rejects more than 50 files. Return one sentinel item beyond
+// that limit so the caller can reject an oversized folder without listing it
+// indefinitely or downloading any bytes.
+const MAX_IMPORT_FILE_LIST: usize = 51;
 
 /// The two entities that operate an independent Google Workspace.
 ///
@@ -99,6 +102,23 @@ pub struct DriveFolder {
     pub name: String,
 }
 
+/// A non-folder file in a Project's Drive ingest folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriveFile {
+    pub id: String,
+    pub name: String,
+    pub mime_type: String,
+    pub size_bytes: Option<u64>,
+    pub modified_time: Option<String>,
+}
+
+/// Bytes fetched from Drive for an ingest operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriveFileDownload {
+    pub bytes: Vec<u8>,
+    pub content_type: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub enum DriveMemberKind {
     User,
@@ -175,6 +195,11 @@ pub trait DriveService: Send + Sync {
         project_code: &str,
     ) -> Result<Option<DriveFolder>, DriveError>;
     async fn list_folders(&self) -> Result<Vec<DriveFolder>, DriveError>;
+    /// List the files directly inside one Project's ingest folder.
+    async fn list_files(&self, folder_id: &str) -> Result<Vec<DriveFile>, DriveError>;
+    /// Fetch one file's bytes for the asynchronous/operator-triggered ingest
+    /// lane. Portal request paths do not call this method.
+    async fn download_file(&self, file_id: &str) -> Result<DriveFileDownload, DriveError>;
     async fn set_member_permission(
         &self,
         folder_id: &str,
@@ -298,7 +323,7 @@ impl GoogleDrive {
             "reading folder parents",
         )?;
         response
-            .json::<DriveFile>()
+            .json::<DriveApiFile>()
             .await
             .map(|file| file.parents.unwrap_or_default())
             .map_err(|source| DriveError::Response {
@@ -395,13 +420,14 @@ impl DriveService for GoogleDrive {
                 .await,
             "creating folder",
         )?;
-        let folder = response
-            .json::<DriveFile>()
-            .await
-            .map_err(|source| DriveError::Response {
-                action: "creating folder",
-                source,
-            })?;
+        let folder =
+            response
+                .json::<DriveApiFile>()
+                .await
+                .map_err(|source| DriveError::Response {
+                    action: "creating folder",
+                    source,
+                })?;
         let id = folder.id.ok_or(DriveError::MissingFolderId {
             action: "creating folder",
         })?;
@@ -446,7 +472,7 @@ impl DriveService for GoogleDrive {
             "finding folder by name",
         )?;
         let folders = response
-            .json::<DriveFiles>()
+            .json::<DriveApiFiles>()
             .await
             .map_err(|source| DriveError::Response {
                 action: "finding folder by name",
@@ -454,7 +480,7 @@ impl DriveService for GoogleDrive {
             })?
             .files
             .into_iter()
-            .filter_map(DriveFile::into_folder)
+            .filter_map(DriveApiFile::into_folder)
             .collect::<Vec<_>>();
         match folders.as_slice() {
             [] => {
@@ -512,7 +538,7 @@ impl DriveService for GoogleDrive {
             "listing project folders",
         )?;
         let folders = response
-            .json::<DriveFiles>()
+            .json::<DriveApiFiles>()
             .await
             .map_err(|source| DriveError::Response {
                 action: "listing project folders",
@@ -522,7 +548,7 @@ impl DriveService for GoogleDrive {
                 files
                     .files
                     .into_iter()
-                    .filter_map(DriveFile::into_folder)
+                    .filter_map(DriveApiFile::into_folder)
                     .collect::<Vec<_>>()
             })?;
         tracing::info!(
@@ -531,6 +557,79 @@ impl DriveService for GoogleDrive {
             "Drive project folders listed"
         );
         Ok(folders)
+    }
+
+    async fn list_files(&self, folder_id: &str) -> Result<Vec<DriveFile>, DriveError> {
+        let query = format!("'{folder_id}' in parents and trashed = false");
+        let mut page_token: Option<String> = None;
+        let mut files = Vec::new();
+        loop {
+            let token = self.token().await?;
+            let mut request = self.http.get(self.files_url()).bearer_auth(token).query(&[
+                ("q", query.as_str()),
+                ("corpora", "drive"),
+                ("driveId", self.projects_drive_id.as_str()),
+                ("includeItemsFromAllDrives", "true"),
+                ("supportsAllDrives", "true"),
+                (
+                    "fields",
+                    "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
+                ),
+                ("pageSize", "51"),
+            ]);
+            if let Some(page_token) = page_token.as_deref() {
+                request = request.query(&[("pageToken", page_token)]);
+            }
+            let response = Self::checked(request.send().await, "listing project files")?;
+            let page =
+                response
+                    .json::<DriveApiFiles>()
+                    .await
+                    .map_err(|source| DriveError::Response {
+                        action: "listing project files",
+                        source,
+                    })?;
+            files.extend(page.files.into_iter().filter_map(DriveApiFile::into_file));
+            if files.len() >= MAX_IMPORT_FILE_LIST {
+                files.truncate(MAX_IMPORT_FILE_LIST);
+                break;
+            }
+            page_token = page.next_page_token;
+            if page_token.is_none() {
+                break;
+            }
+        }
+        Ok(files)
+    }
+
+    async fn download_file(&self, file_id: &str) -> Result<DriveFileDownload, DriveError> {
+        let token = self.token().await?;
+        let response = Self::checked(
+            self.http
+                .get(self.file_url(file_id))
+                .bearer_auth(token)
+                .query(&[("alt", "media"), ("supportsAllDrives", "true")])
+                .send()
+                .await,
+            "downloading project file",
+        )?;
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map_or_else(|| "application/octet-stream".to_string(), str::to_string);
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|source| DriveError::Response {
+                action: "downloading project file",
+                source,
+            })?
+            .to_vec();
+        Ok(DriveFileDownload {
+            bytes,
+            content_type,
+        })
     }
 
     async fn set_member_permission(
@@ -651,25 +750,46 @@ impl DriveService for GoogleDrive {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DriveFile {
+struct DriveApiFile {
     id: Option<String>,
     name: Option<String>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+    size: Option<String>,
+    #[serde(rename = "modifiedTime")]
+    modified_time: Option<String>,
     parents: Option<Vec<String>>,
 }
 
-impl DriveFile {
+impl DriveApiFile {
     fn into_folder(self) -> Option<DriveFolder> {
         Some(DriveFolder {
             id: self.id?,
             name: self.name?,
         })
     }
+
+    fn into_file(self) -> Option<DriveFile> {
+        let mime_type = self.mime_type?;
+        if mime_type == FOLDER_MIME_TYPE {
+            return None;
+        }
+        Some(DriveFile {
+            id: self.id?,
+            name: self.name?,
+            mime_type,
+            size_bytes: self.size.and_then(|size| size.parse().ok()),
+            modified_time: self.modified_time,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
-struct DriveFiles {
+struct DriveApiFiles {
     #[serde(default)]
-    files: Vec<DriveFile>,
+    files: Vec<DriveApiFile>,
+    #[serde(rename = "nextPageToken")]
+    next_page_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -720,6 +840,7 @@ pub struct FakeDrive {
 #[derive(Default)]
 struct FakeDriveState {
     folders: BTreeMap<String, FakeFolder>,
+    files: BTreeMap<String, FakeFile>,
     next_id: usize,
 }
 
@@ -730,7 +851,47 @@ struct FakeFolder {
     permissions: BTreeSet<(DriveMember, DriveRole)>,
 }
 
+struct FakeFile {
+    folder_id: String,
+    file: DriveFile,
+    bytes: Vec<u8>,
+}
+
 impl FakeDrive {
+    /// Add synthetic bytes to a folder for an ingest test.
+    #[must_use]
+    pub fn add_file(
+        &self,
+        folder_id: &str,
+        name: &str,
+        mime_type: &str,
+        bytes: Vec<u8>,
+        modified_time: Option<String>,
+    ) -> Option<DriveFile> {
+        let mut state = self.state.lock().expect("fake drive mutex poisoned");
+        if !state.folders.values().any(|folder| folder.id == folder_id) {
+            return None;
+        }
+        state.next_id += 1;
+        let id = format!("file-{}", state.next_id);
+        let file = DriveFile {
+            id: id.clone(),
+            name: name.to_string(),
+            mime_type: mime_type.to_string(),
+            size_bytes: Some(bytes.len() as u64),
+            modified_time,
+        };
+        state.files.insert(
+            id,
+            FakeFile {
+                folder_id: folder_id.to_string(),
+                file: file.clone(),
+                bytes,
+            },
+        );
+        Some(file)
+    }
+
     #[must_use]
     pub fn members(&self, folder_id: &str) -> Vec<(DriveMember, DriveRole)> {
         let state = self.state.lock().expect("fake drive mutex poisoned");
@@ -800,6 +961,28 @@ impl DriveService for FakeDrive {
                 name: name.clone(),
             })
             .collect())
+    }
+
+    async fn list_files(&self, folder_id: &str) -> Result<Vec<DriveFile>, DriveError> {
+        let state = self.state.lock().expect("fake drive mutex poisoned");
+        Ok(state
+            .files
+            .values()
+            .filter(|file| file.folder_id == folder_id)
+            .map(|file| file.file.clone())
+            .collect())
+    }
+
+    async fn download_file(&self, file_id: &str) -> Result<DriveFileDownload, DriveError> {
+        let state = self.state.lock().expect("fake drive mutex poisoned");
+        let file = state.files.get(file_id).ok_or(DriveError::Api {
+            action: "downloading project file",
+            status: 404,
+        })?;
+        Ok(DriveFileDownload {
+            bytes: file.bytes.clone(),
+            content_type: file.file.mime_type.clone(),
+        })
     }
 
     async fn set_member_permission(

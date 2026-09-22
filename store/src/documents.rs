@@ -124,6 +124,8 @@ pub mod source {
     /// government packet). Not an inbound channel; the bytes originate
     /// in-house from the template + answers.
     pub const GENERATED: &str = "generated";
+    /// A file copied from the Project's Google Drive ingest folder.
+    pub const DRIVE: &str = "drive";
 }
 
 /// Client-portal visibility literals written to `assets.visibility`. A
@@ -168,8 +170,8 @@ pub enum IngestError {
 pub struct IngestArgs<'a> {
     /// Project the document belongs to.
     pub project_id: Uuid,
-    /// Inbound channel name — `upload`, `email`, `generated`. Goes into
-    /// `assets.source`.
+    /// Inbound channel name — `upload`, `email`, `generated`, or `drive`.
+    /// Goes into `assets.source`.
     pub source: &'a str,
     /// Caller-visible filename. Goes into `assets.filename`.
     pub filename: &'a str,

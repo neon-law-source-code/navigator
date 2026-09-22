@@ -384,6 +384,10 @@ pub fn scaffold(
     let files = [
         (root.join(".gitattributes"), GITATTRIBUTES.to_string()),
         (root.join(".github/CODEOWNERS"), CODEOWNERS.to_string()),
+        (
+            root.join(AUTOMERGE_WORKFLOW),
+            AUTOMERGE_WORKFLOW_CONTENTS.to_string(),
+        ),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
         (root.join("tests/README.md"), tests_readme()),
@@ -708,6 +712,7 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: 
 
     let manifest_valid = validate_layout(root, &mut errors, &mut warnings);
     validate_codeowners(root, &mut errors);
+    validate_automerge_workflow(root, write_fixes, &mut errors);
     validate_documents_gitignore(root, write_fixes, &mut errors);
     validate_skills(root, &mut errors);
     validate_documented_cli(root, &mut errors);
@@ -1073,12 +1078,81 @@ fn slash_separated_path(path: &Path) -> String {
         .join("/")
 }
 
+/// The auto-merge workflow every Project repository must carry, admitted to
+/// the closed `.github` set alongside [`WORKFLOW`] and [`CD_WORKFLOW`].
+///
+/// Its content is machine-owned and validated byte-exact against
+/// [`AUTOMERGE_WORKFLOW_CONTENTS`], the same shape as [`CODEOWNERS`] — no
+/// repository has a legitimate reason to differ from another, so any
+/// variation is drift rather than local intent.
+pub(crate) const AUTOMERGE_WORKFLOW: &str = ".github/workflows/automerge.yml";
+/// The byte-exact content [`AUTOMERGE_WORKFLOW`] must carry.
+///
+/// Arms as the merge-queue App, never as `GITHUB_TOKEN` — a token minted from
+/// the run's own `GITHUB_TOKEN` starts no further workflow on `main`, so a
+/// publish armed that way silently never runs (ENG-256) — and skips a draft
+/// PR, with `ready_for_review` in the trigger types so a draft marked ready
+/// later still fires a run rather than sitting green and unarmed forever.
+/// Carries no comments of its own beyond the one pinned-action version, for
+/// the same reason [`CODEOWNERS`] carries none: this file is machine-owned,
+/// and a comment is the part of a hand-copied file that rots unnoticed in
+/// twenty repositories. The rationale above lives here and in ENG-256, not
+/// re-typed into the file itself.
+const AUTOMERGE_WORKFLOW_CONTENTS: &str = r#"name: automerge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  enable-automerge:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for the merge-queue App credentials
+        id: credentials
+        env:
+          APP_ID: ${{ secrets.AUTOMERGE_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_ID}" ] && [ -n "${APP_PRIVATE_KEY}" ]; then
+              echo "present=true" >> "${GITHUB_OUTPUT}"
+          else
+              echo "present=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Mint a merge-queue App token
+        id: app-token
+        if: steps.credentials.outputs.present == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMERGE_APP_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+      - name: Arm auto-merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+              echo "::notice::merge-queue App credentials absent — arming nothing, merge by hand"
+              exit 0
+          fi
+          gh pr merge --squash --auto "${PR_URL}"
+"#;
+
 fn validate_github_path(path: &Path, relative: &Path, errors: &mut Vec<Finding>) {
     let relative = slash_separated_path(relative);
     let allowed = [
         ".github/CODEOWNERS",
         WORKFLOW,
         CD_WORKFLOW,
+        AUTOMERGE_WORKFLOW,
         RETIRED_WORKFLOW,
         RETIRED_CD_WORKFLOW,
     ];
@@ -1087,10 +1161,54 @@ fn validate_github_path(path: &Path, relative: &Path, errors: &mut Vec<Finding>)
             path,
             format!(
                 "`{relative}` is outside the closed `.github` file set; only CODEOWNERS, \
-                 `{WORKFLOW}`, and `{CD_WORKFLOW}` belong here"
+                 `{WORKFLOW}`, `{CD_WORKFLOW}`, and `{AUTOMERGE_WORKFLOW}` belong here"
             ),
         ));
     }
+}
+
+/// Hold [`AUTOMERGE_WORKFLOW`] to [`AUTOMERGE_WORKFLOW_CONTENTS`] byte-exact,
+/// the same shape as [`validate_codeowners`] — but unlike that check, this one
+/// self-repairs under `write_fixes`, the way [`validate_documents_gitignore`]
+/// does: the file is machine-owned, so a drifted or missing copy has exactly
+/// one correct byte sequence to converge on, and there is nothing a human
+/// judgment call could add.
+fn validate_automerge_workflow(root: &Path, write_fixes: bool, errors: &mut Vec<Finding>) {
+    let path = root.join(AUTOMERGE_WORKFLOW);
+    let current = fs::read_to_string(&path).ok();
+    if current.as_deref() == Some(AUTOMERGE_WORKFLOW_CONTENTS) {
+        return;
+    }
+    if write_fixes {
+        if let Some(parent) = path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                errors.push(Finding::at(
+                    &path,
+                    format!("could not create {}: {error}", parent.display()),
+                ));
+                return;
+            }
+        }
+        if let Err(error) = fs::write(&path, AUTOMERGE_WORKFLOW_CONTENTS) {
+            errors.push(Finding::at(
+                &path,
+                format!("could not write canonical `{AUTOMERGE_WORKFLOW}`: {error}"),
+            ));
+            return;
+        }
+        println!("fixed {}", path.display());
+        return;
+    }
+    errors.push(Finding::at(
+        &path,
+        if current.is_some() {
+            format!(
+                "`{AUTOMERGE_WORKFLOW}` must match the canonical auto-merge workflow byte-exact"
+            )
+        } else {
+            format!("missing required `{AUTOMERGE_WORKFLOW}`")
+        },
+    ));
 }
 
 fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {

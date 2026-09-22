@@ -81,6 +81,7 @@ pub mod attestations;
 pub mod authorities;
 pub mod brands;
 pub mod cases;
+pub mod cm_ecf_stamp;
 pub mod communications;
 pub mod config;
 pub mod conflicts;

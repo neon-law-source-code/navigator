@@ -435,6 +435,23 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     asset_sha256_hex(bytes)
 }
 
+/// The docket-record attestation (LAW-24, option 1): does an independently
+/// fetched copy of a filed document hash to the same bytes Navigator
+/// stored?
+///
+/// This is the real authenticity check available for a court PDF — these
+/// carry no `/ByteRange`, `/Sig`, or `SigFlags`, so there is no signature to
+/// verify. Comparing against a second, independently obtained copy is
+/// possible instead: fetching that copy is the caller's job (the source is
+/// the [`crate::cases::Case`]'s `forum`/`docket_number` and the
+/// [`crate::cases::DocketEntry`]'s `entry_number`), and this function does
+/// only the comparison, so the one hash algorithm both sides agree on
+/// cannot drift between the stored-document path and this one.
+#[must_use]
+pub fn verify_independent_copy(recorded_sha256_hex: &str, independently_fetched: &[u8]) -> bool {
+    sha256_hex(independently_fetched) == recorded_sha256_hex
+}
+
 async fn insert_asset_row(
     db: &SurrealDb,
     args: &IngestArgs<'_>,
@@ -546,6 +563,13 @@ mod tests {
             MAX_DOCUMENT_UPLOAD_REQUEST_BYTES
                 >= MAX_DOCUMENT_UPLOAD_BYTES.div_ceil(3) * 4 + MAX_DOCUMENT_UPLOAD_JSON_BYTES
         );
+    }
+
+    #[test]
+    fn verify_independent_copy_compares_by_hash_not_by_bytes_identity() {
+        let recorded = sha256_hex(b"the filed document");
+        assert!(verify_independent_copy(&recorded, b"the filed document"));
+        assert!(!verify_independent_copy(&recorded, b"a tampered document"));
     }
 
     #[test]

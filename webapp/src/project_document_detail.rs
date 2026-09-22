@@ -223,9 +223,30 @@ pub async fn get_project_document() -> Result<DocumentDetailView, ServerFnError>
     load().await
 }
 
+/// What Navigator's recorded SHA-256 does and does not claim about a
+/// document (LAW-24).
+///
+/// Most filed documents — court PDFs above all — carry no `/ByteRange`,
+/// `/Sig`, or `SigFlags`: there is no cryptographic signature to check, so
+/// a "signature verified" badge would be decoration over a check that never
+/// ran. A hash comparison is a real, different claim — **integrity**, not
+/// **authenticity** — and this states exactly that claim so it cannot
+/// quietly drift upward into "verified". A test below holds this wording
+/// in place.
+fn integrity_statement(sha256_hex: &str) -> String {
+    format!(
+        "Navigator recorded this document's SHA-256 hash when it arrived: {sha256_hex}. \
+         That confirms the bytes have not changed since Navigator received them. It does \
+         not mean the document was cryptographically signed or that its signer's identity \
+         was checked — most filed documents, including court PDFs, carry no signature to \
+         check."
+    )
+}
+
 /// The document's provenance and storage facts.
 fn document_body(doc: &DocumentFacts, firm_name: &str) -> Element {
     let description = doc.description.clone().unwrap_or_else(|| "—".to_string());
+    let integrity = integrity_statement(&doc.sha256_hex);
     rsx! {
         document::Title { "{firm_name} | Document | {doc.filename}" }
         header { class: "page-header",
@@ -262,6 +283,10 @@ fn document_body(doc: &DocumentFacts, firm_name: &str) -> Element {
                 dt { "SHA-256" }
                 dd { class: "font-monospace", "{doc.sha256_hex}" }
             }
+        }
+        section { class: "document-integrity",
+            h2 { "Integrity" }
+            p { "{integrity}" }
         }
     }
 }
@@ -315,7 +340,7 @@ pub fn ProjectDocument() -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{document_body, DocumentFacts};
+    use super::{document_body, integrity_statement, DocumentFacts};
 
     fn facts() -> DocumentFacts {
         DocumentFacts {
@@ -368,5 +393,49 @@ mod tests {
         // There is no longer a per-lens base to get wrong: both sides link
         // into the same path and the tier decides what is behind it.
         assert_eq!(super::PROJECTS_BASE, "/app/projects");
+    }
+
+    /// LAW-24's whole point: a hash comparison is an integrity claim, not an
+    /// authenticity claim, and the wording must never quietly drift upward
+    /// into "verified" — most filed documents, court PDFs above all, carry
+    /// no signature to verify at all.
+    #[test]
+    fn renders_the_integrity_claim_as_integrity_not_authenticity() {
+        let statement = integrity_statement("deadbeefcafe1234567890abcdef0000");
+
+        assert!(
+            !statement.to_lowercase().contains("verified"),
+            "must never claim verification: {statement}"
+        );
+        assert!(
+            !statement.to_lowercase().contains("authentic"),
+            "must never claim authenticity: {statement}"
+        );
+        assert!(
+            statement.contains("deadbeefcafe1234567890abcdef0000"),
+            "must show the actual recorded hash: {statement}"
+        );
+        assert!(
+            statement.contains("have not changed"),
+            "must state the real, narrower claim: {statement}"
+        );
+        assert!(
+            statement.to_lowercase().contains("no signature"),
+            "must say plainly that there is nothing to verify: {statement}"
+        );
+    }
+
+    #[test]
+    fn the_integrity_section_renders_on_the_document_page() {
+        let html = dioxus_ssr::render_element(document_body(&facts(), "Neon Law"));
+        assert!(html.contains(">Integrity<"), "{html}");
+        assert!(
+            html.contains("have not changed"),
+            "the honest claim renders on the page itself, not only in the helper: {html}"
+        );
+        assert!(
+            !html.to_lowercase().contains("verified"),
+            "the rendered page must never say \"verified\": {html}"
+        );
     }
 }

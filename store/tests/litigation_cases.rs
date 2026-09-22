@@ -9,9 +9,10 @@
 use chrono::{DateTime, Utc};
 use store::cases::{
     add_item, answer_item, current_appearances_for_project, docket, for_project, is_source_pending,
-    items, open_case, record_entry, serve_discovery, undated_hearings_and_trials, Device,
-    EntryKind, NewCase, NewDiscoveryRequest, NewDocketEntry,
+    items, open_case, record_entry, record_integrity_check, record_stamp, serve_discovery,
+    undated_hearings_and_trials, Device, EntryKind, NewCase, NewDiscoveryRequest, NewDocketEntry,
 };
+use store::cm_ecf_stamp::CmEcfStamp;
 use store::surreal::test_support::mem;
 use store::surreal::SurrealDb;
 use uuid::Uuid;
@@ -581,5 +582,94 @@ async fn undated_hearings_are_reported_and_never_backfilled() {
     assert!(
         still_missing.scheduled_on.is_none(),
         "the report never writes a date"
+    );
+}
+
+/// The CM/ECF stamp is recorded **alongside** the hand-typed entry fields,
+/// not over them — a reviewer can see both and notice when they disagree
+/// (LAW-24, option 2).
+#[tokio::test]
+async fn recording_a_stamp_leaves_the_hand_typed_fields_alone() {
+    let db = &mem().await;
+    let project_id = open_matter(db, "stamp").await;
+    let c = open_case(db, &a_case(project_id, "Alpha v. Beta"))
+        .await
+        .expect("case");
+    let entry = record_entry(
+        db,
+        &NewDocketEntry {
+            filed_or_served_on: Some("2026-08-01T00:00:00Z"),
+            ..an_entry(c.id, "29", EntryKind::Motion, "Motion for Summary Judgment")
+        },
+    )
+    .await
+    .expect("entry");
+    assert_eq!(entry.stamp_case_number, None, "no stamp recorded yet");
+
+    let stamped = record_stamp(
+        db,
+        entry.id,
+        &CmEcfStamp {
+            case_number: "1:23-cv-04567-ABC".to_string(),
+            entry_number: "29".to_string(),
+            filed_on: "03/14/24".to_string(),
+        },
+    )
+    .await
+    .expect("record stamp");
+
+    assert_eq!(
+        stamped.stamp_case_number.as_deref(),
+        Some("1:23-cv-04567-ABC")
+    );
+    assert_eq!(stamped.stamp_entry_number.as_deref(), Some("29"));
+    assert_eq!(stamped.stamp_filed_on.as_deref(), Some("03/14/24"));
+    // The hand-typed fields this entry was created with are untouched.
+    assert_eq!(stamped.entry_number, "29");
+    assert_eq!(
+        stamped.filed_or_served_on.as_deref(),
+        Some("2026-08-01T00:00:00Z")
+    );
+}
+
+/// An integrity check records both the result and what was fetched, and
+/// `None` before any check is distinct from `Some(false)`, a check that
+/// ran and found a mismatch (LAW-24, option 1).
+#[tokio::test]
+async fn an_integrity_check_records_the_source_hash_and_the_result() {
+    let db = &mem().await;
+    let project_id = open_matter(db, "integrity").await;
+    let c = open_case(db, &a_case(project_id, "Alpha v. Beta"))
+        .await
+        .expect("case");
+    let entry = record_entry(db, &an_entry(c.id, "1", EntryKind::Order, "Order"))
+        .await
+        .expect("entry");
+    assert_eq!(
+        entry.integrity_matched, None,
+        "unchecked is distinct from checked-and-mismatched"
+    );
+
+    let matching = record_integrity_check(db, entry.id, "abc123", true)
+        .await
+        .expect("record match");
+    assert_eq!(matching.integrity_matched, Some(true));
+    assert_eq!(
+        matching.integrity_source_sha256_hex.as_deref(),
+        Some("abc123")
+    );
+    assert!(matching.integrity_checked_at.is_some());
+
+    let mismatching = record_integrity_check(db, entry.id, "def456", false)
+        .await
+        .expect("record mismatch");
+    assert_eq!(
+        mismatching.integrity_matched,
+        Some(false),
+        "a later check overwrites the earlier result"
+    );
+    assert_eq!(
+        mismatching.integrity_source_sha256_hex.as_deref(),
+        Some("def456")
     );
 }

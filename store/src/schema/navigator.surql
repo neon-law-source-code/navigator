@@ -1837,6 +1837,16 @@ DEFINE INDEX OVERWRITE case_project ON case FIELDS project_id;
 -- `hearing` and `trial`, and refused for every other kind. A continuance is
 -- a new entry of the same kind with a new `scheduled_on` and `supersedes`
 -- pointing at the prior entry, so the earlier date stays on the record.
+--
+-- The `stamp_*` fields are structured provenance extracted from the filed
+-- document's own CM/ECF header stamp, kept separate from
+-- `entry_number`/`filed_or_served_on` so a reviewer can see what was typed
+-- alongside what the document itself says (LAW-24, option 2).
+--
+-- The `integrity_*` fields are the docket-record attestation: whether an
+-- independently fetched copy's hash matched the stored document's, and
+-- when it was last checked (LAW-24, option 1). `integrity_matched IS NONE`
+-- means unchecked, distinct from a checked-and-mismatched `false`.
 DEFINE TABLE IF NOT EXISTS case_docket_entry SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE case_id ON case_docket_entry TYPE record<case>;
 DEFINE FIELD OVERWRITE entry_number ON case_docket_entry TYPE string;
@@ -1859,6 +1869,12 @@ DEFINE FIELD OVERWRITE scheduled_on ON case_docket_entry TYPE option<datetime>
 DEFINE FIELD OVERWRITE supersedes ON case_docket_entry TYPE option<record<case_docket_entry>>;
 DEFINE FIELD OVERWRITE document_asset_id ON case_docket_entry TYPE option<record<asset>>;
 DEFINE FIELD OVERWRITE notation_id ON case_docket_entry TYPE option<record<notation>>;
+DEFINE FIELD OVERWRITE stamp_case_number ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE stamp_entry_number ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE stamp_filed_on ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE integrity_checked_at ON case_docket_entry TYPE option<datetime>;
+DEFINE FIELD OVERWRITE integrity_source_sha256_hex ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE integrity_matched ON case_docket_entry TYPE option<bool>;
 DEFINE FIELD OVERWRITE inserted_at ON case_docket_entry TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON case_docket_entry TYPE datetime DEFAULT time::now();
 -- A docket cannot have two number 1s, but the same number on another case

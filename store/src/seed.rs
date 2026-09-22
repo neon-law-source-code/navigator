@@ -2697,12 +2697,11 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
         typeface: "tinos",
         primary_hex: "#5c5100",
     },
-    // The NYC summons practice wears the firm's own name rather than a trade
-    // name: New York Rule 7.5(b) bars a trade name for private practice, so
-    // `SUMMONS_BRANDING` publishes `Shook Law PLLC` and this row copies it.
+    // The public Summons Defense wordmark is a brand of Shook Law PLLC, so
+    // this row copies the public name rendered by `SUMMONS_BRANDING`.
     CompiledBrand {
         key: "summons",
-        name: "Shook Law PLLC",
+        name: "Summons Defense",
         typeface: "libre-franklin",
         primary_hex: "#4A2545",
     },

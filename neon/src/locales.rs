@@ -1572,45 +1572,39 @@ mod tests {
         );
     }
 
-    /// The NYC summons practice must not read as the tribunal it appears
-    /// before. OATH runs a free Help Center, so an implied affiliation is a
-    /// Rule 7.1 problem rather than a trademark one — and the domain carries
-    /// the agency's name, which is exactly why the line has to be in the
-    /// copy rather than left to the domain.
+    /// The Summons catalog must not read as the tribunal it appears before.
+    /// Keep this invariant at the locale boundary: inspect the catalog keys
+    /// and values directly, while route and rendered-page behavior belongs to
+    /// the firm-page and server tests.
     #[test]
-    fn the_summons_practice_disclaims_affiliation_with_the_city() {
-        let branding =
-            views::brand::BrandKey::Summons.resolve_branding(&views::brand::DEFAULT_BRANDING);
-
-        // On the home page and the services page, not merely somewhere.
-        let home_text = {
-            let home = home(branding);
-            let mut parts = vec![home.lead.clone(), home.meta_description.clone()];
-            if let Some(service) = home.service.as_ref() {
-                parts.extend(service.body.iter().flatten().map(|run| run.text.clone()));
-            }
-            parts.join(" ")
+    fn the_summons_catalog_disclaims_affiliation_with_the_city() {
+        let value = |page: &str, key: &str| {
+            let yaml = catalog_yaml(BrandKey::Summons, page).expect("Summons catalog page");
+            let document: serde_yaml::Value =
+                serde_yaml::from_str(yaml).expect("Summons catalog parses");
+            document[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("Summons {page} catalog key {key:?} is text"))
+                .to_string()
         };
-        assert!(
-            home_text.contains("not affiliated with the City of New York"),
-            "home: {home_text}"
-        );
-        let services_text = dyd_page_text(&legal_services(branding));
-        assert!(
-            services_text.contains("not affiliated with"),
-            "services: {services_text}"
-        );
 
-        // New York Rule 7.5(b) bars a trade name for private practice, so the
-        // masthead is the firm itself rather than a brand.
-        assert_eq!(branding.firm.site_name, "Shook Law PLLC");
+        let home_lead = value("home", "lead");
+        assert!(
+            home_lead.contains("not affiliated with the City of New York"),
+            "home.lead: {home_lead}"
+        );
+        let services_hero_lead = value("services", "hero_lead");
+        assert!(
+            services_hero_lead.contains("not affiliated with the City of New York"),
+            "services.hero_lead: {services_hero_lead}"
+        );
     }
 
-    /// Every brand that wears a name other than the firm's says whose
-    /// practice it is. That disclosure is what keeps a Nevada trade name from
-    /// being misleading, so it is derived from the brand rather than listed.
+    /// Every public brand says whose practice it is. That disclosure is what
+    /// keeps a trade name from being misleading, so it is derived from the
+    /// brand rather than listed.
     #[test]
-    fn a_trade_name_brand_names_the_firm_behind_it() {
+    fn every_public_brand_names_the_firm_behind_it() {
         for key in views::brand::BrandKey::ALL {
             let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
             assert_eq!(
@@ -1619,19 +1613,12 @@ mod tests {
                 "{} names the firm",
                 key.as_str()
             );
-            // A brand whose masthead already *is* the firm needs no further
-            // disclosure; every other one is owed the footer's "A practice
-            // of Shook Law PLLC". That line is derived from exactly this
-            // comparison in `webapp::public_chrome`, and asserted there —
-            // what this test pins is that the comparison has a stable
-            // answer, i.e. every brand agrees on who the firm is.
-            if branding.firm.site_name == branding.firm.legal_entity {
-                assert_eq!(
-                    key.as_str(),
-                    "summons",
-                    "only the NY practice wears the firm's own name"
-                );
-            }
+            assert_ne!(
+                branding.firm.site_name,
+                branding.firm.legal_entity,
+                "{} publishes a public brand name distinct from its legal entity",
+                key.as_str()
+            );
         }
     }
 

@@ -120,10 +120,10 @@ pub struct PublicChrome {
     /// because it is not misleading, and *disclosed affiliation* is what does
     /// that work — so the line is owed exactly when the visible name and the
     /// legal entity differ, which is a property of the brand rather than a
-    /// set of sites someone remembers to update. The NYC summons practice is
-    /// the case that proves it: its masthead already *is* the firm, because
-    /// New York Rule 7.5(b) bars a trade name there, so it needs no line and
-    /// a hardcoded list would have given it one.
+    /// set of sites someone remembers to update. Summons Defense demonstrates
+    /// why this must stay derived: its public wordmark differs from the legal
+    /// entity, so it needs the same attribution line as every other trade
+    /// name.
     #[serde(default)]
     pub attribution: String,
     pub disclaimer: String,

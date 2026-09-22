@@ -686,7 +686,7 @@ fn resolve_firm_contact_content(
 /// Neon presents membership, notation packages, and booking on one page.
 /// Other house brands resolve their own home catalogs.
 ///
-/// The held-out summons channel answers a "Coming Soon" holding page instead
+/// The summons channel answers a "Coming Soon" holding page instead
 /// of its catalog. Its copy still ships and is still loaded — see
 /// [`coming_soon_content`] for why the catalog stays and what relaunching
 /// costs.
@@ -706,29 +706,9 @@ pub(crate) fn resolve_firm_home_content(
     }
 }
 
-/// A "Coming Soon" holding page over the shared footer, for a practice whose
-/// domain is registered but whose site has not launched.
-///
-/// **The brand's authored copy is not deleted by this.** Each of these keys
-/// still ships `home` and `services` catalogs, still lists them in
-/// [`BrandKey::catalog_pages`], and those files are still loaded and covered
-/// by the locale tests — this function simply does not render them yet.
-/// Launching is removing the key from the match arm in
-/// [`resolve_firm_home_content`] and reopening its paths in
-/// [`BrandKey::publishes_firm_path`]; no copy has to be rewritten.
-///
-/// The statement borrows the brand's own `tagline` rather than authoring a
-/// second description of the practice. That line is already the reviewed
-/// one-sentence account of what the practice does and which firm renders it,
-/// and for these four that review is load-bearing: the NYC practice must not
-/// imply a City affiliation, and the debt practice must read as collection
-/// defence rather than debt settlement. A holding page is exactly where a fresh
-/// paraphrase would slip past the review that wording already had.
-///
-/// The bare-statement variant carries the shared footer, so the attorney
-/// advertisement disclaimer, the firm's address, and its registered agent
-/// still appear under the notice — a holding page for a law practice is
-/// still attorney advertising.
+/// The public holding page keeps the authored service catalog unpublished.
+/// It carries only the requested notice above the shared firm footer; the
+/// reviewed tagline remains the page's metadata description.
 fn coming_soon_content(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     let site_name = branding.firm.site_name;
     let tagline = branding.firm.tagline;
@@ -737,7 +717,7 @@ fn coming_soon_content(branding: &views::brand::Branding) -> webapp::home::HomeC
         meta_description: tagline.to_string(),
         bare: Some(webapp::home::BareStatement {
             heading: "Coming Soon".to_string(),
-            paragraph: tagline.to_string(),
+            paragraph: String::new(),
             // No sign-in line: unlike Lawyer Shook's holding page, these
             // practices have no active clients to let back in.
             sign_in: Vec::new(),
@@ -855,10 +835,10 @@ mod coming_soon_page_tests {
         }
     }
 
-    /// The held-out summons channel answers the bare notice, wearing its own
-    /// name and reviewed one-liner.
+    /// The summons channel answers the bare notice, wearing its own
+    /// name and no additional marketing copy.
     #[test]
-    fn each_unlaunched_practice_renders_a_bare_coming_soon_notice() {
+    fn summons_renders_a_bare_coming_soon_notice() {
         let key = BrandKey::Summons;
         let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
         let content = coming_soon_content(branding);
@@ -868,7 +848,7 @@ mod coming_soon_page_tests {
             .unwrap_or_else(|| panic!("{key:?} renders the bare-statement variant"));
 
         assert_eq!(bare.heading, "Coming Soon", "{key:?}");
-        assert_eq!(bare.paragraph, branding.firm.tagline, "{key:?}");
+        assert!(bare.paragraph.is_empty(), "{key:?}");
         assert_eq!(
             content.head_title,
             format!("{} | Coming Soon", branding.firm.site_name),
@@ -880,7 +860,7 @@ mod coming_soon_page_tests {
         );
     }
 
-    /// One landing page: the held-out notice carries no practice cards.
+    /// One landing page: the public notice carries no practice cards.
     #[test]
     fn the_coming_soon_page_publishes_nothing_under_the_notice() {
         let key = BrandKey::Summons;
@@ -893,20 +873,17 @@ mod coming_soon_page_tests {
         assert!(content.provenance.is_none(), "{key:?}");
     }
 
-    /// The notice reuses the brand's reviewed tagline rather than a fresh
-    /// paraphrase. For these two the wording is a compliance position, not a
-    /// style choice: a trade name or a City affiliation must not appear on the
-    /// NYC host, and the debt practice must read as defence, not settlement.
+    /// Keep the reviewed brand descriptions in metadata while the visible
+    /// holding page says only Coming Soon.
     #[test]
     fn the_notice_keeps_the_wording_each_practice_was_reviewed_with() {
         let summons = coming_soon_content(&views::brand::SUMMONS_BRANDING);
-        let summons_bare = summons.bare.expect("bare");
         assert!(
-            summons_bare
-                .paragraph
+            summons
+                .meta_description
                 .contains("not affiliated with the City of New York"),
             "the NYC notice still disclaims a City affiliation: {}",
-            summons_bare.paragraph
+            summons.meta_description
         );
         assert_eq!(
             summons.head_title, "Shook Law PLLC | Coming Soon",
@@ -914,17 +891,16 @@ mod coming_soon_page_tests {
         );
 
         let debt = coming_soon_content(&views::brand::DELETE_YOUR_DEBT_BRANDING);
-        let debt_bare = debt.bare.expect("bare");
         assert!(
-            debt_bare.paragraph.contains("Collection defense"),
+            debt.meta_description.contains("Collection defense"),
             "the debt notice reads as collection defence: {}",
-            debt_bare.paragraph
+            debt.meta_description
         );
         for settlement in ["settle", "reduce", "negotiate"] {
             assert!(
-                !debt_bare.paragraph.to_lowercase().contains(settlement),
+                !debt.meta_description.to_lowercase().contains(settlement),
                 "{settlement:?} describes debt settlement, a different regulated activity: {}",
-                debt_bare.paragraph
+                debt.meta_description
             );
         }
     }

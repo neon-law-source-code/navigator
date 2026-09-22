@@ -267,7 +267,9 @@ pub fn HomePage(
             div { class: "nav-theme",
                 main { class: "holding-page",
                     h1 { class: "holding-page__heading", "{bare.heading}" }
-                    p { class: "holding-page__paragraph", "{bare.paragraph}" }
+                    if !bare.paragraph.is_empty() {
+                        p { class: "holding-page__paragraph", "{bare.paragraph}" }
+                    }
                     if !bare.sign_in.is_empty() {
                         p { class: "holding-page__paragraph",
                             for run in bare.sign_in.iter() {

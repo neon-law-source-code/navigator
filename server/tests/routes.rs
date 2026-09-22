@@ -1824,7 +1824,7 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
             && html.contains("delete-your-debt (www.deleteyourdebt.com)")
             && html.contains("misericordia (www.misericordialaw.com)")
             && html.contains("abhaya (www.abhayaimmigration.com)")
-            && html.contains("summons (www.summonsdefense.nyc, not live)"),
+            && html.contains("summons (www.summonsdefense.nyc)"),
         "Owner lists every compiled brand's production www host: {html}"
     );
     assert!(
@@ -10262,22 +10262,15 @@ async fn host_brand_path_matrix_resolves_every_combination() {
 
 /// The launch gate, end to end through the real composed router.
 ///
-/// `views::brand::BrandKey::LIVE` is the approved set; everything else in the
-/// registry is built, staged, and deliberately unreachable. The defect this
-/// pins is that the gate lived only in the deploy render
-/// (`cli::devx::ship`, which filters certificates and Ingress rules on
-/// `is_live()`) while the request router admitted every registered host — so
-/// any request that reached the process with a held-out `Host:` (a direct hit
-/// on the load-balancer IP, a misrouted Ingress rule, a future certificate, a
-/// port-forward) was answered with that brand's full identity: practice copy,
-/// contact mailbox, legal language, and a sitemap pointing crawlers at an
-/// unlaunched host.
+/// Every registered brand is released with a certificate and admitted by the
+/// router. This test keeps those two halves aligned across direct hits,
+/// misrouted Ingress traffic, future certificates, and port-forwards.
 ///
 /// Both halves matter, so both are asserted here over the whole registry
 /// rather than over a hand-picked host or two — a list that has to be edited
 /// at launch is the same failure in a different file.
 #[tokio::test]
-async fn the_launch_gate_refuses_every_held_out_host_and_serves_every_live_one() {
+async fn every_registered_host_serves_its_brand_and_its_apex_redirects_home() {
     let default_host = "www.neonlaw.com";
     let state =
         empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
@@ -10325,12 +10318,9 @@ async fn the_launch_gate_refuses_every_held_out_host_and_serves_every_live_one()
                 continue;
             }
 
-            // A held-out host is refused outright: `404`, no `Location`, and
-            // no trace of the brand in the body. Not a redirect to the
-            // default brand — a 301 would confirm the unlaunched domain is
-            // the firm's, seed crawler caches with a permanent redirect that
-            // has to be undone on launch day, and for the NYC summons
-            // practice amount to holding out before admission.
+            // Every registered host is admitted. Service paths still follow
+            // the brand's publication contract and the holding page remains
+            // intentionally sparse.
             for path in ["/", "/services", "/contact", "/robots.txt", "/sitemap.xml"] {
                 let resp = get_on_host(&app, path, host).await;
                 assert_eq!(
@@ -10375,16 +10365,10 @@ async fn the_launch_gate_refuses_every_held_out_host_and_serves_every_live_one()
     }
 }
 
-/// An unknown host is somebody else's; a held-out host is ours and not yet
-/// public. The two must not be answered the same way.
-///
-/// `unregistered.example` keeps the deployment's ordinary canonical-host
-/// redirect — that is what lets an arbitrary test host, a load-balancer
-/// probe address, or a not-yet-registered deployment host keep working.
-/// `www.summonsdefense.nyc` does not, because redirecting it is the
-/// disclosure the gate exists to prevent.
+/// A public holding page must reject unpublished routes without redirecting
+/// visitors to another brand. Unknown hosts still use the canonical fallback.
 #[tokio::test]
-async fn a_held_out_host_is_refused_where_an_unknown_host_is_redirected() {
+async fn a_holding_page_rejects_unpublished_paths_without_a_cross_brand_redirect() {
     let default_host = "www.neonlaw.com";
     let state =
         empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
@@ -10400,13 +10384,11 @@ async fn a_held_out_host_is_refused_where_an_unknown_host_is_redirected() {
         Some("https://www.neonlaw.com/contact"),
     );
 
-    let held_out = get_on_host(&app, "/contact", "www.summonsdefense.nyc").await;
-    assert_eq!(held_out.status(), StatusCode::NOT_FOUND);
-    assert!(held_out.headers().get(header::LOCATION).is_none());
+    let summons = get_on_host(&app, "/", "www.summonsdefense.nyc").await;
+    assert_eq!(summons.status(), StatusCode::OK);
+    assert!(body_string(summons).await.contains("Coming Soon"));
 
-    // And the same refusal with enforcement switched off, because the gate
-    // is about what this build may publish rather than about which host the
-    // deployment prefers.
+    // Path publication is enforced even without a canonical-host fallback.
     let unenforced = server::neon_router(
         empty_state_with_canonical_host(CanonicalHost::new(None)).await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
@@ -10419,12 +10401,11 @@ async fn a_held_out_host_is_refused_where_an_unknown_host_is_redirected() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-/// The health probes stay exempt from the launch gate.
+/// The health probes stay exempt from the host and path gates.
 ///
 /// Kubernetes dials a pod IP and cannot promise a public `Host:`. A probe
-/// that arrived carrying a held-out hostname — a misrouted Ingress rule is
-/// exactly how that happens — must still answer `200`, or the gate takes the
-/// deployment down instead of keeping a brand private.
+/// that arrived carrying a registered hostname must still answer `200`, or a
+/// misrouted Ingress rule takes the deployment down.
 #[tokio::test]
 async fn the_launch_gate_does_not_reach_the_health_probes() {
     let state =

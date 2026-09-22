@@ -3,11 +3,11 @@
 //!
 //! `cli::devx::ship` provisions a `ManagedCertificate` and an Ingress rule
 //! for every registered brand (see `views::brand::release_brand_hosts`), not
-//! only the launched ones — but a rendered manifest is a request, not proof.
+//! every registered key — but a rendered manifest is a request, not proof.
 //! A `kubectl apply` can succeed while a certificate still sits in
 //! `Provisioning`, and a primary-host `200` (the old `ship::smoke_check`)
-//! says nothing about the other seven hosts, the apex redirects, or whether
-//! a held-out brand is still correctly refused. This command is the receipt:
+//! says nothing about the other hosts or the apex redirects. This command is
+//! the receipt:
 //! for every host the release inventory covers, on the selected deployment's
 //! own environment, it performs a real TLS handshake through the host's
 //! ordinary trust store (never `-k`/insecure) and inspects the actual
@@ -21,11 +21,9 @@
 //! (`cargo run -p cli -- ops brand-readiness --deployment <name>`), not a
 //! wait-until-ready gate.
 //!
-//! A live host must show the brand's own `og:site_name` — the same marker
+//! Every admitted host must show its own `og:site_name` — the same marker
 //! `features/tests/brand_routing.rs` and `server/tests/routes.rs` already
-//! grep for — and a held-out host must answer `404` (`views::brand::held_out_host`),
-//! never `200`: a held-out brand serving live content is a host-admission
-//! regression, not a readiness pass.
+//! grep for.
 
 use std::process::Command;
 
@@ -74,8 +72,8 @@ impl CommandRunner for ProcessCommandRunner {
 /// passing variant; every other variant fails the run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Verdict {
-    /// A live brand served its own branded `200`, or a held-out brand
-    /// correctly answered `404`, or an apex correctly redirected home.
+    /// An admitted brand served its own branded `200`, or an apex correctly
+    /// redirected home.
     Ready,
     /// DNS did not resolve, or the connection was refused — `curl` exit 6/7.
     Unreachable,
@@ -88,11 +86,10 @@ pub(crate) enum Verdict {
     /// pending from failed issuance without cluster access; it only proves
     /// the apex is not yet safe to call ready).
     CertificateNotReady,
-    /// A live brand's host answered but not with its own branded `200`.
+    /// A brand's host answered but not with its own branded `200`.
     WrongBrandContent,
-    /// A held-out brand answered `200` — the router is serving a brand that
-    /// has not launched. Worse than any other failure here: it is a
-    /// host-admission regression, not merely an unready host.
+    /// Retained for readiness compatibility with deployments that still have
+    /// a held-out registry entry.
     UnexpectedlyLive,
     /// An apex either did not redirect or redirected somewhere other than
     /// its own brand's canonical host.
@@ -183,7 +180,7 @@ pub(crate) fn release_targets(public_host: &str) -> Vec<(BrandKey, &'static str)
 
 /// Check one registered host: a real TLS handshake and HTTP `GET /` through
 /// the ordinary trust store, then the brand-appropriate expectation — a
-/// live brand's own `og:site_name` at `200`, or a held-out brand's `404`.
+/// an admitted brand's own `og:site_name` at `200`.
 pub(crate) fn check_host<R: CommandRunner>(
     runner: &mut R,
     key: BrandKey,
@@ -477,10 +474,7 @@ mod tests {
     fn release_targets_covers_the_full_registry_not_only_live_brands() {
         let production = release_targets("www.neonlaw.com");
         assert_eq!(production.len(), views::brand::BrandKey::ALL.len());
-        assert!(
-            production.iter().any(|(key, _)| !key.is_live()),
-            "held-out brands must still be checked"
-        );
+        assert!(production.iter().all(|(key, _)| key.is_live()));
         let staging = release_targets("staging.neonlaw.com");
         assert!(staging.iter().all(|(_, host)| host.starts_with("staging.")));
     }
@@ -531,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn a_held_out_brand_answering_404_is_ready() {
+    fn summons_requires_its_public_holding_page() {
         let mut runner = ScriptedRunner::new(vec![ok_headers_and_body(404, "not found")]);
         let report = check_host(
             &mut runner,
@@ -540,11 +534,11 @@ mod tests {
             "Shook Law PLLC",
             10,
         );
-        assert_eq!(report.verdict, Verdict::Ready);
+        assert_eq!(report.verdict, Verdict::WrongBrandContent);
     }
 
     #[test]
-    fn a_held_out_brand_answering_200_is_a_regression_not_a_pass() {
+    fn summons_answering_200_in_its_own_brand_is_ready() {
         let mut runner = ScriptedRunner::new(vec![ok_headers_and_body(
             200,
             r#"<meta property="og:site_name" content="Shook Law PLLC">"#,
@@ -556,11 +550,11 @@ mod tests {
             "Shook Law PLLC",
             10,
         );
-        assert_eq!(report.verdict, Verdict::UnexpectedlyLive);
+        assert_eq!(report.verdict, Verdict::Ready);
     }
 
     #[test]
-    fn a_held_out_brand_answering_something_else_is_unexpected_status() {
+    fn summons_answering_500_fails() {
         let mut runner = ScriptedRunner::new(vec![ok_headers_and_body(500, "boom")]);
         let report = check_host(
             &mut runner,
@@ -569,7 +563,7 @@ mod tests {
             "Shook Law PLLC",
             10,
         );
-        assert_eq!(report.verdict, Verdict::UnexpectedStatus);
+        assert_eq!(report.verdict, Verdict::WrongBrandContent);
     }
 
     #[test]
@@ -697,8 +691,7 @@ mod tests {
         let staging_reports = run_with(&mut staging_runner, &staging_cfg, 10);
         assert_eq!(staging_reports.len(), views::brand::BrandKey::ALL.len());
 
-        // Production: the same host checks, plus one apex check per live
-        // brand.
+        // Production: the same host checks, plus one apex check per brand.
         let host_count = views::brand::BrandKey::ALL.len();
         let live_count = views::brand::BrandKey::LIVE.len();
         let mut outcomes: Vec<CommandOutcome> = (0..host_count)

@@ -330,12 +330,13 @@ crossed with the hosts each one serves (`www.<domain>` and `staging.<domain>`) �
 `cli::devx::ship` reads to render every brand's `ManagedCertificate` and Ingress rule, in both environments, whether or
 not that brand has launched.
 
-This is a deliberate split from `views::brand::BrandKey::LIVE`, the **launch gate** — the shorter list that still, and
-only, controls the request router's host admission, the crawler's `robots.txt`/sitemap base, the apex redirect, and the
-footer's "Our Family" row. Before ENG-808 the certificate/Ingress render read the launch gate too, so a held-out brand
-had no TLS at all until the very change that launched it. That coupled two decisions that do not belong together: a
-certificate is release infrastructure that should already be valid, trusted, and serving the right SAN well before a
-launch is approved. Now a held-out brand's host still serves a real, trusted certificate — it just answers `404`
+This is a deliberate split from `views::brand::BrandKey::LIVE`, the **launch gate** — the approved list that controls
+the request router's host admission, the crawler's `robots.txt`/sitemap base, the apex redirect, and the footer's "Our
+Family" row. All eight keys are now admitted; the summons key serves a Coming Soon page while its service catalog
+remains unpublished. Before ENG-808 the certificate/Ingress render read the launch gate too, so a held-out brand had no
+TLS at all until the very change that launched it. That coupled two decisions that do not belong together: a certificate
+is release infrastructure that should already be valid, trusted, and serving the right SAN well before a launch is
+approved. Now a held-out brand's host still serves a real, trusted certificate — it just answers `404`
 (`views::brand::held_out_host`) instead of the brand's page, never a TLS handshake failure. Each family keeps its own
 isolated `ManagedCertificate` regardless (ENG-768), so an unpointed or held-out name in `Provisioning` never holds
 another family's certificate hostage.

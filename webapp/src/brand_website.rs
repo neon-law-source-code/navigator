@@ -1,9 +1,7 @@
 //! How `/app` pages name a brand's public website.
 //!
 //! A compiled house-brand key is scoped to one production host — the `www`
-//! form. Held-out compiled keys still have that host; they are labelled
-//! `not live` so the inventory lists every brand without presenting an
-//! unopened site as reachable. A runtime-only `brand` row has no compiled
+//! form. A runtime-only `brand` row has no compiled
 //! host.
 //!
 //! This table is the `/app` listing contract and must stay in step with
@@ -57,7 +55,7 @@ const COMPILED_SITES: &[CompiledSite] = &[
     CompiledSite {
         key: "summons",
         www: "www.summonsdefense.nyc",
-        live: false,
+        live: true,
     },
 ];
 
@@ -90,20 +88,18 @@ impl BrandWebsite {
     /// Key plus production host, for firm and project listings.
     #[must_use]
     pub fn attached_line(&self) -> String {
-        match (self.production_host, self.live) {
-            (Some(host), true) => format!("{} ({host})", self.key),
-            (Some(host), false) => format!("{} ({host}, not live)", self.key),
-            (None, _) => format!("{} (no public host)", self.key),
+        match self.production_host {
+            Some(host) => format!("{} ({host})", self.key),
+            None => format!("{} (no public host)", self.key),
         }
     }
 
     /// Host only, for the brands home and edit pages.
     #[must_use]
     pub fn host_line(&self) -> String {
-        match (self.production_host, self.live) {
-            (Some(host), true) => host.to_string(),
-            (Some(host), false) => format!("{host} (not live)"),
-            (None, _) => "No public host".to_string(),
+        match self.production_host {
+            Some(host) => host.to_string(),
+            None => "No public host".to_string(),
         }
     }
 }
@@ -138,15 +134,12 @@ mod tests {
     }
 
     #[test]
-    fn a_held_out_compiled_key_keeps_its_www_host_and_says_not_live() {
+    fn summons_lists_its_public_holding_page() {
         let site = BrandWebsite::from_key("summons");
         assert_eq!(site.production_host, Some("www.summonsdefense.nyc"));
-        assert!(!site.live);
-        assert_eq!(
-            site.attached_line(),
-            "summons (www.summonsdefense.nyc, not live)"
-        );
-        assert_eq!(site.host_line(), "www.summonsdefense.nyc (not live)");
+        assert!(site.live);
+        assert_eq!(site.attached_line(), "summons (www.summonsdefense.nyc)");
+        assert_eq!(site.host_line(), "www.summonsdefense.nyc");
     }
 
     #[test]
@@ -183,6 +176,7 @@ mod tests {
                 "abhaya",
                 "delete-your-debt",
                 "lawyer-shook",
+                "summons",
             ],
             "the live listing set is the launched house brands"
         );
@@ -193,7 +187,7 @@ mod tests {
         assert_eq!(attached_lines(&[]), "No house brands attached.");
         assert_eq!(
             attached_lines(&["neon".to_string(), "summons".to_string()]),
-            "neon (www.neonlaw.com), summons (www.summonsdefense.nyc, not live)"
+            "neon (www.neonlaw.com), summons (www.summonsdefense.nyc)"
         );
     }
 }

@@ -29,10 +29,9 @@
   --firm-brand-edge: color-mix(in oklab, var(--nav-color-primary) 28%, transparent);
   --firm-brand-glow: color-mix(in oklab, var(--nav-color-primary) 34%, transparent);
 
-  /* The display face. `theme.css` names GORP Serif in `--nav-font-family` for
-     the product chrome; the marketing headings are set in the firm's serif and
-     fall back through the same stack. */
-  --firm-serif: "Source Serif 4", "GORP Serif", Georgia, "Times New Roman", serif;
+  /* Marketing headings follow the resolved brand's display face. Brands
+     with one typeface use that same family for headings and body copy. */
+  --firm-serif: var(--brand-font-display, var(--nav-font-family));
 
   --neon-card-bg: color-mix(in oklab, var(--nav-color-surface) 88%, transparent);
   --neon-card-border: var(--firm-brand-edge);

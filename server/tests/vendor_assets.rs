@@ -871,3 +871,43 @@ fn the_services_package_badge_clears_wcag_aa_on_its_tinted_panel() {
         }
     }
 }
+
+/// Shared marketing headings must follow the resolved brand, including the
+/// single-face debt site and Misericordia's separate display face.
+#[test]
+fn marketing_headings_use_the_brands_display_face() {
+    let css = std::fs::read_to_string(public_dir().join("css/brand-firm.css")).unwrap();
+    assert!(css.contains("--firm-serif: var(--brand-font-display, var(--nav-font-family));"));
+    assert!(!css.contains("GORP"));
+    for (key, body, display) in [
+        (
+            views::brand::BrandKey::DeleteYourDebt,
+            "Public Sans",
+            "Public Sans",
+        ),
+        (
+            views::brand::BrandKey::Misericordia,
+            "Source Sans 3",
+            "Source Serif 4",
+        ),
+    ] {
+        let tokens = views::brand_presentation::tokens_stylesheet(
+            key.default_typeface(),
+            key.display_typeface(),
+            key.default_palette(),
+        );
+        assert!(
+            tokens.contains(&format!("--nav-font-family: \"{body}\"")),
+            "{key:?}"
+        );
+        assert!(
+            tokens.contains(&format!("--brand-font-display: \"{display}\"")),
+            "{key:?}"
+        );
+        assert!(!tokens.contains("GORP"), "{key:?}");
+        assert!(
+            !portal::dioxus_app::font_head(key).contains("GORP"),
+            "{key:?}"
+        );
+    }
+}

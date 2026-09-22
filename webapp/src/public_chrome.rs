@@ -69,12 +69,14 @@ pub struct ChromeBrand {
     pub byline: String,
 }
 
-/// One association the firm belongs to, for the public footer's "Proud
-/// member of …" line. Resolved from the firm brand — the firm is the member,
-/// whichever house brand's host serves the page.
+/// One association affiliation for the public footer's standing line. Resolved
+/// from the firm brand, whichever house brand's host serves the page.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ChromeMembership {
     pub label: String,
+    /// The phrase following "Our organization is", including the firm's
+    /// association-specific standing and the association name.
+    pub standing: String,
     pub href: String,
     /// The association's mark, already resolved through the asset seam
     /// (`views::assets::asset_url`) to this deployment's own origin — its
@@ -170,7 +172,8 @@ pub struct PublicChrome {
     /// Family" row. Empty or a single entry renders no row.
     #[serde(default)]
     pub brands: Vec<ChromeBrand>,
-    /// The associations the firm belongs to — the footer's membership lines.
+    /// The associations the firm has a public affiliation with — the footer's
+    /// standing lines.
     /// Empty renders none.
     #[serde(default)]
     pub memberships: Vec<ChromeMembership>,
@@ -288,6 +291,7 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
                 .iter()
                 .map(|membership| FooterMembership {
                     label: membership.label.clone(),
+                    standing: membership.standing.clone(),
                     href: membership.href.clone(),
                     logo_href: membership.logo_href.clone(),
                 })
@@ -427,12 +431,13 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
                 byline: brand.byline,
             })
             .collect(),
-        // The firm's association memberships. A firm fact like the offices
+        // The firm's association affiliations. A firm fact like the offices
         // above it: the same line on every host the firm serves.
         memberships: views::brand::firm_memberships()
             .iter()
             .map(|membership| ChromeMembership {
                 label: membership.name.to_string(),
+                standing: membership.standing.to_string(),
                 href: membership.href.to_string(),
                 // Resolved here, beside `social_image` above, because this is
                 // where the request already knows the deployment's asset
@@ -541,8 +546,11 @@ mod tests {
             ],
             memberships: vec![ChromeMembership {
                 label: "Justice Technology Association".to_string(),
-                href: "https://justicetechassociation.org/".to_string(),
-                logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
+                standing: "a proud Partner of the Justice Technology Association as a Mission-Aligned Organization"
+                    .to_string(),
+                href: "https://justicetechassociation.org/get-involved".to_string(),
+                logo_href: "/public/img/justice-technology-association/alliance-partner-badge.png"
+                    .to_string(),
             }],
             ..PublicChrome::default()
         }
@@ -743,14 +751,15 @@ mod tests {
             "the family row carries over: {tenant_out}"
         );
         assert!(
-            tenant_out.contains("Proud member of the Justice Technology Association")
-                && tenant_out.contains(r#"href="https://justicetechassociation.org/""#),
+            tenant_out.contains(
+                "Our organization is a proud Partner of the Justice Technology Association as a Mission-Aligned Organization.",
+            ) && tenant_out.contains(r#"href="https://justicetechassociation.org/get-involved""#),
             "the membership line carries over: {tenant_out}"
         );
     }
 
     /// The chrome the server resolves carries the firm's compiled family with
-    /// the request's own brand current, and the firm's membership — so the
+    /// the request's own brand current, and the firm's affiliation — so the
     /// rows render from first boot, before any Firm row exists to override
     /// them.
     #[cfg(feature = "server")]
@@ -784,12 +793,46 @@ mod tests {
         );
         assert_eq!(
             chrome.memberships[0].href,
-            "https://justicetechassociation.org/"
+            "https://justicetechassociation.org/get-involved"
         );
         assert_eq!(
-            chrome.memberships[0].logo_href, "/public/img/justice-technology-association/logo.png",
+            chrome.memberships[0].logo_href,
+            "/public/img/justice-technology-association/alliance-partner-badge.png",
             "with no asset base configured it falls back to the bundled mount"
         );
+    }
+
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn every_brand_renders_the_firms_jta_standing() {
+        const EXPECTED: &str =
+            "Our organization is a proud Partner of the Justice Technology Association as a Mission-Aligned Organization.";
+
+        for key in views::brand::BrandKey::ALL {
+            let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+            let output = views::brand::scope(branding, async {
+                let chrome = chrome_for(&branding.firm, Vec::new());
+                let mut dom =
+                    VirtualDom::new_with_props(PublicFooter, PublicFooterProps { chrome });
+                dom.rebuild_in_place();
+                dioxus_ssr::render(&dom)
+            })
+            .await;
+
+            assert!(
+                output.contains(EXPECTED),
+                "{key:?} must render the association's standing: {output}"
+            );
+            assert!(
+                output
+                    .split_once(
+                        r#"<a href="https://justicetechassociation.org/get-involved" class="site-footer__membership-link""#,
+                    )
+                    .and_then(|(_, rest)| rest.split_once("</a>"))
+                    .is_some_and(|(_, link_body)| !link_body.contains("member")),
+                "{key:?} must not call the firm a member in the standing line: {output}"
+            );
+        }
     }
 
     #[cfg(feature = "server")]

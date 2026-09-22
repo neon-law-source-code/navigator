@@ -335,8 +335,8 @@ a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are 
 `Y014` runs in the same Project-repository check whenever `documents/` exists. The four lines are shared with `scaffold`
 and `site sync` / `site pull`. Local `project gate` rewrites drift; `--ci` reports `Y014` and leaves the file. Only
 `!*.yaml` is admitted: Navigator writes pointers at that extension, and `POINTER_READ_EXTENSIONS` keeps the retired
-`.yml` spelling readable for a pointer committed before LAW-25 — `Y003` still validates one — but a fresh `.yml` file
-is never meant to enter Git again, so the gitignore does not re-admit it.
+`.yml` spelling readable for a pointer committed before LAW-25 — `Y003` still validates one — but a fresh `.yml` file is
+never meant to enter Git again, so the gitignore does not re-admit it.
 
 ### F-family — files the gate had to fix
 

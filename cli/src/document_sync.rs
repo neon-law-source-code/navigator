@@ -22,9 +22,9 @@ use crate::remote::DocumentClient;
 ///
 /// Only the written spelling is admitted. [`POINTER_READ_EXTENSIONS`] keeps
 /// `.yml` *readable* so a pointer committed before the LAW-25 rename still
-/// resolves, but a fresh `.yml` file is never meant to enter Git again — `Y014`
-/// rejects one under `documents/` outright rather than quietly re-admitting
-/// it here.
+/// resolves, and this file does not disturb one already tracked — it only
+/// stops a fresh `.yml` file from being swept into Git by an unqualified
+/// `git add`.
 pub(crate) const DOCUMENTS_GITIGNORE: &str = "*\n!*/\n!*.yaml\n!.gitignore\n";
 
 /// The extension Navigator writes a document pointer with.
@@ -1164,8 +1164,8 @@ mod tests {
 
     /// The gitignore admits only the written spelling. The retired `.yml`
     /// spelling stays *readable* via [`POINTER_READ_EXTENSIONS`] for pointers
-    /// committed before the rename, but the guard must never re-admit a fresh
-    /// one — `Y014` rejects a `.yml` file under `documents/` instead.
+    /// committed before the rename; this only keeps a fresh one from being
+    /// swept into Git by an unqualified `git add`.
     #[test]
     fn the_documents_gitignore_admits_only_the_written_pointer_extension() {
         assert!(

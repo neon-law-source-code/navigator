@@ -329,8 +329,92 @@ impl EmailSummaryService {
 
 #[cfg(test)]
 mod tests {
-    use super::retryable;
-    use cloud::VertexError;
+    use super::{request_for, retryable, summarize_provider, SummaryProviders};
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use cloud::{StaticTokenSource, StorageError, StoredObject, VertexError};
+    use sha2::Digest as _;
+    use std::fmt::Write as _;
+    use std::sync::Arc;
+    use store::email_receipts::EmailReceipt;
+    use uuid::Uuid;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use workflows::{EmailSummaryRunConfig, ProviderDelivery, SummaryProvider};
+
+    #[derive(Clone)]
+    struct MemoryStorage {
+        bytes: Option<Vec<u8>>,
+    }
+
+    #[async_trait]
+    impl cloud::StorageService for MemoryStorage {
+        async fn put(
+            &self,
+            _key: &str,
+            _bytes: &[u8],
+            _content_type: &str,
+        ) -> Result<(), StorageError> {
+            Err(StorageError::Unsupported("test"))
+        }
+
+        async fn get(&self, key: &str) -> Result<StoredObject, StorageError> {
+            self.bytes
+                .clone()
+                .map(|bytes| StoredObject {
+                    key: key.to_string(),
+                    bytes,
+                    content_type: "message/rfc822".to_string(),
+                })
+                .ok_or_else(|| StorageError::NotFound(key.to_string()))
+        }
+
+        async fn delete(&self, _key: &str) -> Result<(), StorageError> {
+            Err(StorageError::Unsupported("test"))
+        }
+
+        async fn signed_url(
+            &self,
+            _key: &str,
+            _expires_in: std::time::Duration,
+        ) -> Result<String, StorageError> {
+            Err(StorageError::Unsupported("test"))
+        }
+    }
+
+    fn receipt(raw_digest: &str) -> EmailReceipt {
+        let now = Utc::now();
+        EmailReceipt {
+            id: Uuid::now_v7(),
+            receiving_mailbox: "support@example.com".to_string(),
+            deployment: "staging".to_string(),
+            raw_digest: raw_digest.to_string(),
+            source_message_id: None,
+            archive_key: "inbound/example.eml".to_string(),
+            letter_id: Uuid::now_v7(),
+            processing_state: "pending".to_string(),
+            delivery_state: "not_attempted".to_string(),
+            inserted_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn config(provider: SummaryProvider, digest: &str) -> EmailSummaryRunConfig {
+        EmailSummaryRunConfig::new(provider, "summary-model", "global", "summary-v1", digest)
+            .expect("valid test config")
+    }
+
+    fn providers(base_url: &str) -> SummaryProviders {
+        let token = Arc::new(StaticTokenSource::new("test-token"));
+        SummaryProviders {
+            gemini: cloud::GeminiVertexAdapter::new(token.clone())
+                .expect("gemini adapter")
+                .with_base_url(base_url),
+            claude: cloud::ClaudeVertexAdapter::new(token)
+                .expect("claude adapter")
+                .with_base_url(base_url),
+        }
+    }
 
     #[test]
     fn only_transient_vertex_failures_retry() {
@@ -341,5 +425,300 @@ mod tests {
         }));
         assert!(!retryable(&VertexError::Configuration));
         assert!(!retryable(&VertexError::InvalidModelOutput));
+    }
+
+    #[test]
+    fn request_carries_the_receipt_digest_and_bounded_output_limit() {
+        let digest = "a".repeat(64);
+        let receipt = receipt(&digest);
+        let config = config(SummaryProvider::Gemini, &digest).with_limits(4_000, 99_999);
+        let request = request_for(&receipt, &config, "synthetic-project", "prompt".to_string());
+        assert_eq!(request.project_id, "synthetic-project");
+        assert_eq!(request.input_digest, digest);
+        assert_eq!(
+            request.max_output_tokens,
+            workflows::DEFAULT_MAX_OUTPUT_TOKENS
+        );
+        assert_eq!(request.prompt, "prompt");
+    }
+
+    #[tokio::test]
+    async fn missing_provider_configuration_is_a_bounded_failure() {
+        let digest = "a".repeat(64);
+        let result = summarize_provider(
+            Arc::new(MemoryStorage { bytes: None }),
+            None,
+            SummaryProvider::Gemini,
+            receipt(&digest),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("missing provider is represented in the summary");
+        assert!(matches!(
+            result,
+            ProviderDelivery::Failed { status, .. } if status == "provider_not_configured"
+        ));
+    }
+
+    #[tokio::test]
+    async fn malformed_archive_is_not_sent_to_a_provider() {
+        let digest = "a".repeat(64);
+        let server = MockServer::start().await;
+        let result = summarize_provider(
+            Arc::new(MemoryStorage {
+                bytes: Some(b"not a MIME message".to_vec()),
+            }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Gemini,
+            receipt(&digest),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("malformed archive is represented in the summary");
+        assert!(matches!(
+            result,
+            ProviderDelivery::Failed { status, .. } if status.starts_with("invalid_input:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn digest_mismatch_is_rejected_before_provider_call() {
+        let archive = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: text/plain\r\n\r\n\
+            A bounded summary body\r\n";
+        let digest = "a".repeat(64);
+        let different = "b".repeat(64);
+        let server = MockServer::start().await;
+        let result = summarize_provider(
+            Arc::new(MemoryStorage {
+                bytes: Some(archive.to_vec()),
+            }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Gemini,
+            receipt(&different),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("digest mismatch is represented in the summary");
+        assert!(matches!(
+            result,
+            ProviderDelivery::Failed { status, .. } if status == "input_digest_mismatch"
+        ));
+    }
+
+    #[tokio::test]
+    async fn valid_gemini_output_becomes_a_succeeded_delivery() {
+        let archive = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: text/plain\r\n\r\n\
+            A bounded summary body\r\n";
+        let mut digest = String::with_capacity(64);
+        for byte in sha2::Sha256::digest(archive) {
+            write!(digest, "{byte:02x}").expect("writing to String");
+        }
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/projects/synthetic-project/locations/global/publishers/google/models/summary-model:generateContent"))
+            .and(header("authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"candidates":[{"content":{"parts":[{"text":"{\"summary\":\"Useful\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"}]}}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        let result = summarize_provider(
+            Arc::new(MemoryStorage {
+                bytes: Some(archive.to_vec()),
+            }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Gemini,
+            receipt(&digest),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("provider response is represented in the summary");
+        assert!(matches!(
+            result,
+            ProviderDelivery::Succeeded { model, result }
+                if model == "summary-model" && result.summary == "Useful"
+        ));
+    }
+
+    #[tokio::test]
+    async fn archive_storage_errors_are_returned_without_provider_access() {
+        let digest = "a".repeat(64);
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let result = summarize_provider(
+            Arc::new(MemoryStorage { bytes: None }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Gemini,
+            receipt(&digest),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn invalid_provider_json_becomes_a_bounded_failure() {
+        let archive = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: text/plain\r\n\r\n\
+            A bounded summary body\r\n";
+        let mut digest = String::with_capacity(64);
+        for byte in sha2::Sha256::digest(archive) {
+            write!(digest, "{byte:02x}").expect("writing to String");
+        }
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"candidates":[{"content":{"parts":[{"text":"{}"}]}}]}"#),
+            )
+            .mount(&server)
+            .await;
+
+        let result = summarize_provider(
+            Arc::new(MemoryStorage {
+                bytes: Some(archive.to_vec()),
+            }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Gemini,
+            receipt(&digest),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("invalid output is represented in the summary");
+
+        assert!(matches!(
+            result,
+            ProviderDelivery::Failed { status, .. } if status.starts_with("invalid_output:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn valid_claude_output_uses_the_claude_transport() {
+        let archive = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: text/plain\r\n\r\n\
+            A bounded summary body\r\n";
+        let mut digest = String::with_capacity(64);
+        for byte in sha2::Sha256::digest(archive) {
+            write!(digest, "{byte:02x}").expect("writing to String");
+        }
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/v1/projects/synthetic-project/locations/global/publishers/anthropic/models/summary-model:rawPredict",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"content":[{"type":"text","text":"{\"summary\":\"Useful\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let result = summarize_provider(
+            Arc::new(MemoryStorage {
+                bytes: Some(archive.to_vec()),
+            }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Claude,
+            receipt(&digest),
+            config(SummaryProvider::Claude, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("provider response is represented in the summary");
+
+        assert!(matches!(
+            result,
+            ProviderDelivery::Succeeded { model, result }
+                if model == "summary-model" && result.summary == "Useful"
+        ));
+    }
+
+    #[tokio::test]
+    async fn retryable_provider_failures_are_retried_then_quarantined() {
+        let archive = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: text/plain\r\n\r\n\
+            A bounded summary body\r\n";
+        let mut digest = String::with_capacity(64);
+        for byte in sha2::Sha256::digest(archive) {
+            write!(digest, "{byte:02x}").expect("writing to String");
+        }
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .expect(3)
+            .mount(&server)
+            .await;
+
+        let result = summarize_provider(
+            Arc::new(MemoryStorage {
+                bytes: Some(archive.to_vec()),
+            }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Gemini,
+            receipt(&digest),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("provider failure is represented in the summary");
+
+        assert!(matches!(
+            result,
+            ProviderDelivery::Failed { status, .. } if status.starts_with("provider_error:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn permanent_provider_failures_are_not_retried() {
+        let archive = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: text/plain\r\n\r\n\
+            A bounded summary body\r\n";
+        let mut digest = String::with_capacity(64);
+        for byte in sha2::Sha256::digest(archive) {
+            write!(digest, "{byte:02x}").expect("writing to String");
+        }
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(403))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let result = summarize_provider(
+            Arc::new(MemoryStorage {
+                bytes: Some(archive.to_vec()),
+            }),
+            Some(providers(&server.uri())),
+            SummaryProvider::Gemini,
+            receipt(&digest),
+            config(SummaryProvider::Gemini, &digest),
+            "synthetic-project".to_string(),
+        )
+        .await
+        .expect("provider failure is represented in the summary");
+
+        assert!(matches!(
+            result,
+            ProviderDelivery::Failed { status, .. } if status.starts_with("provider_error:")
+        ));
     }
 }

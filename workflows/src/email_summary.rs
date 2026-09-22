@@ -359,4 +359,119 @@ mod tests {
         assert_eq!(config.prompt_version, "summary-v1");
         assert_eq!(config.input_digest.len(), 64);
     }
+
+    #[test]
+    fn run_config_rejects_missing_fields_and_bad_digests() {
+        for (model, location, prompt_version, digest) in [
+            ("", "global", "summary-v1", "a".repeat(64)),
+            ("gemini-test", "", "summary-v1", "a".repeat(64)),
+            ("gemini-test", "global", "", "a".repeat(64)),
+            (
+                "gemini-test",
+                "global",
+                "summary-v1",
+                "too-short".to_string(),
+            ),
+            ("gemini-test", "global", "summary-v1", "g".repeat(64)),
+        ] {
+            assert!(EmailSummaryRunConfig::new(
+                SummaryProvider::Gemini,
+                model,
+                location,
+                prompt_version,
+                digest,
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn normalization_rejects_invalid_mime_empty_body_and_zero_limit() {
+        assert!(normalize_email(b"not MIME", 1_000).is_err());
+        assert!(matches!(
+            normalize_email(b"From: sender@example.com\r\n\r\n", 1_000),
+            Err(SummaryError::EmptyBody)
+        ));
+        assert!(matches!(
+            normalize_email(b"From: sender@example.com\r\n\r\nbody", 0),
+            Err(SummaryError::InvalidOutput)
+        ));
+    }
+
+    #[test]
+    fn html_fallback_decodes_entities_and_skips_style_content() {
+        let email = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: text/html; charset=utf-8\r\n\r\n\
+            <style>.secret { display:none }</style><p>A &amp; B</p><p>&lt;safe&gt;</p>";
+
+        let normalized = normalize_email(email, 1_000).expect("valid HTML MIME");
+        assert_eq!(normalized.body, "A & B\n<safe>");
+        assert!(!normalized.body.contains("secret"));
+    }
+
+    #[test]
+    fn normalization_counts_attachments_without_including_them() {
+        let email = b"From: sender@example.com\r\n\
+            To: intake@example.com\r\n\
+            Content-Type: multipart/mixed; boundary=BOUNDARY\r\n\r\n\
+            --BOUNDARY\r\n\
+            Content-Type: text/plain\r\n\r\n\
+            Keep this body\r\n\
+            --BOUNDARY\r\n\
+            Content-Type: application/pdf\r\n\
+            Content-Disposition: attachment; filename=brief.pdf\r\n\r\n\
+            private attachment bytes\r\n\
+            --BOUNDARY--\r\n";
+
+        let normalized = normalize_email(email, 1_000).expect("valid multipart MIME");
+        assert_eq!(normalized.body, "Keep this body");
+        assert_eq!(normalized.attachment_count, 1);
+        assert!(!normalized.body.contains("private attachment"));
+    }
+
+    #[test]
+    fn summary_validation_rejects_oversized_items_and_excessive_lists() {
+        let oversized_item = serde_json::json!({
+            "summary": "Useful",
+            "requested_actions": ["x".repeat(1_001)],
+            "sender_stated_dates": [],
+            "missing_information": []
+        });
+        assert!(parse_summary(&oversized_item.to_string(), 1_000).is_err());
+
+        let excessive_actions = vec!["action"; 33];
+        let excessive_list = serde_json::json!({
+            "summary": "Useful",
+            "requested_actions": excessive_actions,
+            "sender_stated_dates": [],
+            "missing_information": []
+        });
+        assert!(parse_summary(&excessive_list.to_string(), 1_000).is_err());
+    }
+
+    #[test]
+    fn prompt_preserves_run_identity_and_marks_email_as_untrusted() {
+        let input = NormalizedEmail {
+            body: "Please review this request".to_string(),
+            input_digest: "a".repeat(64),
+            original_chars: 27,
+            truncated: false,
+            attachment_count: 0,
+        };
+        let config = EmailSummaryRunConfig::new(
+            SummaryProvider::Claude,
+            "claude-test",
+            "global",
+            "summary-v9",
+            input.input_digest.clone(),
+        )
+        .expect("valid config");
+
+        let prompt = build_prompt(&input, &config);
+        assert!(prompt.contains("Prompt version: summary-v9"));
+        assert!(prompt.contains(&format!("Input digest: {}", input.input_digest)));
+        assert!(prompt.contains("<email-body>\nPlease review this request\n</email-body>"));
+        assert!(prompt.contains("untrusted email text"));
+    }
 }

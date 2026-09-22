@@ -122,8 +122,15 @@ Security Policy widens to name the Chatwoot installation on the deployment carry
 `NAVIGATOR_CHATWOOT_BASE_URL` beside it only for a self-hosted installation; unset means Chatwoot Cloud.
 
 `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` is the inbound-summary SMTP allowlist, set per row in the Deploy repository.
-Production names the live support mailbox; persistent staging names the staging mailbox. Unset leaves that lane off; a
+Each row names the final recipient SendGrid Inbound Parse receives after any Google Workspace routing rewrite (normally
+the row's Parse intake address), not the visible `To:` header or original support mailbox. Unset leaves that lane off; a
 present blank value fails boot. There is no compiled default.
+
+`NAVIGATOR_SUMMARY_ENABLED=true` opts a row into the durable review lane. It also requires `NAVIGATOR_DEPLOYMENT_ID`,
+`NAVIGATOR_SUMMARY_CHANNEL_ID`, `SENDGRID_INBOUND_PUBLIC_KEY`, the row's HTTPS `RESTATE_BROKER_URL`, and
+`NAVIGATOR_GCP_PROJECT_ID`; web and `workflows-service` must receive the same gate and coordinates. The GCP project must
+have Vertex AI enabled and the runtime service account must have `roles/aiplatform.user`. Model, location, and
+input/output limits have shared defaults and can be overridden per row.
 
 Every hosted row uses `NAVIGATOR_ENVIRONMENT=production` and `NAVIGATOR_CREDENTIAL_ENVIRONMENT=production`.
 `neon-law-stg` remains the proving release ring through its config, namespace, data plane, and hostname—not through a

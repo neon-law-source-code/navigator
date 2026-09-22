@@ -171,6 +171,8 @@ spec:
               value: SG.kind-stub
             - name: SENDGRID_INBOUND_SECRET
               value: kind-stub
+            - name: SENDGRID_INBOUND_PUBLIC_KEY
+              value: kind-stub
             - name: SENDGRID_EVENTS_SECRET
               value: kind-stub
             - name: SENDGRID_EVENTS_PUBLIC_KEY

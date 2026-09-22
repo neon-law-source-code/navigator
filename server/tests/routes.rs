@@ -14673,7 +14673,7 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
         .unwrap();
     let (public_key, mut headers) = summary_test_key();
     state.summary_intake = Some(portal::inbound_email::SummaryIntakeConfig {
-        envelope_recipients: vec!["support@example.com".into()],
+        envelope_recipients: vec!["intake@parse.example.com".into()],
         inbound_public_key: public_key,
         deployment: "staging".into(),
         workflow_ingress: restate.uri(),
@@ -14683,12 +14683,14 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
         gemini_location: "global".into(),
         claude_model: "claude-test".into(),
         claude_location: "global".into(),
+        max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
+        max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
     });
     let raw = b"Message-ID: <receipt@example.com>\r\nFrom: aries@example.com\r\nTo: forged@example.com\r\nSubject: Summary\r\n\r\nBody";
     let (content_type, body) = build_inbound_multipart_with_envelope(
         "aries@example.com",
         "forged@example.com",
-        "support@example.com",
+        "intake@parse.example.com",
         "Summary",
         "Body",
         raw,
@@ -14714,7 +14716,7 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
     assert_eq!(store::letters::list_all(&surreal).await.unwrap().len(), 1);
     assert_eq!(store::email_receipts::count(&surreal).await.unwrap(), 1);
     let letters = store::letters::list_all(&surreal).await.unwrap();
-    assert_eq!(letters[0].recipient, "support@example.com");
+    assert_eq!(letters[0].recipient, "intake@parse.example.com");
     let objects = state.storage.list("inbound/").await.unwrap();
     assert_eq!(objects.len(), 1);
     assert_eq!(state.storage.get(&objects[0].key).await.unwrap().bytes, raw);
@@ -14722,7 +14724,7 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
     let (retry_content_type, retry_body) = build_inbound_multipart_with_envelope_boundary(
         "aries@example.com",
         "forged@example.com",
-        "support@example.com",
+        "intake@parse.example.com",
         "Summary",
         "Body",
         raw,
@@ -14756,7 +14758,7 @@ async fn summary_intake_rejects_tampered_body_and_missing_envelope() {
     let (mut state, _surreal) = state_with_engines().await;
     let (public_key, mut headers) = summary_test_key();
     state.summary_intake = Some(portal::inbound_email::SummaryIntakeConfig {
-        envelope_recipients: vec!["support@example.com".into()],
+        envelope_recipients: vec!["intake@parse.example.com".into()],
         inbound_public_key: public_key,
         deployment: "staging".into(),
         workflow_ingress: "http://127.0.0.1:9".into(),
@@ -14766,12 +14768,14 @@ async fn summary_intake_rejects_tampered_body_and_missing_envelope() {
         gemini_location: "global".into(),
         claude_model: "claude-test".into(),
         claude_location: "global".into(),
+        max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
+        max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
     });
     let raw = b"From: aries@example.com\r\nTo: support@example.com\r\nSubject: Summary\r\n\r\nBody";
     let (content_type, body) = build_inbound_multipart_with_envelope(
         "aries@example.com",
         "support@example.com",
-        "support@example.com",
+        "intake@parse.example.com",
         "Summary",
         "Body",
         raw,
@@ -14798,7 +14802,7 @@ async fn summary_intake_rejects_tampered_body_and_missing_envelope() {
 
     let (content_type, body) = build_inbound_multipart(
         "aries@example.com",
-        "support@example.com",
+        "intake@parse.example.com",
         "Summary",
         "Body",
         raw,
@@ -14825,7 +14829,7 @@ async fn summary_intake_rejects_tampered_body_and_missing_envelope() {
     let (content_type, body) = build_inbound_multipart_with_envelope(
         "aries@example.com",
         "support@example.com",
-        "support@example.com",
+        "intake@parse.example.com",
         "Summary",
         "Body",
         b"",

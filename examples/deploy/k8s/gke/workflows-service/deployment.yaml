@@ -108,6 +108,19 @@ spec:
               # `email_send__*` steps. KIND keeps this unset so the
               # `email_config` selector returns `CapturingEmail`.
               value: sendgrid
+            # These coordinates must match navigator-web. The worker uses
+            # the shared config as its provider gate; web captures model and
+            # limits in the durable request.
+            - name: NAVIGATOR_SUMMARY_ENABLED
+              value: "YOUR_SUMMARY_ENABLED"
+            - name: NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS
+              value: "YOUR_SUMMARY_ENVELOPE_RECIPIENTS"
+            - name: NAVIGATOR_DEPLOYMENT_ID
+              value: YOUR_DEPLOYMENT_ID
+            - name: NAVIGATOR_SUMMARY_CHANNEL_ID
+              value: YOUR_SUMMARY_CHANNEL_ID
+            - name: NAVIGATOR_GCP_PROJECT_ID
+              value: YOUR_PROJECT_ID
             # Object storage. Three lanes share this pod:
             #  - The Archives snapshot phase writes nightly Parquet to the
             #    dedicated archive bucket via `cloud::archives_from_env`

@@ -195,6 +195,8 @@ spec:
               value: SG.kind-stub
             - name: SENDGRID_INBOUND_SECRET
               value: kind-stub
+            - name: SENDGRID_INBOUND_PUBLIC_KEY
+              value: kind-stub
           readinessProbe:
             # ENG-551: httpGet on the unsigned health listener actually
             # round-trips a request through live worker code (the same

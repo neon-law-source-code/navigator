@@ -39,6 +39,7 @@ pub const REQUIRED_SERVICES: &[&str] = &[
     "speech.googleapis.com",
     "drive.googleapis.com",
     "admin.googleapis.com",
+    "aiplatform.googleapis.com",
 ];
 
 pub async fn enable_services(client: &GcpClient, project_id: &str) -> SetupResult<()> {
@@ -135,6 +136,7 @@ mod tests {
             "identitytoolkit.googleapis.com",
             "drive.googleapis.com",
             "admin.googleapis.com",
+            "aiplatform.googleapis.com",
             // Without this the project cannot hold the key its
             // `secrets.enc.yaml` is encrypted against, so the deployment can
             // never be written into the tree at all.
@@ -145,7 +147,7 @@ mod tests {
                 "deployment setup must enable {service}"
             );
         }
-        assert_eq!(REQUIRED_SERVICES.len(), 22);
+        assert_eq!(REQUIRED_SERVICES.len(), 23);
     }
 
     #[tokio::test]

@@ -9,7 +9,10 @@ use super::client::{GcpClient, ShellResult};
 use super::error::{SetupError, SetupResult};
 use super::SetupConfig;
 
-const PROJECT_ROLES: &[&str] = &["roles/secretmanager.secretAccessor"];
+const PROJECT_ROLES: &[&str] = &[
+    "roles/secretmanager.secretAccessor",
+    "roles/aiplatform.user",
+];
 const KUBERNETES_SERVICE_ACCOUNTS: &[&str] = &["navigator-web", "workflows-service"];
 
 /// Create the runtime GSA and idempotently bind its direct GCP access. The GKE
@@ -240,6 +243,7 @@ mod tests {
         assert!(plan.contains("example-a-web"));
         assert!(plan.contains("example-a-drive"));
         assert!(plan.contains("roles/secretmanager.secretAccessor"));
+        assert!(plan.contains("roles/aiplatform.user"));
         assert!(plan.contains("roles/storage.objectAdmin"));
         assert!(plan.contains("gs://example-a-applications"));
         assert!(!plan.contains("allUsers"));
@@ -247,6 +251,6 @@ mod tests {
         assert!(plan.contains("neon-law-stg.svc.id.goog[example-a/navigator-web]"));
         assert!(plan.contains("neon-law-stg.svc.id.goog[example-a/workflows-service]"));
         assert!(plan.contains("roles/iam.serviceAccountTokenCreator"));
-        assert_eq!(client.recorded_calls().len(), 11);
+        assert_eq!(client.recorded_calls().len(), 12);
     }
 }

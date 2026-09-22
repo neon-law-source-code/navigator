@@ -79,6 +79,10 @@ use portal::chatwoot::{
 use portal::inbound_email::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS;
 use store::NAVIGATOR_SIMULATED_MATTERS;
 use views::brand::BrandKey;
+use workflows::email_summary_config::{
+    CHANNEL_ENV as SUMMARY_CHANNEL_ENV, DEPLOYMENT_ENV as SUMMARY_DEPLOYMENT_ENV,
+    ENABLED_ENV as SUMMARY_ENABLED_ENV,
+};
 
 use super::registry;
 use super::{require_auth, require_tools, run};
@@ -295,6 +299,7 @@ where
         env: NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS,
         value: non_empty_env(NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS, &get).unwrap_or_default(),
     });
+    substitutions.extend(summary_substitutions(deployment, &get));
     substitutions.extend(optional_provider_substitutions(&get));
     // Not in TABLE and not read from `get` at all: the additional brand
     // hosts this deployment's environment serves come from the compiled
@@ -336,6 +341,29 @@ where
         value: brand_ingress_rule_lines(&brand_hosts),
     });
     Ok(substitutions)
+}
+
+fn summary_substitutions<F>(deployment: &str, get: &F) -> Vec<Substitution>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    vec![
+        Substitution {
+            token: "YOUR_SUMMARY_ENABLED",
+            env: SUMMARY_ENABLED_ENV,
+            value: non_empty_env(SUMMARY_ENABLED_ENV, get).unwrap_or_else(|| "false".to_string()),
+        },
+        Substitution {
+            token: "YOUR_DEPLOYMENT_ID",
+            env: SUMMARY_DEPLOYMENT_ENV,
+            value: deployment.to_string(),
+        },
+        Substitution {
+            token: "YOUR_SUMMARY_CHANNEL_ID",
+            env: SUMMARY_CHANNEL_ENV,
+            value: non_empty_env(SUMMARY_CHANNEL_ENV, get).unwrap_or_default(),
+        },
+    ]
 }
 
 /// Render the optional provider switches. An omitted or blank client id keeps
@@ -5853,6 +5881,7 @@ spec:
         "SENDGRID_EVENTS_PUBLIC_KEY",
         "SENDGRID_EVENTS_SECRET",
         "SENDGRID_FROM_EMAIL",
+        "SENDGRID_INBOUND_PUBLIC_KEY",
         "SENDGRID_INBOUND_SECRET",
         "SESSION_SECRET",
         "SLACK_BOT_TOKEN",

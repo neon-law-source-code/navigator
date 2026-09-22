@@ -354,7 +354,10 @@ async fn the_firm_footer_sets_each_office_over_three_lines() {
         .nth(1)
         .and_then(|rest| rest.split("</ul>").next())
         .expect("the offices grid renders");
-    for (street, unit, city) in [("5150 Mae Anne Ave", "Ste 405-9002", "Reno, NV 89523")] {
+    for (street, unit, city) in [
+        ("5150 Mae Anne Ave", "Ste 405-9002", "Reno, NV 89523"),
+        ("12 E 49th St", "18th Floor", "New York, NY 10017"),
+    ] {
         // Every line publishes...
         for line in [street, unit, city] {
             assert!(body.contains(line), "{line} publishes: {body}");
@@ -371,8 +374,8 @@ async fn the_firm_footer_sets_each_office_over_three_lines() {
     }
     assert_eq!(
         body.matches(r#"class="site-footer__office-line""#).count(),
-        3,
-        "three lines for the firm's one office: {body}"
+        6,
+        "three lines for each of the firm's two offices: {body}"
     );
 }
 

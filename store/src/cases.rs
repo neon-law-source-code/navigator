@@ -246,6 +246,30 @@ pub struct DocketEntry {
     pub document_asset_id: Option<Uuid>,
     /// Set when the firm drafted it.
     pub notation_id: Option<Uuid>,
+    /// The case number as stamped by the court's own CM/ECF header, not as
+    /// typed by whoever recorded the entry (LAW-24). `None` until
+    /// [`record_stamp`] extracts one from the filed document.
+    pub stamp_case_number: Option<String>,
+    /// The document (entry) number as stamped by CM/ECF. Compare against
+    /// `entry_number` to catch a hand-typed docket number that disagrees
+    /// with the document itself.
+    pub stamp_entry_number: Option<String>,
+    /// The filing date as stamped by CM/ECF, verbatim (`MM/DD/YY` or
+    /// `MM/DD/YYYY`) rather than parsed, so an unrecognized format is still
+    /// recorded.
+    pub stamp_filed_on: Option<String>,
+    /// When this entry's document was last hash-checked against an
+    /// independently fetched copy (LAW-24, option 1). `None` until
+    /// [`record_integrity_check`] runs.
+    pub integrity_checked_at: Option<DateTime<Utc>>,
+    /// The SHA-256 of the independently fetched copy the check compared
+    /// against. Kept alongside the result so a later reviewer can see what
+    /// was actually fetched, not just whether it matched.
+    pub integrity_source_sha256_hex: Option<String>,
+    /// Whether the independently fetched copy's hash matched the stored
+    /// document's. `None` before any check has run — distinct from
+    /// `Some(false)`, a check that ran and found a mismatch.
+    pub integrity_matched: Option<bool>,
     pub inserted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -263,6 +287,12 @@ struct DocketEntryRow {
     supersedes: Option<surrealdb::types::RecordId>,
     document_asset_id: Option<surrealdb::types::RecordId>,
     notation_id: Option<surrealdb::types::RecordId>,
+    stamp_case_number: Option<String>,
+    stamp_entry_number: Option<String>,
+    stamp_filed_on: Option<String>,
+    integrity_checked_at: Option<surrealdb::types::Datetime>,
+    integrity_source_sha256_hex: Option<String>,
+    integrity_matched: Option<bool>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
 }
@@ -281,6 +311,12 @@ impl DocketEntryRow {
             supersedes: self.supersedes.as_ref().and_then(record_uuid),
             document_asset_id: self.document_asset_id.as_ref().and_then(record_uuid),
             notation_id: self.notation_id.as_ref().and_then(record_uuid),
+            stamp_case_number: self.stamp_case_number,
+            stamp_entry_number: self.stamp_entry_number,
+            stamp_filed_on: self.stamp_filed_on,
+            integrity_checked_at: self.integrity_checked_at.map(Into::into),
+            integrity_source_sha256_hex: self.integrity_source_sha256_hex,
+            integrity_matched: self.integrity_matched,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
         })
@@ -289,7 +325,10 @@ impl DocketEntryRow {
 
 const DOCKET_ENTRY_SELECT: &str = "id, case_id, entry_number, kind, title, party, \
                                    filed_or_served_on, scheduled_on, supersedes, \
-                                   document_asset_id, notation_id, inserted_at, updated_at";
+                                   document_asset_id, notation_id, stamp_case_number, \
+                                   stamp_entry_number, stamp_filed_on, integrity_checked_at, \
+                                   integrity_source_sha256_hex, integrity_matched, \
+                                   inserted_at, updated_at";
 
 /// A hearing or trial the calendar should show: the current appearance on
 /// a continuance chain, with a date still in the future.
@@ -638,6 +677,74 @@ pub async fn record_entry(
             new.notation_id
                 .map(|n| record_id(crate::notations::TABLE, n)),
         ))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let row: Option<DocketEntryRow> = response.take(0)?;
+    row.and_then(DocketEntryRow::into_entry)
+        .ok_or(CaseError::WriteReturnedNothing("docket entry"))
+}
+
+/// Record the CM/ECF header stamp [`crate::cm_ecf_stamp::extract`] found in
+/// the filed document, as **structured provenance separate from** the
+/// hand-typed `entry_number` and `filed_or_served_on` (LAW-24, option 2).
+/// Neither existing field is overwritten — a reviewer can see what was
+/// typed and what the document itself says, and notice when they disagree.
+///
+/// # Errors
+/// Propagates any database error, and [`CaseError::WriteReturnedNothing`]
+/// if `entry_id` names no docket entry.
+pub async fn record_stamp(
+    db: &SurrealDb,
+    entry_id: Uuid,
+    stamp: &crate::cm_ecf_stamp::CmEcfStamp,
+) -> Result<DocketEntry, CaseError> {
+    let mut response = db
+        .query(format!(
+            "UPDATE $id SET \
+             stamp_case_number = $case_number, stamp_entry_number = $entry_number, \
+             stamp_filed_on = $filed_on \
+             RETURN {DOCKET_ENTRY_SELECT}"
+        ))
+        .bind(("id", record_id(DOCKET_ENTRY_TABLE, entry_id)))
+        .bind(("case_number", stamp.case_number.clone()))
+        .bind(("entry_number", stamp.entry_number.clone()))
+        .bind(("filed_on", stamp.filed_on.clone()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let row: Option<DocketEntryRow> = response.take(0)?;
+    row.and_then(DocketEntryRow::into_entry)
+        .ok_or(CaseError::WriteReturnedNothing("docket entry"))
+}
+
+/// Record the result of hashing an independently fetched copy of this
+/// entry's filed document against the one Navigator stored — LAW-24's
+/// docket-record attestation, the real authenticity check a "signature
+/// verified" badge cannot be, because these PDFs carry no signature to
+/// verify. `matched` is the caller's own comparison (typically
+/// [`crate::documents::verify_independent_copy`]); this function only
+/// records the result, so the crypto-adjacent comparison stays in one place
+/// and this stays a plain write.
+///
+/// # Errors
+/// Propagates any database error, and [`CaseError::WriteReturnedNothing`]
+/// if `entry_id` names no docket entry.
+pub async fn record_integrity_check(
+    db: &SurrealDb,
+    entry_id: Uuid,
+    source_sha256_hex: &str,
+    matched: bool,
+) -> Result<DocketEntry, CaseError> {
+    let mut response = db
+        .query(format!(
+            "UPDATE $id SET \
+             integrity_checked_at = time::now(), \
+             integrity_source_sha256_hex = $source_sha256_hex, \
+             integrity_matched = $matched \
+             RETURN {DOCKET_ENTRY_SELECT}"
+        ))
+        .bind(("id", record_id(DOCKET_ENTRY_TABLE, entry_id)))
+        .bind(("source_sha256_hex", source_sha256_hex.to_string()))
+        .bind(("matched", matched))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     let row: Option<DocketEntryRow> = response.take(0)?;

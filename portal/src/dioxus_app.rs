@@ -3038,19 +3038,47 @@ pub const NOTATION_PREVIEW_PATH: &str = "/notations/{slug}";
 /// synchronous axum middleware, mirroring [`inject_catalog_material`] —
 /// rather than an awaited extractor inside the render, matching how
 /// [`webapp::contact_page`] reads its content.
+///
+/// Also carries [`NOTATION_DRAFT_PATH`] (LAW-29) when `surreal` is
+/// `Some` — the production `neon` binary's case — resolved by the awaited
+/// [`inject_notation_draft`] middleware. `navigator notations preview
+/// --offline`'s ephemeral local server (`cli::notations_preview`) has no
+/// store connection at all and passes `None`, mounting the preview route
+/// alone exactly as before.
+///
+/// When present, the draft route shares this one
+/// `Router::<FullstackState>::new()...with_state(...)` with the preview
+/// route rather than getting its own, deliberately: a second,
+/// independently constructed `FullstackState` in this same public router
+/// tree destabilizes the Dioxus render-task pool this process shares
+/// across every public page — a resource conflict, not a logic bug, that
+/// surfaces (in the BDD suite's rebuild-the-app-per-scenario harness) as a
+/// `cucumber` runtime-drop panic several public-page renders later, with
+/// no connection to either mount on its face. One `FullstackState`, both
+/// routes, is what keeps this mount as plain as every other public one.
 pub fn notation_preview_router(
     docs: Vec<webapp::notation_preview::PreviewDoc>,
     mode: webapp::notation_preview::NotationPreviewMode,
+    surreal: Option<store::surreal::SurrealDb>,
 ) -> Router {
-    Router::<FullstackState>::new()
-        .route(
-            NOTATION_PREVIEW_PATH,
+    let router = Router::<FullstackState>::new().route(
+        NOTATION_PREVIEW_PATH,
+        get(render_handler)
+            .layer(from_fn(dioxus_document_head))
+            .layer(from_fn(inject_public_utility))
+            .layer(from_fn_with_state((docs, mode), inject_notation_preview)),
+    );
+    let router = match surreal {
+        Some(surreal) => router.route(
+            NOTATION_DRAFT_PATH,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(inject_public_utility))
-                .layer(from_fn_with_state((docs, mode), inject_notation_preview)),
-        )
-        .with_state(FullstackState::new(ServeConfig::new(), webapp::App))
+                .layer(from_fn_with_state(surreal, inject_notation_draft)),
+        ),
+        None => router,
+    };
+    router.with_state(FullstackState::new(ServeConfig::new(), webapp::App))
 }
 
 /// Resolve the requested bundled document from the `{slug}` path segment and
@@ -3086,6 +3114,47 @@ async fn inject_notation_preview(
     };
     req.extensions_mut()
         .insert(webapp::notation_preview::InjectedNotationPreview { content, mode });
+    next.run(req).await
+}
+
+/// A pushed notation draft (LAW-29) — `navigator notations preview`'s draft
+/// door. `{id}` names a row in `store::notation_drafts`, addressed at this
+/// path (mounted by [`notation_preview_router`]), the same shape as
+/// [`NOTATION_PREVIEW_PATH`] but keyed by a live store lookup rather than a
+/// compiled-in `Vec`. No auth or policy layer, same as the preview mount:
+/// the id is the access control, exactly like a preview link.
+pub const NOTATION_DRAFT_PATH: &str = "/notations/drafts/{id}";
+
+/// Resolve the `{id}` path segment to a live draft and hand its projected
+/// content to the render task, already resolved — mirroring
+/// [`inject_notation_preview`], but awaited, since this reads the store
+/// rather than a compiled-in `Vec`. `None` covers every refusal alike (an
+/// unknown id, an expired one, or a read failure); the page renders the
+/// same not-found body for all three.
+async fn inject_notation_draft(
+    axum::extract::State(surreal): axum::extract::State<store::surreal::SurrealDb>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let id = req
+        .uri()
+        .path()
+        .rsplit('/')
+        .next()
+        .and_then(|segment| segment.parse::<uuid::Uuid>().ok());
+    let content = match id {
+        Some(id) => match store::notation_drafts::find_live(&surreal, id).await {
+            Ok(Some(draft)) => Some(webapp::notation_draft::project_draft_source(&draft.source)),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::error!(error = %e, %id, "notation draft lookup failed");
+                None
+            }
+        },
+        None => None,
+    };
+    req.extensions_mut()
+        .insert(webapp::notation_draft::InjectedNotationDraft(content));
     next.run(req).await
 }
 
@@ -5058,5 +5127,124 @@ mod tests {
             .unwrap();
         let html = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(html.contains(webapp::team_page::STATEMENT), "{html}");
+    }
+
+    /// End-to-end through the real mount: `notation_preview_router`'s draft
+    /// route, `inject_notation_draft`'s awaited store lookup, and
+    /// `webapp::App`'s draft branch, together — the same router the `neon`
+    /// binary serves, not a hand-built stand-in. Exercises the two things a
+    /// props-driven page test cannot: the live `{id}` resolution and the
+    /// shared `FullstackState` actually carrying both mounts.
+    #[tokio::test]
+    async fn the_draft_route_resolves_a_live_draft_through_the_shared_router() {
+        let surreal = store::surreal::test_support::mem().await;
+        let project_id = store::test_support::seed_project_surreal(&surreal, "draft-e2e").await;
+        let draft = store::notation_drafts::create(
+            &surreal,
+            &store::notation_drafts::NewNotationDraft {
+                project_id,
+                slug: "sample-letter",
+                title: "Sample Letter",
+                source: "---\ntitle: Sample Letter\ncode: sample__letter\nquestionnaire:\n  \
+                    BEGIN:\n    _: custom_text__client_name\n  \
+                    custom_text__client_name:\n    _: END\n  END: \
+                    {}\nprompts:\n  client_name: What \
+                    is your name?\nworkflow:\n  BEGIN:\n    intake_submitted: \
+                    lawyer_review\n  lawyer_review:\n    approved: END\n  END: \
+                    {}\n---\n\n# Sample Letter\n\nBody prose.\n",
+            },
+        )
+        .await
+        .expect("draft is stored");
+
+        let router = notation_preview_router(
+            Vec::new(),
+            webapp::notation_preview::NotationPreviewMode::Published,
+            Some(surreal),
+        );
+
+        let resp = router
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/notations/drafts/{}", draft.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), MAX_RENDER_BYTES)
+            .await
+            .unwrap();
+        let html = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(html.contains("Sample Letter"), "{html}");
+        assert!(html.contains("Draft"), "{html}");
+        let questionnaire_at = html
+            .find("Try answering this")
+            .expect("the questionnaire renders: {html}");
+        let body_at = html
+            .find("Body prose")
+            .expect("the document body renders: {html}");
+        assert!(
+            questionnaire_at < body_at,
+            "questionnaire must render before the body: {html}"
+        );
+    }
+
+    /// An unknown draft id 404-shapes to "not found" rather than 500ing or
+    /// falling through to the generic placeholder.
+    #[tokio::test]
+    async fn an_unknown_draft_id_renders_not_found() {
+        let surreal = store::surreal::test_support::mem().await;
+        let router = notation_preview_router(
+            Vec::new(),
+            webapp::notation_preview::NotationPreviewMode::Published,
+            Some(surreal),
+        );
+
+        let resp = router
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/notations/drafts/{}", uuid::Uuid::now_v7()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), MAX_RENDER_BYTES)
+            .await
+            .unwrap();
+        let html = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(html.contains("Draft not found"), "{html}");
+    }
+
+    /// A path segment that isn't even a UUID is the same "not found" as a
+    /// well-formed but unknown one — `inject_notation_draft` never panics
+    /// or 500s on a malformed id, it just finds nothing to inject.
+    #[tokio::test]
+    async fn a_non_uuid_draft_segment_also_renders_not_found() {
+        let surreal = store::surreal::test_support::mem().await;
+        let router = notation_preview_router(
+            Vec::new(),
+            webapp::notation_preview::NotationPreviewMode::Published,
+            Some(surreal),
+        );
+
+        let resp = router
+            .oneshot(
+                Request::builder()
+                    .uri("/notations/drafts/not-a-uuid")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), MAX_RENDER_BYTES)
+            .await
+            .unwrap();
+        let html = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(html.contains("Draft not found"), "{html}");
     }
 }

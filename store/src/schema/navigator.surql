@@ -1445,6 +1445,19 @@ DEFINE INDEX OVERWRITE notation_project ON notation FIELDS project_id;
 DEFINE INDEX OVERWRITE notation_person ON notation FIELDS person_id;
 DEFINE INDEX OVERWRITE notation_template ON notation FIELDS template_id;
 
+-- `notation_drafts` (LAW-29): a stored, addressable, **unrun** preview of a
+-- template — no `notation` row, no workflow instance, no `notation_event`.
+-- `expires_at` backs the read-time TTL filter in `store::notation_drafts`;
+-- a draft is a short-lived preview artifact, not a place to accumulate.
+DEFINE TABLE IF NOT EXISTS notation_draft SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE project_id ON notation_draft TYPE record<project>;
+DEFINE FIELD OVERWRITE slug ON notation_draft TYPE string;
+DEFINE FIELD OVERWRITE title ON notation_draft TYPE string;
+DEFINE FIELD OVERWRITE source ON notation_draft TYPE string;
+DEFINE FIELD OVERWRITE inserted_at ON notation_draft TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE expires_at ON notation_draft TYPE datetime;
+DEFINE INDEX OVERWRITE notation_draft_project ON notation_draft FIELDS project_id;
+
 -- `notation_clauses`: one custom paragraph spliced into a single
 -- notation's assembled document at `{{custom_clauses}}`, in `position`
 -- order, without forking the shared template.
@@ -1837,6 +1850,16 @@ DEFINE INDEX OVERWRITE case_project ON case FIELDS project_id;
 -- `hearing` and `trial`, and refused for every other kind. A continuance is
 -- a new entry of the same kind with a new `scheduled_on` and `supersedes`
 -- pointing at the prior entry, so the earlier date stays on the record.
+--
+-- The `stamp_*` fields are structured provenance extracted from the filed
+-- document's own CM/ECF header stamp, kept separate from
+-- `entry_number`/`filed_or_served_on` so a reviewer can see what was typed
+-- alongside what the document itself says (LAW-24, option 2).
+--
+-- The `integrity_*` fields are the docket-record attestation: whether an
+-- independently fetched copy's hash matched the stored document's, and
+-- when it was last checked (LAW-24, option 1). `integrity_matched IS NONE`
+-- means unchecked, distinct from a checked-and-mismatched `false`.
 DEFINE TABLE IF NOT EXISTS case_docket_entry SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE case_id ON case_docket_entry TYPE record<case>;
 DEFINE FIELD OVERWRITE entry_number ON case_docket_entry TYPE string;
@@ -1859,6 +1882,12 @@ DEFINE FIELD OVERWRITE scheduled_on ON case_docket_entry TYPE option<datetime>
 DEFINE FIELD OVERWRITE supersedes ON case_docket_entry TYPE option<record<case_docket_entry>>;
 DEFINE FIELD OVERWRITE document_asset_id ON case_docket_entry TYPE option<record<asset>>;
 DEFINE FIELD OVERWRITE notation_id ON case_docket_entry TYPE option<record<notation>>;
+DEFINE FIELD OVERWRITE stamp_case_number ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE stamp_entry_number ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE stamp_filed_on ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE integrity_checked_at ON case_docket_entry TYPE option<datetime>;
+DEFINE FIELD OVERWRITE integrity_source_sha256_hex ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE integrity_matched ON case_docket_entry TYPE option<bool>;
 DEFINE FIELD OVERWRITE inserted_at ON case_docket_entry TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON case_docket_entry TYPE datetime DEFAULT time::now();
 -- A docket cannot have two number 1s, but the same number on another case

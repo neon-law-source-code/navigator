@@ -86,6 +86,7 @@ pub mod matter_directory;
 pub mod matter_surface;
 pub mod notation_demo;
 pub mod notation_document_review;
+pub mod notation_draft;
 pub mod notation_outline;
 pub mod notation_preview;
 pub mod notation_workflow;
@@ -133,6 +134,24 @@ pub fn App() -> Element {
                     chrome: view.chrome.clone(),
                     content: view.content.clone(),
                     mode: view.mode,
+                }
+            };
+        }
+    }
+
+    // `navigator notations preview`'s draft door (LAW-29), sharing this one
+    // `FullstackState` with the preview route above rather than getting its
+    // own — see `portal::dioxus_app::notation_preview_router`'s doc comment
+    // for why a second one destabilizes this process's Dioxus render-task
+    // pool. `matched` is what tells a draft request (including one for an
+    // unknown or expired id) apart from every other route sharing this App.
+    let notation_draft = use_server_future(notation_draft::notation_draft_view)?;
+    if let Some(Ok(view)) = &*notation_draft.read() {
+        if view.matched {
+            return rsx! {
+                notation_draft::NotationDraftPage {
+                    chrome: view.chrome.clone(),
+                    content: view.content.clone(),
                 }
             };
         }

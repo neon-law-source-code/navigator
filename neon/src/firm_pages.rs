@@ -444,9 +444,14 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::NOTATIONS_INDEX_PATH,
         notations_index_content(),
     ));
+    // Also carries `navigator notations preview`'s draft door (LAW-29): a
+    // pushed template, stored and addressable but explicitly not run. Both
+    // mounts share one `FullstackState` deliberately — see the function's
+    // own doc comment.
     routers.push(dioxus_app::notation_preview_router(
         notation_preview_docs(),
         webapp::notation_preview::NotationPreviewMode::Published,
+        Some(state.surreal.clone()),
     ));
     let contact_copy = branded_map(branding, |resolved| {
         webapp::contact_page::InjectedContact(resolve_firm_contact_content(resolved))

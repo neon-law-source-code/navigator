@@ -3709,8 +3709,8 @@ fn run_render(
     // Gate on validation: render only when there are no blocking
     // (Error-severity) violations. Use the same DB-free classified rule
     // set as `validate`. Yellow advisories (e.g. N112, "step allowed but
-    // not built yet" — which every lawyer_review gate earns) are printed
-    // but must not block rendering, mirroring `validate` / `site seed`.
+    // not built yet") are printed but must not block rendering, mirroring
+    // `validate` / `site seed`.
     let source = rules::SourceFile {
         path: file.to_path_buf(),
         contents: contents.clone(),

@@ -1600,9 +1600,9 @@ Settlor: {{person__client.name}}
             .lint_directory(dir.path())
             .unwrap();
         assert_eq!(report.files_scanned, 2);
-        // The trust template's `lawyer_review` gate earns a yellow N112
-        // "not built yet" advisory, so the report is not strictly clean —
-        // but it carries no blocking errors.
+        // The trust template's `lawyer_review` gate is a mandatory human
+        // step (StepStatus::Human), not deferred automation, so it earns
+        // no advisory — the report is strictly clean.
         assert!(!report.has_errors(), "{:?}", report.violations);
         assert!(
             report.violations.iter().all(|v| v.code == "N112"),

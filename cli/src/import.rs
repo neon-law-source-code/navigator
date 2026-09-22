@@ -97,9 +97,8 @@ pub async fn import_directory(
             .flat_map(|r| r.lint(&file))
             .collect();
         // Only blocking (Error-severity) violations skip a file. Yellow
-        // advisories like N112 ("step allowed but not built yet") apply
-        // to nearly every template's lawyer_review gate and must not stop
-        // it from importing.
+        // advisories like N112 ("step allowed but not built yet") must
+        // not stop a template from importing.
         let has_errors = file_violations
             .iter()
             .any(|v| rules::severity_for_code(v.code) == rules::Severity::Error);

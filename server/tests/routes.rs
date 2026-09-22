@@ -6667,7 +6667,8 @@ async fn api_validate_template_returns_clean_for_valid_markdown() {
     //   N101 title, N102 respondent_type, N103 snake_case filename (default),
     //   N104 questionnaire + workflow with BEGIN reaching END,
     //   N105 confidential, N106 workflow contains bare `lawyer_review` state,
-    //   N108 code.
+    //   N108 code. `onchain` is the one allowed-but-deferred catalog step, so
+    //   it earns N112 without disturbing the mandatory `lawyer_review` gate.
     let contents = "---\n\
 kind: trust\n\
 title: Trust\n\
@@ -6682,6 +6683,8 @@ workflow:\n  \
   BEGIN:\n    \
     next: lawyer_review\n  \
   lawyer_review:\n    \
+    next: onchain\n  \
+  onchain:\n    \
     next: END\n  \
   END: {}\n\
 ---\n\n\
@@ -6706,9 +6709,9 @@ Body.\n";
     let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
     assert_eq!(body["clean"], true, "expected clean, got: {body}");
     assert_eq!(body["path"], "template.md");
-    // Valid notation, no blocking errors — but its mandatory lawyer_review
-    // gate earns the yellow N112 "not built yet" advisory, returned
-    // without flipping `clean` to false.
+    // Valid notation, no blocking errors — but its `onchain` step earns the
+    // yellow N112 "not built yet" advisory, returned without flipping
+    // `clean` to false.
     let codes: Vec<&str> = body["violations"]
         .as_array()
         .unwrap()

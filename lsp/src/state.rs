@@ -1197,7 +1197,7 @@ kind: filing\n\
     }
 
     #[test]
-    fn hover_over_lawyer_review_shows_step_doc_and_the_n112_advisory() {
+    fn hover_over_lawyer_review_shows_step_doc_without_the_n112_advisory() {
         let mut server = Server::new();
         open(&mut server, "file:///wf.md", WORKFLOW_FIXTURE);
         let uri = Uri::from_str("file:///wf.md").unwrap();
@@ -1205,8 +1205,27 @@ kind: filing\n\
         let v = hover_markup(&server, &uri, 7, 5).expect("step hover");
         assert!(v.contains("lawyer_review"), "got: {v}");
         assert!(v.contains("attorney"), "step summary, got: {v}");
-        // lawyer_review also carries the yellow N112 advisory — both show.
-        assert!(v.contains("N112"), "should also surface N112, got: {v}");
+        // lawyer_review is a mandatory human gate (StepStatus::Human), not
+        // deferred automation, so it never earns N112.
+        assert!(!v.contains("N112"), "should not surface N112, got: {v}");
+    }
+
+    #[test]
+    fn hover_over_a_scaffolded_step_shows_the_n112_advisory() {
+        // `onchain` is the one catalog step whose automation is still
+        // deferred behind a stub (`StepStatus::Scaffolded`), so its hover
+        // carries both the step's own doc and the N112 advisory. Lines
+        // (0-indexed): 0 `---`, 1 `title: T`, 2 `workflow:`, 3 `  BEGIN:`,
+        // 4 `    attested: onchain`, 5 `  onchain:`, 6 `    recorded: END`,
+        // 7 `  END: {}`, 8 `kind: filing`, 9 `---`.
+        const SCAFFOLDED_FIXTURE: &str = "---\ntitle: T\nworkflow:\n  BEGIN:\n    attested: onchain\n  onchain:\n    recorded: END\n  END: {}\nkind: filing\n---\n\nBody.\n";
+        let mut server = Server::new();
+        open(&mut server, "file:///onchain.md", SCAFFOLDED_FIXTURE);
+        let uri = Uri::from_str("file:///onchain.md").unwrap();
+        // Line 5 `  onchain:`, inside the token.
+        let v = hover_markup(&server, &uri, 5, 3).expect("step hover");
+        assert!(v.contains("onchain"), "got: {v}");
+        assert!(v.contains("N112"), "should surface N112, got: {v}");
     }
 
     #[test]

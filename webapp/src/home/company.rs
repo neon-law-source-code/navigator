@@ -228,11 +228,11 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                                 legend { "{company.simulator_days_label}" }
                                 div { class: "company-simulator__options",
                                     label { class: "company-simulator__option", r#for: "company-plan-days-10",
-                                        input { class: "company-simulator__radio", id: "company-plan-days-10", r#type: "radio", name: "company-plan-days", value: "10", checked: true }
+                                        input { class: "nav-radio__input company-simulator__radio", id: "company-plan-days-10", r#type: "radio", name: "company-plan-days", value: "10", checked: true }
                                         span { "10 days" }
                                     }
                                     label { class: "company-simulator__option", r#for: "company-plan-days-30",
-                                        input { class: "company-simulator__radio", id: "company-plan-days-30", r#type: "radio", name: "company-plan-days", value: "30" }
+                                        input { class: "nav-radio__input company-simulator__radio", id: "company-plan-days-30", r#type: "radio", name: "company-plan-days", value: "30" }
                                         span { "30 days" }
                                     }
                                 }
@@ -243,7 +243,7 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                                 div { class: "company-simulator__options",
                                     for (index, row) in company.review_rows.iter().enumerate() {
                                         label { key: "{index}", class: "company-simulator__option", r#for: "company-same-day-size-{index}",
-                                            input { class: "company-simulator__radio", id: "company-same-day-size-{index}", r#type: "radio", name: "company-same-day-size", value: "{index}", checked: index == 2 }
+                                            input { class: "nav-radio__input company-simulator__radio", id: "company-same-day-size-{index}", r#type: "radio", name: "company-same-day-size", value: "{index}", checked: index == 2 }
                                             span { "{row[0]} · {row[1]}" }
                                         }
                                     }

@@ -48,3 +48,31 @@ Feature: /app/projects/:code — the client's invoice card reads the Xero mirror
     When "virgo@example.com" opens the detail page for "Virgo Matter"
     Then the response status is 200
     And the invoice card lists 2 invoices
+
+  Scenario: A partially paid invoice still shows Due, not Paid
+    Given a seeded person "sagittarius@example.com" with role "client"
+    And a project "Sagittarius Matter" with "sagittarius@example.com" as a participant
+    And an AUTHORISED invoice of 400000 cents is mirrored for "Sagittarius Matter"
+    And the invoice for "Sagittarius Matter" is partially reconciled at 150000 cents
+    When "sagittarius@example.com" opens the detail page for "Sagittarius Matter"
+    Then the response status is 200
+    And the response body contains "Status: AUTHORISED"
+    And the invoice card shows the "Due" badge
+
+  Scenario: An overdue invoice still renders its status and Due badge
+    Given a seeded person "aries2@example.com" with role "client"
+    And a project "Aries Second Matter" with "aries2@example.com" as a participant
+    And an overdue AUTHORISED invoice of 250000 cents due on "2026-01-01" is mirrored for "Aries Second Matter"
+    When "aries2@example.com" opens the detail page for "Aries Second Matter"
+    Then the response status is 200
+    And the response body contains "Status: AUTHORISED"
+    And the invoice card shows the "Due" badge
+
+  Scenario: A matter's USD and EUR invoices both render on its invoice list
+    Given a seeded person "aquarius@example.com" with role "client"
+    And a project "Aquarius Matter" with "aquarius@example.com" as a participant
+    And an AUTHORISED invoice of 100000 cents is mirrored for "Aquarius Matter"
+    And an AUTHORISED EUR invoice of 90000 cents is mirrored for "Aquarius Matter"
+    When "aquarius@example.com" opens the detail page for "Aquarius Matter"
+    Then the response status is 200
+    And the invoice card lists 2 invoices

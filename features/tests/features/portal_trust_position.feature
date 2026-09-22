@@ -65,3 +65,24 @@ Feature: /app/projects/:code — a client sees their own trust funds and no one 
     And the response body contains "$6,000.00"
     And the response body does not contain "$4,000.00"
     And the response body does not contain "$10,000.00"
+
+  Scenario: A California pooled withdrawal settles a matter independently of Nevada
+    Given a seeded person "capricorn2@example.com" with role "client"
+    And a project "Capricorn Trust Matter" with "capricorn2@example.com" as a participant
+    And a trust deposit of 800000 cents is mirrored for "Capricorn Trust Matter"
+    And one California pooled withdrawal settles 300000 cents for "Capricorn Trust Matter"
+    When "capricorn2@example.com" opens the detail page for "Capricorn Trust Matter"
+    Then the response status is 200
+    And the response body contains "How your funds were applied"
+    And the response body contains "$3,000.00"
+
+  Scenario: One pooled withdrawal can settle two invoices on the same matter
+    Given a seeded person "virgo2@example.com" with role "client"
+    And a project "Virgo Trust Matter" with "virgo2@example.com" as a participant
+    And a trust deposit of 900000 cents is mirrored for "Virgo Trust Matter"
+    And one pooled withdrawal settles two invoices of 200000 cents and 150000 cents for "Virgo Trust Matter"
+    When "virgo2@example.com" opens the detail page for "Virgo Trust Matter"
+    Then the response status is 200
+    And the response body contains "How your funds were applied"
+    And the response body contains "$2,000.00"
+    And the response body contains "$1,500.00"

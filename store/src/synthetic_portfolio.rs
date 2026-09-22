@@ -70,7 +70,18 @@ use crate::surreal::SurrealDb;
 /// supervised Clerk (added once the reopened matter is active again) and an
 /// Admin who participates in nothing, both sharing the fixture's one lawyer
 /// and entity type.
-pub const PORTFOLIO_VERSION: u32 = 2;
+///
+/// `3` (ENG-820) added the invoice/currency/trust-pool matrix: one matter
+/// carrying invoices in every billing state (unpaid, overdue, partially
+/// reconciled, paid in full) across two fixed reporting periods; a EUR
+/// invoice group proving the currency split never rolls up with USD; a
+/// second (California) pooled IOLTA account beside Nevada's; and one pooled
+/// Nevada withdrawal that settles two different matters' invoices in a
+/// single transfer, each held balance drawn down and no further. Every date
+/// in that matrix is a literal RFC 3339 constant, never `Utc::now()`, so a
+/// repeat apply plans and writes it byte-identical regardless of when it
+/// runs.
+pub const PORTFOLIO_VERSION: u32 = 3;
 
 /// The one literal an operator may pass to apply the portfolio. Nothing
 /// else — not a deployment name, not a value derived from
@@ -522,6 +533,17 @@ async fn run(
         .await?;
     }
 
+    plan_finance_portfolio(
+        surreal,
+        &mut plan,
+        mode,
+        entity_type.id,
+        jurisdiction.id,
+        lawyer_id,
+        template.id,
+    )
+    .await?;
+
     // An Admin who participates in nothing above — see [`ADMIN_NAME`].
     plan_person(
         surreal,
@@ -627,17 +649,72 @@ async fn plan_primary_matter(
 
     plan_notation(surreal, plan, mode, project_id, template_id, lawyer_id).await?;
 
-    plan_trust_deposit(surreal, plan, mode, project_id).await?;
-
-    plan_invoice(surreal, plan, mode, project_id).await?;
-
-    plan_iolta_account(surreal, plan, mode, jurisdiction_id).await?;
-
-    plan_iolta_withdrawal(surreal, plan, mode).await?;
-
-    plan_portal_bundle(storage, plan, mode).await?;
+    plan_primary_matter_finance(surreal, storage, plan, mode, project_id, jurisdiction_id).await?;
 
     Ok(lawyer_id)
+}
+
+/// The invoice/trust/IOLTA/portal tail of [`plan_primary_matter`], split out
+/// only to keep each function under this workspace's line-count lint (see
+/// [`plan_lifecycle_transitions`] for the same reasoning).
+async fn plan_primary_matter_finance(
+    surreal: &SurrealDb,
+    storage: &Arc<dyn cloud::StorageService>,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    project_id: Uuid,
+    jurisdiction_id: Uuid,
+) -> anyhow::Result<()> {
+    let deposit = crate::trust::Movement::deposit(
+        project_id,
+        "USD",
+        usd_amount_string(INVOICE_CENTS),
+        INVOICE_CENTS,
+        chrono::Utc::now().to_rfc3339(),
+    )
+    .with_external_ref(TRUST_DEPOSIT_EXTERNAL_REF.to_string());
+    plan_trust_movement(surreal, plan, mode, project_id, deposit).await?;
+
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        XERO_INVOICE_ID,
+        XERO_INVOICE_REFERENCE,
+        "AUTHORISED",
+        INVOICE_CENTS,
+        "USD",
+        chrono::Utc::now(),
+        None,
+    )
+    .await?;
+
+    plan_iolta_account(
+        surreal,
+        plan,
+        mode,
+        jurisdiction_id,
+        IOLTA_XERO_ACCOUNT_ID,
+        IOLTA_ACCOUNT_NAME,
+        "USD",
+        INVOICE_CENTS,
+    )
+    .await?;
+
+    plan_iolta_withdrawal(
+        surreal,
+        plan,
+        mode,
+        IOLTA_XERO_TRANSACTION_ID,
+        IOLTA_XERO_ACCOUNT_ID,
+        "USD",
+        chrono::Utc::now(),
+        vec![(XERO_INVOICE_ID.to_string(), INVOICE_CENTS)],
+    )
+    .await?;
+
+    plan_portal_bundle(storage, plan, mode).await
 }
 
 async fn plan_person(
@@ -1151,33 +1228,35 @@ async fn plan_notation(
     Ok(())
 }
 
-async fn plan_trust_deposit(
+/// Plan (and in [`Mode::Apply`] write) one trust movement, idempotent on its
+/// own `external_ref` via [`crate::trust::record_project_movement`]. Shared
+/// by every deposit, refund, and (outside a pooled withdrawal) earned draw
+/// this fixture posts.
+///
+/// # Panics
+///
+/// If `movement` carries no `external_ref` — every movement this module
+/// builds sets one; see [`crate::trust::record_project_movement`] for why
+/// one is required.
+async fn plan_trust_movement(
     surreal: &SurrealDb,
     plan: &mut PortfolioPlan,
     mode: Mode,
     project_id: Uuid,
+    movement: crate::trust::Movement,
 ) -> anyhow::Result<()> {
-    let existing = crate::trust::has_external_ref(surreal, project_id, TRUST_DEPOSIT_EXTERNAL_REF)
+    let external_ref = movement
+        .external_ref
+        .clone()
+        .expect("synthetic portfolio: every fixture trust movement carries an external_ref");
+    let existing = crate::trust::has_external_ref(surreal, project_id, &external_ref)
         .await
-        .map_err(|error| anyhow!("synthetic portfolio: trust deposit lookup: {error}"))?;
-    plan.record(
-        "trust_movement",
-        TRUST_DEPOSIT_EXTERNAL_REF,
-        action_for(existing),
-    );
-    if mode.is_apply() {
-        let occurred_at = chrono::Utc::now().to_rfc3339();
-        let mut deposit = crate::trust::Movement::deposit(
-            project_id,
-            "USD",
-            usd_amount_string(INVOICE_CENTS),
-            INVOICE_CENTS,
-            occurred_at,
-        );
-        deposit.external_ref = Some(TRUST_DEPOSIT_EXTERNAL_REF.to_string());
-        crate::trust::record_project_movement(surreal, project_id, &deposit)
+        .map_err(|error| anyhow!("synthetic portfolio: trust movement lookup: {error}"))?;
+    plan.record("trust_movement", external_ref, action_for(existing));
+    if mode.is_apply() && !existing {
+        crate::trust::record_project_movement(surreal, project_id, &movement)
             .await
-            .map_err(|error| anyhow!("synthetic portfolio: trust deposit: {error}"))?;
+            .map_err(|error| anyhow!("synthetic portfolio: trust movement: {error}"))?;
     }
     Ok(())
 }
@@ -1186,26 +1265,43 @@ fn usd_amount_string(cents: i64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
 }
 
+/// Plan (and in [`Mode::Apply`] write) one Xero invoice mirror row.
+///
+/// Only the first apply ever calls [`crate::xero_invoices::upsert`] for a
+/// given `xero_invoice_id` — once mirrored, this fixture leaves the row's
+/// metadata alone, the same way it leaves a matter's transitioned status
+/// alone (see [`plan_project`]). A later [`plan_invoice_reconcile`] call is
+/// what is allowed to move a mirrored invoice from unpaid toward paid; an
+/// unconditional re-upsert here would otherwise clobber that reconciled
+/// state back to this call's own `status` on every subsequent apply.
+#[allow(clippy::too_many_arguments)]
 async fn plan_invoice(
     surreal: &SurrealDb,
     plan: &mut PortfolioPlan,
     mode: Mode,
     project_id: Uuid,
+    xero_invoice_id: &str,
+    reference: &str,
+    status: &str,
+    amount_cents: i64,
+    currency: &str,
+    issued_at: chrono::DateTime<chrono::Utc>,
+    due_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> anyhow::Result<()> {
-    let existing = crate::xero_invoices::find_for_allocation(surreal, XERO_INVOICE_ID).await?;
-    plan.record("invoice", XERO_INVOICE_ID, action_for(existing.is_some()));
-    if mode.is_apply() {
+    let existing = crate::xero_invoices::find_for_allocation(surreal, xero_invoice_id).await?;
+    plan.record("invoice", xero_invoice_id, action_for(existing.is_some()));
+    if mode.is_apply() && existing.is_none() {
         crate::xero_invoices::upsert(
             surreal,
             &crate::xero_invoices::UpsertXeroInvoice {
                 project_id,
-                xero_invoice_id: XERO_INVOICE_ID.to_string(),
-                reference: XERO_INVOICE_REFERENCE.to_string(),
-                status: "AUTHORISED".to_string(),
-                amount_cents: INVOICE_CENTS,
-                currency: "USD".to_string(),
-                issued_at: chrono::Utc::now(),
-                due_at: None,
+                xero_invoice_id: xero_invoice_id.to_string(),
+                reference: reference.to_string(),
+                status: status.to_string(),
+                amount_cents,
+                currency: currency.to_string(),
+                issued_at,
+                due_at,
             },
         )
         .await?;
@@ -1213,18 +1309,59 @@ async fn plan_invoice(
     Ok(())
 }
 
+/// Plan (and in [`Mode::Apply`] write) one reconcile fold onto an
+/// already-mirrored invoice — [`crate::xero_invoices::record_reconcile`],
+/// the same seam the nightly reconcile workflow uses.
+///
+/// Idempotent on the target `(status, amount_paid_cents)`: a repeat apply
+/// that finds the mirror row already reconciled to those exact values skips
+/// the write rather than reissuing a no-op `UPDATE`.
+async fn plan_invoice_reconcile(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    xero_invoice_id: &str,
+    status: &str,
+    amount_paid_cents: i64,
+) -> anyhow::Result<()> {
+    let existing = crate::xero_invoices::find_for_allocation(surreal, xero_invoice_id).await?;
+    let already_reconciled = existing.as_ref().is_some_and(|invoice| {
+        invoice.status == status && invoice.amount_paid_cents == amount_paid_cents
+    });
+    plan.record(
+        "invoice_reconcile",
+        format!("{xero_invoice_id}:{status}:{amount_paid_cents}"),
+        action_for(already_reconciled),
+    );
+    if mode.is_apply() && !already_reconciled {
+        crate::xero_invoices::record_reconcile(surreal, xero_invoice_id, status, amount_paid_cents)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "synthetic portfolio: reconcile found no mirrored invoice {xero_invoice_id}"
+                )
+            })?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn plan_iolta_account(
     surreal: &SurrealDb,
     plan: &mut PortfolioPlan,
     mode: Mode,
     jurisdiction_id: Uuid,
+    xero_account_id: &str,
+    name: &str,
+    currency: &str,
+    balance_cents: i64,
 ) -> anyhow::Result<()> {
     let existing = crate::iolta_accounts::for_jurisdiction(surreal, jurisdiction_id)
         .await?
-        .filter(|account| account.xero_account_id == IOLTA_XERO_ACCOUNT_ID);
+        .filter(|account| account.xero_account_id == xero_account_id);
     plan.record(
         "iolta_account",
-        IOLTA_XERO_ACCOUNT_ID,
+        xero_account_id,
         action_for(existing.is_some()),
     );
     if mode.is_apply() {
@@ -1232,11 +1369,11 @@ async fn plan_iolta_account(
             surreal,
             &crate::iolta_accounts::UpsertIoltaAccount {
                 jurisdiction_id,
-                xero_account_id: IOLTA_XERO_ACCOUNT_ID.to_string(),
+                xero_account_id: xero_account_id.to_string(),
                 xero_account_code: None,
-                name: IOLTA_ACCOUNT_NAME.to_string(),
-                currency: "USD".to_string(),
-                balance_cents: INVOICE_CENTS,
+                name: name.to_string(),
+                currency: currency.to_string(),
+                balance_cents,
                 mirrored_at: chrono::Utc::now(),
             },
         )
@@ -1245,34 +1382,51 @@ async fn plan_iolta_account(
     Ok(())
 }
 
+/// Plan (and in [`Mode::Apply`] write) one pooled IOLTA withdrawal:
+/// [`crate::iolta_withdrawals::apply`], idempotent on its own
+/// `xero_transaction_id`.
+#[allow(clippy::too_many_arguments)]
 async fn plan_iolta_withdrawal(
     surreal: &SurrealDb,
     plan: &mut PortfolioPlan,
     mode: Mode,
+    xero_transaction_id: &str,
+    xero_account_id: &str,
+    currency: &str,
+    occurred_at: chrono::DateTime<chrono::Utc>,
+    lines: Vec<(String, i64)>,
 ) -> anyhow::Result<()> {
-    let existing = crate::iolta_withdrawals::find(surreal, IOLTA_XERO_TRANSACTION_ID).await?;
+    let existing = crate::iolta_withdrawals::find(surreal, xero_transaction_id).await?;
     plan.record(
         "iolta_withdrawal",
-        IOLTA_XERO_TRANSACTION_ID,
+        xero_transaction_id,
         action_for(existing.is_some()),
     );
     if mode.is_apply() {
+        let total_cents = lines.iter().map(|(_, amount_cents)| amount_cents).sum();
         crate::iolta_withdrawals::apply(
             surreal,
             &crate::iolta_withdrawals::WithdrawalInput {
-                xero_transaction_id: IOLTA_XERO_TRANSACTION_ID.to_string(),
-                xero_account_id: IOLTA_XERO_ACCOUNT_ID.to_string(),
-                total_cents: INVOICE_CENTS,
-                currency: "USD".to_string(),
-                occurred_at: chrono::Utc::now(),
-                lines: vec![crate::iolta_withdrawals::AllocationInput {
-                    invoice_reference: XERO_INVOICE_ID.to_string(),
-                    amount_cents: INVOICE_CENTS,
-                }],
+                xero_transaction_id: xero_transaction_id.to_string(),
+                xero_account_id: xero_account_id.to_string(),
+                total_cents,
+                currency: currency.to_string(),
+                occurred_at,
+                lines: lines
+                    .into_iter()
+                    .map(|(invoice_reference, amount_cents)| {
+                        crate::iolta_withdrawals::AllocationInput {
+                            invoice_reference,
+                            amount_cents,
+                        }
+                    })
+                    .collect(),
             },
         )
         .await
-        .map_err(|error| anyhow!("synthetic portfolio: iolta withdrawal: {error}"))?;
+        .map_err(|error| {
+            anyhow!("synthetic portfolio: iolta withdrawal {xero_transaction_id}: {error}")
+        })?;
     }
     Ok(())
 }
@@ -1300,6 +1454,660 @@ async fn plan_portal_bundle(
             .await?;
     }
     Ok(())
+}
+
+// ---------- Invoice/currency/trust-pool matrix (ENG-820) ----------
+//
+// Extends the ENG-818 foundation with the scenario matrix ENG-820 asks for:
+// one matter carrying invoices in every billing state across two fixed
+// reporting periods, a EUR invoice group that must never roll up with USD, a
+// second (California) pooled IOLTA account beside Nevada's, and one pooled
+// Nevada withdrawal that settles two different matters' invoices in a
+// single transfer. Every date below is a literal RFC 3339 constant, never
+// `Utc::now()`, so a repeat apply plans and writes byte-identical rows
+// regardless of when it runs. Every provider-shaped id is a `synthetic-
+// portfolio-` literal, same discipline as the rest of this module — see the
+// module docs' "No live provider" section.
+
+/// Parse a literal RFC 3339 constant. Every fixed date in this section goes
+/// through this helper rather than `Utc::now()`, so two applies years apart
+/// still plan and write identical rows.
+///
+/// # Panics
+///
+/// If `rfc3339` is not valid RFC 3339 — every caller passes one of this
+/// module's own literal constants, so a panic here means the constant itself
+/// is wrong.
+fn fixed_date(rfc3339: &str) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::parse_from_rfc3339(rfc3339)
+        .unwrap_or_else(|error| {
+            panic!("synthetic portfolio: invalid fixed date `{rfc3339}`: {error}")
+        })
+        .with_timezone(&chrono::Utc)
+}
+
+/// Reporting period one: January-February 2026.
+const PERIOD_ONE_ISSUED: &str = "2026-01-15T00:00:00Z";
+const PERIOD_ONE_DUE: &str = "2026-02-15T00:00:00Z";
+/// Reporting period two: April-May 2026, after period one on every axis.
+const PERIOD_TWO_ISSUED: &str = "2026-04-15T00:00:00Z";
+const PERIOD_TWO_DUE: &str = "2026-05-15T00:00:00Z";
+
+const INVOICE_MATRIX_CLIENT_NAME: &str = "Nora Ledgerwood";
+const INVOICE_MATRIX_CLIENT_EMAIL: &str = "nora.ledgerwood@synthetic-portfolio.example";
+const INVOICE_MATRIX_ENTITY_NAME: &str = "Fixture Ledgerwood Freight, Inc.";
+const INVOICE_MATRIX_PROJECT_CODE: &str = "synthetic-portfolio-invoice-matrix";
+const INVOICE_MATRIX_PROJECT_NAME: &str = "Fixture Ledgerwood Freight — Invoice Matrix";
+const INVOICE_MATRIX_PROJECT_DESCRIPTION: &str =
+    "Versioned synthetic staging portfolio fixture matter: four USD invoices exercising the \
+     unpaid, overdue, partially reconciled, and paid-in-full billing states across two fixed \
+     reporting periods. Every party and document on it is invented.";
+
+const INVOICE_MATRIX_UNPAID_ID: &str = "synthetic-portfolio-invoice-matrix-unpaid";
+const INVOICE_MATRIX_OVERDUE_ID: &str = "synthetic-portfolio-invoice-matrix-overdue";
+const INVOICE_MATRIX_PARTIAL_ID: &str = "synthetic-portfolio-invoice-matrix-partial";
+const INVOICE_MATRIX_PAID_ID: &str = "synthetic-portfolio-invoice-matrix-paid";
+const INVOICE_MATRIX_UNPAID_CENTS: i64 = 120_000;
+const INVOICE_MATRIX_OVERDUE_CENTS: i64 = 80_000;
+const INVOICE_MATRIX_PARTIAL_CENTS: i64 = 200_000;
+const INVOICE_MATRIX_PARTIAL_PAID_CENTS: i64 = 75_000;
+const INVOICE_MATRIX_PAID_CENTS: i64 = 150_000;
+
+const EUR_GROUP_CLIENT_NAME: &str = "Elke Vantongeren";
+const EUR_GROUP_CLIENT_EMAIL: &str = "elke.vantongeren@synthetic-portfolio.example";
+const EUR_GROUP_ENTITY_NAME: &str = "Fixture Vantongeren Imports, Inc.";
+const EUR_GROUP_PROJECT_CODE: &str = "synthetic-portfolio-invoice-eur";
+const EUR_GROUP_PROJECT_NAME: &str = "Fixture Vantongeren Imports — EUR Invoice Group";
+const EUR_GROUP_PROJECT_DESCRIPTION: &str =
+    "Versioned synthetic staging portfolio fixture matter: two EUR invoices proving the \
+     currency-group reporting split never rolls up with the USD invoice matrix. Every party \
+     and document on it is invented.";
+const EUR_GROUP_UNPAID_ID: &str = "synthetic-portfolio-invoice-eur-unpaid";
+const EUR_GROUP_PAID_ID: &str = "synthetic-portfolio-invoice-eur-paid";
+const EUR_GROUP_UNPAID_CENTS: i64 = 90_000;
+const EUR_GROUP_PAID_CENTS: i64 = 60_000;
+
+const CALIFORNIA_JURISDICTION_NAME: &str = "California";
+const IOLTA_CA_XERO_ACCOUNT_ID: &str = "synthetic-portfolio-iolta-account-ca";
+const IOLTA_CA_ACCOUNT_NAME: &str = "IOLTA Trust — California (Synthetic Portfolio)";
+const IOLTA_CA_BALANCE_CENTS: i64 = 150_000;
+
+const POOL_CLIENT_A_NAME: &str = "Priya Kestrel";
+const POOL_CLIENT_A_EMAIL: &str = "priya.kestrel@synthetic-portfolio.example";
+const POOL_CLIENT_A_ENTITY_NAME: &str = "Fixture Kestrel Robotics, Inc.";
+const POOL_CLIENT_A_PROJECT_CODE: &str = "synthetic-portfolio-pooled-draw-a";
+const POOL_CLIENT_A_PROJECT_NAME: &str = "Fixture Kestrel Robotics — Pooled Draw Matter A";
+const POOL_CLIENT_A_PROJECT_DESCRIPTION: &str =
+    "Versioned synthetic staging portfolio fixture matter: one of two matters settled by a \
+     single pooled Nevada IOLTA withdrawal. Every party and document on it is invented.";
+const POOL_CLIENT_A_DEPOSIT_CENTS: i64 = 100_000;
+const POOL_CLIENT_A_DRAW_CENTS: i64 = 60_000;
+const POOL_CLIENT_A_INVOICE_ID: &str = "synthetic-portfolio-pooled-draw-a-invoice";
+const POOL_CLIENT_A_DEPOSIT_REF: &str = "synthetic-portfolio-pooled-draw-a-deposit";
+
+const POOL_CLIENT_B_NAME: &str = "Tomas Windrow";
+const POOL_CLIENT_B_EMAIL: &str = "tomas.windrow@synthetic-portfolio.example";
+const POOL_CLIENT_B_ENTITY_NAME: &str = "Fixture Windrow Logistics, Inc.";
+const POOL_CLIENT_B_PROJECT_CODE: &str = "synthetic-portfolio-pooled-draw-b";
+const POOL_CLIENT_B_PROJECT_NAME: &str = "Fixture Windrow Logistics — Pooled Draw Matter B";
+const POOL_CLIENT_B_PROJECT_DESCRIPTION: &str =
+    "Versioned synthetic staging portfolio fixture matter: the second of two matters settled \
+     by a single pooled Nevada IOLTA withdrawal. Every party and document on it is invented.";
+const POOL_CLIENT_B_DEPOSIT_CENTS: i64 = 100_000;
+const POOL_CLIENT_B_DRAW_CENTS: i64 = 40_000;
+const POOL_CLIENT_B_INVOICE_ID: &str = "synthetic-portfolio-pooled-draw-b-invoice";
+const POOL_CLIENT_B_DEPOSIT_REF: &str = "synthetic-portfolio-pooled-draw-b-deposit";
+
+const POOLED_WITHDRAWAL_TRANSACTION_ID: &str = "synthetic-portfolio-pooled-withdrawal";
+
+const CA_TRUST_CLIENT_NAME: &str = "Marisol Fenn";
+const CA_TRUST_CLIENT_EMAIL: &str = "marisol.fenn@synthetic-portfolio.example";
+const CA_TRUST_ENTITY_NAME: &str = "Fixture Fenn Design Studio, Inc.";
+const CA_TRUST_PROJECT_CODE: &str = "synthetic-portfolio-ca-trust";
+const CA_TRUST_PROJECT_NAME: &str = "Fixture Fenn Design Studio — California Trust Matter";
+const CA_TRUST_PROJECT_DESCRIPTION: &str =
+    "Versioned synthetic staging portfolio fixture matter: a deposit and a partial refund on \
+     the California pool, proving it reconciles independently of Nevada's. Every party and \
+     document on it is invented.";
+const CA_TRUST_DEPOSIT_CENTS: i64 = 200_000;
+const CA_TRUST_REFUND_CENTS: i64 = 50_000;
+const CA_TRUST_DEPOSIT_REF: &str = "synthetic-portfolio-ca-trust-deposit";
+const CA_TRUST_REFUND_REF: &str = "synthetic-portfolio-ca-trust-refund";
+
+/// Plan and (in [`Mode::Apply`] write) the whole ENG-820 finance matrix: the
+/// USD invoice-status matrix, the EUR invoice group, the second (California)
+/// pooled account, the two matters settled by one pooled Nevada withdrawal,
+/// and the California deposit/refund pair.
+async fn plan_finance_portfolio(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    entity_type_id: Uuid,
+    nevada_jurisdiction_id: Uuid,
+    lawyer_id: Uuid,
+    template_id: Uuid,
+) -> anyhow::Result<()> {
+    let california_id = crate::jurisdictions::find_by_name(surreal, CALIFORNIA_JURISDICTION_NAME)
+        .await?
+        .ok_or_else(|| {
+            anyhow!(
+                "synthetic portfolio: jurisdiction `{CALIFORNIA_JURISDICTION_NAME}` must be \
+                 seeded first"
+            )
+        })?
+        .id;
+
+    plan_invoice_matrix(surreal, plan, mode, entity_type_id, nevada_jurisdiction_id).await?;
+    plan_eur_invoice_group(surreal, plan, mode, entity_type_id, california_id).await?;
+
+    plan_iolta_account(
+        surreal,
+        plan,
+        mode,
+        california_id,
+        IOLTA_CA_XERO_ACCOUNT_ID,
+        IOLTA_CA_ACCOUNT_NAME,
+        "USD",
+        IOLTA_CA_BALANCE_CENTS,
+    )
+    .await?;
+
+    plan_pooled_draw(
+        surreal,
+        plan,
+        mode,
+        entity_type_id,
+        nevada_jurisdiction_id,
+        lawyer_id,
+        template_id,
+    )
+    .await?;
+
+    plan_ca_trust(
+        surreal,
+        plan,
+        mode,
+        entity_type_id,
+        california_id,
+        lawyer_id,
+        template_id,
+    )
+    .await
+}
+
+/// One Project carrying four USD invoices — unpaid, overdue, partially
+/// reconciled, and paid in full — across the two fixed reporting periods.
+async fn plan_invoice_matrix(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+) -> anyhow::Result<()> {
+    let client_id = plan_person(
+        surreal,
+        plan,
+        mode,
+        INVOICE_MATRIX_CLIENT_NAME,
+        INVOICE_MATRIX_CLIENT_EMAIL,
+        crate::persons::Role::Client,
+    )
+    .await?;
+    let entity_id = plan_entity(
+        surreal,
+        plan,
+        mode,
+        INVOICE_MATRIX_ENTITY_NAME,
+        entity_type_id,
+        jurisdiction_id,
+    )
+    .await?;
+    let (project_id, _) = plan_project(
+        surreal,
+        plan,
+        mode,
+        INVOICE_MATRIX_PROJECT_CODE,
+        INVOICE_MATRIX_PROJECT_NAME,
+        INVOICE_MATRIX_PROJECT_DESCRIPTION,
+        entity_id,
+        jurisdiction_id,
+    )
+    .await?;
+    plan_participation(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        INVOICE_MATRIX_PROJECT_CODE,
+        client_id,
+        "client",
+    )
+    .await?;
+
+    plan_invoice_matrix_lines(surreal, plan, mode, project_id).await
+}
+
+/// The four invoices [`plan_invoice_matrix`] plans, split out only to keep
+/// each function under this workspace's line-count lint (see
+/// [`plan_lifecycle_transitions`] for the same reasoning).
+async fn plan_invoice_matrix_lines(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    project_id: Uuid,
+) -> anyhow::Result<()> {
+    // Issued and due in period two: unpaid, and not yet due.
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        INVOICE_MATRIX_UNPAID_ID,
+        "Fixture unpaid invoice",
+        "AUTHORISED",
+        INVOICE_MATRIX_UNPAID_CENTS,
+        "USD",
+        fixed_date(PERIOD_TWO_ISSUED),
+        Some(fixed_date(PERIOD_TWO_DUE)),
+    )
+    .await?;
+
+    // Issued and due in period one: unpaid, and past its own due date.
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        INVOICE_MATRIX_OVERDUE_ID,
+        "Fixture overdue invoice",
+        "AUTHORISED",
+        INVOICE_MATRIX_OVERDUE_CENTS,
+        "USD",
+        fixed_date(PERIOD_ONE_ISSUED),
+        Some(fixed_date(PERIOD_ONE_DUE)),
+    )
+    .await?;
+
+    // Issued period one, due period two: partially reconciled, spanning
+    // both fixed reporting periods on its own.
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        INVOICE_MATRIX_PARTIAL_ID,
+        "Fixture partially paid invoice",
+        "AUTHORISED",
+        INVOICE_MATRIX_PARTIAL_CENTS,
+        "USD",
+        fixed_date(PERIOD_ONE_ISSUED),
+        Some(fixed_date(PERIOD_TWO_DUE)),
+    )
+    .await?;
+    plan_invoice_reconcile(
+        surreal,
+        plan,
+        mode,
+        INVOICE_MATRIX_PARTIAL_ID,
+        "AUTHORISED",
+        INVOICE_MATRIX_PARTIAL_PAID_CENTS,
+    )
+    .await?;
+
+    // Issued and due in period one: reconciled paid in full.
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        INVOICE_MATRIX_PAID_ID,
+        "Fixture paid invoice",
+        "AUTHORISED",
+        INVOICE_MATRIX_PAID_CENTS,
+        "USD",
+        fixed_date(PERIOD_ONE_ISSUED),
+        Some(fixed_date(PERIOD_ONE_DUE)),
+    )
+    .await?;
+    plan_invoice_reconcile(
+        surreal,
+        plan,
+        mode,
+        INVOICE_MATRIX_PAID_ID,
+        "PAID",
+        INVOICE_MATRIX_PAID_CENTS,
+    )
+    .await
+}
+
+/// One Project carrying two EUR invoices, proving the currency-group split
+/// never rolls EUR into the USD invoice matrix above.
+async fn plan_eur_invoice_group(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+) -> anyhow::Result<()> {
+    let client_id = plan_person(
+        surreal,
+        plan,
+        mode,
+        EUR_GROUP_CLIENT_NAME,
+        EUR_GROUP_CLIENT_EMAIL,
+        crate::persons::Role::Client,
+    )
+    .await?;
+    let entity_id = plan_entity(
+        surreal,
+        plan,
+        mode,
+        EUR_GROUP_ENTITY_NAME,
+        entity_type_id,
+        jurisdiction_id,
+    )
+    .await?;
+    let (project_id, _) = plan_project(
+        surreal,
+        plan,
+        mode,
+        EUR_GROUP_PROJECT_CODE,
+        EUR_GROUP_PROJECT_NAME,
+        EUR_GROUP_PROJECT_DESCRIPTION,
+        entity_id,
+        jurisdiction_id,
+    )
+    .await?;
+    plan_participation(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        EUR_GROUP_PROJECT_CODE,
+        client_id,
+        "client",
+    )
+    .await?;
+
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        EUR_GROUP_UNPAID_ID,
+        "Fixture EUR unpaid invoice",
+        "AUTHORISED",
+        EUR_GROUP_UNPAID_CENTS,
+        "EUR",
+        fixed_date(PERIOD_TWO_ISSUED),
+        Some(fixed_date(PERIOD_TWO_DUE)),
+    )
+    .await?;
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        EUR_GROUP_PAID_ID,
+        "Fixture EUR paid invoice",
+        "AUTHORISED",
+        EUR_GROUP_PAID_CENTS,
+        "EUR",
+        fixed_date(PERIOD_ONE_ISSUED),
+        Some(fixed_date(PERIOD_ONE_DUE)),
+    )
+    .await?;
+    plan_invoice_reconcile(
+        surreal,
+        plan,
+        mode,
+        EUR_GROUP_PAID_ID,
+        "PAID",
+        EUR_GROUP_PAID_CENTS,
+    )
+    .await
+}
+
+/// One of the two matters [`plan_pooled_draw`] settles in a single pooled
+/// Nevada withdrawal: its client, entity, matter, notation, trust deposit,
+/// and the one invoice the withdrawal later allocates against. Returns the
+/// matter's Project id.
+#[allow(clippy::too_many_arguments)]
+async fn plan_pooled_draw_matter(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+    lawyer_id: Uuid,
+    template_id: Uuid,
+    client_name: &str,
+    client_email: &str,
+    entity_name: &str,
+    project_code: &str,
+    project_name: &str,
+    project_description: &str,
+    deposit_cents: i64,
+    deposit_ref: &str,
+    invoice_id: &str,
+    invoice_and_draw_cents: i64,
+) -> anyhow::Result<Uuid> {
+    let client_id = plan_person(
+        surreal,
+        plan,
+        mode,
+        client_name,
+        client_email,
+        crate::persons::Role::Client,
+    )
+    .await?;
+    let entity_id = plan_entity(
+        surreal,
+        plan,
+        mode,
+        entity_name,
+        entity_type_id,
+        jurisdiction_id,
+    )
+    .await?;
+    let (project_id, _) = plan_project(
+        surreal,
+        plan,
+        mode,
+        project_code,
+        project_name,
+        project_description,
+        entity_id,
+        jurisdiction_id,
+    )
+    .await?;
+    plan_participation(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        project_code,
+        client_id,
+        "client",
+    )
+    .await?;
+    plan_notation(surreal, plan, mode, project_id, template_id, lawyer_id).await?;
+
+    let deposit = crate::trust::Movement::deposit(
+        project_id,
+        "USD",
+        usd_amount_string(deposit_cents),
+        deposit_cents,
+        fixed_date(PERIOD_ONE_ISSUED).to_rfc3339(),
+    )
+    .with_external_ref(deposit_ref.to_string());
+    plan_trust_movement(surreal, plan, mode, project_id, deposit).await?;
+
+    plan_invoice(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        invoice_id,
+        invoice_id,
+        "AUTHORISED",
+        invoice_and_draw_cents,
+        "USD",
+        fixed_date(PERIOD_TWO_ISSUED),
+        Some(fixed_date(PERIOD_TWO_DUE)),
+    )
+    .await?;
+
+    Ok(project_id)
+}
+
+/// Two matters on the Nevada pool, each funded above what it owes, settled
+/// by one pooled withdrawal that allocates across both invoices and both
+/// Projects in a single transfer — the multi-matter scenario ENG-820 asks
+/// for. Each matter's held balance is drawn down by exactly its own line,
+/// never the other's, and never past what it holds.
+async fn plan_pooled_draw(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+    lawyer_id: Uuid,
+    template_id: Uuid,
+) -> anyhow::Result<()> {
+    plan_pooled_draw_matter(
+        surreal,
+        plan,
+        mode,
+        entity_type_id,
+        jurisdiction_id,
+        lawyer_id,
+        template_id,
+        POOL_CLIENT_A_NAME,
+        POOL_CLIENT_A_EMAIL,
+        POOL_CLIENT_A_ENTITY_NAME,
+        POOL_CLIENT_A_PROJECT_CODE,
+        POOL_CLIENT_A_PROJECT_NAME,
+        POOL_CLIENT_A_PROJECT_DESCRIPTION,
+        POOL_CLIENT_A_DEPOSIT_CENTS,
+        POOL_CLIENT_A_DEPOSIT_REF,
+        POOL_CLIENT_A_INVOICE_ID,
+        POOL_CLIENT_A_DRAW_CENTS,
+    )
+    .await?;
+    plan_pooled_draw_matter(
+        surreal,
+        plan,
+        mode,
+        entity_type_id,
+        jurisdiction_id,
+        lawyer_id,
+        template_id,
+        POOL_CLIENT_B_NAME,
+        POOL_CLIENT_B_EMAIL,
+        POOL_CLIENT_B_ENTITY_NAME,
+        POOL_CLIENT_B_PROJECT_CODE,
+        POOL_CLIENT_B_PROJECT_NAME,
+        POOL_CLIENT_B_PROJECT_DESCRIPTION,
+        POOL_CLIENT_B_DEPOSIT_CENTS,
+        POOL_CLIENT_B_DEPOSIT_REF,
+        POOL_CLIENT_B_INVOICE_ID,
+        POOL_CLIENT_B_DRAW_CENTS,
+    )
+    .await?;
+
+    plan_iolta_withdrawal(
+        surreal,
+        plan,
+        mode,
+        POOLED_WITHDRAWAL_TRANSACTION_ID,
+        IOLTA_XERO_ACCOUNT_ID,
+        "USD",
+        fixed_date(PERIOD_TWO_DUE),
+        vec![
+            (
+                POOL_CLIENT_A_INVOICE_ID.to_string(),
+                POOL_CLIENT_A_DRAW_CENTS,
+            ),
+            (
+                POOL_CLIENT_B_INVOICE_ID.to_string(),
+                POOL_CLIENT_B_DRAW_CENTS,
+            ),
+        ],
+    )
+    .await
+}
+
+/// A California matter with a deposit and a partial refund, proving the
+/// California pool's per-matter trust position reconciles independently of
+/// Nevada's.
+async fn plan_ca_trust(
+    surreal: &SurrealDb,
+    plan: &mut PortfolioPlan,
+    mode: Mode,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+    lawyer_id: Uuid,
+    template_id: Uuid,
+) -> anyhow::Result<()> {
+    let client_id = plan_person(
+        surreal,
+        plan,
+        mode,
+        CA_TRUST_CLIENT_NAME,
+        CA_TRUST_CLIENT_EMAIL,
+        crate::persons::Role::Client,
+    )
+    .await?;
+    let entity_id = plan_entity(
+        surreal,
+        plan,
+        mode,
+        CA_TRUST_ENTITY_NAME,
+        entity_type_id,
+        jurisdiction_id,
+    )
+    .await?;
+    let (project_id, _) = plan_project(
+        surreal,
+        plan,
+        mode,
+        CA_TRUST_PROJECT_CODE,
+        CA_TRUST_PROJECT_NAME,
+        CA_TRUST_PROJECT_DESCRIPTION,
+        entity_id,
+        jurisdiction_id,
+    )
+    .await?;
+    plan_participation(
+        surreal,
+        plan,
+        mode,
+        project_id,
+        CA_TRUST_PROJECT_CODE,
+        client_id,
+        "client",
+    )
+    .await?;
+    plan_notation(surreal, plan, mode, project_id, template_id, lawyer_id).await?;
+
+    let deposit = crate::trust::Movement::deposit(
+        project_id,
+        "USD",
+        usd_amount_string(CA_TRUST_DEPOSIT_CENTS),
+        CA_TRUST_DEPOSIT_CENTS,
+        fixed_date(PERIOD_ONE_ISSUED).to_rfc3339(),
+    )
+    .with_external_ref(CA_TRUST_DEPOSIT_REF.to_string());
+    plan_trust_movement(surreal, plan, mode, project_id, deposit).await?;
+
+    let refund = crate::trust::Movement::refund(
+        project_id,
+        CA_TRUST_REFUND_CENTS,
+        fixed_date(PERIOD_TWO_ISSUED).to_rfc3339(),
+    )
+    .with_external_ref(CA_TRUST_REFUND_REF.to_string());
+    plan_trust_movement(surreal, plan, mode, project_id, refund).await
 }
 
 #[cfg(test)]
@@ -1949,5 +2757,387 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    /// The USD invoice-status matrix and the EUR group it must never roll
+    /// up with: four billing states across two fixed reporting periods, and
+    /// currency totals kept apart when both Projects are read together.
+    #[tokio::test]
+    async fn apply_produces_the_invoice_status_and_currency_matrix() {
+        let surreal = mem_surreal().await;
+        let storage = fs_storage().await;
+        canonical(&surreal, &storage).await;
+        apply_with(
+            &surreal,
+            &storage,
+            Production,
+            Some(STAGING_TARGET),
+            discloses("true"),
+        )
+        .await
+        .expect("apply");
+
+        let matrix_project = crate::projects::find_by_code(&surreal, INVOICE_MATRIX_PROJECT_CODE)
+            .await
+            .unwrap()
+            .expect("invoice matrix project exists");
+        let invoices = crate::xero_invoices::for_projects(&surreal, &[matrix_project.id])
+            .await
+            .unwrap();
+        assert_eq!(invoices.len(), 4, "unpaid, overdue, partial, and paid");
+
+        let unpaid = invoices
+            .iter()
+            .find(|invoice| invoice.xero_invoice_id == INVOICE_MATRIX_UNPAID_ID)
+            .expect("unpaid invoice");
+        assert_eq!(unpaid.status, "AUTHORISED");
+        assert_eq!(unpaid.amount_paid_cents, 0);
+        assert_eq!(unpaid.amount_cents, INVOICE_MATRIX_UNPAID_CENTS);
+        assert_eq!(unpaid.currency, "USD");
+        assert_eq!(unpaid.issued_at, fixed_date(PERIOD_TWO_ISSUED));
+        assert_eq!(unpaid.due_at, Some(fixed_date(PERIOD_TWO_DUE)));
+
+        let overdue = invoices
+            .iter()
+            .find(|invoice| invoice.xero_invoice_id == INVOICE_MATRIX_OVERDUE_ID)
+            .expect("overdue invoice");
+        assert_eq!(overdue.status, "AUTHORISED");
+        assert_eq!(overdue.amount_paid_cents, 0);
+        assert_eq!(overdue.issued_at, fixed_date(PERIOD_ONE_ISSUED));
+        assert_eq!(overdue.due_at, Some(fixed_date(PERIOD_ONE_DUE)));
+        assert!(
+            overdue.due_at.unwrap() < unpaid.issued_at,
+            "the overdue invoice's due date falls in the earlier reporting period, the unpaid \
+             invoice's issue date in the later one"
+        );
+
+        let partial = invoices
+            .iter()
+            .find(|invoice| invoice.xero_invoice_id == INVOICE_MATRIX_PARTIAL_ID)
+            .expect("partial invoice");
+        assert_eq!(partial.status, "AUTHORISED");
+        assert_eq!(partial.amount_paid_cents, INVOICE_MATRIX_PARTIAL_PAID_CENTS);
+        assert!(partial.amount_paid_cents < partial.amount_cents);
+        assert_eq!(partial.issued_at, fixed_date(PERIOD_ONE_ISSUED));
+        assert_eq!(partial.due_at, Some(fixed_date(PERIOD_TWO_DUE)));
+
+        let paid = invoices
+            .iter()
+            .find(|invoice| invoice.xero_invoice_id == INVOICE_MATRIX_PAID_ID)
+            .expect("paid invoice");
+        assert_eq!(paid.status, "PAID");
+        assert_eq!(paid.amount_paid_cents, paid.amount_cents);
+
+        let eur_project = crate::projects::find_by_code(&surreal, EUR_GROUP_PROJECT_CODE)
+            .await
+            .unwrap()
+            .expect("eur group project exists");
+        let eur_invoices = crate::xero_invoices::for_projects(&surreal, &[eur_project.id])
+            .await
+            .unwrap();
+        assert_eq!(eur_invoices.len(), 2);
+        assert!(eur_invoices.iter().all(|invoice| invoice.currency == "EUR"));
+
+        // Reading both Projects together must never mix the two currencies
+        // into one total.
+        let combined =
+            crate::xero_invoices::for_projects(&surreal, &[matrix_project.id, eur_project.id])
+                .await
+                .unwrap();
+        assert_eq!(combined.len(), 6);
+        let usd_total: i64 = combined
+            .iter()
+            .filter(|invoice| invoice.currency == "USD")
+            .map(|invoice| invoice.amount_cents)
+            .sum();
+        let eur_total: i64 = combined
+            .iter()
+            .filter(|invoice| invoice.currency == "EUR")
+            .map(|invoice| invoice.amount_cents)
+            .sum();
+        assert_eq!(
+            usd_total,
+            INVOICE_MATRIX_UNPAID_CENTS
+                + INVOICE_MATRIX_OVERDUE_CENTS
+                + INVOICE_MATRIX_PARTIAL_CENTS
+                + INVOICE_MATRIX_PAID_CENTS,
+        );
+        assert_eq!(eur_total, EUR_GROUP_UNPAID_CENTS + EUR_GROUP_PAID_CENTS);
+    }
+
+    /// One pooled Nevada withdrawal settles two different matters' invoices
+    /// in a single transfer: lines sum exactly, each matter's held balance
+    /// is drawn down by only its own line, and neither matter's client read
+    /// carries the other's amount or the pooled total.
+    #[tokio::test]
+    async fn apply_produces_one_pooled_withdrawal_across_two_matters_with_protected_balances() {
+        let surreal = mem_surreal().await;
+        let storage = fs_storage().await;
+        canonical(&surreal, &storage).await;
+        apply_with(
+            &surreal,
+            &storage,
+            Production,
+            Some(STAGING_TARGET),
+            discloses("true"),
+        )
+        .await
+        .expect("apply");
+
+        let a = crate::projects::find_by_code(&surreal, POOL_CLIENT_A_PROJECT_CODE)
+            .await
+            .unwrap()
+            .expect("pool matter A exists");
+        let b = crate::projects::find_by_code(&surreal, POOL_CLIENT_B_PROJECT_CODE)
+            .await
+            .unwrap()
+            .expect("pool matter B exists");
+
+        let position_a = crate::trust::position_for_project(&surreal, a.id)
+            .await
+            .unwrap();
+        assert_eq!(position_a.deposited_cents, POOL_CLIENT_A_DEPOSIT_CENTS);
+        assert_eq!(position_a.earned_cents, POOL_CLIENT_A_DRAW_CENTS);
+        assert_eq!(
+            position_a.held_cents(),
+            POOL_CLIENT_A_DEPOSIT_CENTS - POOL_CLIENT_A_DRAW_CENTS,
+            "matter A's held balance is drawn down by exactly its own line"
+        );
+
+        let position_b = crate::trust::position_for_project(&surreal, b.id)
+            .await
+            .unwrap();
+        assert_eq!(position_b.deposited_cents, POOL_CLIENT_B_DEPOSIT_CENTS);
+        assert_eq!(position_b.earned_cents, POOL_CLIENT_B_DRAW_CENTS);
+        assert_eq!(
+            position_b.held_cents(),
+            POOL_CLIENT_B_DEPOSIT_CENTS - POOL_CLIENT_B_DRAW_CENTS,
+            "matter B's held balance is drawn down by exactly its own line"
+        );
+
+        let withdrawal = crate::iolta_withdrawals::find(&surreal, POOLED_WITHDRAWAL_TRANSACTION_ID)
+            .await
+            .unwrap()
+            .expect("pooled withdrawal is mirrored");
+        assert_eq!(
+            withdrawal.total_cents,
+            POOL_CLIENT_A_DRAW_CENTS + POOL_CLIENT_B_DRAW_CENTS,
+            "the transfer's lines sum exactly to its total"
+        );
+
+        // Client isolation: each matter's own read carries exactly one line,
+        // for its own amount, never the other's.
+        let a_lines = crate::iolta_withdrawals::for_project(&surreal, a.id)
+            .await
+            .unwrap();
+        assert_eq!(a_lines.len(), 1);
+        assert_eq!(a_lines[0].amount_cents, POOL_CLIENT_A_DRAW_CENTS);
+
+        let b_lines = crate::iolta_withdrawals::for_project(&surreal, b.id)
+            .await
+            .unwrap();
+        assert_eq!(b_lines.len(), 1);
+        assert_eq!(b_lines[0].amount_cents, POOL_CLIENT_B_DRAW_CENTS);
+
+        // The firm-side read alone sees the whole two-line split.
+        assert_eq!(
+            crate::iolta_withdrawals::lines_for(&surreal, POOLED_WITHDRAWAL_TRANSACTION_ID)
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
+    /// The California pool exists beside Nevada's, with its own deposit and
+    /// partial refund reconciling independently, and the existing
+    /// one-account-per-state seam still refuses a second Xero account
+    /// claiming a state that already mirrors one.
+    #[tokio::test]
+    async fn california_pool_is_independent_of_nevada_and_rejects_a_second_account() {
+        let surreal = mem_surreal().await;
+        let storage = fs_storage().await;
+        canonical(&surreal, &storage).await;
+        apply_with(
+            &surreal,
+            &storage,
+            Production,
+            Some(STAGING_TARGET),
+            discloses("true"),
+        )
+        .await
+        .expect("apply");
+
+        let nevada = crate::jurisdictions::find_by_name(&surreal, JURISDICTION_NAME)
+            .await
+            .unwrap()
+            .expect("nevada seeded");
+        let california = crate::jurisdictions::find_by_name(&surreal, CALIFORNIA_JURISDICTION_NAME)
+            .await
+            .unwrap()
+            .expect("california seeded");
+
+        let nv_account = crate::iolta_accounts::for_jurisdiction(&surreal, nevada.id)
+            .await
+            .unwrap()
+            .expect("nevada pool exists");
+        assert_eq!(nv_account.xero_account_id, IOLTA_XERO_ACCOUNT_ID);
+
+        let ca_account = crate::iolta_accounts::for_jurisdiction(&surreal, california.id)
+            .await
+            .unwrap()
+            .expect("california pool exists");
+        assert_eq!(ca_account.xero_account_id, IOLTA_CA_XERO_ACCOUNT_ID);
+        assert_ne!(
+            nv_account.xero_account_id, ca_account.xero_account_id,
+            "each state mirrors its own, distinct provider account"
+        );
+
+        let refused = crate::iolta_accounts::upsert(
+            &surreal,
+            &crate::iolta_accounts::UpsertIoltaAccount {
+                jurisdiction_id: california.id,
+                xero_account_id: "synthetic-portfolio-iolta-account-ca-second".to_string(),
+                xero_account_code: None,
+                name: "IOLTA Trust — California (Second)".to_string(),
+                currency: "USD".to_string(),
+                balance_cents: 0,
+                mirrored_at: chrono::Utc::now(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                refused,
+                Err(crate::iolta_accounts::IoltaAccountError::JurisdictionTaken { .. })
+            ),
+            "a second account for a state that already mirrors one must be refused"
+        );
+
+        let ca_trust_project = crate::projects::find_by_code(&surreal, CA_TRUST_PROJECT_CODE)
+            .await
+            .unwrap()
+            .expect("california trust project exists");
+        let position = crate::trust::position_for_project(&surreal, ca_trust_project.id)
+            .await
+            .unwrap();
+        assert_eq!(position.deposited_cents, CA_TRUST_DEPOSIT_CENTS);
+        assert_eq!(position.refunded_cents, CA_TRUST_REFUND_CENTS);
+        assert_eq!(
+            position.held_cents(),
+            CA_TRUST_DEPOSIT_CENTS - CA_TRUST_REFUND_CENTS,
+            "the deposit and refund reconcile to the held position, independent of Nevada"
+        );
+    }
+
+    /// A repeat apply of the whole ENG-820 finance/trust matrix inserts
+    /// nothing new: same invoice rows, same reconciled amounts, same
+    /// allocation lines, same trust positions.
+    #[tokio::test]
+    async fn apply_is_idempotent_for_the_finance_and_trust_scenarios() {
+        let surreal = mem_surreal().await;
+        let storage = fs_storage().await;
+        canonical(&surreal, &storage).await;
+
+        let first = apply_with(
+            &surreal,
+            &storage,
+            Production,
+            Some(STAGING_TARGET),
+            discloses("true"),
+        )
+        .await
+        .expect("first apply");
+        assert!(first.created() > 0);
+
+        let matrix_project = crate::projects::find_by_code(&surreal, INVOICE_MATRIX_PROJECT_CODE)
+            .await
+            .unwrap()
+            .expect("invoice matrix project exists");
+        let pool_a = crate::projects::find_by_code(&surreal, POOL_CLIENT_A_PROJECT_CODE)
+            .await
+            .unwrap()
+            .expect("pool matter A exists");
+        let before_invoices = crate::xero_invoices::for_projects(&surreal, &[matrix_project.id])
+            .await
+            .unwrap();
+        let before_position = crate::trust::position_for_project(&surreal, pool_a.id)
+            .await
+            .unwrap();
+        let before_lines =
+            crate::iolta_withdrawals::lines_for(&surreal, POOLED_WITHDRAWAL_TRANSACTION_ID)
+                .await
+                .unwrap();
+
+        let second = apply_with(
+            &surreal,
+            &storage,
+            Production,
+            Some(STAGING_TARGET),
+            discloses("true"),
+        )
+        .await
+        .expect("second apply");
+        assert_eq!(
+            second.created(),
+            0,
+            "a repeat apply of the whole fixture, finance/trust matrix included, inserts \
+             nothing new"
+        );
+
+        let after_invoices = crate::xero_invoices::for_projects(&surreal, &[matrix_project.id])
+            .await
+            .unwrap();
+        assert_eq!(before_invoices, after_invoices);
+
+        let after_position = crate::trust::position_for_project(&surreal, pool_a.id)
+            .await
+            .unwrap();
+        assert_eq!(before_position, after_position);
+
+        let after_lines =
+            crate::iolta_withdrawals::lines_for(&surreal, POOLED_WITHDRAWAL_TRANSACTION_ID)
+                .await
+                .unwrap();
+        assert_eq!(before_lines.len(), after_lines.len());
+        assert_eq!(before_lines, after_lines);
+    }
+
+    /// Every provider-shaped id this section introduces is a deterministic,
+    /// visibly synthetic literal — never something that could be mistaken
+    /// for (or accidentally forwarded to) a live Xero id. This module's
+    /// `apply`/`dry_run` also take no provider client at all (see their
+    /// signatures above), so there is no seam through which a live call
+    /// could be reached in the first place; this test guards the data half
+    /// of that guarantee.
+    #[test]
+    fn finance_scenario_ids_are_deterministic_and_visibly_synthetic() {
+        let ids = [
+            INVOICE_MATRIX_UNPAID_ID,
+            INVOICE_MATRIX_OVERDUE_ID,
+            INVOICE_MATRIX_PARTIAL_ID,
+            INVOICE_MATRIX_PAID_ID,
+            EUR_GROUP_UNPAID_ID,
+            EUR_GROUP_PAID_ID,
+            IOLTA_CA_XERO_ACCOUNT_ID,
+            POOL_CLIENT_A_INVOICE_ID,
+            POOL_CLIENT_B_INVOICE_ID,
+            POOL_CLIENT_A_DEPOSIT_REF,
+            POOL_CLIENT_B_DEPOSIT_REF,
+            POOLED_WITHDRAWAL_TRANSACTION_ID,
+            CA_TRUST_DEPOSIT_REF,
+            CA_TRUST_REFUND_REF,
+        ];
+        for id in ids {
+            assert!(
+                id.starts_with("synthetic-portfolio-"),
+                "{id} must be visibly synthetic"
+            );
+        }
+        // Calling `fixed_date` twice on the same literal must agree — the
+        // determinism a repeat apply depends on for every date in this
+        // section.
+        assert_eq!(fixed_date(PERIOD_ONE_ISSUED), fixed_date(PERIOD_ONE_ISSUED));
+        assert!(fixed_date(PERIOD_ONE_ISSUED) < fixed_date(PERIOD_TWO_ISSUED));
     }
 }

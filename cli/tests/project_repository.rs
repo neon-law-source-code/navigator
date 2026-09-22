@@ -393,6 +393,103 @@ fn the_gate_refuses_an_extra_privileged_ci_job() {
         .stderr(str::contains("exactly one job"));
 }
 
+/// ENG-828 regression guard: the closed `.github` set used to make an
+/// in-repo auto-merge job unrepresentable — `ci.yml` was held to exactly one
+/// job (refusing the job smuggled in above), and `.github/workflows/automerge.yml`
+/// was refused outright as outside the closed set. The only way to a green
+/// gate was to delete the control. A repository shaped like the fleet's own
+/// three `neon-law-staging` samples — the auto-merge job in its own file,
+/// `ci.yml` carrying only `ci` — must gate green with no job moved back.
+///
+/// The content below is typed independently of
+/// `AUTOMERGE_WORKFLOW_CONTENTS` in `cli/src/projects/repository.rs`, the
+/// same way the fixed strings elsewhere in this file duplicate rather than
+/// import the crate's own constants: the point is to prove the validator
+/// accepts this exact fleet body, not that it agrees with itself.
+#[test]
+fn a_fleet_representative_automerge_workflow_gates_green() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::write(
+        dir.path().join(".github/workflows/automerge.yml"),
+        "name: automerge\n\
+         \n\
+         on:\n  pull_request:\n    types: [opened, synchronize, reopened, ready_for_review]\n\
+         \n\
+         permissions:\n  contents: read\n\
+         \n\
+         jobs:\n  enable-automerge:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      \
+         - name: Look for the merge-queue App credentials\n        id: credentials\n        env:\n          APP_ID: ${{ secrets.AUTOMERGE_APP_ID }}\n          APP_PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}\n        shell: bash\n        run: |\n          set -euo pipefail\n          if [ -n \"${APP_ID}\" ] && [ -n \"${APP_PRIVATE_KEY}\" ]; then\n              echo \"present=true\" >> \"${GITHUB_OUTPUT}\"\n          else\n              echo \"present=false\" >> \"${GITHUB_OUTPUT}\"\n          fi\n      \
+         - name: Mint a merge-queue App token\n        id: app-token\n        if: steps.credentials.outputs.present == 'true'\n        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0\n        with:\n          app-id: ${{ secrets.AUTOMERGE_APP_ID }}\n          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}\n      \
+         - name: Arm auto-merge\n        env:\n          GH_TOKEN: ${{ steps.app-token.outputs.token }}\n          PR_URL: ${{ github.event.pull_request.html_url }}\n        shell: bash\n        run: |\n          set -euo pipefail\n          if [ -z \"${GH_TOKEN:-}\" ]; then\n              echo \"::notice::merge-queue App credentials absent — arming nothing, merge by hand\"\n              exit 0\n          fi\n          gh pr merge --squash --auto \"${PR_URL}\"\n",
+    )
+    .unwrap();
+
+    gate(dir.path())
+        .success()
+        .stdout(str::contains("0 error(s)"));
+}
+
+/// Before ENG-828, this exact file was refused as outside the closed
+/// `.github` set. Under `--ci`, where nothing is written, a missing
+/// `automerge.yml` is now a required-file finding rather than silently
+/// absent. (The local, non-`--ci` gate self-repairs it instead — see
+/// `project_gate_rewrites_a_drifted_automerge_workflow` and
+/// `a_fleet_representative_automerge_workflow_gates_green`, which relies on
+/// the file `scaffold` already writes.)
+#[test]
+fn the_ci_gate_requires_the_automerge_workflow() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::remove_file(dir.path().join(".github/workflows/automerge.yml")).unwrap();
+
+    navigator()
+        .current_dir(dir.path())
+        .args(["project", "gate", "--ci"])
+        .assert()
+        .failure()
+        .stderr(str::contains("missing required"))
+        .stderr(str::contains(".github/workflows/automerge.yml"));
+}
+
+/// `automerge.yml` is machine-owned, so a hand edit is drift the local gate
+/// self-repairs — the same `write_fixes` behavior `documents/.gitignore`
+/// already gets, and notably the one `validate_codeowners` does not.
+#[test]
+fn project_gate_rewrites_a_drifted_automerge_workflow() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let path = dir.path().join(".github/workflows/automerge.yml");
+    let canonical = fs::read_to_string(&path).unwrap();
+    fs::write(&path, "name: automerge\n# hand-edited\n").unwrap();
+
+    gate(dir.path()).success().stdout(str::contains("fixed"));
+    assert_eq!(fs::read_to_string(&path).unwrap(), canonical);
+}
+
+/// Under `--ci`, nothing is written: a drifted `automerge.yml` becomes a
+/// finding instead, the same as every other `--ci` fix-vs-report split.
+#[test]
+fn gate_ci_reports_a_drifted_automerge_workflow_without_writing() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    let path = dir.path().join(".github/workflows/automerge.yml");
+    fs::write(&path, "name: automerge\n# hand-edited\n").unwrap();
+
+    navigator()
+        .current_dir(dir.path())
+        .args(["project", "gate", "--ci"])
+        .assert()
+        .failure()
+        .stderr(str::contains(
+            "must match the canonical auto-merge workflow",
+        ));
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        "name: automerge\n# hand-edited\n"
+    );
+}
+
 /// ENG-675 reproduction 4: `pull_request_target` runs with the base
 /// repository's secrets and write token against a fork's checked-out code.
 #[test]
@@ -445,7 +542,7 @@ fn the_gate_warns_on_a_retired_workflow_filename() {
     gate(dir.path())
         .success()
         .stdout(str::contains("gate.yml"))
-        .stdout(str::contains("next Navigator CLI release refuses it"));
+        .stdout(str::contains("the release after that refuses it"));
 }
 
 /// A `.yaml` spelling of either workflow reports the extension it actually
@@ -1081,6 +1178,46 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
     gate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
+}
+
+/// ENG-836: `sync-skills` used to write into whatever directory it was
+/// handed with no admission check, so pointing it at a non-Project directory
+/// — for instance the Navigator repository's own root — overwrote that
+/// directory's own `AGENTS.md` and reached into its `.agents/skills`. It must
+/// refuse instead, loudly, and write nothing.
+#[test]
+fn sync_skills_refuses_a_non_project_directory() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("README.md"), "# not a project\n").unwrap();
+
+    sync_skills(dir.path())
+        .failure()
+        .stderr(str::contains("not a Project repository"));
+
+    assert!(!dir.path().join("AGENTS.md").exists());
+    assert!(!dir.path().join(".agents").exists());
+}
+
+/// The sharpest instance of the bug ENG-836 is filed against: a directory
+/// carrying Navigator's own `AGENTS.md` — this repository's own operating
+/// contract — but no `navigator.yaml`, must be refused exactly the same way,
+/// and its existing `AGENTS.md` must survive byte-for-byte.
+#[test]
+fn sync_skills_refuses_a_directory_carrying_navigators_own_agents_md() {
+    let dir = TempDir::new().unwrap();
+    let navigator_agents_md =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../AGENTS.md")).unwrap();
+    fs::write(dir.path().join("AGENTS.md"), &navigator_agents_md).unwrap();
+
+    sync_skills(dir.path())
+        .failure()
+        .stderr(str::contains("not a Project repository"));
+
+    assert_eq!(
+        fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
+        navigator_agents_md
+    );
+    assert!(!dir.path().join(".agents").exists());
 }
 
 #[test]

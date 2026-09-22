@@ -100,6 +100,15 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/cd.yml";
 /// to rename it in before the gate stops accepting the old name. See
 /// [`docs/gate.md`](../../../docs/gate.md) for the documented transition.
 pub(crate) const RETIRED_CD_WORKFLOW: &str = ".github/workflows/publish.yml";
+/// The last Navigator CLI release that still accepts [`RETIRED_WORKFLOW`] or
+/// [`RETIRED_CD_WORKFLOW`] with a warning, closing the "one further release"
+/// transition [`docs/gate.md`](../../../docs/gate.md) documents. `resolve_workflow`
+/// refuses either retired filename outright once the running binary's own
+/// [`crate::cli_version`] names a release after this one — see
+/// `retired_workflow_refused`. Bump this only to deliberately extend the
+/// transition; the ordinary path is for it to stay put and the next release
+/// closes the door.
+const FINAL_RETIRED_WORKFLOW_RELEASE: &str = "26.9.23";
 /// The manifest a Project repository declares its Project in.
 ///
 /// `pub(crate)` rather than private because [`super::drift`] and
@@ -375,6 +384,10 @@ pub fn scaffold(
     let files = [
         (root.join(".gitattributes"), GITATTRIBUTES.to_string()),
         (root.join(".github/CODEOWNERS"), CODEOWNERS.to_string()),
+        (
+            root.join(AUTOMERGE_WORKFLOW),
+            AUTOMERGE_WORKFLOW_CONTENTS.to_string(),
+        ),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
         (root.join("tests/README.md"), tests_readme()),
@@ -427,6 +440,25 @@ pub fn scaffold(
     ExitCode::SUCCESS
 }
 
+/// Whether `dir` is a Project repository: it carries [`PROJECT_MANIFEST`] and
+/// that manifest declares a `project`.
+///
+/// This is the one admission check every write into a repository's agent
+/// contract owes before it touches disk — [`sync_skills`] applies it, and
+/// `cli/src/main.rs` applies the same check before both `project gate`'s
+/// Project-repository layout pass and its own document-pointer pass, so a
+/// tree with no `navigator.yaml` is read as ordinary source, never as a
+/// Project repository missing its manifest.
+pub(crate) fn is_project_repository(dir: &Path) -> bool {
+    let Ok(raw) = fs::read_to_string(dir.join(PROJECT_MANIFEST)) else {
+        return false;
+    };
+    serde_yaml::from_str::<serde_yaml::Value>(&raw)
+        .ok()
+        .and_then(|value| value.get("project").cloned())
+        .is_some()
+}
+
 /// Write Navigator's canonical skill catalog into a Project repository, from
 /// this binary's own compiled-in copies (see [`SYNCED_SKILLS`]).
 ///
@@ -436,7 +468,28 @@ pub fn scaffold(
 /// edit is exactly the drift [`validate`] is meant to catch, and catching it
 /// is only useful if re-running this command is also how an operator fixes
 /// it.
+///
+/// Unlike [`validate_gate`], which runs read-only checks on whatever
+/// repository it is pointed at and reports what it finds, this command
+/// writes — so it owes its own admission check rather than trusting the
+/// caller to have run the gate first. `dir` must already be a Project
+/// repository, checked by [`is_project_repository`] exactly the way `project
+/// gate` decides whether to run the Project-repository layout pass at all
+/// (see `crate::main::run_gate`). A tree with no `navigator.yaml`, or one the
+/// gate itself is walking to check Navigator's own layout, refuses rather
+/// than silently doing nothing: this is a repair tool aimed at whatever
+/// directory it is handed, and the failure mode for skipping the check is a
+/// silent overwrite of that tree's own `AGENTS.md` and `.agents/skills`
+/// catalog (ENG-836).
 pub fn sync_skills(root: &Path) -> ExitCode {
+    if !is_project_repository(root) {
+        eprintln!(
+            "navigator: target is not a Project repository (no `{PROJECT_MANIFEST}` declaring a \
+             `project`); refusing to write its agent contract or skill catalog"
+        );
+        return ExitCode::from(2);
+    }
+
     let legacy_skills = root.join(".claude/skills");
     let canonical_skills = root.join(".agents/skills");
     if legacy_skills.exists() {
@@ -659,6 +712,7 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: 
 
     let manifest_valid = validate_layout(root, &mut errors, &mut warnings);
     validate_codeowners(root, &mut errors);
+    validate_automerge_workflow(root, write_fixes, &mut errors);
     validate_documents_gitignore(root, write_fixes, &mut errors);
     validate_skills(root, &mut errors);
     validate_documented_cli(root, &mut errors);
@@ -699,15 +753,73 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: 
 /// A repository still carrying [`RETIRED_WORKFLOW`] or [`RETIRED_CD_WORKFLOW`]
 /// is not failed for it — it is warned, once, by name. The one-release
 /// transition this documents lives in `docs/gate.md`: this release still
-/// reads the retired filename, and the next Navigator CLI release refuses it,
-/// so the warning is the operator's whole notice to rename it.
+/// reads the retired filename, and the release after
+/// [`FINAL_RETIRED_WORKFLOW_RELEASE`] refuses it, so the warning is the
+/// operator's whole notice to rename it.
 fn retired_workflow_warning(path: &Path, canonical: &str) -> Finding {
     Finding::at(
         path,
         format!(
-            "`{}` is the retired filename for `{canonical}`; this release still accepts it, \
-             but the next Navigator CLI release refuses it — rename the file to `{canonical}`",
+            "`{}` is the retired filename for `{canonical}`; releases through \
+             {FINAL_RETIRED_WORKFLOW_RELEASE} still accept it, but the release after that \
+             refuses it — rename the file to `{canonical}`",
             path.display()
+        ),
+    )
+}
+
+/// Whether this binary's own release, `current` (from [`crate::cli_version`]),
+/// is a release after [`FINAL_RETIRED_WORKFLOW_RELEASE`] and must therefore
+/// refuse [`RETIRED_WORKFLOW`] or [`RETIRED_CD_WORKFLOW`] outright rather than
+/// warn about it.
+///
+/// An unparseable version on either side fails open — refusing a repository's
+/// CI over a version string this check cannot read would be a worse failure
+/// than accepting one release past the bound, and a plain local build without
+/// a baked release tag falls back to `CARGO_PKG_VERSION`, which is exactly
+/// [`FINAL_RETIRED_WORKFLOW_RELEASE`] until the next `chore(release)` bump —
+/// so a developer's own tree only starts refusing once it actually is a
+/// later release.
+fn retired_workflow_refused(current: &str) -> bool {
+    let Ok(current) = semver::Version::parse(current) else {
+        return false;
+    };
+    let Ok(final_release) = semver::Version::parse(FINAL_RETIRED_WORKFLOW_RELEASE) else {
+        return false;
+    };
+    current > final_release
+}
+
+/// The release named by [`FINAL_RETIRED_WORKFLOW_RELEASE`] has passed:
+/// `path`'s retired filename is refused outright, not merely warned about.
+fn retired_workflow_refusal(path: &Path, canonical: &str) -> Finding {
+    Finding::at(
+        path,
+        format!(
+            "`{}` is the retired filename for `{canonical}`; only releases through \
+             {FINAL_RETIRED_WORKFLOW_RELEASE} accepted it, and this release refuses it — \
+             rename the file to `{canonical}`",
+            path.display()
+        ),
+    )
+}
+
+/// `retired` still exists beside its canonical replacement `current`, so a
+/// repository can carry a structurally validated `current` and an
+/// unvalidated `retired` that GitHub still runs — the coexistence bypass this
+/// finding closes. Independent of [`retired_workflow_refused`]: this is
+/// refused in every release, not only past the bound, because the retired
+/// file is never even inspected once the canonical one is present.
+fn retired_workflow_beside_canonical(retired: &Path, current: &Path) -> Finding {
+    Finding::at(
+        retired,
+        format!(
+            "`{}` exists alongside its canonical replacement `{}`; GitHub still runs whichever \
+             workflows trigger, so a retired file beside the canonical one is a live, unvalidated \
+             CI/CD path — delete `{}`",
+            retired.display(),
+            current.display(),
+            retired.display()
         ),
     )
 }
@@ -758,10 +870,22 @@ fn resolve_workflow(
     validate: impl Fn(&Path, &str, Option<&super::manifest::Manifest>, &mut Vec<Finding>),
 ) {
     match fs::read_to_string(spec.current) {
-        Ok(contents) => validate(spec.current, &contents, manifest, errors),
+        Ok(contents) => {
+            validate(spec.current, &contents, manifest, errors);
+            if spec.retired.is_file() {
+                errors.push(retired_workflow_beside_canonical(
+                    spec.retired,
+                    spec.current,
+                ));
+            }
+        }
         Err(_) => match fs::read_to_string(spec.retired) {
             Ok(contents) => {
-                warnings.push(retired_workflow_warning(spec.retired, spec.canonical));
+                if retired_workflow_refused(crate::cli_version()) {
+                    errors.push(retired_workflow_refusal(spec.retired, spec.canonical));
+                } else {
+                    warnings.push(retired_workflow_warning(spec.retired, spec.canonical));
+                }
                 validate(spec.retired, &contents, manifest, errors);
             }
             Err(_) => match yaml_extension_finding(spec.current, spec.canonical)
@@ -954,12 +1078,81 @@ fn slash_separated_path(path: &Path) -> String {
         .join("/")
 }
 
+/// The auto-merge workflow every Project repository must carry, admitted to
+/// the closed `.github` set alongside [`WORKFLOW`] and [`CD_WORKFLOW`].
+///
+/// Its content is machine-owned and validated byte-exact against
+/// [`AUTOMERGE_WORKFLOW_CONTENTS`], the same shape as [`CODEOWNERS`] — no
+/// repository has a legitimate reason to differ from another, so any
+/// variation is drift rather than local intent.
+pub(crate) const AUTOMERGE_WORKFLOW: &str = ".github/workflows/automerge.yml";
+/// The byte-exact content [`AUTOMERGE_WORKFLOW`] must carry.
+///
+/// Arms as the merge-queue App, never as `GITHUB_TOKEN` — a token minted from
+/// the run's own `GITHUB_TOKEN` starts no further workflow on `main`, so a
+/// publish armed that way silently never runs (ENG-256) — and skips a draft
+/// PR, with `ready_for_review` in the trigger types so a draft marked ready
+/// later still fires a run rather than sitting green and unarmed forever.
+/// Carries no comments of its own beyond the one pinned-action version, for
+/// the same reason [`CODEOWNERS`] carries none: this file is machine-owned,
+/// and a comment is the part of a hand-copied file that rots unnoticed in
+/// twenty repositories. The rationale above lives here and in ENG-256, not
+/// re-typed into the file itself.
+const AUTOMERGE_WORKFLOW_CONTENTS: &str = r#"name: automerge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  enable-automerge:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for the merge-queue App credentials
+        id: credentials
+        env:
+          APP_ID: ${{ secrets.AUTOMERGE_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_ID}" ] && [ -n "${APP_PRIVATE_KEY}" ]; then
+              echo "present=true" >> "${GITHUB_OUTPUT}"
+          else
+              echo "present=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Mint a merge-queue App token
+        id: app-token
+        if: steps.credentials.outputs.present == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMERGE_APP_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+      - name: Arm auto-merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+              echo "::notice::merge-queue App credentials absent — arming nothing, merge by hand"
+              exit 0
+          fi
+          gh pr merge --squash --auto "${PR_URL}"
+"#;
+
 fn validate_github_path(path: &Path, relative: &Path, errors: &mut Vec<Finding>) {
     let relative = slash_separated_path(relative);
     let allowed = [
         ".github/CODEOWNERS",
         WORKFLOW,
         CD_WORKFLOW,
+        AUTOMERGE_WORKFLOW,
         RETIRED_WORKFLOW,
         RETIRED_CD_WORKFLOW,
     ];
@@ -968,10 +1161,54 @@ fn validate_github_path(path: &Path, relative: &Path, errors: &mut Vec<Finding>)
             path,
             format!(
                 "`{relative}` is outside the closed `.github` file set; only CODEOWNERS, \
-                 `{WORKFLOW}`, and `{CD_WORKFLOW}` belong here"
+                 `{WORKFLOW}`, `{CD_WORKFLOW}`, and `{AUTOMERGE_WORKFLOW}` belong here"
             ),
         ));
     }
+}
+
+/// Hold [`AUTOMERGE_WORKFLOW`] to [`AUTOMERGE_WORKFLOW_CONTENTS`] byte-exact,
+/// the same shape as [`validate_codeowners`] — but unlike that check, this one
+/// self-repairs under `write_fixes`, the way [`validate_documents_gitignore`]
+/// does: the file is machine-owned, so a drifted or missing copy has exactly
+/// one correct byte sequence to converge on, and there is nothing a human
+/// judgment call could add.
+fn validate_automerge_workflow(root: &Path, write_fixes: bool, errors: &mut Vec<Finding>) {
+    let path = root.join(AUTOMERGE_WORKFLOW);
+    let current = fs::read_to_string(&path).ok();
+    if current.as_deref() == Some(AUTOMERGE_WORKFLOW_CONTENTS) {
+        return;
+    }
+    if write_fixes {
+        if let Some(parent) = path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                errors.push(Finding::at(
+                    &path,
+                    format!("could not create {}: {error}", parent.display()),
+                ));
+                return;
+            }
+        }
+        if let Err(error) = fs::write(&path, AUTOMERGE_WORKFLOW_CONTENTS) {
+            errors.push(Finding::at(
+                &path,
+                format!("could not write canonical `{AUTOMERGE_WORKFLOW}`: {error}"),
+            ));
+            return;
+        }
+        println!("fixed {}", path.display());
+        return;
+    }
+    errors.push(Finding::at(
+        &path,
+        if current.is_some() {
+            format!(
+                "`{AUTOMERGE_WORKFLOW}` must match the canonical auto-merge workflow byte-exact"
+            )
+        } else {
+            format!("missing required `{AUTOMERGE_WORKFLOW}`")
+        },
+    ));
 }
 
 fn validate_layout(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<Finding>) -> bool {
@@ -2181,10 +2418,11 @@ jobs:
 mod tests {
     use super::{
         agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
-        placeholder_template, repository_name, scaffold, validate_cd_workflow,
-        validate_github_path, validate_layout, validate_workflow, workflow, Finding,
-        AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST,
-        RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW, SYNCED_SKILLS, WORKFLOW,
+        placeholder_template, repository_name, retired_workflow_refused, scaffold,
+        validate_cd_workflow, validate_github_path, validate_layout, validate_workflow, workflow,
+        Finding, AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE,
+        FINAL_RETIRED_WORKFLOW_RELEASE, PROJECT_MANIFEST, RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW,
+        SYNCED_SKILLS, WORKFLOW,
     };
     use crate::projects::manifest::Manifest;
     use std::fs;
@@ -3555,9 +3793,49 @@ jobs:
                 .iter()
                 .any(|message| message.contains(RETIRED_WORKFLOW)
                     && message.contains(WORKFLOW)
-                    && message.contains("next Navigator CLI release refuses it")),
+                    && message.contains(FINAL_RETIRED_WORKFLOW_RELEASE)
+                    && message.contains("the release after that refuses it")),
             "{warnings:?}"
         );
+    }
+
+    /// The bound `docs/gate.md` documents: once this binary's own release is
+    /// after [`FINAL_RETIRED_WORKFLOW_RELEASE`], the retired filename is
+    /// refused outright rather than merely warned about — ENG-815's first
+    /// gap, that nothing ever implemented the "one further release" the
+    /// warning text promised.
+    #[test]
+    fn a_retired_workflow_filename_is_refused_past_the_final_accepting_release() {
+        assert!(!retired_workflow_refused(FINAL_RETIRED_WORKFLOW_RELEASE));
+        assert!(!retired_workflow_refused("0.1.0"));
+        assert!(retired_workflow_refused("26.9.24"));
+        assert!(retired_workflow_refused("27.1.1"));
+        // Fails open on a version string it cannot parse, rather than
+        // refusing a repository's CI over a value this check cannot read.
+        assert!(!retired_workflow_refused("not-a-version"));
+    }
+
+    /// ENG-815's second gap: `resolve_workflow` used to inspect the retired
+    /// file only when the canonical one was missing, so a repository could
+    /// carry a structurally validated `ci.yml` and an unvalidated `gate.yml`
+    /// that GitHub still runs. Both paths must now be named in one finding.
+    #[test]
+    fn a_retired_workflow_beside_its_canonical_replacement_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        let ci_contents = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
+        std::fs::write(root.path().join(RETIRED_WORKFLOW), &ci_contents).unwrap();
+
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains(RETIRED_WORKFLOW)
+                    && message.contains(WORKFLOW)
+                    && message.contains("alongside")),
+            "{found:?}"
+        );
+        assert_eq!(layout_warnings(root.path()), Vec::<String>::new());
     }
 
     #[test]

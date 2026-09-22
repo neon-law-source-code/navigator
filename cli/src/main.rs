@@ -43,6 +43,7 @@ mod transcribe;
 use cli::import;
 use devx::brand::BrandCmd;
 use devx::{DnsCmd, GcpCmd, RestateCmd, StagingAction, WorktreeEnvCmd};
+use projects::repository::is_project_repository;
 
 /// The version `navigator --version` / `-V` reports.
 ///
@@ -55,7 +56,7 @@ use devx::{DnsCmd, GcpCmd, RestateCmd, StagingAction, WorktreeEnvCmd};
 /// 3. The workspace crate version on a plain local build — `0.1.0` between
 ///    releases, or the `YY.M.D` a release stamped into `Cargo.toml` — since
 ///    `build.rs` falls back to `CARGO_PKG_VERSION` when no tag is present.
-fn cli_version() -> &'static str {
+pub(crate) fn cli_version() -> &'static str {
     if let Ok(tag) = std::env::var("NAVIGATOR_RELEASE_TAG") {
         let tag = tag.trim();
         if !tag.is_empty() {
@@ -2815,16 +2816,6 @@ const LOCALE_DOCUMENT_CODE: &str = "Y002";
 
 /// `Y003` — a `documents/**/*.yaml` pointer in a Project repository must name a valid asset revision.
 const DOCUMENT_POINTER_CODE: &str = "Y003";
-
-fn is_project_repository(dir: &std::path::Path) -> bool {
-    let Ok(raw) = std::fs::read_to_string(dir.join("navigator.yaml")) else {
-        return false;
-    };
-    serde_yaml::from_str::<serde_yaml::Value>(&raw)
-        .ok()
-        .and_then(|value| value.get("project").cloned())
-        .is_some()
-}
 
 fn document_pointer_path(
     root: &std::path::Path,

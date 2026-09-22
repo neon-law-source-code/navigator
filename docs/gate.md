@@ -45,15 +45,23 @@ below: `Y009` opens each application's `dist/` directly, because a built bundle 
 
 This is also the exact command every Project repository's generated CI gate runs against its own tree — see
 [`project-repositories.md`](project-repositories.md) for how `navigator project repository scaffold` wires it up. On a
-Project repository, the same run also closes `.github/` to exactly `.github/CODEOWNERS` and the two thin workflow
-callers, `.github/workflows/ci.yml` and `.github/workflows/cd.yml`: any other path there is a finding naming the exact
-path and the closed set it fell outside of. Each caller is checked structurally against its canonical generator —
-permitted trigger, permissions, jobs, `needs:` dependency between them, and the `project`/`host` inputs pinned release
-it calls — so a caller can differ from the generator in whitespace, quoting, or key order and still pass, but not in
-which event triggers it, what it can do with its token, or how many jobs answer for the required check.
-`.github/workflows/gate.yml` and `.github/workflows/publish.yml`, the filenames these two callers replaced, are still
-read under those names: the gate accepts either one for one further release with a warning naming the file to rename,
-and the release after that refuses the retired name outright.
+Project repository, the same run also closes `.github/` to exactly `.github/CODEOWNERS`, the two thin workflow callers
+`.github/workflows/ci.yml` and `.github/workflows/cd.yml`, and `.github/workflows/automerge.yml`: any other path there
+is a finding naming the exact path and the closed set it fell outside of. Each caller is checked structurally against
+its canonical generator — permitted trigger, permissions, jobs, `needs:` dependency between them, and the
+`project`/`host` inputs pinned release it calls — so a caller can differ from the generator in whitespace, quoting, or
+key order and still pass, but not in which event triggers it, what it can do with its token, or how many jobs answer for
+the required check. `automerge.yml` is checked byte-exact instead, the same way `.github/CODEOWNERS` is: it is
+machine-owned, so any difference from the canonical copy is drift rather than local intent, and `navigator project gate`
+(not `--ci`) writes the canonical copy over a missing or drifted one rather than only reporting it.
+
+`.github/workflows/gate.yml` and `.github/workflows/publish.yml`, the filenames `ci.yml` and `cd.yml` replaced, are
+still read under those names through Navigator CLI release **26.9.23**: the gate accepts either one with a warning
+naming the file to rename. Every release after 26.9.23 refuses the retired name outright — the constant naming this
+bound is `FINAL_RETIRED_WORKFLOW_RELEASE` in `cli/src/projects/repository.rs`. Separately from that bound, a retired
+file is always refused the moment its canonical replacement is also present — `ci.yml` and `gate.yml` (or `cd.yml` and
+`publish.yml`) side by side is a repository where GitHub still runs the retired workflow while the gate validates only
+the canonical one, so the finding names both paths and fails in every release, not only past the bound.
 
 ## What it runs
 

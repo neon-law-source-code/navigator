@@ -322,17 +322,33 @@ fn dash0_is_an_additive_exporter_after_redaction_for_every_signal() {
     ));
 
     for signal in ["traces", "metrics", "logs"] {
-        let marker = format!("        {signal}:\n");
+        let marker = if signal == "traces" {
+            "        traces:\n          receivers:".to_string()
+        } else {
+            format!("        {signal}:\n")
+        };
         let start = collector
             .find(&marker)
             .unwrap_or_else(|| panic!("collector is missing the {signal} pipeline"));
         let pipeline = &collector[start..];
-        let end = ["traces", "metrics", "logs"]
-            .into_iter()
-            .filter(|candidate| *candidate != signal)
-            .filter_map(|candidate| pipeline.find(&format!("\n        {candidate}:\n")))
-            .min()
-            .unwrap_or(pipeline.len());
+        let end = if signal == "traces" {
+            pipeline
+                .find("\n        traces/dash0:\n")
+                .unwrap_or_else(|| {
+                    ["metrics", "logs"]
+                        .into_iter()
+                        .filter_map(|candidate| pipeline.find(&format!("\n        {candidate}:\n")))
+                        .min()
+                        .unwrap_or(pipeline.len())
+                })
+        } else {
+            ["traces", "metrics", "logs"]
+                .into_iter()
+                .filter(|candidate| *candidate != signal)
+                .filter_map(|candidate| pipeline.find(&format!("\n        {candidate}:\n")))
+                .min()
+                .unwrap_or(pipeline.len())
+        };
         let pipeline = &pipeline[..end];
         let redaction = pipeline
             .find("redaction")
@@ -341,9 +357,24 @@ fn dash0_is_an_additive_exporter_after_redaction_for_every_signal() {
             .find("batch")
             .expect("each signal pipeline batches after redaction");
         assert!(redaction < batch, "{signal} redaction must precede batch");
-        assert!(
-            pipeline.contains("exporters: [googlecloud, otlp/dash0]"),
-            "{signal} keeps googlecloud and fans out to Dash0"
-        );
+        if signal == "traces" {
+            assert!(
+                pipeline.contains("exporters: [googlecloud]"),
+                "Google Cloud keeps its existing trace lane"
+            );
+            assert!(
+                collector.contains("traces/dash0:\n          receivers: [otlp]"),
+                "Dash0 has a separate trace lane"
+            );
+            assert!(
+                collector.contains("exporters: [otlp/dash0]"),
+                "Dash0 receives the filtered trace lane"
+            );
+        } else {
+            assert!(
+                pipeline.contains("exporters: [googlecloud, otlp/dash0]"),
+                "{signal} keeps googlecloud and fans out to Dash0"
+            );
+        }
     }
 }

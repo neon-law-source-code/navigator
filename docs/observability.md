@@ -59,7 +59,7 @@ trace. The notation runtime injects the current context on starts, signals, and 
 handler span to that parent. `workflows::start_workflow` uses the same propagation helpers for scheduled and
 event-driven workflow submissions. No baggage, request body, or resolved URL is propagated as trace metadata.
 
-Propagation connects the application spans; collector sampling still governs which spans reach the backend. The example
+Propagation connects the application spans; collector sampling still governs which spans reach each backend. The example
 collector has two replicas with independent tail samplers. Complete cross-service sampling requires every span of a
 trace to reach the same sampler, using trace-ID routing or another consistent sampling design. See the [OpenTelemetry
 collector deployment guidance](https://opentelemetry.io/docs/collector/deploy/other/agent-to-gateway/).
@@ -143,16 +143,27 @@ retention and access policy is a separate deployment control, not the privacy bo
 
 The `examples/deploy` process path uses the plain collector contract: binaries send OTLP/gRPC to the in-cluster
 collector Service without OpenObserve credentials. The collector runs the existing `memory_limiter`, resource detection,
-fail-closed `redaction`, and `batch` processors before the exporters. Traces also retain tail sampling. Dash0 is an
-optional per-deployment integration declared by a nonblank `DASH0_ENDPOINT` in the selected deployment row's `[env]`
-coordinates. A row without that endpoint need not carry `DASH0_DATASET` or `DASH0_TOKEN`; the deployment plan reports
-the token as `integration not declared by this deployment` and `ops ship` removes it from that row's
+fail-closed `redaction`, and `batch` processors before the exporters. Google Cloud keeps its existing sampled trace
+lane. Dash0 receives a separate trace lane that drops successful health, readiness, version, crawler, and static-asset
+request spans before tail sampling. The filter keeps every 4xx/5xx response, and keeps a span whose status attribute is
+absent because an ordering comparison against nil is false, so the drop condition never matches. Dash0's tail-sampling
+percentage is read from `DASH0_TRACE_SAMPLING_PERCENTAGE`, with a default of 20; the selected deployment can set a
+different value for staging or production. The filter and Dash0 sampler never change the Google Cloud trace lane. A
+processor belongs to exactly one pipeline, so per-backend filtering costs a second trace lane: both lanes receive from
+the same `otlp` receiver, resource detection and redaction therefore run once per lane, and each lane holds its own
+`num_traces` tail-sampling buffer. That is collector CPU and memory spent to reduce Dash0 ingest, and it scales with
+span volume. Metrics and logs remain shared fan-out pipelines because trace sampling cannot reduce their billable
+records.
+
+Dash0 is an optional per-deployment integration declared by a nonblank `DASH0_ENDPOINT` in the selected deployment row's
+`[env]` coordinates. A row without that endpoint need not carry `DASH0_DATASET` or `DASH0_TOKEN`; the deployment plan
+reports the token as `integration not declared by this deployment` and `ops ship` removes it from that row's
 `SecretProviderClass`. When the endpoint is present, `DASH0_DATASET` must also be a nonblank coordinate and
 `DASH0_TOKEN` must be present in the encrypted Secret Manager input. The deployment, Secret Manager, and ship gates
 refuse a missing value by name, so a half-configured row cannot be silently rendered as a Google-only pipeline. With all
-three values present, the renderer substitutes the endpoint and dataset and includes `otlp/dash0` alongside
-`googlecloud` in all three pipelines. The token remains a `secretKeyRef` and never enters application arguments or
-committed plaintext.
+three values present, the renderer substitutes the endpoint and dataset and enables the separate Dash0 trace lane plus
+the shared metrics/logs fan-out. The token remains a `secretKeyRef` and never enters application arguments or committed
+plaintext.
 
 The collector's own metrics (`otelcol_exporter_sent_*`, `otelcol_exporter_send_failed_*`, `otelcol_processor_dropped_*`,
 …) reach the same fan-out as every other signal: a `prometheus/self` receiver scrapes the collector's own `:8888`

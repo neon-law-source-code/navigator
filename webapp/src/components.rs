@@ -111,7 +111,7 @@ pub use sample_matters_banner::render_sample_matters_banner;
 pub use sample_matters_banner::{SampleMattersBanner, SAMPLE_MATTERS_BANNER_ID};
 pub use site_footer::{
     FooterAttorney, FooterBarLicense, FooterBrandLink, FooterMembership, FooterNavLink,
-    FooterOffice, SiteFooterLegal, FOOTER_TAGLINE, POWERED_BY_NEON_LAW_NAVIGATOR,
+    FooterOffice, FooterSocialLink, SiteFooterLegal, FOOTER_TAGLINE, POWERED_BY_NEON_LAW_NAVIGATOR,
 };
 // `pub(crate)`, not `pub`: these two are reused by `crate::litigation_page`
 // for the same channel links outside the footer, but they are not part of

@@ -28,7 +28,7 @@ members = [
 ]
 
 [workspace.package]
-version = "26.9.22"
+version = "26.9.23-rc.1"
 edition = "2021"
 rust-version = "1.95"
 # Source-available, not open source: BUSL grants copying, modification, and

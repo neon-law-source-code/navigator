@@ -110,6 +110,9 @@ const DASH0_DATASET_KEY: &str = "DASH0_DATASET";
 const DASH0_TOKEN_KEY: &str = "DASH0_TOKEN";
 const DASH0_ENDPOINT_PLACEHOLDER: &str = "YOUR_DASH0_ENDPOINT";
 const DASH0_DATASET_PLACEHOLDER: &str = "YOUR_DASH0_DATASET";
+const DASH0_TRACE_SAMPLING_PERCENTAGE_KEY: &str = "DASH0_TRACE_SAMPLING_PERCENTAGE";
+const DASH0_TRACE_SAMPLING_PERCENTAGE_PLACEHOLDER: &str = "YOUR_DASH0_TRACE_SAMPLING_PERCENTAGE";
+const DEFAULT_DASH0_TRACE_SAMPLING_PERCENTAGE: &str = "20";
 const WEB_SECRET_NAME_PLACEHOLDER: &str = "YOUR_WEB_SECRET_NAME";
 const DASH0_EXPORTER_BLOCK: &str = r#"      # Render-time opt-in: the renderer removes this exporter when
       # the selected deployment has not supplied all three DASH0_* values.
@@ -123,6 +126,11 @@ const DASH0_COORDINATE_ENV_BLOCK: &str = r"            - name: DASH0_ENDPOINT
               value: YOUR_DASH0_ENDPOINT
             - name: DASH0_DATASET
               value: YOUR_DASH0_DATASET
+";
+const DASH0_TRACES_PIPELINE: &str = r"        traces/dash0:
+          receivers: [otlp]
+          processors: [memory_limiter, resourcedetection, redaction, filter/dash0_noise, tail_sampling/dash0, batch]
+          exporters: [otlp/dash0]
 ";
 
 /// The narrow GKE control-plane response required to connect a Rust
@@ -169,6 +177,7 @@ pub fn run_observability(opts: &ObservabilityOpts) -> Result<()> {
     let deployment = super::deployments::Deployment::load(&root, &opts.deployment)?;
     let cfg = ShipConfig::from_deployment(&deployment)?;
     let dash0 = dash0_coordinates(&deployment);
+    let dash0_sampling_percentage = dash0_sampling_percentage(&deployment)?;
     require_tools(&["kubectl", "gcloud"])?;
     if !opts.dry_run {
         require_auth(&["gcloud"])?;
@@ -178,7 +187,7 @@ pub fn run_observability(opts: &ObservabilityOpts) -> Result<()> {
         cfg.project_id, cfg.context
     );
     ensure_gsa_iam(&cfg, opts.dry_run)?;
-    apply_manifests(&cfg, dash0, opts.dry_run)?;
+    apply_manifests(&cfg, dash0, dash0_sampling_percentage, opts.dry_run)?;
     wire_binaries(&cfg, opts.dry_run)?;
     eprintln!(
         "==> observability ready. Roll the binaries so they pick up the endpoint \
@@ -410,18 +419,34 @@ fn exec_with_control_plane_retry(
 /// namespace). The collector config is in a `ConfigMap`, so a server-side
 /// apply can't catch a bad collector pipeline — the operator confirms the
 /// rollout settles afterward (this command waits on it).
-fn apply_manifests(cfg: &ShipConfig, dash0: Option<(&str, &str)>, dry_run: bool) -> Result<()> {
+fn apply_manifests(
+    cfg: &ShipConfig,
+    dash0: Option<(&str, &str)>,
+    dash0_sampling_percentage: &str,
+    dry_run: bool,
+) -> Result<()> {
     for (name, template) in [
         ("otel-collector.yaml", OTEL_COLLECTOR_YAML),
         ("collector-monitoring.yaml", COLLECTOR_MONITORING_YAML),
     ] {
-        let rendered = render_manifest(
-            template,
-            &cfg.project_id,
-            &cfg.namespace,
-            &cfg.secret_name,
-            dash0,
-        )?;
+        let rendered = if dash0_sampling_percentage == DEFAULT_DASH0_TRACE_SAMPLING_PERCENTAGE {
+            render_manifest(
+                template,
+                &cfg.project_id,
+                &cfg.namespace,
+                &cfg.secret_name,
+                dash0,
+            )?
+        } else {
+            render_manifest_with_sampling(
+                template,
+                &cfg.project_id,
+                &cfg.namespace,
+                &cfg.secret_name,
+                dash0,
+                dash0_sampling_percentage,
+            )?
+        };
         let path = std::env::temp_dir().join(format!("navigator-otel-{name}"));
         if dry_run {
             eprintln!(
@@ -705,13 +730,36 @@ pub fn render_manifest(
     secret_name: &str,
     dash0: Option<(&str, &str)>,
 ) -> Result<String> {
+    render_manifest_with_sampling(
+        template,
+        project_id,
+        namespace,
+        secret_name,
+        dash0,
+        DEFAULT_DASH0_TRACE_SAMPLING_PERCENTAGE,
+    )
+}
+
+fn render_manifest_with_sampling(
+    template: &str,
+    project_id: &str,
+    namespace: &str,
+    secret_name: &str,
+    dash0: Option<(&str, &str)>,
+    sampling_percentage: &str,
+) -> Result<String> {
     if secret_name.trim().is_empty() {
         bail!("NAVIGATOR_WEB_SECRET_NAME must be set before rendering observability manifests");
     }
+    validate_sampling_percentage(sampling_percentage)?;
     let rendered = template
         .replace(PROJECT_PLACEHOLDER, project_id)
         .replace(NAMESPACE_PLACEHOLDER, namespace)
-        .replace(WEB_SECRET_NAME_PLACEHOLDER, secret_name);
+        .replace(WEB_SECRET_NAME_PLACEHOLDER, secret_name)
+        .replace(
+            DASH0_TRACE_SAMPLING_PERCENTAGE_PLACEHOLDER,
+            sampling_percentage.trim(),
+        );
     let rendered = match dash0 {
         Some((endpoint, dataset)) => rendered
             .replace(DASH0_ENDPOINT_PLACEHOLDER, endpoint)
@@ -719,9 +767,32 @@ pub fn render_manifest(
         None => rendered
             .replace(DASH0_EXPORTER_BLOCK, "")
             .replace(DASH0_COORDINATE_ENV_BLOCK, "")
+            .replace(DASH0_TRACES_PIPELINE, "")
             .replace(", otlp/dash0", ""),
     };
     Ok(rendered)
+}
+
+fn validate_sampling_percentage(value: &str) -> Result<()> {
+    let parsed = value
+        .trim()
+        .parse::<f64>()
+        .with_context(|| format!("{DASH0_TRACE_SAMPLING_PERCENTAGE_KEY} must be a number"))?;
+    if !parsed.is_finite() || !(0.0..=100.0).contains(&parsed) {
+        bail!("{DASH0_TRACE_SAMPLING_PERCENTAGE_KEY} must be between 0 and 100 inclusive");
+    }
+    Ok(())
+}
+
+fn dash0_sampling_percentage(deployment: &super::deployments::Deployment) -> Result<&str> {
+    let value = deployment
+        .coordinates
+        .get(DASH0_TRACE_SAMPLING_PERCENTAGE_KEY)
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(DEFAULT_DASH0_TRACE_SAMPLING_PERCENTAGE);
+    validate_sampling_percentage(value)?;
+    Ok(value.trim())
 }
 
 /// Read the optional Dash0 coordinates from the selected deployment row.
@@ -1021,9 +1092,35 @@ mod tests {
         assert!(!rendered.contains("navigator-web-secrets"));
         assert!(rendered.contains("value: https://ingest.dash0.example"));
         assert!(rendered.contains("value: staging"));
+        assert!(rendered.contains("name: DASH0_TRACE_SAMPLING_PERCENTAGE"));
+        assert!(rendered.contains("value: 20"));
         assert!(rendered.contains("endpoint: ${env:DASH0_ENDPOINT}"));
         assert!(rendered.contains("Dash0-Dataset: \"${env:DASH0_DATASET}\""));
-        for signal in ["traces", "metrics", "logs"] {
+        let traces_start = rendered
+            .find("        traces:\n          receivers:")
+            .expect("collector is missing the Google Cloud trace pipeline");
+        let traces_end = rendered
+            .find("        traces/dash0:\n")
+            .expect("collector is missing the Dash0 trace pipeline");
+        let google_traces = &rendered[traces_start..traces_end];
+        assert!(google_traces.contains("tail_sampling/googlecloud"));
+        assert!(google_traces.contains("exporters: [googlecloud]"));
+        assert!(!google_traces.contains("filter/dash0_noise"));
+
+        let dash0_traces_end = rendered
+            .find("        metrics:\n")
+            .expect("collector is missing the metrics pipeline");
+        let dash0_traces = &rendered[traces_end..dash0_traces_end];
+        assert!(dash0_traces.contains("filter/dash0_noise"));
+        assert!(dash0_traces.contains("tail_sampling/dash0"));
+        assert!(dash0_traces.contains("exporters: [otlp/dash0]"));
+        assert!(dash0_traces.contains("attributes[\"http.route\"] == \"/health\""));
+        assert!(
+            dash0_traces.contains("attributes[\"http.response.status_code\"] < 400"),
+            "the noise filter must keep 4xx and 5xx responses"
+        );
+
+        for signal in ["metrics", "logs"] {
             let marker = format!("        {signal}:\n");
             let start = rendered
                 .find(&marker)
@@ -1083,10 +1180,16 @@ mod tests {
         .expect("collector manifest renders");
 
         assert!(!rendered.contains("otlp/dash0"));
+        assert!(!rendered.contains("traces/dash0:"));
+        assert!(!rendered.contains("filter/dash0_noise"));
         assert!(!rendered.contains(DASH0_ENDPOINT_PLACEHOLDER));
         assert!(!rendered.contains(DASH0_DATASET_PLACEHOLDER));
         for signal in ["traces", "metrics", "logs"] {
-            let marker = format!("        {signal}:\n");
+            let marker = if signal == "traces" {
+                "        traces:\n          receivers:".to_string()
+            } else {
+                format!("        {signal}:\n")
+            };
             let start = rendered
                 .find(&marker)
                 .unwrap_or_else(|| panic!("collector is missing the {signal} pipeline"));
@@ -1097,6 +1200,34 @@ mod tests {
             );
         }
         assert!(rendered.contains("project: my-org-prod"));
+    }
+
+    #[test]
+    fn dash0_sampling_percentage_is_environment_configurable_and_validated() {
+        let rendered = render_manifest_with_sampling(
+            OTEL_COLLECTOR_YAML,
+            "my-org-prod",
+            "example-a",
+            "sample-web-secrets",
+            Some(("https://ingest.dash0.example", "staging")),
+            "5.5",
+        )
+        .expect("a valid environment-specific rate renders");
+        assert!(rendered.contains("value: 5.5"));
+        assert!(rendered.contains("sampling_percentage: ${env:DASH0_TRACE_SAMPLING_PERCENTAGE}"));
+
+        let error = render_manifest_with_sampling(
+            OTEL_COLLECTOR_YAML,
+            "my-org-prod",
+            "example-a",
+            "sample-web-secrets",
+            Some(("https://ingest.dash0.example", "staging")),
+            "100.1",
+        )
+        .expect_err("a rate above 100 must be rejected");
+        assert!(error
+            .to_string()
+            .contains(DASH0_TRACE_SAMPLING_PERCENTAGE_KEY));
     }
 
     #[test]
@@ -1147,6 +1278,36 @@ mod tests {
         );
         assert!(dash0_coordinates(&deployment(Some("endpoint"), Some("dataset"), false)).is_none());
         assert!(dash0_coordinates(&deployment(Some(" "), Some("dataset"), true)).is_none());
+    }
+
+    #[test]
+    fn deployment_sampling_percentage_defaults_and_accepts_an_environment_override() {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        let deployment = |rate: Option<&str>| super::super::deployments::Deployment {
+            name: "sample".into(),
+            kms_key: "projects/sample/locations/global/keyRings/sample/cryptoKeys/sample".into(),
+            provisioned: true,
+            coordinates: rate
+                .map(|value| {
+                    BTreeMap::from([(
+                        DASH0_TRACE_SAMPLING_PERCENTAGE_KEY.to_string(),
+                        value.to_string(),
+                    )])
+                })
+                .unwrap_or_default(),
+            encrypted_keys: BTreeSet::new(),
+        };
+
+        assert_eq!(
+            dash0_sampling_percentage(&deployment(None)).expect("default is valid"),
+            DEFAULT_DASH0_TRACE_SAMPLING_PERCENTAGE
+        );
+        assert_eq!(
+            dash0_sampling_percentage(&deployment(Some("5"))).expect("override is valid"),
+            "5"
+        );
+        assert!(dash0_sampling_percentage(&deployment(Some("-1"))).is_err());
     }
 
     /// Every `secretKeyRef` the bundled manifests carry is `optional: true`.

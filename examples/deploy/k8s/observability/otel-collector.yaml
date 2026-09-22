@@ -242,11 +242,31 @@ data:
         # NEW attribute key shows up as a rising redaction count (Step 7
         # watches this), without ever logging the dropped value.
         summary: debug
+      # Dash0-only noise filter. These are successful operational or static
+      # HTTP requests that carry no application decision. The status guard
+      # keeps every 4xx/5xx response; a missing status is kept because
+      # error_mode=ignore leaves evaluation errors untouched.
+      filter/dash0_noise:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.route"] == "/health" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/readyz" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/app/health" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/app/readyz" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/version" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/robots.txt" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/sitemap.xml" and attributes["http.response.status_code"] < 400'
+            - 'attributes["http.route"] == "/llms.txt" and attributes["http.response.status_code"] < 400'
+            - 'IsMatch(attributes["http.route"], "^/(assets|public)/") and attributes["http.response.status_code"] < 400'
       # Tail sampling (TRACES only — sampling is a trace concept). The live
       # Cloud Trace view is the SAMPLED, lossy stream; the Iceberg lake (Step 5)
       # receives the FULL unsampled stream and is the integrity source. So
       # keep-rules favour signal: always keep errors and audit-tagged traces;
       # probabilistically sample the rest to cap Cloud Trace ingestion cost.
+      #
+      # This processor keeps the existing Google Cloud behavior. The separate
+      # Dash0 processor below reads its rate from the deployment environment.
       #
       # NOTE on replicas: tail sampling needs all spans of a trace at one
       # collector instance. A single emitting process holds a sticky gRPC
@@ -256,7 +276,7 @@ data:
       # because the unsampled lake is the source of truth and ERROR spans are
       # kept on whichever replica sees them. The 2-tier loadbalancing-exporter
       # upgrade is the future fix if exactness on the live view is needed.
-      tail_sampling:
+      tail_sampling/googlecloud:
         decision_wait: 10s
         num_traces: 50000
         policies:
@@ -273,6 +293,23 @@ data:
             type: probabilistic
             probabilistic:
               sampling_percentage: 20
+      tail_sampling/dash0:
+        decision_wait: 10s
+        num_traces: 50000
+        policies:
+          - name: keep-errors
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+          - name: keep-audit
+            type: boolean_attribute
+            boolean_attribute:
+              key: audit
+              value: true
+          - name: probabilistic-rest
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: ${env:DASH0_TRACE_SAMPLING_PERCENTAGE}
       batch:
         timeout: 10s
     exporters:
@@ -291,8 +328,12 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, resourcedetection, redaction, tail_sampling, batch]
-          exporters: [googlecloud, otlp/dash0]
+          processors: [memory_limiter, resourcedetection, redaction, tail_sampling/googlecloud, batch]
+          exporters: [googlecloud]
+        traces/dash0:
+          receivers: [otlp]
+          processors: [memory_limiter, resourcedetection, redaction, filter/dash0_noise, tail_sampling/dash0, batch]
+          exporters: [otlp/dash0]
         metrics:
           receivers: [otlp, prometheus/self]
           processors: [memory_limiter, resourcedetection, redaction, batch]
@@ -347,6 +388,10 @@ spec:
               value: YOUR_DASH0_ENDPOINT
             - name: DASH0_DATASET
               value: YOUR_DASH0_DATASET
+            # Dash0-only trace sampling. The selected deployment may set a
+            # different rate without changing the Google Cloud trace lane.
+            - name: DASH0_TRACE_SAMPLING_PERCENTAGE
+              value: YOUR_DASH0_TRACE_SAMPLING_PERCENTAGE
             # `optional: true` is the repository-wide rule for every
             # `secretKeyRef` against the selected deployment Secret (see
             # docs/cronjobs.md): a missing key must never block a pod from

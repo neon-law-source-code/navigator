@@ -17,6 +17,7 @@
 pub mod asset_config;
 pub mod dri_digest;
 pub mod email_config;
+pub mod email_summary;
 pub mod general_nag;
 pub mod health;
 pub mod heartbeat;

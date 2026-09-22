@@ -15,6 +15,7 @@ use billing_workflows::reconcile::ReconcileInvoicesService;
 use restate_sdk::prelude::*;
 use workflows::{EmailService, SlackOpsDelivery};
 use workflows_service::dri_digest::DriDigestService;
+use workflows_service::email_summary::{EmailSummaryService, SummaryProviders};
 use workflows_service::general_nag::GeneralNagService;
 use workflows_service::heartbeat::HeartbeatService;
 use workflows_service::request_identity::{apply_identity_key, install_crypto_provider};
@@ -24,7 +25,7 @@ use workflows_service::{
 };
 
 macro_rules! bind_common_services {
-    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr, $general_channel:expr, $finance_channel:expr, $simulated_matters:expr) => {
+    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $email_summary:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr, $general_channel:expr, $finance_channel:expr, $simulated_matters:expr) => {
         $endpoint
             .bind(NotationService::new(
                 $surreal.clone(),
@@ -35,6 +36,7 @@ macro_rules! bind_common_services {
                 $surreal.clone(),
                 $slack_bot.clone(),
             ))
+            .bind($email_summary)
             .bind(ArchivesService::new($notifier.clone()))
             .bind(HeartbeatService::new($notifier.clone()))
             .bind(BillingCanaryService::new($ops_delivery.clone()))
@@ -159,6 +161,13 @@ async fn main() -> anyhow::Result<()> {
     let storage = cloud::from_env()
         .await
         .context("configure object storage")?;
+    let summary_providers = SummaryProviders::from_env().context("configure summary providers")?;
+    let email_summary = EmailSummaryService::new(
+        surreal.clone(),
+        storage.clone(),
+        slack_bot.clone(),
+        summary_providers,
+    );
 
     let listen: SocketAddr = std::env::var("WORKFLOWS_SERVICE_LISTEN")
         .unwrap_or_else(|_| "0.0.0.0:9080".into())
@@ -167,8 +176,8 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!(%listen, "workflows-service listening");
 
-    // One endpoint hosts every workflow: the `Notation` virtual object and
-    // the `Archives` nightly-export, `Heartbeat`
+    // One endpoint hosts every workflow: the `Notation` virtual object,
+    // `EmailSummary`, and the `Archives` nightly-export, `Heartbeat`
     // durable-execution liveness canary, `BillingCanary`, `BillingDigest`
     // (daily GCP cost email), `ReconcileInvoices`, `DriDigest` (nightly
     // project-DRI Slack notice), and `GeneralNag` (daily `#general` jab)
@@ -182,6 +191,7 @@ async fn main() -> anyhow::Result<()> {
             surreal,
             email,
             storage,
+            email_summary,
             notifier,
             ops_delivery,
             slack_bot,

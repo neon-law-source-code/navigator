@@ -421,8 +421,8 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         attachment_scanner,
         inbound_email_secret,
         summary_intake: None,
-        // Parsed so a present-but-empty Deploy value fails boot. The signed
-        // summary lane still stays off until its remaining intake keys land.
+        // The summary lane stays off until the typed feature configuration
+        // supplies its allowlist, signing key, worker ingress, and run shape.
         email_events_secret,
         sendgrid_events_public_key,
         bootstrap_owner_email: crate::oauth::bootstrap_owner_email_from_env(),

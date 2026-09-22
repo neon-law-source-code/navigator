@@ -144,6 +144,7 @@ const UNIQUE_INDEX_NAMES: &[&str] = &[
     "email_conversation_token",
     "communication_channel_source_ref",
     "email_receipt_identity",
+    "email_delivery_receipt",
     "visitor_route_count_bucket",
 ];
 

@@ -1109,6 +1109,35 @@ DEFINE FIELD OVERWRITE updated_at ON email_receipt TYPE datetime DEFAULT time::n
 DEFINE INDEX OVERWRITE email_receipt_identity ON email_receipt
     FIELDS receiving_mailbox, deployment, raw_digest UNIQUE;
 
+-- `email_delivery`: the one Slack delivery state for an admitted summary.
+-- An unknown state is deliberate: an external acceptance may have happened
+-- even when the process lost the response, so replay requires reconciliation.
+DEFINE TABLE IF NOT EXISTS email_delivery SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE receipt_id ON email_delivery TYPE record<email_receipt>;
+DEFINE FIELD OVERWRITE channel_id ON email_delivery TYPE string;
+DEFINE FIELD OVERWRITE state ON email_delivery TYPE string
+    ASSERT $value IN ['not_attempted', 'sending', 'unknown', 'confirmed', 'failed'];
+DEFINE FIELD OVERWRITE current_correlation_id ON email_delivery TYPE option<string>;
+DEFINE FIELD OVERWRITE slack_timestamp ON email_delivery TYPE option<string>;
+DEFINE FIELD OVERWRITE last_error ON email_delivery TYPE option<string>;
+DEFINE FIELD OVERWRITE reconciled_by ON email_delivery TYPE option<string>;
+DEFINE FIELD OVERWRITE reconciliation ON email_delivery TYPE option<string>;
+DEFINE FIELD OVERWRITE reconciled_at ON email_delivery TYPE option<datetime>;
+DEFINE FIELD OVERWRITE inserted_at ON email_delivery TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON email_delivery TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE email_delivery_receipt ON email_delivery FIELDS receipt_id UNIQUE;
+
+-- `email_delivery_attempt`: append-only evidence for every admitted send.
+DEFINE TABLE IF NOT EXISTS email_delivery_attempt SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE delivery_id ON email_delivery_attempt TYPE record<email_delivery>;
+DEFINE FIELD OVERWRITE correlation_id ON email_delivery_attempt TYPE string;
+DEFINE FIELD OVERWRITE state ON email_delivery_attempt TYPE string
+    ASSERT $value IN ['sending', 'unknown', 'confirmed', 'failed'];
+DEFINE FIELD OVERWRITE slack_timestamp ON email_delivery_attempt TYPE option<string>;
+DEFINE FIELD OVERWRITE error ON email_delivery_attempt TYPE option<string>;
+DEFINE FIELD OVERWRITE inserted_at ON email_delivery_attempt TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON email_delivery_attempt TYPE datetime DEFAULT time::now();
+
 -- `questions`: one prompt presented to a respondent during template
 -- traversal. Seeded from template frontmatter by `cli import`, so the
 -- lawyer surface is a transparency listing only — no add, edit, or delete.

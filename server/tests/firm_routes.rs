@@ -215,13 +215,14 @@ async fn no_firm_page_still_markets_the_retired_consumer_plan() {
 async fn the_home_books_consultations_and_retires_separate_service_pages() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
-    assert!(body.contains("Book Consultation"));
+    assert!(body.contains("Book a consultation"));
     assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("Equity") && body.contains("$5,000"));
-    assert!(body
-        .contains("Employee onboarding and offboarding, IP assignment, and bonus compensation."));
-    assert!(body.contains("Equity and investor relations."));
-    assert!(body.contains("Your master services agreement for your company to sell."));
+    assert!(body.contains("Onboard and offboard contractors and employees worldwide."));
+    assert!(body.contains("Cap table setup and equity plans for your team and investors."));
+    assert!(body.contains(
+        "We deliver service agreements to your CRM, inbox, or wherever your team needs them."
+    ));
     assert!(body.contains("img/neon-home/neon-home-presentation.mp4"));
     assert!(body.contains("<video") && body.contains("video/mp4"));
     assert!(body.contains("href=\"/notations\""));
@@ -826,7 +827,7 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
     assert_eq!(body.matches("<h1").count(), 1);
     for text in [
         "Keep building.",
-        "Counsel for emerging technology companies.",
+        "Emerging Technologies Counsel",
         "Pause motion",
         "deal-exhibition",
         "site-header",
@@ -834,10 +835,20 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
     ] {
         assert!(body.contains(text), "missing {text}: {body}");
     }
+    let experience = body
+        .find("Accelerating legal judgment with bespoke software.")
+        .expect("experience section");
+    let pricing = body.find("id=\"pricing\"").expect("pricing anchor");
+    assert!(experience < pricing, "show experience before fees");
+    assert!(body.contains("We built a battle-tested 30 PB data warehouse for Apple Finance"));
+    assert!(body.contains("Notation Packages"));
+    assert!(body.contains("Build a legal library to suit your company"));
+    assert!(body.matches("Keep building.").count() >= 2);
+    assert!(body.contains(r#"href="/presentations/rust-in-peace""#));
+    assert!(body.contains(r#"href="/workshops""#));
     assert!(body.contains(r##"href="#pricing""##));
-    // The anchor rides the pricing grid, not the section that opens with the
-    // presentation video, so "See pricing" lands on the membership card.
-    assert!(body.contains(r#"id="pricing" class="company-pricing__grid""#));
+    // The pricing anchor includes the starting retainer and withdrawal terms.
+    assert!(body.contains(r#"id="pricing" class="company-pricing""#));
     assert!(body.contains(r#"for="pause-deal-flow""#));
     assert!(body.contains(r#"id="pause-deal-flow""#));
     assert!(body.contains(r#"class="deal-exhibition__scene" aria-hidden="true""#));
@@ -845,22 +856,29 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
 }
 
 #[tokio::test]
-async fn home_separates_membership_review_and_litigation_fees() {
+async fn home_explains_retainer_and_additional_fees() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     for text in [
         "$50",
-        "$100",
-        "$300",
-        "$500",
+        "$10,000 retainer",
+        "We draw the plan charge daily.",
+        "We draw each charge only after we perform the service.",
+        "Your engagement letter explains scope, rates, withdrawal timing, and refunds.",
         "$1,000",
         "$3,000",
         "$5,000",
-        "3 business days",
-        "Same day",
+        "We review contracts within five business days of acceptance as part of your plan",
+        "Example charges from a retainer",
+        "Same-day contract size",
         "5 p.m. PST",
-        "Lawyer on file when you need",
-        "eligible jurisdictions",
+        "Tell others Neon Law is your counsel",
+        "Act as your registered agent in certain jurisdictions",
+        "Shared Slack channel for privileged communication",
+        "Revisions at Scale",
+        "Starting retainer",
+        "Illustrative earned charges",
+        "Request same-day review before 5 p.m. PST. We confirm its scope, size, and fee before beginning.",
         "per active case",
         "discovery-data storage",
         "BUSL-1.1",
@@ -868,8 +886,12 @@ async fn home_separates_membership_review_and_litigation_fees() {
     ] {
         assert!(body.contains(text), "missing fee or scope: {text}");
     }
-    assert!(body.contains(r#"scope="col""#));
-    assert!(body.contains(r#"scope="row""#));
+    assert!(!body.contains("We hold your retainer in trust."));
+    assert!(!body.contains(
+        "We review all contracts within five business days of acceptance as part of your plan."
+    ));
+    assert!(!body.contains("Revisions at scale."));
+    assert!(!body.contains("30 days cost $1,500."));
     assert!(body.contains(r#"href="/navigator""#), "missing /navigator");
     // The two sibling practices are named in the same section either way; the
     // launch gate decides whether each name is a link. A held-out practice's

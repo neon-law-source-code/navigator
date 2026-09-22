@@ -1,53 +1,72 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Counsel for emerging technology companies. $50 a day for membership,
-  then fixed fees for notation drafting and review. Litigation from $5,000
-  a month per active case.
+  We help technology founders handle contracts, hiring, and growth.
+  Start with a $10,000 retainer. Your $50-a-day plan includes contract review within five business days.
 heading: Keep building.
-lead: Counsel for emerging technology companies.
-contact_label: Book Consultation
+lead: Emerging Technologies Counsel
+contact_label: Book a consultation
+service:
+  heading: Accelerating legal judgment with bespoke software.
+  body:
+    - - text: Our lawyers bring years of experience to decisions about contracts, hiring, equity, and disputes.
+    - - text: We built a battle-tested 30 PB data warehouse for Apple Finance and have taught agentic coding to developers worldwide.
+    - - text: "Explore our "
+      - text: workshops
+        href: /workshops
+      - text: " or watch "
+      - text: Rust in Peace
+        href: /presentations/rust-in-peace
+      - text: " to see how we build Navigator."
 practices_heading: ""
 practices: []
 company:
   booking_href: https://calendar.notion.so/meet/shicholas/or15n4yy7
   pricing_link: See pricing
-  hero_note: "$50/day membership. Predictable notation pricing."
+  retainer_note: "We draw each charge only after we perform the service. We return unearned funds when the engagement ends. Your engagement letter explains scope, rates, withdrawal timing, and refunds."
   flow_caption: Notation workflow
   flow_steps: [Scope, Draft, Review, Sign]
   packages: [MSA, Employment, Cap Table]
   pause_label: Pause motion
-  pricing_heading: Membership and notation pricing
+  pricing_heading: Start with a $10,000 retainer.
   video_label: Neon Law presentation
-  membership_label: Membership
+  membership_label: Your legal plan
   membership_price: "$50"
   membership_unit: / day
-  membership_body: Your company's counsel relationship, ready for what comes next.
+  membership_body: We draw the plan charge daily.
+  retainer_amount: 10000
   membership_features:
-    - Access to our template library
-    - Registered-agent service in eligible jurisdictions
-    - Lawyer on file when you need
-    - Access to privileged shared Slack channel
-  review_heading: Notation review
-  review_body: A notation is a legal work package. We size the scope before work begins.
-  review_columns: [Size, 3 business days, Same day]
+    - We review contracts within five business days of acceptance as part of your plan
+    - Access our template library
+    - Act as your registered agent in certain jurisdictions
+    - Tell others Neon Law is your counsel
+    - Shared Slack channel for privileged communication
+  simulator_heading: Revisions at Scale
+  simulator_body: Example charges from a retainer
+  simulator_days_label: Plan days
+  simulator_size_label: Same-day contract size
+  simulator_size_hint: Choose a size to estimate the same-day fee.
+  simulator_plan_label: Plan charges after services
+  simulator_review_label: Same-day review after service
+  simulator_total_label: Illustrative earned charges
+  simulator_note: Request same-day review before 5 p.m. PST. We confirm its scope, size, and fee before beginning.
   review_rows:
-    - [Small, "$100", "$1,000"]
-    - [Medium, "$300", "$3,000"]
-    - [Large, "$500", "$5,000"]
-  review_note: Same-day requests must arrive before 5 p.m. PST. Scope and delivery are confirmed when we accept the work.
-  drafting_heading: Notation packages
+    - [Small, "$1,000"]
+    - [Medium, "$3,000"]
+    - [Large, "$5,000"]
+  drafting_heading: Notation Packages
+  drafting_body: Build a legal library to suit your company's needs.
   drafting_packages:
-    - [MSA, "$5,000", "Your master services agreement for your company to sell."]
-    - [Employment, "$5,000", "Employee onboarding and offboarding, IP assignment, and bonus compensation."]
-    - [Equity, "$5,000", One-time setup on Carta or our cap-table solution. Equity and investor relations.]
+    - [Master services agreement, "$5,000", "We deliver service agreements to your CRM, inbox, or wherever your team needs them."]
+    - [Employment, "$5,000", "Onboard and offboard contractors and employees worldwide."]
+    - [Equity, "$5,000", "Cap table setup and equity plans for your team and investors."]
   closing_heading: Keep building.
-  closing_body: "We'll do the paperwork."
-  litigation_heading: When business gets contentious.
-  litigation_link: Book Consultation
+  closing_body: "We handle the legal work."
+  litigation_heading: Protect what you build.
+  litigation_link: Discuss your case
   litigation_price: "$5,000+"
   litigation_unit: / month per active case
-  litigation_body: Litigation, organized into notations. All for your zealous advocacy.
-  litigation_note: You are responsible for legal fees and case expenses, including discovery-data storage and research fees. Your retainer sets the scope.
+  litigation_body: We represent your company in commercial, employment, intellectual property, and investor disputes.
+  litigation_note: You pay legal fees and case expenses, including discovery-data storage and research fees. Your retainer sets the scope.
   people_heading: For the people building it.
   people_body: Immigration and estate planning support for your employees. Separately engaged through our sibling practices.
   immigration_label: Abhaya / Immigration

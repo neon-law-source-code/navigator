@@ -121,6 +121,28 @@ pub struct FooterNavLink {
     pub href: String,
 }
 
+/// One social profile the footer links under the wordmark.
+///
+/// `network` selects the mark: `x`, `linkedin`, or `youtube`. An unknown
+/// network still links, with the label and no mark, rather than dropping the
+/// profile.
+#[derive(Clone, PartialEq, Eq)]
+pub struct FooterSocialLink {
+    pub label: String,
+    pub href: String,
+    pub network: String,
+}
+
+/// The mark for a known network, or `None` when the footer has no drawing of it.
+fn social_icon(network: &str) -> Option<IconName> {
+    match network {
+        "x" => Some(IconName::X),
+        "linkedin" => Some(IconName::LinkedIn),
+        "youtube" => Some(IconName::YouTube),
+        _ => None,
+    }
+}
+
 /// Any multi-brand family uses two columns on desktop and one on mobile.
 pub const FAMILY_TWO_COLUMN_THRESHOLD: usize = 2;
 
@@ -365,9 +387,15 @@ pub fn SiteFooterLegal(
     #[props(default)]
     navigator_version: String,
     #[props(default)] navigator_href: String,
+    /// The firm's own profiles, drawn under the wordmark. Empty renders no
+    /// row — a deploy that renamed the firm publishes none, because the
+    /// accounts belong to this firm.
+    #[props(default)]
+    social: Vec<FooterSocialLink>,
 ) -> Element {
     let has_contact = !contact_email.is_empty() || !phone.is_empty() || !offices.is_empty();
-    let has_masthead = !logo_href.is_empty() || !brand_name.is_empty() || !nav.is_empty();
+    let has_masthead =
+        !logo_href.is_empty() || !brand_name.is_empty() || !nav.is_empty() || !social.is_empty();
     // The mark's contents, built once: the element around them is an anchor or
     // a plain box depending on whether the deploy published a home to link to,
     // and writing the image and wordmark out under each branch is how the two
@@ -397,21 +425,49 @@ pub fn SiteFooterLegal(
                         // header carries, so the bottom of the page says whose
                         // page it is. The image stays decorative (`alt=""`)
                         // because the text beside it is the label.
-                        if !logo_href.is_empty() || !brand_name.is_empty() {
-                            // Linked when there is a home to link to, and the
-                            // anchor carries the accessible name for the same
-                            // reason the header's does: the image is decorative
-                            // and the wordmark beside it is the label, so a
-                            // screen reader announcing both would say the brand
-                            // twice.
-                            if home_href.is_empty() {
-                                div { class: "site-footer__brand", {mark} }
-                            } else {
-                                a {
-                                    class: "site-footer__brand",
-                                    href: "{home_href}",
-                                    "aria-label": "{brand_name} home",
-                                    {mark}
+                        if !logo_href.is_empty() || !brand_name.is_empty() || !social.is_empty() {
+                            // The profiles sit in the same cell as the mark, so
+                            // the page list keeps the columns it lines up with
+                            // the address tiles. A second grid item here would
+                            // land on top of that list.
+                            div { class: "site-footer__identity",
+                                if !logo_href.is_empty() || !brand_name.is_empty() {
+                                    // Linked when there is a home to link to, and the
+                                    // anchor carries the accessible name for the same
+                                    // reason the header's does: the image is decorative
+                                    // and the wordmark beside it is the label, so a
+                                    // screen reader announcing both would say the brand
+                                    // twice.
+                                    if home_href.is_empty() {
+                                        div { class: "site-footer__brand", {mark} }
+                                    } else {
+                                        a {
+                                            class: "site-footer__brand",
+                                            href: "{home_href}",
+                                            "aria-label": "{brand_name} home",
+                                            {mark}
+                                        }
+                                    }
+                                }
+                                if !social.is_empty() {
+                                    nav { class: "site-footer__social", "aria-label": "Social",
+                                        ul { class: "site-footer__social-list",
+                                            for link in social.iter() {
+                                                li {
+                                                    class: "site-footer__social-item",
+                                                    key: "{link.href}",
+                                                    ExternalLink {
+                                                        class: "site-footer__social-link".to_string(),
+                                                        href: link.href.clone(),
+                                                        if let Some(icon) = social_icon(&link.network) {
+                                                            Icon { name: icon }
+                                                        }
+                                                        span { "{link.label}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1576,6 +1632,89 @@ mod tests {
         }
         let out = ssr(app);
         assert!(!out.contains("site-footer__nav"), "no empty row: {out}");
+        assert!(
+            !out.contains("site-footer__social"),
+            "no empty social row: {out}"
+        );
+    }
+
+    fn social_profiles() -> Vec<FooterSocialLink> {
+        [
+            ("x", "X", "https://x.com/NeonLawUSA"),
+            (
+                "linkedin",
+                "LinkedIn",
+                "https://www.linkedin.com/company/neon-law-usa",
+            ),
+            (
+                "youtube",
+                "YouTube",
+                "https://www.youtube.com/@neon-law-firm",
+            ),
+        ]
+        .into_iter()
+        .map(|(network, label, href)| FooterSocialLink {
+            network: network.to_string(),
+            label: label.to_string(),
+            href: href.to_string(),
+        })
+        .collect()
+    }
+
+    /// The profiles sit under the wordmark, each named and opening off-site.
+    ///
+    /// The label is the accessible name. The X mark alone is not one a reader
+    /// can rely on, and the off-site arrow says the link leaves the site.
+    #[test]
+    fn renders_the_firms_social_profiles_under_the_wordmark() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Shook Law PLLC".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    brand_name: "Neon Law".to_string(),
+                    home_href: "/".to_string(),
+                    social: social_profiles(),
+                }
+            }
+        }
+        let out = ssr(app);
+        let wordmark = out
+            .find(r#"class="site-footer__wordmark""#)
+            .expect("wordmark");
+        let social_at = out.find(r#"aria-label="Social""#).expect("social landmark");
+        assert!(
+            wordmark < social_at,
+            "profiles sit under the wordmark: {out}"
+        );
+        let social = out
+            .split_once(r#"aria-label="Social""#)
+            .and_then(|(_, rest)| rest.split_once("</nav>"))
+            .map(|(row, _)| row)
+            .expect("the social row is one landmark");
+        let mut previous = 0;
+        for (label, href) in [
+            ("X", "https://x.com/NeonLawUSA"),
+            ("LinkedIn", "https://www.linkedin.com/company/neon-law-usa"),
+            ("YouTube", "https://www.youtube.com/@neon-law-firm"),
+        ] {
+            let at = social
+                .find(href)
+                .unwrap_or_else(|| panic!("{href} missing: {social}"));
+            assert!(at >= previous, "{label} is out of order: {social}");
+            previous = at;
+            assert!(
+                social.contains(&format!(">{label}</span>")),
+                "{label} is not named: {social}"
+            );
+        }
+        assert_eq!(social.matches(r#"target="_blank""#).count(), 3, "{social}");
+        assert_eq!(
+            social.matches(r#"rel="noopener noreferrer""#).count(),
+            3,
+            "{social}"
+        );
     }
 
     /// The footer names the release serving the page, right beside the

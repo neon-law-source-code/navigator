@@ -33,14 +33,14 @@ use crate::components::{
     wire_runs, Accordion, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb, Card,
     CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
     CodeBlock, Column, ConfirmDelete, CopyRun, DataTable, ExternalLink, Field, FooterAttorney,
-    FooterBarLicense, FooterBrandLink, FooterMembership, FooterNavLink, FooterOffice, FormCard,
-    GitHubStars, Hero, HeroAlign, HeroLevel, Honeypot, Icon, IconName, LawyerPortalBreadcrumb,
-    LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter, NavigatorFooterLink,
-    NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs, PersonChoice, PersonPicker,
-    PricingCard, PricingSection, Progress, PublicShell, QuestionStage, RowActions, RunParagraph,
-    SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage,
-    StageWidth, StepMeta, Stepper, StepperPanel, Tab, Tabs, TestimonialCard, TestimonialSection,
-    Toast, ToastTone, THEME_STYLESHEET_HREF,
+    FooterBarLicense, FooterBrandLink, FooterMembership, FooterNavLink, FooterOffice,
+    FooterSocialLink, FormCard, GitHubStars, Hero, HeroAlign, HeroLevel, Honeypot, Icon, IconName,
+    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
+    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
+    PersonChoice, PersonPicker, PricingCard, PricingSection, Progress, PublicShell, QuestionStage,
+    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
+    SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel, Tab, Tabs,
+    TestimonialCard, TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -1241,6 +1241,7 @@ fn SiteFooterShowcase() -> Element {
                 // covers its landmark, heading, and off-site link.
                 brands: demo_family(),
                 memberships: demo_memberships(),
+                social: demo_social(),
                 // The open-source line, driven with a count so the gallery
                 // shows the shape the deployed footer renders. The
                 // count-less variant is shown beside the standalone
@@ -1256,6 +1257,30 @@ fn SiteFooterShowcase() -> Element {
             }
         }
     }
+}
+
+/// The firm's published profiles, the same three the live footer links.
+fn demo_social() -> Vec<FooterSocialLink> {
+    [
+        ("x", "X", "https://x.com/NeonLawUSA"),
+        (
+            "linkedin",
+            "LinkedIn",
+            "https://www.linkedin.com/company/neon-law-usa",
+        ),
+        (
+            "youtube",
+            "YouTube",
+            "https://www.youtube.com/@neon-law-firm",
+        ),
+    ]
+    .into_iter()
+    .map(|(network, label, href)| FooterSocialLink {
+        network: network.to_string(),
+        label: label.to_string(),
+        href: href.to_string(),
+    })
+    .collect()
 }
 
 /// Two sample offices for the footer showcase. Synthetic, like every other

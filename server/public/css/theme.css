@@ -1145,6 +1145,64 @@ a.nav-pagination__link:hover {
   white-space: nowrap;
 }
 
+/* The firm's profiles, in the same masthead cell as the mark they belong to.
+   The marks take the host's primary, not X, LinkedIn, or YouTube's own
+   colours: the footer wears one palette. The names stay visible, because the
+   X mark alone is not a name a reader can rely on. */
+.site-footer__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.site-footer__social {
+  margin: 0;
+  padding: 0;
+}
+
+.site-footer__social-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-footer__social-item {
+  margin: 0;
+}
+
+.site-footer__social-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  color: var(--nav-color-text-muted);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.nav-theme a.site-footer__social-link {
+  color: var(--nav-color-text-muted);
+  text-decoration: none;
+}
+
+.nav-theme a.site-footer__social-link:hover,
+.nav-theme a.site-footer__social-link:focus-visible {
+  color: var(--nav-color-text);
+  text-decoration: none;
+}
+
+.site-footer__social-link > .nav-icon:first-child {
+  flex: none;
+  font-size: 1.05rem;
+  color: var(--nav-color-primary);
+}
+
 /* The pages the header does not carry. A list at the top of the footer,
    because a reader who scrolled to the bottom looking for one of them should
    meet it before the contact detail. */
@@ -1740,7 +1798,8 @@ a.nav-pagination__link:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .site-footer__brand {
+  .site-footer__brand,
+  .site-footer__identity {
     justify-self: start;
   }
 

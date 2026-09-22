@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::{
     FooterAttorney, FooterBarLicense, FooterBrandLink, FooterMembership, FooterNavLink,
-    FooterOffice, SiteFooterLegal,
+    FooterOffice, FooterSocialLink, SiteFooterLegal,
 };
 
 /// One nav destination, resolved from the brand for the header.
@@ -67,6 +67,16 @@ pub struct ChromeBrand {
     /// block reads the same on a public page as it does inside `/app`.
     #[serde(default)]
     pub byline: String,
+}
+
+/// One social profile the public footer links under the wordmark.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ChromeSocial {
+    pub label: String,
+    pub href: String,
+    /// `x`, `linkedin`, or `youtube` — which mark the footer draws.
+    #[serde(default)]
+    pub network: String,
 }
 
 /// One association affiliation for the public footer's standing line. Resolved
@@ -177,6 +187,11 @@ pub struct PublicChrome {
     /// Empty renders none.
     #[serde(default)]
     pub memberships: Vec<ChromeMembership>,
+    /// Neon Law's social profiles, under the wordmark. Empty on every other
+    /// house brand, and when a mounted bundle renamed the firm. See
+    /// `views::brand::firm_social`.
+    #[serde(default)]
+    pub social: Vec<ChromeSocial>,
     /// How many people have starred that repository, or `None` when the
     /// process has not fetched it yet.
     ///
@@ -294,6 +309,15 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
                     standing: membership.standing.clone(),
                     href: membership.href.clone(),
                     logo_href: membership.logo_href.clone(),
+                })
+                .collect(),
+            social: chrome
+                .social
+                .iter()
+                .map(|profile| FooterSocialLink {
+                    label: profile.label.clone(),
+                    href: profile.href.clone(),
+                    network: profile.network.clone(),
                 })
                 .collect(),
         }
@@ -450,7 +474,21 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
                 },
             })
             .collect(),
+        social: chrome_social(),
     }
+}
+
+/// Neon Law's profiles for the footer. Empty on every other house brand.
+#[cfg(feature = "server")]
+fn chrome_social() -> Vec<ChromeSocial> {
+    views::brand::firm_social()
+        .iter()
+        .map(|profile| ChromeSocial {
+            label: profile.label.to_string(),
+            href: profile.href.to_string(),
+            network: profile.network.to_string(),
+        })
+        .collect()
 }
 
 /// Resolve the firm host's public chrome, reading the auth-aware utility group
@@ -599,18 +637,48 @@ mod tests {
         use views::brand::{scope, DEFAULT_BRANDING, DELETE_YOUR_DATA_BRANDING};
 
         scope(&DEFAULT_BRANDING, async {
+            let chrome = firm_public_chrome(Vec::new());
+            assert_eq!(chrome.tokens_href, "/public/css/brand-neon-tokens.css");
+            let profiles: Vec<(&str, &str)> = chrome
+                .social
+                .iter()
+                .map(|profile| (profile.label.as_str(), profile.href.as_str()))
+                .collect();
             assert_eq!(
-                firm_public_chrome(Vec::new()).tokens_href,
-                "/public/css/brand-neon-tokens.css"
+                profiles,
+                [
+                    ("X", "https://x.com/NeonLawUSA"),
+                    ("LinkedIn", "https://www.linkedin.com/company/neon-law-usa"),
+                    ("YouTube", "https://www.youtube.com/@neon-law-firm"),
+                ]
             );
         })
         .await;
 
         scope(&DELETE_YOUR_DATA_BRANDING, async {
+            let chrome = firm_public_chrome(Vec::new());
             assert_eq!(
-                firm_public_chrome(Vec::new()).tokens_href,
+                chrome.tokens_href,
                 "/public/css/brand-delete-your-data-tokens.css"
             );
+            assert!(
+                chrome.social.is_empty(),
+                "DeleteYourData.com does not publish Neon Law's profiles"
+            );
+        })
+        .await;
+    }
+
+    /// A bundle that renames the firm does not inherit Neon Law's profiles.
+    #[tokio::test]
+    async fn a_renamed_firm_publishes_no_social_profiles() {
+        use views::brand::{scope, Branding};
+        use views::brand_bundle::BrandManifest;
+
+        let manifest: BrandManifest =
+            serde_yaml::from_str("version: 1\nbrand:\n  firm: Cascade Law\n").unwrap();
+        scope(Branding::from_manifest(&manifest), async {
+            assert!(firm_public_chrome(Vec::new()).social.is_empty());
         })
         .await;
     }

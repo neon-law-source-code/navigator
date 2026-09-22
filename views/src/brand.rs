@@ -333,6 +333,37 @@ pub struct FirmMembership {
     pub logo_key: &'static str,
 }
 
+/// One public profile Neon Law keeps. The footer links it under the wordmark
+/// on the Neon Law site only. Every other house brand publishes none, and so
+/// does a bundle that renames the firm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FirmSocial {
+    /// Which mark the footer draws: `x`, `linkedin`, or `youtube`.
+    pub network: &'static str,
+    pub label: &'static str,
+    pub href: &'static str,
+}
+
+/// Neon Law's own profiles, in the order its footer shows them. Only
+/// [`DEFAULT_BRANDING`] carries this slice.
+const FIRM_SOCIAL: &[FirmSocial] = &[
+    FirmSocial {
+        network: "x",
+        label: "X",
+        href: "https://x.com/NeonLawUSA",
+    },
+    FirmSocial {
+        network: "linkedin",
+        label: "LinkedIn",
+        href: "https://www.linkedin.com/company/neon-law-usa",
+    },
+    FirmSocial {
+        network: "youtube",
+        label: "YouTube",
+        href: "https://www.youtube.com/@neon-law-firm",
+    },
+];
+
 /// The associations the firm has a public affiliation with. The footer
 /// renders each association's standing line, linking the association's own
 /// site so a reader can check the relationship against the association's
@@ -392,6 +423,9 @@ pub struct Branding {
     /// notice is: the affiliation is Shook Law PLLC's, and a renamed firm is a
     /// different firm whose affiliations this repository cannot vouch for.
     pub firm_memberships: &'static [FirmMembership],
+    /// Neon Law's social profiles. See [`FIRM_SOCIAL`]. Empty on every other
+    /// house brand, and on a bundle that renames the firm.
+    pub firm_social: &'static [FirmSocial],
     /// The house brands the firm trades under — the footer's "Our Family"
     /// row, in registry order. [`BrandKey::ALL`] on every house brand, so a
     /// reader on any one of them sees the other two; empty on a bundle that
@@ -487,6 +521,7 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     firm_offices: FIRM_OFFICES,
     firm_attorneys: FIRM_ATTORNEYS,
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: FIRM_SOCIAL,
     firm_family: BrandKey::ALL,
     // The mark as registered: the register carries the word mark in capitals,
     // and a notice that cites a registration should spell the mark the way the
@@ -537,6 +572,7 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     // The affiliated organization is Shook Law PLLC and the family is its
     // brands, on this practice's pages as on the firm's own.
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
     firm_family: BrandKey::ALL,
     firm_trademark: "",
     firm_trademark_registration: "",
@@ -579,6 +615,7 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
     firm_family: BrandKey::ALL,
     firm_trademark: "LAWYER SHOOK",
     firm_trademark_registration: "",
@@ -621,6 +658,7 @@ pub static VESTA_BRANDING: Branding = Branding {
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
     firm_family: BrandKey::ALL,
     firm_trademark: "",
     firm_trademark_registration: "",
@@ -659,6 +697,7 @@ pub static MISERICORDIA_BRANDING: Branding = Branding {
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
     firm_family: BrandKey::ALL,
     firm_trademark: "",
     firm_trademark_registration: "",
@@ -697,6 +736,7 @@ pub static ABHAYA_BRANDING: Branding = Branding {
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
     firm_family: BrandKey::ALL,
     firm_trademark: "",
     firm_trademark_registration: "",
@@ -735,6 +775,7 @@ pub static DELETE_YOUR_DEBT_BRANDING: Branding = Branding {
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
     firm_family: BrandKey::ALL,
     firm_trademark: "",
     firm_trademark_registration: "",
@@ -776,6 +817,7 @@ pub static SUMMONS_BRANDING: Branding = Branding {
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
     firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
     firm_family: BrandKey::ALL,
     firm_trademark: "",
     firm_trademark_registration: "",
@@ -1360,16 +1402,22 @@ impl Branding {
         // affiliation and the house-brand family are Shook Law PLLC's, so a
         // bundle that renames the firm publishes neither — a footer claiming
         // another firm's affiliation, or listing its brands as "Our Family",
-        // is the wrong claim under the wrong name.
-        let (firm_memberships, firm_family): (&'static [FirmMembership], &'static [BrandKey]) =
-            if brand.firm.is_some() {
-                (&[], &[])
-            } else {
-                (
-                    DEFAULT_BRANDING.firm_memberships,
-                    DEFAULT_BRANDING.firm_family,
-                )
-            };
+        // is the wrong claim under the wrong name. The social profiles follow
+        // that rename, and they are Neon Law's accounts besides, so every
+        // other house brand publishes none of them.
+        let (firm_memberships, firm_family, firm_social): (
+            &'static [FirmMembership],
+            &'static [BrandKey],
+            &'static [FirmSocial],
+        ) = if brand.firm.is_some() {
+            (&[], &[], &[])
+        } else {
+            (
+                DEFAULT_BRANDING.firm_memberships,
+                DEFAULT_BRANDING.firm_family,
+                DEFAULT_BRANDING.firm_social,
+            )
+        };
         Box::leak(Box::new(Self {
             firm: SiteBrand {
                 site_name: firm_name,
@@ -1451,6 +1499,7 @@ impl Branding {
             },
             firm_memberships,
             firm_family,
+            firm_social,
             firm_trademark,
             firm_trademark_registration,
             firm_trademark_record_url,
@@ -1592,6 +1641,14 @@ pub fn firm_attorneys() -> &'static [FirmAttorney] {
 #[must_use]
 pub fn firm_memberships() -> &'static [FirmMembership] {
     current().firm_memberships
+}
+
+/// Neon Law's social profiles, from request-scoped branding — the footer's
+/// row under the wordmark. Empty on every other house brand, and on a bundle
+/// that renamed the firm.
+#[must_use]
+pub fn firm_social() -> &'static [FirmSocial] {
+    current().firm_social
 }
 
 /// The house brands the firm trades under, from request-scoped branding —
@@ -1958,6 +2015,7 @@ mod tests {
         scope(Branding::from_manifest(&renamed), async {
             assert!(super::firm_memberships().is_empty());
             assert!(super::firm_family().is_empty());
+            assert!(super::firm_social().is_empty());
         })
         .await;
         let untouched: BrandManifest =
@@ -1965,14 +2023,60 @@ mod tests {
         scope(Branding::from_manifest(&untouched), async {
             assert_eq!(super::firm_memberships(), DEFAULT_BRANDING.firm_memberships);
             assert_eq!(super::firm_family(), BrandKey::ALL);
+            assert_eq!(super::firm_social(), DEFAULT_BRANDING.firm_social);
         })
         .await;
         for branding in [&DELETE_YOUR_DATA_BRANDING, &LAWYER_SHOOK_BRANDING] {
             assert_eq!(branding.firm_memberships, DEFAULT_BRANDING.firm_memberships);
             assert_eq!(branding.firm_family, BrandKey::ALL);
+            assert!(
+                branding.firm_social.is_empty(),
+                "{} does not publish Neon Law's profiles",
+                branding.firm.site_name
+            );
             // And the firm's one office, so every house brand's footer lists
             // the same Nevada address.
             assert_eq!(branding.firm_offices, DEFAULT_BRANDING.firm_offices);
+        }
+    }
+
+    /// The three profiles the Neon Law footer links, in display order. Each
+    /// href is the live profile: X `@NeonLawUSA`, the LinkedIn company
+    /// `neon-law-usa`, and the YouTube channel `@neon-law-firm`. No other
+    /// house brand publishes them.
+    #[test]
+    fn the_firm_links_its_own_social_profiles() {
+        let published: Vec<(&str, &str, &str)> = DEFAULT_BRANDING
+            .firm_social
+            .iter()
+            .map(|profile| (profile.network, profile.label, profile.href))
+            .collect();
+        assert_eq!(
+            published,
+            [
+                ("x", "X", "https://x.com/NeonLawUSA"),
+                (
+                    "linkedin",
+                    "LinkedIn",
+                    "https://www.linkedin.com/company/neon-law-usa"
+                ),
+                (
+                    "youtube",
+                    "YouTube",
+                    "https://www.youtube.com/@neon-law-firm"
+                ),
+            ]
+        );
+        for key in BrandKey::ALL {
+            if *key == BrandKey::Neon {
+                continue;
+            }
+            let branding = key.resolve_branding(&DEFAULT_BRANDING);
+            assert!(
+                branding.firm_social.is_empty(),
+                "{} publishes Neon Law's profiles",
+                branding.firm.site_name
+            );
         }
     }
 

@@ -10126,8 +10126,9 @@ async fn assert_unregistered_host_redirects(
 /// holds on every host regardless of session.
 /// The holding host's chrome: no header and no public shell (so no
 /// support-chat widget) — but the one shared footer, with the firm's office
-/// and membership, is under the notice along with its two practice cards.
+/// and association affiliation, is under the notice along with its two practice cards.
 fn assert_holding_host_chrome(body: &str) {
+    let standing_line = format!("{}.", views::brand::JTA_STANDING);
     for (marker, present) in [
         (r#"class="site-header""#, false),
         ("nav-theme public-shell", false),
@@ -10136,7 +10137,7 @@ fn assert_holding_host_chrome(body: &str) {
         (r#"aria-label="Our family""#, false),
         (r#"class="home-practices__grid""#, true),
         ("Vesta Estate Planning", true),
-        ("Proud member of the Justice Technology Association", true),
+        (standing_line.as_str(), true),
     ] {
         assert_eq!(
             body.contains(marker),

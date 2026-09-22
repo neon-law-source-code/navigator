@@ -593,14 +593,15 @@ fn FirmFooterShowcase() -> Element {
     }
 }
 
-/// The firm's one association membership, as the deployed footer publishes
+/// The firm's one association affiliation, as the deployed footer publishes
 /// it. Real rather than synthetic for the same reason the trademark below is:
 /// the line is a public claim about the firm, and a made-up association
 /// beside a real-looking link is the one thing it must never show.
 fn demo_memberships() -> Vec<FooterMembership> {
     vec![FooterMembership {
         label: "Justice Technology Association".to_string(),
-        href: "https://justicetechassociation.org/".to_string(),
+        standing: "Mission-Aligned Partner of the Justice Technology Association".to_string(),
+        href: "https://justicetechassociation.org/get-involved".to_string(),
         logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
     }]
 }

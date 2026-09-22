@@ -3,8 +3,8 @@
 //! Three bands. The contact band reaches the firm: the email CTA, the published
 //! voice line, and every office it keeps. The affiliations row under it names
 //! the firm's family — every house brand it trades under, the current one
-//! unlinked — and the associations it belongs to, each a "Proud member of …"
-//! line linking the association's own site. Below both the legal strip carries
+//! unlinked — and the firm's association affiliations, each with its published
+//! standing line linking the association's own site. Below both the legal strip carries
 //! the load-bearing, brand-driven lines every public page owes — the copyright
 //! that names the legal person behind the site, which attorney holds which bar
 //! licence, and the attorney-advertising disclaimer.
@@ -149,12 +149,14 @@ pub struct FooterBrandLink {
     pub byline: String,
 }
 
-/// One association the firm belongs to — the footer's "Proud member of the
-/// {label}" line, linking the association's own site. Mirrors
-/// `views::brand::FirmMembership`.
+/// One association affiliation — the footer's standing line, linking the
+/// association's own site. Mirrors `views::brand::FirmMembership`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct FooterMembership {
     pub label: String,
+    /// The full standing sentence, minus its trailing period: the firm's
+    /// association-specific standing and the association's name.
+    pub standing: String,
     pub href: String,
     /// The association's mark, already resolved to this deployment's asset
     /// origin by `crate::public_chrome`. Rendered decoratively beside the
@@ -310,10 +312,9 @@ pub fn SiteFooterLegal(
     /// a footer that never learned the list.
     #[props(default)]
     brands: Vec<FooterBrandLink>,
-    /// The associations the firm belongs to, one "Proud member of the …" line
-    /// each, linking the association's own site. Empty renders no line — a
-    /// white-label deploy claims no membership this repository cannot vouch
-    /// for.
+    /// The associations the firm has a public affiliation with, one standing
+    /// line per association. Empty renders no line — a white-label deploy
+    /// cannot claim this repository's affiliations.
     #[props(default)]
     memberships: Vec<FooterMembership>,
     /// The registered word mark the site trades under, spelled the way the
@@ -540,9 +541,9 @@ pub fn SiteFooterLegal(
                     }
                 // The firm's affiliations, in one row between the contact
                 // band and the legal strip: the house brands it trades under
-                // on the left, the associations it belongs to on the right.
+                // on the left, the association affiliations on the right.
                 // Both are facts about the firm rather than about a brand —
-                // the same family and the same membership on every host — so
+                // the same family and the same affiliation on every host — so
                 // they sit with the firm's contact detail above and its legal
                 // strip below, not beside a brand's header.
                 if brands.len() > 1 || !memberships.is_empty() {
@@ -597,10 +598,10 @@ pub fn SiteFooterLegal(
                                 }
                             }
                         }
-                        // "Proud member of …": one line per association the
-                        // firm belongs to, linking the association's own site
-                        // so a reader checks the claim where the association
-                        // publishes its members. Off-site, so it wears the
+                        // One standing line per association, linking the
+                        // association's own site so a reader checks the
+                        // relationship against the association's published
+                        // guidance. Off-site, so it wears the
                         // same new-tab treatment every outbound link on the
                         // page does. The award glyph is decorative: the
                         // sentence beside it is the whole meaning.
@@ -608,13 +609,10 @@ pub fn SiteFooterLegal(
                             ul { class: "site-footer__memberships",
                                 for membership in memberships.iter() {
                                     li { class: "site-footer__membership", key: "{membership.href}",
-                                        // The association's own mark on a
-                                        // dark tile — the artwork is light
-                                        // lettering on a transparent ground,
-                                        // so the tile is what keeps it
-                                        // legible on the light scheme.
-                                        // Decorative (`alt=""`): the sentence
-                                        // beside it names the association.
+                                        // The association's own mark, on a
+                                        // dark tile. The image is decorative;
+                                        // the standing line beside it names
+                                        // the relationship.
                                         if membership.logo_href.is_empty() {
                                             Icon { name: IconName::AwardFill }
                                         } else {
@@ -630,7 +628,7 @@ pub fn SiteFooterLegal(
                                         ExternalLink {
                                             class: "site-footer__membership-link".to_string(),
                                             href: membership.href.clone(),
-                                            "Proud member of the {membership.label}"
+                                            "{membership.standing}."
                                         }
                                     }
                                 }
@@ -763,6 +761,7 @@ pub fn SiteFooterLegal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use views::brand::JTA_STANDING;
 
     fn ssr(app: fn() -> Element) -> String {
         let mut dom = VirtualDom::new(app);
@@ -1798,13 +1797,14 @@ mod tests {
     fn one_membership() -> Vec<FooterMembership> {
         vec![FooterMembership {
             label: "Justice Technology Association".to_string(),
-            href: "https://justicetechassociation.org/".to_string(),
+            standing: JTA_STANDING.to_string(),
+            href: "https://justicetechassociation.org/get-involved".to_string(),
             logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
         }]
     }
 
     /// The legal strip plus the firm's live-brand affiliations
-    /// and the one association membership.
+    /// and the one association affiliation.
     fn affiliated_html() -> String {
         fn app() -> Element {
             rsx! {
@@ -1940,12 +1940,13 @@ mod tests {
         assert!(!bare.contains("Proud member"), "no membership line: {bare}");
     }
 
-    /// The membership line names the association and links its own site,
+    /// The affiliation line names the association and links its Get Involved
+    /// page,
     /// wearing the off-site treatment every outbound link on the page does —
     /// a new tab, the OWASP `rel` pair, and the arrow that says so — after
     /// the family row and before the legal strip.
     #[test]
-    fn publishes_each_membership_as_a_proud_member_line_linking_off_site() {
+    fn publishes_each_affiliation_with_its_standing_line_linking_off_site() {
         let out = affiliated_html();
         let line = out
             .split_once(r#"<ul class="site-footer__memberships">"#)
@@ -1953,12 +1954,12 @@ mod tests {
             .map(|(line, _)| line)
             .expect("the memberships render as a list");
         assert!(
-            line.contains("Proud member of the Justice Technology Association"),
+            line.contains(&format!("{JTA_STANDING}.")),
             "the line names the association in full: {line}"
         );
         assert!(
             line.contains(
-                r#"href="https://justicetechassociation.org/" class="site-footer__membership-link""#
+                r#"href="https://justicetechassociation.org/get-involved" class="site-footer__membership-link""#
             ),
             "and links its own site: {line}"
         );
@@ -1981,13 +1982,13 @@ mod tests {
             "with a mark there is no award glyph: {line}"
         );
         let family = out.find("Our Family").expect("family");
-        let member = out.find("Proud member").expect("membership");
+        let standing = out.find(JTA_STANDING).expect("membership");
         let legal = out
             .find(r#"class="site-footer__legal""#)
             .expect("legal strip");
         assert!(
-            family < member && member < legal,
-            "family, then membership, then the legal strip: {out}"
+            family < standing && standing < legal,
+            "family, then affiliation, then the legal strip: {out}"
         );
     }
 
@@ -2011,7 +2012,7 @@ mod tests {
         }
         let out = ssr(app);
         assert!(out.contains("site-footer__affiliations"), "{out}");
-        assert!(out.contains("Proud member of the"), "{out}");
+        assert!(out.contains(JTA_STANDING), "{out}");
         assert!(!out.contains("site-footer__family"), "{out}");
         assert!(
             !out.contains("site-footer__membership-badge") && out.contains(r#"aria-hidden="true""#),
@@ -2182,7 +2183,7 @@ mod tests {
             "the association's mark renders as an image: {out}"
         );
         assert!(
-            out.contains("Proud member of the Justice Technology Association"),
+            out.contains(&format!("{JTA_STANDING}.")),
             "and the sentence still names it: {out}"
         );
     }

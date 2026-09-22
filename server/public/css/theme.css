@@ -1338,7 +1338,7 @@ a.nav-pagination__link:hover {
   font-weight: 600;
 }
 
-/* "Proud member of …": one quiet line per association, right-aligned against
+/* The association standing line: one quiet line per affiliation, right-aligned against
    the family. The award glyph takes the host's primary; the sentence is the
    footer's muted fine print with the link underlined in the same primary, so
    a reader sees it is a link without it shouting. */
@@ -1366,11 +1366,9 @@ a.nav-pagination__link:hover {
   color: var(--nav-color-primary);
 }
 
-/* The association's own mark, on a dark tile in both schemes: the artwork is
-   light lettering on a transparent ground, published that way by the
-   association, so the tile — not the page — is what it was drawn for. The
-   image is decorative and sized by height, so the wide lockup stays legible
-   without dominating the line beside it. */
+/* The association's own mark, on a dark tile in both schemes. The image is
+   decorative and sized by height, so a wide mark stays legible without
+   dominating the line beside it. */
 .site-footer__membership-badge {
   display: inline-flex;
   flex: none;

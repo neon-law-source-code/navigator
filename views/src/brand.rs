@@ -310,12 +310,15 @@ const FIRM_OFFICES: &[FirmOffice] = &[
     },
 ];
 
-/// One professional association the firm belongs to, published in the footer
-/// of every page: the association's name as it writes it, its own site, and
-/// its mark.
+/// One professional association the firm has a public affiliation with,
+/// published in the footer of every page: the association's name as it writes
+/// it, the firm's standing, its own site, and its mark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FirmMembership {
     pub name: &'static str,
+    /// The full standing sentence, minus its trailing period: the firm's
+    /// association-specific standing and the association's name.
+    pub standing: &'static str,
     pub href: &'static str,
     /// The association's own mark, as a repo-relative key in the deployment's
     /// public assets bucket (`img/<slug>/<file>`) — never a root-relative
@@ -330,25 +333,30 @@ pub struct FirmMembership {
     pub logo_key: &'static str,
 }
 
-/// The associations the firm is a member of. The footer renders each as one
-/// line — "Proud member of the …" — linking the association's own site, so
-/// a reader checks the claim where the association publishes its members
-/// rather than trusting the page's word for it.
+/// The associations the firm has a public affiliation with. The footer
+/// renders each association's standing line, linking the association's own
+/// site so a reader can check the relationship against the association's
+/// published guidance rather than trusting this page's word for it.
 ///
-/// A membership belongs to the firm, not to a brand: Shook Law PLLC is the
-/// member, so every house brand it trades under carries the same line. A
-/// bundle that renames the firm publishes none — see
+/// An affiliation belongs to the firm, not to a brand: Shook Law PLLC is the
+/// organization represented here, so every house brand it trades under carries
+/// the same line. A bundle that renames the firm publishes none — see
 /// [`Branding::firm_memberships`].
 ///
 /// The name is the association's own — the Justice Technology Association
 /// spells it out in full on its mark — rather than the short form it is
 /// known by in conversation.
+/// The Justice Technology Association standing sentence, minus its trailing
+/// period — the one source every render and every test derives from, so a
+/// copy change touches this line alone.
+pub const JTA_STANDING: &str = "Mission-Aligned Partner of the Justice Technology Association";
+
 const FIRM_MEMBERSHIPS: &[FirmMembership] = &[FirmMembership {
     name: "Justice Technology Association",
-    href: "https://justicetechassociation.org/",
-    // The association's own mark, as it publishes it: light lettering on a
-    // transparent ground, so the footer sets it on a dark tile. A bucket
-    // key, resolved through the asset seam per deployment.
+    standing: JTA_STANDING,
+    href: "https://justicetechassociation.org/get-involved",
+    // The association's own mark, as it publishes it. A bucket key,
+    // resolved through the asset seam per deployment.
     logo_key: "img/justice-technology-association/logo.png",
 }];
 
@@ -378,10 +386,10 @@ pub struct Branding {
     /// footer. See [`FIRM_ATTORNEYS`]: this is the footer's only bar
     /// disclosure, and it names who holds each licence.
     pub firm_attorneys: &'static [FirmAttorney],
-    /// The associations the firm belongs to, rendered as the footer's
-    /// membership line on every page. See [`FIRM_MEMBERSHIPS`]. Empty on a
+    /// The associations the firm has a public affiliation with, rendered as
+    /// the footer's standing line on every page. See [`FIRM_MEMBERSHIPS`]. Empty on a
     /// bundle that renames the firm, for the same reason the trademark
-    /// notice is: the membership is Shook Law PLLC's, and a renamed firm is a
+    /// notice is: the affiliation is Shook Law PLLC's, and a renamed firm is a
     /// different firm whose affiliations this repository cannot vouch for.
     pub firm_memberships: &'static [FirmMembership],
     /// The house brands the firm trades under — the footer's "Our Family"
@@ -526,8 +534,8 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     // reading the same firm.
     firm_offices: FIRM_OFFICES,
     firm_attorneys: &[],
-    // The member is Shook Law PLLC and the family is its brands, on this
-    // practice's pages as on the firm's own.
+    // The affiliated organization is Shook Law PLLC and the family is its
+    // brands, on this practice's pages as on the firm's own.
     firm_memberships: FIRM_MEMBERSHIPS,
     firm_family: BrandKey::ALL,
     firm_trademark: "",
@@ -1371,9 +1379,9 @@ impl Branding {
                 )
             };
         // The same rule for the firm's affiliations: the association
-        // membership and the house-brand family are Shook Law PLLC's, so a
+        // affiliation and the house-brand family are Shook Law PLLC's, so a
         // bundle that renames the firm publishes neither — a footer claiming
-        // another firm's membership, or listing its brands as "Our Family",
+        // another firm's affiliation, or listing its brands as "Our Family",
         // is the wrong claim under the wrong name.
         let (firm_memberships, firm_family): (&'static [FirmMembership], &'static [BrandKey]) =
             if brand.firm.is_some() {
@@ -1600,8 +1608,9 @@ pub fn firm_attorneys() -> &'static [FirmAttorney] {
     current().firm_attorneys
 }
 
-/// The associations the firm belongs to, from request-scoped branding — the
-/// footer's membership line. Empty on a bundle that renamed the firm.
+/// The associations the firm has a public affiliation with, from
+/// request-scoped branding — the footer's standing line. Empty on a bundle
+/// that renamed the firm.
 #[must_use]
 pub fn firm_memberships() -> &'static [FirmMembership] {
     current().firm_memberships
@@ -1959,10 +1968,11 @@ mod tests {
     }
 
     /// The firm's affiliations follow the trademark rule: a bundle that
-    /// renames the firm publishes no association membership and lists no
+    /// renames the firm publishes no association affiliation and lists no
     /// house-brand family, because both are Shook Law PLLC's; a bundle that
     /// changes anything else keeps them. Every house brand carries the same
-    /// two, since the member and the family are the firm, not the brand.
+    /// two, since the affiliated organization and the family are the firm, not
+    /// the brand.
     #[tokio::test]
     async fn a_renamed_firm_claims_no_membership_and_lists_no_family() {
         let renamed: BrandManifest =
@@ -1988,16 +1998,20 @@ mod tests {
         }
     }
 
-    /// The one membership the firm publishes names the association in full,
-    /// the way its own mark spells it, and links the association's site over
-    /// HTTPS — a reader verifies the claim there, not on this page.
+    /// The one affiliation the firm publishes names the association in full,
+    /// carries its actual standing, and links the association's Get Involved
+    /// page over HTTPS — a reader verifies the relationship there, not on this
+    /// page.
     #[test]
-    fn the_membership_names_the_association_and_links_its_own_site() {
+    fn the_affiliation_names_the_association_and_links_its_get_involved_page() {
         let [membership] = DEFAULT_BRANDING.firm_memberships else {
             panic!("the firm publishes exactly one membership");
         };
         assert_eq!(membership.name, "Justice Technology Association");
-        assert_eq!(membership.href, "https://justicetechassociation.org/");
+        assert_eq!(
+            membership.href,
+            "https://justicetechassociation.org/get-involved"
+        );
         // A bucket key, not a root-relative path: `rewrite_image_src` passes
         // anything starting with `/` straight through, so a leading slash
         // would pin every deployment to the container's own copy and never

@@ -445,7 +445,7 @@ fn the_gate_warns_on_a_retired_workflow_filename() {
     gate(dir.path())
         .success()
         .stdout(str::contains("gate.yml"))
-        .stdout(str::contains("next Navigator CLI release refuses it"));
+        .stdout(str::contains("the release after that refuses it"));
 }
 
 /// A `.yaml` spelling of either workflow reports the extension it actually

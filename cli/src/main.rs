@@ -56,7 +56,7 @@ use projects::repository::is_project_repository;
 /// 3. The workspace crate version on a plain local build — `0.1.0` between
 ///    releases, or the `YY.M.D` a release stamped into `Cargo.toml` — since
 ///    `build.rs` falls back to `CARGO_PKG_VERSION` when no tag is present.
-fn cli_version() -> &'static str {
+pub(crate) fn cli_version() -> &'static str {
     if let Ok(tag) = std::env::var("NAVIGATOR_RELEASE_TAG") {
         let tag = tag.trim();
         if !tag.is_empty() {

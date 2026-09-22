@@ -100,6 +100,15 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/cd.yml";
 /// to rename it in before the gate stops accepting the old name. See
 /// [`docs/gate.md`](../../../docs/gate.md) for the documented transition.
 pub(crate) const RETIRED_CD_WORKFLOW: &str = ".github/workflows/publish.yml";
+/// The last Navigator CLI release that still accepts [`RETIRED_WORKFLOW`] or
+/// [`RETIRED_CD_WORKFLOW`] with a warning, closing the "one further release"
+/// transition [`docs/gate.md`](../../../docs/gate.md) documents. `resolve_workflow`
+/// refuses either retired filename outright once the running binary's own
+/// [`crate::cli_version`] names a release after this one — see
+/// `retired_workflow_refused`. Bump this only to deliberately extend the
+/// transition; the ordinary path is for it to stay put and the next release
+/// closes the door.
+const FINAL_RETIRED_WORKFLOW_RELEASE: &str = "26.9.23";
 /// The manifest a Project repository declares its Project in.
 ///
 /// `pub(crate)` rather than private because [`super::drift`] and
@@ -739,15 +748,73 @@ pub(crate) fn validate_gate(root: &Path, repository: Option<&str>, write_fixes: 
 /// A repository still carrying [`RETIRED_WORKFLOW`] or [`RETIRED_CD_WORKFLOW`]
 /// is not failed for it — it is warned, once, by name. The one-release
 /// transition this documents lives in `docs/gate.md`: this release still
-/// reads the retired filename, and the next Navigator CLI release refuses it,
-/// so the warning is the operator's whole notice to rename it.
+/// reads the retired filename, and the release after
+/// [`FINAL_RETIRED_WORKFLOW_RELEASE`] refuses it, so the warning is the
+/// operator's whole notice to rename it.
 fn retired_workflow_warning(path: &Path, canonical: &str) -> Finding {
     Finding::at(
         path,
         format!(
-            "`{}` is the retired filename for `{canonical}`; this release still accepts it, \
-             but the next Navigator CLI release refuses it — rename the file to `{canonical}`",
+            "`{}` is the retired filename for `{canonical}`; releases through \
+             {FINAL_RETIRED_WORKFLOW_RELEASE} still accept it, but the release after that \
+             refuses it — rename the file to `{canonical}`",
             path.display()
+        ),
+    )
+}
+
+/// Whether this binary's own release, `current` (from [`crate::cli_version`]),
+/// is a release after [`FINAL_RETIRED_WORKFLOW_RELEASE`] and must therefore
+/// refuse [`RETIRED_WORKFLOW`] or [`RETIRED_CD_WORKFLOW`] outright rather than
+/// warn about it.
+///
+/// An unparseable version on either side fails open — refusing a repository's
+/// CI over a version string this check cannot read would be a worse failure
+/// than accepting one release past the bound, and a plain local build without
+/// a baked release tag falls back to `CARGO_PKG_VERSION`, which is exactly
+/// [`FINAL_RETIRED_WORKFLOW_RELEASE`] until the next `chore(release)` bump —
+/// so a developer's own tree only starts refusing once it actually is a
+/// later release.
+fn retired_workflow_refused(current: &str) -> bool {
+    let Ok(current) = semver::Version::parse(current) else {
+        return false;
+    };
+    let Ok(final_release) = semver::Version::parse(FINAL_RETIRED_WORKFLOW_RELEASE) else {
+        return false;
+    };
+    current > final_release
+}
+
+/// The release named by [`FINAL_RETIRED_WORKFLOW_RELEASE`] has passed:
+/// `path`'s retired filename is refused outright, not merely warned about.
+fn retired_workflow_refusal(path: &Path, canonical: &str) -> Finding {
+    Finding::at(
+        path,
+        format!(
+            "`{}` is the retired filename for `{canonical}`; only releases through \
+             {FINAL_RETIRED_WORKFLOW_RELEASE} accepted it, and this release refuses it — \
+             rename the file to `{canonical}`",
+            path.display()
+        ),
+    )
+}
+
+/// `retired` still exists beside its canonical replacement `current`, so a
+/// repository can carry a structurally validated `current` and an
+/// unvalidated `retired` that GitHub still runs — the coexistence bypass this
+/// finding closes. Independent of [`retired_workflow_refused`]: this is
+/// refused in every release, not only past the bound, because the retired
+/// file is never even inspected once the canonical one is present.
+fn retired_workflow_beside_canonical(retired: &Path, current: &Path) -> Finding {
+    Finding::at(
+        retired,
+        format!(
+            "`{}` exists alongside its canonical replacement `{}`; GitHub still runs whichever \
+             workflows trigger, so a retired file beside the canonical one is a live, unvalidated \
+             CI/CD path — delete `{}`",
+            retired.display(),
+            current.display(),
+            retired.display()
         ),
     )
 }
@@ -798,10 +865,22 @@ fn resolve_workflow(
     validate: impl Fn(&Path, &str, Option<&super::manifest::Manifest>, &mut Vec<Finding>),
 ) {
     match fs::read_to_string(spec.current) {
-        Ok(contents) => validate(spec.current, &contents, manifest, errors),
+        Ok(contents) => {
+            validate(spec.current, &contents, manifest, errors);
+            if spec.retired.is_file() {
+                errors.push(retired_workflow_beside_canonical(
+                    spec.retired,
+                    spec.current,
+                ));
+            }
+        }
         Err(_) => match fs::read_to_string(spec.retired) {
             Ok(contents) => {
-                warnings.push(retired_workflow_warning(spec.retired, spec.canonical));
+                if retired_workflow_refused(crate::cli_version()) {
+                    errors.push(retired_workflow_refusal(spec.retired, spec.canonical));
+                } else {
+                    warnings.push(retired_workflow_warning(spec.retired, spec.canonical));
+                }
                 validate(spec.retired, &contents, manifest, errors);
             }
             Err(_) => match yaml_extension_finding(spec.current, spec.canonical)
@@ -2221,10 +2300,11 @@ jobs:
 mod tests {
     use super::{
         agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
-        placeholder_template, repository_name, scaffold, validate_cd_workflow,
-        validate_github_path, validate_layout, validate_workflow, workflow, Finding,
-        AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST,
-        RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW, SYNCED_SKILLS, WORKFLOW,
+        placeholder_template, repository_name, retired_workflow_refused, scaffold,
+        validate_cd_workflow, validate_github_path, validate_layout, validate_workflow, workflow,
+        Finding, AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE,
+        FINAL_RETIRED_WORKFLOW_RELEASE, PROJECT_MANIFEST, RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW,
+        SYNCED_SKILLS, WORKFLOW,
     };
     use crate::projects::manifest::Manifest;
     use std::fs;
@@ -3595,9 +3675,49 @@ jobs:
                 .iter()
                 .any(|message| message.contains(RETIRED_WORKFLOW)
                     && message.contains(WORKFLOW)
-                    && message.contains("next Navigator CLI release refuses it")),
+                    && message.contains(FINAL_RETIRED_WORKFLOW_RELEASE)
+                    && message.contains("the release after that refuses it")),
             "{warnings:?}"
         );
+    }
+
+    /// The bound `docs/gate.md` documents: once this binary's own release is
+    /// after [`FINAL_RETIRED_WORKFLOW_RELEASE`], the retired filename is
+    /// refused outright rather than merely warned about — ENG-815's first
+    /// gap, that nothing ever implemented the "one further release" the
+    /// warning text promised.
+    #[test]
+    fn a_retired_workflow_filename_is_refused_past_the_final_accepting_release() {
+        assert!(!retired_workflow_refused(FINAL_RETIRED_WORKFLOW_RELEASE));
+        assert!(!retired_workflow_refused("0.1.0"));
+        assert!(retired_workflow_refused("26.9.24"));
+        assert!(retired_workflow_refused("27.1.1"));
+        // Fails open on a version string it cannot parse, rather than
+        // refusing a repository's CI over a value this check cannot read.
+        assert!(!retired_workflow_refused("not-a-version"));
+    }
+
+    /// ENG-815's second gap: `resolve_workflow` used to inspect the retired
+    /// file only when the canonical one was missing, so a repository could
+    /// carry a structurally validated `ci.yml` and an unvalidated `gate.yml`
+    /// that GitHub still runs. Both paths must now be named in one finding.
+    #[test]
+    fn a_retired_workflow_beside_its_canonical_replacement_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        let ci_contents = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
+        std::fs::write(root.path().join(RETIRED_WORKFLOW), &ci_contents).unwrap();
+
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains(RETIRED_WORKFLOW)
+                    && message.contains(WORKFLOW)
+                    && message.contains("alongside")),
+            "{found:?}"
+        );
+        assert_eq!(layout_warnings(root.path()), Vec::<String>::new());
     }
 
     #[test]

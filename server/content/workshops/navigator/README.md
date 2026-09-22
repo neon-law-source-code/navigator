@@ -307,9 +307,9 @@ navigator project repository scaffold <code> --dir . --action-version <YY.M.D>
 ```
 
 `scaffold` is idempotent. It writes `README.md`, `AGENTS.md`, `tests/README.md`, and two workflows —
-`.github/workflows/ci.yml` (the thin CI caller) and `.github/workflows/publish.yml` (the portal-publish caller). It does
-not write `portal/`; that only exists once a client-facing application is built. Pass `--action-version` explicitly
-rather than relying on a default, which only resolves from a real release build.
+`.github/workflows/ci.yml` (the thin CI caller) and `.github/workflows/cd.yml` (the portal-publish caller). It does not
+write `portal/`; that only exists once a client-facing application is built. Pass `--action-version` explicitly rather
+than relying on a default, which only resolves from a real release build.
 
 Commit and push. That push is what makes the CI gate live on the new repository.
 

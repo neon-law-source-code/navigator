@@ -886,8 +886,8 @@ mod coming_soon_page_tests {
             summons.meta_description
         );
         assert_eq!(
-            summons.head_title, "Shook Law PLLC | Coming Soon",
-            "New York bars a trade name for private practice"
+            summons.head_title, "Summons Defense | Coming Soon",
+            "the Coming Soon title uses the public Summons Defense brand"
         );
 
         let debt = coming_soon_content(&views::brand::DELETE_YOUR_DEBT_BRANDING);
@@ -945,7 +945,7 @@ mod lawyer_shook_holding_page_tests {
                 "Vesta Estate Planning",
                 "Misericordia Injury Law",
                 "Abhaya Immigration",
-                "Shook Law PLLC",
+                "Summons Defense",
             ]
         );
         assert!(content
@@ -957,7 +957,7 @@ mod lawyer_shook_holding_page_tests {
             .iter()
             .find(|practice| practice.href == "https://www.summonsdefense.nyc")
             .expect("Lawyer Shook links its Summons Defense NYC practice");
-        assert_eq!(summons.heading, "Shook Law PLLC");
+        assert_eq!(summons.heading, "Summons Defense");
         assert_eq!(summons.body, "NYC summonses and OATH hearings");
         assert!(content.provenance.is_none());
         // The one link on the page: an existing client's way to `/app`.

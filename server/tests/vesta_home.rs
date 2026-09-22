@@ -102,7 +102,7 @@ async fn lawyer_shook_lists_the_launched_family_and_keeps_the_firm_notice() {
         "Vesta Estate Planning",
         "Misericordia Injury Law",
         "Abhaya Immigration",
-        "Shook Law PLLC",
+        "Summons Defense",
         "emerging tech",
         "site-footer",
         "https://www.deleteyourdata.com",

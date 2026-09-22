@@ -748,13 +748,11 @@ pub static DELETE_YOUR_DEBT_BRANDING: Branding = Branding {
 /// practice. Trademark fields stay empty until that brand's registration
 /// status is decided.
 ///
-/// The masthead is the firm's own name rather than a trade name, and the
-/// domain is a marketing channel only. New York Rule 7.5(b) bars trade
-/// names for private practice, so unlike the Nevada brands this one has no
-/// separate identity to wear — `site_name` is `Shook Law PLLC` on purpose.
+/// The public masthead and domain use the Summons Defense brand. The legal
+/// entity remains Shook Law PLLC in the legal footer and required notices.
 pub static SUMMONS_BRANDING: Branding = Branding {
     firm: SiteBrand {
-        site_name: "Shook Law PLLC",
+        site_name: "Summons Defense",
         home_href: "/",
         tagline: "A private law firm, not affiliated with the City of New York or OATH. We defend City summonses at the OATH Hearings Division.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
@@ -780,8 +778,8 @@ pub static SUMMONS_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "summonsdefense.nyc",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Shook Law PLLC represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. Flat fee per summons, or a monthly retainer across a portfolio. This is an attorney advertisement, not a promise about a result.",
-    service_description: "NYC summons defense from Shook Law PLLC at the OATH Hearings Division. Flat fee per summons, or a monthly retainer across a portfolio.",
+    mission_description: "Summons Defense represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. Flat fee per summons, or a monthly retainer across a portfolio. This is an attorney advertisement, not a promise about a result.",
+    service_description: "NYC summons defense from Summons Defense at the OATH Hearings Division. Flat fee per summons, or a monthly retainer across a portfolio.",
     portal_only: false,
     brand_key: BrandKey::Summons,
 };
@@ -802,8 +800,7 @@ pub enum BrandKey {
     Misericordia,
     Abhaya,
     DeleteYourDebt,
-    /// The NYC summons / OATH practice. Wears the firm's own name, not a
-    /// trade name — see `SUMMONS_BRANDING`.
+    /// The NYC summons / OATH practice, presented publicly as Summons Defense.
     Summons,
 }
 

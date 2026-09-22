@@ -32,7 +32,7 @@ async fn summons_serves_only_coming_soon_on_production_and_staging() {
                 .to_vec(),
         )
         .unwrap();
-        assert!(html.contains("Shook Law PLLC | Coming Soon"), "{host}");
+        assert!(html.contains("Summons Defense | Coming Soon"), "{host}");
         assert!(html.contains("Coming Soon"), "{host}");
         assert!(html.contains("holding-page"), "{host}");
         assert!(

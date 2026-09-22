@@ -343,7 +343,7 @@ mod tests {
                 "Misericordia Injury Law",
                 "Abhaya Immigration",
                 "Lawyer Shook",
-                "Shook Law PLLC"
+                "Summons Defense"
             ]
         );
         let current: Vec<bool> = model.brands.iter().map(|b| b.current).collect();

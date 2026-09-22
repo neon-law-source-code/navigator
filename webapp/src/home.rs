@@ -977,6 +977,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn an_empty_bare_statement_keeps_a_single_accessible_heading() {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome::default(),
+                    content: HomeContent {
+                        head_title: "Coming Soon".to_string(),
+                        meta_description: "Coming Soon".to_string(),
+                        bare: Some(BareStatement {
+                            heading: "Coming Soon".to_string(),
+                            paragraph: String::new(),
+                            sign_in: Vec::new(),
+                        }),
+                        ..HomeContent::default()
+                    },
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+
+        assert_eq!(out.matches("<h1").count(), 1, "one page heading: {out}");
+        assert!(
+            out.contains(r#"<h1 class="holding-page__heading">Coming Soon</h1>"#),
+            "the heading has an accessible name: {out}"
+        );
+        assert!(
+            !out.contains("holding-page__paragraph"),
+            "empty copy does not create an empty paragraph: {out}"
+        );
+    }
+
     /// The boxes at the foot of the page point at the practice pages.
     ///
     /// The whole box is the link. It used to end in a "The litigation practice"

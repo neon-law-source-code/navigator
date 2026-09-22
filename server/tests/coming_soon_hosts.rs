@@ -34,7 +34,16 @@ async fn summons_serves_only_coming_soon_on_production_and_staging() {
         .unwrap();
         assert!(html.contains("Summons Defense | Coming Soon"), "{host}");
         assert!(html.contains("Coming Soon"), "{host}");
-        assert!(html.contains("holding-page"), "{host}");
+        assert!(html.contains(r#"<main class="holding-page">"#), "{host}");
+        let heading = html
+            .split_once("<h1")
+            .and_then(|(_, rest)| rest.split_once("</h1>").map(|(heading, _)| heading));
+        assert!(
+            heading.is_some_and(|heading| {
+                heading.contains("holding-page__heading") && heading.contains("Coming Soon")
+            }),
+            "{host}: the holding page has a named h1"
+        );
         assert!(
             html.contains("/public/css/brand-summons-tokens.css"),
             "{host}"

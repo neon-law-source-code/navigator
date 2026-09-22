@@ -697,7 +697,7 @@ mod tests {
         // REST: 2 services.batchEnable + network + subnet + router/NAT + 5 storage inserts
         // (assets, documents, exports, logs, applications) + 1 assets CORS read
         // + 1 assets CORS patch + 1 applications lifecycle patch = 13.
-        // Runtime identity: runtime GSA + isolated Drive GSA + 1 project role
+        // Runtime identity: runtime GSA + isolated Drive GSA + 2 project roles
         // + 5 bucket roles + self-signing role = 9.
         // Artifact Registry: repo
         // create + cleanup patch + SA create +
@@ -706,7 +706,7 @@ mod tests {
         // dry-run). SHELL (gke): gateway IP + create-auto = 2, followed by 2
         // KSA bindings, then fleet-enable + fleet-register + RootSync = 3.
         // KMS: key ring + crypto key = 2.
-        assert_eq!(calls.len(), 42, "expected 42 calls, got {calls:?}");
+        assert_eq!(calls.len(), 43, "expected 43 calls, got {calls:?}");
         let urls: Vec<&str> = calls.iter().map(|c| c.url.as_str()).collect();
         let methods: Vec<&str> = calls.iter().map(|c| c.method).collect();
 
@@ -797,97 +797,98 @@ mod tests {
             &format!("\"age\":{}", super::buckets::APPLICATIONS_RETENTION_DAYS),
             "step 4e applications bucket expires orphaned assets at the retention limit",
         );
-        // Steps 13..=21 are direct runtime and Workspace identity shell-outs.
-        for (i, m) in methods.iter().enumerate().take(22).skip(13) {
+        // Steps 13..=22 are direct runtime and Workspace identity shell-outs.
+        for (i, m) in methods.iter().enumerate().take(23).skip(13) {
             assert_eq!(*m, "SHELL", "step {i} should be SHELL, got {m}");
         }
         assert!(urls[13].contains("service-accounts create navigator-web"));
         assert!(urls[14].contains("service-accounts create navigator-drive"));
         assert!(urls[15].contains("roles/secretmanager.secretAccessor"));
-        assert!(urls[21].contains("roles/iam.serviceAccountTokenCreator"));
+        assert!(urls[16].contains("roles/aiplatform.user"));
+        assert!(urls[22].contains("roles/iam.serviceAccountTokenCreator"));
 
-        // Steps 22..=32 are the Artifact Registry REST calls.
+        // Steps 23..=33 are the Artifact Registry REST calls.
         assert!(
-            urls[22].contains("/repositories?repositoryId=navigator"),
+            urls[23].contains("/repositories?repositoryId=navigator"),
             "step 5a repo create: {}",
-            urls[22]
+            urls[23]
         );
-        assert_eq!(methods[23], "PATCH", "step 5b cleanup policy: {}", urls[23]);
+        assert_eq!(methods[24], "PATCH", "step 5b cleanup policy: {}", urls[24]);
         // Retention is a version COUNT, not an age. Both halves are asserted
         // because the DELETE half matches every version and would empty the
         // repository without its KEEP partner.
-        assert_body_contains(&calls[23], "\"keepCount\":10", "step 5b retained versions");
-        assert_body_contains(&calls[23], "\"action\":\"KEEP\"", "step 5b keep policy");
+        assert_body_contains(&calls[24], "\"keepCount\":10", "step 5b retained versions");
+        assert_body_contains(&calls[24], "\"action\":\"KEEP\"", "step 5b keep policy");
         assert!(
-            urls[24].ends_with("/serviceAccounts"),
+            urls[25].ends_with("/serviceAccounts"),
             "step 5c CI service account: {}",
-            urls[24]
+            urls[25]
         );
         assert!(
-            urls[30].contains("workloadIdentityPools/github/providers"),
+            urls[31].contains("workloadIdentityPools/github/providers"),
             "step 5j WIF provider: {}",
-            urls[30]
+            urls[31]
         );
         assert_body_contains(
-            &calls[30],
+            &calls[31],
             &super::artifact_registry::wif_attribute_condition(super::DEFAULT_GITHUB_REPO),
             "step 5j WIF provider repository condition",
         );
         assert_body_contains(
-            &calls[30],
+            &calls[31],
             super::artifact_registry::GITHUB_OIDC_ISSUER,
             "step 5j WIF provider issuer",
         );
-        // Steps 33..=39 create GKE, bind its pool, then add integrations.
+        // Steps 34..=40 create GKE, bind its pool, then add integrations.
         // Bounded rather than open-ended: these are the shell-out steps, not
         // "everything after 33" — the KMS stage below is REST and follows them.
-        for (i, m) in methods.iter().enumerate().take(40).skip(33) {
+        for (i, m) in methods.iter().enumerate().take(41).skip(34) {
             assert_eq!(*m, "SHELL", "step {i} should be SHELL, got {m}");
         }
         assert!(
-            urls[33].contains("compute addresses create"),
+            urls[34].contains("compute addresses create"),
             "step 6a static IP: {}",
-            urls[33]
-        );
-        assert!(
-            urls[34].contains("container clusters create-auto"),
-            "step 6b cluster: {}",
             urls[34]
         );
-        assert!(urls[35].contains("navigator/navigator-web"));
-        assert!(urls[36].contains("navigator/workflows-service"));
         assert!(
-            urls[37].contains("fleet config-management enable"),
-            "step 6c fleet enable: {}",
-            urls[37]
+            urls[35].contains("container clusters create-auto"),
+            "step 6b cluster: {}",
+            urls[35]
         );
+        assert!(urls[36].contains("navigator/navigator-web"));
+        assert!(urls[37].contains("navigator/workflows-service"));
         assert!(
-            urls[38].contains(&format!(
-                "container clusters update {}",
-                config.cluster_name
-            )) && urls[38].contains("--enable-fleet"),
-            "step 6d fleet reconciliation through the GKE cluster API: {}",
+            urls[38].contains("fleet config-management enable"),
+            "step 6c fleet enable: {}",
             urls[38]
         );
         assert!(
-            urls[39].starts_with("kubectl apply"),
-            "step 6e kubectl apply: {}",
+            urls[39].contains(&format!(
+                "container clusters update {}",
+                config.cluster_name
+            )) && urls[39].contains("--enable-fleet"),
+            "step 6d fleet reconciliation through the GKE cluster API: {}",
             urls[39]
+        );
+        assert!(
+            urls[40].starts_with("kubectl apply"),
+            "step 6e kubectl apply: {}",
+            urls[40]
         );
         // Step 8: the key this deployment's `secrets.enc.yaml` is encrypted
         // against. Ring before key — the key create 404s otherwise.
         assert!(
-            urls[40].contains("keyRings?keyRingId=navigator-secrets"),
+            urls[41].contains("keyRings?keyRingId=navigator-secrets"),
             "step 8a key ring: {}",
-            urls[40]
+            urls[41]
         );
         assert!(
-            urls[41]
+            urls[42]
                 .contains("keyRings/navigator-secrets/cryptoKeys?cryptoKeyId=deployment-config"),
             "step 8b crypto key: {}",
-            urls[41]
+            urls[42]
         );
-        assert_body_contains(&calls[41], "ENCRYPT_DECRYPT", "step 8b key purpose");
+        assert_body_contains(&calls[42], "ENCRYPT_DECRYPT", "step 8b key purpose");
     }
 
     #[tokio::test]
@@ -1107,12 +1108,12 @@ mod tests {
         //    and each short name is named in the prose.
         assert_eq!(
             REQUIRED_SERVICES.len(),
-            22,
-            "the workshop says twenty-two APIs; keep prose and code in lockstep",
+            23,
+            "the workshop says twenty-three APIs; keep prose and code in lockstep",
         );
         assert!(
-            prose.contains("twenty-two"),
-            "DEPLOY.md must state the API count in words (twenty-two)",
+            prose.contains("twenty-three"),
+            "DEPLOY.md must state the API count in words (twenty-three)",
         );
         for svc in REQUIRED_SERVICES {
             let short = svc.strip_suffix(".googleapis.com").unwrap_or(svc);

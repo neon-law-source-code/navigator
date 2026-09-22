@@ -35,15 +35,11 @@ pub struct SummaryProviders {
 }
 
 impl SummaryProviders {
-    /// Build the production transports when a GCP project is configured. A
-    /// missing project leaves the service registered but disabled, preserving
-    /// the default-off worker boot contract until feature configuration lands.
-    pub fn from_env() -> Result<Option<Self>, VertexError> {
-        if std::env::var("NAVIGATOR_GCP_PROJECT_ID")
-            .ok()
-            .as_ref()
-            .is_none_or(|value| value.trim().is_empty())
-        {
+    /// Build the production transports only when the shared summary feature
+    /// configuration is enabled and complete. The default-off row leaves the
+    /// service registered but provider-disabled.
+    pub fn from_env() -> anyhow::Result<Option<Self>> {
+        if workflows::EmailSummaryConfig::from_env()?.is_none() {
             return Ok(None);
         }
         let metadata_url = std::env::var("GOOGLE_METADATA_URL")

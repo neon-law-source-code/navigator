@@ -48,12 +48,13 @@ pub const SUMMARY_TIMESTAMP_HEADER: &str = "x-twilio-email-event-webhook-timesta
 const SUMMARY_TIMESTAMP_MAX_AGE_SECONDS: i64 = 86_400;
 const SUMMARY_TIMESTAMP_MAX_FUTURE_SECONDS: i64 = 300;
 
-/// Comma-separated SMTP envelope recipients the summary lane admits.
+/// Comma-separated final SMTP envelope recipients the summary lane admits.
 ///
-/// Deploy sets this per row: the production mailbox on the production
-/// deployment, the staging mailbox on persistent staging. There is no
-/// compiled default, so a simulated-matters row cannot silently infer from
-/// the production inbox.
+/// Deploy sets this per row to the address that SendGrid Inbound Parse
+/// receives after any Google Workspace recipient rewrite (usually the Parse
+/// intake address). This intentionally does not match the visible `To:` header
+/// or the original Workspace mailbox. There is no compiled default, so a
+/// simulated-matters row cannot silently infer from the production inbox.
 pub const NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS: &str = "NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS";
 
 /// Why [`summary_envelope_recipients_from_lookup`] refused the allowlist.
@@ -114,6 +115,8 @@ pub struct SummaryIntakeConfig {
     pub gemini_location: String,
     pub claude_model: String,
     pub claude_location: String,
+    pub max_input_chars: usize,
+    pub max_output_tokens: u32,
 }
 
 impl SummaryIntakeConfig {
@@ -750,7 +753,8 @@ fn summary_workflow_request(
         workflows::SUMMARY_PROMPT_VERSION,
         &receipt.raw_digest,
     )
-    .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?;
+    .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?
+    .with_limits(config.max_input_chars, config.max_output_tokens);
     let claude = workflows::EmailSummaryRunConfig::new(
         workflows::SummaryProvider::Claude,
         &config.claude_model,
@@ -758,7 +762,8 @@ fn summary_workflow_request(
         workflows::SUMMARY_PROMPT_VERSION,
         &receipt.raw_digest,
     )
-    .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?;
+    .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?
+    .with_limits(config.max_input_chars, config.max_output_tokens);
     Ok(workflows::EmailSummaryRequest {
         receipt_id: receipt.id,
         project_id: config.project_id.clone(),
@@ -1077,14 +1082,14 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
     fn summary_envelope_env_splits_trims_and_dedupes() {
         let recipients = super::summary_envelope_recipients_from_lookup(lookup(&[(
             super::NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS,
-            " Support@example.com ,staging@example.com, support@example.com ",
+            " Intake@Parse.example.com ,staging-intake@parse.example.com, intake@parse.example.com ",
         )]))
         .unwrap();
         assert_eq!(
             recipients,
             vec![
-                "support@example.com".to_string(),
-                "staging@example.com".to_string()
+                "intake@parse.example.com".to_string(),
+                "staging-intake@parse.example.com".to_string()
             ]
         );
         let config = super::SummaryIntakeConfig {
@@ -1098,9 +1103,11 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
             gemini_location: "global".into(),
             claude_model: "claude-test".into(),
             claude_location: "global".into(),
+            max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
+            max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
         };
         assert!(config.matches_envelope(&super::SmtpEnvelope {
-            to: vec!["SUPPORT@example.com".into()],
+            to: vec!["INTAKE@PARSE.EXAMPLE.COM".into()],
             from: None,
         }));
         assert!(!config.matches_envelope(&super::SmtpEnvelope {

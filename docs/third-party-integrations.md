@@ -99,8 +99,12 @@ real matters does not. Local KIND is `dev` and does not. GitHub Actions deploy n
 runtime path.
 
 Inbound summary matching reads `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` from the deployment config (comma-separated SMTP
-envelope recipients). Persistent staging sets the staging mailbox there; production sets the live support mailbox. There
-is no compiled default. Unset leaves the signed summary lane off; a present blank value fails boot.
+envelope recipients). Set it to the final recipient SendGrid receives after any Google Workspace routing rewrite
+(normally the Parse intake address), not the visible `To:` header or original support mailbox. There is no compiled
+default. Unset leaves the signed summary lane off; a present blank value fails boot. The lane is enabled only by
+`NAVIGATOR_SUMMARY_ENABLED=true`, which also requires SendGrid's signed Inbound Parse public key, a Slack channel, the
+HTTPS Restate broker, and Vertex AI access for the runtime service account. The web process captures the immutable
+provider settings in the Restate request; the worker reads the same gate before registering provider adapters.
 
 Normal staging requires real non-production SendGrid and DocuSign demo configuration. Each cloud deployment uses the
 matching attachment row described in [`provider-environment-parity.md`](provider-environment-parity.md). Only the

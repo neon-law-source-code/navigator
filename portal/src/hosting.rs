@@ -374,6 +374,23 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         recipients = summary_envelope_recipients.len(),
         "summary envelope allowlist"
     );
+    let summary_intake = workflows::EmailSummaryConfig::from_env()
+        .context("configure inbound email summary lane")?
+        .map(|config| crate::inbound_email::SummaryIntakeConfig {
+            envelope_recipients: config.envelope_recipients,
+            inbound_public_key: config.inbound_public_key,
+            deployment: config.deployment,
+            workflow_ingress: config.workflow_ingress,
+            project_id: config.project_id,
+            channel_id: config.channel_id,
+            gemini_model: config.gemini_model,
+            gemini_location: config.gemini_location,
+            claude_model: config.claude_model,
+            claude_location: config.claude_location,
+            max_input_chars: config.max_input_chars,
+            max_output_tokens: config.max_output_tokens,
+        });
+    tracing::info!(enabled = summary_intake.is_some(), "email summary intake");
 
     let state = crate::AppState {
         brand_bundle,
@@ -420,9 +437,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         email,
         attachment_scanner,
         inbound_email_secret,
-        summary_intake: None,
-        // The summary lane stays off until the typed feature configuration
-        // supplies its allowlist, signing key, worker ingress, and run shape.
+        summary_intake,
         email_events_secret,
         sendgrid_events_public_key,
         bootstrap_owner_email: crate::oauth::bootstrap_owner_email_from_env(),

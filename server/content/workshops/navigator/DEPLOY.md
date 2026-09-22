@@ -68,7 +68,7 @@ Six steps, each tagged with its Bloom verb. You are the admin operator; the `nav
 
 - **Create** — stand up a billed project and authenticate.
 - **Predict** — run `--dry-run` and read every API call before sending one.
-- **Identify** — name the twenty-two Google Cloud APIs the provisioner enables.
+- **Identify** — name the twenty-three Google Cloud APIs the provisioner enables.
 - **Explain** — describe the VPC, five core buckets, optional archive/telemetry lanes, private image registry, and three
   service deployments.
 - **Execute** — bring up the cluster, the static IP, and Fleet membership.
@@ -80,7 +80,7 @@ Each step is tagged with the Bloom verb it exercises (the [Anderson & Krathwohl 
 revision](https://en.wikipedia.org/wiki/Bloom%27s_taxonomy)). You are the admin operator; the `navigator` CLI is the
 instrument. **Create** — stand up a billed Google Cloud project and authenticate so `navigator` can act on your behalf.
 **Predict** — run `navigator ops gcp setup --dry-run` and read every API call the provisioner _would_ make before
-sending one. **Identify** — name the twenty-two Google Cloud APIs the provisioner enables, and why each is needed.
+sending one. **Identify** — name the twenty-three Google Cloud APIs the provisioner enables, and why each is needed.
 **Explain** — describe the VPC, the five core storage buckets and optional archive/telemetry lanes, the private image
 registry, the two service deployments, and why re-running setup is always safe. **Execute** — bring up the GKE Autopilot
 cluster, the static IP, and Fleet membership with one command. **Verify** — ship the service images and confirm the
@@ -394,8 +394,8 @@ Also set `NAVIGATOR_GCP_PROJECT_ID`, `NAVIGATOR_GCP_LOCATION`, `NAVIGATOR_PUBLIC
 `secrets.enc.yaml`.
 
 Keep the mail rail complete in every deployment's `secrets.enc.yaml`: `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`,
-`SENDGRID_INBOUND_SECRET`, `SENDGRID_EVENTS_SECRET`, and `SENDGRID_EVENTS_PUBLIC_KEY`; staging uses non-production
-SendGrid credentials and production uses live credentials authenticated for its domain.
+`SENDGRID_INBOUND_SECRET`, `SENDGRID_INBOUND_PUBLIC_KEY`, `SENDGRID_EVENTS_SECRET`, and `SENDGRID_EVENTS_PUBLIC_KEY`;
+staging uses non-production SendGrid credentials and production uses live credentials authenticated for its domain.
 
 Provision each row with the same region-agnostic command — one run per `deployments/` directory, its coordinates
 exported from that directory's `config.toml` (populate the directory first; the config is the source of every coordinate
@@ -427,8 +427,8 @@ navigator ops gcp setup
 
 That is the live resource boundary, per deployment: five core buckets, plus any named archive/telemetry lanes, one
 VPC/subnet pair, one reserved gateway address, one Autopilot cluster, one KMS key, and two deployment service accounts.
-The command also enables the twenty-two required APIs in that runtime project. A completed command is not yet a deployed
-website; `ops ship`, DNS, and the browser checks later in this workshop remain required.
+The command also enables the twenty-three required APIs in that runtime project. A completed command is not yet a
+deployed website; `ops ship`, DNS, and the browser checks later in this workshop remain required.
 
 Setup provisions no database and generates no credential, so there is nothing printed to record. The store's own
 credentials go into `deployments/<name>/secrets.enc.yaml` (`sops set` — the plaintext never touches disk), then
@@ -510,11 +510,11 @@ relies on it, you need the commercial licence described in the intro.
 
 ### The APIs that light up
 
-A real run first enables twenty-two Google Cloud APIs in bounded [Service
+A real run first enables twenty-three Google Cloud APIs in bounded [Service
 Usage](https://cloud.google.com/service-usage/docs/enable-disable) `batchEnable` calls: `compute`, `servicenetworking`,
 `storage`, `iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `artifactregistry`, `container`, `gkehub`,
 `gkebackup`, `anthosconfigmanagement`, `logging`, `monitoring`, `cloudtrace`, `secretmanager`, `certificatemanager`,
-`identitytoolkit`, `speech`, `drive`, `admin`, and `cloudkms`.
+`identitytoolkit`, `speech`, `drive`, `admin`, `cloudkms`, and `aiplatform`.
 
 ---
 
@@ -1059,11 +1059,20 @@ alongside it.
 | Email backend | `NAVIGATOR_EMAIL_BACKEND` | Must be `sendgrid` outside the harness |
 | Outbound SendGrid | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | Required outside the harness |
 | SendGrid base URL | `SENDGRID_BASE_URL` | Official hosts only outside the harness |
-| Inbound SendGrid | `SENDGRID_INBOUND_SECRET` | Required outside the harness |
+| Inbound URL gate | `SENDGRID_INBOUND_SECRET` | Required outside the harness |
+| Inbound signature | `SENDGRID_INBOUND_PUBLIC_KEY` | Required when summary review is enabled |
 | Attachment scanner | `NAVIGATOR_CLAMD_ADDR` | Required in every deployed profile; private `clamd` only |
 | Event webhook | `SENDGRID_EVENTS_SECRET`, `SENDGRID_EVENTS_PUBLIC_KEY` | Required outside the harness |
 | Threaded mail | `NAVIGATOR_PARSE_HOST`, `NAVIGATOR_LAWYER_NOTIFY_EMAIL` | Both values enable it |
-| Summary env | `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` | Unset: off; blank fails; no compiled default; per Deploy row |
+| Summary opt-in | `NAVIGATOR_SUMMARY_ENABLED` | Enables durable review |
+| Summary identity | `NAVIGATOR_DEPLOYMENT_ID`, `NAVIGATOR_SUMMARY_CHANNEL_ID` | Durable review coordinates |
+| Summary envelope | `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` | Unset/off by default; blank values fail |
+| Summary Gemini model | `NAVIGATOR_SUMMARY_GEMINI_MODEL` | Optional Vertex model override |
+| Summary Gemini location | `NAVIGATOR_SUMMARY_GEMINI_LOCATION` | Optional Vertex location override |
+| Summary Claude model | `NAVIGATOR_SUMMARY_CLAUDE_MODEL` | Optional model override |
+| Summary Claude location | `NAVIGATOR_SUMMARY_CLAUDE_LOCATION` | Optional location override |
+| Summary input limit | `NAVIGATOR_SUMMARY_MAX_INPUT_CHARS` | Optional input limit |
+| Summary output limit | `NAVIGATOR_SUMMARY_MAX_OUTPUT_TOKENS` | Optional output limit |
 | DKIM fence | `NAVIGATOR_DKIM_REQUIRE_DOMAIN` | Optional domain pin |
 | Lawyer-sender DKIM check | none (always on) | Must pass for sender's own domain on every lawyer command/relay |
 | Internal ops notices | `SLACK_WEBHOOK_URL` | Optional; otherwise captured in memory |

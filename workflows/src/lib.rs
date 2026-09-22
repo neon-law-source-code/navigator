@@ -23,6 +23,7 @@ pub mod dispatch;
 pub mod document;
 pub mod email;
 pub mod email_summary;
+pub mod email_summary_config;
 pub mod email_summary_delivery;
 pub mod guardrail;
 pub mod intake;
@@ -58,6 +59,7 @@ pub use email_summary::{
     EmailSummaryRunConfig, NormalizedEmail, SummaryError, SummaryProvider, DEFAULT_MAX_INPUT_CHARS,
     DEFAULT_MAX_OUTPUT_TOKENS, SUMMARY_PROMPT_VERSION,
 };
+pub use email_summary_config::{EmailSummaryConfig, EmailSummaryConfigError};
 pub use email_summary_delivery::{
     deliver_summary, render_summary_message, DeliveryResult, ProviderDelivery,
     SummaryDeliveryError, SummaryDeliveryMessage,

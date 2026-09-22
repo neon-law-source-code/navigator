@@ -315,7 +315,9 @@ inbound pipeline. Workspace forwards it to SendGrid Inbound Parse with **one Gma
    **inbound** messages for your organization.
 3. **Match:** envelope recipient is `support@your-domain.example`.
 4. **Action:** check **Change envelope recipient → Replace recipient** and enter `intake@parse.your-domain.example`.
-5. **Save** and confirm the rule shows **Enabled**.
+5. **Save** and confirm the rule shows **Enabled**. Configure the deployment's
+   `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` with this final replacement address, because that is the envelope recipient
+   SendGrid reports to Navigator.
 
 The result: a sender emails `support@your-domain.example` → Workspace rewrites the envelope recipient to
 `intake@parse.your-domain.example` → the `parse.` subdomain's `MX` (`mx.sendgrid.net`) delivers it to SendGrid → Inbound

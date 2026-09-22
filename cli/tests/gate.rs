@@ -313,6 +313,22 @@ fn gate_default_rule_set_flags_missing_frontmatter() {
 }
 
 #[test]
+fn gate_flags_a_body_only_letter_with_a_plain_signature_line() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "templates/signable.md",
+        "---\nkind: letter\n---\n\nPlease sign below.\n\nSignature: ____________________\n",
+    );
+    gate(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("N104"))
+        .stdout(str::contains("Missing required `questionnaire`"));
+}
+
+#[test]
 fn gate_requires_a_kind_from_every_file_in_the_templates_lane() {
     // LAW-15: this used to pass clean. Classification is still
     // frontmatter-driven — a file with no `kind:` is *linted* as plain

@@ -37,8 +37,8 @@ pub mod workspace;
 
 pub use audio::{decode_to_mono_pcm16, AudioError, DecodedAudio};
 pub use drive::{
-    DriveError, DriveFolder, DriveMember, DriveMemberKind, DriveRole, DriveService, DriveWorkspace,
-    DriveWorkspaceConfig, FakeDrive, GoogleDrive,
+    DriveError, DriveFile, DriveFileDownload, DriveFolder, DriveMember, DriveMemberKind, DriveRole,
+    DriveService, DriveWorkspace, DriveWorkspaceConfig, FakeDrive, GoogleDrive,
 };
 pub use forge::{
     FakeForge, ForgeError, ForgeRepository, ForgeService, GitHubForge, GITHUB_API_BASE_ENV,

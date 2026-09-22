@@ -270,6 +270,166 @@ async fn pooled_withdrawal(
     );
 }
 
+/// A single-matter draw from the California pool — the sibling of
+/// `pooled_withdrawal` above, proving California's pool applies and reads
+/// back independently of Nevada's.
+#[given(regex = r#"^one California pooled withdrawal settles (\d+) cents for "([^"]+)"$"#)]
+async fn california_pooled_withdrawal(world: &mut TrustWorld, cents: i64, project_name: String) {
+    let surreal = features::shared_surreal().await;
+    let project_id = world.project_id(&project_name);
+    let jurisdiction = store::jurisdictions::find_or_create(
+        &surreal,
+        &store::jurisdictions::NewJurisdiction::new("California", "CA", "state"),
+    )
+    .await
+    .expect("seed California");
+    // Scoped to this scenario's matter, same reasoning as `xero-nv-features`
+    // above: the account is UNIQUE per state, so found-or-kept rather than
+    // re-created per scenario.
+    let account_id = "xero-ca-features".to_string();
+    let _ = store::iolta_accounts::upsert(
+        &surreal,
+        &store::iolta_accounts::UpsertIoltaAccount {
+            jurisdiction_id: jurisdiction.id,
+            xero_account_id: account_id.clone(),
+            xero_account_code: Some("091".into()),
+            name: "IOLTA CA — Trust".into(),
+            currency: "USD".into(),
+            balance_cents: 0,
+            mirrored_at: chrono::Utc::now(),
+        },
+    )
+    .await
+    .expect("mirror the California pool");
+
+    store::projects::set_jurisdiction(&surreal, project_id, Some(jurisdiction.id))
+        .await
+        .expect("point the matter at California");
+    let invoice_reference = format!("INV-ALLOC-CA-{project_id}");
+    store::xero_invoices::upsert(
+        &surreal,
+        &store::xero_invoices::UpsertXeroInvoice {
+            project_id,
+            xero_invoice_id: invoice_reference.clone(),
+            reference: invoice_reference.clone(),
+            status: "AUTHORISED".into(),
+            amount_cents: cents,
+            currency: "USD".into(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
+        },
+    )
+    .await
+    .expect("mirror the invoice this line settles");
+
+    let applied = store::iolta_withdrawals::apply(
+        &surreal,
+        &store::iolta_withdrawals::WithdrawalInput {
+            xero_transaction_id: format!("bt-ca-withdrawal-{project_id}"),
+            xero_account_id: account_id,
+            total_cents: cents,
+            currency: "USD".into(),
+            occurred_at: chrono::Utc::now(),
+            lines: vec![store::iolta_withdrawals::AllocationInput {
+                invoice_reference,
+                amount_cents: cents,
+            }],
+        },
+    )
+    .await
+    .expect("apply the California pooled withdrawal");
+    assert!(
+        matches!(applied, store::iolta_withdrawals::Applied::Posted { .. }),
+        "expected the California withdrawal to post, got {applied:?}"
+    );
+}
+
+/// One pooled Nevada withdrawal settling two invoices on the *same* matter
+/// in a single transfer — the multi-invoice pooled draw, distinct from the
+/// multi-matter split `pooled_withdrawal` above already covers.
+#[given(
+    regex = r#"^one pooled withdrawal settles two invoices of (\d+) cents and (\d+) cents for "([^"]+)"$"#
+)]
+async fn pooled_withdrawal_two_invoices_one_matter(
+    world: &mut TrustWorld,
+    first_cents: i64,
+    second_cents: i64,
+    project_name: String,
+) {
+    let surreal = features::shared_surreal().await;
+    let project_id = world.project_id(&project_name);
+    let jurisdiction = store::jurisdictions::find_or_create(
+        &surreal,
+        &store::jurisdictions::NewJurisdiction::new("Nevada", "NV", "state"),
+    )
+    .await
+    .expect("seed Nevada");
+    let account_id = "xero-nv-features".to_string();
+    let _ = store::iolta_accounts::upsert(
+        &surreal,
+        &store::iolta_accounts::UpsertIoltaAccount {
+            jurisdiction_id: jurisdiction.id,
+            xero_account_id: account_id.clone(),
+            xero_account_code: Some("090".into()),
+            name: "IOLTA NV — Trust".into(),
+            currency: "USD".into(),
+            balance_cents: 0,
+            mirrored_at: chrono::Utc::now(),
+        },
+    )
+    .await
+    .expect("mirror the Nevada pool");
+
+    store::projects::set_jurisdiction(&surreal, project_id, Some(jurisdiction.id))
+        .await
+        .expect("point the matter at Nevada");
+
+    for (tag, cents) in [("x", first_cents), ("y", second_cents)] {
+        store::xero_invoices::upsert(
+            &surreal,
+            &store::xero_invoices::UpsertXeroInvoice {
+                project_id,
+                xero_invoice_id: format!("INV-ALLOC-{project_id}-{tag}"),
+                reference: format!("INV-ALLOC-{project_id}-{tag}"),
+                status: "AUTHORISED".into(),
+                amount_cents: cents,
+                currency: "USD".into(),
+                issued_at: chrono::Utc::now(),
+                due_at: None,
+            },
+        )
+        .await
+        .expect("mirror the invoice this line settles");
+    }
+
+    let applied = store::iolta_withdrawals::apply(
+        &surreal,
+        &store::iolta_withdrawals::WithdrawalInput {
+            xero_transaction_id: format!("bt-multi-invoice-withdrawal-{project_id}"),
+            xero_account_id: account_id,
+            total_cents: first_cents + second_cents,
+            currency: "USD".into(),
+            occurred_at: chrono::Utc::now(),
+            lines: vec![
+                store::iolta_withdrawals::AllocationInput {
+                    invoice_reference: format!("INV-ALLOC-{project_id}-x"),
+                    amount_cents: first_cents,
+                },
+                store::iolta_withdrawals::AllocationInput {
+                    invoice_reference: format!("INV-ALLOC-{project_id}-y"),
+                    amount_cents: second_cents,
+                },
+            ],
+        },
+    )
+    .await
+    .expect("apply the multi-invoice pooled withdrawal");
+    assert!(
+        matches!(applied, store::iolta_withdrawals::Applied::Posted { .. }),
+        "expected the multi-invoice withdrawal to post, got {applied:?}"
+    );
+}
+
 #[when(regex = r#"^"([^"]+)" opens the detail page for "([^"]+)"$"#)]
 async fn open_detail(world: &mut TrustWorld, email: String, project_name: String) {
     let person_id = *world.persons.get(&email).expect("actor was seeded earlier");

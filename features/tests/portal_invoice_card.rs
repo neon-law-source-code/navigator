@@ -207,6 +207,86 @@ async fn reconcile_paid(world: &mut CardWorld, project_name: String) {
     .expect("mirror row exists to reconcile");
 }
 
+/// A partial reconcile: the mirror stays `AUTHORISED` (Xero has no separate
+/// "partially paid" status), and `amount_paid_cents` sits strictly below the
+/// total — the state `webapp::portal_project_detail`'s `paid` flag
+/// (`amount_paid_cents >= amount_cents`) must still read `false` for.
+#[given(regex = r#"^the invoice for "([^"]+)" is partially reconciled at (\d+) cents$"#)]
+async fn reconcile_partial(world: &mut CardWorld, project_name: String, paid_cents: i64) {
+    let project_id = world.project_id(&project_name);
+    let row = xero_invoices::for_projects(&features::shared_surreal().await, &[project_id])
+        .await
+        .expect("read mirror")
+        .into_iter()
+        .next()
+        .expect("a mirror row was created earlier");
+    xero_invoices::record_reconcile(
+        &features::shared_surreal().await,
+        &row.xero_invoice_id,
+        "AUTHORISED",
+        paid_cents,
+    )
+    .await
+    .expect("record reconcile")
+    .expect("mirror row exists to reconcile");
+}
+
+/// An invoice past its own due date. `due_at` is not itself rendered on the
+/// client page today, so this proves an overdue mirror row still renders
+/// its status and Due badge rather than misrendering or crashing.
+#[given(
+    regex = r#"^an overdue AUTHORISED invoice of (\d+) cents due on "([^"]+)" is mirrored for "([^"]+)"$"#
+)]
+async fn mirror_overdue_invoice(
+    world: &mut CardWorld,
+    amount_cents: i64,
+    due_date: String,
+    project_name: String,
+) {
+    let project_id = world.project_id(&project_name);
+    let due_at = chrono::DateTime::parse_from_rfc3339(&format!("{due_date}T00:00:00Z"))
+        .expect("valid due date")
+        .with_timezone(&chrono::Utc);
+    xero_invoices::upsert(
+        &features::shared_surreal().await,
+        &UpsertXeroInvoice {
+            project_id,
+            xero_invoice_id: format!("INV-TEST-{project_id}-overdue"),
+            reference: "Matter overdue fee".into(),
+            status: "AUTHORISED".into(),
+            amount_cents,
+            currency: "USD".into(),
+            issued_at: due_at - chrono::Duration::days(30),
+            due_at: Some(due_at),
+        },
+    )
+    .await
+    .expect("upsert overdue mirror invoice");
+}
+
+/// A second invoice on the same matter, billed in EUR — proving the mirror
+/// and the invoice list render a non-USD invoice alongside a USD one rather
+/// than dropping or miscounting it.
+#[given(regex = r#"^an AUTHORISED EUR invoice of (\d+) cents is mirrored for "([^"]+)"$"#)]
+async fn mirror_eur_invoice(world: &mut CardWorld, amount_cents: i64, project_name: String) {
+    let project_id = world.project_id(&project_name);
+    xero_invoices::upsert(
+        &features::shared_surreal().await,
+        &UpsertXeroInvoice {
+            project_id,
+            xero_invoice_id: format!("INV-TEST-{project_id}-eur"),
+            reference: "Matter EUR fee".into(),
+            status: "AUTHORISED".into(),
+            amount_cents,
+            currency: "EUR".into(),
+            issued_at: chrono::Utc::now(),
+            due_at: None,
+        },
+    )
+    .await
+    .expect("upsert eur mirror invoice");
+}
+
 #[when(regex = r#"^"([^"]+)" opens the detail page for "([^"]+)"$"#)]
 async fn open_detail(world: &mut CardWorld, email: String, project_name: String) {
     let person_id = *world.persons.get(&email).expect("actor was seeded earlier");

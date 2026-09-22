@@ -702,6 +702,124 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receipt_post_marks_missing_coordinates_as_incomplete() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(r#"{"ok":true,"channel":"C123"}"#),
+            )
+            .mount(&server)
+            .await;
+
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let error = bot
+            .post_message_with_receipt("C123", "hello", Some("corr-123"))
+            .await
+            .expect_err("a missing timestamp is ambiguous");
+        assert!(matches!(error, super::SlackBotError::IncompleteResponse));
+    }
+
+    #[tokio::test]
+    async fn slack_api_errors_preserve_retry_classification() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "17"))
+            .mount(&server)
+            .await;
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let error = bot
+            .post_message("C123", "hello")
+            .await
+            .expect_err("rate limits must be surfaced");
+        assert!(matches!(
+            error,
+            super::SlackBotError::RateLimited {
+                retry_after_seconds: Some(17)
+            }
+        ));
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let error = bot
+            .post_message("C123", "hello")
+            .await
+            .expect_err("server failures must be retryable");
+        assert!(matches!(
+            error,
+            super::SlackBotError::RetryableHttpStatus(503)
+        ));
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .respond_with(ResponseTemplate::new(400))
+            .mount(&server)
+            .await;
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let error = bot
+            .post_message("C123", "hello")
+            .await
+            .expect_err("client failures must be permanent");
+        assert!(matches!(error, super::SlackBotError::HttpStatus(400)));
+    }
+
+    #[tokio::test]
+    async fn slack_api_payload_errors_are_distinct_from_http_errors() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"ok":false,"error":"channel_not_found"}"#),
+            )
+            .mount(&server)
+            .await;
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let error = bot
+            .post_message("C123", "hello")
+            .await
+            .expect_err("Slack API errors must be surfaced");
+        assert!(matches!(
+            error,
+            super::SlackBotError::Api(message) if message == "channel_not_found"
+        ));
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/conversations.create"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(r#"{"ok":false,"error":"name_taken"}"#),
+            )
+            .mount(&server)
+            .await;
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let error = bot
+            .create_private_channel("sample-project")
+            .await
+            .expect_err("channel creation errors must be surfaced");
+        assert!(matches!(
+            error,
+            super::SlackBotError::Api(message) if message == "name_taken"
+        ));
+    }
+
+    #[tokio::test]
     async fn staging_bot_post_appends_from_staging() {
         use wiremock::matchers::{body_partial_json, method, path};
         use wiremock::{Mock, ResponseTemplate};

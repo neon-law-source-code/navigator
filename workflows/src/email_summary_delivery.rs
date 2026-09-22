@@ -195,13 +195,36 @@ mod tests {
         assert!(rendered.ends_with("[truncated]"));
     }
 
-    #[derive(Clone, Default)]
-    struct IncompleteReceiptSlackBot {
+    #[derive(Clone, Copy)]
+    enum TestSlackOutcome {
+        Incomplete,
+        Api,
+    }
+
+    #[derive(Clone)]
+    struct TestSlackBot {
         posts: Arc<AtomicUsize>,
+        outcome: TestSlackOutcome,
+    }
+
+    impl TestSlackBot {
+        fn incomplete() -> Self {
+            Self {
+                posts: Arc::new(AtomicUsize::new(0)),
+                outcome: TestSlackOutcome::Incomplete,
+            }
+        }
+
+        fn api() -> Self {
+            Self {
+                posts: Arc::new(AtomicUsize::new(0)),
+                outcome: TestSlackOutcome::Api,
+            }
+        }
     }
 
     #[async_trait]
-    impl SlackBot for IncompleteReceiptSlackBot {
+    impl SlackBot for TestSlackBot {
         async fn create_private_channel(
             &self,
             _name: &str,
@@ -223,12 +246,14 @@ mod tests {
             _correlation_id: Option<&str>,
         ) -> Result<SlackMessageReceipt, SlackBotError> {
             self.posts.fetch_add(1, Ordering::SeqCst);
-            Err(SlackBotError::IncompleteResponse)
+            Err(match self.outcome {
+                TestSlackOutcome::Incomplete => SlackBotError::IncompleteResponse,
+                TestSlackOutcome::Api => SlackBotError::Api("channel_not_found".to_string()),
+            })
         }
     }
 
-    #[tokio::test]
-    async fn incomplete_slack_success_is_unknown_and_not_replayed() {
+    async fn setup_receipt() -> (store::surreal::SurrealDb, Uuid) {
         let db = store::test_support::mem_surreal().await;
         let receipt_id = Uuid::now_v7();
         store::email_receipts::ensure(
@@ -244,8 +269,13 @@ mod tests {
         )
         .await
         .expect("receipt setup");
+        (db, receipt_id)
+    }
 
-        let slack = Arc::new(IncompleteReceiptSlackBot::default());
+    #[tokio::test]
+    async fn incomplete_slack_success_is_unknown_and_not_replayed() {
+        let (db, receipt_id) = setup_receipt().await;
+        let slack = Arc::new(TestSlackBot::incomplete());
         let result = deliver_summary(
             &db,
             slack.clone(),
@@ -285,5 +315,80 @@ mod tests {
         .expect("unknown delivery is held");
         assert_eq!(replay, DeliveryResult::Unknown);
         assert_eq!(slack.posts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn permanent_slack_failure_is_failed_and_retried() {
+        let (db, receipt_id) = setup_receipt().await;
+        let slack = Arc::new(TestSlackBot::api());
+        let first = deliver_summary(
+            &db,
+            slack.clone(),
+            receipt_id,
+            "C-test",
+            &message(receipt_id),
+        )
+        .await;
+        assert!(matches!(
+            first,
+            Err(SummaryDeliveryError::Slack(SlackBotError::Api(_)))
+        ));
+        assert_eq!(
+            store::email_deliveries::find(&db, receipt_id)
+                .await
+                .expect("delivery lookup")
+                .expect("delivery exists")
+                .state,
+            store::email_deliveries::FAILED
+        );
+
+        let second = deliver_summary(
+            &db,
+            slack.clone(),
+            receipt_id,
+            "C-test",
+            &message(receipt_id),
+        )
+        .await;
+        assert!(matches!(
+            second,
+            Err(SummaryDeliveryError::Slack(SlackBotError::Api(_)))
+        ));
+        assert_eq!(slack.posts.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            store::email_deliveries::attempts(&db, receipt_id)
+                .await
+                .expect("attempt lookup")
+                .len(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn confirmed_delivery_replays_without_posting_again() {
+        let (db, receipt_id) = setup_receipt().await;
+        let slack = Arc::new(crate::notify::CapturingSlackBot::new());
+        let first = deliver_summary(
+            &db,
+            slack.clone(),
+            receipt_id,
+            "C-test",
+            &message(receipt_id),
+        )
+        .await
+        .expect("delivery succeeds");
+        assert!(matches!(first, DeliveryResult::Sent(_)));
+
+        let replay = deliver_summary(
+            &db,
+            slack.clone(),
+            receipt_id,
+            "C-test",
+            &message(receipt_id),
+        )
+        .await
+        .expect("confirmed replay is held");
+        assert_eq!(replay, DeliveryResult::AlreadyConfirmed);
+        assert_eq!(slack.posted_messages().len(), 1);
     }
 }

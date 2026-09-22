@@ -516,4 +516,66 @@ mod tests {
             .expect("resend admission");
         assert!(resumed.attempt_id.is_some());
     }
+
+    #[tokio::test]
+    async fn reconciliation_records_operator_decision_and_updates_attempt() {
+        let (db, receipt_id) = setup().await;
+        ensure(&db, receipt_id, "C123")
+            .await
+            .expect("delivery setup");
+        admit_attempt(&db, receipt_id, "corr-a")
+            .await
+            .expect("admission");
+        mark_unknown(&db, receipt_id, "response lost after dispatch")
+            .await
+            .expect("unknown");
+
+        let confirmed = reconcile_confirmed(
+            &db,
+            receipt_id,
+            "operator@example.com",
+            "C123",
+            "1700000000.000001",
+        )
+        .await
+        .expect("reconciliation");
+        assert_eq!(confirmed.state, CONFIRMED);
+        assert_eq!(
+            confirmed.reconciled_by.as_deref(),
+            Some("operator@example.com")
+        );
+        assert_eq!(
+            confirmed.reconciliation.as_deref(),
+            Some("operator_confirmed")
+        );
+        assert_eq!(
+            confirmed.slack_timestamp.as_deref(),
+            Some("1700000000.000001")
+        );
+        let attempt = &attempts(&db, receipt_id).await.expect("attempts")[0];
+        assert_eq!(attempt.state, CONFIRMED);
+        assert_eq!(
+            attempt.slack_timestamp.as_deref(),
+            Some("1700000000.000001")
+        );
+        assert_eq!(attempt.error, None);
+
+        authorize_resend(&db, receipt_id, "operator@example.com")
+            .await
+            .expect("authorize resend");
+        admit_attempt(&db, receipt_id, "corr-b")
+            .await
+            .expect("resend admission");
+        let failed = mark_failed(&db, receipt_id, "permanent Slack rejection")
+            .await
+            .expect("failed delivery");
+        assert_eq!(failed.state, FAILED);
+        assert_eq!(
+            failed.last_error.as_deref(),
+            Some("permanent Slack rejection")
+        );
+        let attempt = &attempts(&db, receipt_id).await.expect("attempts")[1];
+        assert_eq!(attempt.state, FAILED);
+        assert_eq!(attempt.error.as_deref(), Some("permanent Slack rejection"));
+    }
 }

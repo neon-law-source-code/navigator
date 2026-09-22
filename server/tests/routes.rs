@@ -10261,6 +10261,31 @@ async fn host_brand_path_matrix_resolves_every_combination() {
     }
 }
 
+#[tokio::test]
+async fn the_lead_modal_is_published_on_the_neon_home_only() {
+    let default_host = "www.neonlaw.com";
+    let delete_your_data_host = "staging.deleteyourdata.com";
+    let lawyer_shook_host = "staging.lawyershook.com";
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for (host, expected) in [
+        (default_host, true),
+        (delete_your_data_host, false),
+        (lawyer_shook_host, false),
+    ] {
+        let resp = get_on_host(&app, "/", host).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{host} home");
+        let body = body_string(resp).await;
+        assert_eq!(
+            body.contains("data-lead-modal"),
+            expected,
+            "home lead modal publication for {host}: {body}"
+        );
+    }
+}
+
 /// The launch gate, end to end through the real composed router.
 ///
 /// Every registered brand is released with a certificate and admitted by the

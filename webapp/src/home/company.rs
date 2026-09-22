@@ -84,7 +84,11 @@ fn SiblingPractice(label: String, href: Option<String>) -> Element {
 }
 
 #[component]
-pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Element {
+pub(super) fn CompanyHome(
+    content: HomeContent,
+    company: CompanyContent,
+    #[props(default)] lead_capture_enabled: bool,
+) -> Element {
     let booking_external = is_external_href(&company.booking_href);
     rsx! {
         div { class: "company-home",
@@ -98,6 +102,15 @@ pub(super) fn CompanyHome(content: HomeContent, company: CompanyContent) -> Elem
                         target: if booking_external { Some("_blank") } else { None },
                         rel: if booking_external { Some("noopener noreferrer") } else { None },
                         "{content.contact_label}"
+                    }
+                    if lead_capture_enabled {
+                        a {
+                            class: "nav-btn nav-btn--secondary home-lead-modal__trigger",
+                            href: "/contact",
+                            "aria-haspopup": "dialog",
+                            "data-lead-modal-trigger": "true",
+                            "Get in touch"
+                        }
                     }
                     a { class: "company-text-link", href: "#pricing", "{company.pricing_link} ↗" }
                 }

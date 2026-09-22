@@ -45,6 +45,93 @@
   margin-top: 0.5rem;
 }
 
+.home-statement__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.home-statement__actions .home-statement__cta {
+  margin-top: 0;
+}
+
+/* The second CTA is a normal link until lead-capture-modal.js enhances it. */
+.home-lead-modal__trigger {
+  text-decoration: none;
+}
+
+.home-lead-modal {
+  width: min(36rem, calc(100% - 2rem));
+  max-width: none;
+  max-height: calc(100vh - 2rem);
+  margin: auto;
+  overflow: auto;
+  border: 1px solid var(--nav-color-border);
+  border-radius: 0.5rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background: var(--nav-color-surface);
+  color: var(--nav-color-text);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.28);
+}
+
+.home-lead-modal:not([open]) {
+  display: none;
+}
+
+.home-lead-modal::backdrop {
+  background: rgb(0 0 0 / 0.58);
+}
+
+.home-lead-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.home-lead-modal__title {
+  margin: 0;
+  font-family: var(--firm-serif);
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  line-height: 1.1;
+}
+
+.home-lead-modal__close {
+  flex: 0 0 auto;
+  border: 1px solid var(--nav-color-border);
+  border-radius: 50%;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: transparent;
+  color: var(--nav-color-text);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.home-lead-modal__close:hover,
+.home-lead-modal__close:focus-visible {
+  border-color: var(--firm-brand);
+  color: var(--firm-brand-strong);
+}
+
+.home-lead-modal .nav-form-card {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 40rem) {
+  .home-lead-modal {
+    width: calc(100% - 1rem);
+    padding: 1rem;
+  }
+}
+
 /* The shared button is themed Navigator cyan; on the firm's own surface it
    carries the firm's colour instead, so the one call to action on the page is
    not the one element that is off-brand. `theme.css` sets the primary button

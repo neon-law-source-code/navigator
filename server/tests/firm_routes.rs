@@ -239,6 +239,50 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
 }
 
 #[tokio::test]
+async fn the_neon_home_lead_modal_reuses_the_contact_form_contract() {
+    let app = site_app().await;
+    let home = body_string(anon_get(&app, "/").await).await;
+    let contact = body_string(anon_get(&app, "/contact").await).await;
+
+    assert!(home.contains("Book Consultation"), "primary CTA: {home}");
+    assert!(
+        home.contains(r#"action="/leads""#),
+        "shared lead handler: {home}"
+    );
+    assert!(
+        home.contains(r#"name="source_path" value="/""#),
+        "the home form records the home path: {home}"
+    );
+    assert!(
+        !home.contains(r#"name="source_path" value="/contact""#),
+        "the home form does not claim to be the contact page: {home}"
+    );
+    assert!(
+        home.contains(r#"name="website""#)
+            && home.contains(r#"class="nav-honeypot nav-visually-hidden" aria-hidden="true""#)
+            && home.contains(r#"tabindex="-1""#),
+        "the honeypot remains present and hidden: {home}"
+    );
+
+    for legal_text in [
+        "Optional. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Our ",
+        "explain how we text and what we keep.",
+        "Yes, Neon Law may send me text messages about this inquiry at this number, including automated texts. Texting is not a condition of hiring the firm.",
+    ] {
+        assert!(home.contains(legal_text), "home legal copy: {legal_text}: {home}");
+        assert!(
+            contact.contains(legal_text),
+            "contact legal copy: {legal_text}: {contact}"
+        );
+    }
+    assert!(home.contains(r#"href="/privacy""#), "privacy link: {home}");
+    assert!(
+        home.contains(r#"href="/privacy#text-messaging-sms""#),
+        "texting terms link: {home}"
+    );
+}
+
+#[tokio::test]
 async fn the_footer_carries_the_pages_the_header_does_not() {
     // All ten routes are one click away from every public page. Checked on
     // `/navigator` rather than `/`, because the footer is shared chrome and a

@@ -3011,8 +3011,7 @@ mod tests {
                 refused,
                 Err(crate::iolta_accounts::IoltaAccountError::JurisdictionTaken { .. })
             ),
-            "a second account for a state that already mirrors one must be refused, got \
-             {refused:?}"
+            "a second account for a state that already mirrors one must be refused"
         );
 
         let ca_trust_project = crate::projects::find_by_code(&surreal, CA_TRUST_PROJECT_CODE)

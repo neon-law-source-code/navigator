@@ -151,8 +151,8 @@ fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
     assert!(source.contains(
         r#"elif { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; then"#
     ));
-    assert!(source.contains("navigator site import --dry-run --ci --host \"${HOST}\" --dir seeds"));
-    assert!(source.contains(r#"navigator site import --ci --host "${HOST}" --dir seeds"#));
+    assert!(source.contains("navigator site import --dry-run --ci --host \"${HOST}\""));
+    assert!(source.contains(r#"navigator site import --ci --host "${HOST}""#));
     assert!(source.contains("needs: read-manifest"));
     assert!(source.contains("needs: [read-manifest, verify, documents, seeds]"));
 }

@@ -167,7 +167,7 @@ fn site_import_help_lists_the_seed_arguments() {
         .stdout(str::contains("--overwrite"))
         .stdout(str::contains("--dry-run"))
         .stdout(str::contains("--ci"))
-        .stdout(str::contains("--dir"));
+        .stdout(str::contains("--dir").not());
 }
 
 #[test]

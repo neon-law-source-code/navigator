@@ -78,8 +78,11 @@ pub async fn seed(
     .await
 }
 
-/// `navigator site import --dir <path>` — submit every supported seed document
-/// in that directory, in [`store::seed::SeedModel::ALL`] order.
+/// `navigator site import` with no `MODEL_NAME`/`SEED_FILE` — submit every
+/// supported seed document in `dir`, in [`store::seed::SeedModel::ALL`]
+/// order. A missing `dir` prints a notice and succeeds, the same convention
+/// `project build` uses for a repository with no application: the gate still
+/// passes, there is simply nothing to import.
 pub async fn seed_directory(
     credential: SeedCredential,
     dir: &Path,
@@ -87,6 +90,10 @@ pub async fn seed_directory(
     dry_run: bool,
 ) -> ExitCode {
     run(async {
+        if !dir.is_dir() {
+            println!("no {} — nothing to import", dir.display());
+            return Ok(());
+        }
         let documents = seed_documents_in(dir)?;
         if documents.is_empty() {
             eprintln!("no seed documents in {} — nothing to import", dir.display());
@@ -3511,6 +3518,27 @@ mod tests {
                 dir.path(),
                 false,
                 false,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    /// A repository with no `seeds/` directory succeeds without a login or a
+    /// network call — the same convention `project build` uses for a
+    /// repository with no application.
+    #[tokio::test(flavor = "current_thread")]
+    async fn seed_directory_succeeds_with_no_directory() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("seeds");
+
+        assert_eq!(
+            seed_directory(
+                SeedCredential::Stored { host: None },
+                &missing,
+                false,
+                false
             )
             .await,
             ExitCode::SUCCESS

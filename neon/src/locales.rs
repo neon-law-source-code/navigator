@@ -922,6 +922,7 @@ mod tests {
         let copy: serde_yaml::Value = serde_yaml::from_str(NEON_HOME_YAML).unwrap();
         let company = &copy["company"];
         assert_eq!(company["membership_price"].as_str(), Some("$50"));
+        assert_eq!(company["retainer_amount"].as_u64(), Some(10_000));
         assert_eq!(company["review_rows"][0][1].as_str(), Some("$1,000"));
         assert_eq!(company["review_rows"][2][1].as_str(), Some("$5,000"));
         assert!(company["simulator_note"]
@@ -1179,7 +1180,7 @@ mod tests {
             );
         }
         assert!(
-            text.contains("technology"),
+            text.to_lowercase().contains("technology"),
             "and the audience is named: {text}"
         );
     }

@@ -273,12 +273,12 @@ pub struct FirmOffice {
 /// mark, the legal person a client actually engages — kept in step with its row
 /// in `store/seeds/neon/Address.yaml`.
 ///
-/// One office, where there were four, then three. The California box went when
-/// the retired partnership that held it wound down; New York and Washington
-/// followed for the same reason: an address is a holding out to practise in
-/// that state, so a box the firm no longer rents cannot stay in the list, not
-/// a stale footer. Re-add either here only once this entity holds that box
-/// again.
+/// One office, where there were four, then three, then one. The California box
+/// went when the retired partnership that held it wound down; New York and
+/// Washington followed for the same reason: an address is a holding out to
+/// practise in that state, so a box the firm no longer rents cannot stay in
+/// the list, not a stale footer. New York returned once this entity took a box
+/// there again; Washington stays out until the same is true there.
 ///
 /// Still a separate field from [`SiteBrand::postal_address`], which is the one
 /// registered address the letterhead carries, even though both name the same
@@ -287,7 +287,9 @@ pub struct FirmOffice {
 /// bouncing — `405-9002` is the firm's.
 ///
 /// Each office is published under its state rather than its city, so the footer
-/// reads as the map of where the firm practises. The street address underneath
+/// reads as the map of where the firm practises, and the list is ordered
+/// alphabetically by that state so a new office slots in by where it sits
+/// rather than by whoever edited the list last. The street address underneath
 /// still names the city.
 ///
 /// Every comma is a line break. The footer sets an address the way an envelope
@@ -295,11 +297,18 @@ pub struct FirmOffice {
 /// and the city starts one, rather than the whole address running together and
 /// wrapping wherever the column ends. The city keeps its state and ZIP on the
 /// same line. See `webapp::components::site_footer`, which does the splitting.
-const FIRM_OFFICES: &[FirmOffice] = &[FirmOffice {
-    state: "Nevada",
-    address: "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523",
-    note: None,
-}];
+const FIRM_OFFICES: &[FirmOffice] = &[
+    FirmOffice {
+        state: "Nevada",
+        address: "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523",
+        note: None,
+    },
+    FirmOffice {
+        state: "New York",
+        address: "12 E 49th St, 18th Floor, New York, NY 10017",
+        note: None,
+    },
+];
 
 /// One professional association the firm belongs to, published in the footer
 /// of every page: the association's name as it writes it, its own site, and
@@ -1789,7 +1798,10 @@ mod tests {
             .collect();
         assert_eq!(
             published,
-            [("Nevada", "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523")],
+            [
+                ("Nevada", "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523"),
+                ("New York", "12 E 49th St, 18th Floor, New York, NY 10017"),
+            ],
             "the footer publishes the offices the firm actually keeps, ordered by state",
         );
         assert_eq!(
@@ -1809,7 +1821,11 @@ mod tests {
             .iter()
             .map(|office| (office.state, office.note))
             .collect();
-        assert_eq!(qualified, [("Nevada", None)], "no office carries a note");
+        assert_eq!(
+            qualified,
+            [("Nevada", None), ("New York", None)],
+            "no office carries a note",
+        );
     }
 
     /// The firm's footer discloses no per-attorney bar licence. The credentials
@@ -1865,7 +1881,7 @@ mod tests {
         })
         .await;
         // The compiled default is unchanged.
-        assert_eq!(DEFAULT_BRANDING.firm_offices.len(), 1);
+        assert_eq!(DEFAULT_BRANDING.firm_offices.len(), 2);
         assert!(DEFAULT_BRANDING.firm_attorneys.is_empty());
     }
 

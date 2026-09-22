@@ -1366,9 +1366,9 @@ a.nav-pagination__link:hover {
   color: var(--nav-color-primary);
 }
 
-/* The association's tier-specific badge, on a dark tile in both schemes. The
-   image is decorative and sized by height, so a wide badge stays legible
-   without dominating the line beside it. */
+/* The association's own mark, on a dark tile in both schemes. The image is
+   decorative and sized by height, so a wide mark stays legible without
+   dominating the line beside it. */
 .site-footer__membership-badge {
   display: inline-flex;
   flex: none;

@@ -316,8 +316,8 @@ const FIRM_OFFICES: &[FirmOffice] = &[
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FirmMembership {
     pub name: &'static str,
-    /// The phrase following "Our organization is", including the
-    /// association-specific standing and name.
+    /// The full standing sentence, minus its trailing period: the firm's
+    /// association-specific standing and the association's name.
     pub standing: &'static str,
     pub href: &'static str,
     /// The association's own mark, as a repo-relative key in the deployment's
@@ -346,15 +346,18 @@ pub struct FirmMembership {
 /// The name is the association's own — the Justice Technology Association
 /// spells it out in full on its mark — rather than the short form it is
 /// known by in conversation.
+/// The Justice Technology Association standing sentence, minus its trailing
+/// period — the one source every render and every test derives from, so a
+/// copy change touches this line alone.
+pub const JTA_STANDING: &str = "Mission-Aligned Partner of the Justice Technology Association";
+
 const FIRM_MEMBERSHIPS: &[FirmMembership] = &[FirmMembership {
     name: "Justice Technology Association",
-    standing:
-        "a proud Partner of the Justice Technology Association as a Mission-Aligned Organization",
+    standing: JTA_STANDING,
     href: "https://justicetechassociation.org/get-involved",
-    // The association's tier-specific Alliance Partner badge. The bytes live
-    // in the deployment asset bucket; this is the bucket key resolved through
-    // the asset seam per deployment.
-    logo_key: "img/justice-technology-association/alliance-partner-badge.png",
+    // The association's own mark, as it publishes it. A bucket key,
+    // resolved through the asset seam per deployment.
+    logo_key: "img/justice-technology-association/logo.png",
 }];
 
 /// All identity consumed by rendering. The web router scopes one immutable
@@ -2006,10 +2009,6 @@ mod tests {
         };
         assert_eq!(membership.name, "Justice Technology Association");
         assert_eq!(
-            membership.standing,
-            "a proud Partner of the Justice Technology Association as a Mission-Aligned Organization"
-        );
-        assert_eq!(
             membership.href,
             "https://justicetechassociation.org/get-involved"
         );
@@ -2019,7 +2018,7 @@ mod tests {
         // reach that deployment's assets bucket.
         assert_eq!(
             membership.logo_key,
-            "img/justice-technology-association/alliance-partner-badge.png"
+            "img/justice-technology-association/logo.png"
         );
         assert!(
             !membership.logo_key.starts_with('/'),
@@ -2030,7 +2029,7 @@ mod tests {
         // back to the crate-bundled mount rather than breaking.
         assert_eq!(
             crate::assets::asset_url(membership.logo_key),
-            "/public/img/justice-technology-association/alliance-partner-badge.png"
+            "/public/img/justice-technology-association/logo.png"
         );
     }
 

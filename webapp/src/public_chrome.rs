@@ -74,8 +74,8 @@ pub struct ChromeBrand {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ChromeMembership {
     pub label: String,
-    /// The phrase following "Our organization is", including the firm's
-    /// association-specific standing and the association name.
+    /// The full standing sentence, minus its trailing period: the firm's
+    /// association-specific standing and the association's name.
     pub standing: String,
     pub href: String,
     /// The association's mark, already resolved through the asset seam
@@ -493,6 +493,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use views::brand::JTA_STANDING;
 
     fn ssr(app: fn() -> Element) -> String {
         let mut dom = VirtualDom::new(app);
@@ -546,11 +547,9 @@ mod tests {
             ],
             memberships: vec![ChromeMembership {
                 label: "Justice Technology Association".to_string(),
-                standing: "a proud Partner of the Justice Technology Association as a Mission-Aligned Organization"
-                    .to_string(),
+                standing: JTA_STANDING.to_string(),
                 href: "https://justicetechassociation.org/get-involved".to_string(),
-                logo_href: "/public/img/justice-technology-association/alliance-partner-badge.png"
-                    .to_string(),
+                logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
             }],
             ..PublicChrome::default()
         }
@@ -751,9 +750,8 @@ mod tests {
             "the family row carries over: {tenant_out}"
         );
         assert!(
-            tenant_out.contains(
-                "Our organization is a proud Partner of the Justice Technology Association as a Mission-Aligned Organization.",
-            ) && tenant_out.contains(r#"href="https://justicetechassociation.org/get-involved""#),
+            tenant_out.contains(&format!("{JTA_STANDING}."))
+                && tenant_out.contains(r#"href="https://justicetechassociation.org/get-involved""#),
             "the membership line carries over: {tenant_out}"
         );
     }
@@ -796,8 +794,7 @@ mod tests {
             "https://justicetechassociation.org/get-involved"
         );
         assert_eq!(
-            chrome.memberships[0].logo_href,
-            "/public/img/justice-technology-association/alliance-partner-badge.png",
+            chrome.memberships[0].logo_href, "/public/img/justice-technology-association/logo.png",
             "with no asset base configured it falls back to the bundled mount"
         );
     }
@@ -805,8 +802,7 @@ mod tests {
     #[cfg(feature = "server")]
     #[tokio::test]
     async fn every_brand_renders_the_firms_jta_standing() {
-        const EXPECTED: &str =
-            "Our organization is a proud Partner of the Justice Technology Association as a Mission-Aligned Organization.";
+        let expected = format!("{JTA_STANDING}.");
 
         for key in views::brand::BrandKey::ALL {
             let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
@@ -820,7 +816,7 @@ mod tests {
             .await;
 
             assert!(
-                output.contains(EXPECTED),
+                output.contains(&expected),
                 "{key:?} must render the association's standing: {output}"
             );
             assert!(

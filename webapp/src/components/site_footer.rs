@@ -154,8 +154,8 @@ pub struct FooterBrandLink {
 #[derive(Clone, PartialEq, Eq)]
 pub struct FooterMembership {
     pub label: String,
-    /// The phrase following "Our organization is", including the firm's
-    /// association-specific standing and the association name.
+    /// The full standing sentence, minus its trailing period: the firm's
+    /// association-specific standing and the association's name.
     pub standing: String,
     pub href: String,
     /// The association's mark, already resolved to this deployment's asset
@@ -609,10 +609,10 @@ pub fn SiteFooterLegal(
                             ul { class: "site-footer__memberships",
                                 for membership in memberships.iter() {
                                     li { class: "site-footer__membership", key: "{membership.href}",
-                                        // The association's tier-specific badge
-                                        // on a dark tile. The image is
-                                        // decorative; the standing line beside
-                                        // it names the relationship.
+                                        // The association's own mark, on a
+                                        // dark tile. The image is decorative;
+                                        // the standing line beside it names
+                                        // the relationship.
                                         if membership.logo_href.is_empty() {
                                             Icon { name: IconName::AwardFill }
                                         } else {
@@ -628,7 +628,7 @@ pub fn SiteFooterLegal(
                                         ExternalLink {
                                             class: "site-footer__membership-link".to_string(),
                                             href: membership.href.clone(),
-                                            "Our organization is {membership.standing}."
+                                            "{membership.standing}."
                                         }
                                     }
                                 }
@@ -761,6 +761,7 @@ pub fn SiteFooterLegal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use views::brand::JTA_STANDING;
 
     fn ssr(app: fn() -> Element) -> String {
         let mut dom = VirtualDom::new(app);
@@ -1796,11 +1797,9 @@ mod tests {
     fn one_membership() -> Vec<FooterMembership> {
         vec![FooterMembership {
             label: "Justice Technology Association".to_string(),
-            standing: "a proud Partner of the Justice Technology Association as a Mission-Aligned Organization"
-                .to_string(),
+            standing: JTA_STANDING.to_string(),
             href: "https://justicetechassociation.org/get-involved".to_string(),
-            logo_href: "/public/img/justice-technology-association/alliance-partner-badge.png"
-                .to_string(),
+            logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
         }]
     }
 
@@ -1955,9 +1954,7 @@ mod tests {
             .map(|(line, _)| line)
             .expect("the memberships render as a list");
         assert!(
-            line.contains(
-                "Our organization is a proud Partner of the Justice Technology Association as a Mission-Aligned Organization.",
-            ),
+            line.contains(&format!("{JTA_STANDING}.")),
             "the line names the association in full: {line}"
         );
         assert!(
@@ -1976,7 +1973,7 @@ mod tests {
         );
         assert!(
             line.contains(
-                r#"<span class="site-footer__membership-badge"><img class="site-footer__membership-logo" src="/public/img/justice-technology-association/alliance-partner-badge.png" alt="" loading="lazy"/>"#
+                r#"<span class="site-footer__membership-badge"><img class="site-footer__membership-logo" src="/public/img/justice-technology-association/logo.png" alt="" loading="lazy"/>"#
             ),
             "the association's mark is decorative — the sentence is the meaning: {line}"
         );
@@ -1985,9 +1982,7 @@ mod tests {
             "with a mark there is no award glyph: {line}"
         );
         let family = out.find("Our Family").expect("family");
-        let standing = out
-            .find("Our organization is a proud Partner")
-            .expect("membership");
+        let standing = out.find(JTA_STANDING).expect("membership");
         let legal = out
             .find(r#"class="site-footer__legal""#)
             .expect("legal strip");
@@ -2017,10 +2012,7 @@ mod tests {
         }
         let out = ssr(app);
         assert!(out.contains("site-footer__affiliations"), "{out}");
-        assert!(
-            out.contains("Our organization is a proud Partner of the"),
-            "{out}"
-        );
+        assert!(out.contains(JTA_STANDING), "{out}");
         assert!(!out.contains("site-footer__family"), "{out}");
         assert!(
             !out.contains("site-footer__membership-badge") && out.contains(r#"aria-hidden="true""#),
@@ -2187,13 +2179,11 @@ mod tests {
         );
         assert!(
             out.contains(r#"class="site-footer__membership-logo""#)
-                && out.contains("justice-technology-association/alliance-partner-badge.png"),
+                && out.contains("justice-technology-association/logo.png"),
             "the association's mark renders as an image: {out}"
         );
         assert!(
-            out.contains(
-                "Our organization is a proud Partner of the Justice Technology Association as a Mission-Aligned Organization.",
-            ),
+            out.contains(&format!("{JTA_STANDING}.")),
             "and the sentence still names it: {out}"
         );
     }

@@ -31,8 +31,8 @@ pub struct BrandCard {
     /// The typeface catalog id, or the uploaded font's family name.
     pub font_label: String,
     pub has_logo: bool,
-    /// Production website line: a compiled `www` host, with `(not live)` when
-    /// that key is not yet launched, or `No public host` for a runtime row.
+    /// Production website line: a compiled `www` host, or `No public host`
+    /// for a runtime row.
     pub website: String,
     pub edit_href: String,
 }
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn a_held_out_compiled_brand_names_its_www_host_as_not_live() {
+    fn summons_names_its_public_www_host() {
         let html = render(vec![BrandCard {
             key: "summons".to_string(),
             name: "Summons Defense".to_string(),
@@ -263,7 +263,7 @@ mod tests {
             website: crate::brand_website::BrandWebsite::from_key("summons").host_line(),
             edit_href: "/app/admin/brands/summons/edit".to_string(),
         }]);
-        assert!(html.contains("www.summonsdefense.nyc (not live)"), "{html}");
+        assert!(html.contains("www.summonsdefense.nyc"), "{html}");
     }
 
     #[test]

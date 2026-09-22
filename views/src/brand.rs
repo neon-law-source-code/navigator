@@ -756,13 +756,11 @@ pub static DELETE_YOUR_DEBT_BRANDING: Branding = Branding {
 /// practice. Trademark fields stay empty until that brand's registration
 /// status is decided.
 ///
-/// The masthead is the firm's own name rather than a trade name, and the
-/// domain is a marketing channel only. New York Rule 7.5(b) bars trade
-/// names for private practice, so unlike the Nevada brands this one has no
-/// separate identity to wear — `site_name` is `Shook Law PLLC` on purpose.
+/// The public masthead and domain use the Summons Defense brand. The legal
+/// entity remains Shook Law PLLC in the legal footer and required notices.
 pub static SUMMONS_BRANDING: Branding = Branding {
     firm: SiteBrand {
-        site_name: "Shook Law PLLC",
+        site_name: "Summons Defense",
         home_href: "/",
         tagline: "A private law firm, not affiliated with the City of New York or OATH. We defend City summonses at the OATH Hearings Division.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
@@ -788,8 +786,8 @@ pub static SUMMONS_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "summonsdefense.nyc",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Shook Law PLLC represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. Flat fee per summons, or a monthly retainer across a portfolio. This is an attorney advertisement, not a promise about a result.",
-    service_description: "NYC summons defense from Shook Law PLLC at the OATH Hearings Division. Flat fee per summons, or a monthly retainer across a portfolio.",
+    mission_description: "Summons Defense represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. Flat fee per summons, or a monthly retainer across a portfolio. This is an attorney advertisement, not a promise about a result.",
+    service_description: "NYC summons defense from Summons Defense at the OATH Hearings Division. Flat fee per summons, or a monthly retainer across a portfolio.",
     portal_only: false,
     brand_key: BrandKey::Summons,
 };
@@ -810,8 +808,7 @@ pub enum BrandKey {
     Misericordia,
     Abhaya,
     DeleteYourDebt,
-    /// The NYC summons / OATH practice. Wears the firm's own name, not a
-    /// trade name — see `SUMMONS_BRANDING`.
+    /// The NYC summons / OATH practice, presented publicly as Summons Defense.
     Summons,
 }
 
@@ -839,6 +836,7 @@ impl BrandKey {
         Self::Misericordia,
         Self::Abhaya,
         Self::LawyerShook,
+        Self::Summons,
     ];
 
     #[must_use]
@@ -956,15 +954,11 @@ impl BrandKey {
     /// only the pages it has a catalog for (plus `/contact`, which is
     /// addresses rather than a YAML stem). Lawyer Shook keeps its holding
     /// notice and practice cards on `/`; other firm paths 404 on that host
-    /// rather than rendering another brand's words. The held-out summons
+    /// rather than rendering another brand's words. The summons
     /// channel answers its "Coming Soon" landing page and nothing else.
     #[must_use]
-    // Lawyer Shook and the held-out summons channel both answer `/` alone,
-    // for unrelated reasons: one is a launched brand that deliberately
-    // publishes a single page, the others are holding pages whose arm
-    // disappears at launch. Merging them would tie a launched brand's
-    // published surface to an unlaunched one's and hide which arm a launch
-    // is supposed to edit.
+    // These two single-page brands have separate publication decisions:
+    // Summons keeps its service catalog private until the full site launches.
     #[allow(clippy::match_same_arms)]
     pub fn publishes_firm_path(self, path: &str) -> bool {
         match self {
@@ -975,15 +969,10 @@ impl BrandKey {
             Self::DeleteYourData => matches!(path, "/" | "/contact"),
             Self::LawyerShook => path == "/",
             Self::Vesta => matches!(path, "/" | "/services" | "/contact"),
-            // The held-out summons channel answers one landing page and
-            // nothing else. Their `/services` and `/contact` copy still ships
-            // and still loads; reopening those paths is this line, not a
-            // rewrite. See `neon::firm_pages::coming_soon_content`.
             Self::Misericordia | Self::Abhaya | Self::DeleteYourDebt => {
                 matches!(path, "/" | "/services" | "/contact")
             }
-            // The NYC channel remains held until its separate admission and
-            // naming decisions are complete.
+            // The public holding page keeps the service catalog unpublished.
             Self::Summons => path == "/",
         }
     }
@@ -1043,19 +1032,8 @@ impl BrandKey {
     /// the full registry, so every key carries a valid, isolated certificate
     /// family (ENG-768) in both environments regardless of `is_live()`.
     ///
-    /// **It still gates the footer and host admission.** "Our Family" is a
-    /// set of links, and [`admitted_brand_key`]/[`admitted_brand_key_for_apex`]
-    /// are what a public request path must call. Listing or serving a brand
-    /// whose launch is not approved advertises a practice a reader should not
-    /// yet be able to reach — and for the NYC summons practice that would be
-    /// worse than a dead link, because holding out a New York practice before
-    /// admission is not merely untidy. A held-out host now answers with a
-    /// valid TLS handshake and then [`held_out_host`]'s `404`, rather than a
-    /// TLS error — the certificate and the launch decision are independent,
-    /// and only the second one is what this flag still decides.
-    ///
-    /// Flip it in the same change that makes the site's *content* reachable
-    /// — never earlier, and never as a batch.
+    /// It gates the footer and host admission. Summons is admitted with its
+    /// holding page while its service catalog remains unpublished.
     #[must_use]
     pub fn is_live(self) -> bool {
         Self::LIVE.contains(&self)
@@ -1261,7 +1239,7 @@ pub fn admitted_brand_key_for_apex(host: &str) -> Option<BrandKey> {
 /// unknown host is somebody else's and gets the deployment's ordinary
 /// canonical-host treatment, while a held-out host is *ours and not yet
 /// public*, so it is refused outright rather than redirected. A 301 from
-/// `www.summonsdefense.nyc` to the firm's site would confirm the
+/// `www.future-brand.example` to the firm's site would confirm the
 /// association, seed a crawler's cache with a permanent redirect that has to
 /// be undone at launch, and — for a practice awaiting admission — is itself a
 /// form of holding out.
@@ -2642,7 +2620,7 @@ mod tests {
 
     /// [`super::release_brand_hosts`] is the TLS/Ingress release inventory:
     /// every registered key crossed with its hosts, unfiltered by
-    /// `is_live()`. It must be a strict superset of [`super::live_brand_hosts`]
+    /// `is_live()`. It must include [`super::live_brand_hosts`]
     /// — every live host still gets a certificate — while also covering every
     /// held-out brand's hosts, which `live_brand_hosts` deliberately omits.
     #[test]
@@ -2670,10 +2648,6 @@ mod tests {
             .copied()
             .filter(|(key, _)| !key.is_live())
             .collect();
-        assert!(
-            !held_out.is_empty(),
-            "the release inventory must cover at least one held-out brand, or this test proves nothing"
-        );
         for (key, host) in held_out {
             assert_eq!(
                 super::admitted_brand_key(host),
@@ -2687,17 +2661,19 @@ mod tests {
 
     /// A `Host:` header is not case-sensitive. A crawler sending
     /// `WWW.NEONLAW.COM` addresses the live site, and one sending
-    /// `WWW.SUMMONSDEFENSE.NYC` must not slip past the gate into the
-    /// deployment's ordinary unregistered-host handling.
+    /// `WWW.SUMMONSDEFENSE.NYC` addresses the public holding page.
     #[test]
     fn the_gate_folds_host_case() {
         assert_eq!(
             super::admitted_brand_key("WWW.NEONLAW.COM"),
             Some(BrandKey::Neon)
         );
-        assert_eq!(super::admitted_brand_key("WWW.SUMMONSDEFENSE.NYC"), None);
-        assert!(super::held_out_host("WWW.SUMMONSDEFENSE.NYC"));
-        assert!(super::held_out_host("SummonsDefense.NYC"));
+        assert_eq!(
+            super::admitted_brand_key("WWW.SUMMONSDEFENSE.NYC"),
+            Some(BrandKey::Summons)
+        );
+        assert!(!super::held_out_host("WWW.SUMMONSDEFENSE.NYC"));
+        assert!(!super::held_out_host("SummonsDefense.NYC"));
     }
 
     /// An unknown host is somebody else's, not ours-and-not-yet-public: it

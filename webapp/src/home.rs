@@ -267,7 +267,9 @@ pub fn HomePage(
             div { class: "nav-theme",
                 main { class: "holding-page",
                     h1 { class: "holding-page__heading", "{bare.heading}" }
-                    p { class: "holding-page__paragraph", "{bare.paragraph}" }
+                    if !bare.paragraph.is_empty() {
+                        p { class: "holding-page__paragraph", "{bare.paragraph}" }
+                    }
                     if !bare.sign_in.is_empty() {
                         p { class: "holding-page__paragraph",
                             for run in bare.sign_in.iter() {
@@ -972,6 +974,40 @@ mod tests {
         assert!(
             !out.contains(crate::components::PUBLIC_SHELL_MARKER),
             "not a public shell page (no chat widget): {out}"
+        );
+    }
+
+    #[test]
+    fn an_empty_bare_statement_keeps_a_single_accessible_heading() {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome::default(),
+                    content: HomeContent {
+                        head_title: "Coming Soon".to_string(),
+                        meta_description: "Coming Soon".to_string(),
+                        bare: Some(BareStatement {
+                            heading: "Coming Soon".to_string(),
+                            paragraph: String::new(),
+                            sign_in: Vec::new(),
+                        }),
+                        ..HomeContent::default()
+                    },
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+
+        assert_eq!(out.matches("<h1").count(), 1, "one page heading: {out}");
+        assert!(
+            out.contains(r#"<h1 class="holding-page__heading">Coming Soon</h1>"#),
+            "the heading has an accessible name: {out}"
+        );
+        assert!(
+            !out.contains("holding-page__paragraph"),
+            "empty copy does not create an empty paragraph: {out}"
         );
     }
 

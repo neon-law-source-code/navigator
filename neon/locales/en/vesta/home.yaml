@@ -1,11 +1,10 @@
 head_title: "{site_name} | A plan for life"
 meta_description: >-
   A lifetime estate plan for $5,000, paid once, with unlimited edits.
-  Vesta Estate Planning is a practice of Shook Law PLLC. Attorney advertisement.
+  Attorney advertisement.
 heading: For the life you build.
 lead: >-
-  Make your wishes clear for the people you love. An estate plan you can
-  keep up to date, through every chapter of your life.
+  Make your wishes clear for the people you love when you leave this universe.
 contact_label: Book a consultation
 estate:
   eyebrow: Vesta Estate Planning
@@ -15,22 +14,20 @@ estate:
   price_term: Once. For life.
   features:
     - Unlimited edits for life
-    - Prepared and reviewed by a licensed attorney
-    - Your wishes for property, finances, and care
+    - Creation and updates reviewed by an attorney
+    - Privacy-preserving technology
   fee_note: >-
-    One fee for your estate plan and its lifetime edits. Court and recording
-    fees are separate. Your retainer sets out the work included.
-  video_label: Your estate plan, explained.
+    Costs such as notarization and recording fees are separate.
+  video_label: Vesta, your home in this universe.
   video_src: img/vesta-home/vesta-explainer.mp4
   transcript_label: Read the video transcript
   video_transcript: >-
-    An estate plan for the life you build. With Vesta Estate Planning, pay five
-    thousand dollars once, with unlimited edits for life. Start with a conversation.
-    A licensed attorney prepares and reviews your plan, then guides you through
+    An estate plan for the life you build, including how you'll share when your time has passed.
+    With Vesta Estate Planning, pay five thousand dollars once, with unlimited edits for life.
+    Your attorney prepares and reviews your plan, then guides you through
     signing. As your life changes, come back to update your wishes. An optional
     blockchain record is available by request at five dollars per transaction.
     It does not replace required signing, witnesses, or notarization.
-    Book a consultation with Vesta, an estate-planning practice of Shook Law PLLC.
   process_label: A plan that grows with you
   process_heading: Decide today. Keep room for tomorrow.
   steps:
@@ -43,16 +40,13 @@ estate:
   record_status: Available by request
   record_heading: A lasting record of one version.
   record_body: >-
-    Planning to leave your documents as they are? Add an optional blockchain
-    record to preserve evidence of a signed version. Each new record is a
-    separate $5 transaction. You can still change your plan; the earlier
-    record stays on the chain.
+    Record each asset and its type on the blockchain, and use smart contracts to determine ownership over time. We use
+    Solana to create privacy-preserving estate plans.
   record_note: >-
-    We create the record after receiving the signed version and transaction
-    fee. It does not replace the signatures, witnesses, or notarization your
-    documents require, and it does not make your plan unchangeable.
+    Blockchain attestations do not replace the signatures your
+    documents require.
   closing_heading: Start with the people you love.
   closing_body: >-
     Book a conversation about your estate plan or a possible individual
     trustee appointment. Trustee service requires separate review and written
-    terms. Vesta is an estate-planning practice of Shook Law PLLC.
+    terms.

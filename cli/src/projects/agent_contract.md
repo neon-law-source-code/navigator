@@ -4,7 +4,9 @@ This repository holds source-only material for one Project. Project identity and
 `navigator.yaml` and Navigator's live Project row, not in this contract.
 
 Run `navigator project gate` before opening a pull request; it is the required gate for every proposed repository
-change. CI runs `navigator project gate --ci`.
+change. CI runs `navigator project gate --ci`. The documents job runs `navigator project gate --check --ci`. Locally,
+`navigator project gate --check` rewrites a drifted pointer, writes a missing pointer, and writes a missing
+`documents/.gitignore`. It never writes to the live site. Under `--ci` any of those fixes fails the job.
 
 ## Folders
 

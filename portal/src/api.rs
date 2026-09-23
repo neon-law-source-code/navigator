@@ -259,6 +259,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ),
         (
             "GET",
+            "/app/api/projects/{id}/documents/integrity",
+            get(document_integrity_door),
+        ),
+        (
+            "GET",
             "/app/api/projects/{id}/conversation",
             get(get_conversation_door),
         ),
@@ -3572,6 +3577,8 @@ struct RevisionSummary {
     sha256: String,
     size_bytes: i64,
     filename: String,
+    /// `internal` or `client` on this revision.
+    visibility: String,
     /// Whether this is the operative revision for the caller's lens — the
     /// lawyer's newest row, or the client's newest published+client-visible
     /// row. At most one `true` per response.
@@ -3637,11 +3644,103 @@ async fn list_document_revisions_door(
                 sha256: asset.sha256_hex,
                 size_bytes: asset.byte_size,
                 filename: asset.filename.unwrap_or_default(),
+                visibility: asset.visibility,
                 operative: index == 0,
             })
             .collect(),
     };
     Ok((StatusCode::OK, Json(body)).into_response())
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct IntegrityQuery {
+    #[serde(default)]
+    deep: bool,
+}
+
+/// One asset row and the object stored at its `storage_key`.
+#[derive(Debug, Serialize)]
+struct IntegrityAsset {
+    asset_id: Uuid,
+    slug: Option<String>,
+    /// Whether the object at `storage_key` exists.
+    exists: bool,
+    /// Byte size of that object. Absent when the object is missing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size_bytes: Option<i64>,
+    /// `assets.byte_size`, the size the row records.
+    recorded_size: i64,
+    /// Present only when `deep=true`: whether the stored bytes hash to the
+    /// row's sha256.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256_matches: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct DocumentIntegrityResponse {
+    assets: Vec<IntegrityAsset>,
+    /// Server-side external-id checks. Empty while a pointer carries no
+    /// external id.
+    integrations: Vec<crate::document_integrations::Finding>,
+}
+
+/// `GET /app/api/projects/{id}/documents/integrity` — every asset row the
+/// caller's lens can see, plus whether the object at `storage_key` exists
+/// and its stored size. `?deep=true` reads each object and compares its
+/// sha256 to the row. Lawyer-tier sessions and the CI document scope.
+async fn document_integrity_door(
+    State(state): State<ApiState>,
+    LawyerSession(session): LawyerSession,
+    Path(id): Path<Uuid>,
+    Query(query): Query<IntegrityQuery>,
+) -> Result<Response, ApiError> {
+    let lens = store::access::matter_lens(&state.surreal, session.person_id, session.role, id)
+        .await
+        .map_err(ApiError::Db)?
+        .ok_or(ApiError::NotFound)?;
+    let mut assets = store::assets::for_project(&state.surreal, id)
+        .await
+        .map_err(ApiError::Asset)?;
+    if matches!(lens, store::access::ProjectLens::Client) {
+        assets.retain(|asset| asset.visibility == store::documents::visibility::CLIENT);
+    }
+    let integrations = crate::document_integrations::findings(&assets);
+    let mut rows = Vec::with_capacity(assets.len());
+    for asset in &assets {
+        let head = store::assets::object_head(state.storage.as_ref(), &asset.storage_key)
+            .await
+            .map_err(ApiError::Asset)?;
+        let stored_size = head.and_then(|size| i64::try_from(size).ok());
+        let sha256_matches = if query.deep {
+            let digest = store::assets::object_sha256(state.storage.as_ref(), &asset.storage_key)
+                .await
+                .map_err(ApiError::Asset)?;
+            Some(digest.as_deref() == Some(asset.sha256_hex.as_str()))
+        } else {
+            None
+        };
+        rows.push(IntegrityAsset {
+            asset_id: asset.id,
+            slug: asset.slug.clone(),
+            exists: head.is_some(),
+            size_bytes: stored_size,
+            recorded_size: asset.byte_size,
+            sha256_matches,
+        });
+    }
+    rows.sort_by(|left, right| {
+        left.slug
+            .cmp(&right.slug)
+            .then_with(|| left.asset_id.cmp(&right.asset_id))
+    });
+    Ok((
+        StatusCode::OK,
+        Json(DocumentIntegrityResponse {
+            assets: rows,
+            integrations,
+        }),
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]

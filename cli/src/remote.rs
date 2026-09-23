@@ -210,9 +210,9 @@ async fn resolve_ci(host: &str) -> Result<(String, String)> {
 }
 
 /// Exchange the GitHub Actions OIDC ID token for a Navigator session bound to
-/// this repository's live Project, for `navigator site document verify --ci`
-/// (#486). The server gives this token only the two Project/document metadata
-/// reads required by verification; lawyer-tier attribution never widens that
+/// this repository's live Project, for `navigator project gate --check --ci`.
+/// The server gives this token only the Project lookup, revision metadata, and
+/// document-integrity reads; lawyer-tier attribution never widens that
 /// capability.
 pub(crate) async fn resolve_ci_document(host: &str) -> Result<(String, String)> {
     let base = credentials::base_url(host);
@@ -222,7 +222,7 @@ pub(crate) async fn resolve_ci_document(host: &str) -> Result<(String, String)> 
     eprintln!(
         "{}",
         palette::dim(format!(
-            "minted a project-scoped document-verify session for {}",
+            "minted a project-scoped document session for {}",
             minted.project_code
         ))
     );
@@ -374,7 +374,39 @@ pub(crate) struct RevisionSummary {
     pub(crate) sha256: String,
     pub(crate) size_bytes: i64,
     pub(crate) filename: String,
+    #[serde(default)]
+    pub(crate) visibility: String,
     pub(crate) operative: bool,
+}
+
+/// One asset row from `GET /app/api/projects/{id}/documents/integrity`.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct IntegrityAsset {
+    pub(crate) asset_id: Uuid,
+    pub(crate) slug: Option<String>,
+    pub(crate) exists: bool,
+    #[serde(default)]
+    pub(crate) size_bytes: Option<i64>,
+    pub(crate) recorded_size: i64,
+    #[serde(default)]
+    pub(crate) sha256_matches: Option<bool>,
+}
+
+/// One server-side external-id finding. Empty until a pointer carries an
+/// external id.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct IntegrationFinding {
+    pub(crate) asset_id: Uuid,
+    pub(crate) integration: String,
+    pub(crate) outcome: String,
+    pub(crate) detail: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct IntegrityResponse {
+    pub(crate) assets: Vec<IntegrityAsset>,
+    #[serde(default)]
+    pub(crate) integrations: Vec<IntegrationFinding>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -401,7 +433,7 @@ impl DocumentClient {
     }
 
     /// Build a client from an already-minted `(base, token)` pair — the
-    /// `navigator site document verify --ci` path (#486), which authenticates via
+    /// `navigator project gate --check --ci` path, which authenticates via
     /// GitHub Actions OIDC rather than a stored `~/.navigator.json` login.
     pub(crate) async fn with_credential(
         base: String,
@@ -463,6 +495,43 @@ impl DocumentClient {
             ));
         }
         serde_json::from_str(&text).context("parse document revisions response")
+    }
+
+    /// Every asset row the caller's lens can see, with storage presence and
+    /// size. `deep` asks the server to re-hash each object.
+    pub(crate) async fn integrity(&self, deep: bool) -> Result<IntegrityResponse> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents/integrity",
+            self.base, self.project_id
+        );
+        let request = self.client.get(&url).bearer_auth(&self.token);
+        let request = if deep {
+            request.query(&[("deep", "true")])
+        } else {
+            request
+        };
+        let response = request.send().await.with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "document integrity failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse document integrity response")
+    }
+
+    /// A client aimed at a test server, with no login lookup.
+    #[cfg(test)]
+    pub(crate) fn for_check_tests(base: impl Into<String>, project_id: Uuid) -> Self {
+        Self {
+            base: base.into(),
+            token: "test-token".into(),
+            client: reqwest::Client::new(),
+            project_id,
+            project_code: "acme".into(),
+        }
     }
 
     /// Fetch one revision's bytes through the existing Project-scoped download

@@ -15,7 +15,7 @@ use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
 
-use crate::{ObjectListing, StorageError, StorageService, StoredObject};
+use crate::{ObjectHead, ObjectListing, StorageError, StorageService, StoredObject};
 
 /// Environment-derived settings for an S3-compatible storage lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -340,7 +340,7 @@ impl StorageService for S3Storage {
         Ok(listed)
     }
 
-    async fn exists(&self, key: &str) -> Result<bool, StorageError> {
+    async fn head(&self, key: &str) -> Result<Option<ObjectHead>, StorageError> {
         match self
             .client
             .head_object()
@@ -349,9 +349,14 @@ impl StorageService for S3Storage {
             .send()
             .await
         {
-            Ok(_) => Ok(true),
+            Ok(output) => {
+                let size = output.content_length().unwrap_or(0);
+                Ok(Some(ObjectHead {
+                    size_bytes: u64::try_from(size).unwrap_or(0),
+                }))
+            }
             Err(error) => match Self::sdk_failure(key, &error) {
-                StorageError::NotFound(_) => Ok(false),
+                StorageError::NotFound(_) => Ok(None),
                 other => Err(other),
             },
         }

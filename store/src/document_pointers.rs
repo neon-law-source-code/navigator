@@ -172,9 +172,8 @@ mod tests {
 
     /// `current_version.created_at` is required, not merely
     /// validated-when-present: a committed pointer YAML that omits the key
-    /// entirely fails to parse at all, so `site document verify` (which
-    /// calls `from_yaml` on every committed pointer) fails it too — LAW-50's
-    /// criterion 3.
+    /// entirely fails to parse at all, so `project gate --check` (which
+    /// calls `from_yaml` on every committed pointer) fails it too.
     #[test]
     fn a_pointer_missing_created_at_entirely_fails_to_parse() {
         let yaml = "kind: agreement\n\

@@ -283,9 +283,14 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // the public `/glossary`, mounted outside the policy layer, so its rules
     // and their nine decisions went with it.
     // 482 − 9 = 473.
+    //
+    // + 5 for document storage integrity (GET
+    //   /app/api/projects/{id}/documents/integrity): Lawyer and Admin admitted;
+    //   Client, Clerk, and anonymous denied.
+    // 473 + 5 = 478.
     assert_eq!(
         test_names.len(),
-        473,
+        478,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

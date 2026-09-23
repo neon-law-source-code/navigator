@@ -108,12 +108,12 @@ same command in its always-run gate.
 
 ## Exit codes for `--ci` commands
 
-`navigator site import --ci` and `navigator site document verify --ci` first exchange the runner's GitHub Actions OIDC
+`navigator site import --ci` and `navigator project gate --check --ci` first exchange the runner's GitHub Actions OIDC
 token for a Navigator session at `/auth/ci/seed-token` or `/auth/ci/document-token`, then run the command's own gate.
 Those are two different kinds of failure, so they exit differently:
 
 - **`2`** — the ordinary gate failure: the mint succeeded and the command's own check found a problem (a reconciliation
-  error, a document that failed live verification, and so on).
+  error, a document whose stored object is missing or corrupt, and so on).
 - **`3`** — the mint itself was refused before any gate ran (unauthorized, forbidden, or the deployment is
   unavailable). The refusal also prints a GitHub `::error::` workflow-command annotation naming the door
   (`/auth/ci/seed-token` or `/auth/ci/document-token`) and the server's own message, so the Actions log shows why the

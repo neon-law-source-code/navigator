@@ -69,8 +69,9 @@ pub struct SeedScope {
     pub dry_run_only: bool,
 }
 
-/// The read-only fields and route needed by the document verifier for one
-/// minted Project. It does not authorize document bytes or any other route.
+/// The read-only fields and routes needed by `navigator project gate --check`
+/// for one minted Project. It does not authorize document bytes or any other
+/// route.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentScope {
@@ -100,6 +101,11 @@ impl SessionScope {
                         || path
                             == format!(
                                 "/app/api/projects/{}/documents/revisions",
+                                scope.project_id
+                            )
+                        || path
+                            == format!(
+                                "/app/api/projects/{}/documents/integrity",
                                 scope.project_id
                             ))
             }

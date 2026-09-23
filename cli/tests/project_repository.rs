@@ -110,8 +110,8 @@ fn the_reusable_gate_runs_the_gate_exactly_once() {
 }
 
 /// The live row is checked on main and pull-request merge refs. That rule lives
-/// in the CLI, which reads the ref and event itself, so the workflow carries
-/// the same guarded shape for document verification.
+/// in the CLI, which reads the ref and event itself, so the verify job carries
+/// no ref branch of its own.
 #[test]
 fn the_project_gate_needs_no_branch_to_stay_offline_on_prs() {
     let workflow: serde_yaml::Value =
@@ -137,6 +137,31 @@ fn the_project_gate_needs_no_branch_to_stay_offline_on_prs() {
         "navigator project gate --ci",
         "the gate takes no host and no ref branch:\n{run}"
     );
+}
+
+/// The documents job is one CLI invocation. It reads the host from
+/// `navigator.yaml` and does not keep a second verb for the same check.
+#[test]
+fn the_documents_job_runs_project_gate_check() {
+    let source = project_gate_source();
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&source).expect("project gate parses as YAML");
+    let steps = workflow["jobs"]["documents"]["steps"]
+        .as_sequence()
+        .expect("documents steps");
+    let run = steps
+        .iter()
+        .find_map(|step| step["run"].as_str())
+        .expect("documents run");
+    assert_eq!(run.trim(), "navigator project gate --check --ci");
+    assert!(!source.contains("site document verify"));
+    let action = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../.github/actions/document-verify/action.yml"),
+    )
+    .unwrap();
+    assert!(action.contains("navigator project gate --check --ci"));
+    assert!(!action.contains("site document verify"));
 }
 
 /// The `seeds` job reconciles `seeds/` on a push to `main`, performs a

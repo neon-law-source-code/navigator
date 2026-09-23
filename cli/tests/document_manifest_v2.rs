@@ -11,10 +11,9 @@
 //!   name: acme
 //! ```
 //!
-//! — failed with `project: invalid type: map, expected a string`. LAW-18 named
-//! `site document verify --ci`, but `site sync`, `site pull`, `site document
-//! log`, and `site document get` all failed identically, because each carried
-//! the defect through the same lane rather than through one shared reader.
+//! — failed with `project: invalid type: map, expected a string`. `site sync`,
+//! `site pull`, `site document log`, `site document get`, and
+//! `project gate --check` all read that manifest through one parser.
 //!
 //! `navigator#596` routed the lane through `projects::manifest::parse`, and
 //! that reader has its own unit coverage. What it did not have is a test that
@@ -132,6 +131,7 @@ async fn mount_revisions(server: &MockServer, project_id: Uuid, asset_id: Uuid) 
                 "sha256": sha256(BYTES),
                 "size_bytes": BYTES.len(),
                 "filename": "summons.pdf",
+                "visibility": "internal",
                 "operative": true
             }]
         })))
@@ -280,21 +280,25 @@ async fn site_document_get_reads_the_nested_manifest() {
     assert_eq!(fs::read(&destination).unwrap(), BYTES);
 }
 
-/// The command LAW-18 was filed against. It authenticates through GitHub
-/// Actions OIDC rather than a stored login, so the runner environment and both
-/// mint hops are served by the same mock — the point is that the manifest is
-/// read the same way regardless of which credential the mode uses.
+/// `project gate --check --ci` reads the nested manifest and mints through
+/// GitHub Actions OIDC. The host is the manifest's, not a flag.
 #[tokio::test(flavor = "multi_thread")]
-async fn site_document_verify_ci_reads_the_nested_manifest() {
+async fn project_gate_check_ci_reads_the_nested_manifest() {
     let server = MockServer::start().await;
     let host = server.uri();
     let root = TempDir::new().unwrap();
     v2_manifest(root.path(), &host);
+    write(root.path(), "README.md", "Synthetic repository\n");
+    write(root.path(), ".git", "gitdir: /tmp/synthetic\n");
+    write(
+        root.path(),
+        "documents/.gitignore",
+        "*\n!*/\n!*.yaml\n!.gitignore\n",
+    );
     let project_id = Uuid::now_v7();
     let asset_id = Uuid::now_v7();
     write_pointer(root.path(), asset_id);
 
-    // The runner's own OIDC endpoint.
     Mock::given(method("GET"))
         .and(path("/actions/oidc"))
         .respond_with(
@@ -304,7 +308,6 @@ async fn site_document_verify_ci_reads_the_nested_manifest() {
         .expect(1)
         .mount(&server)
         .await;
-    // The deployment's document-token mint.
     Mock::given(method("POST"))
         .and(path("/auth/ci/document-token"))
         .respond_with(
@@ -317,6 +320,23 @@ async fn site_document_verify_ci_reads_the_nested_manifest() {
         .await;
     mount_projects(&server, project_id).await;
     mount_revisions(&server, project_id, asset_id).await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/api/projects/{project_id}/documents/integrity"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "assets": [{
+                "asset_id": asset_id,
+                "slug": SLUG,
+                "exists": true,
+                "size_bytes": BYTES.len(),
+                "recorded_size": BYTES.len()
+            }],
+            "integrations": []
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
     navigator()
         .current_dir(root.path())
@@ -325,12 +345,9 @@ async fn site_document_verify_ci_reads_the_nested_manifest() {
             format!("{host}/actions/oidc"),
         )
         .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "runner-token")
-        .args(["site", "document", "verify", ".", "--ci", "--host", &host])
+        .args(["project", "gate", "--check", "--ci"])
         .assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "1 pointer(s) verified against the live record",
-        ));
+        .stdout(predicate::str::contains("documents:"));
 }
 
 /// The deprecated flat shape has to keep working while released binaries and

@@ -1235,6 +1235,28 @@ test_anonymous_denied_read_document_revisions if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "revisions"], "method": "GET", "session": null}
 }
 
+# ---------- GET /app/api/projects/{id}/documents/integrity (lawyer tier) ----------
+
+test_lawyer_can_read_document_integrity if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "integrity"], "method": "GET", "session": lawyer_session}
+}
+
+test_admin_can_read_document_integrity if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "integrity"], "method": "GET", "session": admin_session}
+}
+
+test_client_denied_read_document_integrity if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "integrity"], "method": "GET", "session": client_session}
+}
+
+test_clerk_denied_read_document_integrity if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "integrity"], "method": "GET", "session": clerk_session}
+}
+
+test_anonymous_denied_read_document_integrity if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "integrity"], "method": "GET", "session": null}
+}
+
 # ---------- POST /app/api/notations/{id}/transcript coverage pass (lawyer tier only) ----------
 
 test_lawyer_can_run_transcript_coverage if {

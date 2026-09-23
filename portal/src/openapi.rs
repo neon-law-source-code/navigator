@@ -2360,19 +2360,59 @@ pub fn document_with_base(base: &str) -> Value {
               "200": { "description": "The revision chain under the caller's lens", "content": { "application/json": { "schema": {
                 "type": "object", "required": ["kind", "revisions"], "properties": {
                   "kind": { "type": "string" },
-                  "revisions": { "type": "array", "items": { "type": "object", "required": ["version", "asset_id", "created_at", "sha256", "size_bytes", "filename", "operative"], "properties": {
+                  "revisions": { "type": "array", "items": { "type": "object", "required": ["version", "asset_id", "created_at", "sha256", "size_bytes", "filename", "visibility", "operative"], "properties": {
                     "version": { "type": "integer" },
                     "asset_id": { "type": "string", "format": "uuid" },
                     "created_at": { "type": "string" },
                     "sha256": { "type": "string" },
                     "size_bytes": { "type": "integer" },
                     "filename": { "type": "string" },
+                    "visibility": { "type": "string" },
                     "operative": { "type": "boolean" }
                   } } }
                 }
               } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "404": { "description": "No such matter, out of scope, or no visible revision under this slug", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          }
+        },
+        "/app/api/projects/{id}/documents/integrity": {
+          "get": {
+            "summary": "Storage integrity for a Project's documents",
+            "description":
+              "Every asset row the caller's lens can see, with whether the object at its storage key \
+               exists and that object's byte size. `recorded_size` is the size on the row. \
+               `deep=true` reads each object and reports whether its sha256 matches the row. \
+               `integrations` is the server-side external-id check and is empty while a pointer \
+               carries no external id. Authorization: lawyer tier, including the CI document scope. \
+               Out of scope is `404`.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+              { "name": "deep", "in": "query", "required": false, "schema": { "type": "boolean" } }
+            ],
+            "responses": {
+              "200": { "description": "One row per asset the lens can see", "content": { "application/json": { "schema": {
+                "type": "object", "required": ["assets", "integrations"], "properties": {
+                  "assets": { "type": "array", "items": { "type": "object", "required": ["asset_id", "exists", "recorded_size"], "properties": {
+                    "asset_id": { "type": "string", "format": "uuid" },
+                    "slug": { "type": "string", "nullable": true },
+                    "exists": { "type": "boolean" },
+                    "size_bytes": { "type": "integer" },
+                    "recorded_size": { "type": "integer" },
+                    "sha256_matches": { "type": "boolean" }
+                  } } },
+                  "integrations": { "type": "array", "items": { "type": "object", "required": ["asset_id", "integration", "outcome", "detail"], "properties": {
+                    "asset_id": { "type": "string", "format": "uuid" },
+                    "integration": { "type": "string" },
+                    "outcome": { "type": "string" },
+                    "detail": { "type": "string" }
+                  } } }
+                }
+              } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "403": { "description": "Not lawyer tier, or a CI session scoped to another route", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter, or out of the caller's lens", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           }
         },

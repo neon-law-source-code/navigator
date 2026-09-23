@@ -1,18 +1,16 @@
-name: navigator site document verify
+name: navigator project gate --check
 description: >-
-  Validate every documents/ pointer offline; on push to main with a
-  configured host, additionally exchange this GitHub Actions OIDC identity
-  for a project-scoped Navigator session and verify each pointer against
-  the live asset record.
+  Run `navigator project gate --check --ci` at the repository root. The host
+  and Project code come from navigator.yaml. The job exchanges this GitHub
+  Actions OIDC identity for a project-scoped session and compares committed
+  pointers with the live record. `--ci` writes nothing.
 
 # A Project repository's reusable project-gate workflow runs this on every
-# event (#486). The job
-# must have `id-token: write` for the live half; an empty or missing `host`,
-# or any event other than a push to `main`, runs offline pointer-shape
-# validation only and mints no session. The minted Navigator session never
-# appears in argv, logs, or repository secrets — GitHub's OIDC token is
-# requested from the runner environment and exchanged at
-# `POST /auth/ci/document-token`.
+# event. The job must have `id-token: write`. The host is `navigator.yaml`'s
+# `project.host`; the `host` input is ignored so an older caller can keep
+# passing it. The minted Navigator session never appears in argv, logs, or
+# repository secrets — GitHub's OIDC token is requested from the runner
+# environment and exchanged at `POST /auth/ci/document-token`.
 #
 # Consuming repository:
 #
@@ -23,11 +21,10 @@ description: >-
 #       - uses: neon-law-source-code/navigator/.github/actions/document-verify@YY.M.D
 #         with:
 #           version: "YY.M.D"
-#           host: ${{ vars.NAVIGATOR_HOST }}
 #
 # `version` is required and must be an exact tag. A repository with no
-# `documents/` directory is a no-op, so it still satisfies this job with a
-# real success rather than a skip.
+# `documents/` directory still runs the check, so a live document with no
+# pointer is reported.
 
 inputs:
   version:
@@ -37,13 +34,14 @@ inputs:
     required: true
   host:
     description: >-
-      Deployment host to verify against on push to main, such as
-      `staging.neonlaw.com`. Leave empty (or on any other event) to run
-      offline pointer-shape validation only.
+      Ignored. The deployment host is `project.host` in navigator.yaml.
+      Kept so an older caller can keep passing it.
     required: false
     default: ""
   dir:
-    description: Directory to walk for a `documents/` tree.
+    description: >-
+      Ignored. The gate runs at the repository root, which it finds from
+      the README and .git beside it.
     required: false
     default: "."
   token:
@@ -121,21 +119,8 @@ runs:
                 ;;
         esac
 
-    - name: navigator site document verify
+    - name: navigator project gate --check
       shell: bash
-      env:
-        HOST: ${{ inputs.host }}
-        DIR: ${{ inputs.dir }}
-        EVENT_NAME: ${{ github.event_name }}
-        REF: ${{ github.ref }}
       run: |
         set -euo pipefail
-        if [ ! -d "${DIR}/documents" ]; then
-            echo "no ${DIR}/documents — nothing to verify"
-            exit 0
-        fi
-        if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
-            navigator site document verify "${DIR}" --ci --host "${HOST}"
-        else
-            navigator site document verify "${DIR}"
-        fi
+        navigator project gate --check --ci

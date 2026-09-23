@@ -25,8 +25,7 @@ use crate::document_sync::{read_manifest, read_pointer, slash_path};
 use crate::remote::{DocumentClient, RevisionSummary, RevisionsResponse};
 
 /// [`crate::remote::exit_code_for`] distinguishes a CI mint refusal (exit
-/// `3`, from `verify --ci`'s call into `resolve_ci_document`) from every
-/// other failure (the ordinary gate-failure exit `2`).
+/// `3`) from every other failure (the ordinary gate-failure exit `2`).
 async fn run<F>(fut: F) -> ExitCode
 where
     F: std::future::Future<Output = Result<()>>,
@@ -44,7 +43,7 @@ where
 /// rule `navigator site sync` derives a slug from, with a trailing `.yml`
 /// stripped so either the committed pointer or the staged binary names the
 /// same document.
-fn slug_from_pointer(root: &Path, pointer: &Path) -> Result<String> {
+pub(crate) fn slug_from_pointer(root: &Path, pointer: &Path) -> Result<String> {
     let documents_dir = root.join("documents");
     let absolute = if pointer.is_absolute() {
         pointer.to_path_buf()
@@ -92,9 +91,8 @@ fn manifest_at(root: &Path) -> Result<(String, Option<String>)> {
     read_manifest(root)
 }
 
-/// The check `log`, `get`, and `navigator site document verify`'s live mode
-/// (#486) all reuse — one implementation called every way this drift can be
-/// asked about:
+/// The check `log` and `get` reuse — one implementation for the drift those
+/// reads report:
 ///
 /// 1. The committed pointer's `current_version.asset_id` must still be a row
 ///    in the live chain. A pointer surviving a governed expunge of exactly
@@ -473,100 +471,6 @@ pub(crate) fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(pointers)
 }
 
-/// `navigator site document verify [dir]` — the same drift check `log`/`get` use,
-/// called three ways (#486, LAW-12):
-///
-/// - **Offline** (no flags, what a pull request runs): every pointer below
-///   `<dir>/documents/` must parse as a valid [`store::document_pointers::DocumentPointer`].
-///   No token is minted, so this never needs network access or a login.
-/// - **Live from a login** (`--host <host>`): checks every pointer against the
-///   live asset record using the operator's own `navigator site login` session.
-///   This is the answer to "did my upload actually land?" — before LAW-12 the
-///   flag was accepted and then ignored, so `--host` took the offline branch and
-///   reported `N pointer(s) valid` for a checkout with the bytes deleted and no
-///   network at all. The only live confirmation available to a human was reading
-///   the `ci / verify` job on a pull request.
-/// - **Live from CI** (`--ci --host <host>`, what a push to `main` runs):
-///   the same live check, but exchanging this GitHub Actions run's own OIDC
-///   token for a Navigator session (`navigator site document verify`'s
-///   counterpart to `navigator site import --ci`) rather than reading a stored
-///   login, which a runner does not have.
-///
-/// The two live modes differ only in where the session comes from: both walk
-/// [`check_pointer_drift`], the exact function `log`/`get` already call.
-///
-/// A repository carrying no `documents/` succeeds trivially in every mode —
-/// the common case for every repository today.
-pub(crate) async fn verify(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode {
-    run(async {
-        let pointers = discover_pointers(dir)?;
-        if pointers.is_empty() {
-            println!("no documents/ pointers to verify");
-            return Ok(());
-        }
-
-        // Offline: shape only. Reached when the caller named no host, so
-        // there is nothing to round-trip against.
-        let Some(host) = host else {
-            if ci {
-                // `--ci` is declared `requires = "host"`, so clap refuses this
-                // before we are called. Kept as a refusal rather than an
-                // `unwrap` so a future argument edit cannot silently downgrade
-                // a CI run to an offline pass.
-                return Err(anyhow!("--ci requires --host"));
-            }
-            for relative in &pointers {
-                let path = dir.join(relative);
-                let raw = std::fs::read_to_string(&path)
-                    .with_context(|| format!("read {}", path.display()))?;
-                DocumentPointer::from_yaml(&raw).with_context(|| {
-                    format!("{} is not a valid document pointer", path.display())
-                })?;
-            }
-            println!("{} pointer(s) valid", pointers.len());
-            return Ok(());
-        };
-
-        let (project_code, _) = manifest_at(dir)?;
-        let client = if ci {
-            let (base, token) = crate::remote::resolve_ci_document(host).await?;
-            DocumentClient::with_credential(base, token, &project_code).await?
-        } else {
-            DocumentClient::connect(Some(host), &project_code).await?
-        };
-
-        let mut failures = Vec::new();
-        for relative in &pointers {
-            let path = dir.join(relative);
-            let raw = std::fs::read_to_string(&path)
-                .with_context(|| format!("read {}", path.display()))?;
-            let pointer = DocumentPointer::from_yaml(&raw)
-                .with_context(|| format!("{} is not a valid document pointer", path.display()))?;
-            let slug = slug_from_pointer(dir, relative)?;
-            let live = client.list_revisions(&slug).await?;
-            if let Err(error) = check_pointer_drift(Some(&pointer), &live.revisions) {
-                failures.push(format!("{}: {error}", path.display()));
-            }
-        }
-        if !failures.is_empty() {
-            for failure in &failures {
-                eprintln!("{failure}");
-            }
-            return Err(anyhow!(
-                "{} of {} pointer(s) failed live verification",
-                failures.len(),
-                pointers.len()
-            ));
-        }
-        println!(
-            "{} pointer(s) verified against the live record",
-            pointers.len()
-        );
-        Ok(())
-    })
-    .await
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -586,6 +490,7 @@ mod tests {
             sha256: format!("{hex}{hex}"),
             size_bytes: 10,
             filename: "notice.pdf".to_string(),
+            visibility: "internal".to_string(),
             operative,
         }
     }
@@ -887,56 +792,5 @@ mod tests {
                 PathBuf::from("documents/pleadings/b.pdf.yml"),
             ]
         );
-    }
-
-    fn write_pointer(path: &Path, asset_id: Uuid) {
-        let pointer = store::document_pointers::DocumentPointer {
-            kind: "agreement".to_string(),
-            visibility: "internal".to_string(),
-            current_version: store::document_pointers::PointerVersion {
-                version: 1,
-                asset_id,
-                created_at: "2026-09-06T00:00:00Z".to_string(),
-                sha256: "a".repeat(64),
-                size_bytes: 10,
-                canonical_url: None,
-                checked_on: None,
-            },
-            previous_version: None,
-            authority_id: None,
-        };
-        std::fs::write(path, pointer.to_yaml().unwrap()).unwrap();
-    }
-
-    #[tokio::test]
-    async fn verify_offline_accepts_every_valid_pointer_and_mints_no_token() {
-        let root = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(root.path().join("documents")).unwrap();
-        write_pointer(
-            &root.path().join("documents/agreement.pdf.yml"),
-            Uuid::max(),
-        );
-
-        // No host is supplied and `ci` is false, so a live call would panic on
-        // a missing `~/.navigator.json` login; offline mode must never reach it.
-        let exit_code = super::verify(root.path(), false, None).await;
-        assert_eq!(exit_code, std::process::ExitCode::SUCCESS);
-    }
-
-    #[tokio::test]
-    async fn verify_offline_rejects_a_malformed_pointer() {
-        let root = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(root.path().join("documents")).unwrap();
-        std::fs::write(root.path().join("documents/broken.pdf.yml"), "not: [valid").unwrap();
-
-        let exit_code = super::verify(root.path(), false, None).await;
-        assert_eq!(exit_code, std::process::ExitCode::from(2));
-    }
-
-    #[tokio::test]
-    async fn verify_succeeds_trivially_with_no_documents_directory() {
-        let root = tempfile::tempdir().unwrap();
-        let exit_code = super::verify(root.path(), false, None).await;
-        assert_eq!(exit_code, std::process::ExitCode::SUCCESS);
     }
 }

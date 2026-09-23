@@ -582,15 +582,33 @@ enum ProjectsCmd {
     /// Safe-by-construction rule fixes (whitespace, ATX heading spacing,
     /// blockquote spacing, S102 paragraph packing) are applied in place; what
     /// is left needs a human. Every Project repository's CI runs this command.
+    ///
+    /// `--check` compares committed document pointers with the live record.
+    /// It rewrites a drifted pointer, writes a missing pointer, and writes a
+    /// missing `documents/.gitignore`. It never writes to the live site.
     Gate {
+        /// Never writes to the live site.
+        ///
+        /// Rewrites a drifted pointer, writes a missing pointer, and writes a
+        /// missing `documents/.gitignore`. A missing or corrupt object, or a
+        /// live row with no slug, needs a person. Under `--ci` any of those
+        /// fixes fails the job and names the fix. Uploading or removing a
+        /// document is `navigator site sync`.
+        #[arg(long)]
+        check: bool,
+        /// Re-hash every stored object while `--check` is running.
+        #[arg(long, requires = "check")]
+        deep: bool,
         /// Hold the run to what CI can prove. Nothing is written, so a file the
         /// gate would have fixed is a finding rather than a silent rewrite of a
         /// checkout about to be discarded; the origin pass (`Y009`) reads each
         /// declared application's built `dist/` rather than skipping it; and on
         /// a push to `main` the live-status door opens, exchanging GitHub
         /// Actions OIDC at `POST /auth/ci/document-token` to check
-        /// `navigator.yaml` against the row the deployment holds. The host is
-        /// the one `navigator.yaml` declares — there is nothing to pass.
+        /// `navigator.yaml` against the row the deployment holds. With
+        /// `--check`, a pointer or gitignore the gate would write fails the
+        /// job instead. The host is the one `navigator.yaml` declares — there
+        /// is nothing to pass.
         #[arg(long)]
         ci: bool,
     },
@@ -1994,23 +2012,6 @@ enum DocumentAction {
         a: usize,
         b: usize,
     },
-    /// Validate every pointer offline, or against the live record by naming
-    /// a `--host`.
-    Verify {
-        /// Directory to walk.
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// Mint the session from this GitHub Actions run's OIDC token rather
-        /// than from a stored login, which a runner does not have. For CI; a
-        /// human confirming an upload passes `--host` on its own.
-        #[arg(long, requires = "host")]
-        ci: bool,
-        /// Check every pointer against the live asset record on this host,
-        /// using your `navigator site login` session. Without it, verify
-        /// checks pointer shape only and makes no network call.
-        #[arg(long)]
-        host: Option<String>,
-    },
 }
 
 #[derive(Subcommand)]
@@ -2528,7 +2529,7 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             all,
             json,
         } => projects::drift::run(host.host.as_deref(), &dir, all, json).await,
-        ProjectsCmd::Gate { ci } => run_gate(ci).await,
+        ProjectsCmd::Gate { ci, check, deep } => run_gate(ci, check, deep).await,
         ProjectsCmd::Build { dir } => projects::build::run(&dir),
         ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
         ProjectsCmd::Setup {
@@ -2637,9 +2638,6 @@ async fn run_document(action: DocumentAction) -> ExitCode {
             out,
         } => document_read::get(&pointer, version, &out).await,
         DocumentAction::Diff { pointer, a, b } => document_read::diff(&pointer, a, b).await,
-        DocumentAction::Verify { dir, ci, host } => {
-            document_read::verify(&dir, ci, host.as_deref()).await
-        }
     }
 }
 
@@ -3365,7 +3363,9 @@ fn run_validate_scan(dir: &std::path::Path, errors_only: bool, ci: bool) -> Exit
 /// an Error-severity finding or, under `--ci`, a file it had to fix. With
 /// `--ci` it also asks the deployment whether `navigator.yaml` agrees with the
 /// live row, which is the one question an offline pass cannot answer.
-async fn run_gate(ci: bool) -> ExitCode {
+/// `--check` is the live document check; without it this function makes no
+/// document request.
+async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     let root = match gate_root() {
         Ok(root) => root,
         Err(message) => {
@@ -3425,6 +3425,16 @@ async fn run_gate(ci: bool) -> ExitCode {
         }
     }
 
+    if check {
+        match projects::document_check::run(dir, ci, deep).await {
+            Ok(outcome) => append_document_check(ci, &outcome, &mut gate_errors),
+            Err(error) => {
+                eprintln!("navigator: {error:#}");
+                return crate::remote::exit_code_for(&error);
+            }
+        }
+    }
+
     // Close by naming every failing line again in one block, so the answer
     // to "which line do I fix" is the last thing on screen rather than
     // something to be found by scrolling.
@@ -3443,6 +3453,67 @@ async fn run_gate(ci: bool) -> ExitCode {
     // The one question this tree cannot answer about itself: whether the
     // manifest still agrees with the row the deployment holds.
     projects::gate::live_status(dir).await
+}
+
+/// Print the live document check and keep the failures that fail the gate.
+///
+/// A fix is printed as `fixed` when this run may write. Under `--ci` the same
+/// fix is a finding: the checkout is about to be discarded, so the job names
+/// the edit and stops.
+fn append_document_check(
+    ci: bool,
+    outcome: &projects::document_check::Outcome,
+    gate_errors: &mut Vec<GateError>,
+) {
+    let notice = if ci {
+        "documents: checking live records; --ci writes nothing, and a fix fails this job"
+    } else {
+        "documents: checking live records; fixes stay in this checkout and the live site is not written"
+    };
+    println!("{}", palette::dim(notice));
+    for failure in &outcome.errors {
+        println!(
+            "{}",
+            diagnostic_line(
+                rules::Severity::Error,
+                &failure.location,
+                None,
+                &failure.message,
+            )
+        );
+        gate_errors.push(GateError::new(
+            failure.location.clone(),
+            None,
+            failure.message.clone(),
+        ));
+    }
+    for fix in &outcome.fixes {
+        if ci {
+            let message = format!(
+                "would {}; run `navigator project gate --check` and commit the result",
+                fix.action
+            );
+            println!(
+                "{}",
+                diagnostic_line(rules::Severity::Error, &fix.path, None, &message)
+            );
+            gate_errors.push(GateError::new(fix.path.clone(), None, message));
+        } else {
+            println!(
+                "{}",
+                palette::dim(format!("fixed {}: {}", fix.path, fix.action))
+            );
+        }
+    }
+    let verb = if ci { "unfixed" } else { "fixed" };
+    println!(
+        "{}",
+        palette::dim(format!(
+            "documents: found {} error(s), {verb} {} file(s)",
+            outcome.errors.len(),
+            outcome.fixes.len(),
+        ))
+    );
 }
 
 /// Print everything the content pass found — the files it fixed, then each

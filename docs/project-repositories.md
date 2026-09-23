@@ -146,8 +146,8 @@ declared `class` must agree with the folder it is staged under; a mismatch (a st
 staged under `rules/`) is refused before either the network or `documents/.gitignore` is touched, naming the folder the
 capture actually belongs under.
 
-Every pointer `sync` writes, whatever the route, keeps `current_version.created_at` as an RFC 3339 UTC timestamp; `site
-document verify` fails a pointer that lacks one.
+Every pointer `sync` writes, whatever the route, keeps `current_version.created_at` as an RFC 3339 UTC timestamp;
+`navigator project gate --check` fails a pointer that lacks one.
 
 **The key layout stays content-addressed; a readable slug key is a proposal, not an authorized migration.** Keys remain
 `projects/<code>/documents/<sha256>`, and `site sync` never renames or migrates one — the slug it derives from the
@@ -165,11 +165,11 @@ admits that file and a pointer, `.yaml` or the retired `.yml`; every other file 
 legal-document bytes must never be committed to a Project repository.
 
 **`navigator site pull` is the inverse: it materialises bytes into a checkout rather than uploading them out of one.**
-It walks every committed pointer below `documents/` — the same set `document verify` reads offline — and for each one
-downloads its own recorded revision through the existing single-revision read, verified again by `sha256`, writing it to
-the staging path the pointer already names. A local file whose digest already matches is left alone, so hydrating a
-fresh clone and re-running `pull` afterward downloads nothing. It hydrates only; a live document the checkout carries no
-pointer for is `site sync`'s and a browser filing's own lane, not `pull`'s. A pointer the caller's participation does
+It walks every committed pointer below `documents/` — the same set `navigator project gate --check` reads — and for each
+one downloads its own recorded revision through the existing single-revision read, verified again by `sha256`, writing
+it to the staging path the pointer already names. A local file whose digest already matches is left alone, so hydrating
+a fresh clone and re-running `pull` afterward downloads nothing. It hydrates only; a live document the checkout carries
+no pointer for is `site sync`'s and a browser filing's own lane, not `pull`'s. A pointer the caller's participation does
 not admit to read is reported rather than silently skipped, and the command refuses to write outside the checkout.
 `--dry-run` lists what would change without logging in, by comparing local digests to the committed pointers alone. The
 written bytes stay exactly where `sync` already keeps them out of Git: the repository gate refuses a raw document byte
@@ -186,15 +186,14 @@ path. Creating or retaining `documents/.gitignore` is outside that document-byte
 storage failure and run `pull` again; a completed pull hydrates every missing or stale target, and a later pull reports
 `0 pulled` because matching digests are skipped.
 
-**`navigator site document verify` answers "did it land?" in one of three modes, chosen by what you pass.** With no
-flags it checks pointer shape only — every `*.yml` below `documents/` must parse — and opens no connection, which is
-what a pull request runs. With `--host <host>` it checks each pointer against the live asset record using your own
-`navigator site login` session, reporting the same drift `log` and `get` report: a revision missing from the live chain,
-a `sha256` or size that disagrees, or an operative revision the pointer does not name. With `--ci --host <host>` it runs
-that identical live check but mints the session from the GitHub Actions run's own OIDC token, because a runner carries
-no stored login; that is the mode a push to `main` uses. The `--host` mode exists so that an operator who has just
-uploaded a document can confirm the asset exists remotely without reading a CI job (LAW-12). Before it, `--host` was
-accepted and then ignored, and verify reported success offline for a checkout whose bytes were already deleted.
+**`navigator project gate --check` answers whether the checkout and the live record name the same documents.** It reads
+the host and Project code from `navigator.yaml`. Every committed pointer must match the operative revision, and every
+live document the lens can see must have a pointer. A drifted pointer is rewritten. A live document with no pointer gets
+`documents/<slug>.yaml`. A missing `documents/.gitignore` is written. The command never writes to the live site. A
+missing or corrupt storage object, and a live row with no slug, are errors a person has to fix. `--deep` re-hashes each
+object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix. Uploading, filing a new
+revision, or removing a document is `navigator site sync`. Plain `navigator project gate`, without `--check`, makes no
+document request.
 
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
@@ -424,11 +423,10 @@ green); a repository with none no-ops. It then runs `navigator project gate --ci
 rules, the layout, and — because this is the job that produced them — the origin pass reading each built `dist/`. One
 command, one job; on a push to `main` the same run also checks `navigator.yaml` against the live row.
 
-The `documents` job validates every `documents/` pointer — offline on every event, and additionally against the live
-asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange
-`seed-import` uses, at `POST /auth/ci/document-token`). It runs unconditionally alongside the others and no-ops over a
-repository carrying no `documents/`, and is one of the required check's dependencies. Its offline half keeps pull
-requests independent of a live deployment; its live half runs only on a push to `main`.
+The `documents` job runs `navigator project gate --check --ci`. The host and Project code come from `navigator.yaml`,
+and the session is minted at `POST /auth/ci/document-token`. It runs unconditionally alongside the others. A repository
+with no `documents/` directory still runs the check, so a live document with no pointer is reported. `--ci` writes
+nothing: a fix the gate would make locally fails the job. It is one of the required check's dependencies.
 
 The `seeds` job retains its main-only live check. `navigator project gate` covers the offline shape of every
 `seeds/*.yaml` document on pull requests, while the live reconciliation remains outside the required `ci` dependencies
@@ -469,11 +467,11 @@ redirect to. The shape rule is machine-checkable and `validate` enforces it; whe
 ## Publishing the built bundle
 
 `cd.yml` is the thin main-only caller of two reusable workflows, both pinned to the same `YY.M.D`. Its `gate` job
-re-invokes `project-gate.yml`, the same file `ci.yml` calls on pull requests, so the live document verification, live
-Project gate, and seed import that only run on a push to `main` actually run on one. Its `publish` job `needs: gate` and
-calls `project-publish.yml`; both pass only `project` and `host`. `workflow_dispatch` is the recovery path when a merge
-attributed to `GITHUB_TOKEN` creates no run; the publish job uses `cancel-in-progress: false` because cancelling a
-publish can leave an `index.html` naming assets that have not arrived.
+re-invokes `project-gate.yml`, the same file `ci.yml` calls on pull requests, so the live Project gate and the seed
+import that only run on a push to `main` actually run on one. The documents job's live check runs on pull requests too.
+Its `publish` job `needs: gate` and calls `project-publish.yml`; both pass only `project` and `host`.
+`workflow_dispatch` is the recovery path when a merge attributed to `GITHUB_TOKEN` creates no run; the publish job uses
+`cancel-in-progress: false` because cancelling a publish can leave an `index.html` naming assets that have not arrived.
 
 The publish workflow builds the application, reads the deployment bucket from the repository variable below, and then
 calls the pinned application-publish action. It runs no validate step of its own: `cd.yml` makes `project-gate.yml` a

@@ -16,6 +16,7 @@ pub mod applications;
 pub mod build;
 pub mod cli_docs;
 pub mod doctor;
+pub mod document_check;
 pub mod drift;
 pub mod gate;
 pub mod manifest;

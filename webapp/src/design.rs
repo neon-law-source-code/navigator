@@ -40,7 +40,7 @@ use crate::components::{
     PersonChoice, PersonPicker, PricingCard, PricingSection, Progress, PublicShell, QuestionStage,
     RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
     SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel, Tab, Tabs,
-    TestimonialCard, TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
+    TestimonialCards, TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -888,20 +888,15 @@ fn PricingShowcase() -> Element {
 /// The testimonial cards section.
 #[component]
 fn TestimonialShowcase() -> Element {
-    let cards = vec![TestimonialCard {
-        quote: "They opened my matter in a day and kept me posted the whole way.".to_string(),
-        attribution: "Aries Ram".to_string(),
-        detail: Some("LLC formation".to_string()),
-        profile_image_url: None,
-        product_label: Some("Namesake".to_string()),
-    }];
     rsx! {
         section {
+            h2 { "Testimonials" }
             TestimonialSection {
-                heading: "What clients say".to_string(),
-                lead: "Real outcomes, in the clients' words.".to_string(),
-                cards,
+                heading: "Testimonials".to_string(),
+                lead: String::new(),
+                cards: Vec::new(),
             }
+            TestimonialCards { cards: Vec::new() }
         }
     }
 }
@@ -1218,7 +1213,7 @@ fn SiteFooterShowcase() -> Element {
                         "UX",
                         "https://neon-law-source-code.github.io/navigator-ux/",
                     ),
-                    ("Workshops", "/workshops"),
+                    ("Testimonials", "/testimonials"),
                 ]
                 .into_iter()
                 .map(|(label, href)| FooterNavLink {

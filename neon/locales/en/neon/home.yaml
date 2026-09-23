@@ -12,7 +12,7 @@ service:
     - - text: We built a battle-tested 30 PB data warehouse for Apple Finance and have taught agentic coding to developers worldwide.
     - - text: "Explore our "
       - text: workshops
-        href: /workshops
+        href: /presentations
       - text: " or watch "
       - text: Rust in Peace
         href: /presentations/rust-in-peace

@@ -121,7 +121,7 @@ pub(crate) use site_header::BrandFavicon;
 pub use site_header::{SiteHeader, SiteNavLink};
 pub use social::SocialMeta;
 pub use tabs::{Tab, Tabs};
-pub use testimonial::{TestimonialCard, TestimonialSection};
+pub use testimonial::{TestimonialCard, TestimonialCards, TestimonialSection};
 pub use toast::{Toast, ToastTone};
 
 /// The same-origin href of the Dioxus Components theme stylesheet, served by

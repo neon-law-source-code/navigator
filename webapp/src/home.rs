@@ -181,6 +181,9 @@ pub struct BareStatement {
 pub struct InjectedHome {
     pub content: HomeContent,
     pub lead_capture: Option<LeadCaptureCopy>,
+    /// The resolved house brand, carried across the server-function seam so
+    /// public testimonials stay on the brand that published the matter.
+    pub brand_key: String,
 }
 
 /// Everything the page renders.
@@ -202,7 +205,7 @@ pub async fn home_page_view() -> Result<HomePageView, ServerFnError> {
     let injected =
         crate::public_chrome::copy_from_request_or_context(consume_context::<InjectedHome>).await;
     let surreal = consume_context::<store::surreal::SurrealDb>();
-    let testimonials = store::testimonials::published_for_home(&surreal, 6)
+    let testimonials = store::testimonials::published_for_brand(&surreal, &injected.brand_key, 6)
         .await
         .map_err(|error| ServerFnError::new(error.to_string()))?
         .into_iter()
@@ -315,6 +318,11 @@ pub fn HomePage(
                             practices: content.practices.clone(),
                         }
                     }
+                    TestimonialSection {
+                        heading: "Testimonials".to_string(),
+                        lead: String::new(),
+                        cards: testimonials,
+                    }
                 }
                 // The same footer every other page of the firm's sites
                 // carries — its office, its family of brands, its membership,
@@ -376,12 +384,32 @@ pub fn HomePage(
                     company: company.clone(),
                     lead_capture_enabled: lead_capture.is_some(),
                 }
+                TestimonialSection {
+                    heading: "Testimonials".to_string(),
+                    lead: String::new(),
+                    cards: testimonials,
+                }
             } else if let Some(estate) = content.estate.as_ref() {
                 estate::EstateHome { content: content.clone(), estate: estate.clone() }
+                TestimonialSection {
+                    heading: "Testimonials".to_string(),
+                    lead: String::new(),
+                    cards: testimonials,
+                }
             } else if let Some(privacy) = content.privacy.as_ref() {
                 privacy::PrivacyHome { content: content.clone(), privacy: privacy.clone() }
+                TestimonialSection {
+                    heading: "Testimonials".to_string(),
+                    lead: String::new(),
+                    cards: testimonials,
+                }
             } else if let Some(daybridge) = content.daybridge.as_ref() {
                 daybridge::DaybridgeHome { content: content.clone(), daybridge: daybridge.clone() }
+                TestimonialSection {
+                    heading: "Testimonials".to_string(),
+                    lead: String::new(),
+                    cards: testimonials,
+                }
             } else {
             // The page opens on the question. No photograph above it and no
             // glow behind it: the question is the page, so it is the first

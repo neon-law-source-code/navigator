@@ -20,14 +20,8 @@ use views::brand::BrandKey;
 use crate::firm_copy;
 use crate::locales;
 
-const WORKSHOP_INDEX_TITLE: &str = "Workshops";
-const WORKSHOP_INDEX_LEDE: &str =
-    "Workshops are our hands-on classes for lawyers and legal professionals who run Neon Law \
-     Navigator. Each one is a working session against the real application.";
 const PRESENTATION_INDEX_TITLE: &str = "Presentations";
-const PRESENTATION_INDEX_LEDE: &str =
-    "Presentations are the talks we give at meetups and conferences. Every code slide is an exact \
-     copy of the shipped repository, kept honest by a test that fails the build when one drifts.";
+const PRESENTATION_INDEX_LEDE: &str = "Presentations and workshops published by the firm.";
 
 /// Build the `presentations` index: every material the manifest files under
 /// that category, in manifest order.
@@ -39,23 +33,10 @@ fn presentation_index_content(
 ) -> webapp::catalog_index::CatalogIndexContent {
     catalog_index_content(
         workshops,
-        "presentations",
+        &["presentations", "workshops"],
         PRESENTATION_INDEX_TITLE,
         PRESENTATION_INDEX_LEDE,
-    )
-}
-
-/// Build the `workshops` index — the catalog page for the Navigator classes.
-///
-/// Gated exactly like the classes it lists. The page names the lawyer
-/// workbench, the admin deployment tier, and the contribution loop, so a
-/// reader who cannot open a single class gains nothing from the list.
-fn workshop_index_content(workshops: &WorkshopIndex) -> webapp::catalog_index::CatalogIndexContent {
-    catalog_index_content(
-        workshops,
-        "workshops",
-        WORKSHOP_INDEX_TITLE,
-        WORKSHOP_INDEX_LEDE,
+        true,
     )
 }
 
@@ -66,9 +47,10 @@ fn workshop_index_content(workshops: &WorkshopIndex) -> webapp::catalog_index::C
 /// talks and runs the classes, so a reader who wants either writes to it.
 fn catalog_index_content(
     workshops: &WorkshopIndex,
-    category: &str,
+    categories: &[&str],
     title: &str,
     lede: &str,
+    include_testimonials: bool,
 ) -> webapp::catalog_index::CatalogIndexContent {
     webapp::catalog_index::CatalogIndexContent {
         title: title.to_string(),
@@ -77,7 +59,7 @@ fn catalog_index_content(
         materials: workshops
             .materials()
             .iter()
-            .filter(|m| m.category == category)
+            .filter(|m| categories.contains(&m.category.as_str()))
             .map(|m| webapp::catalog_index::CatalogMaterial {
                 href: format!("/{}/{}", m.category, m.slug),
                 eyebrow: m.audience.clone(),
@@ -87,6 +69,8 @@ fn catalog_index_content(
             .collect(),
         contact_email: views::brand::firm_email().to_string(),
         footnote: String::new(),
+        include_testimonials,
+        brand_key: String::new(),
     }
 }
 
@@ -379,6 +363,8 @@ fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
         ],
         contact_email: views::brand::firm_email().to_string(),
         footnote: String::new(),
+        include_testimonials: false,
+        brand_key: String::new(),
     }
 }
 
@@ -443,6 +429,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     routers.push(dioxus_app::catalog_index_router(
         dioxus_app::NOTATIONS_INDEX_PATH,
         notations_index_content(),
+        state.surreal.clone(),
     ));
     // Also carries `navigator notation preview`'s draft door (LAW-29): a
     // pushed template, stored and addressable but explicitly not run. Both
@@ -486,6 +473,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     let home_copy = branded_map(branding, |resolved| webapp::home::InjectedHome {
         content: resolve_firm_home_content(resolved, deployment_host),
         lead_capture: home_lead_capture(resolved),
+        brand_key: resolved.brand_key.as_str().to_string(),
     });
     routers.push(with_branded(
         dioxus_app::home_router(
@@ -497,6 +485,15 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
             portal::secure_cookies(state),
         ),
         home_copy,
+    ));
+    let testimonials_copy = branded_map(branding, |resolved| {
+        webapp::testimonials_page::InjectedTestimonials {
+            brand_key: resolved.brand_key.as_str().to_string(),
+        }
+    });
+    routers.push(with_branded(
+        dioxus_app::testimonials_router(dioxus_app::TESTIMONIALS_PATH, state.surreal.clone()),
+        testimonials_copy,
     ));
     // The practice pages the home page's cards lead into. Static copy like the
     // home page's, resolved here so the `<title>` names the mounted brand.
@@ -561,6 +558,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     routers.push(dioxus_app::catalog_index_router(
         dioxus_app::PRESENTATION_INDEX_PATH,
         presentation_index_content(&state.workshops),
+        state.surreal.clone(),
     ));
     routers.extend(dioxus_app::catalog_material_routers(
         &dioxus_app::PRESENTATION_PATHS,
@@ -573,10 +571,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     // The certificate `POST` keeps its own gate: who may claim a completion
     // certificate is an authorization question, and it stays one even when the
     // material is free to read.
-    routers.push(dioxus_app::catalog_index_router(
-        dioxus_app::WORKSHOP_INDEX_PATH,
-        workshop_index_content(&state.workshops),
-    ));
+    routers.push(dioxus_app::retired_workshops_router());
     routers.extend(dioxus_app::catalog_material_routers(
         &dioxus_app::WORKSHOP_PATHS,
         state.workshops.clone(),

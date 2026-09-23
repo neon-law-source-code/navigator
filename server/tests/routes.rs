@@ -2580,7 +2580,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     }
     // The firm's pages ARE advertised — one host, one sitemap. What must not
     // appear is a firm page filed beneath `/foundation`.
-    for firm_page in ["/blog", "/navigator", "/notations"] {
+    for firm_page in ["/blog", "/navigator", "/notations", "/testimonials"] {
         assert!(
             body.contains(&format!("<loc>https://www.neonlaw.com{firm_page}</loc>")),
             "sitemap must advertise the firm page {firm_page}: {body}"
@@ -2752,7 +2752,7 @@ async fn the_workshops_surface_mounts_only_at_the_site_root() {
             "workshops must not publish under the nonprofit's prefix: {uri}"
         );
     }
-    // The catalog itself is anonymously readable.
+    // The retired index keeps its published URL alive through a redirect.
     let resp = app
         .clone()
         .oneshot(
@@ -2763,7 +2763,8 @@ async fn the_workshops_surface_mounts_only_at_the_site_root() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(resp.headers().get("location").unwrap(), "/presentations");
 }
 
 #[tokio::test]
@@ -2772,7 +2773,7 @@ async fn the_workshops_index_lists_each_class_you_voiced() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/workshops")
+                .uri("/presentations")
                 .header(axum::http::header::COOKIE, client_reader_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -2781,7 +2782,7 @@ async fn the_workshops_index_lists_each_class_you_voiced() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law | Workshops</title>"));
+    assert!(body.contains("<title>Neon Law | Presentations</title>"));
     // Each workshop links to its overview one level down, tagged with its
     // audience and led by its you-voiced benefit.
     assert!(body.contains("href=\"/workshops/use-the-navigator\""));
@@ -10512,10 +10513,13 @@ async fn design_page_renders_the_component_gallery() {
         body.contains("page=2"),
         "renders a `?page=` pagination anchor"
     );
-    // The marketing card cluster renders too — pricing cards, testimonials, and
-    // the legal disclaimer, as theme-styled Dioxus components.
+    // The marketing card cluster renders too — pricing cards and the legal
+    // disclaimer. Testimonials remain intentionally empty until publication.
     assert!(body.contains("pricing-card"), "renders pricing cards");
-    assert!(body.contains("testimonial-card"), "renders testimonials");
+    assert!(
+        !body.contains("testimonial-card"),
+        "does not invent testimonials"
+    );
     assert!(
         body.contains("template-disclaimer"),
         "renders the legal disclaimer"

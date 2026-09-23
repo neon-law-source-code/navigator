@@ -76,7 +76,7 @@ bands:
             that writing code is now just as approachable. We invite you to join
             us for a 
         - text: workshop
-          href: /workshops
+          href: /presentations
         - text: " or check out our "
         - text: source code
           href: https://github.com/neon-law-source-code/navigator

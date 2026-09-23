@@ -788,6 +788,7 @@ mod tests {
         let mut dom = VirtualDom::new(app);
         dom.rebuild_in_place();
         let out = dioxus_ssr::render(&dom);
+        let copy = lead_copy();
 
         assert!(out.contains("Book Consultation"), "primary CTA: {out}");
         assert!(
@@ -803,20 +804,24 @@ mod tests {
             out.contains(r#"name="source_path" value="/""#),
             "home attribution: {out}"
         );
-        assert!(out.contains(r#"name="consent_version" value="By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.""#), "consent version: {out}");
+        assert!(
+            out.contains(&format!(
+                r#"name="consent_version" value="{}""#,
+                copy.consent_sentence
+            )),
+            "consent version: {out}"
+        );
         assert!(out.contains(r#"name="website""#), "honeypot name: {out}");
         assert!(
             out.contains(r#"class="nav-honeypot nav-visually-hidden" aria-hidden="true""#),
             "honeypot hidden: {out}"
         );
-        assert!(
-            out.contains("Optional. Message frequency varies."),
-            "SMS helper: {out}"
-        );
-        assert!(
-            out.contains("Yes, Neon Law may send me text messages"),
-            "SMS label: {out}"
-        );
+        let (phone_helper_before_link, _) = copy
+            .phone_helper
+            .split_once("Privacy Policy and texting terms")
+            .expect("phone helper links to the texting terms");
+        assert!(out.contains(phone_helper_before_link), "SMS helper: {out}");
+        assert!(out.contains(&copy.sms_label), "SMS label: {out}");
         assert!(
             out.contains(r#"href="/privacy""#),
             "privacy wording link: {out}"

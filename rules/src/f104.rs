@@ -173,6 +173,8 @@ const SIGNATURE_LABEL_WORDS: &[&str] = &[
     "signer",
 ];
 
+const SIGNATURE_LABEL_ANCHOR_WORDS: &[&str] = &["signature", "signatures", "signatory", "signer"];
+
 fn is_structured_signature_line(line: &str) -> bool {
     is_unlabeled_signature_rule(line)
         || split_signature_label(line)
@@ -187,14 +189,17 @@ fn split_signature_label(line: &str) -> Option<(&str, &str)> {
         return is_signature_label_only(line).then_some((line, ""));
     };
 
+    let separator_character = line[separator..].chars().next()?;
     let label = line[..separator].trim();
-    if !is_signature_label_only(label) {
-        return None;
-    }
-
     let value = line[separator..].trim_matches(|character: char| {
         character.is_ascii_whitespace() || matches!(character, ':' | '-' | '—' | '.')
     });
+    let explicit_blank = value.is_empty() && matches!(separator_character, ':' | '-' | '—');
+    if !is_signature_label_only(label)
+        && !(contains_signature_label_anchor(label) && (explicit_blank || contains_rule_run(value)))
+    {
+        return None;
+    }
     Some((label, value))
 }
 
@@ -217,6 +222,16 @@ fn is_signature_label_word(word: &str) -> bool {
     SIGNATURE_LABEL_WORDS
         .iter()
         .any(|candidate| word.eq_ignore_ascii_case(candidate))
+}
+
+fn contains_signature_label_anchor(line: &str) -> bool {
+    line.split(|character: char| !character.is_ascii_alphabetic())
+        .filter(|word| !word.is_empty())
+        .any(|word| {
+            SIGNATURE_LABEL_ANCHOR_WORDS
+                .iter()
+                .any(|candidate| word.eq_ignore_ascii_case(candidate))
+        })
 }
 
 fn contains_rule_run(value: &str) -> bool {
@@ -507,6 +522,26 @@ workflow:
                         .iter()
                         .any(|v| v.message.contains("Missing required `questionnaire`")),
                     "a signature line in a {kind} must require the questionnaire machine: {violations:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn signature_labels_with_affordances_require_both_machines_on_any_kind() {
+        for marker in [
+            "Client Signature: ____________________\n",
+            "Attorney Signature:\n",
+            "Authorized Signature:\n",
+        ] {
+            for kind in ["letter", "memo", "agreement", "onboarding", "filing"] {
+                let source = file(&format!("---\nkind: {kind}\n---\n\n{marker}"));
+                let violations = rule().lint(&source);
+                assert!(
+                    violations
+                        .iter()
+                        .any(|v| v.message.contains("Missing required `questionnaire`")),
+                    "a signature label in a {kind} must require the questionnaire machine: {violations:?}"
                 );
             }
         }

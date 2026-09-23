@@ -54,9 +54,9 @@ fn first_line(body: &str) -> String {
 /// carries no `Deserialize`, so this is the CLI's own read-side mirror of the
 /// same wire shape `portal::authorities_api::create_authority_door` returns.
 ///
-/// `pub(crate)` (and every field with it): `crate::document_sync`'s evidence
-/// route reads `id`/`archived_asset_id` off this same response to write the
-/// document pointer back at the capture's own path.
+/// `pub(crate)` (and every field with it): `crate::document_sync`'s Authority
+/// capture route reads `id`/`archived_asset_id` off this same response to
+/// write the document pointer back at the capture's own path.
 #[derive(Debug, Deserialize, serde::Serialize)]
 pub(crate) struct AuthorityResponse {
     pub(crate) id: Uuid,
@@ -85,8 +85,9 @@ fn client() -> reqwest::Client {
 /// datastore write (forbidden by the `legal-authority` skill) could carry
 /// authenticated.
 ///
-/// `pub(crate)`: `crate::document_sync`'s evidence route builds one of these
-/// from a staged capture's sidecar to reach the same authenticated door.
+/// `pub(crate)`: `crate::document_sync`'s Authority capture route builds one
+/// of these from a staged capture's sidecar to reach the same authenticated
+/// door.
 #[allow(clippy::too_many_arguments)]
 pub(crate) struct NewAuthorityArgs<'a> {
     pub(crate) class: &'a str,

@@ -129,16 +129,22 @@ so, so a lawyer who drops a file somewhere the conventions do not name is not le
 file staged under `documents/invoices/` must match the filename pattern `INV-<digits>.<ext>` (for example `INV-1.pdf`)
 or sync refuses it.
 
-**`documents/evidence/` is not a Project document at all.** An HTML capture of a statute or case the matter relies on is
-an [Authority](glossary.md#authority) — global reference data with no `project_id` — so filing it as an internal matter
-document would be the misclassification the fleet contract warns about. `sync` instead routes every
-`documents/evidence/**` capture through the same door as `navigator site authorities create`: it reads a sidecar
-(`<capture-filename>.evidence.yaml`, beside the capture) carrying `class`, `citation`, `title`, and optionally
-`short_cite`, `publisher`, `issued_on`, `canonical_url`, and `checked_on` — the fields `authorities create` needs and
-cannot reliably scrape from arbitrary HTML `<meta>` tags — archives the bytes as an Authority, and writes back a
-document pointer at the capture's own path carrying the resulting `authority_id` alongside `sha256`, `canonical_url`,
-`checked_on`, and `created_at`. Both the capture and its sidecar are removed from the checkout once the Authority is
-filed, the same lifecycle as any other staged binary.
+**`documents/cases/` and `documents/rules/` are not Project documents at all.** An HTML capture of a case or a statute
+the matter relies on is an [Authority](glossary.md#authority) — global reference data with no `project_id` — so filing
+it as an internal matter document would be the misclassification the fleet contract warns about. `sync` instead routes
+every `documents/cases/**` and `documents/rules/**` capture through the same door as `navigator site authorities
+create`: it reads a sidecar (`<capture-filename>.authority.yaml`, beside the capture) carrying `class`, `citation`,
+`title`, and optionally `short_cite`, `publisher`, `issued_on`, `canonical_url`, and `checked_on` — the fields
+`authorities create` needs and cannot reliably scrape from arbitrary HTML `<meta>` tags — archives the bytes as an
+Authority, and writes back a document pointer at the capture's own path carrying the resulting `authority_id` alongside
+`sha256`, `canonical_url`, `checked_on`, and `created_at`. Both the capture and its sidecar are removed from the
+checkout once the Authority is filed, the same lifecycle as any other staged binary.
+
+The two folders split [`AuthorityClass`](../rules/src/citation.rs): `documents/cases/` holds `case_law` alone, and
+`documents/rules/` holds every other class — `statute`, `regulation`, `administrative`, and `secondary`. The sidecar's
+declared `class` must agree with the folder it is staged under; a mismatch (a statute staged under `cases/`, or case law
+staged under `rules/`) is refused before either the network or `documents/.gitignore` is touched, naming the folder the
+capture actually belongs under.
 
 Every pointer `sync` writes, whatever the route, keeps `current_version.created_at` as an RFC 3339 UTC timestamp; `site
 document verify` fails a pointer that lacks one.

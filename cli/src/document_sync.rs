@@ -53,12 +53,12 @@ pub(crate) const POINTER_READ_EXTENSIONS: &[&str] = &[POINTER_EXTENSION, "yml"];
 
 /// Whether `path` names a committed document pointer, in either spelling.
 ///
-/// An [`EVIDENCE_SIDECAR_EXTENSION`] path is excluded even though its own
+/// An [`AUTHORITY_SIDECAR_EXTENSION`] path is excluded even though its own
 /// last extension is also `yaml`: a sidecar is pre-upload input a lawyer
 /// wrote by hand, not a pointer `sync` committed, and the two must never be
 /// confused — `discover` sweeps the wrong one into the wrong list otherwise.
 pub(crate) fn is_pointer_path(path: &Path) -> bool {
-    if is_evidence_sidecar_path(path) {
+    if is_authority_sidecar_path(path) {
         return false;
     }
     path.extension()
@@ -66,37 +66,64 @@ pub(crate) fn is_pointer_path(path: &Path) -> bool {
         .is_some_and(|extension| POINTER_READ_EXTENSIONS.contains(&extension))
 }
 
-/// The reserved sidecar extension for a staged `documents/evidence/**`
-/// capture: `<capture-filename>.evidence.yaml`, alongside the capture
-/// itself. Extends the same `<source>.<extension>` naming [`is_pointer_path`]
-/// already reads pointers under, rather than inventing a second scheme —
-/// the trailing `.yaml` is why [`is_pointer_path`] must exclude it by name.
-pub(crate) const EVIDENCE_SIDECAR_EXTENSION: &str = "evidence.yaml";
+/// The reserved sidecar extension for a staged `documents/cases/**` or
+/// `documents/rules/**` capture: `<capture-filename>.authority.yaml`,
+/// alongside the capture itself. Extends the same `<source>.<extension>`
+/// naming [`is_pointer_path`] already reads pointers under, rather than
+/// inventing a second scheme — the trailing `.yaml` is why [`is_pointer_path`]
+/// must exclude it by name.
+pub(crate) const AUTHORITY_SIDECAR_EXTENSION: &str = "authority.yaml";
 
-/// Whether `path` names an evidence capture's Authority sidecar.
-pub(crate) fn is_evidence_sidecar_path(path: &Path) -> bool {
+/// Whether `path` names an Authority capture's sidecar.
+pub(crate) fn is_authority_sidecar_path(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(&format!(".{EVIDENCE_SIDECAR_EXTENSION}")))
+        .is_some_and(|name| name.ends_with(&format!(".{AUTHORITY_SIDECAR_EXTENSION}")))
 }
 
-/// The sidecar path for a staged evidence capture at `path`, following the
+/// The sidecar path for a staged Authority capture at `path`, following the
 /// same `<source>.<extension>` convention [`pointer_path_for_source`] writes
 /// a pointer at.
-fn evidence_sidecar_path(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}.{EVIDENCE_SIDECAR_EXTENSION}", path.display()))
+fn authority_sidecar_path(path: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.{AUTHORITY_SIDECAR_EXTENSION}", path.display()))
 }
 
-/// Whether `relative` (a staged path below `documents/`) is a
-/// `documents/evidence/**` capture — Authorities, global reference data with
-/// no `project_id` (see the glossary's Authority entry), routed through
-/// `site authorities create` rather than filed as a Project document.
-fn is_evidence_capture(relative: &Path) -> bool {
-    relative
+/// The Authority folder `relative` (a staged path below `documents/`) is
+/// captured under, or `None` when it names an ordinary Project document.
+///
+/// `documents/cases/**` and `documents/rules/**` are Authorities — global
+/// reference data with no `project_id` (see the glossary's Authority entry)
+/// — routed through `site authorities create` rather than filed as a Project
+/// document. The two folders split [`rules::citation::AuthorityClass`]:
+/// `cases/` holds case law, `rules/` holds everything else (statutes,
+/// regulations, administrative proceedings, and secondary sources) —
+/// [`authority_class_belongs_in_folder`] enforces the split against the
+/// sidecar's own declared `class`.
+fn authority_capture_folder(relative: &Path) -> Option<&'static str> {
+    match relative
         .components()
         .next()
         .and_then(|part| part.as_os_str().to_str())
-        == Some("evidence")
+    {
+        Some("cases") => Some("cases"),
+        Some("rules") => Some("rules"),
+        _ => None,
+    }
+}
+
+/// Whether `class` (an [`AuthorityClass`](rules::citation::AuthorityClass)
+/// wire value) belongs under `folder` — `"cases"` for `case_law` alone,
+/// `"rules"` for every other class. A mismatch (a statute staged under
+/// `cases/`, or case law staged under `rules/`) is refused by
+/// [`read_authority_sidecar`] before either the network or
+/// `documents/.gitignore` is touched, the same preflight discipline
+/// [`validate_invoice_filename`] uses for `documents/invoices/`.
+fn authority_class_belongs_in_folder(class: &str, folder: &str) -> bool {
+    match folder {
+        "cases" => class == "case_law",
+        "rules" => class != "case_law",
+        _ => false,
+    }
 }
 
 /// Whether `relative` is a `documents/invoices/**` staged file.
@@ -188,7 +215,7 @@ fn report_dry_run(root: &Path, documents: &Path, binaries: &[PathBuf]) -> Result
         let relative = path
             .strip_prefix(documents)
             .map_err(|_| anyhow!("{} is outside documents/", path.display()))?;
-        let route = if is_evidence_capture(relative) {
+        let route = if authority_capture_folder(relative).is_some() {
             "an Authority upload".to_string()
         } else {
             format!("kind `{}`", inferred_kind(relative))
@@ -221,10 +248,11 @@ async fn reconcile_pointer_visibility(
 }
 
 /// Resolve the pointer for one staged binary: the Authority route for
-/// `documents/evidence/**`, or the ordinary per-Project document upload for
-/// everything else — `preflight_sync_paths` already validated any invoice
-/// filename before either the network or `documents/.gitignore` was
-/// touched, so the ordinary route never sees a rejected one.
+/// `documents/cases/**` and `documents/rules/**`, or the ordinary per-Project
+/// document upload for everything else — `preflight_sync_paths` already
+/// validated any invoice filename before either the network or
+/// `documents/.gitignore` was touched, so the ordinary route never sees a
+/// rejected one.
 #[allow(clippy::too_many_arguments)]
 async fn resolve_pointer_for_binary(
     client: &DocumentClient,
@@ -235,8 +263,8 @@ async fn resolve_pointer_for_binary(
     slug: &str,
     existing_pointer: Option<&store::document_pointers::DocumentPointer>,
 ) -> Result<store::document_pointers::DocumentPointer> {
-    if is_evidence_capture(relative) {
-        return sync_evidence_capture(host, path, bytes, existing_pointer).await;
+    if let Some(folder) = authority_capture_folder(relative) {
+        return sync_authority_capture(host, path, bytes, existing_pointer, folder).await;
     }
     let kind =
         existing_pointer.map_or_else(|| inferred_kind(relative), |pointer| pointer.kind.as_str());
@@ -266,7 +294,7 @@ async fn resolve_pointer_for_binary(
 }
 
 /// Commit one resolved pointer and remove the staged bytes it replaces —
-/// the evidence route's sidecar too — restoring the previous pointer if the
+/// the Authority route's sidecar too — restoring the previous pointer if the
 /// source changed underneath the upload.
 #[allow(clippy::too_many_arguments)]
 fn finalize_uploaded_document(
@@ -293,8 +321,8 @@ fn finalize_uploaded_document(
         return Err(error);
     }
     std::fs::remove_file(path).with_context(|| format!("remove staged {}", path.display()))?;
-    if is_evidence_capture(relative) {
-        let sidecar_path = evidence_sidecar_path(path);
+    if authority_capture_folder(relative).is_some() {
+        let sidecar_path = authority_sidecar_path(path);
         match std::fs::remove_file(&sidecar_path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -376,13 +404,14 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-/// The Authority metadata a staged `documents/evidence/**` capture must
-/// supply via its sidecar (`<capture>.evidence.yaml`) — exactly the fields
-/// `site authorities create` needs and cannot reliably scrape from arbitrary
-/// HTML `<meta>` tags (settled in the issue's own triage comment).
+/// The Authority metadata a staged `documents/cases/**` or
+/// `documents/rules/**` capture must supply via its sidecar
+/// (`<capture>.authority.yaml`) — exactly the fields `site authorities
+/// create` needs and cannot reliably scrape from arbitrary HTML `<meta>`
+/// tags (settled in the issue's own triage comment).
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct EvidenceSidecar {
+struct AuthoritySidecar {
     class: String,
     citation: String,
     title: String,
@@ -398,43 +427,56 @@ struct EvidenceSidecar {
     checked_on: Option<String>,
 }
 
-/// Read and parse one staged evidence capture's sidecar
-/// (`<capture>.evidence.yaml`) — shared by [`preflight_sync_paths`], which
-/// calls this to fail fast on a missing or malformed sidecar before either
-/// the network or `documents/.gitignore` is touched, and by
-/// [`sync_evidence_capture`], which reads the same fields it validated.
-fn read_evidence_sidecar(path: &Path) -> Result<EvidenceSidecar> {
-    let sidecar_path = evidence_sidecar_path(path);
+/// Read and parse one staged Authority capture's sidecar
+/// (`<capture>.authority.yaml`), and enforce that its declared `class`
+/// belongs under `folder` ([`authority_class_belongs_in_folder`]) — shared by
+/// [`preflight_sync_paths`], which calls this to fail fast on a missing,
+/// malformed, or misfiled sidecar before either the network or
+/// `documents/.gitignore` is touched, and by [`sync_authority_capture`],
+/// which reads the same fields it validated.
+fn read_authority_sidecar(path: &Path, folder: &str) -> Result<AuthoritySidecar> {
+    let sidecar_path = authority_sidecar_path(path);
     let sidecar_raw = std::fs::read_to_string(&sidecar_path).with_context(|| {
         format!(
-            "read {} (a documents/evidence/ capture needs a sidecar carrying citation/class/title)",
+            "read {} (a documents/{folder}/ capture needs a sidecar carrying citation/class/title)",
             sidecar_path.display()
         )
     })?;
-    serde_yaml::from_str(&sidecar_raw).with_context(|| format!("parse {}", sidecar_path.display()))
+    let sidecar: AuthoritySidecar = serde_yaml::from_str(&sidecar_raw)
+        .with_context(|| format!("parse {}", sidecar_path.display()))?;
+    if !authority_class_belongs_in_folder(&sidecar.class, folder) {
+        let other = if folder == "cases" { "rules" } else { "cases" };
+        return Err(anyhow!(
+            "{} declares class `{}`, which belongs under documents/{other}/, not documents/{folder}/",
+            sidecar_path.display(),
+            sidecar.class
+        ));
+    }
+    Ok(sidecar)
 }
 
-/// Route one staged `documents/evidence/**` capture through `site
-/// authorities create` instead of the ordinary per-Project document upload —
-/// Authorities are global reference data with no `project_id` (see the
-/// glossary's Authority entry), so filing one as a Project document is the
-/// misclassification this routing exists to avoid.
+/// Route one staged `documents/cases/**` or `documents/rules/**` capture
+/// through `site authorities create` instead of the ordinary per-Project
+/// document upload — Authorities are global reference data with no
+/// `project_id` (see the glossary's Authority entry), so filing one as a
+/// Project document is the misclassification this routing exists to avoid.
 ///
 /// Reads the capture's sidecar, archives the bytes through the same
 /// authenticated door `navigator site authorities create` uses, and returns
 /// a [`store::document_pointers::DocumentPointer`] carrying the resulting
 /// `authority_id` alongside `sha256`/`canonical_url`/`checked_on`/`created_at`
 /// — reusing the existing pointer struct rather than a parallel shape.
-/// `kind` stays `exhibit`: the capture is still evidence filed on the
-/// matter, only archived through the Authority door rather than the
+/// `kind` stays `exhibit`: the capture is still evidence or a rule filed on
+/// the matter, only archived through the Authority door rather than the
 /// document one.
-async fn sync_evidence_capture(
+async fn sync_authority_capture(
     host: Option<&str>,
     path: &Path,
     bytes: &[u8],
     existing_pointer: Option<&store::document_pointers::DocumentPointer>,
+    folder: &str,
 ) -> Result<store::document_pointers::DocumentPointer> {
-    let sidecar = read_evidence_sidecar(path)?;
+    let sidecar = read_authority_sidecar(path, folder)?;
     let authority = crate::authorities::create_authority(
         host,
         &crate::authorities::NewAuthorityArgs {
@@ -466,7 +508,7 @@ async fn sync_evidence_capture(
             created_at: chrono::Utc::now().to_rfc3339(),
             sha256: store::documents::sha256_hex(bytes),
             size_bytes: i64::try_from(bytes.len())
-                .context("evidence byte count does not fit in pointer")?,
+                .context("authority capture byte count does not fit in pointer")?,
             canonical_url: sidecar.canonical_url,
             checked_on: sidecar.checked_on,
         },
@@ -475,7 +517,7 @@ async fn sync_evidence_capture(
     };
     pointer
         .validate()
-        .map_err(|error| anyhow!("invalid evidence pointer: {error}"))?;
+        .map_err(|error| anyhow!("invalid authority pointer: {error}"))?;
     Ok(pointer)
 }
 
@@ -1178,8 +1220,8 @@ fn preflight_sync_paths(
             if is_invoice_capture(relative) {
                 validate_invoice_filename(path)?;
             }
-            if is_evidence_capture(relative) {
-                read_evidence_sidecar(path)?;
+            if let Some(folder) = authority_capture_folder(relative) {
+                read_authority_sidecar(path, folder)?;
             }
             let (pointer_path, has_existing_pointer) = pointer_path_for_source(path)?;
             ensure_document_path_is_safe(root, &pointer_path, true, false)?;
@@ -1270,10 +1312,10 @@ fn discover(documents: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
         if !entry.file_type().is_file() || entry.file_name() == ".gitignore" {
             continue;
         }
-        // An evidence sidecar is metadata consulted by its known derived
+        // An Authority sidecar is metadata consulted by its known derived
         // path when the capture it describes is processed — never a pointer
         // to reconcile and never a binary to upload in its own right.
-        if is_evidence_sidecar_path(entry.path()) {
+        if is_authority_sidecar_path(entry.path()) {
             continue;
         }
         if is_pointer_path(entry.path()) {
@@ -1297,10 +1339,11 @@ fn inferred_kind(relative: &Path) -> &'static str {
         Some("exhibits") => "exhibit",
         Some("agreements") => "agreement",
         Some("invoices") => "invoice",
-        // `documents/evidence/**` never reaches this default: `sync` routes
-        // it through `sync_evidence_capture` before `inferred_kind` is ever
-        // called for that folder, and the Authority pointer it writes back
-        // hard-codes `kind: exhibit` rather than asking this function.
+        // `documents/cases/**` and `documents/rules/**` never reach this
+        // default: `sync` routes them through `sync_authority_capture` before
+        // `inferred_kind` is ever called for those folders, and the Authority
+        // pointer it writes back hard-codes `kind: exhibit` rather than
+        // asking this function.
         _ => "unclassified",
     }
 }
@@ -1316,8 +1359,9 @@ fn content_type(path: &Path) -> &'static str {
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("txt") => "text/plain",
-        // An evidence capture under `documents/evidence/` is an archived
-        // HTML page more often than any other kind this function names.
+        // An Authority capture under `documents/cases/` or `documents/rules/`
+        // is an archived HTML page more often than any other kind this
+        // function names.
         Some("html" | "htm") => "text/html",
         Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         _ => "application/octet-stream",
@@ -1364,38 +1408,58 @@ pub(crate) fn read_pointer(
 #[cfg(test)]
 mod tests {
     use super::{
-        content_type, inferred_kind, is_evidence_capture, is_evidence_sidecar_path,
-        is_invoice_capture, is_invoice_filename, is_pointer_path, matches_digest, pull_target,
-        pull_transaction_path, read_manifest, recover_interrupted_pull, strip_pointer_extension,
-        write_pull_transaction_state, PullTransactionPhase, PullTransactionState,
-        PullTransactionTarget, DOCUMENTS_GITIGNORE, EVIDENCE_SIDECAR_EXTENSION, POINTER_EXTENSION,
+        authority_capture_folder, authority_class_belongs_in_folder, content_type, inferred_kind,
+        is_authority_sidecar_path, is_invoice_capture, is_invoice_filename, is_pointer_path,
+        matches_digest, pull_target, pull_transaction_path, read_manifest,
+        recover_interrupted_pull, strip_pointer_extension, write_pull_transaction_state,
+        PullTransactionPhase, PullTransactionState, PullTransactionTarget,
+        AUTHORITY_SIDECAR_EXTENSION, DOCUMENTS_GITIGNORE, POINTER_EXTENSION,
         POINTER_READ_EXTENSIONS,
     };
     use std::path::Path;
 
     #[test]
-    fn is_pointer_path_excludes_the_evidence_sidecar_extension() {
-        assert_eq!(EVIDENCE_SIDECAR_EXTENSION, "evidence.yaml");
-        assert!(is_pointer_path(Path::new(
-            "documents/evidence/roe.html.yaml"
-        )));
+    fn is_pointer_path_excludes_the_authority_sidecar_extension() {
+        assert_eq!(AUTHORITY_SIDECAR_EXTENSION, "authority.yaml");
+        assert!(is_pointer_path(Path::new("documents/cases/roe.html.yaml")));
         assert!(!is_pointer_path(Path::new(
-            "documents/evidence/roe.html.evidence.yaml"
+            "documents/cases/roe.html.authority.yaml"
         )));
-        assert!(is_evidence_sidecar_path(Path::new(
-            "documents/evidence/roe.html.evidence.yaml"
+        assert!(is_authority_sidecar_path(Path::new(
+            "documents/cases/roe.html.authority.yaml"
         )));
-        assert!(!is_evidence_sidecar_path(Path::new(
-            "documents/evidence/roe.html.yaml"
+        assert!(!is_authority_sidecar_path(Path::new(
+            "documents/cases/roe.html.yaml"
         )));
     }
 
     #[test]
-    fn evidence_and_invoice_captures_are_recognized_by_their_top_folder() {
-        assert!(is_evidence_capture(Path::new("evidence/roe.html")));
-        assert!(!is_evidence_capture(Path::new("pleadings/motion.pdf")));
+    fn authority_and_invoice_captures_are_recognized_by_their_top_folder() {
+        assert_eq!(
+            authority_capture_folder(Path::new("cases/roe.html")),
+            Some("cases")
+        );
+        assert_eq!(
+            authority_capture_folder(Path::new("rules/nrs-86-201.html")),
+            Some("rules")
+        );
+        assert_eq!(
+            authority_capture_folder(Path::new("pleadings/motion.pdf")),
+            None
+        );
         assert!(is_invoice_capture(Path::new("invoices/INV-1.pdf")));
         assert!(!is_invoice_capture(Path::new("exhibits/photo.png")));
+    }
+
+    #[test]
+    fn authority_class_must_belong_in_its_folder() {
+        assert!(authority_class_belongs_in_folder("case_law", "cases"));
+        assert!(!authority_class_belongs_in_folder("statute", "cases"));
+        assert!(authority_class_belongs_in_folder("statute", "rules"));
+        assert!(authority_class_belongs_in_folder("regulation", "rules"));
+        assert!(authority_class_belongs_in_folder("administrative", "rules"));
+        assert!(authority_class_belongs_in_folder("secondary", "rules"));
+        assert!(!authority_class_belongs_in_folder("case_law", "rules"));
     }
 
     #[test]
@@ -1418,7 +1482,7 @@ mod tests {
     }
 
     #[test]
-    fn html_evidence_captures_get_a_real_content_type() {
+    fn html_authority_captures_get_a_real_content_type() {
         assert_eq!(content_type(Path::new("roe.html")), "text/html");
         assert_eq!(content_type(Path::new("roe.htm")), "text/html");
     }

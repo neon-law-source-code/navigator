@@ -79,6 +79,7 @@ async fn vesta_offers_lifetime_edits_and_the_shared_booking_calendar() {
         "Available by request",
         "possible individual",
         "trustee appointment",
+        "Trustee service is fiduciary administration, not software access, and is not included in the $5,000 estate plan.",
         "https://calendar.notion.so/meet/shicholas/or15n4yy7",
         "/public/brand/vesta.svg",
         "Shook Law PLLC",

@@ -390,7 +390,6 @@ pub fn scaffold(
         ),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
-        (root.join("tests/README.md"), tests_readme()),
         (
             root.join(WORKFLOW),
             workflow_for(action_version, project_code, host),
@@ -2320,11 +2319,6 @@ const AGENT_CONTRACT_BASE: &str = include_str!("agent_contract.md");
 
 fn agents(_project_code: &str) -> String {
     AGENT_CONTRACT_BASE.to_owned()
-}
-
-fn tests_readme() -> String {
-    "# Tests\n\nKeep source-level tests for this Project's templates here. Generated documents and dependencies do not belong here.\n"
-        .to_string()
 }
 
 /// The pinned publish action a Project repository's CD workflow calls.

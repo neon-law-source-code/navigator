@@ -396,10 +396,11 @@ The scaffold generates three feeder jobs — verify, documents, and seeds — fo
 reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce misleading findings. Each
 feeder job runs unconditionally and no-ops over a half this repository does not carry. `verify` installs the CLI through
 `.github/actions/navigator-install`, then runs `navigator project build`, which discovers every application — the root
-portal during the transition, `apps/<app>/`, or a root Vite workspace — and installs, lints, typechecks, tests, and
-builds each one; a repository with none no-ops. It then runs `navigator project gate --ci` over the whole tree: the
-content rules, the layout, and — because this is the job that produced them — the origin pass reading each built
-`dist/`. One command, one job; on a push to `main` the same run also checks `navigator.yaml` against the live row.
+portal during the transition, `apps/<app>/`, or a root Vite workspace — and installs, lints, and builds each one
+(`build` already runs `tsc -b`, so there is no separate typecheck step, and no per-repository test harness to keep
+green); a repository with none no-ops. It then runs `navigator project gate --ci` over the whole tree: the content
+rules, the layout, and — because this is the job that produced them — the origin pass reading each built `dist/`. One
+command, one job; on a push to `main` the same run also checks `navigator.yaml` against the live row.
 
 The `documents` job validates every `documents/` pointer — offline on every event, and additionally against the live
 asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange
@@ -654,17 +655,18 @@ navigator project gate
 checkout text files to LF, `.github/CODEOWNERS` with the canonical `* @shicholas` ownership rule, a versioned nested
 `navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml` caller guarded by the reusable publisher's
 deployment configuration, `README.md`, `AGENTS.md`, and the canonical `.agents/skills/` catalog. It also writes
-`tests/`, `documents/.gitignore`, and one placeholder `templates/onboarding.md`, a stub replaced with the notation the
-Project actually opens on. Existing hand-copied `ci.yml` files of 268 lines or more are left alone unless
-`--replace-gate` is passed. `AGENTS.md` is the only contract file and `.agents/skills/` the only skill catalog. A
-committed `CLAUDE.md`, `.claude/`, or `.codex/` is a retired mirror, and the gate names it: the finding carries the
-surviving path and the remedy rather than the anonymous unenumerated-root wording. The match is on any path component,
-so a `.claude/skills/` — which the root-only rule never looked below at all — and an `apps/<app>/CLAUDE.md` are both
-refused where they sit. `navigator project gate` requires the canonical CODEOWNERS file and that `AGENTS.md` exist and
-name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a workaround in the matter
-repository. The same `validate` walk extracts `navigator …` invocations from the repository's Markdown and checks each
-against this binary's clap command tree, so a documented verb that no longer exists fails the gate at the commit that
-introduced the rename.
+`documents/.gitignore` and one placeholder `templates/onboarding.md`, a stub replaced with the notation the Project
+actually opens on. A repository may still carry its own `tests/` for source-level template checks — `navigator project
+gate` neither requires nor scaffolds one; anything worth checking about a template or seed is a gate rule in the CLI
+instead. Existing hand-copied `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed.
+`AGENTS.md` is the only contract file and `.agents/skills/` the only skill catalog. A committed `CLAUDE.md`, `.claude/`,
+or `.codex/` is a retired mirror, and the gate names it: the finding carries the surviving path and the remedy rather
+than the anonymous unenumerated-root wording. The match is on any path component, so a `.claude/skills/` — which the
+root-only rule never looked below at all — and an `apps/<app>/CLAUDE.md` are both refused where they sit. `navigator
+project gate` requires the canonical CODEOWNERS file and that `AGENTS.md` exist and name the Lawyers team as where a
+Navigator CLI gap is filed rather than recorded as a workaround in the matter repository. The same `validate` walk
+extracts `navigator …` invocations from the repository's Markdown and checks each against this binary's clap command
+tree, so a documented verb that no longer exists fails the gate at the commit that introduced the rename.
 
 **`AGENTS.md` is one canonical file everywhere.** It carries the same short tool list and Navigator safety contract in
 every Project repository. Project-specific identity and coordinates belong in `navigator.yaml` and the live Project row,

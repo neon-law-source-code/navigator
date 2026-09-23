@@ -1,11 +1,17 @@
-//! `navigator project build` — install, lint, typecheck, test, and
-//! build every application a Project repository declares.
+//! `navigator project build` — install, lint, and build every application a
+//! Project repository declares.
 //!
 //! `project-gate.yml` and `project-publish.yml` used to reimplement this
 //! detection in bash, once per reusable workflow, reading `application_workspaces`'s
 //! comment for the order rather than its code. This verb calls
 //! [`repository::discovered_applications`] directly, so the CLI is the one
 //! place that decides what an application is; the workflows just run it.
+//!
+//! LAW-49: a Project repository's portal gate is lint and build, nothing
+//! more. `build` already runs `tsc -b`, so a separate `typecheck` verb is
+//! redundant, and `test` is dropped entirely — a Project repository's
+//! templates and seeds are checked by `navigator project gate`'s own rules,
+//! not by a per-repository test harness with its own coverage floor.
 
 use std::ffi::OsStr;
 use std::path::Path;
@@ -13,7 +19,7 @@ use std::process::{Command, ExitCode};
 
 use super::repository;
 
-const VERBS: [&str; 5] = ["install", "lint", "typecheck", "test", "build"];
+const VERBS: [&str; 3] = ["install", "lint", "build"];
 
 /// Run `pnpm --dir <app> <verb>` for every discovered application, one
 /// application at a time, in discovery order, stopping at the first
@@ -136,8 +142,6 @@ mod tests {
             vec![
                 format!("--dir {app_dir} install --frozen-lockfile"),
                 format!("--dir {app_dir} lint"),
-                format!("--dir {app_dir} typecheck"),
-                format!("--dir {app_dir} test"),
                 format!("--dir {app_dir} build"),
             ]
         );
@@ -203,7 +207,7 @@ mod tests {
         assert_eq!(status, ExitCode::FAILURE);
 
         // Only the first verb (`install`) ran before the failure stopped the
-        // loop; `lint`, `typecheck`, `test`, and `build` never executed.
+        // loop; `lint` and `build` never executed.
         let recorded = fs::read_to_string(&log).unwrap();
         assert_eq!(recorded.lines().count(), 1);
     }

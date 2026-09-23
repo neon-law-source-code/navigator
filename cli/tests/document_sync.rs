@@ -110,20 +110,17 @@ fn write_layout_for_the_gate(root: &Path) {
     write(
         root,
         ".github/workflows/ci.yml",
-        r#"name: ci
+        r"name: ci
 on: [pull_request]
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#,
+",
     );
     write(
         root,
         ".github/workflows/cd.yml",
-        r#"name: cd
+        r"name: cd
 on:
   push:
     branches: [main]
@@ -134,16 +131,10 @@ permissions:
 jobs:
   gate:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
   publish:
     needs: gate
     uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#,
+",
     );
 }
 

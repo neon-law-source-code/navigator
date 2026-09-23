@@ -40,23 +40,17 @@ fn write_project_shell(dir: &Path, code: &str) {
     write(
         dir,
         ".github/workflows/ci.yml",
-        &format!(
-            r#"name: ci
+        r"name: ci
 on: [pull_request]
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
-    with:
-      project: "{code}"
-      host: "staging.neonlaw.com"
-"#
-        ),
+",
     );
     write(
         dir,
         ".github/workflows/cd.yml",
-        &format!(
-            r#"name: cd
+        r"name: cd
 on:
   push:
     branches: [main]
@@ -67,17 +61,10 @@ permissions:
 jobs:
   gate:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
-    with:
-      project: "{code}"
-      host: "staging.neonlaw.com"
   publish:
     needs: gate
     uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23
-    with:
-      project: "{code}"
-      host: "staging.neonlaw.com"
-"#
-        ),
+",
     );
 }
 

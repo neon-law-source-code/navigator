@@ -1346,3 +1346,75 @@ fn the_checker_probes_for_every_release_output() {
          empty, which is exactly how `26.9.3` skipped its Homebrew bump on a green run"
     );
 }
+
+/// The Windows CLI+LSP check moved here from `ci.yml`'s pull_request gate, so
+/// it runs on a release (or a `kind-ci/**` iteration) instead of on every PR
+/// that touches `cli/` or `lsp/`. It shares no inputs with the built images
+/// `integration` loads, so it shares `integration`'s gate rather than
+/// `integration` itself, and stays advisory the same way it was in `ci.yml`:
+/// no downstream job waits on it.
+#[test]
+fn windows_cli_and_lsp_check_runs_alongside_integration() {
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&deploy_workflow()).expect("deploy.yml parses as YAML");
+
+    let windows = &workflow["jobs"]["windows-cli-lsp"];
+    assert!(
+        !windows.is_null(),
+        "deploy.yml must declare the windows-cli-lsp job moved out of ci.yml"
+    );
+    assert_eq!(windows["runs-on"].as_str(), Some("windows-latest"));
+    assert_eq!(
+        windows["if"].as_str(),
+        workflow["jobs"]["integration"]["if"].as_str(),
+        "windows-cli-lsp must run under the same gate as integration — a release or a \
+         kind-ci/** branch iteration — so the two run in parallel rather than one waiting \
+         on the other's classification"
+    );
+    assert_eq!(
+        job_needs(&workflow, "windows-cli-lsp"),
+        vec!["release-version".to_string()],
+        "windows-cli-lsp needs no built image and no KIND cluster, so it must depend only \
+         on release-version — a `build` or `integration` dependency would serialize it \
+         behind work it does not use"
+    );
+
+    let steps = windows["steps"]
+        .as_sequence()
+        .expect("windows-cli-lsp must declare steps");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["run"].as_str() == Some("cargo check --locked -p cli -p lsp")),
+        "Windows must check both cli and lsp with --locked"
+    );
+    assert!(
+        steps.iter().any(|step| {
+            step["run"].as_str()
+                == Some("cargo test --locked -p cli --test project_repository --test gate")
+        }),
+        "Windows must run the focused CLI integration tests"
+    );
+    assert!(
+        steps.iter().any(|step| {
+            step["uses"].as_str() == Some("dtolnay/rust-toolchain@stable")
+                && step["with"]["toolchain"].as_str() == Some("1.98.0")
+        }),
+        "Windows must use the pinned workspace toolchain"
+    );
+    assert!(
+        steps.iter().any(|step| {
+            step["uses"].as_str() == Some("Swatinem/rust-cache@v2")
+                && step["with"]["shared-key"].as_str() == Some("windows-cli-lsp")
+        }),
+        "Windows must cache its Rust dependencies"
+    );
+
+    for gated in ["release-tag", "notify", "notify-failure"] {
+        assert!(
+            !job_needs(&workflow, gated).contains(&"windows-cli-lsp".to_string()),
+            "{gated} must not wait on windows-cli-lsp — it stays advisory, same as it was \
+             outside ci.yml's `ci` aggregator"
+        );
+    }
+}

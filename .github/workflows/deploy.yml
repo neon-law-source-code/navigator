@@ -1455,6 +1455,43 @@ jobs:
               done
           done
 
+  # ---------- Stage 1: Windows CLI + LSP check ----------
+  # Moved out of `ci.yml`'s pull_request gate, where it ran once per Windows
+  # runner-minute on every PR touching `cli/` or `lsp/`, and run here instead:
+  # the same gate as `integration` (a release, or a `kind-ci/**` branch
+  # iteration), rather than every such PR. It needs no built image and no
+  # KIND cluster, so it `needs` only `release-version` and runs alongside
+  # `integration` rather than after it — dropping either job costs the other
+  # no wall-clock.
+  #
+  # Still advisory: it names no downstream job's `needs:`, so a red Windows
+  # run cannot block `release-tag` and is not in `notify-failure`'s `needs:`
+  # either, so it cannot page engineering on its own.
+  windows-cli-lsp:
+    name: cargo check + integration tests (cli + lsp, Windows)
+    needs: release-version
+    if: >-
+      github.repository == 'neon-law-source-code/navigator'
+      && (needs.release-version.outputs.publishable == 'true'
+          || startsWith(github.ref_name, 'kind-ci/'))
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - name: cache the Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-cli-lsp
+      - name: cargo check (cli + lsp)
+        run: cargo check --locked -p cli -p lsp
+      - name: cli integration tests
+        run: cargo test --locked -p cli --test project_repository --test gate
+
   # ---------- Stage 2: publish every image to GHCR ----------
   # Only runs if integration is green. Publishes the service images — the
   # per-brand hosts (neon-server, neon-server) and

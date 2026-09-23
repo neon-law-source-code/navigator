@@ -27,7 +27,10 @@ pub fn show(needle: &str) -> ExitCode {
         print_term(term);
         ExitCode::SUCCESS
     } else {
-        eprintln!("navigator: glossary show: unknown term `{needle}`");
+        // The term is not echoed: CodeQL reads every value parsed out of the
+        // CLI's command enum as a secret (one variant is `Secrets`), and the
+        // reader already has the term they typed on screen.
+        eprintln!("navigator: glossary show: unknown term");
         eprintln!("Run `navigator glossary list` to list every term.");
         ExitCode::from(1)
     }
@@ -301,6 +304,20 @@ mod tests {
         )));
         assert!(rendered.contains(&format!("({repo}/tree/main/store)", repo = super::REPO)));
         assert!(rendered.contains("\n## Workshop\n"));
+    }
+
+    /// `rust/cleartext-logging` flags any logging sink fed a value parsed
+    /// out of the command enum, so the not-found diagnostic stays generic.
+    #[test]
+    fn the_unknown_term_diagnostic_does_not_echo_the_argument() {
+        let source = include_str!("glossary.rs");
+        let needle = ["{", "needle", "}"].concat();
+        assert!(
+            !source
+                .lines()
+                .any(|line| line.contains("eprintln!") && line.contains(&needle)),
+            "an eprintln! interpolates the parsed term"
+        );
     }
 
     #[test]

@@ -52,10 +52,93 @@ pub(crate) const POINTER_EXTENSION: &str = "yaml";
 pub(crate) const POINTER_READ_EXTENSIONS: &[&str] = &[POINTER_EXTENSION, "yml"];
 
 /// Whether `path` names a committed document pointer, in either spelling.
+///
+/// An [`EVIDENCE_SIDECAR_EXTENSION`] path is excluded even though its own
+/// last extension is also `yaml`: a sidecar is pre-upload input a lawyer
+/// wrote by hand, not a pointer `sync` committed, and the two must never be
+/// confused — `discover` sweeps the wrong one into the wrong list otherwise.
 pub(crate) fn is_pointer_path(path: &Path) -> bool {
+    if is_evidence_sidecar_path(path) {
+        return false;
+    }
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| POINTER_READ_EXTENSIONS.contains(&extension))
+}
+
+/// The reserved sidecar extension for a staged `documents/evidence/**`
+/// capture: `<capture-filename>.evidence.yaml`, alongside the capture
+/// itself. Extends the same `<source>.<extension>` naming [`is_pointer_path`]
+/// already reads pointers under, rather than inventing a second scheme —
+/// the trailing `.yaml` is why [`is_pointer_path`] must exclude it by name.
+pub(crate) const EVIDENCE_SIDECAR_EXTENSION: &str = "evidence.yaml";
+
+/// Whether `path` names an evidence capture's Authority sidecar.
+pub(crate) fn is_evidence_sidecar_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(&format!(".{EVIDENCE_SIDECAR_EXTENSION}")))
+}
+
+/// The sidecar path for a staged evidence capture at `path`, following the
+/// same `<source>.<extension>` convention [`pointer_path_for_source`] writes
+/// a pointer at.
+fn evidence_sidecar_path(path: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.{EVIDENCE_SIDECAR_EXTENSION}", path.display()))
+}
+
+/// Whether `relative` (a staged path below `documents/`) is a
+/// `documents/evidence/**` capture — Authorities, global reference data with
+/// no `project_id` (see the glossary's Authority entry), routed through
+/// `site authorities create` rather than filed as a Project document.
+fn is_evidence_capture(relative: &Path) -> bool {
+    relative
+        .components()
+        .next()
+        .and_then(|part| part.as_os_str().to_str())
+        == Some("evidence")
+}
+
+/// Whether `relative` is a `documents/invoices/**` staged file.
+fn is_invoice_capture(relative: &Path) -> bool {
+    relative
+        .components()
+        .next()
+        .and_then(|part| part.as_os_str().to_str())
+        == Some("invoices")
+}
+
+/// The synthetic invoice-number filename shape this workspace's fixtures use:
+/// `INV-` followed by one or more ASCII digits, then any extension (the
+/// issue's own `INV-n.pdf` example). Real billing-system invoice numbering
+/// is firm-confidential and not modeled here — this is a simple, documented
+/// placeholder a synthetic fixture can satisfy, not an attempt to reproduce
+/// a real numbering scheme.
+fn is_invoice_filename(filename: &str) -> bool {
+    let Some((stem, _extension)) = filename.rsplit_once('.') else {
+        return false;
+    };
+    stem.strip_prefix("INV-").is_some_and(|digits| {
+        !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+    })
+}
+
+/// Refuse a `documents/invoices/**` file whose name does not match
+/// [`is_invoice_filename`], per the issue's optional (but in-scope) folder
+/// rule.
+fn validate_invoice_filename(path: &Path) -> Result<()> {
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("{} has no filename", path.display()))?;
+    if is_invoice_filename(filename) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "{} does not match the invoice filename pattern `INV-<digits>.<ext>` (e.g. INV-1.pdf)",
+            path.display()
+        ))
+    }
 }
 
 /// `slug` without its pointer extension, in either spelling, or `None` when
@@ -97,17 +180,139 @@ pub(crate) async fn run(root: &Path, dry_run: bool) -> ExitCode {
     }
 }
 
+/// The `--dry-run` report: one line per staged binary naming the route it
+/// would take (an Authority upload, or the `kind` it would infer), never
+/// touching the network or writing `documents/.gitignore`.
+fn report_dry_run(root: &Path, documents: &Path, binaries: &[PathBuf]) -> Result<()> {
+    for path in binaries {
+        let relative = path
+            .strip_prefix(documents)
+            .map_err(|_| anyhow!("{} is outside documents/", path.display()))?;
+        let route = if is_evidence_capture(relative) {
+            "an Authority upload".to_string()
+        } else {
+            format!("kind `{}`", inferred_kind(relative))
+        };
+        println!("would upload {} as {route}", display_relative(root, path));
+    }
+    println!("{} upload planned", binaries.len());
+    Ok(())
+}
+
+/// Reconcile every already-committed pointer's desired `visibility` against
+/// the live record. A committed edit is desired state, and replaying it is
+/// safe: the server's ordinary API audit records every reconciliation.
+async fn reconcile_pointer_visibility(
+    client: &DocumentClient,
+    root: &Path,
+    pointers: Vec<PathBuf>,
+) -> Result<()> {
+    for path in pointers {
+        ensure_document_path_is_safe(root, &path, false, true)?;
+        let raw =
+            std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let pointer = store::document_pointers::DocumentPointer::from_yaml(&raw)
+            .with_context(|| format!("validate {}", path.display()))?;
+        client
+            .set_visibility(pointer.current_version.asset_id, &pointer.visibility)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Resolve the pointer for one staged binary: the Authority route for
+/// `documents/evidence/**`, or the ordinary per-Project document upload for
+/// everything else — `preflight_sync_paths` already validated any invoice
+/// filename before either the network or `documents/.gitignore` was
+/// touched, so the ordinary route never sees a rejected one.
+#[allow(clippy::too_many_arguments)]
+async fn resolve_pointer_for_binary(
+    client: &DocumentClient,
+    host: Option<&str>,
+    path: &Path,
+    bytes: &[u8],
+    relative: &Path,
+    slug: &str,
+    existing_pointer: Option<&store::document_pointers::DocumentPointer>,
+) -> Result<store::document_pointers::DocumentPointer> {
+    if is_evidence_capture(relative) {
+        return sync_evidence_capture(host, path, bytes, existing_pointer).await;
+    }
+    let kind =
+        existing_pointer.map_or_else(|| inferred_kind(relative), |pointer| pointer.kind.as_str());
+    let desired_visibility = existing_pointer.map_or_else(
+        || "internal".to_string(),
+        |pointer| pointer.visibility.clone(),
+    );
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| anyhow!("file path has no filename"))?;
+    let uploaded_pointer = client
+        .upload_bytes(
+            filename,
+            bytes,
+            kind,
+            Some(&desired_visibility),
+            None,
+            Some(content_type(path)),
+            Some(slug),
+            None,
+        )
+        .await?;
+    validate_upload_receipt(&uploaded_pointer, bytes)?;
+    Ok(uploaded_pointer)
+}
+
+/// Commit one resolved pointer and remove the staged bytes it replaces —
+/// the evidence route's sidecar too — restoring the previous pointer if the
+/// source changed underneath the upload.
+#[allow(clippy::too_many_arguments)]
+fn finalize_uploaded_document(
+    root: &Path,
+    path: &Path,
+    pointer_path: &Path,
+    relative: &Path,
+    pointer: &store::document_pointers::DocumentPointer,
+    bytes: &[u8],
+    existing_pointer_raw: Option<&str>,
+    has_existing_pointer: bool,
+) -> Result<()> {
+    ensure_source_is_unchanged(path, bytes)?;
+    let pointer_yaml = pointer.to_yaml()?;
+    ensure_document_path_is_safe(root, pointer_path, !has_existing_pointer, false)?;
+    write_pointer_atomically(pointer_path, &pointer_yaml)?;
+    if let Err(error) = ensure_source_is_unchanged(path, bytes) {
+        restore_pointer_after_source_change(
+            pointer_path,
+            existing_pointer_raw,
+            has_existing_pointer,
+        )
+        .map_err(|restore| anyhow!("{error:#}; restore pointer: {restore:#}"))?;
+        return Err(error);
+    }
+    std::fs::remove_file(path).with_context(|| format!("remove staged {}", path.display()))?;
+    if is_evidence_capture(relative) {
+        let sidecar_path = evidence_sidecar_path(path);
+        match std::fs::remove_file(&sidecar_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| format!("remove {}", sidecar_path.display()))
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn sync(root: &Path, dry_run: bool) -> Result<()> {
     let (project, host) = read_manifest(root)?;
     let documents = root.join("documents");
     let (binaries, pointers) = discover(&documents)?;
     let pointer_paths = preflight_sync_paths(root, &documents, &binaries, &pointers)?;
     if dry_run {
-        for path in &binaries {
-            println!("would upload {}", display_relative(root, path));
-        }
-        println!("{} upload planned", binaries.len());
-        return Ok(());
+        return report_dry_run(root, &documents, &binaries);
     }
 
     std::fs::create_dir_all(&documents)
@@ -121,19 +326,7 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
     }
 
     let client = DocumentClient::connect(host.as_deref(), &project).await?;
-
-    // A committed visibility edit is desired state. Replaying it is safe and
-    // lets the server's ordinary API audit record every reconciliation.
-    for path in pointers {
-        ensure_document_path_is_safe(root, &path, false, true)?;
-        let raw =
-            std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-        let pointer = store::document_pointers::DocumentPointer::from_yaml(&raw)
-            .with_context(|| format!("validate {}", path.display()))?;
-        client
-            .set_visibility(pointer.current_version.asset_id, &pointer.visibility)
-            .await?;
-    }
+    reconcile_pointer_visibility(&client, root, pointers).await?;
 
     let mut uploaded = 0usize;
     for (path, pointer_path, has_existing_pointer) in pointer_paths {
@@ -156,49 +349,134 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
             .map(store::document_pointers::DocumentPointer::from_yaml)
             .transpose()
             .with_context(|| format!("validate {}", pointer_path.display()))?;
-        let kind = existing_pointer
-            .as_ref()
-            .map_or_else(|| inferred_kind(relative), |pointer| pointer.kind.as_str());
-        let desired_visibility = existing_pointer.as_ref().map_or_else(
-            || "internal".to_string(),
-            |pointer| pointer.visibility.clone(),
-        );
-        let filename = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.is_empty())
-            .ok_or_else(|| anyhow!("file path has no filename"))?;
-        let pointer = client
-            .upload_bytes(
-                filename,
-                &bytes,
-                kind,
-                Some(&desired_visibility),
-                None,
-                Some(content_type(&path)),
-                Some(&slug),
-                None,
-            )
-            .await?;
-        validate_upload_receipt(&pointer, &bytes)?;
-        ensure_source_is_unchanged(&path, &bytes)?;
-        let pointer_yaml = pointer.to_yaml()?;
-        ensure_document_path_is_safe(root, &pointer_path, !has_existing_pointer, false)?;
-        write_pointer_atomically(&pointer_path, &pointer_yaml)?;
-        if let Err(error) = ensure_source_is_unchanged(&path, &bytes) {
-            restore_pointer_after_source_change(
-                &pointer_path,
-                existing_pointer_raw.as_deref(),
-                has_existing_pointer,
-            )
-            .map_err(|restore| anyhow!("{error:#}; restore pointer: {restore:#}"))?;
-            return Err(error);
-        }
-        std::fs::remove_file(&path).with_context(|| format!("remove staged {}", path.display()))?;
+
+        let pointer = resolve_pointer_for_binary(
+            &client,
+            host.as_deref(),
+            &path,
+            &bytes,
+            relative,
+            &slug,
+            existing_pointer.as_ref(),
+        )
+        .await?;
+        finalize_uploaded_document(
+            root,
+            &path,
+            &pointer_path,
+            relative,
+            &pointer,
+            &bytes,
+            existing_pointer_raw.as_deref(),
+            has_existing_pointer,
+        )?;
         uploaded += 1;
     }
     println!("{uploaded} uploaded");
     Ok(())
+}
+
+/// The Authority metadata a staged `documents/evidence/**` capture must
+/// supply via its sidecar (`<capture>.evidence.yaml`) — exactly the fields
+/// `site authorities create` needs and cannot reliably scrape from arbitrary
+/// HTML `<meta>` tags (settled in the issue's own triage comment).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvidenceSidecar {
+    class: String,
+    citation: String,
+    title: String,
+    #[serde(default)]
+    short_cite: Option<String>,
+    #[serde(default)]
+    publisher: Option<String>,
+    #[serde(default)]
+    issued_on: Option<String>,
+    #[serde(default)]
+    canonical_url: Option<String>,
+    #[serde(default)]
+    checked_on: Option<String>,
+}
+
+/// Read and parse one staged evidence capture's sidecar
+/// (`<capture>.evidence.yaml`) — shared by [`preflight_sync_paths`], which
+/// calls this to fail fast on a missing or malformed sidecar before either
+/// the network or `documents/.gitignore` is touched, and by
+/// [`sync_evidence_capture`], which reads the same fields it validated.
+fn read_evidence_sidecar(path: &Path) -> Result<EvidenceSidecar> {
+    let sidecar_path = evidence_sidecar_path(path);
+    let sidecar_raw = std::fs::read_to_string(&sidecar_path).with_context(|| {
+        format!(
+            "read {} (a documents/evidence/ capture needs a sidecar carrying citation/class/title)",
+            sidecar_path.display()
+        )
+    })?;
+    serde_yaml::from_str(&sidecar_raw).with_context(|| format!("parse {}", sidecar_path.display()))
+}
+
+/// Route one staged `documents/evidence/**` capture through `site
+/// authorities create` instead of the ordinary per-Project document upload —
+/// Authorities are global reference data with no `project_id` (see the
+/// glossary's Authority entry), so filing one as a Project document is the
+/// misclassification this routing exists to avoid.
+///
+/// Reads the capture's sidecar, archives the bytes through the same
+/// authenticated door `navigator site authorities create` uses, and returns
+/// a [`store::document_pointers::DocumentPointer`] carrying the resulting
+/// `authority_id` alongside `sha256`/`canonical_url`/`checked_on`/`created_at`
+/// — reusing the existing pointer struct rather than a parallel shape.
+/// `kind` stays `exhibit`: the capture is still evidence filed on the
+/// matter, only archived through the Authority door rather than the
+/// document one.
+async fn sync_evidence_capture(
+    host: Option<&str>,
+    path: &Path,
+    bytes: &[u8],
+    existing_pointer: Option<&store::document_pointers::DocumentPointer>,
+) -> Result<store::document_pointers::DocumentPointer> {
+    let sidecar = read_evidence_sidecar(path)?;
+    let authority = crate::authorities::create_authority(
+        host,
+        &crate::authorities::NewAuthorityArgs {
+            class: &sidecar.class,
+            citation: &sidecar.citation,
+            title: &sidecar.title,
+            short_cite: sidecar.short_cite.as_deref(),
+            publisher: sidecar.publisher.as_deref(),
+            issued_on: sidecar.issued_on.as_deref(),
+            canonical_url: sidecar.canonical_url.as_deref(),
+            checked_on: sidecar.checked_on.as_deref(),
+            file: path,
+            content_type: Some(content_type(path)),
+        },
+    )
+    .await
+    .with_context(|| format!("archive {} as an Authority", path.display()))?;
+    let asset_id = authority
+        .archived_asset_id
+        .ok_or_else(|| anyhow!("authority create archived no asset for {}", path.display()))?;
+    let version = existing_pointer.map_or(1, |pointer| pointer.current_version.version + 1);
+    let previous_version = existing_pointer.map(|pointer| pointer.current_version.asset_id);
+    let pointer = store::document_pointers::DocumentPointer {
+        kind: "exhibit".to_string(),
+        visibility: "internal".to_string(),
+        current_version: store::document_pointers::PointerVersion {
+            version,
+            asset_id,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            sha256: store::documents::sha256_hex(bytes),
+            size_bytes: i64::try_from(bytes.len())
+                .context("evidence byte count does not fit in pointer")?,
+            canonical_url: sidecar.canonical_url,
+            checked_on: sidecar.checked_on,
+        },
+        previous_version,
+        authority_id: Some(authority.id),
+    };
+    pointer
+        .validate()
+        .map_err(|error| anyhow!("invalid evidence pointer: {error}"))?;
+    Ok(pointer)
 }
 
 /// Synchronize the current Project repository's staged documents in the other
@@ -894,6 +1172,15 @@ fn preflight_sync_paths(
         .iter()
         .map(|path| {
             ensure_document_path_is_safe(root, path, false, true)?;
+            let relative = path
+                .strip_prefix(documents)
+                .map_err(|_| anyhow!("{} is outside documents/", path.display()))?;
+            if is_invoice_capture(relative) {
+                validate_invoice_filename(path)?;
+            }
+            if is_evidence_capture(relative) {
+                read_evidence_sidecar(path)?;
+            }
             let (pointer_path, has_existing_pointer) = pointer_path_for_source(path)?;
             ensure_document_path_is_safe(root, &pointer_path, true, false)?;
             Ok((path.clone(), pointer_path, has_existing_pointer))
@@ -983,6 +1270,12 @@ fn discover(documents: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
         if !entry.file_type().is_file() || entry.file_name() == ".gitignore" {
             continue;
         }
+        // An evidence sidecar is metadata consulted by its known derived
+        // path when the capture it describes is processed — never a pointer
+        // to reconcile and never a binary to upload in its own right.
+        if is_evidence_sidecar_path(entry.path()) {
+            continue;
+        }
         if is_pointer_path(entry.path()) {
             pointers.push(entry.into_path());
         } else {
@@ -1003,6 +1296,11 @@ fn inferred_kind(relative: &Path) -> &'static str {
         Some("pleadings") => "filing",
         Some("exhibits") => "exhibit",
         Some("agreements") => "agreement",
+        Some("invoices") => "invoice",
+        // `documents/evidence/**` never reaches this default: `sync` routes
+        // it through `sync_evidence_capture` before `inferred_kind` is ever
+        // called for that folder, and the Authority pointer it writes back
+        // hard-codes `kind: exhibit` rather than asking this function.
         _ => "unclassified",
     }
 }
@@ -1018,6 +1316,9 @@ fn content_type(path: &Path) -> &'static str {
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("txt") => "text/plain",
+        // An evidence capture under `documents/evidence/` is an archived
+        // HTML page more often than any other kind this function names.
+        Some("html" | "htm") => "text/html",
         Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         _ => "application/octet-stream",
     }
@@ -1063,12 +1364,64 @@ pub(crate) fn read_pointer(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_pointer_path, matches_digest, pull_target, pull_transaction_path, read_manifest,
-        recover_interrupted_pull, strip_pointer_extension, write_pull_transaction_state,
-        PullTransactionPhase, PullTransactionState, PullTransactionTarget, DOCUMENTS_GITIGNORE,
-        POINTER_EXTENSION, POINTER_READ_EXTENSIONS,
+        content_type, inferred_kind, is_evidence_capture, is_evidence_sidecar_path,
+        is_invoice_capture, is_invoice_filename, is_pointer_path, matches_digest, pull_target,
+        pull_transaction_path, read_manifest, recover_interrupted_pull, strip_pointer_extension,
+        write_pull_transaction_state, PullTransactionPhase, PullTransactionState,
+        PullTransactionTarget, DOCUMENTS_GITIGNORE, EVIDENCE_SIDECAR_EXTENSION, POINTER_EXTENSION,
+        POINTER_READ_EXTENSIONS,
     };
     use std::path::Path;
+
+    #[test]
+    fn is_pointer_path_excludes_the_evidence_sidecar_extension() {
+        assert_eq!(EVIDENCE_SIDECAR_EXTENSION, "evidence.yaml");
+        assert!(is_pointer_path(Path::new(
+            "documents/evidence/roe.html.yaml"
+        )));
+        assert!(!is_pointer_path(Path::new(
+            "documents/evidence/roe.html.evidence.yaml"
+        )));
+        assert!(is_evidence_sidecar_path(Path::new(
+            "documents/evidence/roe.html.evidence.yaml"
+        )));
+        assert!(!is_evidence_sidecar_path(Path::new(
+            "documents/evidence/roe.html.yaml"
+        )));
+    }
+
+    #[test]
+    fn evidence_and_invoice_captures_are_recognized_by_their_top_folder() {
+        assert!(is_evidence_capture(Path::new("evidence/roe.html")));
+        assert!(!is_evidence_capture(Path::new("pleadings/motion.pdf")));
+        assert!(is_invoice_capture(Path::new("invoices/INV-1.pdf")));
+        assert!(!is_invoice_capture(Path::new("exhibits/photo.png")));
+    }
+
+    #[test]
+    fn inferred_kind_maps_every_folder_convention() {
+        assert_eq!(inferred_kind(Path::new("pleadings/motion.pdf")), "filing");
+        assert_eq!(inferred_kind(Path::new("exhibits/photo.png")), "exhibit");
+        assert_eq!(inferred_kind(Path::new("agreements/nda.pdf")), "agreement");
+        assert_eq!(inferred_kind(Path::new("invoices/INV-1.pdf")), "invoice");
+        assert_eq!(inferred_kind(Path::new("misc/note.txt")), "unclassified");
+    }
+
+    #[test]
+    fn invoice_filenames_must_match_the_synthetic_pattern() {
+        assert!(is_invoice_filename("INV-1.pdf"));
+        assert!(is_invoice_filename("INV-042.pdf"));
+        assert!(!is_invoice_filename("invoice-1.pdf"));
+        assert!(!is_invoice_filename("INV-.pdf"));
+        assert!(!is_invoice_filename("INV-1a.pdf"));
+        assert!(!is_invoice_filename("INV-1"));
+    }
+
+    #[test]
+    fn html_evidence_captures_get_a_real_content_type() {
+        assert_eq!(content_type(Path::new("roe.html")), "text/html");
+        assert_eq!(content_type(Path::new("roe.htm")), "text/html");
+    }
 
     #[test]
     fn read_manifest_yields_project_and_host_from_a_v2_manifest() {

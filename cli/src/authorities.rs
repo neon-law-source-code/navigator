@@ -53,20 +53,24 @@ fn first_line(body: &str) -> String {
 /// The `POST /app/api/authorities` response — `store::authorities::Authority`
 /// carries no `Deserialize`, so this is the CLI's own read-side mirror of the
 /// same wire shape `portal::authorities_api::create_authority_door` returns.
+///
+/// `pub(crate)` (and every field with it): `crate::document_sync`'s evidence
+/// route reads `id`/`archived_asset_id` off this same response to write the
+/// document pointer back at the capture's own path.
 #[derive(Debug, Deserialize, serde::Serialize)]
-struct AuthorityResponse {
-    id: Uuid,
-    class: String,
-    citation: String,
-    short_cite: Option<String>,
-    title: String,
-    publisher: Option<String>,
-    issued_on: Option<String>,
-    canonical_url: Option<String>,
-    checked_on: Option<String>,
-    archived_asset_id: Option<Uuid>,
-    inserted_at: chrono::DateTime<chrono::Utc>,
-    updated_at: chrono::DateTime<chrono::Utc>,
+pub(crate) struct AuthorityResponse {
+    pub(crate) id: Uuid,
+    pub(crate) class: String,
+    pub(crate) citation: String,
+    pub(crate) short_cite: Option<String>,
+    pub(crate) title: String,
+    pub(crate) publisher: Option<String>,
+    pub(crate) issued_on: Option<String>,
+    pub(crate) canonical_url: Option<String>,
+    pub(crate) checked_on: Option<String>,
+    pub(crate) archived_asset_id: Option<Uuid>,
+    pub(crate) inserted_at: chrono::DateTime<chrono::Utc>,
+    pub(crate) updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 fn client() -> reqwest::Client {
@@ -80,21 +84,24 @@ fn client() -> reqwest::Client {
 /// plus the archive this command reads locally, none of which a bare
 /// datastore write (forbidden by the `legal-authority` skill) could carry
 /// authenticated.
+///
+/// `pub(crate)`: `crate::document_sync`'s evidence route builds one of these
+/// from a staged capture's sidecar to reach the same authenticated door.
 #[allow(clippy::too_many_arguments)]
-struct NewAuthorityArgs<'a> {
-    class: &'a str,
-    citation: &'a str,
-    title: &'a str,
-    short_cite: Option<&'a str>,
-    publisher: Option<&'a str>,
-    issued_on: Option<&'a str>,
-    canonical_url: Option<&'a str>,
-    checked_on: Option<&'a str>,
-    file: &'a Path,
-    content_type: Option<&'a str>,
+pub(crate) struct NewAuthorityArgs<'a> {
+    pub(crate) class: &'a str,
+    pub(crate) citation: &'a str,
+    pub(crate) title: &'a str,
+    pub(crate) short_cite: Option<&'a str>,
+    pub(crate) publisher: Option<&'a str>,
+    pub(crate) issued_on: Option<&'a str>,
+    pub(crate) canonical_url: Option<&'a str>,
+    pub(crate) checked_on: Option<&'a str>,
+    pub(crate) file: &'a Path,
+    pub(crate) content_type: Option<&'a str>,
 }
 
-async fn create_authority(
+pub(crate) async fn create_authority(
     host: Option<&str>,
     args: &NewAuthorityArgs<'_>,
 ) -> Result<AuthorityResponse> {

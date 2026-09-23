@@ -1721,8 +1721,6 @@ async fn open_workflow_update_pull_request(
     client: &GitHubClient,
     action_version: &str,
     paths: &[String],
-    project: &str,
-    host: &str,
 ) -> Result<()> {
     let branch = workflow_update_branch(action_version);
     let base_sha = client.default_branch_head_sha(DEFAULT_BASE_BRANCH).await?;
@@ -1730,9 +1728,9 @@ async fn open_workflow_update_pull_request(
     if created {
         for path in paths {
             let desired = if path == project_repository::WORKFLOW {
-                project_repository::workflow_for(action_version, project, host)
+                project_repository::workflow(action_version)
             } else {
-                project_repository::cd_workflow_for(action_version, project, host)
+                project_repository::cd_workflow(action_version)
             };
             let live = client
                 .get_optional_file(&client.repo_path(&format!("/contents/{path}")))
@@ -1801,11 +1799,14 @@ async fn plan_workflow_updates(
     client: &GitHubClient,
     policy: RepositoryPolicy,
     action_version: &str,
-) -> Result<(Vec<String>, String, String)> {
-    let WorkflowTemplateScope::Project { project, host } =
-        workflow_template_scope(client, policy).await?
+) -> Result<Vec<String>> {
+    // Confirms this is a Project repository with a readable `navigator.yaml`
+    // — `project`/`host` themselves are no longer threaded into the
+    // generated callers below, which read both from that same manifest at
+    // gate time rather than repeating them (LAW-46).
+    let WorkflowTemplateScope::Project { .. } = workflow_template_scope(client, policy).await?
     else {
-        return Ok((Vec::new(), String::new(), String::new()));
+        return Ok(Vec::new());
     };
     let action_version = action_version.trim();
     if !super::registry::is_release_tag(action_version) {
@@ -1832,7 +1833,7 @@ async fn plan_workflow_updates(
         .await?;
     if workflow_drifted(
         gate_live.as_deref(),
-        &project_repository::workflow_for(action_version, &project, &host),
+        &project_repository::workflow(action_version),
     ) {
         drifted.push(project_repository::WORKFLOW.to_string());
     }
@@ -1843,11 +1844,11 @@ async fn plan_workflow_updates(
         .await?;
     if workflow_drifted(
         publish_live.as_deref(),
-        &project_repository::cd_workflow_for(action_version, &project, &host),
+        &project_repository::cd_workflow(action_version),
     ) {
         drifted.push(project_repository::CD_WORKFLOW.to_string());
     }
-    Ok((drifted, project, host))
+    Ok(drifted)
 }
 
 /// Read every desired ruleset's live counterpart, positionally matched to
@@ -2001,8 +2002,7 @@ async fn reconcile(
     // `Action` is added, so a repository this feature does not (yet) cover
     // ends the reconcile here rather than midway through the ruleset/label
     // writes above.
-    let (workflow_paths, project, host) =
-        plan_workflow_updates(client, policy, action_version).await?;
+    let workflow_paths = plan_workflow_updates(client, policy, action_version).await?;
     actions.extend(
         workflow_paths
             .iter()
@@ -2025,14 +2025,7 @@ async fn reconcile(
         return Ok(());
     }
     if !workflow_paths.is_empty() {
-        open_workflow_update_pull_request(
-            client,
-            action_version.trim(),
-            &workflow_paths,
-            &project,
-            &host,
-        )
-        .await?;
+        open_workflow_update_pull_request(client, action_version.trim(), &workflow_paths).await?;
     }
     for action in actions {
         if matches!(action, Action::UpdateWorkflow { .. }) {

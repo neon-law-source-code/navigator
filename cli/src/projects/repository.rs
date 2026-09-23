@@ -28,7 +28,10 @@
 //!
 //! A repository also declares its release and Project coordinates in a root
 //! manifest — `navigator.yaml`, with `version:` and a nested `project:` map —
-//! and the gate checks the workflow inputs against it.
+//! and the gate checks the pinned `uses:` ref against it. The reusable
+//! workflows themselves read `project`/`host` from that same manifest, so a
+//! caller passes neither: the gate rejects any `with:` block on the `ci`,
+//! `gate`, and `publish` jobs, closing off the duplicate coming back.
 //! `store::sample_project::project_code_for` is what refuses a bundle
 //! declaring a code other than the one it is published under, so a
 //! disagreement is rejected rather than unrepresentable.
@@ -390,14 +393,8 @@ pub fn scaffold(
         ),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
-        (
-            root.join(WORKFLOW),
-            workflow_for(action_version, project_code, host),
-        ),
-        (
-            root.join(CD_WORKFLOW),
-            cd_workflow_for(action_version, project_code, host),
-        ),
+        (root.join(WORKFLOW), workflow(action_version)),
+        (root.join(CD_WORKFLOW), cd_workflow(action_version)),
         (root.join(PROJECT_MANIFEST), manifest),
         (
             root.join(TEMPLATE_DIRECTORY)
@@ -1593,19 +1590,6 @@ struct WorkflowJob {
     permissions: Option<BTreeMap<String, String>>,
 }
 
-/// A YAML scalar as the string a workflow input actually carries.
-///
-/// `version: "26.7.27"` is a string and `project_repository: true` is a bool,
-/// but a caller may quote either, so both spellings have to read the same.
-fn scalar(value: &serde_yaml::Value) -> Option<String> {
-    match value {
-        serde_yaml::Value::String(value) => Some(value.trim().to_string()),
-        serde_yaml::Value::Number(value) => Some(value.to_string()),
-        serde_yaml::Value::Bool(value) => Some(value.to_string()),
-        _ => None,
-    }
-}
-
 /// Every trigger name an `on:` value declares, reading either the mapping
 /// shape (`on:\n  pull_request:`) or the shorthand sequence
 /// (`on: [pull_request]`) as the same set — GitHub Actions treats them as the
@@ -1788,9 +1772,15 @@ fn needs_list(needs: Option<&serde_yaml::Value>) -> Vec<String> {
     }
 }
 
-/// One job's reusable-workflow call: it names no `permissions` of its own, it
-/// calls `expected_prefix` at a pinned release, and its `project`/`host`
-/// inputs agree with the repository's manifest.
+/// One job's reusable-workflow call: it names no `permissions` of its own, no
+/// `with:` block of its own, and it calls `expected_prefix` at a pinned
+/// release that agrees with the repository's manifest.
+///
+/// The reusable workflow reads `project`/`host` from the caller's checked-out
+/// `navigator.yaml` directly, so a caller has nothing left to repeat there —
+/// any `with:` block at all is a duplicate of the manifest and is rejected
+/// outright, closing off the same duplicate the one-job rule on `ci.yml`
+/// already closes.
 ///
 /// Shared by [`validate_workflow`] (the sole `ci` job, calling
 /// [`PROJECT_GATE_WORKFLOW`]) and [`validate_cd_workflow`] (the `gate` and
@@ -1826,39 +1816,14 @@ fn validate_gate_call(
         ));
         return;
     };
-    let Some(input_project) = job.with.get("project").and_then(scalar) else {
+    if !job.with.is_empty() {
         errors.push(Finding::at(
             path,
-            format!("job `{job_name}` must pass the repository Project code as `project`"),
+            format!(
+                "job `{job_name}` must not declare a `with:` block; the reusable workflow reads `project`/`host` from navigator.yaml"
+            ),
         ));
         return;
-    };
-    let Some(input_host) = job.with.get("host").and_then(scalar) else {
-        errors.push(Finding::at(
-            path,
-            format!("job `{job_name}` must pass the deployment hostname as `host`"),
-        ));
-        return;
-    };
-    if let Some(expected_project) = manifest.and_then(|manifest| manifest.project.as_deref()) {
-        if input_project != expected_project {
-            errors.push(Finding::at(
-                path,
-                format!(
-                    "job `{job_name}` `project` input `{input_project}` must equal manifest project `{expected_project}`"
-                ),
-            ));
-        }
-    }
-    if let Some(expected_host) = manifest.and_then(|manifest| manifest.host.as_deref()) {
-        if input_host != expected_host {
-            errors.push(Finding::at(
-                path,
-                format!(
-                    "job `{job_name}` `host` input `{input_host}` must equal manifest host `{expected_host}`"
-                ),
-            ));
-        }
     }
     if let Some(expected_version) = manifest.and_then(|manifest| manifest.version.as_deref()) {
         if action_version != expected_version {
@@ -2330,15 +2295,13 @@ const PROJECT_PUBLISH_WORKFLOW: &str =
 ///
 /// The jobs themselves live in `.github/workflows/project-gate.yml` in this
 /// repository. Pinning that file is the thing that scales; a Project
-/// repository does not copy them.
-#[allow(dead_code)]
+/// repository does not copy them. The job carries no `with:` block: the
+/// reusable workflow reads `project`/`host` from this repository's own
+/// `navigator.yaml`, so the pinned `version` in `uses:` is the only value a
+/// caller repeats.
 pub(crate) fn workflow(action_version: &str) -> String {
-    workflow_for(action_version, "acme", "staging.neonlaw.com")
-}
-
-pub(crate) fn workflow_for(action_version: &str, project_code: &str, host: &str) -> String {
     format!(
-        r#"name: {REQUIRED_CHECK}
+        r"name: {REQUIRED_CHECK}
 
 on:
   pull_request:
@@ -2350,10 +2313,7 @@ permissions:
 jobs:
   {REQUIRED_CHECK}:
     uses: {PROJECT_GATE_WORKFLOW}{action_version}
-    with:
-      project: "{project_code}"
-      host: "{host}"
-"#
+"
     )
 }
 
@@ -2369,15 +2329,13 @@ pub(crate) const HAND_COPIED_GATE_LINES: usize = 268;
 /// its live document verification, live Project gate, and seed import run
 /// here — `ci.yml` above calls that file only on `pull_request`, so nothing
 /// else triggers those live jobs. `publish` `needs: gate`: a push publishes
-/// only after the live checks it depends on have passed.
-#[allow(dead_code)]
+/// only after the live checks it depends on have passed. Neither job carries
+/// a `with:` block or a token-scoping comment: what the reusable workflow
+/// does with the token, and where it reads `project`/`host` from, is
+/// documented in the shared workflow, not repeated in every caller.
 pub(crate) fn cd_workflow(action_version: &str) -> String {
-    cd_workflow_for(action_version, "acme", "staging.neonlaw.com")
-}
-
-pub(crate) fn cd_workflow_for(action_version: &str, project_code: &str, host: &str) -> String {
     format!(
-        r#"name: cd
+        r"name: cd
 
 on:
   push:
@@ -2388,26 +2346,13 @@ permissions:
   contents: read
   id-token: write
 
-# The reusable publisher mints its deployment token only on this main-only
-# caller. The PR caller grants only checkout and OIDC permissions; the server
-# scopes every PR token to read-only verification or seed dry-run authority.
-# `gate` needs the same token
-# to exercise project-gate.yml's live document verification, live Project
-# gate, and seed import, which only run on a push to `main`.
-
 jobs:
   gate:
     uses: {PROJECT_GATE_WORKFLOW}{action_version}
-    with:
-      project: "{project_code}"
-      host: "{host}"
   publish:
     needs: gate
     uses: {PROJECT_PUBLISH_WORKFLOW}{action_version}
-    with:
-      project: "{project_code}"
-      host: "{host}"
-"#,
+",
     )
 }
 
@@ -2575,29 +2520,23 @@ mod tests {
 
     #[test]
     fn a_reusable_workflow_call_with_a_matching_pin_passes() {
-        let contents = r#"name: ci
+        let contents = r"name: ci
 on: [pull_request]
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#;
+";
         assert_eq!(findings(contents), Vec::<String>::new());
     }
 
     #[test]
     fn a_real_version_mismatch_is_still_caught() {
-        let contents = r#"name: ci
+        let contents = r"name: ci
 on: [pull_request]
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#;
+";
         let manifest = Manifest {
             version: Some("26.7.26".to_string()),
             project: Some("acme".to_string()),
@@ -2615,19 +2554,40 @@ jobs:
 
     #[test]
     fn a_moving_ref_is_still_refused() {
-        let contents = r#"name: ci
+        let contents = r"name: ci
 on: [pull_request]
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@main
+";
+        let found = findings(contents);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("must be an exact release tag"),
+            "{found:?}"
+        );
+    }
+
+    /// The core of this issue: the reusable workflow reads `project`/`host`
+    /// from the caller's own `navigator.yaml`, so a caller has nothing left
+    /// to repeat there. A `with:` block of any shape is a duplicate of the
+    /// manifest and is rejected outright, not merely checked for agreement.
+    #[test]
+    fn a_with_block_is_rejected() {
+        let contents = r#"name: ci
+on: [pull_request]
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
     with:
       project: "acme"
       host: "staging.neonlaw.com"
 "#;
         let found = findings(contents);
-        assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].contains("must be an exact release tag"),
+            found
+                .iter()
+                .any(|message| message.contains("must not declare a `with:` block")),
             "{found:?}"
         );
     }
@@ -3075,8 +3035,10 @@ jobs:
             "a path-filtered required check can be satisfied by a skip"
         );
         assert!(generated.contains("project-gate.yml@"));
-        assert!(generated.contains("project: \"acme\""));
-        assert!(generated.contains("host: \"staging.neonlaw.com\""));
+        assert!(
+            !generated.contains("with:"),
+            "the caller must carry no `with:` block; the reusable workflow reads project/host from navigator.yaml:\n{generated}"
+        );
         assert!(!generated.contains("push:"));
         assert!(generated.contains("permissions:\n  contents: read\n  id-token: write"));
         assert!(!generated.contains("project_repository: true"));
@@ -3093,7 +3055,7 @@ jobs:
             ),
             "{generated}"
         );
-        assert!(generated.contains("project: \"acme\""), "{generated}");
+        assert!(!generated.contains("with:"), "{generated}");
         assert!(!generated.contains("version:"), "{generated}");
         assert!(
             !generated.contains("26.7.27"),
@@ -3239,10 +3201,9 @@ jobs:
             "{generated}"
         );
         assert!(generated.contains("workflow_dispatch:"), "{generated}");
-        assert!(generated.contains("project: \"acme\""), "{generated}");
         assert!(
-            generated.contains("host: \"staging.neonlaw.com\""),
-            "{generated}"
+            !generated.contains("with:"),
+            "the gate/publish callers must carry no `with:` block; the reusable workflow reads project/host from navigator.yaml:\n{generated}"
         );
         assert!(
             !generated.contains("NAVIGATOR_APPLICATIONS_BUCKET"),
@@ -3391,10 +3352,9 @@ jobs:
             ),
             "{generated}"
         );
-        assert!(
-            generated.contains("project: \"example-project\""),
-            "{generated}"
-        );
+        let manifest = std::fs::read_to_string(root.path().join(PROJECT_MANIFEST)).unwrap();
+        assert!(manifest.contains("name: example-project"), "{manifest}");
+        assert!(manifest.contains("host: staging.neonlaw.com"), "{manifest}");
     }
 
     /// `Y010`: the mark with a corporate suffix is an entity claim, and the
@@ -3525,16 +3485,13 @@ jobs:
     /// by name, not merely by shape.
     #[test]
     fn a_ci_gate_triggered_by_pull_request_target_is_refused() {
-        let contents = r#"name: ci
+        let contents = r"name: ci
 on:
   pull_request_target:
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#;
+";
         let found = findings(contents);
         assert!(
             found
@@ -3550,15 +3507,12 @@ jobs:
     /// exactly one job.
     #[test]
     fn a_ci_gate_carrying_an_extra_privileged_job_is_refused() {
-        let contents = r#"name: ci
+        let contents = r"name: ci
 on:
   pull_request:
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
   smuggled:
     permissions:
       contents: write
@@ -3566,7 +3520,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo pwned
-"#;
+";
         let found = findings(contents);
         assert!(
             found
@@ -3580,7 +3534,7 @@ jobs:
     /// write-capable or otherwise different grants are refused.
     #[test]
     fn a_ci_gate_declaring_permissions_is_refused() {
-        let contents = r#"name: ci
+        let contents = r"name: ci
 on:
   pull_request:
 permissions:
@@ -3589,10 +3543,7 @@ permissions:
 jobs:
   ci:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#;
+";
         let found = findings(contents);
         assert!(
             found
@@ -3602,34 +3553,39 @@ jobs:
         );
     }
 
-    /// ENG-675 reproduction 5: a `host` input that disagrees with the
-    /// manifest is a repository whose CI gate deploys somewhere the
-    /// repository never declared.
+    /// The `gate` and `publish` jobs on `cd.yml` are the other two callers
+    /// this issue names: a `with:` block is rejected there exactly as it is
+    /// on `ci.yml`, not merely checked for agreement with the manifest.
     #[test]
-    fn a_ci_gate_host_mismatch_against_the_manifest_is_refused() {
-        let contents = r#"name: ci
+    fn a_cd_gate_or_publish_with_block_is_rejected() {
+        let contents = r#"name: cd
 on:
-  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
 jobs:
-  ci:
+  gate:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
     with:
       project: "acme"
-      host: "attacker.example.com"
+  publish:
+    needs: gate
+    uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.7.27
+    with:
+      host: "staging.neonlaw.com"
 "#;
-        let manifest = Manifest {
-            version: Some("26.7.27".to_string()),
-            project: Some("acme".to_string()),
-            host: Some("staging.neonlaw.com".to_string()),
-            ..Manifest::default()
-        };
-        let mut errors = Vec::new();
-        validate_workflow(Path::new("ci.yml"), contents, Some(&manifest), &mut errors);
-        let found: Vec<String> = errors.into_iter().map(|error| error.message).collect();
+        let found = cd_findings(contents);
         assert!(
-            found.iter().any(|message| message.contains("`host` input")
-                && message.contains("attacker.example.com")
-                && message.contains("staging.neonlaw.com")),
+            found.iter().any(|message| message.contains("job `gate`")
+                && message.contains("must not declare a `with:` block")),
+            "{found:?}"
+        );
+        assert!(
+            found.iter().any(|message| message.contains("job `publish`")
+                && message.contains("must not declare a `with:` block")),
             "{found:?}"
         );
     }
@@ -3667,7 +3623,7 @@ jobs:
     /// granted.
     #[test]
     fn a_cd_workflow_not_scoped_to_main_is_refused() {
-        let contents = r#"name: cd
+        let contents = r"name: cd
 on:
   push:
     branches: [main, staging]
@@ -3678,16 +3634,10 @@ permissions:
 jobs:
   gate:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
   publish:
     needs: gate
     uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#;
+";
         let found = cd_findings(contents);
         assert!(
             found
@@ -3701,7 +3651,7 @@ jobs:
     /// the closed permissions set exists to catch.
     #[test]
     fn a_cd_workflow_with_contents_write_is_refused() {
-        let contents = r#"name: cd
+        let contents = r"name: cd
 on:
   push:
     branches: [main]
@@ -3712,16 +3662,10 @@ permissions:
 jobs:
   gate:
     uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
   publish:
     needs: gate
     uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.7.27
-    with:
-      project: "acme"
-      host: "staging.neonlaw.com"
-"#;
+";
         let found = cd_findings(contents);
         assert!(
             found

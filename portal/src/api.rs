@@ -3332,8 +3332,16 @@ async fn document_pointer(
                 .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             sha256: current.sha256_hex.clone(),
             size_bytes: current.byte_size,
+            canonical_url: None,
+            checked_on: None,
         },
         previous_version: revisions.get(1).map(|asset| asset.id),
+        // A plain Project document, filed through `POST
+        // /app/api/projects/{id}/documents`, never carries an Authority —
+        // that field is written only by `site sync`'s evidence route, which
+        // constructs its own pointer client-side rather than reaching this
+        // door at all (see `cli::document_sync`).
+        authority_id: None,
     })
 }
 

@@ -122,10 +122,26 @@ in or changing the checkout.
 The pointer records `kind`, desired `visibility`, current revision metadata, and the previous asset id when the chain
 has one. It never contains an object-storage coordinate or legal-document bytes. Editing a pointer's visibility and
 running sync reconciles that value through the same authorized API; the normal API audit records the actor and
-operation. Folder conventions infer `filing` for `pleadings/`, `exhibit` for `exhibits/`, and `agreement` for
-`agreements/`; other paths use `unclassified`. Visibility defaults to `internal`. A folder outside those three
+operation. Folder conventions infer `filing` for `pleadings/`, `exhibit` for `exhibits/`, `agreement` for `agreements/`,
+and `invoice` for `invoices/`; other paths use `unclassified`. Visibility defaults to `internal`. A folder outside those
 conventions is therefore deliberately `unclassified` rather than a rejected path, and `navigator site sync --help` says
-so, so a lawyer who drops a file somewhere the conventions do not name is not left reading a silent pass as a failure.
+so, so a lawyer who drops a file somewhere the conventions do not name is not left reading a silent pass as a failure. A
+file staged under `documents/invoices/` must match the filename pattern `INV-<digits>.<ext>` (for example `INV-1.pdf`)
+or sync refuses it.
+
+**`documents/evidence/` is not a Project document at all.** An HTML capture of a statute or case the matter relies on is
+an [Authority](glossary.md#authority) — global reference data with no `project_id` — so filing it as an internal matter
+document would be the misclassification the fleet contract warns about. `sync` instead routes every
+`documents/evidence/**` capture through the same door as `navigator site authorities create`: it reads a sidecar
+(`<capture-filename>.evidence.yaml`, beside the capture) carrying `class`, `citation`, `title`, and optionally
+`short_cite`, `publisher`, `issued_on`, `canonical_url`, and `checked_on` — the fields `authorities create` needs and
+cannot reliably scrape from arbitrary HTML `<meta>` tags — archives the bytes as an Authority, and writes back a
+document pointer at the capture's own path carrying the resulting `authority_id` alongside `sha256`, `canonical_url`,
+`checked_on`, and `created_at`. Both the capture and its sidecar are removed from the checkout once the Authority is
+filed, the same lifecycle as any other staged binary.
+
+Every pointer `sync` writes, whatever the route, keeps `current_version.created_at` as an RFC 3339 UTC timestamp; `site
+document verify` fails a pointer that lacks one.
 
 **The key layout stays content-addressed; a readable slug key is a proposal, not an authorized migration.** Keys remain
 `projects/<code>/documents/<sha256>`, and `site sync` never renames or migrates one — the slug it derives from the

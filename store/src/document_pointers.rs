@@ -17,6 +17,13 @@ pub struct DocumentPointer {
     pub current_version: PointerVersion,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_version: Option<Uuid>,
+    /// Present only on an evidence capture routed through `site authorities
+    /// create` (`documents/evidence/**`): the global Authority — no
+    /// `project_id` — this capture's bytes were archived under. Absent for
+    /// every other document kind, which stays a plain Project document with
+    /// no Authority of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_id: Option<Uuid>,
 }
 
 /// The immutable facts copied from the current `assets` row.
@@ -28,6 +35,14 @@ pub struct PointerVersion {
     pub created_at: String,
     pub sha256: String,
     pub size_bytes: i64,
+    /// Where this revision was captured from, and when — carried only by an
+    /// evidence capture's pointer (see [`DocumentPointer::authority_id`]),
+    /// so the portal can render a real citation/link instead of an opaque
+    /// file. Absent for every other document kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_on: Option<String>,
 }
 
 /// Why a pointer cannot name a valid document revision.
@@ -121,9 +136,21 @@ mod tests {
                 created_at: "2026-09-05T12:00:00Z".into(),
                 sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
                 size_bytes: 42,
+                canonical_url: None,
+                checked_on: None,
             },
             previous_version: None,
+            authority_id: None,
         }
+    }
+
+    fn evidence_pointer() -> DocumentPointer {
+        let mut pointer = pointer();
+        pointer.kind = "exhibit".into();
+        pointer.authority_id = Some(Uuid::now_v7());
+        pointer.current_version.canonical_url = Some("https://example.test/opinion".into());
+        pointer.current_version.checked_on = Some("2026-09-05".into());
+        pointer
     }
 
     #[test]
@@ -141,5 +168,53 @@ mod tests {
         invalid.current_version.created_at = "2026-09-05T12:00:00Z".into();
         invalid.current_version.version = 2;
         assert_eq!(invalid.validate(), Err(PointerError::PreviousVersion));
+    }
+
+    /// `current_version.created_at` is required, not merely
+    /// validated-when-present: a committed pointer YAML that omits the key
+    /// entirely fails to parse at all, so `site document verify` (which
+    /// calls `from_yaml` on every committed pointer) fails it too — LAW-50's
+    /// criterion 3.
+    #[test]
+    fn a_pointer_missing_created_at_entirely_fails_to_parse() {
+        let yaml = "kind: agreement\n\
+                     visibility: internal\n\
+                     current_version:\n  \
+                       version: 1\n  \
+                       asset_id: 018f3b1a-0000-7000-8000-000000000000\n  \
+                       sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  \
+                       size_bytes: 42\n";
+        let error = DocumentPointer::from_yaml(yaml).unwrap_err();
+        assert!(
+            error.to_string().contains("created_at"),
+            "the parse failure should name the missing field: {error}"
+        );
+    }
+
+    /// An evidence capture's pointer (LAW-50) reuses this same struct rather
+    /// than a parallel shape: `authority_id` on the identity, `canonical_url`
+    /// and `checked_on` on the revision. It round-trips and validates like
+    /// any other pointer — the new fields are additive, not a second schema.
+    #[test]
+    fn an_authority_backed_pointer_round_trips_and_validates() {
+        let expected = evidence_pointer();
+        assert!(expected.validate().is_ok());
+        let yaml = expected.to_yaml().unwrap();
+        assert!(yaml.contains("authority_id"));
+        assert!(yaml.contains("canonical_url"));
+        assert!(yaml.contains("checked_on"));
+        assert_eq!(DocumentPointer::from_yaml(&yaml).unwrap(), expected);
+    }
+
+    /// A pointer with no Authority — every non-evidence document kind —
+    /// serializes none of the three new fields, so an older reader (or a
+    /// byte-for-byte diff) never sees noise it does not understand.
+    #[test]
+    fn a_plain_document_pointer_serializes_no_authority_fields() {
+        let plain = pointer();
+        let yaml = plain.to_yaml().unwrap();
+        assert!(!yaml.contains("authority_id"));
+        assert!(!yaml.contains("canonical_url"));
+        assert!(!yaml.contains("checked_on"));
     }
 }

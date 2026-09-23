@@ -704,8 +704,11 @@ mod tests {
                 created_at: "2026-09-06T00:00:00Z".to_string(),
                 sha256: "a".repeat(64),
                 size_bytes: 1,
+                canonical_url: None,
+                checked_on: None,
             },
             previous_version: None,
+            authority_id: None,
         };
         let live = [revision(1, Uuid::max(), true)];
         let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
@@ -728,8 +731,11 @@ mod tests {
                 created_at: "2026-09-06T00:00:00Z".to_string(),
                 sha256: live_revision.sha256.clone(),
                 size_bytes: live_revision.size_bytes,
+                canonical_url: None,
+                checked_on: None,
             },
             previous_version: None,
+            authority_id: None,
         };
         let live = [live_revision];
         assert!(check_pointer_drift(Some(&pointer), &live).is_ok());
@@ -747,8 +753,11 @@ mod tests {
                 created_at: "2026-09-06T00:00:00Z".to_string(),
                 sha256: "0".repeat(64),
                 size_bytes: live_revision.size_bytes,
+                canonical_url: None,
+                checked_on: None,
             },
             previous_version: None,
+            authority_id: None,
         };
         let live = [live_revision.clone()];
         let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
@@ -769,8 +778,11 @@ mod tests {
                 created_at: "2026-09-06T00:00:00Z".to_string(),
                 sha256: live_revision.sha256.clone(),
                 size_bytes: live_revision.size_bytes + 1,
+                canonical_url: None,
+                checked_on: None,
             },
             previous_version: None,
+            authority_id: None,
         };
         let live = [live_revision];
         let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
@@ -789,8 +801,11 @@ mod tests {
                 created_at: "2026-09-06T00:00:00Z".to_string(),
                 sha256: stale.sha256.clone(),
                 size_bytes: stale.size_bytes,
+                canonical_url: None,
+                checked_on: None,
             },
             previous_version: None,
+            authority_id: None,
         };
         // A newer revision landed (e.g. a browser upload) without a re-sync.
         let live = [revision(2, Uuid::nil(), true), stale];
@@ -884,8 +899,11 @@ mod tests {
                 created_at: "2026-09-06T00:00:00Z".to_string(),
                 sha256: "a".repeat(64),
                 size_bytes: 10,
+                canonical_url: None,
+                checked_on: None,
             },
             previous_version: None,
+            authority_id: None,
         };
         std::fs::write(path, pointer.to_yaml().unwrap()).unwrap();
     }

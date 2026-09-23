@@ -297,8 +297,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         workflow_yaml["permissions"],
         serde_yaml::from_str::<serde_yaml::Value>("{contents: read, id-token: write}").unwrap()
     );
-    assert!(workflow.contains("project: \"example-project\""));
-    assert!(workflow.contains("host: \"staging.neonlaw.com\""));
+    assert!(
+        !workflow.contains("with:"),
+        "the caller must carry no `with:` block; the reusable workflow reads project/host from navigator.yaml:\n{workflow}"
+    );
     let cd = fs::read_to_string(dir.path().join(".github/workflows/cd.yml")).unwrap();
     assert!(
         !cd.contains("TBD"),
@@ -309,8 +311,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         cd.contains("neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23")
     );
     assert!(cd.contains("workflow_dispatch:"));
-    assert!(cd.contains("project: \"example-project\""));
-    assert!(cd.contains("host: \"staging.neonlaw.com\""));
+    assert!(
+        !cd.contains("with:"),
+        "the gate/publish callers must carry no `with:` block; the reusable workflow reads project/host from navigator.yaml:\n{cd}"
+    );
 
     // Neither retired manifest is written. `mount.json` and `navigator.toml`
     // declared a repository's own coordinates and every reader of them is gone;
@@ -510,24 +514,28 @@ fn the_gate_refuses_pull_request_target() {
         .stderr(str::contains("pull_request_target"));
 }
 
-/// ENG-675 reproduction 5: a `host` input that disagrees with the manifest
-/// is a repository whose CI gate deploys somewhere it never declared.
+/// The reusable workflow reads `project`/`host` from the caller's own
+/// `navigator.yaml`, so a caller has nothing left to repeat there — a
+/// `with:` block of any shape is rejected outright, not merely checked for
+/// agreement with the manifest.
 #[test]
-fn the_gate_refuses_a_host_that_disagrees_with_the_manifest() {
+fn the_gate_refuses_a_with_block_on_the_ci_caller() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
     let ci = dir.path().join(".github/workflows/ci.yml");
     let contents = fs::read_to_string(&ci).unwrap();
     fs::write(
         &ci,
-        contents.replace("staging.neonlaw.com", "attacker.example.com"),
+        contents.replace(
+            "uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23\n",
+            "uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23\n    with:\n      project: \"example-project\"\n",
+        ),
     )
     .unwrap();
 
     gate(dir.path())
         .failure()
-        .stderr(str::contains("`host` input"))
-        .stderr(str::contains("attacker.example.com"));
+        .stderr(str::contains("must not declare a `with:` block"));
 }
 
 /// The retired `gate.yml`/`publish.yml` filenames are still read, but a

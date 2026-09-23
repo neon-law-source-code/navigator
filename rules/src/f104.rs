@@ -11,6 +11,13 @@
 //! Both the `questionnaire:` and `workflow:` maps in frontmatter
 //! are validated; both must declare a `BEGIN` state and reach
 //! `END` from at least one transition.
+//!
+//! Omitting both keys is valid on every `kind` — not only `letter` and
+//! `memo` — and means exactly the minimal pair: `BEGIN → END` for the
+//! questionnaire, `BEGIN → lawyer_review → END` for the workflow. See
+//! [`body_is_binding_or_signable`] for the one thing that still forces
+//! both maps regardless of `kind`: a body that is actually binding or
+//! signable.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -61,12 +68,6 @@ impl F104FlowQuestionCodes {
 
 #[derive(Debug, Deserialize)]
 struct FrontmatterShape {
-    /// Attorney-drafted `letter` and `memo` blueprints may be body-only
-    /// — but only when the body itself is prose-only; see
-    /// [`body_is_binding_or_signable`]. Other notation kinds remain
-    /// machine-driven and require both maps.
-    #[serde(default)]
-    kind: Option<String>,
     #[serde(default)]
     questionnaire: Option<BTreeMap<String, BTreeMap<String, String>>>,
     #[serde(default)]
@@ -96,10 +97,7 @@ impl Rule for F104FlowQuestionCodes {
 
         let mut violations = Vec::new();
         let Some(questionnaire) = parsed.questionnaire else {
-            if parsed.workflow.is_none()
-                && attorney_drafted_kind(parsed.kind.as_deref())
-                && !body_is_binding_or_signable(&file.contents)
-            {
+            if parsed.workflow.is_none() && !body_is_binding_or_signable(&file.contents) {
                 return violations;
             }
             violations.push(violation(file, "Missing required `questionnaire` key"));
@@ -130,25 +128,20 @@ impl Rule for F104FlowQuestionCodes {
     }
 }
 
-fn attorney_drafted_kind(kind: Option<&str>) -> bool {
-    matches!(kind, Some("letter" | "memo"))
-}
-
 /// True when the document's own body marks it as binding or signable,
 /// independent of what `kind:` it declares — a signature placeholder
 /// (`{{<signer>.signature}}` / `{{<signer>.initials}}`, `N107`'s
-/// grammar), a heading naming a signature block, or a manual
-/// "By: ____" signing line. The shipped Nevada engagement letter looks
-/// exactly like the last of these: real binding terms and a hand-signed
-/// block, with no `{{ }}` placeholder at all.
+/// grammar), a heading naming a signature block, or a structured manual
+/// signing affordance. The manual form accepts a semantic signature label
+/// followed by a blank or rule, plus an unlabeled underscore rule.
 ///
-/// The attorney-drafted bypass above is for a *prose-only* letter or
-/// memo — one nobody signs. A letter that carries one of these markers
-/// is not prose-only, so it may not use the bypass regardless of its
-/// declared `kind:`: trusting `kind: letter` alone would let a
-/// signable instrument validate clean the moment its
-/// `questionnaire:`/`workflow:` metadata is stripped out, which is
-/// exactly the failure mode this check exists to close.
+/// The omit-both-keys bypass above is for a *prose-only* document — one
+/// nobody signs. A document that carries one of these markers is not
+/// prose-only, so it may not use the bypass regardless of its declared
+/// `kind:`: trusting the omission alone would let a signable instrument
+/// validate clean the moment its `questionnaire:`/`workflow:` metadata is
+/// stripped out, which is exactly the failure mode this check exists to
+/// close.
 fn body_is_binding_or_signable(contents: &str) -> bool {
     let body = frontmatter::split(contents).map_or(contents, |(_, body)| body);
     if f107::signature_placeholders(body)
@@ -159,7 +152,7 @@ fn body_is_binding_or_signable(contents: &str) -> bool {
     }
     body.lines().any(|line| {
         let trimmed = line.trim();
-        is_signature_heading(trimmed) || is_manual_signature_line(trimmed)
+        is_signature_heading(trimmed) || is_structured_signature_line(trimmed)
     })
 }
 
@@ -167,9 +160,89 @@ fn is_signature_heading(line: &str) -> bool {
     line.starts_with('#') && line.to_ascii_lowercase().contains("signature")
 }
 
-fn is_manual_signature_line(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    lower.starts_with("by:") && line.contains("___")
+const SIGNATURE_LABEL_WORDS: &[&str] = &[
+    "by",
+    "date",
+    "initial",
+    "initials",
+    "sign",
+    "signed",
+    "signature",
+    "signatures",
+    "signatory",
+    "signer",
+];
+
+fn is_structured_signature_line(line: &str) -> bool {
+    is_unlabeled_signature_rule(line)
+        || split_signature_label(line)
+            .is_some_and(|(_, value)| value.is_empty() || contains_rule_run(value))
+}
+
+fn split_signature_label(line: &str) -> Option<(&str, &str)> {
+    let separator = line.find(|character: char| {
+        !character.is_ascii_alphanumeric() && !character.is_ascii_whitespace() && character != '\''
+    });
+    let Some(separator) = separator else {
+        return is_signature_label_only(line).then_some((line, ""));
+    };
+
+    let label = line[..separator].trim();
+    if !is_signature_label_only(label) {
+        return None;
+    }
+
+    let value = line[separator..].trim_matches(|character: char| {
+        character.is_ascii_whitespace() || matches!(character, ':' | '-' | '—' | '.')
+    });
+    Some((label, value))
+}
+
+/// True when every word in `line` is itself a signature-related word —
+/// `"Signature"`, `"By"`, `"Signed"` — not merely when one word happens
+/// to appear inside an unrelated sentence. Ordinary prose that mentions
+/// signing (`"This letter must be signed by an authorized officer."`)
+/// must not match: it is not a label, it is a sentence.
+fn is_signature_label_only(line: &str) -> bool {
+    let mut words = line
+        .split(|character: char| !character.is_ascii_alphabetic())
+        .filter(|word| !word.is_empty());
+    let Some(first) = words.next() else {
+        return false;
+    };
+    is_signature_label_word(first) && words.all(is_signature_label_word)
+}
+
+fn is_signature_label_word(word: &str) -> bool {
+    SIGNATURE_LABEL_WORDS
+        .iter()
+        .any(|candidate| word.eq_ignore_ascii_case(candidate))
+}
+
+fn contains_rule_run(value: &str) -> bool {
+    let mut run_length = 0;
+    value.chars().any(|character| {
+        if matches!(character, '_' | '-' | '.') {
+            run_length += 1;
+            run_length >= 3
+        } else {
+            run_length = 0;
+            false
+        }
+    })
+}
+
+fn is_unlabeled_signature_rule(line: &str) -> bool {
+    let mut underscores = 0;
+    let only_whitespace_and_underscores = line.chars().all(|character| {
+        if character == '_' {
+            underscores += 1;
+            true
+        } else {
+            character.is_ascii_whitespace()
+        }
+    });
+    only_whitespace_and_underscores && underscores >= 3
 }
 
 impl F104FlowQuestionCodes {
@@ -379,8 +452,11 @@ workflow:
     }
 
     #[test]
-    fn attorney_drafted_kinds_may_omit_both_machines() {
-        for kind in ["letter", "memo"] {
+    fn every_kind_may_omit_both_machines() {
+        // LAW-44: omission is valid on every `kind`, not only `letter` and
+        // `memo` — a bespoke agreement or an attorney-drafted filing has as
+        // much claim to being hand-drafted as a memo does.
+        for kind in ["letter", "memo", "agreement", "onboarding", "filing"] {
             let source = file(&format!(
                 "---\nkind: {kind}\n---\n\nAttorney-drafted body.\n"
             ));
@@ -392,51 +468,88 @@ workflow:
     }
 
     #[test]
-    fn attorney_drafted_letter_with_a_signature_block_still_requires_both_machines() {
-        // A `letter` with real binding terms and a signature block is not
+    fn a_signable_document_still_requires_both_machines_regardless_of_kind() {
+        // A document with real binding terms and a signature block is not
         // prose-only — the shipped Nevada engagement letter looks exactly
         // like this: numbered substantive sections, then a "Signatures"
         // heading with manual "By: ____  Date: ____" lines and no `{{ }}`
         // placeholder at all. Stripping its questionnaire/workflow
-        // metadata must not let a copy of it validate clean.
-        let body = "---\nkind: letter\n---\n\n## I. Terms\n\nThe Firm will represent you.\n\n\
-                     ## IX. Signatures\n\nBy: ______________________________  Date: ____________\n";
-        let violations = rule().lint(&file(body));
-        assert!(
-            violations
-                .iter()
-                .any(|v| v.message.contains("Missing required `questionnaire`")),
-            "a signable letter body must still require the questionnaire machine: {violations:?}"
-        );
-    }
-
-    #[test]
-    fn attorney_drafted_kinds_must_omit_both_machines_together() {
-        for machine in ["questionnaire", "workflow"] {
-            let source = file(&format!(
-                "---\nkind: memo\n{machine}:\n  BEGIN:\n    _: END\n  END: {{}}\n---\n"
-            ));
-            let violations = rule().lint(&source);
-            assert_eq!(violations.len(), 1, "{machine}: {violations:?}");
+        // metadata must not let a copy of it validate clean, under any
+        // `kind:`.
+        for kind in ["letter", "memo", "agreement"] {
+            let body = format!(
+                "---\nkind: {kind}\n---\n\n## I. Terms\n\nThe Firm will represent you.\n\n\
+                 ## IX. Signatures\n\nBy: ______________________________  Date: ____________\n"
+            );
+            let violations = rule().lint(&file(&body));
             assert!(
-                violations[0]
-                    .message
-                    .contains(if machine == "questionnaire" {
-                        "workflow"
-                    } else {
-                        "questionnaire"
-                    }),
-                "{machine}: {violations:?}"
+                violations
+                    .iter()
+                    .any(|v| v.message.contains("Missing required `questionnaire`")),
+                "{kind}: a signable body must still require the questionnaire machine: {violations:?}"
             );
         }
     }
 
     #[test]
-    fn instrument_kinds_still_require_both_machines() {
-        let source = file("---\nkind: agreement\n---\n");
-        let violations = rule().lint(&source);
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("questionnaire"));
+    fn plain_and_structured_signature_lines_require_both_machines_on_any_kind() {
+        for marker in [
+            "Please sign below.\n\nSignature: ____________________\n",
+            "Attorney-drafted terms.\n\nSigned:\n",
+            "Attorney-drafted terms.\n\nSignature\n",
+            "Attorney-drafted terms.\n\n____________________________\n",
+        ] {
+            for kind in ["letter", "memo", "agreement", "onboarding", "filing"] {
+                let source = file(&format!("---\nkind: {kind}\n---\n\n{marker}"));
+                let violations = rule().lint(&source);
+                assert!(
+                    violations
+                        .iter()
+                        .any(|v| v.message.contains("Missing required `questionnaire`")),
+                    "a signature line in a {kind} must require the questionnaire machine: {violations:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn prose_mentioning_signing_words_may_still_omit_both_machines_on_any_kind() {
+        for sentence in [
+            "This letter must be signed by an authorized officer.",
+            "Please date and sign the enclosed copy.",
+            "No signatures are required for this memo.",
+        ] {
+            for kind in ["letter", "memo", "agreement", "onboarding", "filing"] {
+                let source = file(&format!("---\nkind: {kind}\n---\n\n{sentence}\n"));
+                assert!(
+                    rule().lint(&source).is_empty(),
+                    "a prose sentence mentioning a signature-related word in a {kind} must not require either machine: {sentence:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_kind_must_omit_both_machines_together() {
+        for kind in ["memo", "agreement"] {
+            for machine in ["questionnaire", "workflow"] {
+                let source = file(&format!(
+                    "---\nkind: {kind}\n{machine}:\n  BEGIN:\n    _: END\n  END: {{}}\n---\n"
+                ));
+                let violations = rule().lint(&source);
+                assert_eq!(violations.len(), 1, "{kind}/{machine}: {violations:?}");
+                assert!(
+                    violations[0]
+                        .message
+                        .contains(if machine == "questionnaire" {
+                            "workflow"
+                        } else {
+                            "questionnaire"
+                        }),
+                    "{kind}/{machine}: {violations:?}"
+                );
+            }
+        }
     }
 
     #[test]

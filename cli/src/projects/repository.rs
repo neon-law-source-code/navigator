@@ -1,4 +1,4 @@
-//! One Project, one repository: scaffold and validation.
+//! One Project, one repository: layout and gate validation.
 //!
 //! A Project's repository is named for its Project code and holds notation
 //! templates under `templates/` plus zero or more applications under
@@ -10,7 +10,7 @@
 //! <organization>/<project-code>
 //! ├── .github/workflows/ci.yml
 //! ├── .github/workflows/cd.yml
-//! ├── .agents/skills/    # synced from Navigator via `sync-skills`
+//! ├── .agents/skills/    # kept identical to Navigator's own canonical copies
 //! ├── apps/              # React + Vite workspaces, discovered by package.json
 //! │   └── portal/
 //! ├── templates/         # *.md notation blueprints
@@ -124,7 +124,6 @@ const FINAL_RETIRED_WORKFLOW_RELEASE: &str = "26.9.23";
 /// manifest and a staged sample bundle's manifest are the same file, read by
 /// different tools, not two schemas that happen to overlap.
 pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
-const GITATTRIBUTES: &str = "* text=auto eol=lf\n";
 const CODEOWNERS: &str = "# CODEOWNERS\n\n* @shicholas\n";
 /// Seed-shaped YAML documents for `navigator site import`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
@@ -215,14 +214,12 @@ const RETIRED_AGENT_MIRRORS: &[(&str, &str)] = &[
     (
         ".claude",
         "`.claude/` is a retired agent-instruction mirror; `.agents/skills/` is \
-         the whole catalog, so delete it and run `navigator project repository \
-         sync-skills`",
+         the whole catalog, so delete it",
     ),
     (
         ".codex",
         "`.codex/` is a retired agent-instruction mirror; `.agents/skills/` is \
-         the whole catalog, so delete it and run `navigator project repository \
-         sync-skills`",
+         the whole catalog, so delete it",
     ),
 ];
 const FORBIDDEN_COMPONENTS: &[&str] = &[
@@ -296,10 +293,6 @@ const SYNCED_SKILLS: &[(&str, &str)] = &[
         "server",
         include_str!("../../../.agents/skills/server/SKILL.md"),
     ),
-    (
-        "project-pr-delivery",
-        include_str!("../../../.agents/skills/project-pr-delivery/SKILL.md"),
-    ),
 ];
 
 #[derive(Debug)]
@@ -317,134 +310,14 @@ impl Finding {
     }
 }
 
-/// Create the reviewed scaffold without overwriting existing work, pinning the
-/// generated gate to `action_version`.
-///
-/// The pin is refused here rather than in the generated file. A gate emitted at
-/// `main`, at `latest`, or at a version this repository does not publish is a
-/// gate the Project cannot run, and the operator learns that on the run that
-/// blocks their first pull request rather than on the command that wrote it.
-/// `docs/project-repositories.md` requires an exact immutable release tag, so
-/// this is that rule enforced at the one place the file is written.
-pub fn scaffold(
-    root: &Path,
-    project_code: &str,
-    action_version: &str,
-    host: &str,
-    replace_gate: bool,
-) -> ExitCode {
-    // Trimmed once, here, before it is either checked or written: `is_release_tag`
-    // trims internally, so an untrimmed value could pass this refusal and still
-    // reach `workflow` with the whitespace intact, corrupting the `uses:` ref it
-    // was just cleared to write.
-    let action_version = action_version.trim();
-
-    if !store::projects::is_valid_code(project_code) {
-        eprintln!(
-            "navigator: invalid Project code `{project_code}`; use lowercase letters, digits, and single hyphens (80 characters maximum), and not a segment Navigator routes itself"
-        );
-        return ExitCode::from(2);
-    }
-
-    if !is_release_tag(action_version) {
-        if action_version.is_empty() {
-            eprintln!(
-                "navigator: no --action-version was given, and this build cannot confirm its \
-                 own version is one this repository has published (only a downloaded release \
-                 binary, or one built with `NAVIGATOR_RELEASE_TAG` set, can); pass {RELEASE_TAG_SHAPE}"
-            );
-        } else {
-            eprintln!(
-                "navigator: invalid gate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}"
-            );
-        }
-        return ExitCode::from(2);
-    }
-
-    let host = host.trim();
-    if !super::manifest::is_hostname(host) {
-        eprintln!("navigator: `--host` must be a hostname, not `{host}`");
-        return ExitCode::from(2);
-    }
-
-    let workflow_path = root.join(WORKFLOW);
-    if workflow_path.is_file() && !replace_gate {
-        if let Ok(live) = fs::read_to_string(&workflow_path) {
-            if live.lines().count() >= HAND_COPIED_GATE_LINES {
-                eprintln!(
-                    "navigator: {} has {} lines; pass --replace-gate to replace the named jobs with the thin project-gate caller",
-                    workflow_path.display(),
-                    live.lines().count()
-                );
-                return ExitCode::from(2);
-            }
-        }
-    }
-
-    let manifest =
-        format!("version: {action_version}\nproject:\n  host: {host}\n  name: {project_code}\n");
-    let template_stem = placeholder_template_stem();
-    let files = [
-        (root.join(".gitattributes"), GITATTRIBUTES.to_string()),
-        (root.join(".github/CODEOWNERS"), CODEOWNERS.to_string()),
-        (
-            root.join(AUTOMERGE_WORKFLOW),
-            AUTOMERGE_WORKFLOW_CONTENTS.to_string(),
-        ),
-        (root.join("README.md"), readme(project_code)),
-        (root.join("AGENTS.md"), agents(project_code)),
-        (root.join(WORKFLOW), workflow(action_version)),
-        (root.join(CD_WORKFLOW), cd_workflow(action_version)),
-        (root.join(PROJECT_MANIFEST), manifest),
-        (
-            root.join(TEMPLATE_DIRECTORY)
-                .join(format!("{template_stem}.md")),
-            placeholder_template(template_stem),
-        ),
-        (
-            root.join(DOCUMENT_DIRECTORY).join(".gitignore"),
-            crate::document_sync::DOCUMENTS_GITIGNORE.to_string(),
-        ),
-    ];
-
-    for (path, contents) in files {
-        if path.exists() && !(replace_gate && path == workflow_path) {
-            println!("exists    {} (left alone)", path.display());
-            continue;
-        }
-        if let Some(parent) = path.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                eprintln!("navigator: create {}: {error}", parent.display());
-                return ExitCode::from(2);
-            }
-        }
-        if let Err(error) = fs::write(&path, contents) {
-            eprintln!("navigator: write {}: {error}", path.display());
-            return ExitCode::from(2);
-        }
-        println!("created   {}", path.display());
-    }
-
-    if let Err(error) = write_canonical_skills(root, false) {
-        eprintln!("navigator: scaffold canonical skills: {error}");
-        return ExitCode::from(2);
-    }
-
-    // Do not interpolate the CLI root here: `Command` also carries `Secrets`,
-    // and CodeQL treats any printed Command field as cleartext logging.
-    println!("\nCheck with: navigator project gate");
-    ExitCode::SUCCESS
-}
-
 /// Whether `dir` is a Project repository: it carries [`PROJECT_MANIFEST`] and
 /// that manifest declares a `project`.
 ///
 /// This is the one admission check every write into a repository's agent
-/// contract owes before it touches disk — [`sync_skills`] applies it, and
-/// `cli/src/main.rs` applies the same check before both `project gate`'s
-/// Project-repository layout pass and its own document-pointer pass, so a
-/// tree with no `navigator.yaml` is read as ordinary source, never as a
-/// Project repository missing its manifest.
+/// contract owes before it touches disk — `cli/src/main.rs` applies the same
+/// check before both `project gate`'s Project-repository layout pass and its
+/// own document-pointer pass, so a tree with no `navigator.yaml` is read as
+/// ordinary source, never as a Project repository missing its manifest.
 pub(crate) fn is_project_repository(dir: &Path) -> bool {
     let Ok(raw) = fs::read_to_string(dir.join(PROJECT_MANIFEST)) else {
         return false;
@@ -453,211 +326,6 @@ pub(crate) fn is_project_repository(dir: &Path) -> bool {
         .ok()
         .and_then(|value| value.get("project").cloned())
         .is_some()
-}
-
-/// Write Navigator's canonical skill catalog into a Project repository, from
-/// this binary's own compiled-in copies (see [`SYNCED_SKILLS`]).
-///
-/// Unlike [`scaffold`], which leaves an existing file alone, this always
-/// overwrites: the point of syncing is that the copy in the repository stays
-/// identical to the canonical one, not that it is merely present. A hand
-/// edit is exactly the drift [`validate`] is meant to catch, and catching it
-/// is only useful if re-running this command is also how an operator fixes
-/// it.
-///
-/// Unlike [`validate_gate`], which runs read-only checks on whatever
-/// repository it is pointed at and reports what it finds, this command
-/// writes — so it owes its own admission check rather than trusting the
-/// caller to have run the gate first. `dir` must already be a Project
-/// repository, checked by [`is_project_repository`] exactly the way `project
-/// gate` decides whether to run the Project-repository layout pass at all
-/// (see `crate::main::run_gate`). A tree with no `navigator.yaml`, or one the
-/// gate itself is walking to check Navigator's own layout, refuses rather
-/// than silently doing nothing: this is a repair tool aimed at whatever
-/// directory it is handed, and the failure mode for skipping the check is a
-/// silent overwrite of that tree's own `AGENTS.md` and `.agents/skills`
-/// catalog (ENG-836).
-pub fn sync_skills(root: &Path) -> ExitCode {
-    if !is_project_repository(root) {
-        eprintln!(
-            "navigator: target is not a Project repository (no `{PROJECT_MANIFEST}` declaring a \
-             `project`); refusing to write its agent contract or skill catalog"
-        );
-        return ExitCode::from(2);
-    }
-
-    let legacy_skills = root.join(".claude/skills");
-    let canonical_skills = root.join(".agents/skills");
-    if legacy_skills.exists() {
-        let entries = match relocation_entries(&legacy_skills) {
-            Ok(entries) => entries,
-            Err(error) => {
-                eprintln!(
-                    "navigator: inspect legacy skill catalog {}: {error}",
-                    legacy_skills.display()
-                );
-                return ExitCode::from(2);
-            }
-        };
-        if let Err(error) = preflight_skill_relocation(&legacy_skills, &canonical_skills, &entries)
-        {
-            eprintln!("navigator: {error}");
-            return ExitCode::from(2);
-        }
-        if let Err(error) = copy_legacy_skills(&legacy_skills, &canonical_skills, &entries) {
-            eprintln!("navigator: relocate legacy skill catalog: {error}");
-            return ExitCode::from(2);
-        }
-    }
-
-    if let Err(error) = write_canonical_agent_contract(root) {
-        eprintln!("navigator: sync canonical AGENTS.md: {error}");
-        return ExitCode::from(2);
-    }
-
-    if let Err(error) = write_canonical_skills(root, true) {
-        eprintln!("navigator: sync canonical skills: {error}");
-        return ExitCode::from(2);
-    }
-
-    if legacy_skills.exists() {
-        if let Err(error) = fs::remove_dir_all(&legacy_skills) {
-            eprintln!(
-                "navigator: remove relocated skill catalog {}: {error}",
-                legacy_skills.display()
-            );
-            return ExitCode::from(2);
-        }
-        let legacy_root = root.join(".claude");
-        if let Ok(0) = fs::read_dir(&legacy_root).map(Iterator::count) {
-            if let Err(error) = fs::remove_dir(&legacy_root) {
-                eprintln!(
-                    "navigator: remove empty legacy harness directory {}: {error}",
-                    legacy_root.display()
-                );
-                return ExitCode::from(2);
-            }
-        }
-        println!(
-            "relocated {} -> {}",
-            legacy_skills.display(),
-            canonical_skills.display()
-        );
-    }
-    ExitCode::SUCCESS
-}
-
-fn write_canonical_skills(root: &Path, overwrite: bool) -> io::Result<()> {
-    for (name, contents) in SYNCED_SKILLS {
-        let path = root.join(".agents/skills").join(name).join("SKILL.md");
-        if path.exists() && !overwrite {
-            println!("exists    {} (left alone)", path.display());
-            continue;
-        }
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&path, contents)?;
-        println!("synced    {}", path.display());
-    }
-    Ok(())
-}
-
-fn write_canonical_agent_contract(root: &Path) -> io::Result<()> {
-    fs::write(root.join("AGENTS.md"), AGENT_CONTRACT_BASE)
-}
-
-#[derive(Debug)]
-struct RelocationEntry {
-    relative: PathBuf,
-    is_directory: bool,
-}
-
-fn relocation_entries(root: &Path) -> io::Result<Vec<RelocationEntry>> {
-    fn visit(root: &Path, directory: &Path, entries: &mut Vec<RelocationEntry>) -> io::Result<()> {
-        let mut children = fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
-        children.sort_by_key(std::fs::DirEntry::file_name);
-        for child in children {
-            let path = child.path();
-            let relative = path
-                .strip_prefix(root)
-                .map_err(io::Error::other)?
-                .to_path_buf();
-            let kind = child.file_type()?;
-            if kind.is_dir() {
-                entries.push(RelocationEntry {
-                    relative,
-                    is_directory: true,
-                });
-                visit(root, &path, entries)?;
-            } else if kind.is_file() {
-                entries.push(RelocationEntry {
-                    relative,
-                    is_directory: false,
-                });
-            } else {
-                return Err(io::Error::other(format!(
-                    "{} is neither a file nor a directory",
-                    path.display()
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    let mut entries = Vec::new();
-    visit(root, root, &mut entries)?;
-    Ok(entries)
-}
-
-fn preflight_skill_relocation(
-    source_root: &Path,
-    destination_root: &Path,
-    entries: &[RelocationEntry],
-) -> io::Result<()> {
-    for entry in entries {
-        let source = source_root.join(&entry.relative);
-        let destination = destination_root.join(&entry.relative);
-        if !destination.exists() {
-            continue;
-        }
-        let metadata = fs::symlink_metadata(&destination)?;
-        let agrees = if entry.is_directory {
-            metadata.is_dir()
-        } else {
-            metadata.is_file() && fs::read(&source)? == fs::read(&destination)?
-        };
-        if !agrees {
-            return Err(io::Error::other(format!(
-                "legacy skill path {} conflicts with {}; resolve the two copies before retrying",
-                source.display(),
-                destination.display()
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn copy_legacy_skills(
-    source_root: &Path,
-    destination_root: &Path,
-    entries: &[RelocationEntry],
-) -> io::Result<()> {
-    for entry in entries {
-        let destination = destination_root.join(&entry.relative);
-        if entry.is_directory {
-            fs::create_dir_all(&destination)?;
-            continue;
-        }
-        if destination.exists() {
-            continue;
-        }
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::copy(source_root.join(&entry.relative), destination)?;
-    }
-    Ok(())
 }
 
 /// Validate one Project's repository.
@@ -1365,7 +1033,7 @@ fn validate_agent_contract(root: &Path, errors: &mut Vec<Finding>, warnings: &mu
     if agents != AGENT_CONTRACT_BASE {
         errors.push(Finding::at(
             agents_path,
-            "AGENTS.md must match the canonical contract; run `navigator project repository sync-skills`",
+            "AGENTS.md must match the canonical contract in Navigator's own repository root",
         ));
     }
     let _ = warnings;
@@ -1421,7 +1089,8 @@ fn validate_manifest(root: &Path, errors: &mut Vec<Finding>, warnings: &mut Vec<
 ///
 /// So: no `.agents/` directory, no findings — a repository that has not
 /// adopted agent tooling is not failed for it. With one, every skill in the
-/// catalog is required, and `sync-skills` is how a repository gets them.
+/// catalog is required, copied byte-for-byte from Navigator's own
+/// `.agents/skills/`.
 ///
 /// This only reaches a repository when it bumps the validate action's pin, so
 /// adoption stays staged rather than turning the fleet red at once.
@@ -1436,16 +1105,13 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
             Ok(contents) if contents == *canonical => {}
             Ok(_) => errors.push(Finding::at(
                 &path,
-                format!(
-                    "synced skill `{name}` has drifted from the canonical copy; \
-                     run `navigator project repository sync-skills`"
-                ),
+                format!("synced skill `{name}` has drifted from the canonical copy"),
             )),
             Err(_) => errors.push(Finding::at(
                 &path,
                 format!(
                     "this repository has an `.agents/` directory but is missing synced skill \
-                     `{name}`; run `navigator project repository sync-skills`"
+                     `{name}`"
                 ),
             )),
         }
@@ -2222,69 +1888,10 @@ fn lint_project_template(
     }
 }
 
-/// Filename stem for the scaffolded placeholder. A Project template's code is
-/// already scoped to that Project by `template.project_id` (ENG-693), so the
-/// stem carries no Project-code prefix — it only has to be unique within this
-/// one repository, which `lint_project_template`'s `declared_codes` map
-/// enforces.
-fn placeholder_template_stem() -> &'static str {
-    "onboarding"
-}
-
-fn placeholder_template(stem: &str) -> String {
-    [
-        "---\n",
-        "kind: onboarding\n",
-        "title: Onboarding letter\n",
-        "respondent_type: entity\n",
-        "code: ",
-        stem,
-        "\n",
-        "jurisdiction: NV\n",
-        "confidential: true\n",
-        "questionnaire:\n",
-        "  BEGIN:\n",
-        "    _: END\n",
-        "  END: {}\n",
-        "workflow:\n",
-        "  BEGIN:\n",
-        "    intake_submitted: lawyer_review\n",
-        "  lawyer_review:\n",
-        "    approved: END\n",
-        "    rejected: END\n",
-        "  END: {}\n",
-        "---\n",
-        "\n",
-        "Replace this placeholder with the notation this Project actually uses.\n",
-    ]
-    .concat()
-}
-
-fn readme(project_code: &str) -> String {
-    format!(
-        "# {project_code}\n\n\
-         This repository holds source-only material for Project `{project_code}`.\n\n\
-         Notation templates live under `templates/`, and application workspaces live under `apps/<app>/`.\n\n\
-         The repository name *is* the Project code. Nothing in here declares it, so nothing can disagree with it.\n\n\
-         Each app name comes from its directory and builds for `/app/projects/{project_code}/<app>/`.\n\n\
-         `apps/` is not part of that URL.\n\n\
-         A root `portal/` is also accepted while repositories move it to `apps/portal/`.\n\n\
-         Navigator imports each direct `templates/<code>.md` file at the current commit.\n\n\
-         It preserves that commit SHA and the template body's content hash as provenance.\n\n\
-         Do not commit client uploads, answers, generated documents, secrets, dependencies, or build output.\n\n\
-         Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
-         Run `navigator project gate` from this directory before opening a pull request.\n"
-    )
-}
-
 /// The one `AGENTS.md` every Project repository carries. Project-specific
 /// coordinates belong in `navigator.yaml` and Navigator's live Project row,
 /// not in checked-in agent instructions.
 const AGENT_CONTRACT_BASE: &str = include_str!("agent_contract.md");
-
-fn agents(_project_code: &str) -> String {
-    AGENT_CONTRACT_BASE.to_owned()
-}
 
 /// The pinned publish action a Project repository's CD workflow calls.
 const PROJECT_PUBLISH_WORKFLOW: &str =
@@ -2316,12 +1923,6 @@ jobs:
 "
     )
 }
-
-/// Hand-copied Project `ci.yml` files from the Python-gate era are this long.
-/// Scaffold will not replace one unless `--replace-gate` is passed, because
-/// replacing it drops the named jobs (`lint`, `verify`, `notation`) a ruleset
-/// or a human may still be looking at.
-pub(crate) const HAND_COPIED_GATE_LINES: usize = 268;
 
 /// The thin `cd.yml` caller for Navigator's reusable publisher.
 ///
@@ -2359,12 +1960,11 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        agents, cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
-        placeholder_template, repository_name, retired_workflow_refused, scaffold,
-        validate_cd_workflow, validate_github_path, validate_layout, validate_workflow, workflow,
-        Finding, AGENT_CONTRACT_BASE, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE,
-        FINAL_RETIRED_WORKFLOW_RELEASE, PROJECT_MANIFEST, RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW,
-        SYNCED_SKILLS, WORKFLOW,
+        cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
+        repository_name, retired_workflow_refused, validate_cd_workflow, validate_github_path,
+        validate_layout, validate_workflow, workflow, Finding, AGENT_CONTRACT_BASE, ALLOWED_ROOTS,
+        CD_WORKFLOW, ENTITY_CODE, FINAL_RETIRED_WORKFLOW_RELEASE, PROJECT_MANIFEST,
+        RETIRED_CD_WORKFLOW, RETIRED_WORKFLOW, SYNCED_SKILLS, WORKFLOW,
     };
     use crate::projects::manifest::Manifest;
     use std::fs;
@@ -2411,7 +2011,7 @@ mod tests {
         std::fs::write(root.join("README.md"), "# fixture\n").unwrap();
         std::fs::write(root.join(WORKFLOW), workflow(FIXTURE_PIN)).unwrap();
         std::fs::write(root.join(CD_WORKFLOW), cd_workflow(FIXTURE_PIN)).unwrap();
-        std::fs::write(root.join("AGENTS.md"), agents("acme")).unwrap();
+        std::fs::write(root.join("AGENTS.md"), AGENT_CONTRACT_BASE).unwrap();
         let status = std::process::Command::new("git")
             .args(["init", "--quiet"])
             .current_dir(root)
@@ -2425,23 +2025,6 @@ mod tests {
         let mut warnings = Vec::new();
         validate_layout(root, &mut errors, &mut warnings);
         errors.into_iter().map(|error| error.message).collect()
-    }
-
-    #[test]
-    fn scaffold_gate_hint_does_not_echo_the_cli_root() {
-        let src = include_str!("repository.rs");
-        let production = src
-            .split("#[cfg(test)]")
-            .next()
-            .expect("production source precedes the test module");
-        assert!(
-            production.contains("Check with: navigator project gate"),
-            "the post-scaffold hint must name the gate command"
-        );
-        assert!(
-            !production.contains("repository gate {}"),
-            "echoing the CLI root trips CodeQL cleartext-logging because Command also carries Secrets"
-        );
     }
 
     #[test]
@@ -2691,7 +2274,7 @@ jobs:
     fn a_reworded_contract_is_reported_as_an_error() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
-        let reworded = agents("acme").replace(
+        let reworded = AGENT_CONTRACT_BASE.replace(
             "When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team",
             "When Navigator's CLI is missing or wrong, just work around it",
         );
@@ -2704,8 +2287,7 @@ jobs:
             errors
                 .iter()
                 .any(|finding| finding.path.ends_with("AGENTS.md")
-                    && finding.message.contains("canonical contract")
-                    && finding.message.contains("sync-skills")),
+                    && finding.message.contains("canonical contract")),
             "{errors:?}"
         );
         assert!(warnings.is_empty(), "{warnings:?}");
@@ -2729,30 +2311,6 @@ jobs:
             "{errors:?}"
         );
         assert!(warnings.is_empty(), "{warnings:?}");
-    }
-
-    #[test]
-    fn scaffold_uses_identical_agents_bytes_for_every_project() {
-        let first = tempfile::tempdir().unwrap();
-        let second = tempfile::tempdir().unwrap();
-        scaffold(
-            first.path(),
-            "first-project",
-            FIXTURE_PIN,
-            "staging.neonlaw.com",
-            false,
-        );
-        scaffold(
-            second.path(),
-            "second-project",
-            FIXTURE_PIN,
-            "staging.neonlaw.com",
-            false,
-        );
-        assert_eq!(
-            fs::read_to_string(first.path().join("AGENTS.md")).unwrap(),
-            fs::read_to_string(second.path().join("AGENTS.md")).unwrap()
-        );
     }
 
     /// `AGENTS.md` is the contract, so a `CLAUDE.md` beside it is a retired
@@ -2813,8 +2371,8 @@ jobs:
             );
             assert!(mirrored[0].path.ends_with(mirror), "{mirrored:?}");
             assert!(
-                mirrored[0].message.contains("sync-skills"),
-                "the finding must name how the catalog is repopulated: {mirrored:?}"
+                mirrored[0].message.contains(".agents/skills/"),
+                "the finding must name the canonical catalog: {mirrored:?}"
             );
         }
     }
@@ -2919,8 +2477,7 @@ jobs:
         assert!(
             found
                 .iter()
-                .any(|finding| finding.contains("canonical contract")
-                    && finding.contains("sync-skills")),
+                .any(|finding| finding.contains("canonical contract")),
             "{found:?}"
         );
     }
@@ -3275,86 +2832,29 @@ jobs:
         }
     }
 
-    /// The default pin is empty, or it is a release tag — never a
-    /// version-shaped string this build merely happens to carry.
+    /// The default `--action-version` pin `ops github setup` falls back to is
+    /// empty, or it is a release tag — never a version-shaped string this
+    /// build merely happens to carry.
     ///
     /// This is the guard that makes the invariant structural rather than
     /// asserted once: a hard-coded pin cannot be checked by anything, because
     /// it is correct on the day it is typed and nothing revisits it, while
     /// this assertion runs on every build. `cargo test` itself is the "cannot
     /// vouch for it" case — it bakes neither a runtime nor a build-time
-    /// `NAVIGATOR_RELEASE_TAG` — so `published_cli_version()` is empty here,
-    /// and `the_scaffold_refuses_a_pin_that_is_not_a_release_tag` covers what
-    /// `scaffold` does with that. This test is what a release CLI build, or
-    /// one built with `NAVIGATOR_RELEASE_TAG` set, has to satisfy instead.
+    /// `NAVIGATOR_RELEASE_TAG` — so `published_cli_version()` is empty here.
+    /// This test is what a release CLI build, or one built with
+    /// `NAVIGATOR_RELEASE_TAG` set, has to satisfy instead.
     #[test]
-    fn the_scaffold_default_pin_is_a_release_tag_or_empty() {
+    fn the_default_action_version_pin_is_a_release_tag_or_empty() {
         let default = crate::published_cli_version();
         if default.is_empty() {
             return;
         }
         assert!(
             is_release_tag(default),
-            "the scaffold would emit `{default}`, which is not an exact release tag"
+            "the default action-version pin would be `{default}`, which is not an exact release tag"
         );
         assert_eq!(findings(&workflow(default)), Vec::<String>::new());
-    }
-
-    /// A pin the gate could never resolve is refused where the file is
-    /// written.
-    ///
-    /// `validate_workflow` cannot catch a version-shaped-but-unpublished pin:
-    /// it holds the pin to the *shape* of a release tag, which `main` fails
-    /// but a plausible-looking version that was never published passes. So
-    /// the shape rule is enforced at the command, before a Project repository
-    /// carries the result — and an empty default (this build cannot vouch for
-    /// its own version) is refused the same way as an explicit `main`.
-    #[test]
-    fn the_scaffold_refuses_a_pin_that_is_not_a_release_tag() {
-        for refused in ["main", "latest", ""] {
-            let root = tempfile::tempdir().unwrap();
-            scaffold(
-                root.path(),
-                "example-project",
-                refused,
-                "staging.neonlaw.com",
-                false,
-            );
-            assert!(
-                !root.path().join(WORKFLOW).exists(),
-                "`{refused}` was accepted and a gate was written"
-            );
-            assert!(
-                !root.path().join("README.md").exists(),
-                "`{refused}` was refused only after writing other files"
-            );
-        }
-    }
-
-    /// A pin surrounded by whitespace is trimmed before it is either checked
-    /// or written, rather than sailing past the shape check (which trims
-    /// internally) and reaching the generated `uses:`/`version:` lines intact
-    /// — which would corrupt a ref that the check had just approved.
-    #[test]
-    fn the_scaffold_trims_the_pin_before_checking_and_writing() {
-        let root = tempfile::tempdir().unwrap();
-        scaffold(
-            root.path(),
-            "example-project",
-            " 26.8.23 ",
-            "staging.neonlaw.com",
-            false,
-        );
-        let generated = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
-        assert!(
-            generated.contains(
-                "uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23"
-            ),
-            "{generated}"
-        );
-        let manifest = std::fs::read_to_string(root.path().join(PROJECT_MANIFEST)).unwrap();
-        assert!(manifest.contains("name: example-project"), "{manifest}");
-        assert!(manifest.contains("host: staging.neonlaw.com"), "{manifest}");
     }
 
     /// `Y010`: the mark with a corporate suffix is an entity claim, and the
@@ -3424,10 +2924,30 @@ jobs:
     fn lint_project_template_reports_y010_with_the_line_and_the_spelling() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("onboarding.md");
-        let template = placeholder_template("onboarding").replace(
-            "Replace this placeholder with the notation this Project actually uses.",
-            "This letter engages Neon Law, Inc. (the \"Firm\").",
-        );
+        let template = concat!(
+            "---\n",
+            "kind: onboarding\n",
+            "title: Onboarding letter\n",
+            "respondent_type: entity\n",
+            "code: onboarding\n",
+            "jurisdiction: NV\n",
+            "confidential: true\n",
+            "questionnaire:\n",
+            "  BEGIN:\n",
+            "    _: END\n",
+            "  END: {}\n",
+            "workflow:\n",
+            "  BEGIN:\n",
+            "    intake_submitted: lawyer_review\n",
+            "  lawyer_review:\n",
+            "    approved: END\n",
+            "    rejected: END\n",
+            "  END: {}\n",
+            "---\n",
+            "\n",
+            "This letter engages Neon Law, Inc. (the \"Firm\").\n",
+        )
+        .to_string();
         let line = template
             .lines()
             .position(|line| line.contains("Neon Law, Inc."))
@@ -3449,26 +2969,6 @@ jobs:
             "{messages:?}"
         );
         assert!(warnings.is_empty(), "{warnings:?}");
-    }
-
-    /// The scaffolded placeholder names no entity, so a fresh Project
-    /// repository does not start out failing its own gate.
-    #[test]
-    fn the_scaffolded_placeholder_template_carries_no_y010() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("onboarding.md");
-        std::fs::write(&path, placeholder_template("onboarding")).unwrap();
-
-        let mut errors: Vec<Finding> = Vec::new();
-        let mut warnings: Vec<Finding> = Vec::new();
-        let mut declared = std::collections::BTreeMap::new();
-        lint_project_template(&path, &[], &mut declared, &mut errors, &mut warnings);
-        assert!(
-            errors
-                .iter()
-                .all(|error| !error.message.starts_with(ENTITY_CODE)),
-            "{errors:?}"
-        );
     }
 
     /// The generated CD caller passes its own structural validation, the same

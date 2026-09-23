@@ -4,9 +4,8 @@ description: >
   How a Project portal is allowed to look: it wears `@neon-law-source-code/navigator-ux` as shipped — the Neon Law teal,
   `NavigatorShell` with `NavigatorNavbar` and `NavigatorFooter`, and a way back to the matter show page — and it never
   repaints the palette or hand-rolls the frame. Trigger whenever a task touches a portal's styling, colours, header,
-  footer, navigation, or page frame, and before adding any stylesheet to `portal/src/styles/`. Synced verbatim into
-  every Project repository's `.agents/skills/` by `navigator project repository sync-skills`; this canonical copy lives
-  in Navigator's own `.agents/skills/`.
+  footer, navigation, or page frame, and before adding any stylesheet to `portal/src/styles/`. Kept identical, byte for
+  byte, in every Project repository's `.agents/skills/`; this canonical copy lives in Navigator's own `.agents/skills/`.
 ---
 
 # The portal wears the library, unmodified

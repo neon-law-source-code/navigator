@@ -300,30 +300,31 @@ and MCP paths, which provision both surfaces synchronously as part of opening.
 
 ### Populate the repository
 
-Clone the now-existing empty repository, then generate its shell:
+Clone the now-existing empty repository, then build its shell by hand: copy `AGENTS.md` and `.agents/skills/` from
+Navigator's own repository root, write `README.md` and a nested `navigator.yaml` naming this Project and host, and add a
+starting `templates/<code>.md`. Then reconcile the two generated workflows — `.github/workflows/ci.yml` (the thin CI
+caller) and `.github/workflows/cd.yml` (the portal-publish caller):
 
 ```bash
-navigator project repository scaffold <code> --dir . --action-version <YY.M.D>
+navigator ops github setup <owner>/<code> --action-version <YY.M.D>
 ```
 
-`scaffold` is idempotent. It writes `README.md`, `AGENTS.md`, `tests/README.md`, and two workflows —
-`.github/workflows/ci.yml` (the thin CI caller) and `.github/workflows/cd.yml` (the portal-publish caller). It does not
-write `portal/`; that only exists once a client-facing application is built. Pass `--action-version` explicitly rather
-than relying on a default, which only resolves from a real release build.
+This does not write `portal/`; that only exists once a client-facing application is built. Pass `--action-version`
+explicitly rather than relying on a default, which only resolves from a real release build.
 
 Commit and push. That push is what makes the CI gate live on the new repository.
 
 ---
 
-Run `scaffold` against the freshly cloned repository and show the room the files it writes. Commit and push before
+Build the shell against the freshly cloned repository and show the room the files it carries. Commit and push before
 moving on — the CI gate does not exist on the repository until that push lands.
 
 ### Stage a document and sync it
 
-`scaffold` does not write the repository's `documents/` directory. It is the root-level document surface in every
-Project repository, alongside `apps/` and `templates/`, and it holds committed YAML pointers while acting as temporary
-staging, not a second document store. Git keeps the pointer; Navigator keeps the bytes. Drop a local file below it, list
-what a sync would do, then run it:
+The repository shell above does not write `documents/`. It is the root-level document surface in every Project
+repository, alongside `apps/` and `templates/`, and it holds committed YAML pointers while acting as temporary staging,
+not a second document store. Git keeps the pointer; Navigator keeps the bytes. Drop a local file below it, list what a
+sync would do, then run it:
 
 ```bash
 navigator site sync --dry-run
@@ -402,8 +403,8 @@ re-download, is what makes a repeated `pull` cheap.
 ### The portal is a separate, later decision
 
 Not every Project needs a client-facing application. When one does, its `portal/` is hand-built in the `vibe-react` lane
-against a pinned `@neon-law/ux` release — `scaffold` deliberately leaves it out, so `validate` can tell "no portal yet"
-from "portal exists" without ambiguity.
+against a pinned `@neon-law/ux` release — the shell above deliberately leaves it out, so `validate` can tell "no portal
+yet" from "portal exists" without ambiguity.
 
 ---
 

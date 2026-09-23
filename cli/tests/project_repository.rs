@@ -1,10 +1,15 @@
-//! End-to-end tests for the one Project repository scaffold and validator.
+//! End-to-end tests for `navigator project gate` against a Project repository.
 //!
 //! One repository per Project code, holding notation templates under
-//! `templates/` and application source under `apps/<app>/`. There is one
-//! scaffold and one validator for both. A legacy root `portal/` remains valid
-//! during the source-layout transition. The scaffold writes the versioned
-//! nested `navigator.yaml` manifest and the thin `ci.yml`/`cd.yml` callers.
+//! `templates/` and application source under `apps/<app>/`. There is one gate
+//! for both. A legacy root `portal/` remains valid during the source-layout
+//! transition.
+//!
+//! Nothing generates this shell anymore — `navigator project repository
+//! scaffold` and `sync-skills` are retired; a real repository builds it by
+//! hand (see `docs/project-repositories.md#a-repositorys-fixed-shell`). These
+//! tests build the same shell directly with [`write_repository_shell`] so the
+//! gate itself stays covered end to end.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,29 +24,210 @@ fn navigator() -> Command {
     command
 }
 
-/// The pin these fixtures scaffold with.
-///
-/// A literal, not this binary's own reported version: a `cargo test` build
-/// carries neither a runtime nor a build-time `NAVIGATOR_RELEASE_TAG`, so
-/// `scaffold`'s default is empty here and these tests are not the ones
-/// exercising that default — `the_scaffold_default_pin_is_a_release_tag_or_empty`
-/// and `the_scaffold_refuses_a_pin_that_is_not_a_release_tag` in
-/// `cli/src/projects/repository.rs` are.
+/// The pin these fixtures carry.
 const FIXTURE_PIN: &str = "26.8.23";
 
-fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
-    let result = navigator()
-        .args(["project", "repository", "scaffold", project_code, "--dir"])
-        .arg(dir)
-        .args([
-            "--action-version",
-            FIXTURE_PIN,
-            "--host",
-            "staging.neonlaw.com",
-        ])
-        .assert();
+const CODEOWNERS: &str = "# CODEOWNERS\n\n* @shicholas\n";
+const GITATTRIBUTES: &str = "* text=auto eol=lf\n";
+const DOCUMENTS_GITIGNORE: &str = "*\n!*/\n!*.yaml\n!.gitignore\n";
+
+/// The one `AGENTS.md` every Project repository carries — read from the same
+/// source `cli::projects::repository::AGENT_CONTRACT_BASE` embeds, so the
+/// fixture and the gate's own canonical copy can never drift apart.
+const AGENT_CONTRACT: &str = include_str!("../src/projects/agent_contract.md");
+
+/// Byte-exact copy of `AUTOMERGE_WORKFLOW_CONTENTS` in
+/// `cli/src/projects/repository.rs` — duplicated rather than imported, the
+/// same way the rest of this file's fixed strings do, since integration
+/// tests cannot reach a `pub(crate)` item.
+const AUTOMERGE_WORKFLOW_CONTENTS: &str = r#"name: automerge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  enable-automerge:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for the merge-queue App credentials
+        id: credentials
+        env:
+          APP_ID: ${{ secrets.AUTOMERGE_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_ID}" ] && [ -n "${APP_PRIVATE_KEY}" ]; then
+              echo "present=true" >> "${GITHUB_OUTPUT}"
+          else
+              echo "present=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Mint a merge-queue App token
+        id: app-token
+        if: steps.credentials.outputs.present == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMERGE_APP_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+      - name: Arm auto-merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+              echo "::notice::merge-queue App credentials absent — arming nothing, merge by hand"
+              exit 0
+          fi
+          gh pr merge --squash --auto "${PR_URL}"
+"#;
+
+/// The synced skill catalog every Project repository carries, named for the
+/// canonical copies under Navigator's own `.agents/skills/` (see
+/// `SYNCED_SKILLS` in `cli/src/projects/repository.rs`).
+const SYNCED_SKILL_NAMES: &[&str] = &[
+    "council",
+    "legal-council",
+    "client-council",
+    "human-readable",
+    "stay-in-repo",
+    "portal-chrome",
+    "server",
+];
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .canonicalize()
+        .expect("workspace root exists")
+}
+
+fn workflow(action_version: &str) -> String {
+    format!(
+        r"name: ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@{action_version}
+"
+    )
+}
+
+fn cd_workflow(action_version: &str) -> String {
+    format!(
+        r"name: cd
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  gate:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@{action_version}
+  publish:
+    needs: gate
+    uses: neon-law-source-code/navigator/.github/workflows/project-publish.yml@{action_version}
+",
+    )
+}
+
+fn placeholder_template() -> String {
+    [
+        "---\n",
+        "kind: onboarding\n",
+        "title: Onboarding letter\n",
+        "respondent_type: entity\n",
+        "code: onboarding\n",
+        "jurisdiction: NV\n",
+        "confidential: true\n",
+        "questionnaire:\n",
+        "  BEGIN:\n",
+        "    _: END\n",
+        "  END: {}\n",
+        "workflow:\n",
+        "  BEGIN:\n",
+        "    intake_submitted: lawyer_review\n",
+        "  lawyer_review:\n",
+        "    approved: END\n",
+        "    rejected: END\n",
+        "  END: {}\n",
+        "---\n",
+        "\n",
+        "Replace this placeholder with the notation this Project actually uses.\n",
+    ]
+    .concat()
+}
+
+/// Write the fixed Project-repository shell directly, matching
+/// `docs/project-repositories.md#a-repositorys-fixed-shell`. Does not touch
+/// git — see [`scaffold`] for the git-initialized form every other fixture in
+/// this file wants.
+fn write_repository_shell(dir: &Path, project_code: &str) {
+    fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+    fs::write(dir.join(".gitattributes"), GITATTRIBUTES).unwrap();
+    fs::write(dir.join(".github/CODEOWNERS"), CODEOWNERS).unwrap();
+    fs::write(
+        dir.join(".github/workflows/automerge.yml"),
+        AUTOMERGE_WORKFLOW_CONTENTS,
+    )
+    .unwrap();
+    fs::write(
+        dir.join("README.md"),
+        format!("# {project_code}\n\nSource-only material for this Project.\n"),
+    )
+    .unwrap();
+    fs::write(dir.join("AGENTS.md"), AGENT_CONTRACT).unwrap();
+    fs::write(dir.join(".github/workflows/ci.yml"), workflow(FIXTURE_PIN)).unwrap();
+    fs::write(
+        dir.join(".github/workflows/cd.yml"),
+        cd_workflow(FIXTURE_PIN),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("navigator.yaml"),
+        format!(
+            "version: {FIXTURE_PIN}\nproject:\n  host: staging.neonlaw.com\n  name: {project_code}\n"
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("templates")).unwrap();
+    fs::write(dir.join("templates/onboarding.md"), placeholder_template()).unwrap();
+    fs::create_dir_all(dir.join("documents")).unwrap();
+    fs::write(dir.join("documents/.gitignore"), DOCUMENTS_GITIGNORE).unwrap();
+    for name in SYNCED_SKILL_NAMES {
+        let source = workspace_root()
+            .join(".agents/skills")
+            .join(name)
+            .join("SKILL.md");
+        let contents = fs::read_to_string(&source)
+            .unwrap_or_else(|e| panic!("read {}: {e}", source.display()));
+        let dest = dir.join(".agents/skills").join(name).join("SKILL.md");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::write(dest, contents).unwrap();
+    }
+}
+
+fn scaffold(dir: &Path, project_code: &str) {
+    write_repository_shell(dir, project_code);
     init_git_repository(dir);
-    result
 }
 
 fn init_git_repository(dir: &Path) {
@@ -200,7 +386,7 @@ fn gate_as(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
 #[test]
 fn the_flat_manifest_shape_is_read_with_a_deprecation_warning() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::write(
         dir.path().join("navigator.yaml"),
         "host: staging.neonlaw.com\nproject: example-project\n",
@@ -216,7 +402,7 @@ fn the_flat_manifest_shape_is_read_with_a_deprecation_warning() {
 #[test]
 fn a_malformed_manifest_is_reported_without_template_cascade() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::write(
         dir.path().join("navigator.yaml"),
         "version: 26.9.14\nproject: [not, a, project]\n",
@@ -234,7 +420,7 @@ fn a_malformed_manifest_is_reported_without_template_cascade() {
 #[test]
 fn the_ci_ref_must_match_the_manifest_version() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let ci = dir.path().join(".github/workflows/ci.yml");
     let contents = fs::read_to_string(&ci).unwrap();
     fs::write(
@@ -265,10 +451,13 @@ fn write_portal(dir: &Path) {
     write_vite_workspace(dir, "portal");
 }
 
+/// The fixed shell — see [`write_repository_shell`] — is exactly what
+/// `docs/project-repositories.md#a-repositorys-fixed-shell` documents, and it
+/// passes its own gate.
 #[test]
-fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
+fn a_fresh_repository_shell_validates() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
 
     gate(dir.path())
         .success()
@@ -278,7 +467,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(dir.path().join("AGENTS.md").is_file());
     assert!(
         !dir.path().join("CLAUDE.md").exists(),
-        "the scaffold writes one contract file, and it is AGENTS.md"
+        "the shell carries one contract file, and it is AGENTS.md"
     );
     assert_eq!(
         fs::read_to_string(dir.path().join(".github/CODEOWNERS")).unwrap(),
@@ -294,7 +483,6 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(instructions.contains("The last four leave the firm."));
     assert!(instructions.contains("## Feedback"));
     assert!(instructions.contains("navigator project gate --ci"));
-    assert!(!instructions.contains("example-project"));
     assert!(dir.path().join("templates/onboarding.md").is_file());
     assert!(
         fs::read_to_string(dir.path().join("templates/onboarding.md"))
@@ -306,7 +494,6 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         fs::read_to_string(dir.path().join("documents/.gitignore")).unwrap(),
         "*\n!*/\n!*.yaml\n!.gitignore\n"
     );
-    assert!(!dir.path().join("templates/project_template.md").exists());
     assert_eq!(
         fs::read_to_string(dir.path().join(".gitattributes")).unwrap(),
         "* text=auto eol=lf\n"
@@ -315,7 +502,6 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(workflow.contains("project-gate.yml@"));
     assert!(workflow.contains("on:\n  pull_request:"));
     assert!(!workflow.contains("push:"));
-    assert!(!workflow.contains("project_repository: true"));
     let workflow_yaml: serde_yaml::Value =
         serde_yaml::from_str(&workflow).expect("scaffolded ci.yml parses as YAML");
     assert_eq!(
@@ -327,10 +513,6 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         "the caller must carry no `with:` block; the reusable workflow reads project/host from navigator.yaml:\n{workflow}"
     );
     let cd = fs::read_to_string(dir.path().join(".github/workflows/cd.yml")).unwrap();
-    assert!(
-        !cd.contains("TBD"),
-        "the publish workflow is still a placeholder:\n{cd}"
-    );
     assert!(cd.contains("id-token: write"));
     assert!(
         cd.contains("neon-law-source-code/navigator/.github/workflows/project-publish.yml@26.8.23")
@@ -342,36 +524,20 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
 
     // Neither retired manifest is written. `mount.json` and `navigator.toml`
-    // declared a repository's own coordinates and every reader of them is gone;
-    // the scaffold must not bring either back.
+    // declared a repository's own coordinates and every reader of them is gone.
     assert!(!dir.path().join("navigator.toml").exists());
     assert!(!dir.path().join("mount.json").exists());
-
-    // Idempotent: a second run leaves every existing file alone and still validates.
-    fs::write(
-        dir.path().join(".gitattributes"),
-        "# repository preference\n",
-    )
-    .unwrap();
-    scaffold(dir.path(), "example-project")
-        .success()
-        .stdout(str::contains("left alone"));
-    assert_eq!(
-        fs::read_to_string(dir.path().join(".gitattributes")).unwrap(),
-        "# repository preference\n"
-    );
-    gate(dir.path()).success();
 }
 
-/// ENG-675 reproduction 1: a freshly scaffolded repository's `.github/` tree
-/// is closed to CODEOWNERS and the two thin workflow callers. Every one of
-/// the five mutations below used to exit `0` against the CLI at
+/// ENG-675 reproduction 1: a freshly built repository's `.github/` tree is
+/// closed to CODEOWNERS and the two thin workflow callers. Every one of the
+/// five mutations below used to exit `0` against the CLI at
 /// `a63c7a91aafa5159bfb5b4cf507537940d030db5`; each is now a real-CLI
 /// regression against the fix.
 #[test]
 fn the_gate_refuses_an_extra_github_file() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::write(dir.path().join(".github/extra.txt"), "scratch\n").unwrap();
 
     gate(dir.path())
@@ -386,7 +552,7 @@ fn the_gate_refuses_an_extra_github_file() {
 #[test]
 fn the_gate_refuses_an_arbitrary_replacement_cd_workflow() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::write(
         dir.path().join(".github/workflows/cd.yml"),
         "name: cd\n\
@@ -407,7 +573,7 @@ fn the_gate_refuses_an_arbitrary_replacement_cd_workflow() {
 #[test]
 fn the_gate_refuses_an_extra_privileged_ci_job() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let ci = dir.path().join(".github/workflows/ci.yml");
     let contents = fs::read_to_string(&ci).unwrap();
     fs::write(
@@ -439,7 +605,7 @@ fn the_gate_refuses_an_extra_privileged_ci_job() {
 #[test]
 fn a_fleet_representative_automerge_workflow_gates_green() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::write(
         dir.path().join(".github/workflows/automerge.yml"),
         "name: automerge\n\
@@ -466,11 +632,11 @@ fn a_fleet_representative_automerge_workflow_gates_green() {
 /// absent. (The local, non-`--ci` gate self-repairs it instead — see
 /// `project_gate_rewrites_a_drifted_automerge_workflow` and
 /// `a_fleet_representative_automerge_workflow_gates_green`, which relies on
-/// the file `scaffold` already writes.)
+/// the file the shell already carries.)
 #[test]
 fn the_ci_gate_requires_the_automerge_workflow() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::remove_file(dir.path().join(".github/workflows/automerge.yml")).unwrap();
 
     navigator()
@@ -488,7 +654,7 @@ fn the_ci_gate_requires_the_automerge_workflow() {
 #[test]
 fn project_gate_rewrites_a_drifted_automerge_workflow() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let path = dir.path().join(".github/workflows/automerge.yml");
     let canonical = fs::read_to_string(&path).unwrap();
     fs::write(&path, "name: automerge\n# hand-edited\n").unwrap();
@@ -502,7 +668,7 @@ fn project_gate_rewrites_a_drifted_automerge_workflow() {
 #[test]
 fn gate_ci_reports_a_drifted_automerge_workflow_without_writing() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let path = dir.path().join(".github/workflows/automerge.yml");
     fs::write(&path, "name: automerge\n# hand-edited\n").unwrap();
 
@@ -525,7 +691,7 @@ fn gate_ci_reports_a_drifted_automerge_workflow_without_writing() {
 #[test]
 fn the_gate_refuses_pull_request_target() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let ci = dir.path().join(".github/workflows/ci.yml");
     let contents = fs::read_to_string(&ci).unwrap();
     fs::write(
@@ -546,7 +712,7 @@ fn the_gate_refuses_pull_request_target() {
 #[test]
 fn the_gate_refuses_a_with_block_on_the_ci_caller() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let ci = dir.path().join(".github/workflows/ci.yml");
     let contents = fs::read_to_string(&ci).unwrap();
     fs::write(
@@ -569,7 +735,7 @@ fn the_gate_refuses_a_with_block_on_the_ci_caller() {
 #[test]
 fn the_gate_warns_on_a_retired_workflow_filename() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let ci = dir.path().join(".github/workflows/ci.yml");
     fs::rename(&ci, dir.path().join(".github/workflows/gate.yml")).unwrap();
 
@@ -585,7 +751,7 @@ fn the_gate_warns_on_a_retired_workflow_filename() {
 #[test]
 fn the_gate_reports_a_yaml_extension_workflow_precisely() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::rename(
         dir.path().join(".github/workflows/ci.yml"),
         dir.path().join(".github/workflows/ci.yaml"),
@@ -601,7 +767,7 @@ fn the_gate_reports_a_yaml_extension_workflow_precisely() {
 #[test]
 fn gate_without_oidc_leaves_the_live_row_alone() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     navigator()
         .current_dir(dir.path())
         .args(["project", "gate", "--ci"])
@@ -618,7 +784,7 @@ fn gate_without_oidc_leaves_the_live_row_alone() {
 #[test]
 fn gate_ci_malformed_pr_ref_leaves_the_live_row_alone() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     navigator()
         .current_dir(dir.path())
         .args(["project", "gate", "--ci"])
@@ -634,24 +800,24 @@ fn gate_ci_malformed_pr_ref_leaves_the_live_row_alone() {
 /// All three shapes validate: templates only, a portal only, and both.
 #[test]
 fn templates_only_a_portal_only_and_both_all_validate() {
-    // Templates only — what the scaffold produces.
+    // Templates only — what the shell carries.
     let templates_only = TempDir::new().unwrap();
-    scaffold(templates_only.path(), "example-project").success();
+    scaffold(templates_only.path(), "example-project");
     gate(templates_only.path())
         .success()
         .stdout(str::contains("1 template(s), 0 application(s)"));
 
     // Both halves in one repository, which is the point of the collapse.
     let both = TempDir::new().unwrap();
-    scaffold(both.path(), "example-project").success();
+    scaffold(both.path(), "example-project");
     write_portal(both.path());
     gate(both.path())
         .success()
         .stdout(str::contains("1 template(s), 1 application(s)"));
 
-    // Scaffold now writes one placeholder template; a portal is extra.
+    // The shell carries one placeholder template; a portal is extra.
     let portal_only = TempDir::new().unwrap();
-    scaffold(portal_only.path(), "example-project").success();
+    scaffold(portal_only.path(), "example-project");
     write_portal(portal_only.path());
     gate(portal_only.path())
         .success()
@@ -661,7 +827,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
 #[test]
 fn a_nested_template_is_refused_in_a_project_repository() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "acme").success();
+    scaffold(dir.path(), "acme");
     let flat = dir.path().join("templates/onboarding.md");
     let nested = dir.path().join("templates/neon_law/onboarding.md");
     fs::create_dir_all(nested.parent().unwrap()).unwrap();
@@ -684,7 +850,7 @@ fn a_nested_template_is_refused_in_a_project_repository() {
 #[test]
 fn a_template_filename_needs_no_project_code_prefix() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "acme").success();
+    scaffold(dir.path(), "acme");
     let path = dir.path().join("templates/onboarding.md");
     let body = fs::read_to_string(&path)
         .unwrap()
@@ -699,7 +865,7 @@ fn a_template_filename_needs_no_project_code_prefix() {
 #[test]
 fn a_template_code_must_equal_the_filename_stem() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "acme").success();
+    scaffold(dir.path(), "acme");
     let path = dir.path().join("templates/onboarding.md");
     let body = fs::read_to_string(&path)
         .unwrap()
@@ -719,7 +885,7 @@ fn a_template_code_must_equal_the_filename_stem() {
 #[test]
 fn direct_apps_are_discovered_and_each_is_validated() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     write_vite_workspace(dir.path(), "apps/portal");
     write_vite_workspace(dir.path(), "apps/exchange");
     let exchange = dir.path().join("apps").join("exchange");
@@ -759,7 +925,7 @@ fn direct_apps_are_discovered_and_each_is_validated() {
 #[test]
 fn a_legacy_root_portal_and_new_apps_can_transition_together() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     write_portal(dir.path());
     write_vite_workspace(dir.path(), "apps/exchange");
 
@@ -771,7 +937,7 @@ fn a_legacy_root_portal_and_new_apps_can_transition_together() {
 #[test]
 fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     write_portal(dir.path());
     write_vite_workspace(dir.path(), "apps/portal");
 
@@ -780,44 +946,6 @@ fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
         .code(1)
         .stderr(str::contains("apps/portal"))
         .stderr(str::contains("claim the same application route"));
-}
-
-/// The scaffold writes one contract file and no harness mirror.
-///
-/// `AGENTS.md` is read directly by every harness pointed at the tree, so there
-/// is nothing to keep in sync and nothing to materialise. That matters most on
-/// Windows: the mirror this replaced was a symlink on Unix and a copy
-/// elsewhere, and a clone without `core.symlinks` received a nine-byte stub
-/// holding its own target path — silently, with a clean `git status`. A file
-/// that is only ever a file cannot fail that way. The release archive for
-/// Windows compiles this path, so this is also the test that runs it.
-#[test]
-fn the_scaffold_writes_one_contract_and_no_mirror() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-
-    let agents = fs::read(dir.path().join("AGENTS.md")).unwrap();
-    assert!(!agents.is_empty());
-    assert!(
-        !dir.path().join("CLAUDE.md").exists(),
-        "a CLAUDE.md mirror is what this layout retired"
-    );
-}
-
-/// `scaffold` leaves an existing `AGENTS.md` alone rather than overwriting the
-/// contract a repository already wrote for itself.
-#[test]
-fn the_scaffold_leaves_an_existing_agents_md_alone() {
-    let dir = TempDir::new().unwrap();
-    let hand_written = "# A contract this repository already had\n";
-    fs::write(dir.path().join("AGENTS.md"), hand_written).unwrap();
-
-    scaffold(dir.path(), "example-project")
-        .success()
-        .stdout(str::contains("AGENTS.md (left alone)"));
-
-    let agents = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
-    assert_eq!(agents, hand_written);
 }
 
 /// ENG-674: `verify` no longer generates a per-application bash loop — it
@@ -850,7 +978,7 @@ fn the_verify_job_installs_lints_typechecks_tests_and_builds_through_the_cli() {
 #[test]
 fn an_application_directory_name_must_be_a_route_safe_slug() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     write_vite_workspace(dir.path(), "apps/Client_Exchange");
 
     gate(dir.path())
@@ -868,7 +996,7 @@ fn an_application_directory_name_must_be_a_route_safe_slug() {
 #[test]
 fn a_repository_carrying_neither_half_is_reported_and_not_failed() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let templates = dir.path().join("templates");
     if templates.exists() {
         fs::remove_dir_all(templates).unwrap();
@@ -884,7 +1012,7 @@ fn a_repository_carrying_neither_half_is_reported_and_not_failed() {
 #[test]
 fn a_repository_name_that_is_not_a_valid_project_code_is_refused() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
 
     gate_as(dir.path(), "Not_A_Code")
         .failure()
@@ -897,10 +1025,6 @@ fn a_repository_name_that_is_not_a_valid_project_code_is_refused() {
         .failure()
         .code(1)
         .stderr(str::contains("is not a valid Navigator Project code"));
-    scaffold(TempDir::new().unwrap().path(), "new")
-        .failure()
-        .code(2)
-        .stderr(str::contains("invalid Project code"));
 }
 
 /// A `portal/` that is not a Vite workspace is a failure, not a warning:
@@ -908,7 +1032,7 @@ fn a_repository_name_that_is_not_a_valid_project_code_is_refused() {
 #[test]
 fn a_portal_that_is_not_a_vite_workspace_is_refused() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::create_dir_all(dir.path().join("portal/src")).unwrap();
     fs::write(dir.path().join("portal/package.json"), "{}\n").unwrap();
 
@@ -924,7 +1048,7 @@ fn a_portal_that_is_not_a_vite_workspace_is_refused() {
 #[test]
 fn client_uploads_and_generated_output_are_refused() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::create_dir_all(dir.path().join("uploads")).unwrap();
     fs::write(dir.path().join("uploads/client-document.pdf"), "synthetic").unwrap();
     fs::create_dir_all(dir.path().join("target")).unwrap();
@@ -942,7 +1066,7 @@ fn client_uploads_and_generated_output_are_refused() {
 #[test]
 fn document_pointers_are_source_but_document_bytes_are_refused() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::create_dir_all(dir.path().join("documents/exhibits/2026-09-05")).unwrap();
     fs::write(
         dir.path()
@@ -995,7 +1119,7 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
 #[test]
 fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
@@ -1024,7 +1148,7 @@ fn gate_leaves_an_application_owned_templates_directory_alone() {
     // redden the required check on every repository carrying that shape. The
     // lane is the repository's own `templates/` root and nothing else.
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     // A real Vite application, since a bare directory trips the layout's
     // own workspace check before this rule is ever reached.
     let app = dir.path().join("apps/web");
@@ -1053,7 +1177,7 @@ fn gate_leaves_an_application_owned_templates_directory_alone() {
 #[test]
 fn gate_reports_a_tracked_raw_document_byte() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
@@ -1080,7 +1204,7 @@ fn gate_reports_a_tracked_raw_document_byte() {
 #[test]
 fn a_documents_gitignore_that_drops_the_deny_line_fails_under_ci() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let ignore = dir.path().join("documents/.gitignore");
     let drifted = "# Files never land, only pointers.\n!*/\n!*.yml\n!.gitignore\n";
     fs::write(&ignore, drifted).unwrap();
@@ -1100,7 +1224,7 @@ fn a_documents_gitignore_that_drops_the_deny_line_fails_under_ci() {
 #[test]
 fn project_gate_rewrites_a_drifted_documents_gitignore() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let ignore = dir.path().join("documents/.gitignore");
     fs::write(&ignore, "!*/\n!*.yml\n!.gitignore\n").unwrap();
 
@@ -1121,11 +1245,11 @@ fn project_gate_rewrites_a_drifted_documents_gitignore() {
 /// thing: `git ls-files --exclude-standard` honours a directory's own
 /// `.gitignore`, not only the root one. `tests/` is an allowed root a
 /// repository may create for its own source-level checks (LAW-49: the gate
-/// neither requires nor scaffolds one), so this test creates it itself.
+/// neither requires nor generates one), so this test creates it itself.
 #[test]
 fn gate_honours_a_nested_ignore_file() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::create_dir_all(dir.path().join("tests")).unwrap();
     fs::write(dir.path().join("tests/.gitignore"), "*.env\n").unwrap();
     let ignored = dir.path().join("tests/hidden.env");
@@ -1142,21 +1266,9 @@ fn gate_honours_a_nested_ignore_file() {
 }
 
 #[test]
-fn gate_refuses_a_scaffolded_tree_that_is_not_a_git_repository() {
+fn gate_refuses_a_repository_shell_that_is_not_a_git_repository() {
     let dir = TempDir::new().unwrap();
-    navigator()
-        .args(["project", "repository", "scaffold"])
-        .arg("example-project")
-        .args(["--dir"])
-        .arg(dir.path())
-        .args([
-            "--action-version",
-            FIXTURE_PIN,
-            "--host",
-            "staging.neonlaw.com",
-        ])
-        .assert()
-        .success();
+    write_repository_shell(dir.path(), "example-project");
 
     navigator()
         .current_dir(dir.path())
@@ -1176,112 +1288,6 @@ fn the_notation_repository_command_is_gone() {
         .failure();
 }
 
-fn sync_skills(dir: &Path) -> assert_cmd::assert::Assert {
-    navigator()
-        .args(["project", "repository", "sync-skills"])
-        .arg(dir)
-        .assert()
-}
-
-/// ENG-383: a Project repository can carry `.agents/skills/` without the
-/// layout gate refusing it as an unexpected root, and `sync-skills` is what
-/// populates it from Navigator's own compiled-in copies.
-#[test]
-fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-
-    sync_skills(dir.path())
-        .success()
-        .stdout(str::contains("synced"));
-
-    for skill in [
-        "council",
-        "legal-council",
-        "client-council",
-        "human-readable",
-        "stay-in-repo",
-        "project-pr-delivery",
-    ] {
-        let path = dir
-            .path()
-            .join(".agents/skills")
-            .join(skill)
-            .join("SKILL.md");
-        assert!(path.is_file(), "expected {} to exist", path.display());
-        assert!(!fs::read_to_string(&path).unwrap().is_empty());
-    }
-
-    gate(dir.path())
-        .success()
-        .stdout(str::contains("0 error(s)"));
-}
-
-/// ENG-836: `sync-skills` used to write into whatever directory it was
-/// handed with no admission check, so pointing it at a non-Project directory
-/// — for instance the Navigator repository's own root — overwrote that
-/// directory's own `AGENTS.md` and reached into its `.agents/skills`. It must
-/// refuse instead, loudly, and write nothing.
-#[test]
-fn sync_skills_refuses_a_non_project_directory() {
-    let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("README.md"), "# not a project\n").unwrap();
-
-    sync_skills(dir.path())
-        .failure()
-        .stderr(str::contains("not a Project repository"));
-
-    assert!(!dir.path().join("AGENTS.md").exists());
-    assert!(!dir.path().join(".agents").exists());
-}
-
-/// The sharpest instance of the bug ENG-836 is filed against: a directory
-/// carrying Navigator's own `AGENTS.md` — this repository's own operating
-/// contract — but no `navigator.yaml`, must be refused exactly the same way,
-/// and its existing `AGENTS.md` must survive byte-for-byte.
-#[test]
-fn sync_skills_refuses_a_directory_carrying_navigators_own_agents_md() {
-    let dir = TempDir::new().unwrap();
-    let navigator_agents_md =
-        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../AGENTS.md")).unwrap();
-    fs::write(dir.path().join("AGENTS.md"), &navigator_agents_md).unwrap();
-
-    sync_skills(dir.path())
-        .failure()
-        .stderr(str::contains("not a Project repository"));
-
-    assert_eq!(
-        fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
-        navigator_agents_md
-    );
-    assert!(!dir.path().join(".agents").exists());
-}
-
-#[test]
-fn scaffold_and_sync_keep_the_project_delivery_skill_canonical() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    let skill = dir
-        .path()
-        .join(".agents/skills/project-pr-delivery/SKILL.md");
-    let scaffolded = fs::read_to_string(&skill).expect("scaffolded delivery skill");
-    assert!(
-        scaffolded.contains("navigator project repository deliver"),
-        "{scaffolded}"
-    );
-
-    fs::write(&skill, "drifted\n").unwrap();
-    gate(dir.path()).failure().stderr(str::contains(
-        "synced skill `project-pr-delivery` has drifted",
-    ));
-
-    sync_skills(dir.path()).success();
-    assert_eq!(fs::read_to_string(&skill).unwrap(), scaffolded);
-    gate(dir.path())
-        .success()
-        .stdout(str::contains("0 error(s)"));
-}
-
 /// The harness-specific mirrors are refused by name, in one place, for every
 /// Project repository at once.
 ///
@@ -1294,7 +1300,7 @@ fn scaffold_and_sync_keep_the_project_delivery_skill_canonical() {
 #[test]
 fn gate_refuses_the_retired_agent_mirrors_by_name() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::write(dir.path().join("CLAUDE.md"), "AGENTS.md").unwrap();
     for mirror in [".claude", ".codex"] {
         let skill = dir.path().join(mirror).join("skills/council");
@@ -1315,8 +1321,7 @@ fn gate_refuses_the_retired_agent_mirrors_by_name() {
         .stderr(str::contains(
             "`.codex/` is a retired agent-instruction mirror",
         ))
-        .stderr(str::contains("`.agents/skills/` is the whole catalog"))
-        .stderr(str::contains("sync-skills"));
+        .stderr(str::contains("`.agents/skills/` is the whole catalog"));
 }
 
 /// The canonical pair is what a repository is meant to carry, so a checkout
@@ -1324,8 +1329,7 @@ fn gate_refuses_the_retired_agent_mirrors_by_name() {
 #[test]
 fn gate_accepts_the_canonical_contract_and_catalog() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    sync_skills(dir.path()).success();
+    scaffold(dir.path(), "example-project");
 
     assert!(dir.path().join("AGENTS.md").is_file());
     assert!(dir.path().join(".agents/skills").is_dir());
@@ -1337,7 +1341,7 @@ fn gate_accepts_the_canonical_contract_and_catalog() {
 #[test]
 fn gate_requires_the_canonical_codeowners_file() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     let path = dir.path().join(".github/CODEOWNERS");
 
     fs::remove_file(&path).unwrap();
@@ -1352,113 +1356,13 @@ fn gate_requires_the_canonical_codeowners_file() {
     ));
 }
 
-/// `sync-skills` overwrites rather than leaving an existing file alone (unlike
-/// `scaffold`) — the whole point is that the repository's copy stays
-/// identical to the canonical one, so re-running it is also how an operator
-/// clears the drift `validate` reports.
-#[test]
-fn sync_skills_overwrites_a_hand_edited_copy() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    sync_skills(dir.path()).success();
-
-    let path = dir.path().join(".agents/skills/council/SKILL.md");
-    let canonical = fs::read_to_string(&path).unwrap();
-    let agents = dir.path().join("AGENTS.md");
-    let canonical_agents = fs::read_to_string(&agents).unwrap();
-    fs::write(&path, "hand-edited drift").unwrap();
-    fs::write(&agents, "hand-edited contract drift\n").unwrap();
-
-    sync_skills(dir.path()).success();
-    assert_eq!(fs::read_to_string(&path).unwrap(), canonical);
-    assert_eq!(fs::read_to_string(&agents).unwrap(), canonical_agents);
-}
-
-#[test]
-fn sync_skills_relocates_legacy_skills_and_preserves_harness_state() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    let legacy = dir.path().join(".claude/skills/project-review");
-    fs::create_dir_all(legacy.join("references")).unwrap();
-    fs::write(legacy.join("SKILL.md"), "# Project review\n").unwrap();
-    fs::write(legacy.join("references/checklist.md"), "# Checklist\n").unwrap();
-    fs::write(dir.path().join(".claude/settings.local.json"), "{}\n").unwrap();
-
-    sync_skills(dir.path()).success();
-
-    let relocated = dir.path().join(".agents/skills/project-review");
-    assert_eq!(
-        fs::read_to_string(relocated.join("SKILL.md")).unwrap(),
-        "# Project review\n"
-    );
-    assert_eq!(
-        fs::read_to_string(relocated.join("references/checklist.md")).unwrap(),
-        "# Checklist\n"
-    );
-    assert!(!dir.path().join(".claude/skills").exists());
-    assert_eq!(
-        fs::read_to_string(dir.path().join(".claude/settings.local.json")).unwrap(),
-        "{}\n"
-    );
-}
-
-#[test]
-fn sync_skills_refuses_a_conflicting_destination_before_writing() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    let legacy = dir.path().join(".claude/skills/project-review/SKILL.md");
-    let destination = dir.path().join(".agents/skills/project-review/SKILL.md");
-    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-    fs::create_dir_all(destination.parent().unwrap()).unwrap();
-    fs::write(&legacy, "legacy bytes\n").unwrap();
-    fs::write(&destination, "destination bytes\n").unwrap();
-    let canonical = dir.path().join(".agents/skills/client-council/SKILL.md");
-    fs::create_dir_all(canonical.parent().unwrap()).unwrap();
-    fs::write(&canonical, "before preflight\n").unwrap();
-
-    sync_skills(dir.path())
-        .failure()
-        .code(2)
-        .stderr(str::contains("conflicts with"));
-
-    assert_eq!(fs::read_to_string(&legacy).unwrap(), "legacy bytes\n");
-    assert_eq!(
-        fs::read_to_string(&destination).unwrap(),
-        "destination bytes\n"
-    );
-    assert_eq!(
-        fs::read_to_string(canonical).unwrap(),
-        "before preflight\n",
-        "the conflict preflight must finish before canonical files are overwritten"
-    );
-}
-
-#[test]
-fn sync_skills_retry_is_idempotent_and_removes_an_empty_legacy_root() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    let legacy = dir.path().join(".claude/skills/project-review/SKILL.md");
-    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-    fs::write(&legacy, "# Project review\n").unwrap();
-
-    sync_skills(dir.path()).success();
-    let relocated = dir.path().join(".agents/skills/project-review/SKILL.md");
-    let first = fs::read_to_string(&relocated).unwrap();
-    assert!(!dir.path().join(".claude").exists());
-
-    sync_skills(dir.path()).success();
-    assert_eq!(fs::read_to_string(relocated).unwrap(), first);
-    assert!(!dir.path().join(".claude").exists());
-}
-
 /// A synced skill that has drifted from the canonical copy fails `validate`
-/// and names the file, so a hand edit or a stale sync is caught rather than
-/// silently diverging across 19 repositories.
+/// and names the file, so a hand edit is caught rather than silently
+/// diverging across 19 repositories.
 #[test]
 fn gate_fails_on_a_drifted_synced_skill() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    sync_skills(dir.path()).success();
+    scaffold(dir.path(), "example-project");
 
     fs::write(
         dir.path().join(".agents/skills/council/SKILL.md"),
@@ -1469,22 +1373,18 @@ fn gate_fails_on_a_drifted_synced_skill() {
     gate(dir.path())
         .failure()
         .code(1)
-        .stderr(str::contains("synced skill `council` has drifted"))
-        .stderr(str::contains("sync-skills"));
+        .stderr(str::contains("synced skill `council` has drifted"));
 }
 
-/// A newly scaffolded repository has the complete canonical catalog, including
-/// the command that owns delivery, so its first gate does not depend on a
-/// separate synchronization step.
+/// A repository carrying the full canonical catalog gates green with no
+/// further step.
 #[test]
-fn gate_passes_with_the_scaffolded_skill_catalog() {
+fn gate_passes_with_the_full_skill_catalog() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     assert!(
-        dir.path()
-            .join(".agents/skills/project-pr-delivery/SKILL.md")
-            .is_file(),
-        "scaffold must include the governed delivery command"
+        dir.path().join(".agents/skills/server/SKILL.md").is_file(),
+        "the shell must include every synced skill"
     );
 
     gate(dir.path())
@@ -1504,7 +1404,7 @@ fn gate_passes_with_the_scaffolded_skill_catalog() {
 #[test]
 fn gate_fails_when_agents_exists_without_the_catalog() {
     let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
+    scaffold(dir.path(), "example-project");
     fs::remove_dir_all(dir.path().join(".agents/skills/portal-chrome")).unwrap();
     fs::remove_dir_all(dir.path().join(".agents/skills/server")).unwrap();
 
@@ -1512,21 +1412,5 @@ fn gate_fails_when_agents_exists_without_the_catalog() {
         .failure()
         .code(1)
         .stderr(str::contains("missing synced skill `portal-chrome`"))
-        .stderr(str::contains("missing synced skill `server`"))
-        .stderr(str::contains("sync-skills"));
-}
-
-/// And syncing is the fix, not an exemption list: the same repository passes
-/// once `sync-skills` has run. A check whose only remedy is deleting the
-/// directory that triggered it would just teach people to delete it.
-#[test]
-fn gate_passes_when_agents_exists_and_the_catalog_is_synced() {
-    let dir = TempDir::new().unwrap();
-    scaffold(dir.path(), "example-project").success();
-    fs::create_dir_all(dir.path().join(".agents")).unwrap();
-    sync_skills(dir.path()).success();
-
-    gate(dir.path())
-        .success()
-        .stdout(str::contains("0 error(s)"));
+        .stderr(str::contains("missing synced skill `server`"));
 }

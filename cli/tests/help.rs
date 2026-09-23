@@ -184,15 +184,14 @@ fn site_sync_help_discloses_defaults_and_preserved_keys() {
 /// the Drive folder plus the one repository a code names live with the site's
 /// project list and workbench.
 ///
-/// `doctor` reads a machine, `repository` operates on a checkout, `drift`
-/// reconciles the checkouts against the live rows, and `setup` composes the
-/// authenticated Drive, repository, Slack, and Notion doors. The split
-/// matters, because `projects doctor` and `projects drift` promise to change
-/// nothing, `repository scaffold` writes files, and `setup` reports each
-/// resource independently; `lifecycle` reads every row for admin-tier
-/// oversight. `archive-repository` zips a closed Project's repository
-/// working tree at its current commit and files it as a document — the
-/// separate, deliberate step that follows a close rather than gating it.
+/// `doctor` reads a machine, `drift` reconciles the checkouts against the
+/// live rows, and `setup` composes the authenticated Drive, repository,
+/// Slack, and Notion doors. The split matters, because `projects doctor` and
+/// `projects drift` promise to change nothing, while `setup` reports each
+/// resource independently. `close` moves a matter to `closed` and then
+/// archives its repository as a `closed_repository` document, zipping the
+/// working tree at its current commit — one command rather than a separate
+/// deliberate step.
 ///
 /// The retired `projects application` verb (singular, for registering one
 /// application name) is asserted gone rather than merely absent from this
@@ -206,24 +205,15 @@ fn projects_help_lists_the_project_workspace_verbs() {
         command_names(&help(&["project", "--help"])),
         vec![
             "applications",
-            "archive-repository",
             "build",
             "close",
             "create",
             "doctor",
             "drift",
             "gate",
-            "lifecycle",
-            "list",
-            "open",
-            "repository",
             "setup",
             "help"
         ]
-    );
-    assert_eq!(
-        command_names(&help(&["project", "repository", "--help"])),
-        vec!["deliver", "scaffold", "sync-skills", "help"]
     );
     let setup = unwrapped(&help(&["project", "setup", "--help"]));
     assert!(setup.contains("--all"));

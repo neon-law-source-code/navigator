@@ -23,19 +23,6 @@ Log in to a deployment once; the CLI stores the short-lived bearer token locally
 navigator site login --host staging.neonlaw.com
 ```
 
-List Projects visible to that login, then open one by its Project code:
-
-```bash
-navigator project list
-navigator project open <project-code>
-```
-
-Admin-tier users can read every Project's lifecycle fields across the deployment:
-
-```bash
-navigator project lifecycle --json
-```
-
 To discover the repository and Drive coordinates derived from a Project, run the read-only Project check with its code:
 
 ```bash

@@ -63,11 +63,11 @@ pub(crate) fn cli_version() -> &'static str {
     env!("NAVIGATOR_CLI_VERSION")
 }
 
-/// The version [`ProjectRepositoryAction::Scaffold`] pins its generated gate
-/// to by default — [`cli_version`] narrowed to the sources that name an
-/// *actually published* release, never the bare `CARGO_PKG_VERSION` fallback
-/// `build.rs` uses so `--version` still prints something on a plain local
-/// build.
+/// The version `ops github setup`'s `--action-version` pins a reconciled
+/// Project repository's generated gate to by default — [`cli_version`]
+/// narrowed to the sources that name an *actually published* release, never
+/// the bare `CARGO_PKG_VERSION` fallback `build.rs` uses so `--version` still
+/// prints something on a plain local build.
 ///
 /// A runtime `NAVIGATOR_RELEASE_TAG` only appears in a deployed container,
 /// started from an image published under that tag, so it cannot precede the
@@ -75,9 +75,9 @@ pub(crate) fn cli_version() -> &'static str {
 /// way, but only when `NAVIGATOR_CLI_VERSION_IS_RELEASE` confirms `build.rs`
 /// actually saw `NAVIGATOR_RELEASE_TAG` rather than falling back to the crate
 /// version — which is bumped on `main` before the tag naming it exists. When
-/// neither source is available this returns empty, and `scaffold`'s own
-/// `is_release_tag` refusal then asks the operator to name `--action-version`
-/// themselves rather than have the gate guess.
+/// neither source is available this returns empty, and `is_release_tag`'s own
+/// refusal then asks the operator to name `--action-version` themselves
+/// rather than have the gate guess.
 pub(crate) fn published_cli_version() -> &'static str {
     if let Ok(tag) = std::env::var("NAVIGATOR_RELEASE_TAG") {
         let tag = tag.trim();
@@ -475,7 +475,11 @@ enum ProjectsCmd {
         #[command(flatten)]
         host: HostOpt,
     },
-    /// Close an existing Project through the live site's lifecycle command.
+    /// Close an existing Project through the live site's lifecycle command,
+    /// then archive its repository as a `closed_repository` document: zip the
+    /// working tree at HEAD (no git history), record the commit SHA, and file
+    /// it. The content hash needs no separate flag — the server derives it
+    /// from the uploaded bytes.
     Close {
         /// Project code, resolved only against Projects visible to the login.
         project_code: String,
@@ -486,29 +490,9 @@ enum ProjectsCmd {
         /// RFC 3339 time when the matter actually closed.
         #[arg(long)]
         effective_at: Option<chrono::DateTime<chrono::Utc>>,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-    /// List the live site's Projects as a table or JSON.
-    List {
-        #[command(flatten)]
-        host: HostOpt,
-        /// Emit JSON instead of a table.
-        #[arg(long)]
-        json: bool,
-    },
-    /// List every Project's lifecycle fields as a table or JSON.
-    Lifecycle {
-        #[command(flatten)]
-        host: HostOpt,
-        /// Emit JSON instead of a table.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Open an existing Project workbench on the live site.
-    Open {
-        /// Project code, resolved only against Projects visible to the login.
-        project_code: String,
+        /// The local checkout to archive. Defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
         #[command(flatten)]
         host: HostOpt,
     },
@@ -531,14 +515,6 @@ enum ProjectsCmd {
         /// e.g. `acme`. Omit to check deployment-wide configuration only.
         #[arg(long)]
         project: Option<String>,
-    },
-    /// Create or validate the one source repository that belongs to a Project.
-    ///
-    /// One repository per Project code, holding that Project's notation
-    /// templates under `templates/` and its client portal under `portal/`.
-    Repository {
-        #[command(subcommand)]
-        action: ProjectRepositoryAction,
     },
     /// Reconcile Project repositories against the live Project rows, and
     /// report where the two disagree.
@@ -650,78 +626,6 @@ enum ProjectsCmd {
         json: bool,
         #[command(flatten)]
         host: HostOpt,
-    },
-    /// Archive a closed Project's repository as a `closed_repository`
-    /// document: zip the working tree at HEAD (no git history), record the
-    /// commit SHA, and file it. Follows the matter's close; does not gate
-    /// it. The content hash needs no separate flag — the server derives it
-    /// from the uploaded bytes.
-    ArchiveRepository {
-        /// Project code, e.g. `acme`.
-        project_code: String,
-        /// The local checkout to archive. Defaults to the current directory.
-        #[arg(long, default_value = ".")]
-        dir: PathBuf,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-}
-
-#[derive(Subcommand)]
-enum ProjectRepositoryAction {
-    /// Gate, push, open or adopt, arm auto-merge, and watch a Project PR.
-    Deliver {
-        /// Topic branch to create or use. `main` is never delivered directly.
-        #[arg(long)]
-        branch: String,
-        /// Conventional Commit title used when a pull request must be opened.
-        #[arg(long)]
-        title: String,
-        /// Markdown file used as the pull-request body.
-        #[arg(long)]
-        body_file: Option<PathBuf>,
-        /// Forge repository as `owner/name`. Inferred from a GitHub origin when omitted.
-        #[arg(long)]
-        repository: Option<String>,
-        /// Repository root. Defaults to the current directory.
-        #[arg(long, default_value = ".")]
-        dir: PathBuf,
-        /// Maximum time to wait for a merge or named stop condition.
-        #[arg(long, default_value_t = 900)]
-        timeout_seconds: u64,
-        /// Delay between forge status reads.
-        #[arg(long, default_value_t = 5)]
-        poll_seconds: u64,
-    },
-    /// Create the reviewed, source-only Project repository scaffold.
-    Scaffold {
-        /// Stable Project code. This becomes the repository name.
-        project_code: String,
-        /// Directory to create or complete. Defaults to the current directory.
-        #[arg(long, default_value = ".")]
-        dir: PathBuf,
-        /// Deployment hostname written to `navigator.yaml`.
-        #[arg(long)]
-        host: String,
-        /// Exact release tag the generated gate pins Navigator's project-gate
-        /// workflow to. Defaults to this binary's own version when — and only
-        /// when — that version is one this repository has actually
-        /// published; a plain local build cannot vouch for its own crate
-        /// version, so it carries no default and this must be named.
-        #[arg(long, default_value = published_cli_version())]
-        action_version: String,
-        /// Replace a hand-copied `ci.yml` (268 lines or more) with the thin
-        /// reusable-workflow caller. Without this flag, scaffold leaves that
-        /// file alone and exits 2.
-        #[arg(long)]
-        replace_gate: bool,
-    },
-    /// Write Navigator's canonical agent-skill catalog into a Project
-    /// repository, from this binary's own compiled-in copies.
-    SyncSkills {
-        /// Repository root. Defaults to the current directory.
-        #[arg(default_value = ".")]
-        dir: PathBuf,
     },
 }
 
@@ -1555,9 +1459,8 @@ enum GithubCmd {
         /// Exact release tag a confirmed Project repository's reconciled
         /// `ci.yml`/`cd.yml` callers pin Navigator's reusable workflows to.
         /// Defaults to this binary's own version when — and only when — that
-        /// version is one this repository has actually published, the same
-        /// default `projects repository scaffold --action-version` uses.
-        /// Unused, and never validated, against a repository this content
+        /// version is one this repository has actually published. Unused,
+        /// and never validated, against a repository this content
         /// reconciliation does not apply to.
         #[arg(long, default_value = published_cli_version())]
         action_version: String,
@@ -2475,54 +2378,20 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             project_code,
             reason,
             effective_at,
+            dir,
             host,
-        } => remote::matter_close(host.host.as_deref(), &project_code, reason, effective_at).await,
-        ProjectsCmd::List { host, json } => remote::projects_list(host.host.as_deref(), json).await,
-        ProjectsCmd::Lifecycle { host, json } => {
-            remote::projects_lifecycle(host.host.as_deref(), json).await
-        }
-        ProjectsCmd::Open { project_code, host } => {
-            remote::matter_open(host.host.as_deref(), &project_code).await
+        } => {
+            let closed =
+                remote::matter_close(host.host.as_deref(), &project_code, reason, effective_at)
+                    .await;
+            if closed != ExitCode::SUCCESS {
+                return closed;
+            }
+            remote::archive_repository(host.host.as_deref(), &project_code, &dir).await
         }
         ProjectsCmd::Doctor { host, project } => {
             projects::doctor::run(host.host.as_deref(), project.as_deref())
         }
-        ProjectsCmd::Repository { action } => match action {
-            ProjectRepositoryAction::Deliver {
-                branch,
-                title,
-                body_file,
-                repository,
-                dir,
-                timeout_seconds,
-                poll_seconds,
-            } => {
-                projects::repository_delivery::run(
-                    &dir,
-                    &branch,
-                    &title,
-                    body_file.as_deref(),
-                    repository.as_deref(),
-                    std::time::Duration::from_secs(timeout_seconds),
-                    std::time::Duration::from_secs(poll_seconds),
-                )
-                .await
-            }
-            ProjectRepositoryAction::Scaffold {
-                project_code,
-                dir,
-                host,
-                action_version,
-                replace_gate,
-            } => projects::repository::scaffold(
-                &dir,
-                &project_code,
-                &action_version,
-                &host,
-                replace_gate,
-            ),
-            ProjectRepositoryAction::SyncSkills { dir } => projects::repository::sync_skills(&dir),
-        },
         ProjectsCmd::Drift {
             host,
             dir,
@@ -2538,11 +2407,6 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             json,
             host,
         } => projects::setup::run(host.host.as_deref(), project_code.as_deref(), all, json).await,
-        ProjectsCmd::ArchiveRepository {
-            project_code,
-            dir,
-            host,
-        } => remote::archive_repository(host.host.as_deref(), &project_code, &dir).await,
     }
 }
 

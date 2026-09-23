@@ -30,7 +30,7 @@ holds that Project's notation templates and application workspaces side by side:
 ├── templates/         # *.md notation blueprints
 ├── documents/         # *.yml asset pointers; staged bytes are ignored and removed after sync
 ├── seeds/             # lookup_fields / records YAML for `navigator site import`
-├── .agents/skills/    # synced from Navigator by `sync-skills`
+├── .agents/skills/    # kept identical to Navigator's own canonical copies
 ├── AGENTS.md
 ├── LICENSE.md
 └── README.md
@@ -157,11 +157,11 @@ diverging, and what lets a governed expunge find every reference to the bytes it
 layout has to answer all three before a migration is considered, so flattening these keys is not routine cleanup and no
 part of it rides along with an unrelated change.
 
-The command creates `documents/.gitignore` without overwriting an existing file. `scaffold` writes the same four bytes,
-and `Y014` holds them exact whenever `documents/` exists: deny everything, then re-admit subdirectories, the written
-`.yaml` pointer spelling, and the ignore file itself. A comment or a dropped `*` still parses, and still looks like it
-is working against a PDF the root `.gitignore` already covers, while every other extension lands. The repository gate
-admits that file and a pointer, `.yaml` or the retired `.yml`; every other file below `documents/` is rejected. Raw
+The command creates `documents/.gitignore` without overwriting an existing file. A fresh repository carries the same
+four bytes, and `Y014` holds them exact whenever `documents/` exists: deny everything, then re-admit subdirectories, the
+written `.yaml` pointer spelling, and the ignore file itself. A comment or a dropped `*` still parses, and still looks
+like it is working against a PDF the root `.gitignore` already covers, while every other extension lands. The repository
+gate admits that file and a pointer, `.yaml` or the retired `.yml`; every other file below `documents/` is rejected. Raw
 legal-document bytes must never be committed to a Project repository.
 
 **`navigator site pull` is the inverse: it materialises bytes into a checkout rather than uploading them out of one.**
@@ -413,15 +413,16 @@ steps, GitHub posts no check run under its own name at all — it posts one per 
 check `ops github setup` binds a Project repository's ruleset to is the compound context `ci / ci`, not the bare `ci` a
 repository whose `ci.yml` runs its own steps (like Navigator's own) requires.
 
-The scaffold generates three feeder jobs — verify, documents, and seeds — for the Project check. A malformed manifest is
-reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce misleading findings. Each
-feeder job runs unconditionally and no-ops over a half this repository does not carry. `verify` installs the CLI through
-`.github/actions/navigator-install`, then runs `navigator project build`, which discovers every application — the root
-portal during the transition, `apps/<app>/`, or a root Vite workspace — and installs, lints, and builds each one
-(`build` already runs `tsc -b`, so there is no separate typecheck step, and no per-repository test harness to keep
-green); a repository with none no-ops. It then runs `navigator project gate --ci` over the whole tree: the content
-rules, the layout, and — because this is the job that produced them — the origin pass reading each built `dist/`. One
-command, one job; on a push to `main` the same run also checks `navigator.yaml` against the live row.
+The reusable gate workflow declares three feeder jobs — verify, documents, and seeds — for the Project check. A
+malformed manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce
+misleading findings. Each feeder job runs unconditionally and no-ops over a half this repository does not carry.
+`verify` installs the CLI through `.github/actions/navigator-install`, then runs `navigator project build`, which
+discovers every application — the root portal during the transition, `apps/<app>/`, or a root Vite workspace — and
+installs, lints, and builds each one (`build` already runs `tsc -b`, so there is no separate typecheck step, and no
+per-repository test harness to keep green); a repository with none no-ops. It then runs `navigator project gate --ci`
+over the whole tree: the content rules, the layout, and — because this is the job that produced them — the origin pass
+reading each built `dist/`. One command, one job; on a push to `main` the same run also checks `navigator.yaml` against
+the live row.
 
 The `documents` job runs `navigator project gate --check --ci`. The host and Project code come from `navigator.yaml`,
 and the session is minted at `POST /auth/ci/document-token`. It runs unconditionally alongside the others. A repository
@@ -462,7 +463,8 @@ Pin both callers to an exact immutable release tag (`YY.M.D`, `YY.M.D-rc.N`, or 
 actually published: a `uses:` at a ref that does not exist fails the run outright with "unable to resolve action", and
 unlike a renamed repository — which GitHub redirects, so the old spelling keeps working — a missing ref has nothing to
 redirect to. The shape rule is machine-checkable and `validate` enforces it; whether the tag exists is not, which is why
-`scaffold` derives the pin from a release rather than accepting a version someone typed from memory.
+`ops github setup`'s `--action-version` derives the pin from a confirmed release rather than accepting a version someone
+typed from memory.
 
 ## Publishing the built bundle
 
@@ -520,8 +522,9 @@ provider's `attributeCondition` must never be rewritten by hand: one CEL express
 Navigator's own `navigator-ci-pusher` deploy identity included, so a clause appended carelessly breaks Navigator's
 deploys an hour later and somewhere else.
 
-The thin caller workflow lives in the Project repository. `navigator project repository scaffold` writes
-`.github/workflows/cd.yml`, so a scaffolded repository never hand-copies the build or publish implementation:
+The thin caller workflow lives in the Project repository. `ops github setup` writes and reconciles
+`.github/workflows/cd.yml` for a confirmed Project repository, so it never hand-copies the build or publish
+implementation:
 
 ```yaml
 # <project-code>/.github/workflows/cd.yml — an example of what a
@@ -613,9 +616,9 @@ hold one sample portal, named for the Project code it mounts on. Because the rep
 derived prefix is already correct and no `repository:` override is needed. `dist_dir: dist` is set because these
 applications live at the repository root, so the build emits `dist/` rather than `portal/dist/`.
 
-The example at `docs/examples/sample-portal-publish.yml` is the same thin `cd.yml` caller that the scaffold emits. It
-passes the release pin, Project code, and staging host to the reusable publisher; it contains no build script, Python,
-bucket name, or credential. A new sample repository is `navigator project repository scaffold`.
+The example at `docs/examples/sample-portal-publish.yml` is the same thin `cd.yml` caller `ops github setup` reconciles
+a Project repository's caller to. It passes the release pin, Project code, and staging host to the reusable publisher;
+it contains no build script, Python, bucket name, or credential.
 
 The CLI parser refuses unknown manifest keys by naming the accepted set, and the origin scan skips an empty first label
 so a regex-literal `//.test(` is not a host.
@@ -664,91 +667,75 @@ deployment coordinate enters the repository: the bucket is an argument and the c
 The shared reusable-workflow home is this Navigator repository. A Project repository consumes one `uses:` line for CI
 and one for CD; it does not copy the job implementations or any Python helper.
 
-## Scaffolding a repository
+## A repository's fixed shell
+
+Nothing generates a Project repository's shell; it is built by hand — a checkout, `git init`, and the files below,
+copied from Navigator's own repository root or another Project repository — and then checked by `navigator project
+gate`:
 
 ```bash
-navigator project repository scaffold <project-code> --dir . --host staging.neonlaw.com --action-version YY.M.D
 navigator project gate
 ```
 
-`scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `.gitattributes` pinning
-checkout text files to LF, `.github/CODEOWNERS` with the canonical `* @shicholas` ownership rule, a versioned nested
-`navigator.yaml`, the thin PR-only `ci.yml` caller, the thin `cd.yml` caller guarded by the reusable publisher's
-deployment configuration, `README.md`, `AGENTS.md`, and the canonical `.agents/skills/` catalog. It also writes
-`documents/.gitignore` and one placeholder `templates/onboarding.md`, a stub replaced with the notation the Project
-actually opens on. A repository may still carry its own `tests/` for source-level template checks — `navigator project
-gate` neither requires nor scaffolds one; anything worth checking about a template or seed is a gate rule in the CLI
-instead. Existing hand-copied `ci.yml` files of 268 lines or more are left alone unless `--replace-gate` is passed.
-`AGENTS.md` is the only contract file and `.agents/skills/` the only skill catalog. A committed `CLAUDE.md`, `.claude/`,
-or `.codex/` is a retired mirror, and the gate names it: the finding carries the surviving path and the remedy rather
-than the anonymous unenumerated-root wording. The match is on any path component, so a `.claude/skills/` — which the
-root-only rule never looked below at all — and an `apps/<app>/CLAUDE.md` are both refused where they sit. `navigator
-project gate` requires the canonical CODEOWNERS file and that `AGENTS.md` exist and name the Lawyers team as where a
-Navigator CLI gap is filed rather than recorded as a workaround in the matter repository. The same `validate` walk
-extracts `navigator …` invocations from the repository's Markdown and checks each against this binary's clap command
-tree, so a documented verb that no longer exists fails the gate at the commit that introduced the rename.
+The shell a fresh repository carries: `.gitattributes` pinning checkout text files to LF, `.github/CODEOWNERS` with the
+canonical `* @shicholas` ownership rule, a versioned nested `navigator.yaml`, the thin PR-only `ci.yml` caller, the thin
+`cd.yml` caller guarded by the reusable publisher's deployment configuration, `README.md`, `AGENTS.md`, and the
+canonical `.agents/skills/` catalog copied byte-for-byte. It also carries `documents/.gitignore` and one
+`templates/<code>.md` for the notation the Project actually opens on. A repository may still carry its own `tests/` for
+source-level template checks — `navigator project gate` neither requires nor generates one; anything worth checking
+about a template or seed is a gate rule in the CLI instead. `AGENTS.md` is the only contract file and `.agents/skills/`
+the only skill catalog. A committed `CLAUDE.md`, `.claude/`, or `.codex/` is a retired mirror, and the gate names it:
+the finding carries the surviving path and the remedy rather than the anonymous unenumerated-root wording. The match is
+on any path component, so a `.claude/skills/` — which the root-only rule never looked below at all — and an
+`apps/<app>/CLAUDE.md` are both refused where they sit. `navigator project gate` requires the canonical CODEOWNERS file
+and that `AGENTS.md` exist and name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a
+workaround in the matter repository. The same `validate` walk extracts `navigator …` invocations from the repository's
+Markdown and checks each against this binary's clap command tree, so a documented verb that no longer exists fails the
+gate at the commit that introduced the rename.
 
 **`AGENTS.md` is one canonical file everywhere.** It carries the same short tool list and Navigator safety contract in
 every Project repository. Project-specific identity and coordinates belong in `navigator.yaml` and the live Project row,
 not in checked-in instructions. The gate compares the file byte-for-byte with the copy compiled into the CLI, just as it
 does each synced skill.
 
-Drift is an error and names its repair: `navigator project repository sync-skills` rewrites the canonical `AGENTS.md`
-and the `.agents/skills/` catalog. `scaffold` and `sync-skills` therefore agree from the first commit, and no repository
-needs a hand-written tool list or a second matter-specific contract tree.
+Drift is an error, and the repair is by hand: copy the drifted file's canonical bytes back over from Navigator's own
+`AGENTS.md`, or from the matching `.agents/skills/<name>/SKILL.md` — the gate only detects the mismatch, and there is no
+repair command. A repository carrying a retired `.claude/skills/` relocates it the same way: confirm each file's bytes
+agree with the canonical copy or move it under `.agents/skills/` by hand, then delete the `.claude/` tree. The gate
+refuses the mirror by name until it is gone.
 
-The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
-release the running `navigator` reports as its own version — but only when this binary can actually vouch for that
-version: a downloaded release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a
-version this repository has already published. A plain local build cannot make that promise
-(`[workspace.package].version` is bumped on `main` days before the matching tag exists), so it carries no default at
-all, and `--action-version` must be named explicitly. A value that is not an exact release tag — including no value,
-when this binary cannot vouch for one — is refused before any file is written, so a gate that could never resolve is
-never created.
+`ops github setup --action-version YY.M.D` writes and reconciles a confirmed Project repository's `ci.yml`/`cd.yml`
+callers, pinning both to Navigator's reusable project-gate workflow. `--action-version` defaults to the release the
+running `navigator` reports as its own version — but only when this binary can actually vouch for that version: a
+downloaded release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a version this
+repository has already published. A plain local build cannot make that promise (`[workspace.package].version` is bumped
+on `main` days before the matching tag exists), so it carries no default at all, and `--action-version` must be named
+explicitly. A value that is not an exact release tag — including no value, when this binary cannot vouch for one — is
+refused before any file is written, so a gate that could never resolve is never reconciled onto the repository.
 
-It does **not** write `apps/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows how
-to make a Vite application and which released `@neon-law/ux` version to pin. A direct `apps/<app>/package.json` is the
-declaration the gate discovers. A root `portal/` remains valid during the layout transition and is checked by the same
-rules.
+A Project repository's `apps/` is never generated. That arrives from the vibe-coding lane
+([`vibe-coding`](vibe-coding.md)), which knows how to make a Vite application and which released `@neon-law/ux` version
+to pin. A direct `apps/<app>/package.json` is the declaration the gate discovers. A root `portal/` remains valid during
+the layout transition and is checked by the same rules.
 
 `validate` accepts templates, applications, either, or both, and reports a repository carrying neither distinctly rather
 than failing it. A Project may legitimately open before either half exists.
 
-`navigator project repository sync-skills` also migrates a repository that still carries `.claude/skills/`. It checks
-the complete destination first, refuses any same-path file whose bytes differ, copies repository-local skills alongside
-the canonical catalog, and removes only the relocated `skills/` tree. Other ignored `.claude/` state remains in place.
-After a successful migration, rerunning the command is a no-op apart from restoring the canonical contract and skill
-bytes.
+### The template directory is flat
 
-### Delivering a Project pull request
-
-`navigator project repository deliver` owns the forge-changing half of a Project repository's delivery. Give it a topic
-branch and Conventional Commit title from a clean checkout whose change is already committed and signed. The command
-runs `navigator project gate --ci`, fetches `origin/main`, verifies every topic commit carries a signature, pushes the
-branch, and opens or adopts its pull request. It then explicitly arms squash auto-merge and reads the pull request back;
-a successful mutation with no live auto-merge request is a failure, not a promise that the merge queue will repair
-later.
-
-The watcher reads the base branch's current required-check contexts from the forge. For a scaffolded Project caller the
-required context is `ci / ci`, because GitHub reports the caller job and reusable-workflow job together; a bare `ci` or
-an optional `publish` result is not substituted for it. The watch is bounded and returns one exact outcome: merged,
-failed required checks, required review, a branch behind `main`, auto-merge not armed, or timed out with the pending
-required checks named. The synced `project-pr-delivery` skill calls this verb rather than carrying forge commands in
-each repository.
-
-The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
-Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds the shared catalog
-to those shelves. When the tree carries a `navigator.yaml` with `project:`, the same rule accepts a direct
-`templates/<code>.md` and refuses a subdirectory. Navigator reads a local file at `main`, validates its notation
-contract, persists its bytes as a content-addressed Asset, and records the imported commit SHA as provenance.
+Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of Navigator's shared
+`templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds the shared catalog to those shelves.
+When the tree carries a `navigator.yaml` with `project:`, the same rule accepts a direct `templates/<code>.md` and
+refuses a subdirectory. Navigator reads a local file at `main`, validates its notation contract, persists its bytes as a
+content-addressed Asset, and records the imported commit SHA as provenance.
 
 A Project references a shared catalog template by its existing `code`, without carrying a local copy. When no matching
 `templates/<code>.md` exists in the Project repository, notation creation resolves the workspace-shared catalog row and
 pins that exact template version on the Notation. A local file intentionally overrides the catalog for that Project; use
 one only for a genuinely Project-specific blueprint. Do not recode, rename, or copy a catalog template into a Project
-repository merely to reference it. `scaffold`'s generated `templates/onboarding.md` placeholder leans on exactly this:
-it is a stub that declares `kind: onboarding`, and a lawyer who wants the firm's real onboarding letter deletes it and
-runs the notation against the shared catalog's `onboarding__letter` instead of authoring a local copy.
+repository merely to reference it. A fresh repository's `templates/<code>.md` stub leans on exactly this: it declares
+the `kind:` the Project actually opens on, and a lawyer who wants the firm's real onboarding letter deletes it and runs
+the notation against the shared catalog's `onboarding__letter` instead of authoring a local copy.
 
 The filename stem of a Project-local template carries no required Project-code prefix (ENG-693). A `template` row is
 already scoped to its Project by `template.project_id`, so `code` only has to be unique *within* that one repository —
@@ -791,16 +778,19 @@ experiences them as one sequence, not five, so this section threads them togethe
    navigator project setup <code>
    ```
 
-3. **Populate the repository.** Clone it, then run [`scaffold`](#scaffolding-a-repository):
+3. **Populate the repository.** Clone it, then build [the fixed shell](#a-repositorys-fixed-shell) by hand — copy
+   `AGENTS.md` and `.agents/skills/` from Navigator's own repository root, write `navigator.yaml`, `README.md`,
+   `.gitattributes`, `.github/CODEOWNERS`, and a starting `templates/<code>.md` — and then reconcile the generated
+   `ci.yml`/`cd.yml` callers:
 
    ```bash
-   navigator project repository scaffold <code> --dir . --action-version <YY.M.D>
+   navigator ops github setup <owner/code> --action-version <YY.M.D>
    ```
 
-   Commit and push what it writes — that push is what makes `.github/workflows/ci.yml` live on the new repository.
+   Commit and push what you wrote — that push is what makes `.github/workflows/ci.yml` live on the new repository.
 
 4. **Build an application, if this Project needs one.** A separate, later decision made in the `vibe-react` lane
-   against a pinned `@neon-law/ux` release; `scaffold` deliberately does not write `apps/`.
+   against a pinned `@neon-law/ux` release; nothing above writes `apps/`.
 
 5. **Wire the publish secrets** described in [Publishing the built bundle](#publishing-the-built-bundle) — one
    publisher identity per Project, provisioned by `cli/src/devx/gcp/app_publisher.rs`.

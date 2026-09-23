@@ -1,5 +1,5 @@
-# Example `cd.yml` for a Project repository. New repositories should use
-# `navigator project repository scaffold`, which writes this shape.
+# Example `cd.yml` for a Project repository, the shape `ops github setup`
+# reconciles a confirmed Project repository's caller to.
 # The shared workflow owns build, validation, and publication; the repository
 # names only its own Project and deployment host.
 

@@ -18,8 +18,9 @@
 //! release yet. We also bake `NAVIGATOR_CLI_VERSION_IS_RELEASE`, set only when
 //! `NAVIGATOR_RELEASE_TAG` was actually present at build time, so callers that
 //! need a *trustworthy* release version (not merely a version-shaped one) — see
-//! `cli::main::published_cli_version`, which `projects repository scaffold`
-//! pins its generated gate to — can tell the two cases apart.
+//! `cli::main::published_cli_version`, which `ops github setup` pins a
+//! reconciled Project repository's generated gate to — can tell the two cases
+//! apart.
 
 use std::env;
 

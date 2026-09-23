@@ -768,7 +768,7 @@ pub fn home_for_host(
         company: copy.company.map(|copy| webapp::home::CompanyContent {
             booking_href: copy.booking_href,
             pricing_link: copy.pricing_link,
-            hero_note: copy.hero_note,
+            retainer_note: copy.retainer_note,
             flow_caption: copy.flow_caption,
             flow_steps: copy.flow_steps,
             packages: copy.packages,
@@ -781,12 +781,19 @@ pub fn home_for_host(
             membership_unit: copy.membership_unit,
             membership_body: copy.membership_body,
             membership_features: copy.membership_features,
-            review_heading: copy.review_heading,
-            review_body: copy.review_body,
-            review_columns: copy.review_columns,
+            retainer_amount: copy.retainer_amount,
+            simulator_heading: copy.simulator_heading,
+            simulator_body: copy.simulator_body,
+            simulator_days_label: copy.simulator_days_label,
+            simulator_size_label: copy.simulator_size_label,
+            simulator_size_hint: copy.simulator_size_hint,
+            simulator_plan_label: copy.simulator_plan_label,
+            simulator_review_label: copy.simulator_review_label,
+            simulator_total_label: copy.simulator_total_label,
+            simulator_note: copy.simulator_note,
             review_rows: copy.review_rows,
-            review_note: copy.review_note,
             drafting_heading: copy.drafting_heading,
+            drafting_body: copy.drafting_body,
             drafting_packages: copy.drafting_packages,
             closing_heading: copy.closing_heading,
             closing_body: copy.closing_body,
@@ -915,9 +922,10 @@ mod tests {
         let copy: serde_yaml::Value = serde_yaml::from_str(NEON_HOME_YAML).unwrap();
         let company = &copy["company"];
         assert_eq!(company["membership_price"].as_str(), Some("$50"));
-        assert_eq!(company["review_rows"][0][1].as_str(), Some("$100"));
-        assert_eq!(company["review_rows"][2][2].as_str(), Some("$5,000"));
-        assert!(company["review_note"]
+        assert_eq!(company["retainer_amount"].as_u64(), Some(10_000));
+        assert_eq!(company["review_rows"][0][1].as_str(), Some("$1,000"));
+        assert_eq!(company["review_rows"][2][1].as_str(), Some("$5,000"));
+        assert!(company["simulator_note"]
             .as_str()
             .unwrap()
             .contains("5 p.m. PST"));
@@ -1172,7 +1180,7 @@ mod tests {
             );
         }
         assert!(
-            text.contains("technology"),
+            text.to_lowercase().contains("technolog"),
             "and the audience is named: {text}"
         );
     }

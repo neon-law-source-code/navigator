@@ -153,11 +153,15 @@ Jakarta Sans is used throughout the page and footer. The cloak crossing an inter
 pauses motion and reduced-motion preferences disable animation. The Solana section carries the approved request-record
 and litigation copy. The page uses the same footer treatment as Neon and Vesta.
 
-The Neon home page's `company` block presents membership, notation drafting and review, litigation, employee support,
-and Navigator, with consultation booking as the next step. Its `practices` list is empty: Neon publishes one offer on
-`/`, and `/business`, `/services`, and `/disputes` return 404 without redirects. Other brands omit that block and retain
-their own home layout. The package conveyor illustrates a workflow; it does not report live client activity. Its
-checkbox pauses the page's motion, and reduced-motion preferences disable the animations.
+The Neon home page uses its `service` block to introduce legal practice, engineering, and teaching experience alongside
+the presentation video. Claims link to the published workshops and presentation. Its `company` block presents the
+$10,000 starting retainer, daily plan draws, an interactive 10- or 30-day fee estimate with same-day review sizing,
+included contract review within five business days of acceptance, registered-agent service in certain jurisdictions,
+client Slack access, separate same-day review and drafting fees, litigation, employee support, and Navigator, with
+consultation booking as the next step. Its `practices` list is empty: Neon publishes one offer on `/`, and `/business`,
+`/services`, and `/disputes` return 404 without redirects. Other brands omit that block and retain their own home
+layout. The package conveyor illustrates a workflow; it does not report live client activity. Its checkbox pauses the
+page's motion, and reduced-motion preferences disable the animations.
 
 ## A copy-only pull request
 

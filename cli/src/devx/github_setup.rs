@@ -229,8 +229,8 @@ const NAVIGATOR_CODEQL_INTEGRATION_ID: u64 = 57789;
 /// order they are looked for.
 ///
 /// Two spellings are live at once. A repository the Firm has always
-/// administered carries `ci.yml`, and so does a Project repository written by
-/// `navigator project repository scaffold`. A retired `gate.yml` is still
+/// administered carries `ci.yml`, and so does a Project repository's thin
+/// gate caller. A retired `gate.yml` is still
 /// accepted so a repository that has not been regenerated continues to bind
 /// the required `ci` check. What they share is the invariant that actually
 /// matters — a job whose check run is named `ci` — so the gate accepts either

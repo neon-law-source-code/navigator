@@ -8,11 +8,8 @@
 //!
 //! | command | route |
 //! | --- | --- |
-//! | `projects list` | `GET /app/projects.csv` |
-//! | `projects lifecycle` | `GET /app/api/project-lifecycle` |
 //! | `projects create` | `POST /app/api/projects` (plus `GET /app/api/people`, `/entities`, `/entity-types`, `/jurisdictions`) |
-//! | `project open`   | `GET /app/projects/:code` |
-//! | `projects close` | `POST /app/api/projects/{id}/lifecycle` |
+//! | `projects close` | `POST /app/api/projects/{id}/lifecycle`, then a repository archive upload |
 //! | `project setup` | `GET /app/api/projects` plus the authenticated surface, Slack, and Notion setup doors |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
@@ -678,7 +675,7 @@ pub(crate) struct MailFileResponse {
 /// Refuse a document over the shared maximum before it is encoded or sent.
 ///
 /// Every upload this CLI makes routes through here, not just the one that
-/// has a file to stat: `archive-repository` builds its zip in memory, and a
+/// has a file to stat: [`archive_repository`] builds its zip in memory, and a
 /// repository snapshot is the payload most likely to run past the limit. A
 /// request carrying more than [`MAX_DOCUMENT_UPLOAD_REQUEST_BYTES`] never
 /// reaches the door's own size check at all — it dies at the framework's
@@ -733,7 +730,7 @@ pub async fn document_upload(
     .await
 }
 
-/// `navigator project archive-repository <code> [--dir .]` — zip the
+/// The second half of `navigator project close <code> [--dir .]` — zip the
 /// repository's working tree at HEAD (no git history — a snapshot document,
 /// not a clone), and file it as a `closed_repository` document, recording
 /// the final commit SHA in the asset's `metadata` (ENG-481). The content
@@ -741,10 +738,9 @@ pub async fn document_upload(
 /// the uploaded bytes themselves, the same way template import already
 /// records both for a notation body.
 ///
-/// This follows a matter's close; it does not gate it. `--dir` is the local
-/// checkout to archive — the repository this Project's `repository_url`
-/// names — and defaults to the current directory, matching every other
-/// repository-scoped command in this CLI.
+/// Runs after [`matter_close`] succeeds; it does not gate the close. `dir` is
+/// the local checkout to archive — the repository this Project's
+/// `repository_url` names.
 pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Path) -> ExitCode {
     run(async {
         let commit_sha = git_head_commit_sha(dir)?;
@@ -898,91 +894,6 @@ fn no_redirect_client() -> Result<reqwest::Client> {
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .context("build http client")
-}
-
-/// `navigator project list [--host h] [--json]`.
-pub async fn projects_list(host: Option<&str>, json: bool) -> ExitCode {
-    run(async {
-        let (base, token) = resolve(host)?;
-        let resp = reqwest::Client::new()
-            .get(format!("{base}/app/projects.csv"))
-            .bearer_auth(&token)
-            .send()
-            .await
-            .context("GET /app/projects.csv")?;
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        if !status.is_success() {
-            return Err(anyhow!("projects list failed: {status}"));
-        }
-        let rows = parse_csv(&body);
-        print_projects(&rows, json)?;
-        Ok(())
-    })
-    .await
-}
-
-#[derive(Debug, Deserialize, serde::Serialize)]
-struct ProjectLifecycle {
-    code: String,
-    status: String,
-    closed_at: Option<String>,
-    closure_reason: Option<String>,
-    /// Derived by the server from `repository_url`/`forge_provisioned_at`/
-    /// `git_initialized_at` — never a stored column. See
-    /// `store::project_surfaces::SourceState`.
-    source_state: store::project_surfaces::SourceState,
-}
-
-/// `navigator project lifecycle [--host h] [--json]` — read the
-/// deployment-wide lifecycle projection from the admin-tier API route.
-pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
-    run(async {
-        let (base, token) = resolve(host)?;
-        let resp = reqwest::Client::new()
-            .get(format!("{base}/app/api/project-lifecycle"))
-            .bearer_auth(&token)
-            .send()
-            .await
-            .context("GET /app/api/project-lifecycle")?;
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        if !status.is_success() {
-            return Err(anyhow!("projects lifecycle failed: {status}"));
-        }
-        let rows: Vec<ProjectLifecycle> =
-            serde_json::from_str(&body).context("parse GET /app/api/project-lifecycle")?;
-        if json {
-            println!("{}", serde_json::to_string_pretty(&rows)?);
-        } else {
-            let table_rows = rows
-                .iter()
-                .map(|row| {
-                    vec![
-                        row.code.clone(),
-                        row.status.clone(),
-                        row.closed_at.clone().unwrap_or_default(),
-                        row.closure_reason.clone().unwrap_or_default(),
-                        row.source_state.as_str().to_string(),
-                    ]
-                })
-                .collect::<Vec<_>>();
-            print_projects(
-                &std::iter::once(vec![
-                    "code".into(),
-                    "status".into(),
-                    "closed_at".into(),
-                    "closure_reason".into(),
-                    "source_state".into(),
-                ])
-                .chain(table_rows)
-                .collect::<Vec<_>>(),
-                false,
-            )?;
-        }
-        Ok(())
-    })
-    .await
 }
 
 /// One Project's result from an `/app/api/integrations/*` door — mirrors
@@ -1280,39 +1191,6 @@ pub async fn matter_close(
             palette::dim("closed matter"),
             palette::highlight(project_code)
         );
-        Ok(())
-    })
-    .await
-}
-
-/// Legacy project-open client — resolve a visible matter by
-/// code, then verify the same bearer can load its lawyer workbench.
-pub async fn matter_open(host: Option<&str>, project_code: &str) -> ExitCode {
-    run(async {
-        let (base, token) = resolve(host)?;
-        let client = reqwest::Client::new();
-        let path = format!("/app/projects/{project_code}");
-        let resp = client
-            .get(format!("{base}{path}"))
-            .bearer_auth(&token)
-            .send()
-            .await
-            .with_context(|| format!("GET {path}"))?;
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "project `{project_code}` is not openable by this login (status {status}). \
-                 The server reported: {}",
-                first_line(&body),
-            ));
-        }
-        println!(
-            "{} {}",
-            palette::dim("opened matter"),
-            palette::highlight(project_code),
-        );
-        println!("{} {base}{path}", palette::dim("workbench:"));
         Ok(())
     })
     .await
@@ -2868,43 +2746,6 @@ async fn fetch_status(base: &str, token: &str, notation_id: Uuid) -> Result<Nota
         .context("parse notation status json")
 }
 
-fn print_projects(rows: &[Vec<String>], json: bool) -> Result<()> {
-    let Some((header, data)) = rows.split_first() else {
-        // Not even a header line — empty body.
-        if json {
-            println!("[]");
-        } else {
-            println!("{}", palette::dim("no projects"));
-        }
-        return Ok(());
-    };
-    if json {
-        let objects: Vec<serde_json::Map<String, serde_json::Value>> = data
-            .iter()
-            .map(|row| {
-                header
-                    .iter()
-                    .zip(row.iter())
-                    .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                    .collect()
-            })
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&objects)?);
-        return Ok(());
-    }
-    let mut table = Table::new();
-    table
-        .load_style(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(header.iter().map(|h| Cell::new(palette::header(h))));
-    for row in data {
-        table.add_row(row.iter().map(Cell::new));
-    }
-    println!("{table}");
-    println!("{}", palette::dim(format!("{} project(s)", data.len())));
-    Ok(())
-}
-
 /// First non-empty line of a response body, trimmed — for terse error
 /// reporting without dumping a whole HTML page.
 fn first_line(body: &str) -> String {
@@ -2915,54 +2756,6 @@ fn first_line(body: &str) -> String {
         .chars()
         .take(200)
         .collect()
-}
-
-/// Minimal RFC 4180 reader: comma-separated fields, `\r\n` or `\n`
-/// records, `"`-quoted fields with doubled internal quotes. Mirrors the
-/// server's `admin_csv` writer so the round-trip is exact.
-fn parse_csv(text: &str) -> Vec<Vec<String>> {
-    let mut rows = Vec::new();
-    let mut field = String::new();
-    let mut record = Vec::new();
-    let mut in_quotes = false;
-    let mut chars = text.chars().peekable();
-    let mut saw_any = false;
-
-    while let Some(c) = chars.next() {
-        saw_any = true;
-        if in_quotes {
-            if c == '"' {
-                if chars.peek() == Some(&'"') {
-                    chars.next();
-                    field.push('"');
-                } else {
-                    in_quotes = false;
-                }
-            } else {
-                field.push(c);
-            }
-        } else {
-            match c {
-                '"' => in_quotes = true,
-                ',' => {
-                    record.push(std::mem::take(&mut field));
-                }
-                '\r' => { /* swallow; the '\n' ends the record */ }
-                '\n' => {
-                    record.push(std::mem::take(&mut field));
-                    rows.push(std::mem::take(&mut record));
-                }
-                _ => field.push(c),
-            }
-        }
-    }
-    // Trailing record with no final newline.
-    if !field.is_empty() || !record.is_empty() {
-        record.push(field);
-        rows.push(record);
-    }
-    let _ = saw_any;
-    rows
 }
 
 /// Drive an async fallible command to an `ExitCode`, printing any error.
@@ -2996,18 +2789,14 @@ mod tests {
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
         clause_list, create_notation_draft, document_upload, ensure_no_unused_selections,
-        fetch_status, mail_file, matter_close, matter_open, notation_answers, notation_approve,
+        fetch_status, mail_file, matter_close, notation_answers, notation_approve,
         notation_create, notation_document, notation_list, notation_request_changes,
         notation_status, notation_update, notion_ensure, notion_reconcile,
-        parse_scripted_selection, picker_selection_fields, projects_create, projects_lifecycle,
-        projects_list, retainer_approve, retainer_send, scripted_picker_selection_fields, seed,
-        seed_directory, select_candidate, slack_ensure, CoverageSummary, DocumentClient,
-        SeedCredential, StepQuestion, StepResponse,
+        parse_scripted_selection, picker_selection_fields, projects_create, retainer_approve,
+        retainer_send, scripted_picker_selection_fields, seed, seed_directory, select_candidate,
+        slack_ensure, CoverageSummary, DocumentClient, SeedCredential, StepQuestion, StepResponse,
     };
-    use super::{
-        exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, parse_csv,
-        server_error,
-    };
+    use super::{exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
     use uuid::Uuid;
     use wiremock::matchers::{body_json, method, path, query_param};
@@ -4035,7 +3824,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn upload_bytes_refuses_an_oversized_document_before_sending_it() {
-        // `archive-repository` has no file to stat — it builds a repository
+        // `archive_repository` has no file to stat — it builds a repository
         // snapshot in memory and hands it straight to `upload_bytes`, so the
         // limit has to hold at the shared choke point and not only at the
         // one command that can check a path's metadata first.
@@ -4162,71 +3951,6 @@ mod tests {
                 None
             )
             .await,
-            ExitCode::from(2)
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn projects_lifecycle_reads_the_admin_projection() {
-        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
-        let server = MockServer::start().await;
-        let server_uri = server.uri();
-        let _env = CredentialsEnv::new(&server_uri);
-
-        Mock::given(method("GET"))
-            .and(path("/app/api/project-lifecycle"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z", "closure_reason": "engagement_completed", "source_state": "attached"},
-                {"code": "sample", "status": "open", "closed_at": null, "closure_reason": null, "source_state": "not_enabled"}
-            ])))
-            .expect(2)
-            .mount(&server)
-            .await;
-
-        assert_eq!(
-            projects_lifecycle(Some(&server_uri), true).await,
-            ExitCode::SUCCESS
-        );
-        assert_eq!(
-            projects_lifecycle(Some(&server_uri), false).await,
-            ExitCode::SUCCESS
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn projects_lifecycle_reports_server_errors() {
-        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
-        let server = MockServer::start().await;
-        let server_uri = server.uri();
-        let _env = CredentialsEnv::new(&server_uri);
-
-        Mock::given(method("GET"))
-            .and(path("/app/api/project-lifecycle"))
-            .respond_with(ResponseTemplate::new(503))
-            .mount(&server)
-            .await;
-
-        assert_eq!(
-            projects_lifecycle(Some(&server_uri), true).await,
-            ExitCode::from(2)
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn projects_lifecycle_reports_invalid_json() {
-        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
-        let server = MockServer::start().await;
-        let server_uri = server.uri();
-        let _env = CredentialsEnv::new(&server_uri);
-
-        Mock::given(method("GET"))
-            .and(path("/app/api/project-lifecycle"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
-            .mount(&server)
-            .await;
-
-        assert_eq!(
-            projects_lifecycle(Some(&server_uri), true).await,
             ExitCode::from(2)
         );
     }
@@ -4613,20 +4337,6 @@ mod tests {
             .expect(1)
             .mount(server)
             .await;
-        Mock::given(method("GET"))
-            .and(path("/app/projects.csv"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                "id,code,name,status\r\n{},acme,Acme,open\r\n",
-                ids.project
-            )))
-            .mount(server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/app/projects/acme"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("matter workbench"))
-            .expect(1)
-            .mount(server)
-            .await;
     }
 
     async fn mount_notation_routes(server: &MockServer, ids: LawyerRouteIds) {
@@ -4743,8 +4453,6 @@ mod tests {
     }
 
     async fn exercise_project_commands(host: Option<&str>) {
-        assert_eq!(projects_list(host, true).await, ExitCode::SUCCESS);
-        assert_eq!(matter_open(host, "acme").await, ExitCode::SUCCESS);
         assert_eq!(
             matter_close(
                 host,
@@ -4840,51 +4548,6 @@ mod tests {
                 std::env::remove_var("NAVIGATOR_CREDENTIALS_FILE");
             }
         }
-    }
-
-    #[test]
-    fn parses_plain_rows() {
-        let csv = "id,name,status\r\n1,Aries,open\r\n2,Taurus,closed\r\n";
-        let rows = parse_csv(csv);
-        assert_eq!(rows.len(), 3);
-        assert_eq!(rows[0], vec!["id", "name", "status"]);
-        assert_eq!(rows[1], vec!["1", "Aries", "open"]);
-        assert_eq!(rows[2], vec!["2", "Taurus", "closed"]);
-    }
-
-    #[test]
-    fn parses_quoted_fields_with_commas_and_doubled_quotes() {
-        // Mirrors admin_csv's writer: `hello, "world"` round-trips.
-        let csv = "id,note\r\n1,\"hello, \"\"world\"\"\"\r\n";
-        let rows = parse_csv(csv);
-        assert_eq!(rows[1], vec!["1", "hello, \"world\""]);
-    }
-
-    #[test]
-    fn header_only_body_yields_one_row() {
-        let rows = parse_csv("id,name\r\n");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0], vec!["id", "name"]);
-    }
-
-    #[test]
-    fn empty_body_yields_no_rows() {
-        assert!(parse_csv("").is_empty());
-    }
-
-    #[test]
-    fn tolerates_a_missing_final_newline() {
-        let rows = parse_csv("id,name\r\n1,Aries");
-        assert_eq!(rows.len(), 2);
-        assert_eq!(rows[1], vec!["1", "Aries"]);
-    }
-
-    #[test]
-    fn preserves_empty_trailing_field() {
-        // A row ending in a comma has a trailing empty field (e.g. a
-        // project with no entity name).
-        let rows = parse_csv("a,b,c\r\nx,y,\r\n");
-        assert_eq!(rows[1], vec!["x", "y", ""]);
     }
 
     #[test]
@@ -5106,63 +4769,6 @@ mod tests {
 
         exercise_project_commands(host).await;
         exercise_notation_commands(host, &server_uri, ids).await;
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn project_open_refuses_codes_outside_the_visible_project_list() {
-        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
-        let server = MockServer::start().await;
-        let server_uri = server.uri();
-        let _env = CredentialsEnv::new(&server_uri);
-        let visible_project = Uuid::now_v7();
-        Mock::given(method("GET"))
-            .and(path("/app/projects.csv"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                "id,code,name,status\r\n{visible_project},acme,Acme,open\r\n"
-            )))
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/app/projects/acme"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("matter workbench"))
-            .expect(0)
-            .mount(&server)
-            .await;
-
-        assert_eq!(
-            matter_open(Some(server_uri.as_str()), "missing").await,
-            ExitCode::from(2)
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn project_open_surfaces_a_workbench_that_refuses_this_login() {
-        // The code resolves to a visible project, but loading its workbench
-        // fails (e.g. row-scoped 403), so `project open` reports the failure
-        // instead of claiming the matter opened.
-        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
-        let server = MockServer::start().await;
-        let server_uri = server.uri();
-        let _env = CredentialsEnv::new(&server_uri);
-        let visible_project = Uuid::now_v7();
-        Mock::given(method("GET"))
-            .and(path("/app/projects.csv"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                "id,code,name,status\r\n{visible_project},acme,Acme,open\r\n"
-            )))
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/app/projects/acme"))
-            .respond_with(ResponseTemplate::new(403).set_body_string("not for you"))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        assert_eq!(
-            matter_open(Some(server_uri.as_str()), "acme").await,
-            ExitCode::from(2)
-        );
     }
 
     /// `retainer send` against a notation whose packet has not rendered yet

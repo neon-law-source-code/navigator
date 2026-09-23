@@ -4,8 +4,8 @@ description: >
   Confines an agent session to the current repository's own checkout — never read, search, or write to a sibling
   checkout, another Project's repository, the home directory, or system temp. Trigger at the start of every session in a
   Navigator Project repository (a client portal or notation-template checkout), and whenever a task seems to need
-  something from outside the current tree. Synced verbatim into every Project repository's `.agents/skills/` by
-  `navigator project repository sync-skills`; this canonical copy lives in Navigator's own `.agents/skills/`.
+  something from outside the current tree. Kept identical, byte for byte, in every Project repository's
+  `.agents/skills/`; this canonical copy lives in Navigator's own `.agents/skills/`.
 ---
 
 # Stay inside this repository

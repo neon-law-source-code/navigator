@@ -118,14 +118,14 @@ nothing a human deliberately adds is taken away either.
 #### Reconciling generated workflow content
 
 Every Project repository's `.github/workflows/ci.yml` and `.github/workflows/cd.yml` pin Navigator's reusable gate and
-publish workflows to an exact release tag, the same way [`scaffold`'s generated
-gate](project-repositories.md#scaffolding-a-repository) does. Before this, moving that pin forward across the fleet
-after a release meant hand-editing it in every one of the 19+ Project repositories that carry it — a manual, unreviewed
-in spirit, per-repository chore.
+publish workflows to an exact release tag — see [a repository's fixed
+shell](project-repositories.md#a-repositorys-fixed-shell). Before this, moving that pin forward across the fleet after a
+release meant hand-editing it in every one of the 19+ Project repositories that carry it — a manual, unreviewed in
+spirit, per-repository chore.
 
-`ops github setup` now reconciles that content too, using the exact templates in `cli/src/projects/repository.rs`.
-
-`scaffold` writes callers through `workflow_for`/`cd_workflow_for` and checks whether the repository is in scope:
+`ops github setup` now reconciles that content too, using the exact templates in `cli/src/projects/repository.rs` — the
+same `workflow`/`cd_workflow` generators the gate itself checks a caller against — and checks whether the repository is
+in scope:
 
 - `neon-law-source-code/navigator` and the Homebrew tap carry no generated `ci.yml`/`cd.yml` in this shape, so
   this half of the reconcile is a no-op for both, same as before this feature existed.
@@ -139,8 +139,8 @@ in spirit, per-repository chore.
   reconcile loudly, naming the repository, rather than being silently skipped or silently treated as a Project
   repository either way.
 
-The pin defaults the same way `scaffold --action-version` does — this binary's own confirmed release, refusing `main`,
-`latest`, or an unconfirmed local build — and accepts the same `--action-version` override.
+The pin defaults to this binary's own confirmed release, refusing `main`, `latest`, or an unconfirmed local build, and
+accepts an `--action-version` override.
 
 **A drifted file becomes a pull request, never a direct commit to `main`.** Every other reconciled artifact in this
 command — a ruleset, a label, repository settings — is API-visible state with no review history of its own, so writing
@@ -183,12 +183,12 @@ enforcing nothing at all. `ops github setup` therefore reads the repository's CI
 unless a job in it actually reports as `ci`.
 
 It accepts either `.github/workflows/ci.yml` or `.github/workflows/gate.yml`, and looks for them in that order.
-Firm-administered repositories and scaffolded Project repositories both carry `ci.yml` as the required-check file.
-`navigator project repository scaffold` writes that file. A retired `gate.yml` is still accepted so a repository that
-has not been regenerated continues to bind the required `ci` check. What they share is the invariant the gate is
-actually matched by — a job whose check run is named `ci` — so the filename is free to differ. A repository carrying
-neither file is refused, and so is one whose workflow exists but ends in some other job name; those are different
-problems with different fixes, so they are different errors.
+Firm-administered repositories and Project repositories both carry `ci.yml` as the required-check file. `ops github
+setup` writes and reconciles that file for a confirmed Project repository. A retired `gate.yml` is still accepted so a
+repository that has not been regenerated continues to bind the required `ci` check. What they share is the invariant the
+gate is actually matched by — a job whose check run is named `ci` — so the filename is free to differ. A repository
+carrying neither file is refused, and so is one whose workflow exists but ends in some other job name; those are
+different problems with different fixes, so they are different errors.
 
 #### Adopting a repository that is not yet governed
 

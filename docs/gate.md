@@ -40,16 +40,17 @@ the canonical `.agents/` skill catalog. The match is on a whole directory name, 
 below: `Y009` opens each application's `dist/` directly, because a built bundle is exactly what it exists to check.
 
 This is also the exact command every Project repository's generated CI gate runs against its own tree — see
-[`project-repositories.md`](project-repositories.md) for how `navigator project repository scaffold` wires it up. On a
-Project repository, the same run also closes `.github/` to exactly `.github/CODEOWNERS`, the two thin workflow callers
-`.github/workflows/ci.yml` and `.github/workflows/cd.yml`, and `.github/workflows/automerge.yml`: any other path there
-is a finding naming the exact path and the closed set it fell outside of. Each caller is checked structurally against
-its canonical generator — permitted trigger, permissions, jobs, `needs:` dependency between them, and the
-`project`/`host` inputs pinned release it calls — so a caller can differ from the generator in whitespace, quoting, or
-key order and still pass, but not in which event triggers it, what it can do with its token, or how many jobs answer for
-the required check. `automerge.yml` is checked byte-exact instead, the same way `.github/CODEOWNERS` is: it is
-machine-owned, so any difference from the canonical copy is drift rather than local intent, and `navigator project gate`
-(not `--ci`) writes the canonical copy over a missing or drifted one rather than only reporting it.
+[`project-repositories.md`](project-repositories.md) for the thin `ci.yml`/`cd.yml` callers a Project repository carries
+and how `ops github setup` reconciles them. On a Project repository, the same run also closes `.github/` to exactly
+`.github/CODEOWNERS`, the two thin workflow callers `.github/workflows/ci.yml` and `.github/workflows/cd.yml`, and
+`.github/workflows/automerge.yml`: any other path there is a finding naming the exact path and the closed set it fell
+outside of. Each caller is checked structurally against its canonical generator — permitted trigger, permissions, jobs,
+`needs:` dependency between them, and the `project`/`host` inputs pinned release it calls — so a caller can differ from
+the generator in whitespace, quoting, or key order and still pass, but not in which event triggers it, what it can do
+with its token, or how many jobs answer for the required check. `automerge.yml` is checked byte-exact instead, the same
+way `.github/CODEOWNERS` is: it is machine-owned, so any difference from the canonical copy is drift rather than local
+intent, and `navigator project gate` (not `--ci`) writes the canonical copy over a missing or drifted one rather than
+only reporting it.
 
 `.github/workflows/gate.yml` and `.github/workflows/publish.yml`, the filenames `ci.yml` and `cd.yml` replaced, are
 still read under those names through Navigator CLI release **26.9.23**: the gate accepts either one with a warning
@@ -328,11 +329,11 @@ literally and the columns disappear.
 like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature instrument cannot name
 a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.
 
-`Y014` runs in the same Project-repository check whenever `documents/` exists. The four lines are shared with `scaffold`
-and `site sync` / `site pull`. Local `project gate` rewrites drift; `--ci` reports `Y014` and leaves the file. Only
-`!*.yaml` is admitted: Navigator writes pointers at that extension, and `POINTER_READ_EXTENSIONS` keeps the retired
-`.yml` spelling readable for a pointer committed before LAW-25 — `Y003` still validates one — but a fresh `.yml` file is
-never meant to enter Git again, so the gitignore does not re-admit it.
+`Y014` runs in the same Project-repository check whenever `documents/` exists. The four lines are the same ones a fresh
+repository carries, and the same ones `site sync` / `site pull` expect. Local `project gate` rewrites drift; `--ci`
+reports `Y014` and leaves the file. Only `!*.yaml` is admitted: Navigator writes pointers at that extension, and
+`POINTER_READ_EXTENSIONS` keeps the retired `.yml` spelling readable for a pointer committed before LAW-25 — `Y003`
+still validates one — but a fresh `.yml` file is never meant to enter Git again, so the gitignore does not re-admit it.
 
 ### F-family — files the gate had to fix
 

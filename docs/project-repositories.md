@@ -192,8 +192,8 @@ live document the lens can see must have a pointer. A drifted pointer is rewritt
 `documents/<slug>.yaml`. A missing `documents/.gitignore` is written. The command never writes to the live site. A
 missing or corrupt storage object, and a live row with no slug, are errors a person has to fix. `--deep` re-hashes each
 object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix. Uploading, filing a new
-revision, or removing a document is `navigator site sync`. Plain `navigator project gate`, without `--check`, makes
-no document request.
+revision, or removing a document is `navigator site sync`. Plain `navigator project gate`, without `--check`, makes no
+document request.
 
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing

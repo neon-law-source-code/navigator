@@ -378,3 +378,53 @@ fn dash0_is_an_additive_exporter_after_redaction_for_every_signal() {
         }
     }
 }
+
+#[test]
+fn metrics_aggregate_after_redaction_before_export() {
+    let root = workspace_root();
+    let collector = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    let start = collector
+        .find("        metrics:\n          receivers:")
+        .expect("collector is missing the metrics pipeline");
+    let pipeline = &collector[start..];
+    let end = pipeline
+        .find("\n        logs:\n")
+        .expect("metrics pipeline must end before the logs pipeline");
+    let pipeline = &pipeline[..end];
+    let processors = pipeline
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("processors: [")
+                .and_then(|list| list.strip_suffix(']'))
+        })
+        .expect("metrics pipeline must declare processors")
+        .split(',')
+        .map(str::trim)
+        .collect::<Vec<_>>();
+    let redaction = processors
+        .iter()
+        .position(|processor| *processor == "redaction")
+        .expect("metrics pipeline must redact");
+    let aggregation = processors
+        .iter()
+        .position(|processor| *processor == "metricstransform")
+        .expect("metrics pipeline must aggregate with metricstransform");
+    let batch = processors
+        .iter()
+        .position(|processor| *processor == "batch")
+        .expect("metrics pipeline must batch");
+    assert!(
+        redaction < aggregation && aggregation < batch,
+        "metrics must aggregate after redaction and before batch: {processors:?}"
+    );
+    assert!(
+        pipeline
+            .find("processors:")
+            .expect("metrics must declare processors")
+            < pipeline
+                .find("exporters:")
+                .expect("metrics must declare exporters"),
+        "metrics aggregation must be configured before export"
+    );
+}

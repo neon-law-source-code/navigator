@@ -242,6 +242,106 @@ data:
         # NEW attribute key shows up as a rising redaction count (Step 7
         # watches this), without ever logging the dropped value.
         summary: debug
+      # Redaction can make distinct metric points share one label set. Sum those
+      # points before batching so one collapsed series cannot reject the batch.
+      metricstransform:
+        transforms:
+          - include: ".*"
+            match_type: regexp
+            action: update
+            operations:
+              - action: aggregate_labels
+                label_set:
+                  - service.name
+                  - service.version
+                  - service.instance.id
+                  - deployment.environment
+                  - telemetry.sdk.name
+                  - telemetry.sdk.language
+                  - telemetry.sdk.version
+                  - cloud.provider
+                  - cloud.platform
+                  - cloud.account.id
+                  - cloud.region
+                  - cloud.availability_zone
+                  - host.id
+                  - host.name
+                  - host.type
+                  - k8s.cluster.name
+                  - k8s.namespace.name
+                  - k8s.pod.name
+                  - k8s.deployment.name
+                  - k8s.node.name
+                  - container.name
+                  - exporter
+                  - service
+                  - outcome
+                  - handler
+                  - key
+                  - one_way
+                  - workflow
+                  - step
+                  - error.class
+                  - error.type
+                  - status_code
+                  - duration_ms
+                  - count
+                  - audit
+                  - event
+                  - decision
+                  - tool
+                  - skill
+                  - role
+                  - proposer_person_id
+                  - proposer_role
+                  - principal_kind
+                  - task_id
+                  - authorized
+                  - confirmed
+                  - confirmation_required
+                  - routed_via_llm
+                  - status_class
+                  - locale
+                  - source
+                  - country
+                  - provider
+                  - reason
+                  - error_class
+                  - brand
+                  - first_link
+                  - channel
+                  - lead_id
+                  - service_id
+                  - sms_consent
+                  - source_path
+                  - domain
+                  - from_domain
+                  - to_domain
+                  - got_domain
+                  - person_id
+                  - project_id
+                  - notation_id
+                  - recipient_role
+                  - hop
+                  - document_id
+                  - entity_id
+                  - template_id
+                  - question_id
+                  - invocation_id
+                  - http.request.method
+                  - http.route
+                  - http.response.status_code
+                  - url.scheme
+                  - server.address
+                  - network.protocol.name
+                  - network.protocol.version
+                  - rpc.system
+                  - rpc.service
+                  - rpc.method
+                  - otel.scope.name
+                  - otel.scope.version
+                  - otel.status_code
+                aggregation_type: sum
       # Dash0-only noise filter. These are successful operational or static
       # HTTP requests that carry no application decision. The status guard
       # keeps every 4xx/5xx response; a span whose status attribute is absent
@@ -338,7 +438,7 @@ data:
           exporters: [otlp/dash0]
         metrics:
           receivers: [otlp, prometheus/self]
-          processors: [memory_limiter, resourcedetection, redaction, batch]
+          processors: [memory_limiter, resourcedetection, redaction, metricstransform, batch]
           exporters: [googlecloud, otlp/dash0]
         logs:
           receivers: [otlp]

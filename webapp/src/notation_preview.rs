@@ -29,7 +29,7 @@
 //! Markdown: **Frontmatter** (the template's declared YAML as a
 //! [`CodeBlock`]; omitted entirely for a template with none), **Body** (the
 //! highlighted stage), **Questionnaire** (the "Try answering this" demo,
-//! [`QuestionnaireDemo`]), and **Workflow** (the sample-run diagram,
+//! [`QuestionnaireDemo`]), and **Workflow** (the definition-derived graph,
 //! [`WorkflowDiagram`]). The last two are omitted when the template declares
 //! no `questionnaire:` or `workflow:` block, same as before this page had
 //! accordions at all.
@@ -54,7 +54,7 @@ use crate::components::{
     CATALOG_STYLESHEET_HREF,
 };
 use crate::harvard_outline::{HARVARD_OUTLINE_SCRIPT_HREF, HARVARD_OUTLINE_STYLESHEET_HREF};
-use crate::notation_demo::{DemoQuestion, QuestionnaireDemo};
+use crate::notation_demo::{render_live_template, DemoQuestion, QuestionnaireDemo};
 use crate::notation_workflow::{WorkflowDiagram, WorkflowStateView};
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
@@ -79,7 +79,7 @@ pub struct PreviewDoc {
     /// block, which renders no demo section at all.
     pub demo_questions: Vec<DemoQuestion>,
     /// The template's declared `workflow:` state machine, from
-    /// `views::workflow_preview::parse` — feeds the sample "Workflow" runs.
+    /// `views::workflow_preview::parse` — feeds the "Workflow" graph.
     /// Empty for a template with no workflow block, which renders no
     /// section at all.
     pub demo_workflow: Vec<WorkflowStateView>,
@@ -231,11 +231,16 @@ pub fn NotationPreviewPage(
                     }
                 }
                 Accordion { title: "Body".to_string(),
-                    div { dangerous_inner_html: "{content.stage_html}" }
+                    div {
+                        dangerous_inner_html: "{render_live_template(&content.stage_html, &content.demo_questions, &std::collections::BTreeMap::new())}"
+                    }
                 }
                 if !content.demo_questions.is_empty() {
                     Accordion { title: "Questionnaire".to_string(),
-                        QuestionnaireDemo { questions: content.demo_questions.clone() }
+                        QuestionnaireDemo {
+                            questions: content.demo_questions.clone(),
+                            template_html: content.stage_html.clone(),
+                        }
                     }
                 }
                 if !content.demo_workflow.is_empty() {

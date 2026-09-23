@@ -40,8 +40,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::{Accordion, CodeBlock, PublicShell};
 use crate::harvard_outline::{HARVARD_OUTLINE_SCRIPT_HREF, HARVARD_OUTLINE_STYLESHEET_HREF};
-use crate::notation_demo::QuestionnaireDemo;
+use crate::notation_demo::{render_live_template, QuestionnaireDemo};
 use crate::notation_preview::NotationPreviewContent;
+use crate::notation_workflow::WorkflowDiagram;
 use crate::public_chrome::PublicChrome;
 
 /// What `portal::dioxus_app::inject_notation_draft` injects for the render
@@ -176,12 +177,23 @@ pub fn NotationDraftPage(chrome: PublicChrome, content: Option<NotationPreviewCo
                 if !content.demo_questions.is_empty() {
                     section { class: "notation-draft__questionnaire",
                         h2 { "Questionnaire" }
-                        QuestionnaireDemo { questions: content.demo_questions.clone() }
+                        QuestionnaireDemo {
+                            questions: content.demo_questions.clone(),
+                            template_html: content.stage_html.clone(),
+                        }
                     }
                 }
                 section { class: "notation-draft__body",
                     h2 { "Document" }
-                    div { dangerous_inner_html: "{content.stage_html}" }
+                    div {
+                        dangerous_inner_html: "{render_live_template(&content.stage_html, &content.demo_questions, &std::collections::BTreeMap::new())}"
+                    }
+                }
+                if !content.demo_workflow.is_empty() {
+                    section { class: "notation-draft__workflow",
+                        h2 { "Workflow" }
+                        WorkflowDiagram { states: content.demo_workflow.clone() }
+                    }
                 }
                 if !content.frontmatter.is_empty() {
                     Accordion { title: "Frontmatter".to_string(),

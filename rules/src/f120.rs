@@ -21,6 +21,8 @@
 //! - **Signature placeholders** (`{{client.signature}}`) are `N107`'s; they
 //!   are dotted, so the same skip covers them.
 //! - **Iterators** (`{{#for x in people__members}}`, `{{/for}}`) are `N115`'s.
+//! - **Conditionals** (`{{#if custom_yes_no__approved}}`, `{{/if}}`) are
+//!   `N115`'s.
 //! - **Untyped tokens** (`{{custom_clauses}}`, `{{for_label}}`) carry no
 //!   `__` discriminator, are filled by mechanisms outside the questionnaire,
 //!   and are not checked.
@@ -113,7 +115,12 @@ impl Rule for F120BodyStateGrounding {
         let mut reported: Vec<String> = Vec::new();
         for (tok, body_line) in tokens_with_lines(body) {
             // `N115` owns dotted paths and both iterator forms.
-            if tok.contains('.') || tok.starts_with("#for ") || tok == "/for" {
+            if tok.contains('.')
+                || tok.starts_with("#for ")
+                || tok == "/for"
+                || tok.starts_with("#if ")
+                || tok == "/if"
+            {
                 continue;
             }
             // Only the typed-state grammar makes a claim this rule can check.

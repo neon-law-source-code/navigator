@@ -185,13 +185,15 @@ pub fn signature_placeholders(contents: &str) -> Vec<SignaturePlaceholder> {
             if let Some(rel) = contents[i + 2..].find("}}") {
                 let end = i + 2 + rel + 2;
                 let inner = contents[i + 2..i + 2 + rel].trim();
-                if let Some((signer, field)) = inner.split_once('.') {
-                    out.push(SignaturePlaceholder {
-                        offset: i,
-                        end,
-                        signer: signer.trim().to_string(),
-                        field: field.trim().to_string(),
-                    });
+                if !inner.starts_with('#') && !inner.starts_with('/') {
+                    if let Some((signer, field)) = inner.split_once('.') {
+                        out.push(SignaturePlaceholder {
+                            offset: i,
+                            end,
+                            signer: signer.trim().to_string(),
+                            field: field.trim().to_string(),
+                        });
+                    }
                 }
                 i = end;
                 continue;

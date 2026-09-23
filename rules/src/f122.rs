@@ -21,6 +21,8 @@
 //! - **An iterator source** — `{{#for m in people__members}}` walks the
 //!   aggregate, so the iterand is read. The loop variable is a binding, not
 //!   a state, and is never treated as one.
+//! - **A conditional source** — `{{#if custom_yes_no__approved}}` reads the
+//!   answer that decides whether its clause renders.
 //! - **A signature block** — `{{client.signature}}` is `N107`'s grammar and
 //!   renders from the signer's person state, which `N115` requires to be
 //!   `person__client`. The block is that state's reader; without this, the
@@ -94,7 +96,17 @@ fn states_read(body: &str) -> BTreeSet<String> {
             }
             continue;
         }
-        if token == "/for" {
+        if let Some(rest) = token.strip_prefix("#if ") {
+            let state = rest.split_once('=').map_or(rest, |(state, _)| state).trim();
+            read.insert(
+                state
+                    .split_once('.')
+                    .map_or(state, |(head, _)| head)
+                    .to_string(),
+            );
+            continue;
+        }
+        if matches!(token.as_str(), "/for" | "/if") {
             continue;
         }
         let Some((head, tail)) = token.split_once('.') else {
@@ -239,6 +251,19 @@ mod tests {
         let source = tmpl(
             "  BEGIN:\n    _: people__members\n  people__members:\n    _: END\n  END: {}\n",
             "{{#for m in people__members}}{{m.name}}\n{{/for}}",
+        );
+        assert!(
+            F122QuestionnaireStateIsRead.lint(&file(&source)).is_empty(),
+            "{:?}",
+            F122QuestionnaireStateIsRead.lint(&file(&source))
+        );
+    }
+
+    #[test]
+    fn a_conditional_source_counts_as_a_read() {
+        let source = tmpl(
+            "  BEGIN:\n    _: custom_yes_no__approved\n  custom_yes_no__approved:\n    _: END\n  END: {}\n",
+            "{{#if custom_yes_no__approved}}Approved.{{/if}}",
         );
         assert!(
             F122QuestionnaireStateIsRead.lint(&file(&source)).is_empty(),

@@ -14599,6 +14599,7 @@ name = "views"
 version = "26.9.23"
 dependencies = [
  "chrono",
+ "forms",
  "pulldown-cmark",
  "regex",
  "rules",
@@ -14891,6 +14892,7 @@ dependencies = [
  "dioxus",
  "dioxus-fullstack-core",
  "dioxus-ssr",
+ "forms",
  "futures",
  "percent-encoding",
  "reqwest 0.13.5",

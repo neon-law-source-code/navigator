@@ -40,6 +40,10 @@ beneath it.
 4. **Body** — the Markdown prose below the frontmatter fence, carrying `{{question_code}}` and `{{type__role.field}}`
    placeholders that are resolved at render and assembly time.
 
+Body clauses may depend on an answer. `{{#if question_code}}…{{/if}}` includes a clause for a non-empty, truthy answer;
+`{{#if question_code=value}}…{{/if}}` includes it when the stored answer equals `value`. The same renderer drives the
+live preview and the assembled document, so previewed clauses use the binding grammar that production uses.
+
 **Metadata is a conceptual grouping, not a literal YAML key.** There is no `metadata:` container in the frontmatter.
 Those scalars are siblings of `questionnaire:` and `workflow:`, not children of a shared key, so a template that
 declared an actual `metadata:` mapping would not parse as one. The grouping names the *role* those keys play —

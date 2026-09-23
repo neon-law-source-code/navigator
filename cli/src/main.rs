@@ -424,6 +424,13 @@ enum Command {
 
 #[derive(Subcommand)]
 enum ProjectsCmd {
+    /// Download every live document visible on this Project into the current
+    /// checkout, creating or refreshing source-safe YAML pointers.
+    Sync {
+        /// Preview added, updated, and unchanged documents without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Open a matter through the live site's `POST /app/api/projects`, the
     /// caller's own bearer token attached so the conflict attestation stays
     /// a personal act.
@@ -729,8 +736,8 @@ enum SiteCmd {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Download every committed pointer's own revision into the local staging
-    /// path it names — the inverse of `site sync`, hydrating a fresh checkout.
+    /// Download every committed pointer's own revision into its local ignored
+    /// path. Use `project sync` to discover live documents without pointers.
     Pull {
         /// List pending pulls without logging in or writing any file.
         #[arg(long)]
@@ -2351,6 +2358,9 @@ async fn open_surreal() -> Result<store::surreal::SurrealDb, ExitCode> {
 #[allow(clippy::too_many_lines)]
 async fn run_projects(action: ProjectsCmd) -> ExitCode {
     match action {
+        ProjectsCmd::Sync { dry_run } => {
+            document_sync::run_project_sync(std::path::Path::new("."), dry_run).await
+        }
         ProjectsCmd::Create {
             name,
             code,
@@ -2628,7 +2638,7 @@ fn document_pointer_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError
                         Ok(pointer)
                     } else {
                         anyhow::bail!(
-                            "pointer filename must retain the document extension before `.yml`"
+                            "pointer filename must retain the document extension before its `.yaml` pointer suffix"
                         )
                     }
                 });

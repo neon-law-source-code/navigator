@@ -1869,3 +1869,224 @@ async fn a_pointer_the_caller_cannot_read_is_reported_and_no_file_is_written() {
         .join("documents/pleadings/privileged.pdf")
         .exists());
 }
+
+fn init_git_checkout(root: &Path) {
+    let status = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(root)
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+fn live_document(asset_id: Uuid, bytes: &[u8], slug: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": asset_id,
+        "storage_key": format!("projects/acme/documents/{}", sha256(bytes)),
+        "secondary_storage_key": null,
+        "content_type": "application/pdf",
+        "byte_size": bytes.len(),
+        "sha256_hex": sha256(bytes),
+        "project_id": Uuid::now_v7(),
+        "filename": "motion.pdf",
+        "kind": "filing",
+        "source": "upload",
+        "received_at": null,
+        "description": null,
+        "visibility": "internal",
+        "slug": slug,
+        "published_at": "2026-09-23T12:00:00Z",
+        "source_message_id": null,
+        "source_sender": null,
+        "source_received_at": null,
+        "source_subject": null,
+        "metadata": null,
+        "inserted_at": "2026-09-23T12:00:00Z",
+        "updated_at": "2026-09-23T12:00:00Z"
+    })
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn project_sync_discovers_unpointed_documents_and_a_second_run_skips_them() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    init_git_checkout(root.path());
+    let credential_path = credentials(root.path(), &host);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    let bytes = b"live motion bytes";
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![live_document(
+            asset_id,
+            bytes,
+            "pleadings/motion.pdf",
+        )]))
+        .expect(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{asset_id}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes.to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let checkout = root.path().to_path_buf();
+    let first_credentials = credential_path.clone();
+    tokio::task::spawn_blocking(move || {
+        navigator()
+            .current_dir(checkout)
+            .env("NAVIGATOR_CREDENTIALS_FILE", first_credentials)
+            .args(["project", "sync"])
+            .timeout(Duration::from_secs(180))
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("1 added, 0 updated, 0 skipped"));
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        fs::read(root.path().join("documents/pleadings/motion.pdf")).unwrap(),
+        bytes
+    );
+    assert!(root
+        .path()
+        .join("documents/pleadings/motion.pdf.yaml")
+        .is_file());
+    assert!(!root
+        .path()
+        .join("documents/pleadings/motion.pdf.yml")
+        .exists());
+    let git_status = std::process::Command::new("git")
+        .args([
+            "status",
+            "--short",
+            "--untracked-files=all",
+            "--",
+            "documents",
+        ])
+        .current_dir(root.path())
+        .output()
+        .unwrap();
+    let git_status = String::from_utf8(git_status.stdout).unwrap();
+    assert!(git_status.contains("documents/.gitignore"), "{git_status}");
+    assert!(git_status.contains("motion.pdf.yaml"), "{git_status}");
+    assert!(
+        !git_status.lines().any(|line| line.ends_with("motion.pdf")),
+        "raw bytes must stay out of Git status: {git_status}"
+    );
+
+    let checkout = root.path().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        navigator()
+            .current_dir(checkout)
+            .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+            .args(["project", "sync"])
+            .timeout(Duration::from_secs(180))
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("0 added, 0 updated, 1 skipped"));
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn project_sync_dry_run_writes_nothing() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(root.path(), &host);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    mount_project_lookup(&server, project_id).await;
+    Mock::given(method("GET"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![live_document(
+            asset_id,
+            b"preview bytes",
+            "pleadings/preview.pdf",
+        )]))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let checkout = root.path().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        navigator()
+            .current_dir(checkout)
+            .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+            .args(["project", "sync", "--dry-run"])
+            .timeout(Duration::from_secs(180))
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(
+                "would add documents/pleadings/preview.pdf",
+            ));
+    })
+    .await
+    .unwrap();
+    assert!(!root.path().join("documents").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn project_sync_reports_forbidden_download_as_could_not_read() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    init_git_checkout(root.path());
+    let credential_path = credentials(root.path(), &host);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    mount_project_lookup(&server, project_id).await;
+    Mock::given(method("GET"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![live_document(
+            asset_id,
+            b"private bytes",
+            "privileged/private.pdf",
+        )]))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{asset_id}/download"
+        )))
+        .respond_with(ResponseTemplate::new(403).set_body_string("not on your lens"))
+        .mount(&server)
+        .await;
+
+    let checkout = root.path().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        navigator()
+            .current_dir(checkout)
+            .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+            .args(["project", "sync"])
+            .timeout(Duration::from_secs(180))
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("could not read"))
+            .stderr(predicate::str::contains("missing").not());
+    })
+    .await
+    .unwrap();
+    assert!(!root
+        .path()
+        .join("documents/privileged/private.pdf.yaml")
+        .exists());
+}

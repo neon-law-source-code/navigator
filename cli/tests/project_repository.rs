@@ -260,14 +260,15 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         "# CODEOWNERS\n\n* @shicholas\n"
     );
     let instructions = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
+    assert!(instructions.contains("## Folders"));
+    assert!(instructions.contains("navigator site import"));
     assert!(instructions.contains("## Tools"));
     assert!(instructions.contains("**Navigator CLI**"));
     assert!(instructions.contains("**Gmail**"));
     assert!(instructions.contains("**CourtListener**"));
     assert!(instructions.contains("The last four leave the firm."));
-    assert!(instructions.contains("`.agents/skills/` is the whole skill catalog"));
-    assert!(instructions.contains("`.codex/`"));
-    assert!(instructions.contains("fails `navigator project gate`"));
+    assert!(instructions.contains("## Feedback"));
+    assert!(instructions.contains("navigator project gate --ci"));
     assert!(!instructions.contains("example-project"));
     assert!(dir.path().join("templates/onboarding.md").is_file());
     assert!(

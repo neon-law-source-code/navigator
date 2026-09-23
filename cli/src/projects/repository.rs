@@ -2732,8 +2732,8 @@ jobs:
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         let reworded = agents("acme").replace(
-            "A `CLAUDE.md`, `.claude/`, or `.codex/` beside them is a retired mirror",
-            "A `CLAUDE.md` beside them is probably fine",
+            "When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team",
+            "When Navigator's CLI is missing or wrong, just work around it",
         );
         std::fs::write(root.path().join("AGENTS.md"), reworded).unwrap();
 

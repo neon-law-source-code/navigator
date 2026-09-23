@@ -140,6 +140,7 @@ pub mod openapi;
 pub mod password_reset;
 pub mod people_commands;
 pub mod people_list_answer;
+pub mod plausible;
 pub mod policy;
 pub mod portal_only;
 pub mod project_documents;

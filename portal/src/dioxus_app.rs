@@ -173,6 +173,12 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         .extensions()
         .get::<crate::chatwoot::ChatwootWidget>()
         .cloned();
+    // Same shape for analytics: tests inject a site, production resolves the
+    // brand's compiled site when this is the real production deployment.
+    let injected_analytics = req
+        .extensions()
+        .get::<crate::plausible::PlausibleSite>()
+        .copied();
     let response = next.run(req).await;
 
     let is_html = response
@@ -229,6 +235,12 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         None => html,
     };
 
+    let analytics = page_analytics(&html, injected_analytics.as_ref());
+    let html = match analytics {
+        Some(site) => close_with_script(&html, &site.script_tags()),
+        None => html,
+    };
+
     // The `/app` footer — one centered copyright line naming the resolved
     // Firm's legal entity (ENG-589). Gated on the request path rather than
     // on the rendered shell: unlike the public/authenticated split above,
@@ -247,8 +259,12 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
         html
     };
 
-    if let Ok(csp) = HeaderValue::from_str(&csp_with_nonce(&nonce, crate::asset_csp_origin(), chat))
-    {
+    if let Ok(csp) = HeaderValue::from_str(&csp_with_nonce(
+        &nonce,
+        crate::asset_csp_origin(),
+        chat,
+        analytics.is_some(),
+    )) {
         parts.headers.insert(header::CONTENT_SECURITY_POLICY, csp);
     }
     // The body length changed; drop any stale content-length so axum recomputes.
@@ -282,6 +298,31 @@ static SAMPLE_MATTERS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
 /// inbox — local KIND and the staging release ring included.
 static CHATWOOT: std::sync::LazyLock<Option<crate::chatwoot::ChatwootWidget>> =
     std::sync::LazyLock::new(crate::chatwoot::ChatwootWidget::from_env);
+
+/// Whether this deployment counts visits — explicit production, real matters
+/// — read once at startup for the same reason [`SAMPLE_MATTERS`] is. See
+/// [`crate::plausible::enabled_from`].
+static PLAUSIBLE_ENABLED: std::sync::LazyLock<bool> =
+    std::sync::LazyLock::new(|| crate::plausible::enabled_from(|key| std::env::var(key).ok()));
+
+/// The Plausible site counting this public page's visit, or nothing.
+///
+/// `injected` is a test-supplied site; otherwise the request's resolved brand
+/// picks its own compiled site when [`PLAUSIBLE_ENABLED`], so each brand face
+/// reports to its own dashboard. Authenticated shells are skipped either way:
+/// a client's matter page is never counted by a third party.
+fn page_analytics(
+    html: &str,
+    injected: Option<&crate::plausible::PlausibleSite>,
+) -> Option<crate::plausible::PlausibleSite> {
+    if !is_public_page(html) {
+        return None;
+    }
+    injected.copied().or_else(|| {
+        PLAUSIBLE_ENABLED
+            .then(|| crate::plausible::PlausibleSite::for_brand(views::brand::brand_key()))
+    })
+}
 
 /// The support-chat widget for a public page, or nothing.
 ///
@@ -566,10 +607,15 @@ fn generate_nonce() -> String {
 /// partial allowance gets wrong — `connect-src` is not declared at all
 /// otherwise, so it inherits `default-src 'self'` and a bubble that opens stays
 /// permanently silent.
+///
+/// `analytics` is whether this response carries the brand's Plausible script.
+/// It widens `script-src` for the vendor script and `connect-src` for the
+/// event beacon, both to [`crate::plausible::PLAUSIBLE_ORIGIN`] only.
 fn csp_with_nonce(
     nonce: &str,
     asset_origin: Option<String>,
     chat: Option<&crate::chatwoot::ChatwootWidget>,
+    analytics: bool,
 ) -> String {
     let asset_extra = asset_origin
         .map(|origin| format!(" {origin}"))
@@ -578,25 +624,33 @@ fn csp_with_nonce(
     let chat_extra = chat
         .map(|widget| format!(" {}", widget.origin()))
         .unwrap_or_default();
-    // `connect-src` and `frame-src` are named only when there is a widget, so a
-    // deployment without one emits exactly the policy it emitted before the
-    // widget existed rather than two directives restating `default-src`.
-    let chat_directives = chat
-        .map(|widget| {
-            format!(
-                "; connect-src 'self' {origin} {socket}; frame-src 'self' {origin}",
-                origin = widget.origin(),
-                socket = widget.websocket_origin(),
-            )
-        })
+    let analytics_extra = if analytics {
+        format!(" {}", crate::plausible::PLAUSIBLE_ORIGIN)
+    } else {
+        String::new()
+    };
+    // `connect-src` and `frame-src` are named only when something needs them,
+    // so a page with neither widget nor analytics emits exactly the policy it
+    // emitted before either existed rather than directives restating
+    // `default-src`.
+    let chat_connect = chat
+        .map(|widget| format!(" {} {}", widget.origin(), widget.websocket_origin()))
+        .unwrap_or_default();
+    let connect_directive = if chat.is_some() || analytics {
+        format!("; connect-src 'self'{chat_connect}{analytics_extra}")
+    } else {
+        String::new()
+    };
+    let frame_directive = chat
+        .map(|widget| format!("; frame-src 'self' {}", widget.origin()))
         .unwrap_or_default();
     format!(
         "default-src 'self'; base-uri 'self'; object-src 'none'; \
          frame-ancestors 'none'; img-src 'self' data:{asset_extra}{chat_extra}; \
          font-src 'self'{asset_extra}; media-src 'self'{asset_extra}; \
          style-src 'self' 'unsafe-inline'; \
-         script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval'{chat_extra}; \
-         form-action 'self'{chat_directives}"
+         script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval'{chat_extra}{analytics_extra}; \
+         form-action 'self'{connect_directive}{frame_directive}"
     )
 }
 
@@ -4658,7 +4712,7 @@ mod tests {
         // whatever `generate_nonce` produced for this response.
         let nonce = generate_nonce();
 
-        let same_origin = csp_with_nonce(&nonce, None, None);
+        let same_origin = csp_with_nonce(&nonce, None, None, false);
         assert!(same_origin.contains("font-src 'self';"), "{same_origin}");
         assert!(same_origin.contains("media-src 'self';"), "{same_origin}");
         assert!(
@@ -4670,6 +4724,7 @@ mod tests {
             &nonce,
             Some("https://storage.example.test".to_string()),
             None,
+            false,
         );
         assert!(
             cdn.contains("font-src 'self' https://storage.example.test;"),
@@ -4701,7 +4756,7 @@ mod tests {
     #[test]
     fn without_a_widget_the_policy_names_no_third_party_origin() {
         let nonce = generate_nonce();
-        let csp = csp_with_nonce(&nonce, None, None);
+        let csp = csp_with_nonce(&nonce, None, None, false);
         assert!(!csp.contains("chatwoot"), "{csp}");
         assert!(!csp.contains("connect-src"), "{csp}");
         assert!(!csp.contains("frame-src"), "{csp}");
@@ -4717,7 +4772,7 @@ mod tests {
     fn a_widget_admits_its_origin_on_script_frame_img_and_socket() {
         let nonce = generate_nonce();
         let widget = chatwoot_widget();
-        let csp = csp_with_nonce(&nonce, None, Some(&widget));
+        let csp = csp_with_nonce(&nonce, None, Some(&widget), false);
 
         assert!(
             csp.contains(&format!(
@@ -4756,6 +4811,7 @@ mod tests {
             &nonce,
             Some("https://storage.example.test".to_string()),
             Some(&widget),
+            false,
         );
         assert!(
             csp.contains(
@@ -4892,6 +4948,117 @@ mod tests {
             !public_html.contains(navigator_favicon_fragment()),
             "public pages keep their firm-branded favicon: {public_html}"
         );
+    }
+
+    /// Analytics widen `script-src` and `connect-src` to Plausible alone, and
+    /// share `connect-src` with the chat widget rather than declaring it twice.
+    #[test]
+    fn analytics_admit_plausible_on_script_and_connect_only() {
+        let nonce = generate_nonce();
+        let csp = csp_with_nonce(&nonce, None, None, true);
+        assert!(
+            csp.contains(&format!(
+                "script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval' https://plausible.io;"
+            )),
+            "{csp}"
+        );
+        assert!(
+            csp.ends_with("form-action 'self'; connect-src 'self' https://plausible.io"),
+            "{csp}"
+        );
+        assert!(
+            !csp.contains("img-src 'self' data: https://plausible.io"),
+            "{csp}"
+        );
+        assert!(!csp.contains("frame-src"), "{csp}");
+
+        let both = csp_with_nonce(&nonce, None, Some(&chatwoot_widget()), true);
+        assert_eq!(both.matches("connect-src").count(), 1, "{both}");
+        assert!(
+            both.contains(
+                "connect-src 'self' https://app.chatwoot.com wss://app.chatwoot.com \
+                 https://plausible.io;"
+            ),
+            "{both}"
+        );
+    }
+
+    /// The middleware's analytics branch, end to end: a public page carries the
+    /// stub and the vendor script and a policy admitting Plausible; an
+    /// authenticated page from the same process carries neither. The site
+    /// rides the request for the reason the chat widget's does.
+    #[tokio::test]
+    async fn a_configured_brand_counts_public_pages_only() {
+        async fn inject_analytics(mut req: Request, next: Next) -> Response {
+            req.extensions_mut()
+                .insert(crate::plausible::PlausibleSite::new("pa-test"));
+            next.run(req).await
+        }
+        let public_body = format!(
+            "<html><head></head><body><div class=\"{}\">firm page</div></body></html>",
+            webapp::components::PUBLIC_SHELL_MARKER
+        );
+        let router = Router::new()
+            .route(
+                "/",
+                get(move || {
+                    let body = public_body.clone();
+                    async move { axum::response::Html(body) }
+                }),
+            )
+            .route(
+                "/app/projects",
+                get(|| async {
+                    axum::response::Html(
+                        "<html><head></head><body><div class=\"navigator-shell nav-theme\">\
+                         portal page</div></body></html>",
+                    )
+                }),
+            )
+            .layer(from_fn(dioxus_document_head))
+            .layer(from_fn(inject_analytics));
+        let fetch = |uri: &'static str| {
+            let router = router.clone();
+            async move {
+                let response = router
+                    .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                let csp = response
+                    .headers()
+                    .get(header::CONTENT_SECURITY_POLICY)
+                    .expect("the render carries a policy")
+                    .to_str()
+                    .unwrap()
+                    .to_string();
+                let bytes = axum::body::to_bytes(response.into_body(), MAX_RENDER_BYTES)
+                    .await
+                    .unwrap();
+                (csp, String::from_utf8(bytes.to_vec()).unwrap())
+            }
+        };
+
+        let (public_csp, public_html) = fetch("/").await;
+        assert!(
+            public_html.contains(crate::plausible::PLAUSIBLE_LOADER_HREF)
+                && public_html.contains("https://plausible.io/js/pa-test.js"),
+            "the public page loads analytics: {public_html}"
+        );
+        assert!(
+            public_html.find("firm page").unwrap()
+                < public_html
+                    .find(crate::plausible::PLAUSIBLE_LOADER_HREF)
+                    .unwrap(),
+            "analytics follow the page's content: {public_html}"
+        );
+        assert!(
+            public_csp.contains("connect-src 'self' https://plausible.io"),
+            "{public_csp}"
+        );
+
+        let (portal_csp, portal_html) = fetch("/app/projects").await;
+        assert!(!portal_html.contains("plausible"), "{portal_html}");
+        assert!(!portal_csp.contains("plausible"), "{portal_csp}");
     }
 
     /// The public shell selects a page; the authenticated shell does not.
@@ -5189,7 +5356,10 @@ mod tests {
             .expect("the policy carries a nonce")
             .to_string();
         assert!(!nonce.is_empty());
-        assert_eq!(csp, csp_with_nonce(&nonce, crate::asset_csp_origin(), None));
+        assert_eq!(
+            csp,
+            csp_with_nonce(&nonce, crate::asset_csp_origin(), None, false)
+        );
         assert!(
             csp.contains("script-src 'self' 'nonce-") && csp.contains("'wasm-unsafe-eval'"),
             "hydration needs the nonce and wasm: {csp}"

@@ -292,8 +292,8 @@ what each code actually checks, its severity, and whether it autofixes, see the 
 | `respondent_type` | yes | `person`, `entity`, `person_and_entity` | N102 |
 | `jurisdiction` | yes | any code seeded in `store/seeds/Jurisdiction.yaml` (e.g. `NV`, `CA`, `US`, `NY`) | N110 |
 | `confidential` | yes | `true` or `false` | N105 |
-| `questionnaire` | yes (paired; optional for a prose-only blueprint on any `kind`) | a `BEGIN` → `END` ladder | N104 |
-| `workflow` | yes (paired; optional for a prose-only blueprint on any `kind`) | `BEGIN` → `END`; `lawyer_review` | N104, N106 |
+| `questionnaire` | yes (paired; optional for a prose-only blueprint) | a `BEGIN` → `END` ladder | N104 |
+| `workflow` | yes (paired; optional for a prose-only blueprint) | `BEGIN` → `END`; `lawyer_review` | N104, N106 |
 | `prompts` | with any `custom_*` state; optional for bank questions | wording keyed by question code | N104 |
 | `choices` | with a custom choice state | option values and labels keyed by question code | N104 |
 | `output` | no | `letter`, `agreement`, `pleading`, or `form` (omit for a plain page) | N109 |

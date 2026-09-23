@@ -28,8 +28,8 @@ estate:
     thousand dollars once, with unlimited edits for life. Start with a conversation.
     A licensed attorney prepares and reviews your plan, then guides you through
     signing. As your life changes, come back to update your wishes. An optional
-    blockchain record is planned at five dollars per transaction. It is not yet
-    available, and does not replace required signing, witnesses, or notarization.
+    blockchain record is available by request at five dollars per transaction.
+    It does not replace required signing, witnesses, or notarization.
     Book a consultation with Vesta, an estate-planning practice of Shook Law PLLC.
   process_label: A plan that grows with you
   process_heading: Decide today. Keep room for tomorrow.
@@ -40,18 +40,19 @@ estate:
   record_label: Optional blockchain record
   record_price: "$5"
   record_unit: per transaction
-  record_status: Coming soon
+  record_status: Available by request
   record_heading: A lasting record of one version.
   record_body: >-
-    Planning to leave your documents as they are? The optional blockchain
-    record is intended to preserve evidence of a signed version. Each new
-    record is a separate $5 transaction. You can still change your plan;
-    the earlier record stays on the chain.
+    Planning to leave your documents as they are? Add an optional blockchain
+    record to preserve evidence of a signed version. Each new record is a
+    separate $5 transaction. You can still change your plan; the earlier
+    record stays on the chain.
   record_note: >-
-    Blockchain recording is not yet available. It does not replace the
-    signatures, witnesses, or notarization your documents require, and it
-    does not make your plan unchangeable.
+    We create the record after receiving the signed version and transaction
+    fee. It does not replace the signatures, witnesses, or notarization your
+    documents require, and it does not make your plan unchangeable.
   closing_heading: Start with the people you love.
   closing_body: >-
-    Book a conversation with Vesta, an estate-planning practice of
-    Shook Law PLLC.
+    Book a conversation about your estate plan or a possible individual
+    trustee appointment. Trustee service requires separate review and written
+    terms. Vesta is an estate-planning practice of Shook Law PLLC.

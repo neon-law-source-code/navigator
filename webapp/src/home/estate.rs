@@ -1,4 +1,4 @@
-//! The lifetime estate plan, with an optional future record of a signed version.
+//! The lifetime estate plan, with an optional record of a signed version.
 use super::HomeContent;
 use crate::components::is_external_href;
 use dioxus::prelude::*;

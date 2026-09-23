@@ -34,20 +34,51 @@ bands:
         body:
           - - text: Return as your life changes. Your $5,000 estate plan includes unlimited edits for life.
   - kind: cards
+    anchor: trustee
+    overline: Individual trustee services
+    heading: Need someone to carry out the trust?
+    description: >-
+      Nicholas Shook may accept appointment as an individual trustee in
+      appropriate matters. Acceptance is not automatic: we first review the
+      trust document, governing law, assets, administration, conflicts, and
+      fees. Adding a name in Navigator does not appoint anyone as trustee.
+    items:
+      - title: Nevada asset-protection trusts
+        body:
+          - - text: >-
+                A self-settled Nevada asset-protection trust generally needs a
+                qualified Nevada trustee and real Nevada administration. We can
+                evaluate an individual co-trustee role and coordinate with the
+                qualified Nevada trustee the trust may require.
+      - title: Life-insurance trusts
+        body:
+          - - text: >-
+                Trustee powers over a life-insurance policy can affect the
+                trust's intended estate-tax treatment. We review the insured,
+                the person creating the trust, the proposed powers, and whether
+                an independent trustee is appropriate.
+      - title: A separate fiduciary engagement
+        body:
+          - - text: >-
+                Trustee service is fiduciary administration, not software
+                access, and is not included in the $5,000 estate plan. The
+                scope, compensation, and any legal representation are set out
+                in written terms before an appointment is accepted.
+  - kind: cards
     anchor: record
-    overline: Optional · Coming soon
+    overline: Optional blockchain record
     heading: A blockchain record of one version
     description: >-
-      $5 per transaction when available. Intended to preserve evidence of a
-      signed version you expect to keep. An earlier record stays on the
-      chain if you change your plan and record a new version.
+      $5 per transaction, available by request. Preserve evidence of a signed
+      version you expect to keep. An earlier record stays on the chain if you
+      change your plan and record a new version.
     items:
       - title: Signing still matters
         body:
           - - text: >-
-                Blockchain recording is not yet available. It does not replace
-                required signatures, witnesses, or notarization. It does not
-                make your plan unchangeable.
+                A blockchain record does not replace required signatures,
+                witnesses, or notarization. It does not make your plan
+                unchangeable.
       - title: Explore your plan
         body:
           - - text: See the lifetime plan and how to get started.

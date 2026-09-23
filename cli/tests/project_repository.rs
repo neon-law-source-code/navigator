@@ -260,14 +260,15 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         "# CODEOWNERS\n\n* @shicholas\n"
     );
     let instructions = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
+    assert!(instructions.contains("## Folders"));
+    assert!(instructions.contains("navigator site import"));
     assert!(instructions.contains("## Tools"));
     assert!(instructions.contains("**Navigator CLI**"));
     assert!(instructions.contains("**Gmail**"));
     assert!(instructions.contains("**CourtListener**"));
     assert!(instructions.contains("The last four leave the firm."));
-    assert!(instructions.contains("`.agents/skills/` is the whole skill catalog"));
-    assert!(instructions.contains("`.codex/`"));
-    assert!(instructions.contains("fails `navigator project gate`"));
+    assert!(instructions.contains("## Feedback"));
+    assert!(instructions.contains("navigator project gate --ci"));
     assert!(!instructions.contains("example-project"));
     assert!(dir.path().join("templates/onboarding.md").is_file());
     assert!(
@@ -1085,11 +1086,14 @@ fn project_gate_rewrites_a_drifted_documents_gitignore() {
 /// callers, so a nested ignore file there would itself be an unenumerated
 /// path; `tests/` carries no such closed set and still proves the same
 /// thing: `git ls-files --exclude-standard` honours a directory's own
-/// `.gitignore`, not only the root one.
+/// `.gitignore`, not only the root one. `tests/` is an allowed root a
+/// repository may create for its own source-level checks (LAW-49: the gate
+/// neither requires nor scaffolds one), so this test creates it itself.
 #[test]
 fn gate_honours_a_nested_ignore_file() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join("tests")).unwrap();
     fs::write(dir.path().join("tests/.gitignore"), "*.env\n").unwrap();
     let ignored = dir.path().join("tests/hidden.env");
     fs::write(&ignored, "synthetic secret\n").unwrap();

@@ -6,12 +6,10 @@ name: project-gate
 #     jobs:
 #       ci:
 #         uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@YY.M.D
-#         with:
-#           project: "project-code"
-#           host: "staging.neonlaw.com"
 #
-# The checkout's `navigator.yaml` supplies the pin. This workflow does not
-# resolve `latest` and does not trust a caller-supplied version.
+# The checkout's `navigator.yaml` supplies the pin, the Project code
+# (`project.name`), and the deployment host (`project.host`). This workflow
+# does not resolve `latest` and does not trust a caller-supplied version.
 # `ops github setup` bumps the caller's pin; it never edits this file.
 # Pull requests run the live read-only document and Project checks plus seed
 # validation dry-runs. Main pushes additionally reconcile seeds and publish.
@@ -20,11 +18,20 @@ on:
   workflow_call:
     inputs:
       project:
-        description: Project code declared by navigator.yaml.
-        required: true
+        description: >-
+          Deprecated, ignored: the Project code is read from navigator.yaml's
+          project.name. Kept only so an unmigrated caller's `with:` block does
+          not fail workflow_call's undeclared-input check; remove it from
+          callers and then from here.
+        required: false
         type: string
+        default: ""
       host:
-        description: Deployment host for live Project verification and seed validation.
+        description: >-
+          Deprecated, ignored: the deployment host is read from
+          navigator.yaml's project.host. Kept only so an unmigrated caller's
+          `with:` block does not fail workflow_call's undeclared-input check;
+          remove it from callers and then from here.
         required: false
         type: string
         default: ""
@@ -35,28 +42,25 @@ jobs:
     outputs:
       version: ${{ steps.manifest.outputs.version }}
       project: ${{ steps.manifest.outputs.project }}
+      host: ${{ steps.manifest.outputs.host }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Read and check navigator.yaml
+      - name: Read navigator.yaml
         id: manifest
-        env:
-          EXPECTED_PROJECT: ${{ inputs.project }}
         shell: bash
         run: |
           set -euo pipefail
-          values="$(ruby -e 'require "yaml"; m = YAML.safe_load(File.read("navigator.yaml"), aliases: false) || {}; p = m["project"]; p = p["name"] if p.is_a?(Hash); abort("navigator.yaml is missing project.name") unless p.is_a?(String) && !p.strip.empty?; v = m["version"]; v = v.strip if v.is_a?(String); v = "" unless v.is_a?(String); puts "version=#{v}"; puts "project=#{p.strip}"')"
+          values="$(ruby -e 'require "yaml"; m = YAML.safe_load(File.read("navigator.yaml"), aliases: false) || {}; p = m["project"]; p = {} unless p.is_a?(Hash); name = p["name"]; abort("navigator.yaml is missing project.name") unless name.is_a?(String) && !name.strip.empty?; host = p["host"]; abort("navigator.yaml is missing project.host") unless host.is_a?(String) && !host.strip.empty?; v = m["version"]; v = v.strip if v.is_a?(String); v = "" unless v.is_a?(String); puts "version=#{v}"; puts "project=#{name.strip}"; puts "host=#{host.strip}"')"
           version=""
           project=""
+          host=""
           while IFS='=' read -r key value; do
               case "${key}" in
                 version) version="${value}" ;;
                 project) project="${value}" ;;
+                host) host="${value}" ;;
               esac
           done <<< "${values}"
-          if [ "${project}" != "${EXPECTED_PROJECT}" ]; then
-              echo "::error::navigator.yaml project.name '${project}' does not match project input '${EXPECTED_PROJECT}'."
-              exit 1
-          fi
           if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
               echo "::error::version must be an exact release tag, not '${version}'."
               exit 1
@@ -64,6 +68,7 @@ jobs:
           {
               echo "version=${version}"
               echo "project=${project}"
+              echo "host=${host}"
           } >> "${GITHUB_OUTPUT}"
 
   # Installs, lints, typechecks, tests, and builds every application this
@@ -135,7 +140,7 @@ jobs:
           version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site document verify
         env:
-          HOST: ${{ inputs.host }}
+          HOST: ${{ needs.read-manifest.outputs.host }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
         run: |
@@ -172,7 +177,7 @@ jobs:
           version: ${{ needs.read-manifest.outputs.version }}
       - name: navigator site import
         env:
-          HOST: ${{ inputs.host }}
+          HOST: ${{ needs.read-manifest.outputs.host }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
         run: |

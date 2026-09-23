@@ -390,7 +390,6 @@ pub fn scaffold(
         ),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
-        (root.join("tests/README.md"), tests_readme()),
         (
             root.join(WORKFLOW),
             workflow_for(action_version, project_code, host),
@@ -2322,11 +2321,6 @@ fn agents(_project_code: &str) -> String {
     AGENT_CONTRACT_BASE.to_owned()
 }
 
-fn tests_readme() -> String {
-    "# Tests\n\nKeep source-level tests for this Project's templates here. Generated documents and dependencies do not belong here.\n"
-        .to_string()
-}
-
 /// The pinned publish action a Project repository's CD workflow calls.
 const PROJECT_PUBLISH_WORKFLOW: &str =
     "neon-law-source-code/navigator/.github/workflows/project-publish.yml@";
@@ -2738,8 +2732,8 @@ jobs:
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         let reworded = agents("acme").replace(
-            "A `CLAUDE.md`, `.claude/`, or `.codex/` beside them is a retired mirror",
-            "A `CLAUDE.md` beside them is probably fine",
+            "When Navigator's CLI is missing or wrong, open a Linear issue on the Lawyers team",
+            "When Navigator's CLI is missing or wrong, just work around it",
         );
         std::fs::write(root.path().join("AGENTS.md"), reworded).unwrap();
 

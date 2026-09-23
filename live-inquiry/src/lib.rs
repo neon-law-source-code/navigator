@@ -13,11 +13,11 @@ pub trait TranscriptProvider: Send + Sync {
 /// A [`TranscriptProvider`] that produces a deterministic transcript without
 /// calling any cloud speech API.
 ///
-/// This is the **default** backend for local dev and tests; real Google
-/// Speech-to-Text is opt-in (`NAVIGATOR_SPEECH_BACKEND=google`). Keeping the
-/// fake here in `live-inquiry` — which has no cloud-provider dependency — means
-/// the default `--audio` path compiles and runs with no GCP SDK, credentials,
-/// or network access.
+/// This is the backend for local dev and tests; a caller opts into real
+/// Google Speech-to-Text by constructing `cloud::GoogleSpeechTranscriptProvider`
+/// instead. Keeping the fake here in `live-inquiry` — which has no
+/// cloud-provider dependency — means the audio path compiles and runs with
+/// no GCP SDK, credentials, or network access.
 ///
 /// `transcribe_file` resolves its text in this order:
 /// 1. a fixed transcript supplied via [`FakeTranscriptProvider::with_transcript`];

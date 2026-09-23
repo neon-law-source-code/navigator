@@ -16,7 +16,7 @@
 //! | `project setup` | `GET /app/api/projects` plus the authenticated surface, Slack, and Notion setup doors |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
-//! | `notations preview` | `POST /app/projects/{project_code}/notations/draft` |
+//! | `notation preview` | `POST /app/projects/{project_code}/notations/draft` |
 //! | `navigator site import` | `POST /app/api/seed` (optional `POST /auth/ci/seed-token`) |
 
 use std::collections::VecDeque;
@@ -1699,7 +1699,7 @@ struct NotationDraftCreated {
     path: String,
 }
 
-/// `navigator notations preview <file>` (LAW-29) — push a template as a
+/// `navigator notation preview <file>` (LAW-29) — push a template as a
 /// **draft** to the Project it belongs to: `POST
 /// /app/projects/{project_code}/notations/draft`. Unlike [`notation_create`],
 /// this creates no Notation and starts no questionnaire — the server-side

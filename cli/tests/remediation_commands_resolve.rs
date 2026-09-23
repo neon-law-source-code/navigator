@@ -519,7 +519,7 @@ fn the_help_parser_still_reads_the_top_level_commands() {
     let mut cache = BTreeMap::new();
     let root = node_at(&mut cache, &[]);
 
-    for expected in ["dev", "forms", "notations", "ops", "project", "site"] {
+    for expected in ["dev", "forms", "notation", "ops", "project", "site"] {
         assert!(
             root.children.iter().any(|name| name == expected),
             "the `Commands:` parser read {:?} at the top level and missed \
@@ -581,7 +581,7 @@ fn a_trailing_word_on_a_leaf_that_takes_no_argument_does_not_resolve() {
 #[test]
 fn a_retired_verb_in_a_cfg_test_module_is_not_scanned() {
     let source = concat!(
-        "fn prod() { let _ = \"run `navigator notations format`\"; }\n",
+        "fn prod() { let _ = \"run `navigator ops doctor`\"; }\n",
         "#[cfg(test)]\n",
         "mod tests {\n",
         "    fn example() { let _ = \"run `navigator template render x`\"; }\n",
@@ -593,7 +593,7 @@ fn a_retired_verb_in_a_cfg_test_module_is_not_scanned() {
             .iter()
             .map(|invocation| invocation.literal.as_str())
             .collect::<Vec<_>>(),
-        vec!["navigator notations format"],
+        vec!["navigator ops doctor"],
         "{found:?}"
     );
 }

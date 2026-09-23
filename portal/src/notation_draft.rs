@@ -18,7 +18,7 @@
 //! The route lives under `/app/projects`, wrapped (with the rest of that
 //! router) in `require_auth` + `require_policy` + the bearer-session
 //! injector, exactly like `notation create`'s route — so `navigator
-//! notations preview`, authenticated the same way `navigator site login`
+//! notation preview`, authenticated the same way `navigator site login`
 //! leaves every other CLI command authenticated, can call it. The CSRF
 //! layer's bearer exemption (no session cookie → pass through) is what lets
 //! a JSON body reach here with no `_csrf` field.

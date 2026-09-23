@@ -3041,7 +3041,7 @@ pub const NOTATION_PREVIEW_PATH: &str = "/notations/{slug}";
 ///
 /// Also carries [`NOTATION_DRAFT_PATH`] (LAW-29) when `surreal` is
 /// `Some` — the production `neon` binary's case — resolved by the awaited
-/// [`inject_notation_draft`] middleware. `navigator notations preview
+/// [`inject_notation_draft`] middleware. `navigator notation preview
 /// --offline`'s ephemeral local server (`cli::notations_preview`) has no
 /// store connection at all and passes `None`, mounting the preview route
 /// alone exactly as before.
@@ -3117,7 +3117,7 @@ async fn inject_notation_preview(
     next.run(req).await
 }
 
-/// A pushed notation draft (LAW-29) — `navigator notations preview`'s draft
+/// A pushed notation draft (LAW-29) — `navigator notation preview`'s draft
 /// door. `{id}` names a row in `store::notation_drafts`, addressed at this
 /// path (mounted by [`notation_preview_router`]), the same shape as
 /// [`NOTATION_PREVIEW_PATH`] but keyed by a live store lookup rather than a

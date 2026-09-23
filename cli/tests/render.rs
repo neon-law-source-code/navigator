@@ -1,6 +1,7 @@
-//! End-to-end tests for `navigator notations render <file> --out <pdf>`. Each
-//! test writes a notation fixture to a tempdir, invokes the real
-//! binary, and checks the produced PDF (or the refusal).
+//! End-to-end tests for `navigator notation pdf <file> --out <pdf>` and
+//! `navigator notation word <file> --out <docx>`. Each test writes a
+//! notation fixture to a tempdir, invokes the real binary, and checks the
+//! produced document (or the refusal).
 
 use std::fs;
 use std::process::Command;
@@ -142,12 +143,20 @@ fn write(dir: &TempDir, name: &str, body: &str) -> std::path::PathBuf {
     path
 }
 
-fn render(args: &[&std::ffi::OsStr]) -> std::process::Output {
+fn render(subcommand: &str, args: &[&std::ffi::OsStr]) -> std::process::Output {
     Command::new(cargo_bin("navigator"))
-        .args(["notations", "render"])
+        .args(["notation", subcommand])
         .args(args)
         .output()
-        .expect("run navigator notations render")
+        .expect("run navigator notation pdf/word")
+}
+
+fn render_pdf(args: &[&std::ffi::OsStr]) -> std::process::Output {
+    render("pdf", args)
+}
+
+fn render_word(args: &[&std::ffi::OsStr]) -> std::process::Output {
+    render("word", args)
 }
 
 #[test]
@@ -155,7 +164,7 @@ fn renders_a_letter_pdf_from_a_valid_template() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", VALID);
     let out = work.path().join("demand.pdf");
-    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
     assert!(
         result.status.success(),
         "stderr: {}",
@@ -166,11 +175,11 @@ fn renders_a_letter_pdf_from_a_valid_template() {
 }
 
 #[test]
-fn renders_a_word_document_when_the_output_extension_is_docx() {
+fn renders_a_word_document_from_a_valid_template() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", VALID);
     let out = work.path().join("demand.docx");
-    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    let result = render_word(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
     assert!(
         result.status.success(),
         "stderr: {}",
@@ -185,22 +194,41 @@ fn renders_a_word_document_when_the_output_extension_is_docx() {
 }
 
 #[test]
-fn refuses_an_output_extension_the_renderer_does_not_support() {
+fn refuses_an_output_extension_the_command_does_not_support() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", VALID);
-    let out = work.path().join("demand.txt");
-    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+
+    let txt_out = work.path().join("demand.txt");
+    let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), txt_out.as_os_str()]);
     assert!(
         !result.status.success(),
-        "unsupported output must be refused"
+        "an unsupported output extension must be refused"
     );
     assert!(
-        String::from_utf8_lossy(&result.stderr)
-            .contains("output extension must be `.pdf` or `.docx`"),
+        String::from_utf8_lossy(&result.stderr).contains("output extension must be `.pdf`"),
         "stderr: {}",
         String::from_utf8_lossy(&result.stderr)
     );
-    assert!(!out.exists(), "a refused render must not write a file");
+    assert!(!txt_out.exists(), "a refused render must not write a file");
+
+    // Each command takes only its own extension — `pdf` will not write a
+    // `.docx` and `word` will not write a `.pdf`, so a typo'd `--out` is
+    // caught rather than silently written under the wrong format.
+    let docx_out = work.path().join("demand.docx");
+    let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), docx_out.as_os_str()]);
+    assert!(
+        !result.status.success(),
+        "`pdf` must refuse a `.docx` target"
+    );
+    assert!(!docx_out.exists());
+
+    let pdf_out = work.path().join("demand.pdf");
+    let result = render_word(&[src.as_os_str(), "--out".as_ref(), pdf_out.as_os_str()]);
+    assert!(
+        !result.status.success(),
+        "`word` must refuse a `.pdf` target"
+    );
+    assert!(!pdf_out.exists());
 }
 
 #[test]
@@ -211,7 +239,7 @@ fn repeated_notation_renders_are_identical_and_valid_pdfs() {
     let second_out = work.path().join("second.pdf");
 
     for out in [&first_out, &second_out] {
-        let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+        let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
         assert!(
             result.status.success(),
             "stderr: {}",
@@ -238,7 +266,7 @@ fn frontmatter_output_selects_the_frame_and_letterhead_is_larger_than_plain() {
 
     let letter_src = write(&work, "demand.md", VALID);
     let letter_out = work.path().join("letter.pdf");
-    let letter = render(&[
+    let letter = render_pdf(&[
         letter_src.as_os_str(),
         "--out".as_ref(),
         letter_out.as_ref(),
@@ -251,7 +279,7 @@ fn frontmatter_output_selects_the_frame_and_letterhead_is_larger_than_plain() {
 
     let plain_src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
     let plain_out = work.path().join("plain.pdf");
-    let plain = render(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
+    let plain = render_pdf(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
     assert!(plain.status.success());
     assert!(
         String::from_utf8_lossy(&plain.stdout).contains("Plain"),
@@ -276,7 +304,7 @@ fn a_letter_kind_renders_on_letterhead_with_no_output_declared() {
     let src = write(&work, "demand.md", VALID_NO_OUTPUT);
 
     let derived_out = work.path().join("derived.pdf");
-    let derived = render(&[src.as_os_str(), "--out".as_ref(), derived_out.as_ref()]);
+    let derived = render_pdf(&[src.as_os_str(), "--out".as_ref(), derived_out.as_ref()]);
     assert!(
         derived.status.success(),
         "stderr: {}",
@@ -287,7 +315,7 @@ fn a_letter_kind_renders_on_letterhead_with_no_output_declared() {
     // derives plain, so the two derivations are what differ.
     let plain_src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
     let plain_out = work.path().join("plain.pdf");
-    let plain = render(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
+    let plain = render_pdf(&[plain_src.as_os_str(), "--out".as_ref(), plain_out.as_ref()]);
     assert!(plain.status.success());
 
     let derived_len = fs::read(&derived_out).unwrap().len();
@@ -311,7 +339,7 @@ fn a_plain_default_kind_renders_plain_with_no_output_declared() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
     let out = work.path().join("will.pdf");
-    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
     assert!(
         result.status.success(),
         "stderr: {}",
@@ -329,7 +357,7 @@ fn answer_substitutes_a_placeholder() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", VALID);
     let out = work.path().join("demand.pdf");
-    let result = render(&[
+    let result = render_pdf(&[
         src.as_os_str(),
         "--out".as_ref(),
         out.as_ref(),
@@ -352,7 +380,7 @@ fn render_uses_shared_notation_evaluator_for_dotted_fields_and_loops() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "typed_demand.md", VALID_TYPED);
     let out = work.path().join("typed_demand.pdf");
-    let result = render(&[
+    let result = render_pdf(&[
         src.as_os_str(),
         "--out".as_ref(),
         out.as_ref(),
@@ -388,7 +416,7 @@ fn renders_despite_a_non_blocking_advisory() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", &source);
     let out = work.path().join("demand.pdf");
-    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
     assert!(
         result.status.success(),
         "a Warning-only template must still render, stderr: {}",
@@ -414,7 +442,7 @@ fn refuses_a_template_that_fails_validation() {
     let bad = VALID.replace("code: test__demand\n", "");
     let src = write(&work, "demand.md", &bad);
     let out = work.path().join("demand.pdf");
-    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
     assert!(
         !result.status.success(),
         "should refuse an invalid template"
@@ -438,7 +466,7 @@ fn the_format_flag_is_retired_and_cannot_reframe_an_instrument() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
     let out = work.path().join("will.pdf");
-    let result = render(&[
+    let result = render_pdf(&[
         src.as_os_str(),
         "--out".as_ref(),
         out.as_ref(),
@@ -506,7 +534,7 @@ fn a_choice_answer_renders_its_label_not_its_stored_key() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "governed.md", VALID_CHOICE);
     let out = work.path().join("governed.pdf");
-    let result = render(&[
+    let result = render_pdf(&[
         src.as_os_str(),
         "--out".as_ref(),
         out.as_ref(),
@@ -538,7 +566,7 @@ fn a_free_text_answer_is_unaffected_by_choice_label_resolution() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "demand.md", VALID);
     let out = work.path().join("demand.pdf");
-    let result = render(&[
+    let result = render_pdf(&[
         src.as_os_str(),
         "--out".as_ref(),
         out.as_ref(),
@@ -611,7 +639,7 @@ fn a_pleading_renders_court_geometry_calibrated_by_its_jurisdiction() {
         let work = TempDir::new().unwrap();
         let src = write(&work, "motion.md", &pleading_fixture(jurisdiction));
         let out = work.path().join("motion.pdf");
-        let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
+        let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
         assert!(
             result.status.success(),
             "stderr: {}",
@@ -636,7 +664,7 @@ fn a_pleading_whose_jurisdiction_has_no_calibration_is_refused() {
     let work = TempDir::new().unwrap();
     let src = write(&work, "motion.md", &pleading_fixture("CO"));
     let out = work.path().join("motion.pdf");
-    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
+    let result = render_pdf(&[src.as_os_str(), "--out".as_ref(), out.as_ref()]);
     assert!(
         !result.status.success(),
         "an uncalibrated jurisdiction must refuse rather than render plain"

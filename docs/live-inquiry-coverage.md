@@ -11,9 +11,8 @@ The model fits depositions, witness interviews, intake interviews, and any other
 ## Feature gating
 
 Today, the Google Speech-to-Text provider (`cloud/src/speech.rs`) compiles in unconditionally as part of the `cloud`
-crate — there is no Cargo feature gate around it, and the `cli -- notations transcribe` probe described below already
-calls it directly. The offline-first transcript-upload lane remains the shipped default; nothing routes live audio into
-a sitting yet.
+crate — there is no Cargo feature gate around it. The offline-first transcript-upload lane remains the shipped default;
+nothing routes live audio into a sitting yet.
 
 A live `web` integration is proposed to ship **off by default and gated behind a runtime flag** rather than a
 compile-time one: a per-deployment flag would control whether the live-session routes and UI are exposed, and a
@@ -107,40 +106,19 @@ For v1, every reachable `questionnaire:` Question becomes one `InquiryDraft` wit
 live system then tracks coverage against those Inquiries while the existing Notation workflow remains the authority for
 document generation, lawyer review, client review, and signing.
 
-## Local CLI probe
+## Library-level coverage
 
-The first executable slice is deliberately local and lawyer/developer-facing:
+There is no CLI probe for this slice anymore — `navigator notation` was simplified down to `preview`, `pdf`, and `word`,
+and the local `notations transcribe` demo went with the rest. The shared `live-inquiry` crate underneath it is still
+what a future live implementation would build on: it reads a Template markdown file, normalizes its `questionnaire:`
+into an Inquiry Set, segments transcript text, and emits Coverage Findings with `evidence_segment_ids` and follow-up
+prompts, and its own crate-level unit tests (`live-inquiry/src/lib.rs`) exercise that contract without a CLI in front of
+it. The Google Speech-to-Text v2 provider (`cloud::GoogleSpeechTranscriptProvider`) is unchanged and reachable the same
+way, via Application Default Credentials and `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT` / `NAVIGATOR_GCP_PROJECT_ID`.
 
-```bash
-cargo run -p cli -- notations transcribe \
-  --template templates/notations/neon_law/onboarding.md \
-  --transcript /tmp/sitting.txt \
-  --pretty
-```
-
-That command is a thin shell over the shared `live-inquiry` crate: it reads a Template markdown file (required — pass
-`--template` or set `NAVIGATOR_NOTATION_TEMPLATE`), normalizes its `questionnaire:` into an Inquiry Set, segments the
-transcript text, and emits JSON Coverage Findings with `evidence_segment_ids` and follow-up prompts. Passing audio via
-`--audio <file>` calls the Google Speech-to-Text v2 provider in `cloud` using Application Default Credentials and
-`GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT` / `NAVIGATOR_GCP_PROJECT_ID` (or `--google-project`) before running the same
-coverage pass.
-
-The live transcription path has an opt-in E2E that uses Application Default Credentials and Google Speech-to-Text
-against Google's public Brooklyn Bridge sample. Put the project id in a gitignored `.env`, then run:
-
-```bash
-set -a; source .env; set +a
-NAVIGATOR_RUN_LIVE_SPEECH_E2E=1 cargo test -p cli --test transcribe_google_e2e -- --nocapture
-```
-
-If that opted-in run returns Google `SERVICE_DISABLED`, enable Cloud Speech-to-Text API on the configured
-`NAVIGATOR_GCP_PROJECT_ID` project and rerun it after propagation. The test intentionally fails in that case because it
-has reached the real provider and found environment setup drift.
-
-This probe is not the portal implementation and does not persist Project data. It is the local test harness for the
-contract above: prove audio/transcript input can become a transcript, prove Template Questions can become Inquiries, and
-prove the output shape is useful before the feature-gated `web`/`cloud` implementation adds live sessions, storage,
-authorization, and the durable post-session handoff.
+Proving audio/transcript input can become a transcript, proving Template Questions can become Inquiries, and proving the
+output shape is useful is now the job of `live-inquiry`'s own tests, until the feature-gated `web`/`cloud`
+implementation adds live sessions, storage, authorization, and the durable post-session handoff described below.
 
 ## Entity relationship sketch
 

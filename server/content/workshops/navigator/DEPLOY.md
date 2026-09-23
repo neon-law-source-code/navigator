@@ -1118,7 +1118,6 @@ an explicit capability choice, not evidence that an invoice reached the ledger.
 | DevX Slack worker (in `workflows-service`) | `SLACK_WEBHOOK_URL` |
 | Content roots | `NAVIGATOR_PUBLIC_DIR`, `NAVIGATOR_BLOG_DIR`, `NAVIGATOR_WORKSHOPS_DIR` |
 | CLI login file | `NAVIGATOR_CREDENTIALS_FILE`, `NAVIGATOR_CONFIG_DIR` |
-| CLI live inquiry | `NAVIGATOR_NOTATION_TEMPLATE`, `NAVIGATOR_SPEECH_BACKEND` |
 | Harness worktree/cache | `NAVIGATOR_WORKTREE_PATH`, `NAVIGATOR_CHROME_CACHE_DIR` |
 | Vertex coordinates | `NAVIGATOR_GCP_PROJECT_ID`, `NAVIGATOR_GCP_LOCATION`, `GOOGLE_METADATA_URL` |
 | Contract reviewer | `NAVIGATOR_CONTRACT_REVIEW_MODEL` plus the same GCP project, location, and metadata variables |

@@ -1,4 +1,4 @@
-//! `navigator notations preview <FILE>` (LAW-29) — push one template as a
+//! `navigator notation preview <FILE>` (LAW-29) — push one template as a
 //! **draft** to the Project repository it sits in, and open that Project's
 //! real portal at it.
 //!
@@ -54,7 +54,7 @@ static PUBLIC_JS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../server/pub
 /// `ServeConfig::new` resolves the index template once, at construction.
 const PUBLIC_PATH_ENV: &str = "DIOXUS_PUBLIC_PATH";
 
-/// `navigator notations preview <file>` (LAW-29).
+/// `navigator notation preview <file>` (LAW-29).
 ///
 /// Resolves `file` to a template, then either pushes it as a draft to the
 /// Project repository it sits in and opens the real portal at it, or — with
@@ -113,7 +113,7 @@ pub async fn run(file: &Path, offline: bool, port: u16, host_override: Option<&s
 fn read_project_manifest(root: &Path) -> Result<(String, String)> {
     let (project, host) = crate::document_sync::read_manifest(root).map_err(|error| {
         anyhow!(
-            "`navigator notations preview` pushes a draft to the Project repository it runs \
+            "`navigator notation preview` pushes a draft to the Project repository it runs \
              in, and this does not look like one: {error:#}. Run it from a Project repository \
              root, or pass `--offline` to lint the template locally instead."
         )
@@ -311,7 +311,7 @@ struct Resolved {
 /// The bundled tier is last so a checkout always wins: an author editing a
 /// template previews the file under their cursor, never the copy frozen into
 /// the binary they happen to be running. It exists so the other direction
-/// works too — `navigator notations preview onboarding` from any directory at
+/// works too — `navigator notation preview onboarding` from any directory at
 /// all, which is what makes the binary worth handing to someone.
 fn resolve_template(base: &Path, file: &Path) -> Result<Resolved> {
     if file.is_file() {

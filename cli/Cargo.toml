@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-# `notations preview` serves the real `/notations/{slug}` router on a local
+# `notation preview` serves the real `/notations/{slug}` router on a local
 # bind, so the binary owns an axum server of its own.
 axum.workspace = true
 base64.workspace = true
@@ -31,7 +31,6 @@ import.workspace = true
 include_dir.workspace = true
 k8s-openapi.workspace = true
 kube.workspace = true
-live-inquiry.workspace = true
 mcp.workspace = true
 owo-colors.workspace = true
 pdf.workspace = true
@@ -62,7 +61,7 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 views.workspace = true
-# `notations preview` names `PreviewDoc` to build the page it serves.
+# `notation preview` names `PreviewDoc` to build the page it serves.
 webapp = { workspace = true, features = ["server"] }
 word.workspace = true
 walkdir.workspace = true

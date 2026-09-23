@@ -202,9 +202,9 @@ mod tests {
     }
 
     /// The CLI door carries the whole catalog, including the confidential
-    /// letters the public door refuses — otherwise `navigator notations
-    /// export` would hand a lawyer a catalog with the firm's own letters
-    /// missing.
+    /// letters the public door refuses — otherwise `navigator notation
+    /// preview`'s bundled-catalog tier would hand a lawyer a preview with
+    /// the firm's own letters missing.
     #[test]
     fn bundled_files_carries_the_confidential_templates_the_public_door_refuses() {
         let files = super::bundled_files();

@@ -4,7 +4,7 @@
 //!
 //! Two callers assemble the same thing from different sources and must not
 //! drift: the firm's public site, which compiles the bundled notations in
-//! with `include_str!`, and `navigator notations preview`, which reads one
+//! with `include_str!`, and `navigator notation preview`, which reads one
 //! file off disk in whatever repository the author is standing in. A page
 //! that renders differently depending on which of those produced it would
 //! make the preview useless as a check on the published page, so the

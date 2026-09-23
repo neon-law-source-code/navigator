@@ -1134,11 +1134,11 @@ fn gate_refuses_a_scaffolded_tree_that_is_not_a_git_repository() {
         .stderr(str::contains("has no .git"));
 }
 
-/// The retired `notations repository` command is gone rather than aliased.
+/// The retired `notation repository` command is gone rather than aliased.
 #[test]
-fn the_notations_repository_command_is_gone() {
+fn the_notation_repository_command_is_gone() {
     navigator()
-        .args(["notations", "repository", "validate", "."])
+        .args(["notation", "repository", "validate", "."])
         .assert()
         .failure();
 }

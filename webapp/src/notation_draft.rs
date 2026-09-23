@@ -1,6 +1,6 @@
 //! `/notations/drafts/{id}` — a pushed notation **draft** (LAW-29).
 //!
-//! The other half of `navigator notations preview`: a template pushed to
+//! The other half of `navigator notation preview`: a template pushed to
 //! the Project it belongs to, rendered by the real portal rather than a
 //! second local imitation kept in step with it by hand. Reuses
 //! [`crate::notation_preview::NotationPreviewContent`] — the same parsed

@@ -139,7 +139,7 @@ pub fn App() -> Element {
         }
     }
 
-    // `navigator notations preview`'s draft door (LAW-29), sharing this one
+    // `navigator notation preview`'s draft door (LAW-29), sharing this one
     // `FullstackState` with the preview route above rather than getting its
     // own — see `portal::dioxus_app::notation_preview_router`'s doc comment
     // for why a second one destabilizes this process's Dioxus render-task

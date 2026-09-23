@@ -737,7 +737,7 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
             &format!("{prefix}/{{project_code}}/notations/new"),
             post(crate::project_notation::project_notation_new_post),
         )
-        // `navigator notations preview` (LAW-29) — push a template as a
+        // `navigator notation preview` (LAW-29) — push a template as a
         // draft, stored and addressable but explicitly not run. Matter-
         // scoped the same way `notations/new` is; unlike it, this never
         // creates a Notation or starts a workflow instance.

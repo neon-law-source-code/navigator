@@ -11,10 +11,11 @@ Keeping persistence outside the crate lets web, workflow, and test code use the 
 Turn any validation-passing notation template into a PDF on your desk with one command:
 
 ```bash
-cargo run -p cli -- notations render templates/notations/neon_law/onboarding.md --out /tmp/onboarding.pdf
+cargo run -p cli -- notation pdf templates/notations/neon_law/onboarding.md --out /tmp/onboarding.pdf
 ```
 
-The command is `navigator notations render`, and it takes the template markdown, not a rendered document. It:
+The command is `navigator notation pdf` (or `navigator notation word` for `.docx`), and it takes the template markdown,
+not a rendered document. It:
 
 1. **Validates first.** The file runs through the same rule set as `navigator project gate`. Any `Error`-severity
    violation stops the render, so a broken template never becomes a PDF someone could send. Yellow advisories print and
@@ -26,7 +27,7 @@ The command is `navigator notations render`, and it takes the template markdown,
    by hand:
 
    ```bash
-   cargo run -p cli -- notations render templates/notations/neon_law/onboarding.md \
+   cargo run -p cli -- notation pdf templates/notations/neon_law/onboarding.md \
      --out /tmp/onboarding.pdf \
      --answer person__client.name="Acme, Inc." \
      --answer custom_text__scope.value="Reviewing and revising the master services agreement."
@@ -91,9 +92,9 @@ never grows one back.
 
 Every line comes from `pdf::Letterhead` — `name`, `phone`, `email`, `web` — and the firm's identity is hard-coded once,
 in that struct's `Default`. A letter going out over a lawyer's signature says the same thing every time, so `navigator
-notations render` takes the default rather than assembling the identity per render. An empty field drops out cleanly: no
-dangling middot, and a line with nothing left in it is not emitted at all, so a deployment that publishes no phone still
-gets a correct letterhead.
+notation pdf`/`navigator notation word` take the default rather than assembling the identity per render. An empty field
+drops out cleanly: no dangling middot, and a line with nothing left in it is not emitted at all, so a deployment that
+publishes no phone still gets a correct letterhead.
 
 Hard-coding the identity is not permission to let it fall behind the firm's. `cli/tests/letterhead_brand_parity.rs`
 holds all four fields against `views::brand::DEFAULT_BRANDING`, so the website and the letterhead cannot publish

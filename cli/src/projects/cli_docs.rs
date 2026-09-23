@@ -144,9 +144,9 @@ mod tests {
     fn tree() -> Command {
         Command::new("navigator")
             .subcommand(
-                Command::new("notations")
-                    .subcommand(Command::new("render"))
-                    .subcommand(Command::new("format")),
+                Command::new("notation")
+                    .subcommand(Command::new("pdf"))
+                    .subcommand(Command::new("preview")),
             )
             .subcommand(
                 Command::new("project")
@@ -168,10 +168,17 @@ mod tests {
             Some("template")
         );
         assert_eq!(
-            unresolved_verb("navigator notations render file.md", &tree),
+            unresolved_verb("navigator notation pdf file.md", &tree),
             None
         );
-        assert_eq!(unresolved_verb("navigator notations format", &tree), None);
+        assert_eq!(unresolved_verb("navigator notation preview", &tree), None);
+        // The retired plural spelling: `notations` renamed to singular
+        // `notation`, so the old spelling is unresolved at its first verb —
+        // the same shape as the `projects`/`site projects` cases below.
+        assert_eq!(
+            unresolved_verb("navigator notations preview", &tree).as_deref(),
+            Some("notations")
+        );
         // The retired group: `projects` was promoted out of `site` and made
         // singular, so both old spellings are unresolved at their first verb.
         assert_eq!(

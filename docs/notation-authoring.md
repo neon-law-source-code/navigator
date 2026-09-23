@@ -319,14 +319,15 @@ threads the evaluated Typst source to the **worker** as a `DocumentPayload` on t
 durability. `web` reads the PDF back from storage to hand to the signature provider. This is one-directional: template →
 fresh PDF.
 
-**Rendering a template offline — `navigator notations render`.** For an ad-hoc artifact outside the durable workflow (a
-demand letter to send by hand, a draft for review), `navigator notations render <template.md> --out <file.pdf>` or
-`--out <file.docx>` takes any validation-passing notation template and compiles it in pure Rust. The output extension
-selects the format; any other extension is refused. PDF rendering converts the Markdown body to Typst. Word rendering
-writes editable OOXML with native heading styles, US Letter geometry, and page fields; a notation whose frame is
-`letter` receives the same firm identity as its PDF plus separate first-page and running headers. Both formats validate
-the file against the same rule set as `navigator project gate`, fill placeholders through the same notation evaluator,
-and produce byte-identical output when the source revision and answers are unchanged.
+**Rendering a template offline — `navigator notation pdf` / `navigator notation word`.** For an ad-hoc artifact outside
+the durable workflow (a demand letter to send by hand, a draft for review), `navigator notation pdf <template.md> --out
+<file.pdf>` or `navigator notation word <template.md> --out <file.docx>` takes any validation-passing notation template
+and compiles it in pure Rust; `--out` must carry the matching extension, and any other extension is refused. PDF
+rendering converts the Markdown body to Typst. Word rendering writes editable OOXML with native heading styles, US
+Letter geometry, and page fields; a notation whose frame is `letter` receives the same firm identity as its PDF plus
+separate first-page and running headers. Both commands validate the file against the same rule set as `navigator project
+gate`, fill placeholders through the same notation evaluator, and produce byte-identical output when the source revision
+and answers are unchanged.
 
 ### Harvard outline
 

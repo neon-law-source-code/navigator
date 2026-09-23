@@ -14,16 +14,13 @@ mod docs;
 mod document_read;
 mod document_sync;
 mod firms_doctor;
-mod format;
 mod forms_sync;
 #[allow(dead_code)]
 mod intake;
 mod login;
 mod lsp_publish;
 mod mcp_bridge;
-mod notations_export;
 mod notations_preview;
-mod notations_run;
 mod notices;
 mod palette;
 mod projects;
@@ -35,10 +32,8 @@ mod release_version;
 #[allow(dead_code)]
 mod remote;
 mod sas;
-mod scaffold;
 mod sendgrid_openapi;
 mod surreal_archive;
-mod transcribe;
 
 use cli::import;
 use devx::brand::BrandCmd;
@@ -385,7 +380,7 @@ enum Command {
         #[arg(long)]
         ci: bool,
     },
-    /// One Project repository: its gate, its applications, and its live row.
+    /// Interact with a project hosted on a navigator site.
     ///
     /// Singular because a checkout is one Project — the repository name *is* the Project code.
     #[command(name = "project")]
@@ -396,9 +391,9 @@ enum Command {
     /// The notation author's workbench: a Project repository's
     /// `templates/<stem>.md` (the fleet layout), or Navigator's own bundled
     /// catalog under `templates/notations/`.
-    Notations {
+    Notation {
         #[command(subcommand)]
-        action: NotationsCmd,
+        action: NotationCmd,
     },
     /// Vendor, pin, and inspect the blank government forms in the public assets bucket
     /// (`templates/notations/forms/`).
@@ -707,14 +702,7 @@ enum ProjectRepositoryAction {
 }
 
 #[derive(Subcommand)]
-enum NotationsCmd {
-    /// Normalize whitespace and bullet style in a Markdown notation.
-    /// Frontmatter passes through untouched; the body has `- `
-    /// bullets converted to `* ` and trailing spaces stripped.
-    Format {
-        /// File to format in place.
-        file: PathBuf,
-    },
+enum NotationCmd {
     /// Push one template as a **draft** to the Project it belongs to and
     /// open that Project's real portal at it — the production renderer,
     /// production chrome, and production questionnaire engine, rather
@@ -742,13 +730,10 @@ enum NotationsCmd {
         /// (`navigator dev build-webapp`) — without one the page still
         /// renders every question, it just does not advance. Works
         /// outside a Project repository, since nothing is pushed anywhere.
+        /// Always binds an OS-assigned port chosen at random — the bound
+        /// URL is printed either way — so two lints can run at once.
         #[arg(long)]
         offline: bool,
-        /// Port to bind on `127.0.0.1` for `--offline`. Defaults to an
-        /// OS-assigned free port, so two lints can run at once; the bound
-        /// URL is printed either way. Ignored without `--offline`.
-        #[arg(long, default_value_t = 0)]
-        port: u16,
         /// Override the deployment host `navigator.yaml` names — for
         /// previewing against a non-production deployment. `navigator.yaml`
         /// is still the source; this is an override, not a replacement for
@@ -756,31 +741,8 @@ enum NotationsCmd {
         #[arg(long)]
         host: Option<String>,
     },
-    /// Write the notation catalog compiled into this binary out to a
-    /// directory.
-    ///
-    /// The templates travel inside `navigator`, so this needs no checkout,
-    /// no network, and no git access: the binary is the distribution. What
-    /// lands is the tree as shipped, including the `.fields` and `.sha256`
-    /// manifests a vendored government form carries.
-    ///
-    /// The catalog includes the firm's confidential templates. An export is
-    /// work product; treat it as such.
-    Export {
-        /// Directory to write the catalog into. Created if absent.
-        out: PathBuf,
-        /// Overwrite files that are already there. Without it they are
-        /// left alone and counted in the summary.
-        #[arg(long)]
-        force: bool,
-    },
-    /// Run a notation in Navigator's isolated, embedded local runtime.
-    Run {
-        /// Template file to validate, persist, and walk in an ephemeral store.
-        file: PathBuf,
-    },
-    /// Render a single notation template to PDF or editable Word, framed by
-    /// the render profile its declared `kind:` selects.
+    /// Render a single notation template to PDF, framed by the render
+    /// profile its declared `kind:` selects.
     ///
     /// The file is validated against the same notation rule set as
     /// `validate` first — a template with any violation is refused.
@@ -801,13 +763,12 @@ enum NotationsCmd {
     /// resolved here, and a jurisdiction with no calibration is refused
     /// rather than quietly rendered on the plain frame.
     ///
-    /// The output extension selects PDF (`.pdf`) or Word (`.docx`). Both are
-    /// compiled in pure Rust (no shell-out). `{{placeholder}}` tokens render
-    /// verbatim unless filled with `--answer code=value`.
-    Render {
+    /// Compiled in pure Rust (no shell-out). `{{placeholder}}` tokens
+    /// render verbatim unless filled with `--answer code=value`.
+    Pdf {
         /// Path to the notation template (`.md`).
         file: PathBuf,
-        /// Where to write the rendered PDF or Word document (`.pdf` or `.docx`).
+        /// Where to write the rendered PDF. Must end in `.pdf`.
         #[arg(long)]
         out: PathBuf,
         /// Fill a `{{code}}` placeholder with `value`. Repeatable:
@@ -815,64 +776,19 @@ enum NotationsCmd {
         #[arg(long = "answer", value_parser = parse_answer)]
         answers: Vec<(String, String)>,
     },
-    /// Drop the three files that a new legal workflow starts with:
-    /// `templates/notations/<category>/<jurisdiction>.md`,
-    /// `workflows/specs/<code>.yaml`, and
-    /// `features/tests/features/<matter>.feature`. Idempotent —
-    /// existing files are left alone.
-    Scaffold {
-        /// Snake-case matter slug, e.g. `incorporation`,
-        /// `estate_planning`. Forms the prefix of the template `code`.
-        matter: String,
-        /// Shelf under `templates/notations/` to drop the markdown into
-        /// (`neon_law` or `forms`).
+    /// Render a single notation template to editable Word, framed the same
+    /// way as `pdf` — see its documentation for how the frame, jurisdiction,
+    /// and placeholders resolve.
+    Word {
+        /// Path to the notation template (`.md`).
+        file: PathBuf,
+        /// Where to write the rendered Word document. Must end in `.docx`.
         #[arg(long)]
-        category: String,
-        /// Jurisdiction name (`PascalCase` for the filename,
-        /// `snake_case` for the template `code`), e.g. `Nevada`.
-        #[arg(long)]
-        jurisdiction: String,
-    },
-    /// Transcribe a recording (or replay a transcript) into Inquiry
-    /// Coverage JSON for a notation template questionnaire.
-    ///
-    /// This is the offline/upload path; real-time streaming ("live")
-    /// transcription is a separate `web` feature, not a CLI command.
-    Transcribe {
-        /// Template markdown file whose `questionnaire:` becomes the
-        /// Inquiry Set. Required — pass `--template` or set
-        /// `NAVIGATOR_NOTATION_TEMPLATE`.
-        #[arg(long, env = "NAVIGATOR_NOTATION_TEMPLATE")]
-        template: PathBuf,
-        /// Plain-text transcript to replay without calling speech-to-text.
-        #[arg(long, conflicts_with = "audio")]
-        transcript: Option<PathBuf>,
-        /// Audio file to transcribe. By default this uses the `fake`
-        /// backend (no cloud call); pass `--speech-backend google` to
-        /// transcribe with real Google Speech-to-Text. Any common format
-        /// works (m4a/AAC, mp3, flac, wav, ogg) — it is decoded locally.
-        #[arg(long, conflicts_with = "transcript")]
-        audio: Option<PathBuf>,
-        /// Speech backend for `--audio`: `fake` (default, deterministic,
-        /// no cloud call) or `google` (real Speech-to-Text — needs a
-        /// project and credentials). Real cloud is opt-in.
-        #[arg(long, env = "NAVIGATOR_SPEECH_BACKEND", default_value = "fake")]
-        speech_backend: String,
-        /// Google Cloud project for Speech-to-Text.
-        #[arg(long, env = "GOOGLE_CLOUD_PROJECT")]
-        google_project: Option<String>,
-        /// Google Speech-to-Text v2 location.
-        #[arg(long, default_value = "global")]
-        google_location: String,
-        /// BCP-47 language code for the audio.
-        #[arg(long, default_value = "en-US")]
-        google_language: String,
-        /// Google Speech-to-Text recognition model.
-        #[arg(long, default_value = "latest_long")]
-        google_model: String,
-        /// Pretty-print the JSON output.
-        #[arg(long)]
-        pretty: bool,
+        out: PathBuf,
+        /// Fill a `{{code}}` placeholder with `value`. Repeatable:
+        /// `--answer counterparty_legal_name="NEON GmbH"`.
+        #[arg(long = "answer", value_parser = parse_answer)]
+        answers: Vec<(String, String)>,
     },
 }
 
@@ -2414,55 +2330,19 @@ fn main() -> ExitCode {
                 )),
             },
         },
-        Command::Notations { action } => match action {
-            NotationsCmd::Format { file } => format::run(&file),
-            NotationsCmd::Preview {
+        Command::Notation { action } => match action {
+            NotationCmd::Preview {
                 file,
                 offline,
-                port,
                 host,
             } => devx_result(runtime().block_on(notations_preview::run(
                 &file,
                 offline,
-                port,
+                0,
                 host.as_deref(),
             ))),
-            NotationsCmd::Export { out, force } => devx_result(notations_export::run(&out, force)),
-            NotationsCmd::Run { file } => {
-                devx_result(runtime().block_on(notations_run::run(&file)))
-            }
-            NotationsCmd::Render { file, out, answers } => run_render(&file, &out, &answers),
-            NotationsCmd::Scaffold {
-                matter,
-                category,
-                jurisdiction,
-            } => scaffold::run(
-                &scaffold::workspace_root_from_cli_dir(),
-                &matter,
-                &category,
-                &jurisdiction,
-            ),
-            NotationsCmd::Transcribe {
-                template,
-                transcript,
-                audio,
-                speech_backend,
-                google_project,
-                google_location,
-                google_language,
-                google_model,
-                pretty,
-            } => runtime().block_on(run_transcribe(transcribe::CoverArgs {
-                template,
-                transcript,
-                audio,
-                speech_backend,
-                google_project,
-                google_location,
-                google_language,
-                google_model,
-                pretty,
-            })),
+            NotationCmd::Pdf { file, out, answers } => run_render(&file, &out, &answers, "pdf"),
+            NotationCmd::Word { file, out, answers } => run_render(&file, &out, &answers, "docx"),
         },
         // `lsp publish` and the `assets` pipeline
         // carry operator blast radius but are not cluster lifecycle, so they
@@ -2558,16 +2438,6 @@ fn devx_result(result: anyhow::Result<()>) -> ExitCode {
         Err(err) => {
             eprintln!("Error: {err:?}");
             ExitCode::FAILURE
-        }
-    }
-}
-
-async fn run_transcribe(args: transcribe::CoverArgs) -> ExitCode {
-    match transcribe::cover(args).await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("navigator: transcribe: {e:?}");
-            ExitCode::from(2)
         }
     }
 }
@@ -3702,11 +3572,12 @@ const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing,
 
 const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, and everything else to unclassified. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
 
-/// Render one notation template to PDF or editable Word. Validates the file against the
-/// notation rule set, resolves the render frame (`output:` frontmatter →
-/// the `kind:`-derived default → plain), fills
-/// any `{{code}}` placeholders from `answers`, and writes the compiled
-/// document to `out` according to its extension.
+/// Render one notation template to PDF or editable Word (`pdf`/`word`,
+/// `output_extension` `"pdf"`/`"docx"` respectively). Validates the file
+/// against the notation rule set, resolves the render frame (`output:`
+/// frontmatter → the `kind:`-derived default → plain), fills any
+/// `{{code}}` placeholders from `answers`, and writes the compiled document
+/// to `out`, which must carry the matching extension.
 /// The render profile a template selects by declaring no `output:` and no
 /// `kind:` with a frame of its own. Never a declarable `output:` value —
 /// omitting the key is how a template selects it.
@@ -3721,11 +3592,12 @@ fn run_render(
     file: &std::path::Path,
     out: &std::path::Path,
     answers: &[(String, String)],
+    output_extension: &str,
 ) -> ExitCode {
-    let Some(output_extension) = render_extension(out) else {
-        eprintln!("navigator: output extension must be `.pdf` or `.docx`");
+    if !has_extension(out, output_extension) {
+        eprintln!("navigator: output extension must be `.{output_extension}`");
         return ExitCode::from(2);
-    };
+    }
     let contents = match std::fs::read_to_string(file) {
         Ok(c) => c,
         Err(e) => {
@@ -3806,8 +3678,8 @@ fn run_render(
             // back. Both reach this line from caller-supplied input — the
             // one from a parsed document, the other from the command line —
             // and `rust/cleartext-logging` flags a new log of either. There
-            // is nothing to lose by leaving them out: `notations render`
-            // takes exactly one file, named on the command line a moment
+            // is nothing to lose by leaving them out: `notation pdf`/`notation
+            // word` take exactly one file, named on the command line a moment
             // earlier, and what the author cannot already see is which
             // calibrations exist.
             eprintln!(
@@ -3867,8 +3739,7 @@ fn run_render(
     // Restore the plumbing here, not somewhere new, if that call changes.
     let letterhead = pdf::Letterhead::default();
     let format_debug = format!("{format:?}");
-    let bytes = match render_notation_artifact(file, &body, &output_extension, format, &letterhead)
-    {
+    let bytes = match render_notation_artifact(file, &body, output_extension, format, &letterhead) {
         Ok(bytes) => bytes,
         Err(_error) => {
             eprintln!("navigator: render failed");
@@ -3891,11 +3762,10 @@ fn run_render(
     ExitCode::SUCCESS
 }
 
-fn render_extension(out: &Path) -> Option<String> {
+fn has_extension(out: &Path, expected: &str) -> bool {
     out.extension()
         .and_then(std::ffi::OsStr::to_str)
-        .map(str::to_ascii_lowercase)
-        .filter(|extension| matches!(extension.as_str(), "pdf" | "docx"))
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(expected))
 }
 
 fn render_notation_artifact(

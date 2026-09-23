@@ -76,14 +76,7 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // These, and nothing else. Each names what it owns, so the top
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
-            "dev",
-            "forms",
-            "notations",
-            "ops",
-            "project",
-            "site",
-            "validate",
-            "help",
+            "dev", "forms", "notation", "ops", "project", "site", "validate", "help",
         ]
     );
 
@@ -120,26 +113,17 @@ fn catalog_seed_help_uses_a_headline() {
     );
 }
 
-/// `notations` is the notation author's local workbench: every member
+/// `notation` is the notation author's local workbench: every member
 /// operates on files under `templates/notations/`, offline. Pinning the
 /// membership keeps a live-site command, or the forms-vendoring command
 /// (its own top-level home), from drifting into it.
 #[test]
-fn notations_help_lists_the_notation_authoring_workbench() {
-    let output = help(&["notations", "--help"]);
+fn notation_help_lists_the_notation_authoring_workbench() {
+    let output = help(&["notation", "--help"]);
 
     assert_eq!(
         command_names(&output),
-        vec![
-            "export",
-            "format",
-            "preview",
-            "render",
-            "run",
-            "scaffold",
-            "transcribe",
-            "help",
-        ]
+        vec!["pdf", "preview", "word", "help"]
     );
 }
 

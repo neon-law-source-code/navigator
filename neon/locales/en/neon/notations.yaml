@@ -81,18 +81,11 @@ bands:
         href_label: Read the rule reference
       - title: Preview a file
         body:
-          - - text: navigator notations preview
+          - - text: navigator notation preview
               code: true
             - text: " opens a local browser preview of a template and its questionnaire."
         href: /docs/notation-authoring
         href_label: Learn to author a notation
-      - title: Walk the questions
-        body:
-          - - text: navigator notations run
-              code: true
-            - text: " exercises a template in a temporary local store with synthetic identities so you can inspect its transitions."
-        href: /docs/notation
-        href_label: Understand the runtime
       - title: Check as you type
         body:
           - - text: navigator-lsp

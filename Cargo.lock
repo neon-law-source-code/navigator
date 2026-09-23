@@ -2226,7 +2226,6 @@ dependencies = [
  "include_dir",
  "k8s-openapi",
  "kube",
- "live-inquiry",
  "lopdf 0.45.0",
  "mcp",
  "neon",

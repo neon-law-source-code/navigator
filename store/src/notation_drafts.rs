@@ -1,7 +1,7 @@
 //! `store::notation_drafts` — a stored, addressable notation **draft**
 //! (LAW-29): a preview artifact, not an executed instrument.
 //!
-//! `navigator notations preview` used to serve its own local imitation of
+//! `navigator notation preview` used to serve its own local imitation of
 //! the notation show page. This is the other half: a template pushed to
 //! the Project it belongs to, so an author can open the *real* portal —
 //! production chrome, production questionnaire engine — against something

@@ -119,25 +119,11 @@ Those are two different kinds of failure, so they exit differently:
   (`/auth/ci/seed-token` or `/auth/ci/document-token`) and the server's own message, so the Actions log shows why the
   run was refused rather than a generic HTTP status.
 
-## Handing someone the catalog
-
-```bash
-navigator notations export ./templates      # the tree as shipped
-navigator notations export ./templates --force
-```
-
-The templates travel inside `navigator` — `portal::template_api` embeds the repository's `templates/` tree at build time
-— so an export needs no checkout, no network, and no git access. The binary is the distribution. What lands is the tree
-as shipped, including the `.fields` and `.sha256` manifests a vendored government form carries.
-
-Files already present are left alone and counted in the summary; `--force` overwrites them. The catalog includes the
-firm's confidential templates, so an export is work product and the command says so.
-
 ## Reading a template the way a reader will
 
 ```bash
-navigator notations preview templates/notations/neon_law/onboarding.md
-navigator notations preview onboarding                 # a name, looked up under templates/
+navigator notation preview templates/notations/neon_law/onboarding.md
+navigator notation preview onboarding                 # a name, looked up under templates/
 ```
 
 A name is looked up in three places, in order: a Project repository's flat `templates/`, Navigator's own nested
@@ -145,35 +131,28 @@ A name is looked up in three places, in order: a Project repository's flat `temp
 under their cursor; the bundled tier is what lets the command work in a directory that has no templates at all. The
 printed provenance line says which one answered.
 
-This serves that one template's `/notations/{slug}` show page on a local bind and prints the URL. It is the same axum
-router the public site mounts, fed by the same projection, so the questionnaire section walks the template's own
-declared question order in Navigator's real field controls and the workflow section draws its declared state machine. A
-template that reads badly here reads badly published.
+Run from a Project repository (`navigator.yaml` two directories up), this pushes the template as a **draft** to that
+Project's real portal and opens a browser at it — the production show page, production chrome, and production
+questionnaire engine, not a local imitation. The draft is stored and addressable but explicitly **not run**: no
+Notation, no workflow instance, no PDF.
 
-Nothing is persisted: no Notation, no Answer, no runtime signal, no store connection. Stepping the questions is
-hydration, so it needs the Dioxus client bundle `navigator dev build-webapp` stages; without one the page still renders
-every question and the graph, and the command says so rather than leaving a dead "Next" button unexplained. The command
-runs anywhere, including inside a Project repository that has no `server/public` of its own — the stylesheets it needs
-are compiled into this binary.
+Outside a Project repository, or without a login, pass `--offline` to render the same show page locally instead as a
+**lint**, not a preview: nothing is pushed and nothing is stored. It binds only to `127.0.0.1`, always on an OS-assigned
+port chosen at random so two lints can run at once, and prints the URL. Stepping the questions is hydration, so it needs
+the Dioxus client bundle `navigator dev build-webapp` stages; without one the page still renders every question and the
+graph, and the command says so rather than leaving a dead "Next" button unexplained.
 
-The preview binds only to `127.0.0.1`, uses an OS-assigned ephemeral port unless `--port` is given, opens no store,
-holds no session, and persists nothing when its process stops.
-
-## Walk a template through the local runtime
+## Rendering a template to PDF or Word
 
 ```bash
-navigator notations run templates/notations/neon_law/onboarding.md
+navigator notation pdf templates/notations/neon_law/onboarding.md --out /tmp/onboarding.pdf
+navigator notation word templates/notations/neon_law/onboarding.md --out /tmp/onboarding.docx
 ```
 
-`notations run` validates the file, creates a fresh embedded store and temporary object directory, then creates only
-synthetic client, lawyer, entity, and Project records. It walks the client-visible subset first, reports that boundary,
-then completes the firm's full questionnaire and invokes the shared post-questionnaire drive. Because this workbench
-never starts the `workflows-service` Restate worker that journals production transitions, it writes each embedded
-transition to `notation_events` itself before printing, so its terminal output — the persisted answers, journaled
-transitions, and resulting workflow state — reflects the same journal a real run leaves behind. Every invocation starts
-empty and is discarded on exit. It reads no deployment selection or ambient Navigator configuration and never calls a
-live provider.
+Both validate the file against the same rule set as `navigator project gate` first, resolve the render frame from the
+template's own `kind:`/`output:` frontmatter, fill any `{{code}}` placeholders passed with `--answer`, and compile the
+result in pure Rust. See [`pdf/README.md`](../pdf/README.md) for the render pipeline and output formats.
 
-You do not need a site to work locally. Use `navigator project gate`, the `navigator notations` authoring commands, and
+You do not need a site to work locally. Use `navigator project gate`, the `navigator notation` authoring commands, and
 the KIND-backed `navigator dev` loop; seed a local catalog with `navigator site seed` when that command's local store
 and storage environment are available, or import deployment data with `navigator site import` after logging in.

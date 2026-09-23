@@ -3025,7 +3025,7 @@ jobs:
         scaffold_minimal(root.path());
         std::fs::write(
             root.path().join("AGENTS.md"),
-            "# contract\n\nRun `navigator template render file.md` then `navigator notations format`.\n",
+            "# contract\n\nRun `navigator template render file.md` then `navigator notation preview`.\n",
         )
         .unwrap();
         let mut errors: Vec<Finding> = Vec::new();
@@ -3039,7 +3039,7 @@ jobs:
         assert!(
             found
                 .iter()
-                .all(|finding| !finding.contains("notations format")),
+                .all(|finding| !finding.contains("notation preview")),
             "{found:?}"
         );
     }

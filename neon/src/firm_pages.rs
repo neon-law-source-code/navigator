@@ -118,7 +118,7 @@ fn notation_card(
 
 /// One bundled notation's show-page content, projected from its own
 /// Markdown by [`portal::notation_preview_doc`] — the same projection
-/// `navigator notations preview` applies to a file on disk, so the local
+/// `navigator notation preview` applies to a file on disk, so the local
 /// preview and this published page cannot disagree.
 fn preview_doc(slug: &str, source_path: &str, src: &str) -> webapp::notation_preview::PreviewDoc {
     portal::notation_preview_doc::from_markdown(
@@ -444,7 +444,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::NOTATIONS_INDEX_PATH,
         notations_index_content(),
     ));
-    // Also carries `navigator notations preview`'s draft door (LAW-29): a
+    // Also carries `navigator notation preview`'s draft door (LAW-29): a
     // pushed template, stored and addressable but explicitly not run. Both
     // mounts share one `FullstackState` deliberately — see the function's
     // own doc comment.

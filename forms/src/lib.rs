@@ -14,6 +14,7 @@
 //! never a fallback.
 
 pub mod fieldmap;
+pub mod notation;
 pub mod reauthor;
 
 pub use fieldmap::{parse_field_map, FieldMap, FieldMapError, FieldRule};

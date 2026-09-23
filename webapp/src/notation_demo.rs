@@ -23,9 +23,11 @@
 //! those, and the page shows the explanation `views::questionnaire_preview`
 //! built for it instead of a control that only pretends to work.
 
+use std::collections::BTreeMap;
+
 use dioxus::prelude::*;
 
-use crate::components::{Choice, Field, Progress, StepList, StepMeta};
+use crate::components::{Progress, StepList, StepMeta};
 
 /// A clearly-synthetic sample matter, named in the demo's chrome so the walk
 /// never reads as scoped to nothing — every real Notation has a Project.
@@ -53,12 +55,16 @@ pub struct DemoQuestion {
 /// notation with no declared questionnaire (a template whose frontmatter
 /// carries none, or one `views::questionnaire_preview::parse` couldn't read).
 #[component]
-pub fn QuestionnaireDemo(questions: Vec<DemoQuestion>) -> Element {
+pub fn QuestionnaireDemo(
+    questions: Vec<DemoQuestion>,
+    #[props(default)] template_html: String,
+) -> Element {
     let Some(total) = std::num::NonZeroUsize::new(questions.len()) else {
         return rsx! {};
     };
     let total = total.get();
     let mut step = use_signal(|| 0_usize);
+    let answers = use_signal(BTreeMap::<String, String>::new);
     let index = *step.read();
     let question = &questions[index];
     let position = index + 1;
@@ -88,7 +94,7 @@ pub fn QuestionnaireDemo(questions: Vec<DemoQuestion>) -> Element {
                 div {
                     class: "nav-stepper__body notation-demo__step",
                     key: "{question.code}",
-                    {demo_field(question)}
+                    {demo_field(question, answers)}
                 }
             }
             div { class: "notation-demo__actions",
@@ -111,49 +117,167 @@ pub fn QuestionnaireDemo(questions: Vec<DemoQuestion>) -> Element {
                     span { class: "nav-muted", "That is every question this notation asks." }
                 }
             }
+            if !template_html.is_empty() {
+                section { class: "notation-live-template", "aria-label": "Live document preview",
+                    h3 { "Live document" }
+                    div {
+                        dangerous_inner_html: "{render_live_template(&template_html, &questions, &answers.read())}"
+                    }
+                }
+            }
         }
     }
 }
 
-/// Render one step: a real [`Field`] for an interactive (`custom_*`) answer
-/// type, or the plain explanation for a record/reference one.
-fn demo_field(question: &DemoQuestion) -> Element {
+fn answer_label(question: &DemoQuestion, value: &str) -> String {
+    if question.answer_type == "custom_yes_no" {
+        return match value {
+            "true" => "Yes".to_string(),
+            "false" => "No".to_string(),
+            _ => value.to_string(),
+        };
+    }
+    question
+        .choices
+        .iter()
+        .find(|(candidate, _)| candidate == value)
+        .map_or_else(|| value.to_string(), |(_, label)| label.clone())
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn replace_unanswered(mut html: String, questions: &[DemoQuestion]) -> String {
+    for question in questions {
+        let token = format!("{{{{{}}}}}", question.code);
+        let blank = format!(
+            "<span class=\"notation-live-template__blank\" data-placeholder=\"{}\">{}</span>",
+            escape_html(&question.code),
+            escape_html(&question.prompt)
+        );
+        html = html.replace(&token, &blank);
+    }
+    while let Some(start) = html.find("{{") {
+        let Some(end) = html[start + 2..].find("}}") else {
+            break;
+        };
+        html.replace_range(
+            start..start + end + 4,
+            "<span class=\"notation-live-template__blank\"></span>",
+        );
+    }
+    html
+}
+
+/// Render the same template on every answer change. Answer text is escaped
+/// before it reaches the template's already-rendered HTML.
+pub(crate) fn render_live_template(
+    template_html: &str,
+    questions: &[DemoQuestion],
+    answers: &BTreeMap<String, String>,
+) -> String {
+    let context = answers
+        .iter()
+        .map(|(code, answer)| (code.clone(), answer.clone()))
+        .collect();
+    let display = questions
+        .iter()
+        .filter_map(|question| {
+            answers.get(&question.code).map(|answer| {
+                (
+                    question.code.clone(),
+                    escape_html(&answer_label(question, answer)),
+                )
+            })
+        })
+        .collect();
+    replace_unanswered(
+        forms::notation::fill_with_display(template_html, &context, &display),
+        questions,
+    )
+}
+
+/// Render one interactive demo step, or the explanation for a record state.
+fn demo_field(question: &DemoQuestion, mut answers: Signal<BTreeMap<String, String>>) -> Element {
     if !question.interactive {
         return rsx! {
             p { class: "notation-demo__explanation", "{question.prompt}" }
         };
     }
-    let field = match question.answer_type.as_str() {
-        "custom_text" => Field::textarea(&question.prompt, "value", "", 4),
-        "custom_datetime" => Field::input(&question.prompt, "value", "", "date"),
-        "custom_usd" => Field::input(&question.prompt, "value", "", "number")
-            .prefix("$")
-            .step("0.01")
-            .placeholder("0.00"),
-        "custom_phone" => {
-            Field::input(&question.prompt, "value", "", "tel").placeholder("(702) 555-0100")
-        }
-        // ENG-506: cards, matching the real walkers' ENG-504 treatment of
-        // the same answer types.
-        "custom_yes_no" => Field::choice_cards(
-            &question.prompt,
-            "value",
-            vec![Choice::new("true", "Yes"), Choice::new("false", "No")],
-            None,
-        ),
-        "custom_single_choice" => Field::choice_cards(
-            &question.prompt,
-            "value",
-            question
-                .choices
-                .iter()
-                .map(|(value, label)| Choice::new(value.clone(), label.clone()))
-                .collect(),
-            None,
-        ),
-        _ => Field::text(&question.prompt, "value", ""),
+    let code = question.code.clone();
+    let current = answers.read().get(&code).cloned().unwrap_or_default();
+    let input_type = match question.answer_type.as_str() {
+        "custom_datetime" => "date",
+        "custom_usd" => "number",
+        "custom_phone" => "tel",
+        _ => "text",
     };
-    field.render()
+    if matches!(
+        question.answer_type.as_str(),
+        "custom_yes_no" | "custom_single_choice"
+    ) {
+        let choices = if question.answer_type == "custom_yes_no" {
+            vec![
+                ("true".to_string(), "Yes".to_string()),
+                ("false".to_string(), "No".to_string()),
+            ]
+        } else {
+            question.choices.clone()
+        };
+        return rsx! {
+            fieldset { class: "nav-field nav-choice-group",
+                legend { "{question.prompt}" }
+                for (value, label) in choices {
+                    label { class: "nav-choice-card",
+                        input {
+                            class: "nav-control",
+                            r#type: "radio",
+                            name: "{question.code}",
+                            value: "{value}",
+                            checked: current == value,
+                            onchange: {
+                                let code = code.clone();
+                                let value = value.clone();
+                                move |_| { answers.write().insert(code.clone(), value.clone()); }
+                            },
+                        }
+                        span { "{label}" }
+                    }
+                }
+            }
+        };
+    }
+    if question.answer_type == "custom_text" {
+        return rsx! {
+            label { class: "nav-field",
+                span { "{question.prompt}" }
+                textarea {
+                    class: "nav-control",
+                    rows: 4,
+                    value: "{current}",
+                    oninput: move |event| { answers.write().insert(code.clone(), event.value()); },
+                }
+            }
+        };
+    }
+    rsx! {
+        label { class: "nav-field",
+            span { "{question.prompt}" }
+            input {
+                class: "nav-control",
+                r#type: input_type,
+                value: "{current}",
+                step: if question.answer_type == "custom_usd" { "0.01" } else { "" },
+                oninput: move |event| { answers.write().insert(code.clone(), event.value()); },
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -184,8 +308,13 @@ mod tests {
     }
 
     fn render(questions: Vec<DemoQuestion>) -> String {
-        let mut dom =
-            VirtualDom::new_with_props(QuestionnaireDemo, QuestionnaireDemoProps { questions });
+        let mut dom = VirtualDom::new_with_props(
+            QuestionnaireDemo,
+            QuestionnaireDemoProps {
+                questions,
+                template_html: String::new(),
+            },
+        );
         dom.rebuild_in_place();
         dioxus_ssr::render(&dom)
     }
@@ -296,5 +425,24 @@ mod tests {
         ]);
         assert!(!out.contains("<form"), "no <form> in the demo: {out}");
         assert!(!out.contains("action="), "no action= in the demo: {out}");
+    }
+
+    #[test]
+    fn live_template_hides_tokens_escapes_answers_and_evaluates_clauses() {
+        let questions = vec![interactive("custom_text", "Client name", vec![])];
+        let code = questions[0].code.clone();
+        let token = format!("{{{{{code}}}}}");
+        let template = ["Hello ", &token, ". {{#if ", &code, "}}Named.{{/if}}"].concat();
+        let empty = render_live_template(&template, &questions, &BTreeMap::new());
+        assert!(!empty.contains("{{"), "{empty}");
+        assert!(!empty.contains("Named."), "{empty}");
+        assert!(empty.contains("Client name"), "{empty}");
+        let filled = render_live_template(
+            &template,
+            &questions,
+            &BTreeMap::from([(code, "<Acme>".to_string())]),
+        );
+        assert!(filled.contains("&lt;Acme&gt;"), "{filled}");
+        assert!(filled.contains("Named."), "{filled}");
     }
 }

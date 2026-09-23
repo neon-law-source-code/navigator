@@ -6,6 +6,9 @@
 //!
 //! - **Bare or dotted** — `{{code}}`, `{{type__role}}`, and
 //!   `{{type__role.field}}` substitute the context value for that key.
+//! - **Conditional** — `{{#if custom_yes_no__approved}} … {{/if}}` includes
+//!   a clause only while the answer is truthy. `{{#if state=value}}` matches
+//!   one exact answer.
 //! - **Iterator** — `{{#for x in people__members}} … {{x.name}} … {{/for}}`
 //!   walks an aggregate answer (a JSON array stored under the state key) and
 //!   renders the inner block once per row, resolving `{{x.part}}` against
@@ -20,122 +23,25 @@
 
 use std::collections::BTreeMap;
 
-const FOR_OPEN: &str = "{{#for ";
-const FOR_CLOSE: &str = "{{/for}}";
-
 /// Evaluate `body` against `context` — expand `{{#for …}}` iterators over
 /// aggregate answers, then substitute every remaining `{{key}}`. The
 /// pure string half of [`render_filled_in`], shared so the render path
 /// gains the iteration + dotted `row.part` capability of the form-fill path.
 #[must_use]
 pub fn fill(body: &str, context: &BTreeMap<String, String>) -> String {
-    let expanded = expand_loops(body, context);
-    let mut filled = expanded;
-    for (k, v) in context {
-        filled = filled.replace(&format!("{{{{{k}}}}}"), v);
-    }
-    filled
+    forms::notation::fill(body, context)
 }
 
-/// Expand every `{{#for <var> in <state>}} … {{/for}}` block by rendering
-/// its body once per row of the aggregate answer stored under `<state>`
-/// (a JSON array; parsed via `serde_yaml`, a JSON superset). `{{var.part}}`
-/// inside the block resolves to that row's `part` field.
-fn expand_loops(body: &str, context: &BTreeMap<String, String>) -> String {
-    let mut out = String::new();
-    let mut rest = body;
-    while let Some(start) = rest.find(FOR_OPEN) {
-        let after_open = &rest[start + FOR_OPEN.len()..];
-        let Some(header_len) = after_open.find("}}") else {
-            break;
-        };
-        let header = after_open[..header_len].trim();
-        let block_start = start + FOR_OPEN.len() + header_len + 2;
-        // Match the *balanced* `{{/for}}` so a nested loop's close doesn't
-        // terminate the outer one.
-        let Some(close_rel) = matching_close(&rest[block_start..]) else {
-            break;
-        };
-        let block = &rest[block_start..block_start + close_rel];
-        let close_end = block_start + close_rel + FOR_CLOSE.len();
-
-        out.push_str(&rest[..start]);
-        if let Some((var, state)) = header.split_once(" in ") {
-            out.push_str(&render_loop(var.trim(), state.trim(), block, context));
-        }
-        rest = &rest[close_end..];
-    }
-    out.push_str(rest);
-    out
-}
-
-/// The byte offset of the `{{/for}}` that balances the loop whose body
-/// starts at the front of `s` (depth 1 already open), or `None` if it never
-/// closes. Nested `{{#for …}}` raise the depth so an inner close doesn't
-/// terminate the outer loop.
-///
-/// Scans over `s.as_bytes()` so the single-byte `i += 1` step can never
-/// land mid-codepoint — a loop body carrying an em-dash, curly quote, or
-/// accented letter (routine in legal copy) must not panic the binding
-/// document path. The markers are ASCII, so a returned offset is always a
-/// char boundary safe to slice on.
-fn matching_close(s: &str) -> Option<usize> {
-    let bytes = s.as_bytes();
-    let open = FOR_OPEN.as_bytes();
-    let close = FOR_CLOSE.as_bytes();
-    let mut depth = 1usize;
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i..].starts_with(open) {
-            depth += 1;
-            i += open.len();
-        } else if bytes[i..].starts_with(close) {
-            depth -= 1;
-            if depth == 0 {
-                return Some(i);
-            }
-            i += close.len();
-        } else {
-            i += 1;
-        }
-    }
-    None
-}
-
-/// Render `block` once per row of the aggregate answer at `state`, resolving
-/// `{{var.part}}` against each row.
-fn render_loop(var: &str, state: &str, block: &str, context: &BTreeMap<String, String>) -> String {
-    let Some(json) = context.get(state) else {
-        return String::new();
-    };
-    let rows: Vec<BTreeMap<String, serde_yaml::Value>> =
-        serde_yaml::from_str(json).unwrap_or_default();
-    let mut out = String::new();
-    for row in &rows {
-        let mut piece = block.to_string();
-        for (part, value) in row {
-            let needle = format!("{{{{{var}.{part}}}}}");
-            piece = piece.replace(&needle, &yaml_scalar(value));
-        }
-        // Recurse so a nested `{{#for …}}` inside this row's block expands.
-        out.push_str(&expand_loops(&piece, context));
-    }
-    out
-}
-
-/// The string form of a row field value — a YAML/JSON string unwraps to its
-/// inner text; anything else falls back to its compact form.
-fn yaml_scalar(value: &serde_yaml::Value) -> String {
-    match value {
-        serde_yaml::Value::String(s) => s.clone(),
-        serde_yaml::Value::Bool(b) => b.to_string(),
-        serde_yaml::Value::Number(n) => n.to_string(),
-        serde_yaml::Value::Null => String::new(),
-        other => serde_yaml::to_string(other)
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-    }
+/// Evaluate conditions against `context` while substituting direct values
+/// from `display`. Preview controls use stored choice values for conditions
+/// and human-readable choice labels in the document.
+#[must_use]
+pub fn fill_with_display(
+    body: &str,
+    context: &BTreeMap<String, String>,
+    display: &BTreeMap<String, String>,
+) -> String {
+    forms::notation::fill_with_display(body, context, display)
 }
 
 /// Render `body` with `context` evaluated into it (bare substitution plus
@@ -334,6 +240,42 @@ The retainer covers the project {{project_name}}.";
             ("people__members", r#"[{"name": "Aries"}]"#),
         ]);
         assert_eq!(super::fill(body, &context), "Roster: Aries ");
+    }
+
+    #[test]
+    fn conditional_clauses_follow_truthy_and_exact_answers() {
+        let body = "{{#if custom_yes_no__approved}}Approved.{{/if}}{{#if custom_single_choice__law=nevada}} Nevada.{{/if}}";
+        assert_eq!(super::fill(body, &ctx(&[])), "");
+        assert_eq!(
+            super::fill(
+                body,
+                &ctx(&[
+                    ("custom_yes_no__approved", "true"),
+                    ("custom_single_choice__law", "nevada"),
+                ]),
+            ),
+            "Approved. Nevada."
+        );
+        assert_eq!(
+            super::fill(
+                body,
+                &ctx(&[
+                    ("custom_yes_no__approved", "false"),
+                    ("custom_single_choice__law", "california"),
+                ]),
+            ),
+            ""
+        );
+    }
+
+    #[test]
+    fn nested_conditionals_match_balanced_closes() {
+        let body = "{{#if outer}}A{{#if inner}}B{{/if}}C{{/if}}";
+        assert_eq!(
+            super::fill(body, &ctx(&[("outer", "yes"), ("inner", "yes")])),
+            "ABC"
+        );
+        assert_eq!(super::fill(body, &ctx(&[("outer", "yes")])), "AC");
     }
 
     #[test]

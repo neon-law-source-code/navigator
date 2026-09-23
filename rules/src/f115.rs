@@ -1,7 +1,7 @@
 //! `N115` — template body data paths and iterators must resolve against
 //! the questionnaire's typed states.
 //!
-//! Two new body grammars are grounded here:
+//! Three body grammars are grounded here:
 //!
 //! - **Dotted data path** — `{{person__trustor.name}}` reads a field off a
 //!   typed answer. The state before the dot must be a declared
@@ -13,6 +13,8 @@
 //!   walks an aggregate answer. The iterand must be a declared aggregate
 //!   state; the loop variable's fields resolve against the aggregate's row
 //!   shape; and every `#for` must close.
+//! - **Conditional** — `{{#if custom_yes_no__approved}} … {{/if}}` and its
+//!   `state=value` form name a declared state and must balance.
 //!
 //! Shares `f107`'s `{{ … }}` dotted-grammar scanning; the per-type shape is
 //! the registry's (mirrored from `store::question_registry`).
@@ -133,6 +135,7 @@ impl Rule for F115PathResolution {
         let mut violations = Vec::new();
         // Active `#for` loop bindings: var → aggregate `<type>` token.
         let mut loops: Vec<(String, &'static str)> = Vec::new();
+        let mut conditionals = 0usize;
         for tok in tokens(body) {
             if let Some(rest) = tok.strip_prefix("#for ") {
                 handle_for(rest, &state_type, &mut loops, file, &mut violations);
@@ -140,12 +143,32 @@ impl Rule for F115PathResolution {
                 if loops.pop().is_none() {
                     violations.push(violation(file, "`{{/for}}` without a matching `{{#for}}`"));
                 }
+            } else if let Some(rest) = tok.strip_prefix("#if ") {
+                conditionals += 1;
+                let state = rest.split_once('=').map_or(rest, |(state, _)| state).trim();
+                if let Some((head, tail)) = state.split_once('.') {
+                    handle_path(head, tail, &state_type, &loops, file, &mut violations);
+                } else if !state_type.contains_key(state) {
+                    violations.push(violation(
+                        file,
+                        format!("Conditional `#if {rest}` names undeclared questionnaire state `{state}`"),
+                    ));
+                }
+            } else if tok == "/if" {
+                if conditionals == 0 {
+                    violations.push(violation(file, "`{{/if}}` without a matching `{{#if}}`"));
+                } else {
+                    conditionals -= 1;
+                }
             } else if let Some((head, tail)) = tok.split_once('.') {
                 handle_path(head, tail, &state_type, &loops, file, &mut violations);
             }
         }
         if !loops.is_empty() {
             violations.push(violation(file, "`{{#for}}` is not closed by `{{/for}}`"));
+        }
+        if conditionals != 0 {
+            violations.push(violation(file, "`{{#if}}` is not closed by `{{/if}}`"));
         }
         check_declared_signer_backing(file, &file.contents, &state_type, &mut violations);
         violations
@@ -318,6 +341,33 @@ mod tests {
             "The trustor is {{person__trustor.name}}.",
         );
         assert!(F115PathResolution.lint(&file(&body)).is_empty());
+    }
+
+    #[test]
+    fn grounds_and_balances_conditional_states() {
+        let valid = tmpl(
+            "  BEGIN:\n    _: custom_yes_no__approved\n  custom_yes_no__approved:\n    _: END\n  END: {}\n",
+            "{{#if custom_yes_no__approved}}Approved.{{/if}}",
+        );
+        assert!(F115PathResolution.lint(&file(&valid)).is_empty());
+
+        let undeclared = tmpl(
+            "  BEGIN:\n    _: custom_yes_no__approved\n  custom_yes_no__approved:\n    _: END\n  END: {}\n",
+            "{{#if custom_yes_no__missing}}Missing.{{/if}}",
+        );
+        assert!(F115PathResolution
+            .lint(&file(&undeclared))
+            .iter()
+            .any(|violation| violation.message.contains("undeclared")));
+
+        let unclosed = tmpl(
+            "  BEGIN:\n    _: custom_yes_no__approved\n  custom_yes_no__approved:\n    _: END\n  END: {}\n",
+            "{{#if custom_yes_no__approved}}Approved.",
+        );
+        assert!(F115PathResolution
+            .lint(&file(&unclosed))
+            .iter()
+            .any(|violation| violation.message.contains("not closed")));
     }
 
     #[test]

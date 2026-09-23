@@ -17,6 +17,7 @@ thiserror.workspace = true
 uuid.workspace = true
 url.workspace = true
 word.workspace = true
+forms.workspace = true
 
 [dev-dependencies]
 # Layer-1 accessibility gate (`tests/accessibility.rs`) uses these

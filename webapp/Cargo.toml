@@ -34,6 +34,7 @@ serde = { workspace = true, features = ["derive"] }
 # value. Already in the tree transitively via Dioxus, so this adds nothing to
 # the wasm bundle.
 serde_json = { workspace = true }
+forms = { workspace = true }
 percent-encoding = { workspace = true }
 # Server-only: the `#[server]` function bodies query the store through the
 # shared `store` crate. It is gated behind the `server` feature so the wasm

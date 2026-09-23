@@ -64,10 +64,12 @@ the shared footer treatment used by Neon Law and Vesta, including the link to Sh
 line.
 
 Vesta's `home.yaml` carries the `estate` block: a $5,000 lifetime plan with unlimited edits, a three-step explanation,
-and an optional $5 blockchain record marked coming soon. The booking link uses Vesta's `consultation_url`, matching the
-Notion calendar for Neon Law. Its existing services page describes the same offer. Blockchain recording remains
-unavailable while the backend in [`solana-attestation`](solana-attestation.md) is unshipped; a record does not replace
-required signing or notarization.
+and an optional $5 blockchain record available by request. The booking link uses Vesta's `consultation_url`, matching
+the Notion calendar for Neon Law. Its services page describes the same offer and explains that Nicholas Shook may
+consider an individual trustee appointment under separate written terms. Navigator access is not an appointment, and the
+copy preserves the Nevada-qualified-trustee, tax, conflict, and execution-formality limits. Blockchain recording is
+fulfilled on request while the automated backend in [`solana-attestation`](solana-attestation.md) remains unshipped; a
+record does not replace required signing or notarization.
 
 Vesta is registered by the canonical brand seed on each deployment boot, including staging's persistent runtime profile.
 Its page and SVG ship with the application. The disposable estate fixture belongs to Vesta when the sample portfolio is

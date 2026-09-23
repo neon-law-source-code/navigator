@@ -76,7 +76,9 @@ async fn vesta_offers_lifetime_edits_and_the_shared_booking_calendar() {
         "for life",
         "$5",
         "per transaction",
-        "Coming soon",
+        "Available by request",
+        "possible individual",
+        "trustee appointment",
         "https://calendar.notion.so/meet/shicholas/or15n4yy7",
         "/public/brand/vesta.svg",
         "Shook Law PLLC",
@@ -86,6 +88,8 @@ async fn vesta_offers_lifetime_edits_and_the_shared_booking_calendar() {
     }
     assert!(!html.contains("$3,000"));
     assert!(!html.contains("calendar.app.google"));
+    assert!(!html.contains("Coming soon"));
+    assert!(!html.contains("not yet available"));
     assert!(html.contains("does not replace"));
 }
 
@@ -126,7 +130,13 @@ async fn vesta_services_agree_with_the_lifetime_offer() {
     let html = preview(BrandKey::Vesta, "/services").await;
     assert!(html.contains("$5,000"));
     assert!(html.contains("unlimited edits"));
+    assert!(html.contains("Nicholas Shook may accept appointment"));
+    assert!(html.contains("qualified Nevada trustee"));
+    assert!(html.contains("Life-insurance trusts"));
+    assert!(html.contains("$5 per transaction, available by request"));
     assert!(!html.contains("$3,000"));
+    assert!(!html.contains("Coming soon"));
+    assert!(!html.contains("not yet available"));
 }
 
 #[tokio::test]

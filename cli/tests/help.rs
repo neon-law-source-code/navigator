@@ -76,7 +76,7 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // These, and nothing else. Each names what it owns, so the top
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
-            "dev", "forms", "notation", "ops", "project", "site", "validate", "help",
+            "dev", "forms", "glossary", "notation", "ops", "project", "site", "validate", "help",
         ]
     );
 
@@ -251,68 +251,40 @@ fn the_two_doctors_keep_distinct_headlines() {
     );
 }
 
-/// The two glossary helpers sit next to each other under one parent and do
-/// opposite things: one rewrites the index inside the repository, the other
+/// The glossary helpers sit next to each other under one parent and do
+/// opposite things: one rewrites entries inside the repository, another
 /// prints a page for a push out of it. Each has to say which it is on its own
 /// `--help`, or an operator reaching for the safe one runs the writer.
 #[test]
-fn the_two_glossary_sync_helpers_keep_distinct_headlines() {
-    let index = unwrapped(&help(&["dev", "docs", "glossary-index", "--help"]));
+fn the_glossary_sync_helpers_keep_distinct_headlines() {
+    let tables = unwrapped(&help(&["glossary", "tables", "--help"]));
     assert!(
-        index.contains("Check the alphabetical index block at the top of `docs/glossary.md`"),
-        "glossary-index headline: {index}"
+        tables.contains("Check every term's schema box"),
+        "glossary tables headline: {tables}"
     );
     assert!(
-        !index.contains("Notion page can hold"),
-        "glossary-index must not carry glossary-notion's headline: {index}"
+        tables.contains("--write") && !tables.contains("--path"),
+        "glossary tables offers --write and no target path: {tables}"
     );
 
-    let notion = unwrapped(&help(&["dev", "docs", "glossary-notion", "--help"]));
+    let notion = unwrapped(&help(&["glossary", "notion", "--help"]));
     assert!(
-        notion.contains("Print the glossary as Markdown a Notion page can hold"),
-        "glossary-notion headline: {notion}"
+        notion.contains("Print the glossary as one Markdown page Notion can hold"),
+        "glossary notion headline: {notion}"
     );
     assert!(
-        !notion.contains("Check the alphabetical index block"),
-        "glossary-notion must not carry glossary-index's headline: {notion}"
+        !notion.contains("schema box"),
+        "glossary notion must not carry glossary tables' headline: {notion}"
     );
 }
 
-/// The index command takes no target. There is one authored glossary, and the
-/// workspace gate compares the rendered index against the copy the binary
-/// embedded from that same path, so a caller-supplied path could only name a
-/// file the gate does not read.
+/// `glossary` is top level: reading the ontology needs no cluster, no
+/// database, and no checkout — the terms are embedded in the binary.
 #[test]
-fn glossary_index_offers_no_path_to_point_somewhere_else() {
-    let index = unwrapped(&help(&["dev", "docs", "glossary-index", "--help"]));
-    assert!(
-        index.contains("--write"),
-        "glossary-index must still offer --write: {index}"
-    );
-    assert!(
-        !index.contains("--path"),
-        "glossary-index must not take a path: {index}"
-    );
-}
-
-/// `docs` is a `dev` member: what is left are the developer/agent reference
-/// helpers, needing no cluster and no database.
-/// The three glossary helpers qualify on the same terms — two rewrite
-/// `docs/glossary.md`'s own derived blocks (its index and its per-term schema
-/// boxes), the third prints the page a Notion push sends. None reaches an
-/// engine: the schema boxes come from the embedded `navigator.surql`.
-#[test]
-fn dev_docs_keeps_only_the_reference_helpers() {
+fn glossary_keeps_only_the_reference_helpers() {
     assert_eq!(
-        command_names(&help(&["dev", "docs", "--help"])),
-        vec![
-            "glossary",
-            "glossary-index",
-            "glossary-notion",
-            "glossary-tables",
-            "list",
-            "help"
-        ]
+        command_names(&help(&["glossary", "--help"])),
+        vec!["list", "notion", "show", "tables", "help"]
     );
 }
 
@@ -326,7 +298,6 @@ fn dev_help_lists_local_loop_members() {
             "browser-e2e",
             "build-webapp",
             "deploy",
-            "docs",
             "down",
             "e2e",
             "env",

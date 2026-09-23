@@ -923,7 +923,7 @@ pub(crate) async fn resolve_walker_step(
 ) -> Result<webapp::walker_step::WalkerStepData, Response> {
     // The runtime — not the journal — is the source of truth for
     // state; the worker writes `notation_events` rows via `ctx.run` as a
-    // projection (see `docs/glossary.md` → `ctx.run`).
+    // projection (see `docs/glossary/` → `ctx.run`).
     // `notation_session::current_step` reads from the runtime and resolves the
     // question row in one call.
     let step = notation_session::current_step(
@@ -2673,7 +2673,7 @@ async fn render_assembled_document(
 /// already stored under this prefix, and an object key is not a symbol:
 /// renaming it here does not move the bytes, it just stops resolving them,
 /// orphaning every offboarding letter already filed. The vocabulary
-/// elsewhere says offboarding (see `docs/glossary.md`); this one string is
+/// elsewhere says offboarding (see `docs/glossary/`); this one string is
 /// a storage address, and addresses only change with a migration that
 /// copies the objects first.
 #[must_use]

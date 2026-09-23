@@ -1072,7 +1072,7 @@ jobs:
           NAVIGATOR_SURREAL_PASSWORD: root
         run: |
           set -euo pipefail
-          cargo run -p cli --quiet -- dev docs glossary jurisdiction
+          cargo run -p cli --quiet -- glossary show jurisdiction
 
       - uses: ./.github/actions/slack-progress
         with:

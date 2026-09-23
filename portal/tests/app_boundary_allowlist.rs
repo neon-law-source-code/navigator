@@ -111,8 +111,6 @@ fn dioxus_app_pages() -> Vec<String> {
         pages::LAWYER_PLAYBOOK_EDIT_PATH,
         pages::LAWYER_TEMPLATES_PATH,
         pages::LAWYER_QUESTIONS_PATH,
-        pages::APP_DOCS_PATH,
-        pages::APP_DOC_PATH,
         pages::APP_TEAM_PATH,
         pages::APP_BRANDS_PATH,
         pages::APP_OWNER_PATH,

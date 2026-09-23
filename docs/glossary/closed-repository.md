@@ -1,0 +1,14 @@
+---
+title: "Closed Repository"
+---
+
+The [Asset](asset.md) kind `rules::kind::Kind::ClosedRepository` (`kind: closed_repository`) names: a zip of a closed
+[Project](project.md)'s repository working tree at its final commit, with no git history, filed on the matter once the
+repository is redundant. It follows the [Offboarding](offboarding.md) close rather than gating it — a matter closes on
+its own signed closing letter, and an operator files the archive afterward with its own separate command, named for the
+matter code: `navigator project archive-repository <code>`. Asset-lane only: `Kind::valid_for(Lane::Template)` refuses
+it, so no template ever declares this kind.
+
+Deleting the repository from its forge is a separate, deliberate step an operator (or `delete_closed_repository`) takes
+only after this document exists and its recorded commit SHA is checked against the live repository's current HEAD — the
+archive is what makes the delete safe, not the close itself.

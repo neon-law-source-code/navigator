@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Installing Neon Law Navigator on your own cloud
 
 Neon Law Navigator's canonical build is just **`cargo build` + `docker build`**. Nothing in the workspace's default

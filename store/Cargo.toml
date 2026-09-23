@@ -36,6 +36,7 @@ repos.workspace = true
 # `template_source` validates a Project repo's template with the same rule
 # set `navigator validate` runs before persisting it as a version — one
 # validator everywhere (docs/agent-workflows.md), refuse-on-error.
+include_dir.workspace = true
 rules.workspace = true
 serde.workspace = true
 serde_json.workspace = true

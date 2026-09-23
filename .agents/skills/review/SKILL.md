@@ -108,8 +108,8 @@ use [`review-pr`](../review-pr/SKILL.md) when the requested work is to fix, repl
 
 ## 3. Ground the change in Navigator
 
-Start with [`docs/glossary.md`](../../../docs/glossary.md), then use [`docs/index.md`](../../../docs/index.md) to select
-the narrowest relevant source of truth. Read the applicable contract before judging implementation: for example,
+Start with [`docs/glossary/`](../../../docs/glossary/README.md), then use [`docs/index.md`](../../../docs/index.md) to
+select the narrowest relevant source of truth. Read the applicable contract before judging implementation: for example,
 authorization changes require [`docs/access-model.md`](../../../docs/access-model.md), durable handlers require the
 durable-execution guidance, and public copy requires the marketing-copy and legal-advertising constraints.
 

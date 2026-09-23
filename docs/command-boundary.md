@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # The REST/OpenAPI command boundary
 
 Every user- and tool-initiated data write — create, update, delete, and workflow actions — travels one shared command.

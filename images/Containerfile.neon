@@ -137,8 +137,9 @@ COPY templates templates
 COPY archives          archives
 COPY billing           billing
 COPY billing-workflows billing-workflows
-# `portal::docs` bakes the docs tree into the binary with
-# include_str!(concat!(CARGO_MANIFEST_DIR, "/../docs/…")). Those files
+# `store::glossary` bakes `docs/glossary/` into the binary with
+# include_dir!("$CARGO_MANIFEST_DIR/../docs/glossary"), and other crates
+# include_str! files under `docs/`. Those files
 # live outside any crate dir, so they must be staged explicitly or the
 # builder fails to resolve the include paths.
 COPY docs              docs

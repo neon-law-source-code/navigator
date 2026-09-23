@@ -1598,7 +1598,7 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
     for rel in [
         NOTICE_FILE,
         "README.md",
-        "docs/glossary.md",
+        "docs/glossary/neon-law-navigator.md",
         // Where the ownership claim actually lives. `NOTICE` names the mark but
         // not every surface does, so this is the doc that makes the numbered
         // claim the licence deliberately does not grant.

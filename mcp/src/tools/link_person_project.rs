@@ -8,7 +8,7 @@
 //!
 //! See [`Person–Project Role`].
 //!
-//! [`Person–Project Role`]: ../../../docs/glossary.md#personproject-role
+//! [`Person–Project Role`]: ../../../docs/glossary/personproject-role.md
 
 use serde::Deserialize;
 use serde_json::{json, Value};

@@ -600,7 +600,7 @@ fn FirmFooterShowcase() -> Element {
 fn demo_memberships() -> Vec<FooterMembership> {
     vec![FooterMembership {
         label: "Justice Technology Association".to_string(),
-        standing: "Mission-Aligned Partner of the Justice Technology Association".to_string(),
+        standing: "Mission-Aligned Partner".to_string(),
         href: "https://justicetechassociation.org/get-involved".to_string(),
         logo_href: "/public/img/justice-technology-association/logo.png".to_string(),
     }]
@@ -1202,7 +1202,7 @@ fn SiteFooterShowcase() -> Element {
                     ("API", "/api"),
                     ("Blog", "/blog"),
                     ("Contact", "/contact"),
-                    ("Docs", "/docs"),
+                    ("Glossary", "/glossary"),
                     ("Navigator", "/navigator"),
                     ("Notations", "/notations"),
                     ("Presentations", "/presentations"),

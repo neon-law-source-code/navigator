@@ -129,7 +129,7 @@ fn only_swagger_ui_is_an_approved_vendored_browser_distribution() {
 }
 
 /// Files under `public/swagger-ui/` that are ours, not upstream: the Navigator
-/// banner page, the same-origin bootstrap that keeps the `/docs` route's CSP at
+/// banner page, the same-origin bootstrap that keeps the `/api` route's CSP at
 /// `script-src 'self'`, and the `VERSION` stamp left by the vendoring.
 /// Everything else in that directory ships from `swagger-ui-dist` and must be
 /// pinned.

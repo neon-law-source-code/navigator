@@ -545,157 +545,113 @@ a.nav-pagination__link:hover {
   margin: 0 auto;
 }
 
-/* Documentation index: a flat card catalog. The layout provides the reading
- * room metaphor; the ordered list remains the sole collection. */
-.docs-catalog {
-  padding: clamp(2rem, 6vw, 5rem) 1.25rem;
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--nav-color-primary) 7%, transparent) 1px,
-      transparent 1px
-    ),
-    var(--nav-color-bg);
-  background-size: 2.25rem 2.25rem;
-}
-
-.docs-catalog__desk {
-  max-width: 72rem;
-  margin: 0 auto;
-}
-
-.docs-catalog h1 {
-  max-width: 18ch;
-  margin: 0.4rem 0 0;
-  font-size: clamp(2.25rem, 6vw, 4rem);
-  line-height: 1;
-  text-wrap: balance;
-}
-
-.docs-catalog__lede {
-  margin: 1rem 0 0;
-  font-size: clamp(1.1rem, 2vw, 1.35rem);
-  font-weight: 600;
-}
-
-.docs-catalog__start {
-  color: var(--nav-color-primary);
-  text-decoration: underline;
-  text-decoration-thickness: 0.1em;
-  text-underline-offset: 0.16em;
-}
-
-.docs-catalog__start:hover {
-  color: var(--nav-color-primary-hover);
-}
-
-.docs-catalog__start:focus-visible {
-  outline: 3px solid var(--nav-color-primary);
-  outline-offset: 0.25rem;
-  border-radius: var(--nav-radius-sm);
-}
-
-.docs-catalog__cards {
+/* The glossary: one page, every term, with a side index of in-page links.
+ * Wide viewports pin the index beside the terms so a reader can jump
+ * anywhere without scrolling back up; narrow viewports stack it above the
+ * terms as a scrollable panel. `scroll-margin-top` keeps an anchored term's
+ * heading clear of the sticky site header. */
+.glossary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 3rem) 1rem;
+}
+
+.glossary__index {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid color-mix(in oklab, var(--nav-color-primary) 24%, transparent);
+  border-radius: var(--nav-radius-sm, 0.5rem);
+  background: var(--nav-color-surface);
+  font-size: 0.9rem;
+}
+
+.glossary__index-group + .glossary__index-group {
+  margin-top: 0.75rem;
+}
+
+.glossary__index-letter {
+  margin: 0 0 0.25rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--nav-color-primary);
+}
+
+.glossary__index-list {
+  margin: 0;
   padding: 0;
-  margin: 2rem 0 0;
   list-style: none;
 }
 
-.docs-catalog__card {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  display: flex;
-  min-height: 8rem;
-  flex-direction: column;
-  justify-content: center;
-  padding: 1.25rem;
-  border: 1px solid color-mix(in oklab, var(--nav-color-primary) 28%, transparent);
-  border-radius: 1rem;
-  background-image: linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--nav-color-surface) 88%, transparent),
-    color-mix(in oklab, var(--nav-color-surface) 40%, transparent)
-  );
-  color: inherit !important;
-  text-decoration: none;
-  transition:
-    border-color 240ms ease,
-    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+.glossary__index-list li + li {
+  margin-top: 0.15rem;
 }
 
-.nav-theme a.docs-catalog__card:hover,
-.nav-theme a.docs-catalog__card:focus-visible {
-  border-color: var(--nav-color-primary);
+.nav-theme a.glossary__index-link {
+  color: var(--nav-color-text);
+  text-decoration: none;
+}
+
+.nav-theme a.glossary__index-link:hover,
+.nav-theme a.glossary__index-link:focus-visible {
+  color: var(--nav-color-primary-hover);
+  text-decoration: underline;
+}
+
+.glossary__terms {
+  min-width: 0;
+  max-width: 72ch;
+}
+
+.glossary__terms h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2.25rem, 6vw, 3.5rem);
+  line-height: 1;
+}
+
+.glossary__term {
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid color-mix(in oklab, var(--nav-color-text) 12%, transparent);
+  scroll-margin-top: 5rem;
+}
+
+.glossary__term-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+}
+
+.nav-theme a.glossary__anchor {
   color: inherit;
   text-decoration: none;
-  transform: translateY(-2px);
 }
 
-.nav-theme a.docs-catalog__card:focus-visible {
-  outline: 3px solid var(--nav-color-primary);
-  outline-offset: 0.25rem;
-}
-
-.docs-catalog__card::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset-inline-start: -25%;
-  inset-block-end: -55%;
-  inline-size: 150%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 30% 70%,
-    var(--nav-color-primary) 0%,
-    color-mix(in srgb, var(--nav-color-primary) 45%, transparent) 45%,
-    transparent 72%
-  );
-  opacity: 0;
-  transform: scale(0.2);
-  transform-origin: 0% 100%;
-  transition:
-    transform 720ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 320ms ease;
-}
-
-.docs-catalog__card:hover::after,
-.docs-catalog__card:focus-visible::after {
-  opacity: 0.22;
-  transform: scale(1.5);
-}
-
-.docs-catalog__card-title {
-  margin: 0;
-  font-size: 1.2rem;
-  line-height: 1.25;
-  color: var(--nav-color-text);
-}
-
-.docs-catalog__card:hover .docs-catalog__card-title,
-.docs-catalog__card:focus-visible .docs-catalog__card-title {
+.nav-theme a.glossary__anchor:hover,
+.nav-theme a.glossary__anchor:focus-visible {
   color: var(--nav-color-primary-hover);
 }
 
-@media (prefers-color-scheme: dark) {
-  .docs-catalog__card {
-    border-color: color-mix(in oklab, var(--nav-color-primary) 24%, transparent);
-    background-image: linear-gradient(
-      to bottom,
-      color-mix(in oklab, var(--nav-color-surface-raised) 70%, transparent),
-      color-mix(in oklab, var(--nav-color-surface-raised) 32%, transparent)
-    );
-  }
+.glossary__term:target .glossary__term-title {
+  color: var(--nav-color-primary);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .docs-catalog__card,
-  .docs-catalog__card::after {
-    transition-duration: 1ms;
+.glossary__definition pre {
+  overflow-x: auto;
+}
+
+@media (min-width: 60rem) {
+  .glossary {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+
+  .glossary__index {
+    position: sticky;
+    top: 5rem;
+    align-self: start;
+    max-height: calc(100vh - 6rem);
   }
 }
 

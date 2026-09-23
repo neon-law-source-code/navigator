@@ -410,7 +410,7 @@ mod tests {
         // templates; the lane check must not turn every Markdown file in
         // the workspace into a notation.
         for path in [
-            "docs/glossary.md",
+            "docs/glossary/matter.md",
             "README.md",
             "server/content/blog/post.md",
         ] {

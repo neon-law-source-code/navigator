@@ -1,6 +1,6 @@
 # Project workspace and repository contract
 
-Each Navigator [Project](glossary.md#project) coordinates five distinct surfaces. They are not interchangeable stores:
+Each Navigator [Project](glossary/project.md) coordinates five distinct surfaces. They are not interchangeable stores:
 
 | Surface | Authority | Contains |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ The Project code is the stable Navigator `projects.code`, and the documents-buck
 that equality is why the slug rules are what they are: lowercase letters, digits, and single hyphens, alphanumeric at
 both ends, at most 80 characters. A checkout and macOS are case-insensitive, so uppercase would let one directory answer
 to two codes; one separator keeps the mapping an equality check rather than a normalization. The code no longer names a
-Drive folder — per-matter Drive folders are being retired (see [the glossary](glossary.md#project)) — and
+Drive folder — per-matter Drive folders are being retired (see [the glossary](glossary/project.md)) — and
 `project.repository_url` itself remains a stored URL Navigator never composes from the code (above).
 
 `new` and `closed` are refused as Project codes. `/app/projects/new` is Navigator's matter-open form and
@@ -72,7 +72,7 @@ on every deployment forever, which is exactly what a Project's repository never 
 
 A Project code is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
 no uppercase, no underscores, no other punctuation, no spaces. `store::projects::is_valid_code` is the one definition
-and [the glossary](glossary.md#project) carries the rationale for each restriction. The code is the matter's whole
+and [the glossary](glossary/project.md) carries the rationale for each restriction. The code is the matter's whole
 public identity: its show page, its client portal, and its repository name are all that one word — and it is
 **immutable**, chosen once at matter-open and never changed. `open_matter` stores the code exactly as the lawyer
 supplies it — it never generates or appends anything to it. In the normal order of operations the repository comes
@@ -130,7 +130,7 @@ file staged under `documents/invoices/` must match the filename pattern `INV-<di
 or sync refuses it.
 
 **`documents/cases/` and `documents/rules/` are not Project documents at all.** An HTML capture of a case or a statute
-the matter relies on is an [Authority](glossary.md#authority) — global reference data with no `project_id` — so filing
+the matter relies on is an [Authority](glossary/authority.md) — global reference data with no `project_id` — so filing
 it as an internal matter document would be the misclassification the fleet contract warns about. `sync` instead routes
 every `documents/cases/**` and `documents/rules/**` capture through the same door as `navigator site authorities
 create`: it reads a sidecar (`<capture-filename>.authority.yaml`, beside the capture) carrying `class`, `citation`,
@@ -762,8 +762,8 @@ already recorded as provenance against executed instruments — moves or changes
 
 ## An individual client's entity
 
-A Project's `entity_id` is `NOT NULL` (see [the glossary](glossary.md#project)): every matter opens against a
-pre-existing [Entity](glossary.md#entity), never directly against a [Person](glossary.md#person). A company client
+A Project's `entity_id` is `NOT NULL` (see [the glossary](glossary/project.md)): every matter opens against a
+pre-existing [Entity](glossary/entity.md), never directly against a [Person](glossary/person.md). A company client
 already has one. For a solo natural-person client with no company of their own, the Entity is one of type `Human`, named
 for the client and domiciled in the client's own home jurisdiction — never the firm's, and never guessed. Nothing
 opening a matter invents this row: it is created first, like any other Entity, through `navigator site import entity` or

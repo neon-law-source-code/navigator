@@ -42,6 +42,10 @@ enum Access {
     /// `404` for, and from [`Access::PublicIngress`], which is machine ingress
     /// rather than a page: this one must render its own `200`.
     PortalPublic,
+    /// A retired path kept alive as a permanent redirect to its successor,
+    /// for anyone: the old `/docs` and `/app/docs` pages all land on
+    /// `/glossary`.
+    RetiredRedirect,
 }
 
 /// Every first-tranche path and the single class it belongs to.
@@ -70,18 +74,16 @@ const CONTRACT: &[(&str, Access)] = &[
     // subtree onto `/app/forms`. Any authenticated person may browse it; an
     // anonymous browser goes through the login door like every `/app` page.
     ("/app/forms", Access::ProtectedHuman),
-    // The workspace documentation reads anonymously. The repository is
-    // source-available, so these documents are the manual for software anyone can
-    // clone — a login door in front of them guarded nothing and cost a reader
-    // the one page that explains how to run it.
-    ("/docs", Access::PortalPublic),
-    ("/docs/glossary", Access::PortalPublic),
-    // The same documentation inside the application. `/docs` above renders
-    // for anyone; these carry the session boundary plus a policy rule that
-    // admits only the tiers who operate Navigator. What that gates is the
-    // application surface, not the documents.
-    ("/app/docs", Access::ProtectedHuman),
-    ("/app/docs/glossary", Access::ProtectedHuman),
+    // The documentation is the glossary: one anonymous page. The source is
+    // public, so its ontology is the manual for software anyone can clone.
+    ("/glossary", Access::PortalPublic),
+    // Every retired documentation path — the public catalog, its per-guide
+    // pages, and the signed-in copy — is a permanent redirect to it.
+    ("/docs", Access::RetiredRedirect),
+    ("/docs/glossary", Access::RetiredRedirect),
+    ("/docs/notation", Access::RetiredRedirect),
+    ("/app/docs", Access::RetiredRedirect),
+    ("/app/docs/glossary", Access::RetiredRedirect),
     // The operational probes: anonymous, with no session requirement. They
     // are the only paths Kubernetes dials, and they answer on `/app` alone.
     ("/app/health", Access::PublicIngress),
@@ -143,11 +145,10 @@ const CONTRACT: &[(&str, Access)] = &[
     ("/assets/img/router-contract.svg", Access::PublicIngress),
 ];
 
-/// An [`AppState`](portal::AppState) with the bundled docs and a configured
+/// An [`AppState`](portal::AppState) with a configured
 /// OAuth door, so the login handshakes this contract pins actually mount.
 async fn contract_state() -> portal::AppState {
     let mut state = portal::test_support::app_state(mem_surreal().await).await;
-    state.docs = portal::docs::loader::bundled();
     state.oauth = Some(portal::OAuthConfig::new(
         "navigator",
         "secret",
@@ -242,6 +243,19 @@ async fn every_first_tranche_path_answers_its_declared_anonymous_contract() {
                     !location.starts_with("/auth/login"),
                     "{path} must not be bounced to the login door"
                 );
+            }
+            Access::RetiredRedirect => {
+                assert_eq!(
+                    status,
+                    StatusCode::PERMANENT_REDIRECT,
+                    "{path} is retired and must redirect permanently"
+                );
+                let location = response
+                    .headers()
+                    .get(axum::http::header::LOCATION)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default();
+                assert_eq!(location, "/glossary", "{path} must land on the glossary");
             }
             Access::PortalPublic => {
                 assert_eq!(
@@ -471,7 +485,7 @@ async fn a_signed_session_passes_the_shared_boundary() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/docs/glossary")
+                .uri("/glossary")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -482,9 +496,9 @@ async fn a_signed_session_passes_the_shared_boundary() {
     assert_eq!(
         response.status(),
         StatusCode::OK,
-        "an authenticated reader still gets the shared docs"
+        "an authenticated reader still gets the shared glossary"
     );
-    // `/docs` is anonymous, so this no longer proves the boundary passes a
+    // `/glossary` is anonymous, so this no longer proves the boundary passes a
     // signed session — a gated surface does. `/templates` is behind the same
     // boundary and renders for any authenticated person.
     let gallery = app_for_gallery

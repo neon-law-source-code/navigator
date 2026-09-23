@@ -113,7 +113,6 @@ pub async fn app_state(surreal: store::surreal::SurrealDb) -> AppState {
         brand_bundle: None,
         surreal,
         workshops: WorkshopIndex::empty(),
-        docs: crate::DocsIndex::empty(),
         blog: crate::BlogIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: crate::google_oauth::GoogleOauthConfig::passthrough(),

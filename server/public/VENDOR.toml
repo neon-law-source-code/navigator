@@ -17,7 +17,7 @@
 #   modified     true if we edited the file post-download (its sha will NOT
 #                match upstream; see `note`)
 
-# Swagger UI, served at `/docs` for the OIDC-gated `/api/*` read endpoints.
+# Swagger UI, served at `/api` for the OIDC-gated `/api/*` read endpoints.
 # `swagger-ui/index.html` and `swagger-ui/init.js` are ours (the Navigator
 # banner, and the same-origin bootstrap that keeps the route's CSP at
 # `script-src 'self'`), so they are first-party and not pinned here.

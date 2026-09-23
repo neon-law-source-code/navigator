@@ -197,7 +197,7 @@ pub enum ProjectStoreError {
     /// gives the refusal a message that points at the rule.
     #[error(
         "a Project code cannot be changed after it is chosen at matter-open — see \
-         docs/glossary.md#project"
+         docs/glossary/project.md"
     )]
     CodeImmutable,
     #[error("writing a project returned no usable row")]
@@ -2394,7 +2394,7 @@ pub struct OpenMatterCommand {
     /// and whitespace — see [`normalize_code`]). This *is* the stored code:
     /// [`open_matter`] does not generate or append anything to it. A code is
     /// chosen once and never changes — `project.code` is `READONLY` (see
-    /// [`docs/glossary.md#project`](../../docs/glossary.md#project)) — and it
+    /// [`docs/glossary/project.md`](../../docs/glossary/project.md)) — and it
     /// is a coordinate shared with three systems Navigator does not own (a
     /// repository's `navigator.yaml`, the matter's Drive folder name, and its
     /// Notion `Project code` URL), so the caller — not Navigator — must own

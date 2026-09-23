@@ -3,7 +3,7 @@
 Codebase work has five actions: **create an issue**, **triage an issue**, **create a PR**, **address a PR comment**, or
 **address a failed GitHub Action**. GitOps, validation, Restate authoring, and council review support those actions.
 
-Every action starts from the same evidence: [`glossary.md`](glossary.md), the narrowest docs from
+Every action starts from the same evidence: [`glossary/`](glossary/README.md), the narrowest docs from
 [`index.md`](index.md), the current source and tests, and the complete issue or PR conversation. Choose the smallest
 change that satisfies that evidence.
 
@@ -45,7 +45,7 @@ Before changing files:
    Codex's normal detached `HEAD`. It creates `.worktrees/<topic>` only when deliberately run from the primary checkout
    outside the app workflow. Continue in this one task checkout; never create a nested worktree by hand.
 3. Read [`AGENTS.md`](../AGENTS.md), the narrowest docs from [`index.md`](index.md), and
-   [`glossary.md`](glossary.md). Read [`access-model.md`](access-model.md) before touching roles, participation,
+   [`glossary/`](glossary/README.md). Read [`access-model.md`](access-model.md) before touching roles, participation,
    embedded Rego, sessions, or visibility.
 4. Run `git status --short --branch`; preserve user changes.
 

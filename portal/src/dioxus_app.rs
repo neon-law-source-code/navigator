@@ -83,14 +83,15 @@ pub const TEMPLATES_PATH: &str = "/templates";
 /// One template's detail page, or its `/download` raw markdown.
 pub const TEMPLATE_ENTRY_PATH: &str = "/templates/{*path}";
 
-/// The workspace-documentation hub, which renders the `index` doc.
-pub const DOCS_PATH: &str = "/docs";
+/// The one-page glossary: every term in `docs/glossary/`, anchored at
+/// `#<slug>`. The documentation is the glossary.
+pub const GLOSSARY_PATH: &str = "/glossary";
 
-/// The slug that [`DOCS_PATH`] renders — the hub has no path parameter.
-pub const DOCS_INDEX_SLUG: &str = "index";
-
-/// One workspace doc, served by the Dioxus SSR port.
-pub const DOC_PATH: &str = "/docs/{slug}";
+/// The retired documentation paths. Each permanently redirects to
+/// [`GLOSSARY_PATH`]; a browser carries a `#fragment` across the
+/// redirect, so `/docs/glossary#matter` still lands on Matter.
+pub const RETIRED_DOCS_PATHS: [&str; 4] =
+    ["/docs", "/docs/{*rest}", "/app/docs", "/app/docs/{*rest}"];
 
 /// The environment variable naming the built client-bundle directory. Read by
 /// `dioxus-server`'s `ServeConfig::new` (for the `index.html` template) and
@@ -3595,101 +3596,49 @@ pub fn catalog_material_routers(
     ]
 }
 
-/// The workspace-documentation routes (#956 Phase 4): `/docs` renders the
-/// `index` doc and `/docs/{slug}` renders one doc, both from the compiled-in
-/// [`DocsIndex`]. `slug` is `None` for the index route, which has no path
-/// parameter to read.
+/// `/glossary` — the Neon Law Navigator ontology on one page.
 ///
-/// [`inject_doc`] resolves the doc and owns every non-render outcome on the
-/// path — the kebab-case redirect, the `/docs/index` → `/docs`
-/// redirect, and the unknown-slug 404 — because axum cannot register a second
-/// `GET` handler where the render sits.
+/// **Anonymous.** The route mounts outside the session boundary, beside
+/// `/design`, and carries `inject_optional_session` so a signed-in reader
+/// still gets the authenticated nav. The glossary describes software anyone
+/// can clone, so a login door in front of it would guard nothing.
 ///
-/// **Anonymous.** These routes mount outside the session boundary, beside
-/// `/design`, and carry `inject_optional_session` so a signed-in reader still
-/// gets the authenticated nav. The documentation is the manual for software
-/// anyone can clone, so a login door in front of it guarded nothing.
-/// [`app_docs_router`] is the second, role-scoped door to the same index; it
-/// stays gated because it is part of the authenticated application, not because
-/// these documents are restricted.
-///
-/// **One chrome on every host.** These routes live in the shared composition
+/// **One chrome on every host.** It lives in the shared composition
 /// [`crate::bootstrap`] mounts, so one mount serves `neon` and a white-label
 /// `tenant` alike, and [`inject_public_utility`] resolves the same public
-/// chrome here as everywhere else.
-pub fn docs_router(
-    path: &'static str,
-    slug: Option<&'static str>,
-    docs: crate::DocsIndex,
-) -> Router {
+/// chrome here as everywhere else. The content is compiled in and rendered
+/// once by [`crate::glossary::content`].
+pub fn glossary_router() -> Router {
     Router::<FullstackState>::new()
         .route(
-            path,
+            GLOSSARY_PATH,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(inject_public_utility))
-                // Outermost: redirect / 404 / inject before any rendering work.
-                .layer(from_fn_with_state((docs, slug), inject_doc)),
+                .layer(from_fn(inject_glossary)),
         )
         .with_state(FullstackState::new(
             ServeConfig::new(),
-            webapp::docs_page::DocsPageEntry,
+            webapp::glossary_page::GlossaryPageEntry,
         ))
 }
 
-/// `/app/docs` and `/app/docs/{slug}` — the same workspace
-/// documentation, inside the authenticated application.
+/// The retired `/docs` catalog, its per-guide pages, and the signed-in
+/// `/app/docs` copy: every one is a permanent redirect to the glossary.
 ///
-/// The `/docs` mount is anonymous — the source is public, so its manual is
-/// too. This is a second door to the same [`crate::DocsIndex`], for the people
-/// who operate Navigator: it wears the application chrome and is scoped to the
-/// tiers that run the product. It restricts a *surface*, not the documents,
-/// which anyone can read at `/docs`. It differs from [`docs_router`] in
-/// two ways, both deliberate:
-///
-/// * **It wears the application chrome, not the public one.** A signed-in
-///   reader keeps the app navbar and their viewer role, so the docs sit inside
-///   the product instead of bouncing them out to a marketing shell.
-/// * **It is gated.** `require_auth` then `require_policy`, in that order, so
-///   an anonymous request is a redirect to sign-in rather than a policy denial.
-///   The Rego rule admits Lawyer and Clerk explicitly, and Owner/Admin
-///   through the policy's route bypass — `client` is the one authenticated tier
-///   denied, because these documents describe firm-side operation. That role
-///   restriction is what `/docs` does not have.
-pub fn app_docs_router(
-    path: &'static str,
-    slug: Option<&'static str>,
-    docs: crate::DocsIndex,
-    sessions: crate::session::SessionStore,
-    policy: crate::policy::PolicyClient,
-    auth: crate::auth::AuthConfig,
-) -> Router {
-    Router::<FullstackState>::new()
-        .route(
-            path,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_viewer_role))
-                .layer(from_fn(inject_app_brand_mark))
-                // Outermost of the render layers: redirect / 404 / inject
-                // before any rendering work, exactly as the public mount does.
-                .layer(from_fn_with_state((docs, slug), inject_doc)),
-        )
-        .with_state(FullstackState::new(
-            ServeConfig::new(),
-            webapp::docs_page::DocsPageEntry,
-        ))
-        .route_layer(from_fn_with_state(
-            (sessions, policy),
-            crate::policy::require_policy,
-        ))
-        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+/// Anonymous on purpose, `/app/docs` included — a redirect to a public page
+/// discloses nothing, and sending an old bookmark through sign-in first
+/// would only delay the reader.
+pub fn retired_docs_router() -> Router {
+    RETIRED_DOCS_PATHS
+        .into_iter()
+        .fold(Router::new(), |router, path| {
+            router.route(
+                path,
+                get(|| async { axum::response::Redirect::permanent(GLOSSARY_PATH) }),
+            )
+        })
 }
-
-/// The authenticated documentation hub.
-pub const APP_DOCS_PATH: &str = "/app/docs";
-/// One document inside the authenticated hub.
-pub const APP_DOC_PATH: &str = "/app/docs/{slug}";
 
 /// The firm team home — the post-login landing for every firm tier.
 pub const APP_TEAM_PATH: &str = "/app/team";
@@ -4024,66 +3973,13 @@ pub const APP_OWNER_FIRM_NEW_PATH: &str = "/app/owner/firms/new";
 /// actually edit.
 pub const FIRM_EDIT_PATH: &str = "/app/admin/firms/{id}/edit";
 
-/// The `/docs` and `/docs/{slug}` pre-layer: canonicalize the slug,
-/// 404 an unknown one, or inject the matched doc for the render. This
-/// reproduces the `docs_page` / `render_doc_page` control flow.
-async fn inject_doc(
-    axum::extract::State((docs, fixed_slug)): axum::extract::State<(
-        crate::DocsIndex,
-        Option<&'static str>,
-    )>,
-    mut req: Request,
-    next: Next,
-) -> Response {
-    // The index route carries a fixed slug and no path parameter; the slug route
-    // reads its own through axum's `Path` extractor, so it arrives
-    // percent-decoded exactly as the handler's `Path<String>` did.
-    let slug = match fixed_slug {
-        Some(slug) => slug.to_string(),
-        None => match req.extract_parts::<axum::extract::Path<String>>().await {
-            Ok(axum::extract::Path(slug)) => slug,
-            Err(rejection) => return rejection.into_response(),
-        },
-    };
-
-    if fixed_slug.is_none() {
-        if let Some(to) = crate::kebab_redirect_path(&["documents", &slug]) {
-            return axum::response::Redirect::permanent(&to).into_response();
-        }
-        // `/docs/index` is the index route's content, so it has one
-        // canonical URL rather than two.
-        if slug == "index" {
-            return axum::response::Redirect::permanent("/docs").into_response();
-        }
-    }
-
-    match docs.find(&slug) {
-        Some(doc) => {
-            let mut catalog: Vec<_> = if slug == DOCS_INDEX_SLUG {
-                docs.docs()
-                    .iter()
-                    .filter(|entry| entry.slug != DOCS_INDEX_SLUG)
-                    .map(|entry| webapp::docs_page::DocCatalogEntry {
-                        title: entry.title.clone(),
-                        href: format!("/docs/{}", entry.slug),
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            catalog.sort_by_cached_key(|entry| entry.title.to_lowercase());
-            req.extensions_mut().insert(webapp::docs_page::InjectedDoc(
-                webapp::docs_page::DocContent {
-                    title: doc.title.clone(),
-                    body_html: doc.body_html.clone(),
-                    is_index: slug == DOCS_INDEX_SLUG,
-                    catalog,
-                },
-            ));
-            next.run(req).await
-        }
-        None => (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response(),
-    }
+/// Inject the rendered glossary for the page's server function.
+async fn inject_glossary(mut req: Request, next: Next) -> Response {
+    req.extensions_mut()
+        .insert(webapp::glossary_page::InjectedGlossary(
+            crate::glossary::content().clone(),
+        ));
+    next.run(req).await
 }
 
 /// The public testimonials page. Its page shell is static, but its published

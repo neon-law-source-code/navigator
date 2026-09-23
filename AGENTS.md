@@ -7,12 +7,19 @@ Critical: No client data, this should work for everyone.
 This is a Rust monorepo, use Cargo to build and run it. Apply best practices to writing Rust, including TDD, DRY, and
 simple docs grounded in our ontology — where nouns become database tables.
 
-Read the [Skills](.agents/skills) and the [docs](https://www.neonlaw.com/docs)
+Read the [Skills](.agents/skills) and the [glossary](https://www.neonlaw.com/glossary)
 
-When developing, ground every decision in our [ontology](https://www.neonlaw.com/docs/glossary). Use tests, create
-worktrees to isolate development, and optionally use Kind for a full e2e parity check like production in GCP.
+When developing, ground every decision in our [ontology](https://www.neonlaw.com/glossary). Use tests, create worktrees
+to isolate development, and optionally use Kind for a full e2e parity check like production in GCP.
 
 ## Helpful commands
+
+### Reading the ontology
+
+```bash
+cargo run -p cli -- glossary list
+cargo run -p cli -- glossary show "Lawyer Review"
+```
 
 ### Starting web
 

@@ -396,7 +396,6 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         brand_bundle,
         surreal,
         workshops,
-        docs: crate::docs::loader::bundled(),
         blog,
         auth,
         google_oauth,

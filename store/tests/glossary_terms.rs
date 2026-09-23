@@ -24,14 +24,14 @@ async fn mem() -> SurrealDb {
 async fn materialize_is_idempotent_and_updates_in_place() {
     let db = mem().await;
 
-    let written = glossary::materialize(&db, glossary::GLOSSARY_MD)
+    let written = glossary::materialize(&db, glossary::terms())
         .await
         .expect("first materialize");
     assert!(written > 25, "expected the full vocabulary, got {written}");
     let after_first = glossary::all(&db).await.expect("all").len();
     assert_eq!(after_first, written);
 
-    glossary::materialize(&db, glossary::GLOSSARY_MD)
+    glossary::materialize(&db, glossary::terms())
         .await
         .expect("second materialize");
     assert_eq!(
@@ -41,9 +41,12 @@ async fn materialize_is_idempotent_and_updates_in_place() {
     );
 
     // An edited definition updates the existing row.
-    glossary::materialize(&db, "## Lawyer Review\n\nRewritten body.\n")
-        .await
-        .expect("edit");
+    let edited = glossary::Term {
+        slug: "lawyer-review".to_string(),
+        title: "Lawyer Review".to_string(),
+        body: "Rewritten body.".to_string(),
+    };
+    glossary::materialize(&db, &[edited]).await.expect("edit");
     let row = glossary::by_slug(&db, "lawyer-review")
         .await
         .expect("lookup")
@@ -62,7 +65,7 @@ async fn materialize_is_idempotent_and_updates_in_place() {
 #[tokio::test]
 async fn a_term_referenced_by_slug_resolves_to_its_definition() {
     let db = mem().await;
-    glossary::materialize(&db, glossary::GLOSSARY_MD)
+    glossary::materialize(&db, glossary::terms())
         .await
         .expect("materialize");
 

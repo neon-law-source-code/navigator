@@ -1,4 +1,4 @@
-//! End-to-end tests for `navigator dev docs ...`.
+//! End-to-end tests for `navigator glossary ...`.
 
 use std::process::Command;
 
@@ -6,7 +6,7 @@ use assert_cmd::cargo::cargo_bin;
 
 #[test]
 fn the_glossary_names_the_physical_schema() {
-    let glossary = include_str!("../../docs/glossary.md");
+    let glossary = glossary_text();
     let schema = include_str!("../../store/src/schema/navigator.surql");
 
     for table in ["person", "person_project_role", "project"] {
@@ -38,72 +38,63 @@ fn the_glossary_names_the_physical_schema() {
     }
 }
 
-#[test]
-fn docs_requires_a_subcommand() {
-    let out = Command::new(cargo_bin("navigator"))
-        .arg("dev")
-        .arg("docs")
+/// Every term's title and body, one after another — what a reader of the
+/// whole glossary sees, for assertions about its prose.
+fn glossary_text() -> String {
+    use std::fmt::Write as _;
+    store::glossary::terms()
+        .iter()
+        .fold(String::new(), |mut text, term| {
+            let _ = write!(text, "## {}\n\n{}\n\n", term.title, term.body);
+            text
+        })
+}
+
+fn navigator(args: &[&str]) -> std::process::Output {
+    Command::new(cargo_bin("navigator"))
+        .args(args)
         .output()
-        .expect("run navigator dev docs");
+        .unwrap_or_else(|error| panic!("run navigator {args:?}: {error}"))
+}
+
+#[test]
+fn glossary_requires_a_subcommand() {
+    let out = navigator(&["glossary"]);
     assert!(!out.status.success(), "expected non-zero exit");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("Usage: navigator dev docs <COMMAND>"),
-        "expected docs subcommand usage, got: {stderr}",
+        stderr.contains("Usage: navigator glossary <COMMAND>"),
+        "expected glossary subcommand usage, got: {stderr}",
     );
 }
 
 #[test]
-fn docs_list_includes_opted_in_docs_and_glossary_term_pages() {
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "list"])
-        .output()
-        .expect("run navigator dev docs list");
+fn glossary_list_prints_every_term_as_slug_and_title() {
+    let out = navigator(&["glossary", "list"]);
     assert!(out.status.success(), "exit status: {:?}", out.status);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("/docs/glossary\t"));
-    assert!(
-        !stdout.contains("/docs/gitops\t"),
-        "unflagged docs must not appear in the published listing"
-    );
-    assert!(stdout.contains("/docs/glossary#lawyer-review\tGlossary: Lawyer Review"));
-    assert!(stdout.contains("/docs/glossary#workflow-runtime\tGlossary: Workflow Runtime"));
-}
-
-#[test]
-fn docs_list_glossary_terms_match_the_published_page() {
-    let terms = store::glossary::parse(store::glossary::GLOSSARY_MD);
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "list"])
-        .output()
-        .expect("run navigator dev docs list");
-    assert!(out.status.success(), "exit status: {:?}", out.status);
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout
-            .lines()
-            .any(|line| line == "/docs/glossary\tGlossary"),
-        "CLI list must include the published /docs/glossary page, got: {stdout}"
-    );
-    for term in &terms {
-        let line = format!(
-            "/docs/glossary#{slug}\tGlossary: {title}",
-            slug = term.slug,
-            title = term.title
-        );
-        assert!(
-            stdout.contains(&line),
-            "CLI list missing published glossary term `{line}`"
-        );
+    let lines: Vec<&str> = stdout.lines().collect();
+    let terms = store::glossary::terms();
+    assert_eq!(lines.len(), terms.len(), "one line per term: {stdout}");
+    for (line, term) in lines.iter().zip(terms) {
+        assert_eq!(*line, format!("{}\t{}", term.slug, term.title));
     }
+    assert!(lines.contains(&"lawyer-review\tLawyer Review"));
+    assert!(lines.contains(&"workflow-runtime\tWorkflow Runtime"));
 }
 
 #[test]
-fn docs_glossary_with_known_term_prints_just_that_term() {
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "glossary", "Lawyer Review"])
-        .output()
-        .expect("run navigator dev docs glossary Lawyer Review");
+fn the_retired_docs_command_is_gone() {
+    let out = navigator(&["dev", "docs", "list"]);
+    assert!(
+        !out.status.success(),
+        "`dev docs` is replaced by `glossary`"
+    );
+}
+
+#[test]
+fn glossary_show_with_known_term_prints_just_that_term() {
+    let out = navigator(&["glossary", "show", "Lawyer Review"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("## Lawyer Review"));
@@ -120,11 +111,8 @@ fn docs_glossary_with_known_term_prints_just_that_term() {
 /// Assert the vocabulary and both decisions, so a later edit cannot quietly
 /// drop them back into an issue comment.
 #[test]
-fn docs_glossary_deadline_carries_its_authority_vocabulary_and_both_decisions() {
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "glossary", "Deadline"])
-        .output()
-        .expect("run navigator dev docs glossary Deadline");
+fn glossary_deadline_carries_its_authority_vocabulary_and_both_decisions() {
+    let out = navigator(&["glossary", "show", "Deadline"]);
     assert!(out.status.success(), "exit status: {:?}", out.status);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("## Deadline"));
@@ -160,31 +148,8 @@ fn docs_glossary_deadline_carries_its_authority_vocabulary_and_both_decisions() 
 }
 
 #[test]
-fn docs_glossary_without_argument_lists_every_term() {
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "glossary"])
-        .output()
-        .expect("run navigator dev docs glossary");
-    assert!(out.status.success(), "exit status: {:?}", out.status);
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    // The no-argument dump prints every parsed entry as a `## <title>` block;
-    // spot-check entries from across the file and guard against a parse that
-    // silently yields nothing.
-    assert!(stdout.contains("## Lawyer Review"));
-    assert!(stdout.contains("## Workflow Runtime"));
-    let heading_count = stdout.lines().filter(|l| l.starts_with("## ")).count();
-    assert!(
-        heading_count >= 25,
-        "expected >= 25 glossary headings, got {heading_count}"
-    );
-}
-
-#[test]
-fn docs_glossary_term_lookup_is_case_insensitive() {
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "glossary", "lawyer review"])
-        .output()
-        .expect("run navigator dev docs glossary 'lawyer review' (lower-case)");
+fn glossary_show_is_case_insensitive() {
+    let out = navigator(&["glossary", "show", "lawyer review"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("## Lawyer Review"));
@@ -193,11 +158,8 @@ fn docs_glossary_term_lookup_is_case_insensitive() {
 }
 
 #[test]
-fn docs_glossary_term_lookup_accepts_anchor_slug() {
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "glossary", "lawyer-review"])
-        .output()
-        .expect("run navigator dev docs glossary lawyer-review");
+fn glossary_show_accepts_a_slug() {
+    let out = navigator(&["glossary", "show", "lawyer-review"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("## Lawyer Review"));
@@ -215,7 +177,6 @@ const ACCESS_MODEL_MD: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../docs/access-model.md"
 ));
-const GLOSSARY_MD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md"));
 const AUTHORIZATION_SKILL_MD: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../.agents/skills/authorization-model/SKILL.md"
@@ -264,9 +225,10 @@ fn access_teaching_surfaces_keep_route_and_matter_scope_distinct() {
             && !clerk_section.contains("`/clerk` coordination surface"),
         "the retired dedicated Clerk route must not be documented as live"
     );
+    let glossary = glossary_text();
     assert!(
-        !GLOSSARY_MD.contains("dedicated `/clerk` surface")
-            && GLOSSARY_MD.contains("Clerk's read-only lens under `/app/projects`"),
+        !glossary.contains("dedicated `/clerk` surface")
+            && glossary.contains("Clerk's read-only lens under `/app/projects`"),
         "the glossary must describe the shared Clerk lens"
     );
 
@@ -284,11 +246,8 @@ fn access_teaching_surfaces_keep_route_and_matter_scope_distinct() {
 }
 
 #[test]
-fn docs_glossary_unknown_term_exits_non_zero_with_helpful_stderr() {
-    let out = Command::new(cargo_bin("navigator"))
-        .args(["dev", "docs", "glossary", "not-a-real-term"])
-        .output()
-        .expect("run navigator dev docs glossary on unknown term");
+fn glossary_show_unknown_term_exits_non_zero_with_helpful_stderr() {
+    let out = navigator(&["glossary", "show", "not-a-real-term"]);
     assert!(!out.status.success(), "expected non-zero exit");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -296,7 +255,7 @@ fn docs_glossary_unknown_term_exits_non_zero_with_helpful_stderr() {
         "expected `unknown term` in stderr, got: {stderr}",
     );
     assert!(
-        stderr.contains("Run `navigator dev docs list`"),
+        stderr.contains("Run `navigator glossary list`"),
         "expected hint in stderr, got: {stderr}",
     );
 }

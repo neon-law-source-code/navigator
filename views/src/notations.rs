@@ -35,9 +35,10 @@ fn strip_leading_h1(md: &str) -> &str {
 }
 
 /// Map one of the README's relative Markdown links onto the URL that serves it:
-/// a workspace doc to `/docs/...`, a template to its raw
-/// `/app/api/templates/...` route, and anything else to the file on GitHub.
-/// Absolute and in-page links pass through untouched.
+/// a glossary term to its `/glossary#<slug>` anchor, a template to its raw
+/// `/app/api/templates/...` route, and anything else — a contributor doc under
+/// `docs/` included — to the file on GitHub. Absolute and in-page links pass
+/// through untouched.
 fn rewrite_link(dest: &str) -> String {
     if dest.starts_with("http://")
         || dest.starts_with("https://")
@@ -51,15 +52,20 @@ fn rewrite_link(dest: &str) -> String {
         None => (dest, None),
     };
     if let Some(stem) = path
-        .strip_prefix("../docs/")
+        .strip_prefix("../docs/glossary/")
         .and_then(|rest| rest.strip_suffix(".md"))
+        .filter(|stem| !stem.contains('/'))
     {
-        if !stem.contains('/') {
-            return with_anchor(&format!("/docs/{}", crate::slug::to_url(stem)), anchor);
-        }
+        return if stem == "README" {
+            "/glossary".to_string()
+        } else {
+            format!("/glossary#{stem}")
+        };
     }
-    if path == "../README.md" {
-        return with_anchor(&format!("{REPO_ROOT_BLOB_BASE}README.md"), anchor);
+    if let Some(repo_path) = path.strip_prefix("../") {
+        if !repo_path.starts_with("../") {
+            return with_anchor(&format!("{REPO_ROOT_BLOB_BASE}{repo_path}"), anchor);
+        }
     }
     if let Some(stem) = path.strip_suffix(".md") {
         return with_anchor(
@@ -112,12 +118,17 @@ mod tests {
     }
 
     #[test]
-    fn doc_links_map_to_site_routes() {
+    fn glossary_links_map_to_the_glossary_page() {
+        assert_eq!(rewrite_link("../docs/glossary/draft.md"), "/glossary#draft");
+        assert_eq!(rewrite_link("../docs/glossary/README.md"), "/glossary");
+    }
+
+    #[test]
+    fn contributor_doc_links_point_at_the_github_source() {
         assert_eq!(
             rewrite_link("../docs/notation.md#template"),
-            "/docs/notation#template"
+            "https://github.com/neon-law-source-code/navigator/blob/main/docs/notation.md#template"
         );
-        assert_eq!(rewrite_link("../docs/glossary.md"), "/docs/glossary");
     }
 
     #[test]

@@ -46,7 +46,7 @@ pub struct SeedReport {
     pub credentials_inserted: usize,
     pub templates_inserted: usize,
     pub testimonials_inserted: usize,
-    /// Glossary terms materialized from `docs/glossary.md`. Reference
+    /// Glossary terms materialized from `docs/glossary/`. Reference
     /// data: environment-blind, upserted by slug on every boot.
     pub glossary_terms_written: usize,
 }
@@ -2443,7 +2443,7 @@ struct JurisdictionRec {
 /// it is safe in production.
 async fn seed_glossary_terms(surreal: &SurrealDb, report: &mut SeedReport) -> anyhow::Result<()> {
     report.glossary_terms_written +=
-        crate::glossary::materialize(surreal, crate::glossary::GLOSSARY_MD).await?;
+        crate::glossary::materialize(surreal, crate::glossary::terms()).await?;
     Ok(())
 }
 

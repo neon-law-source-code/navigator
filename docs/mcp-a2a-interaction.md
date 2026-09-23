@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Navigator MCP over A2A — confirmations and errors
 
 How Navigator MCP behaves once a request reaches it over **A2A**. This doc is the runtime interaction model: how a named

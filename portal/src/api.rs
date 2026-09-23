@@ -1663,7 +1663,7 @@ struct OpenProjectRequest {
     /// The matter's code, stored exactly as given. Required — no
     /// `serde(default)`, so an omitted `code` is a 422 at deserialize.
     /// `store::projects::open_matter` does not generate or append anything to
-    /// it: a code is chosen once and never changes (`docs/glossary.md#project`),
+    /// it: a code is chosen once and never changes (`docs/glossary/project.md`),
     /// so a collision with an existing matter's code is a 409, not silently
     /// resolved.
     code: String,
@@ -5316,7 +5316,7 @@ mod tests {
         };
         // Owner/Admin bypass project-scoping only at route admission; a
         // matter-content route like this one still applies the participation
-        // gate (`docs/glossary.md#role`), so the lawyer lens needs a real
+        // gate (`docs/glossary/role.md`), so the lawyer lens needs a real
         // participation row like the client test above.
         let lawyer_person = store::test_support::ensure_person(
             &db,

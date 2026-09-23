@@ -1,7 +1,7 @@
 // project-code-live-validate — live shape feedback for the matter-open
 // "Project code" field (`/app/projects/new`).
 //
-// A Project code is chosen once and never changes (`docs/glossary.md#project`),
+// A Project code is chosen once and never changes (`docs/glossary/project.md`),
 // so a shape mistake caught only after a full-page POST/redirect/GET round
 // trip is a worse experience here than on an ordinary field. This mirrors
 // `cloud::workspace::is_valid_slug` and `RESERVED_PROJECT_CODES` exactly —
@@ -13,7 +13,7 @@
 // native form exactly as it was.
 //
 // Preview note: the code is stored exactly as supplied, normalized for case
-// and whitespace only (`store::projects::open_matter`, `docs/glossary.md#project`)
+// and whitespace only (`store::projects::open_matter`, `docs/glossary/project.md`)
 // — nothing is generated or appended — so the preview below names the value
 // itself, and a clash with an open matter's code is refused at submit.
 

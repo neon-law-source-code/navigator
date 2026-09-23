@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Gate
 
 `navigator project gate` is the command every editor, CI gate, and this repository's `AGENTS.md` point at for a

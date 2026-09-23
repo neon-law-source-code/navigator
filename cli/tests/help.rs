@@ -76,7 +76,8 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // These, and nothing else. Each names what it owns, so the top
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
-            "dev", "forms", "glossary", "notation", "ops", "project", "site", "validate", "help",
+            "dev", "forms", "glossary", "lsp", "notation", "ops", "project", "site", "validate",
+            "help",
         ]
     );
 

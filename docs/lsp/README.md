@@ -13,12 +13,23 @@ in the [`lsp` crate](../../lsp/README.md); editor-specific configuration belongs
 
 ## Where to get the binary
 
+The normal way a human gets `navigator-lsp` locally is `navigator lsp`: it resolves the platform-matching
+`navigator-lsp-<tag>-<platform>` archive for **the running `navigator` binary's own version** (the same tag `navigator
+--version` reports), downloads it from this repository's GitHub Releases, and writes a working `navigator-lsp`
+executable to the Downloads directory. A version mismatch or missing release asset is a clear error naming the tag it
+looked for — never a silent fallback to "latest".
+
+```bash
+navigator lsp
+```
+
 Every tagged release attaches a `navigator-lsp-<tag>-<platform>` archive to its [GitHub
 Release](https://github.com/neon-law-source-code/navigator/releases), alongside the `navigator` CLI archives —
 `navigator-lsp-<tag>-linux.tar.gz`, `-macos.tar.gz`, and `-windows.zip`. Each carries the executable beside `LICENSE`.
-This is the source an editor extension should resolve against, since it is a per-version asset on an immutable tag;
-`navigator ops lsp publish` also mirrors the binaries to the site's public assets bucket at a "latest" key for the
-site's own use, which is not a stable target for an extension pinned to a release.
+`navigator lsp` downloads directly from these archives. They are also the source an editor extension should resolve
+against, since each is a per-version asset on an immutable tag; `navigator ops lsp publish` instead mirrors the binaries
+to the site's public assets bucket at a "latest" key for the site's own use, which is not a stable target for an
+extension pinned to a release, and is an operator-only command distinct from both of the above.
 
 `navigator-lsp` is BUSL-1.1, like the rest of the workspace — the same licence the `navigator` CLI archives already
 carry — but the licence restricts production *use*, not distribution, so the archives are downloadable by anyone. An

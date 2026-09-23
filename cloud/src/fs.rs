@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{StorageError, StorageService, StoredObject};
+use crate::{ObjectHead, StorageError, StorageService, StoredObject};
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -60,6 +60,20 @@ impl StorageService for FsStorage {
             bytes,
             content_type,
         })
+    }
+
+    async fn head(&self, key: &str) -> Result<Option<ObjectHead>, StorageError> {
+        let bin = self.path_for(key, "bin");
+        match fs::metadata(&bin).await {
+            Ok(metadata) => Ok(Some(ObjectHead {
+                size_bytes: metadata.len(),
+            })),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(StorageError::Io {
+                key: key.to_string(),
+                source: error,
+            }),
+        }
     }
 
     async fn delete(&self, key: &str) -> Result<(), StorageError> {
@@ -239,6 +253,15 @@ mod tests {
             Err(StorageError::NotFound(k)) => assert_eq!(k, "nope"),
             other => panic!("expected NotFound, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn head_reports_size_and_absence() {
+        let (storage, _dir) = fs().await;
+        assert!(storage.head("probe").await.unwrap().is_none());
+        storage.put("probe", b"abcd", "text/plain").await.unwrap();
+        let head = storage.head("probe").await.unwrap().expect("object exists");
+        assert_eq!(head.size_bytes, 4);
     }
 
     #[tokio::test]

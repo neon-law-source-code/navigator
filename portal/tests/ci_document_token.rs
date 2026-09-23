@@ -1,5 +1,7 @@
 //! Router-level least-privilege tests for the minted document-verification CI credential.
 
+use std::sync::Arc;
+
 use axum::body::Body;
 use axum::http::{header, Request, Response, StatusCode};
 use axum::Router;
@@ -415,4 +417,127 @@ async fn a_github_oidc_document_mint_is_single_use_and_pr_merge_refs_are_read_on
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["error"], "scope_violation");
+}
+
+async fn integrity_app() -> (Router, Arc<dyn cloud::StorageService>, Uuid) {
+    let surreal = mem_surreal().await;
+    let project_id = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: "acme".into(),
+            name: "Acme".into(),
+            status: "open".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    store::projects::set_repository_url(
+        &surreal,
+        project_id,
+        Some("https://github.com/neon-law-staging/acme"),
+    )
+    .await
+    .unwrap();
+    let lawyer = store::persons::create(
+        &surreal,
+        &NewPerson::with_role(
+            "Synthetic Lawyer",
+            "integrity-lawyer@example.com",
+            Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    store::projects::designate_dri_in_surreal(
+        &surreal,
+        project_id,
+        lawyer.id,
+        store::projects::DriSide::Lawyer,
+    )
+    .await
+    .unwrap();
+    let root = std::env::temp_dir().join(format!("navigator-integrity-{}", Uuid::now_v7()));
+    let storage: Arc<dyn cloud::StorageService> =
+        Arc::new(cloud::FsStorage::new(&root).await.unwrap());
+    let mut state = portal::test_support::app_state(surreal.clone()).await;
+    state.storage = storage.clone();
+    store::assets::file_revision(
+        &surreal,
+        &state.storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::UPLOAD,
+            filename: "agreement.pdf",
+            kind: "unclassified",
+            content_type: "application/pdf",
+            description: None,
+            visibility: store::documents::visibility::INTERNAL,
+            secondary_storage_key: None,
+        },
+        &store::documents::DocumentIdentity {
+            slug: Some("agreement"),
+            ..Default::default()
+        },
+        b"synthetic integrity bytes",
+    )
+    .await
+    .unwrap();
+    state.canonical_host = portal::CanonicalHost::new(Some("staging.neonlaw.com".into()));
+    state.github_oidc = GitHubOidc::fixed(GitHubActionsClaims {
+        sub: "repo:neon-law-staging/acme:ref:refs/heads/main".into(),
+        repository: "neon-law-staging/acme".into(),
+        repository_owner: "neon-law-staging".into(),
+        git_ref: "refs/heads/main".into(),
+        event_name: "push".into(),
+        jti: format!("jti-integrity-{}", Uuid::now_v7()),
+        exp: 4_000_000_000,
+        ..Default::default()
+    });
+    (portal::router(state), storage, project_id)
+}
+
+#[tokio::test]
+async fn a_document_token_reports_a_missing_object_without_dropping_the_row() {
+    let (app, storage, project_id) = integrity_app().await;
+    let (status, minted) = mint(&app).await;
+    assert_eq!(status, StatusCode::OK);
+    let token = minted["token"].as_str().unwrap();
+    let uri = format!("/app/api/projects/{project_id}/documents/integrity");
+
+    let (status, body) =
+        request(&app, "GET", &uri, Some(&bearer(token)), None, Body::empty()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["assets"].as_array().unwrap().len(), 1);
+    assert_eq!(body["assets"][0]["exists"], true);
+    assert_eq!(body["assets"][0]["slug"], "agreement");
+    assert!(body["integrations"].as_array().unwrap().is_empty());
+
+    let key = format!(
+        "projects/acme/documents/{}",
+        store::assets::sha256_hex(b"synthetic integrity bytes")
+    );
+    storage.delete(&key).await.unwrap();
+
+    let (status, body) =
+        request(&app, "GET", &uri, Some(&bearer(token)), None, Body::empty()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["assets"][0]["exists"], false);
+    assert!(body["assets"][0].get("size_bytes").is_none());
+    assert!(body["assets"][0]["asset_id"].is_string());
+
+    let (status, body) = request(
+        &app,
+        "GET",
+        &format!("{uri}?deep=true"),
+        Some(&bearer(token)),
+        None,
+        Body::empty(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["assets"][0]["exists"], false);
+    assert_eq!(body["assets"][0]["sha256_matches"], false);
 }

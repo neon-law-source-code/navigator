@@ -162,6 +162,21 @@ allow if {
     is_authenticated(input.session)
 }
 
+# Storage integrity for every asset row the caller's lens can see: GET
+# /app/api/projects/{id}/documents/integrity. Lawyer tier only. The handler
+# collapses a matter the caller cannot see to 404. The CI document scope
+# reaches this route and no document bytes.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "projects"
+    input.path[4] == "documents"
+    input.path[5] == "integrity"
+    count(input.path) == 6
+    input.method == "GET"
+    is_lawyer(input.session)
+}
+
 # Brand presentation writes (ENG-586), named explicitly rather than resting
 # on the Owner/Admin route bypass — the same convention every other
 # `/app/api` write follows. `store::brands`' own `authorize` is what actually

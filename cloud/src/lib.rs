@@ -119,6 +119,15 @@ pub struct ObjectListing {
     pub size_bytes: u64,
 }
 
+/// Metadata for one object, without its bytes.
+///
+/// [`StorageService::head`] returns this so a caller can confirm an object
+/// exists and compare its size without downloading it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObjectHead {
+    pub size_bytes: u64,
+}
+
 #[async_trait]
 pub trait StorageService: Send + Sync {
     async fn put(&self, key: &str, bytes: &[u8], content_type: &str) -> Result<(), StorageError>;
@@ -157,20 +166,29 @@ pub trait StorageService: Send + Sync {
         Err(StorageError::Unsupported("list"))
     }
 
-    /// Whether an object exists at `key`, without downloading it.
+    /// Whether an object exists at `key`.
     ///
-    /// The default implementation does a full [`get`](Self::get) and maps
-    /// [`StorageError::NotFound`] to `Ok(false)`; any other error
-    /// propagates. Backends override it with a metadata-only HEAD when one
-    /// is cheaper than a full fetch — [`GcsStorage`] does. Used as a cheap
+    /// This is [`head`](Self::head) reduced to a boolean. Used as a cheap
     /// readiness probe before a downstream step reads the object (e.g.
-    /// confirming the worker has rendered + persisted a notation's PDF
+    /// confirming the worker has rendered and persisted a notation's PDF
     /// before dispatching it for signature).
     async fn exists(&self, key: &str) -> Result<bool, StorageError> {
+        Ok(self.head(key).await?.is_some())
+    }
+
+    /// Metadata for the object at `key`, or `None` when the key is absent.
+    ///
+    /// The default reads the object and reports its byte length. Backends
+    /// that can answer from object metadata override it so the cheap
+    /// integrity check does not download the bytes. [`GcsStorage`] and
+    /// [`S3Storage`] do.
+    async fn head(&self, key: &str) -> Result<Option<ObjectHead>, StorageError> {
         match self.get(key).await {
-            Ok(_) => Ok(true),
-            Err(StorageError::NotFound(_)) => Ok(false),
-            Err(e) => Err(e),
+            Ok(object) => Ok(Some(ObjectHead {
+                size_bytes: u64::try_from(object.bytes.len()).unwrap_or(u64::MAX),
+            })),
+            Err(StorageError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error),
         }
     }
 

@@ -232,6 +232,39 @@ fn many(mut response: surrealdb::IndexedResults) -> Result<Vec<Asset>, AssetErro
     Ok(rows.into_iter().filter_map(AssetRow::into_asset).collect())
 }
 
+/// Byte size of the object at `key`, or `None` when the key is absent.
+///
+/// A metadata read. The bytes stay in storage. Document keys are
+/// content-addressed (`projects/<code>/documents/<sha256>`, and `blobs/<sha256>`
+/// on a bare content row).
+///
+/// # Errors
+/// [`AssetError::Storage`] when the backend cannot answer.
+pub async fn object_head(
+    storage: &dyn StorageService,
+    key: &str,
+) -> Result<Option<u64>, AssetError> {
+    Ok(storage.head(key).await?.map(|head| head.size_bytes))
+}
+
+/// SHA-256 of the bytes at `key`, or `None` when the key is absent.
+///
+/// Reads the stored object and hashes those bytes. The integrity route uses
+/// this only when a caller asks for a full digest comparison.
+///
+/// # Errors
+/// [`AssetError::Storage`] when the backend cannot read the object.
+pub async fn object_sha256(
+    storage: &dyn StorageService,
+    key: &str,
+) -> Result<Option<String>, AssetError> {
+    match storage.get(key).await {
+        Ok(object) => Ok(Some(sha256_hex(&object.bytes))),
+        Err(cloud::StorageError::NotFound(_)) => Ok(None),
+        Err(error) => Err(AssetError::Storage(error)),
+    }
+}
+
 /// The content hash every asset is stored and deduped under.
 #[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {

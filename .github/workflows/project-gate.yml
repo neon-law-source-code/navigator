@@ -138,18 +138,11 @@ jobs:
       - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.23
         with:
           version: ${{ needs.read-manifest.outputs.version }}
-      - name: navigator site document verify
-        env:
-          HOST: ${{ needs.read-manifest.outputs.host }}
-          EVENT_NAME: ${{ github.event_name }}
-          REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          if [ -n "${HOST}" ] && { { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; } || [ "${EVENT_NAME}" = "pull_request" ]; then
-              navigator site document verify . --ci --host "${HOST}"
-          else
-              navigator site document verify .
-          fi
+      # Host and Project code come from navigator.yaml. `--ci` exchanges
+      # GitHub Actions OIDC and writes nothing: a pointer or gitignore the
+      # gate would fix locally fails this job.
+      - name: navigator project gate --check
+        run: navigator project gate --check --ci
 
   # Reconciles `seeds/` against the live deployment, or validates them against
   # the live Project with a server-enforced dry-run on a pull request. `navigator project gate`

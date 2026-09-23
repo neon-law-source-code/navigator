@@ -6,8 +6,8 @@
 //! whose `repository_url` is that repository, and returns an HMAC-signed
 //! [`SessionData`] attributed to that Project's own lawyer DRI. Each door
 //! carries an explicit capability: the seed mint can reach its one write
-//! endpoint, while the document mint can reach only the two metadata reads
-//! used by `navigator site document verify`.
+//! endpoint, while the document mint can reach only the metadata reads
+//! `navigator project gate --check` uses.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -70,9 +70,9 @@ async fn mint_seed_token(
     }
 }
 
-/// `POST /auth/ci/document-token` — the `navigator site document verify --ci`
-/// counterpart (#486). The minted session is limited to the named Project's
-/// minimal lookup and revision metadata reads.
+/// `POST /auth/ci/document-token` — the `navigator project gate --check --ci`
+/// exchange. The minted session is limited to the named Project's lookup,
+/// revision metadata, and document-integrity reads.
 async fn mint_document_token(
     State(state): State<CiAuthState>,
     Json(input): Json<MintRequest>,

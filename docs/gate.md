@@ -17,6 +17,12 @@ It takes no path. The gate runs on a whole repository, and it finds that reposit
 beside it in the directory it was started from; anywhere else it refuses (exit `2`) rather than reporting a clean scan
 over the files it never read. Run it from the root.
 
+`--check` compares committed document pointers with the live record. The host and Project code come from
+`navigator.yaml`. It rewrites a drifted pointer, writes a missing pointer, and writes a missing `documents/.gitignore`.
+It never writes to the live site. A missing or corrupt object, or a live row with no slug, needs a person. `--deep`
+re-hashes each object. Under `--ci` any fix this would make fails the job and the output names the fix. Without
+`--check`, `project gate` makes no document request.
+
 A directory that is neither of those shapes — no `Cargo.toml`, no `navigator.yaml`, no assumption about the surrounding
 repository — still has the same rule set through `navigator validate [DIR]`. The directory defaults to `.`. `--fix`
 writes every safe-by-construction edit, `--errors-only` hides Warning-severity advisories, and `--ci` holds the origin

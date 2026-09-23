@@ -399,11 +399,10 @@ output.
 
 **Severity: Informational. The control is in place.**
 
-A Project repository's CI verifies its committed pointers against the live records. On push to `main` with a configured
-host, the `document-verify` action ([`action.yml:124`](../.github/actions/document-verify/action.yml)) runs the CLI's
-`document verify --ci`, which exchanges the runner's GitHub OIDC token at `POST /auth/ci/document-token`
-([`portal/src/ci_auth.rs`](../portal/src/ci_auth.rs)). On a pull request it runs the offline half only. Live
-verification therefore remains main-only.
+A Project repository's CI compares its committed pointers with the live records. The documents job runs `navigator
+project gate --check --ci`. The `document-verify` action ([`action.yml`](../.github/actions/document-verify/action.yml))
+runs that same command. The host is the one `navigator.yaml` declares. The command exchanges the runner's GitHub OIDC
+token at `POST /auth/ci/document-token` ([`portal/src/ci_auth.rs`](../portal/src/ci_auth.rs)). `--ci` writes nothing.
 
 The mint checks the deployment's canonical host as audience, requires `refs/heads/main` with a `push` or
 `workflow_dispatch` event, spends the token's `jti` once, and binds the repository to exactly one live Project whose
@@ -415,6 +414,8 @@ The document session carries an explicit [`DocumentScope`](../portal/src/session
 - `GET /app/api/projects` returns only the minted Project's `id` and `code`, the lookup fields the CLI needs.
 - `GET /app/api/projects/{id}/documents/revisions?slug=` is allowed only for that exact Project id and returns revision
   metadata.
+- `GET /app/api/projects/{id}/documents/integrity` is allowed for that same Project id and returns each asset's storage
+  presence and size. `?deep=true` re-hashes the object. The session still cannot download bytes.
 - Document downloads, signed-download issuance, writes, unrelated routes, and every other Project are refused before a
   handler runs. The same check applies when the credential is presented as a bearer token or as the session cookie.
 - A CI session without an explicit scope is invalid, so an old unscoped document credential fails closed.

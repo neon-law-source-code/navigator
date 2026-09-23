@@ -426,11 +426,7 @@ impl StorageService for GcsStorage {
         })
     }
 
-    async fn exists(&self, key: &str) -> Result<bool, StorageError> {
-        // Metadata-only HEAD: `get_object` fetches just the object's
-        // metadata (no `download_object`), so the readiness probe never
-        // streams the PDF bytes back. A `NotFound` is the negative answer;
-        // any other error propagates.
+    async fn head(&self, key: &str) -> Result<Option<crate::ObjectHead>, StorageError> {
         match self
             .client
             .get_object(&GetObjectRequest {
@@ -440,9 +436,11 @@ impl StorageService for GcsStorage {
             })
             .await
         {
-            Ok(_) => Ok(true),
-            Err(e) => match map_gcs_error(&e, key) {
-                StorageError::NotFound(_) => Ok(false),
+            Ok(object) => Ok(Some(crate::ObjectHead {
+                size_bytes: u64::try_from(object.size).unwrap_or(0),
+            })),
+            Err(error) => match map_gcs_error(&error, key) {
+                StorageError::NotFound(_) => Ok(None),
                 other => Err(other),
             },
         }

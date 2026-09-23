@@ -245,7 +245,13 @@ fn redline_skill_preflights_native_word_capabilities() {
 /// before any edit.
 #[test]
 fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
-    const MAX_LINES: usize = 80;
+    // #773 wrapped an added RTK sentence onto its own line, growing the
+    // skill by one line; the CI `changes` classifier treated that PR as
+    // docs-only (no `.rs` touched) and skipped `cargo test (workspace)`,
+    // so this ceiling never saw the regression until a later Rust PR ran
+    // the full suite. Raising it here reflects the file CI already
+    // accepted onto `main`, not a new allowance for this PR.
+    const MAX_LINES: usize = 81;
     let root = repo_root();
     let skill_path = root.join(CANONICAL_SKILLS).join("random-refactor/SKILL.md");
     let skill = fs::read_to_string(&skill_path).expect("read canonical random-refactor skill");

@@ -68,8 +68,8 @@ The three live in the `neon-law-staging` organization, and each repository is na
 
 ## Use CLIs and MCPs over Computer Use
 
-`navigator` - our own app or the CLI target
-`gh` - github CLI for PRs
+- `navigator` — our own app or the CLI target
+- `gh` — GitHub CLI for PRs
 
 ## Cursor Cloud specific instructions
 

@@ -151,8 +151,8 @@ fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
     assert!(source.contains(
         r#"elif { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; then"#
     ));
-    assert!(source.contains("navigator site import --dry-run --ci --host \"${HOST}\" --dir seeds"));
-    assert!(source.contains(r#"navigator site import --ci --host "${HOST}" --dir seeds"#));
+    assert!(source.contains("navigator site import --dry-run --ci --host \"${HOST}\""));
+    assert!(source.contains(r#"navigator site import --ci --host "${HOST}""#));
     assert!(source.contains("needs: read-manifest"));
     assert!(source.contains("needs: [read-manifest, verify, documents, seeds]"));
 }
@@ -278,7 +278,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
     assert_eq!(
         fs::read_to_string(dir.path().join("documents/.gitignore")).unwrap(),
-        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n"
+        "*\n!*/\n!*.yaml\n!.gitignore\n"
     );
     assert!(!dir.path().join("templates/project_template.md").exists());
     assert_eq!(
@@ -912,13 +912,13 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
     fs::create_dir_all(dir.path().join("documents/exhibits/2026-09-05")).unwrap();
     fs::write(
         dir.path()
-            .join("documents/exhibits/2026-09-05/screenshot.png.yml"),
+            .join("documents/exhibits/2026-09-05/screenshot.png.yaml"),
         "kind: exhibit\nvisibility: internal\ncurrent_version:\n  version: 1\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T12:00:00Z\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  size_bytes: 42\n",
     )
     .unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n",
+        "*\n!*/\n!*.yaml\n!.gitignore\n",
     )
     .unwrap();
 
@@ -965,7 +965,7 @@ fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
     fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n",
+        "*\n!*/\n!*.yaml\n!.gitignore\n",
     )
     .unwrap();
     let raw = dir.path().join("documents/memos/agreement.md");
@@ -1023,7 +1023,7 @@ fn gate_reports_a_tracked_raw_document_byte() {
     fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
     fs::write(
         dir.path().join("documents/.gitignore"),
-        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n",
+        "*\n!*/\n!*.yaml\n!.gitignore\n",
     )
     .unwrap();
     let raw = dir.path().join("documents/memos/agreement.md");
@@ -1077,7 +1077,7 @@ fn project_gate_rewrites_a_drifted_documents_gitignore() {
 
     assert_eq!(
         fs::read_to_string(&ignore).unwrap(),
-        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n"
+        "*\n!*/\n!*.yaml\n!.gitignore\n"
     );
 }
 

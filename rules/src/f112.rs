@@ -1,31 +1,29 @@
-//! `N112` — a workflow step is allowed but its automation is not built
-//! yet.
+//! `N112` — a workflow step is allowed but its automation is deferred.
 //!
 //! This is an *advisory* ([`crate::Severity::Warning`], yellow in the
 //! editor), not a blocker: the step is a legitimate member of the
 //! workflow-step catalog ([`crate::workflow_steps::WORKFLOW_STEPS`]),
-//! but the firm has not yet built the automation behind it, so a
-//! notation that uses it advances only as far as the human gate. The
+//! but the real side effect behind it is stubbed out
+//! ([`crate::workflow_steps::StepStatus::Scaffolded`]), so a notation
+//! that reaches it advances no further than the stub records. The
 //! companion red error is `N104` (a step that isn't in the catalog at
 //! all).
 //!
-//! The not-built set is [`WORKFLOW_STEPS_NOT_BUILT`]. As each step's
-//! automation lands, drop it from that list and the yellow squiggle
-//! disappears; when a new allowed-but-stubbed step is introduced, add
-//! it. Today the only *not-built* allowed step is `lawyer_review`, so it
-//! is the sole entry.
+//! The status comes from the catalog itself, not a second hand-kept
+//! list: as a step's automation lands, its catalog entry moves off
+//! `Scaffolded` and the yellow squiggle disappears with it — there is
+//! nothing here to update. A step the catalog marks
+//! [`StepStatus::Human`] (`lawyer_review`, `client_review`, `reask`,
+//! `notarization`, a `_signature` state, `witnesses`) never earns this
+//! advisory: pausing for a human decision is the step's whole job, not
+//! unbuilt automation, and the catalog's own summary says so.
 
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::workflow_steps::{self, StepStatus};
 use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
-
-/// Workflow-step prefixes that are allowed (in
-/// [`crate::workflow_steps::WORKFLOW_STEPS`]) but whose automation
-/// is not built yet. A `workflow:` state on one of these prefixes earns
-/// a yellow `N112` advisory.
-pub const WORKFLOW_STEPS_NOT_BUILT: &[&str] = &["lawyer_review"];
 
 pub struct F112WorkflowStepNotBuilt;
 
@@ -39,10 +37,16 @@ struct FrontmatterShape {
     workflow: Option<BTreeMap<String, BTreeMap<String, String>>>,
 }
 
-/// True when `prefix` names a step that is allowed but not built yet.
+/// True when `prefix` names a catalog step whose real side effect is
+/// still deferred behind a stub ([`StepStatus::Scaffolded`]). A step the
+/// catalog does not know, or knows as `Implemented`, `Seam`, or `Human`,
+/// is not "not built" in the sense this advisory means.
 #[must_use]
 pub fn workflow_step_not_built(prefix: &str) -> bool {
-    WORKFLOW_STEPS_NOT_BUILT.contains(&prefix)
+    matches!(
+        workflow_steps::lookup(prefix).map(|step| step.status),
+        Some(StepStatus::Scaffolded)
+    )
 }
 
 impl Rule for F112WorkflowStepNotBuilt {
@@ -132,26 +136,63 @@ workflow:
 ---
 ";
 
+    const ONCHAIN_WORKFLOW: &str = "---
+title: T
+workflow:
+  BEGIN:
+    attested: onchain
+  onchain:
+    recorded: END
+  END: {}
+---
+";
+
+    /// `lawyer_review` is a mandatory human gate
+    /// ([`crate::workflow_steps::StepStatus::Human`]), not deferred
+    /// automation, so the smallest legitimate workflow a notation can
+    /// carry must not greet its author with a warning.
     #[test]
-    fn warns_on_a_lawyer_review_state() {
-        let v = F112WorkflowStepNotBuilt.lint(&file(LAWYER_REVIEW_WORKFLOW));
+    fn does_not_warn_on_a_lawyer_review_state() {
+        assert!(F112WorkflowStepNotBuilt
+            .lint(&file(LAWYER_REVIEW_WORKFLOW))
+            .is_empty());
+    }
+
+    #[test]
+    fn does_not_warn_on_a_discriminated_lawyer_review_state() {
+        let body = "---
+title: T
+workflow:
+  BEGIN:
+    created: lawyer_review__for_grantor
+  lawyer_review__for_grantor:
+    approved: END
+  END: {}
+---
+";
+        assert!(F112WorkflowStepNotBuilt.lint(&file(body)).is_empty());
+    }
+
+    #[test]
+    fn warns_on_a_scaffolded_state() {
+        let v = F112WorkflowStepNotBuilt.lint(&file(ONCHAIN_WORKFLOW));
         assert_eq!(v.len(), 1, "exactly one not-built advisory, got {v:?}");
         assert_eq!(v[0].code, "N112");
-        assert!(v[0].message.contains("lawyer_review"));
+        assert!(v[0].message.contains("onchain"));
         assert!(v[0].message.contains("not built"));
     }
 
     #[test]
-    fn advisory_points_at_the_lawyer_review_line_not_line_one() {
-        let v = F112WorkflowStepNotBuilt.lint(&file(LAWYER_REVIEW_WORKFLOW));
-        // `lawyer_review:` is the 6th line of the body above.
+    fn advisory_points_at_the_scaffolded_step_line_not_line_one() {
+        let v = F112WorkflowStepNotBuilt.lint(&file(ONCHAIN_WORKFLOW));
+        // `onchain:` is the 6th line of the body above.
         assert_eq!(v[0].line, 6, "squiggle should land on the step, got {v:?}");
     }
 
     #[test]
     fn does_not_warn_on_built_steps() {
         // generate_pdf / sent_for_signature are implemented steps: no
-        // advisory, even though they're not lawyer_review.
+        // advisory.
         let body = "---
 title: T
 workflow:
@@ -168,20 +209,20 @@ workflow:
     }
 
     #[test]
-    fn warns_on_a_discriminated_lawyer_review_state() {
+    fn warns_on_a_discriminated_scaffolded_state() {
         let body = "---
 title: T
 workflow:
   BEGIN:
-    created: lawyer_review__for_grantor
-  lawyer_review__for_grantor:
-    approved: END
+    attested: onchain__trust_deed
+  onchain__trust_deed:
+    recorded: END
   END: {}
 ---
 ";
         let v = F112WorkflowStepNotBuilt.lint(&file(body));
         assert_eq!(v.len(), 1);
-        assert!(v[0].message.contains("lawyer_review__for_grantor"));
+        assert!(v[0].message.contains("onchain__trust_deed"));
     }
 
     #[test]

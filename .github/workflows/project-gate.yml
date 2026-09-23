@@ -184,9 +184,9 @@ jobs:
           if [ -z "${HOST}" ]; then
               echo "no host — seeds are checked offline"
           elif [ "${EVENT_NAME}" = "pull_request" ]; then
-              navigator site import --dry-run --ci --host "${HOST}" --dir seeds
+              navigator site import --dry-run --ci --host "${HOST}"
           elif { [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; } && [ "${REF}" = "refs/heads/main" ]; then
-              navigator site import --ci --host "${HOST}" --dir seeds
+              navigator site import --ci --host "${HOST}"
           else
               echo "seeds/*.yaml is checked offline by navigator project gate; live validation runs only on main or a pull-request merge ref"
           fi

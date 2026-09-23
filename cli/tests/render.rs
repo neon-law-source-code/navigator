@@ -373,12 +373,20 @@ fn render_uses_shared_notation_evaluator_for_dotted_fields_and_loops() {
 
 #[test]
 fn renders_despite_a_non_blocking_advisory() {
-    // The `VALID` fixture's mandatory `lawyer_review` gate earns the
+    // `onchain`, the catalog's one allowed-but-deferred step, earns the
     // yellow N112 "not built yet" advisory — a Warning, not an Error.
     // Rendering must not be blocked by it (it is, however, still printed
-    // so the author sees it), mirroring `validate` / `import`.
+    // so the author sees it), mirroring `validate` / `import`. Routed
+    // through the `approved` branch after `lawyer_review` so the
+    // mandatory human gate stays intact.
+    let source = VALID
+        .replace("    approved: END\n", "    approved: onchain\n")
+        .replace(
+            "    rejected: END\n  END: {}\n",
+            "    rejected: END\n  onchain:\n    done: END\n  END: {}\n",
+        );
     let work = TempDir::new().unwrap();
-    let src = write(&work, "demand.md", VALID);
+    let src = write(&work, "demand.md", &source);
     let out = work.path().join("demand.pdf");
     let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
     assert!(

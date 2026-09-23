@@ -90,8 +90,8 @@ Nine normal validation passes happen in this order:
    root is a Project repository declared by `navigator.yaml`. It checks the closed asset kind and visibility
    vocabularies, current revision metadata, revision-chain linkage, and the retained document extension without reading
    the network or bytes. When `documents/` exists, the same Project-repository check holds `documents/.gitignore` to
-   five exact lines (rule `Y014`): deny everything, then re-admit subdirectories, pointer files in both spellings, and
-   the ignore file itself. Local `project gate`rewrites drift;`--ci` reports it.
+   four exact lines (rule `Y014`): deny everything, then re-admit subdirectories, the written pointer spelling, and the
+   ignore file itself. Local `project gate`rewrites drift;`--ci` reports it.
 7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`–`Y013`) runs when the root carries either manifest
    spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name` to
    `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
@@ -332,10 +332,11 @@ literally and the columns disappear.
 like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature instrument cannot name
 a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.
 
-`Y014` runs in the same Project-repository check whenever `documents/` exists. The five lines are shared with `scaffold`
-and `site sync` / `site pull`. Local `project gate` rewrites drift; `--ci` reports `Y014` and leaves the file. Both
-`!*.yaml` and `!*.yml` are admitted: Navigator writes the former and still reads the latter, and admitting only the new
-spelling would leave a not-yet-renamed repository's pointers untracked (LAW-25).
+`Y014` runs in the same Project-repository check whenever `documents/` exists. The four lines are shared with `scaffold`
+and `site sync` / `site pull`. Local `project gate` rewrites drift; `--ci` reports `Y014` and leaves the file. Only
+`!*.yaml` is admitted: Navigator writes pointers at that extension, and `POINTER_READ_EXTENSIONS` keeps the retired
+`.yml` spelling readable for a pointer committed before LAW-25 — `Y003` still validates one — but a fresh `.yml` file is
+never meant to enter Git again, so the gitignore does not re-admit it.
 
 ### F-family — files the gate had to fix
 

@@ -2072,7 +2072,10 @@ pub const DOCUMENT_GITIGNORE_CODE: &str = "Y014";
 
 /// When `documents/` exists, hold `documents/.gitignore` to
 /// [`crate::document_sync::DOCUMENTS_GITIGNORE`]. Local `project gate` writes
-/// the canonical bytes; `--ci` reports and leaves the file alone.
+/// the canonical bytes; `--ci` reports and leaves the file alone. This admits
+/// only a fresh `.yaml` pointer into Git; it does not reject an already
+/// committed `.yml` pointer, which `Y003` still validates under the LAW-25
+/// read-compat contract ([`crate::document_sync::POINTER_READ_EXTENSIONS`]).
 fn validate_documents_gitignore(root: &Path, write_fixes: bool, errors: &mut Vec<Finding>) {
     let documents = root.join(DOCUMENT_DIRECTORY);
     if !documents.is_dir() {
@@ -2097,7 +2100,7 @@ fn validate_documents_gitignore(root: &Path, write_fixes: bool, errors: &mut Vec
     errors.push(Finding::at(
         path,
         format!(
-            "{DOCUMENT_GITIGNORE_CODE}: `documents/.gitignore` must be exactly `*`, `!*/`, `!*.yaml`, `!*.yml`, and `!.gitignore` (one per line, no comments); every other byte leaves the directory ignoring nothing, or only what the root `.gitignore` already covers"
+            "{DOCUMENT_GITIGNORE_CODE}: `documents/.gitignore` must be exactly `*`, `!*/`, `!*.yaml`, and `!.gitignore` (one per line, no comments); every other byte leaves the directory ignoring nothing, or only what the root `.gitignore` already covers"
         ),
     ));
 }

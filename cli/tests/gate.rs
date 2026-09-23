@@ -267,7 +267,18 @@ fn gate_marks_each_diagnostic_with_its_severity() {
         .path()
         .join("templates/notations/neon_law/onboarding.md");
     fs::create_dir_all(warning_path.parent().unwrap()).unwrap();
-    fs::copy(warning_source, warning_path).unwrap();
+    // The shipped template's only allowed-but-deferred step is `onchain`
+    // (`lawyer_review` is a mandatory human gate, not deferred automation,
+    // and must stay in place so this still satisfies `N106`). Route the
+    // signature branch through it so `N112` still has a live subject.
+    let contents = fs::read_to_string(&warning_source)
+        .unwrap()
+        .replace(
+            "    signature_received: END\n",
+            "    signature_received: onchain\n",
+        )
+        .replace("  END: {}\n", "  onchain:\n    recorded: END\n  END: {}\n");
+    fs::write(&warning_path, contents).unwrap();
     write(
         dir.path(),
         "Bad.md",

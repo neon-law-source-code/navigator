@@ -120,8 +120,8 @@ pub async fn call(arguments: &Value) -> Result<Value, ToolError> {
     }
 
     // `clean` means no *blocking* errors. Yellow advisories (e.g. N112,
-    // "step allowed but not built yet" — which every lawyer_review gate
-    // earns) are still returned in `violations` but don't flip `clean`.
+    // "step allowed but not built yet") are still returned in
+    // `violations` but don't flip `clean`.
     let clean = error_count == 0;
     let warning_count = violations.len() - error_count;
     let text = if violations.is_empty() {
@@ -188,6 +188,8 @@ mod tests {
     async fn clean_notation_returns_clean_true_with_only_the_not_built_advisory() {
         // Minimal notation that satisfies every N-rule — copied from
         // the REST integration test so the two surfaces stay aligned.
+        // `onchain` is the one allowed-but-deferred catalog step, so it
+        // earns N112 without disturbing the mandatory `lawyer_review` gate.
         let contents = "---\n\
 kind: trust\n\
 title: Trust\n\
@@ -202,6 +204,8 @@ workflow:\n  \
   BEGIN:\n    \
     next: lawyer_review\n  \
   lawyer_review:\n    \
+    next: onchain\n  \
+  onchain:\n    \
     next: END\n  \
   END: {}\n\
 ---\n\n\
@@ -210,8 +214,8 @@ Body.\n";
         let sc = &result["structuredContent"];
         assert_eq!(sc["clean"], true, "expected clean (no errors), got: {sc}");
         assert_eq!(sc["path"], "template.md");
-        // The mandatory lawyer_review gate earns the yellow N112 advisory,
-        // returned without flipping `clean` to false.
+        // The `onchain` step earns the yellow N112 advisory, returned
+        // without flipping `clean` to false.
         let codes: Vec<&str> = sc["violations"]
             .as_array()
             .unwrap()

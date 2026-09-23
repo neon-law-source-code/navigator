@@ -258,7 +258,7 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
     assert!(pointer.contains(&asset_id.to_string()));
     assert_eq!(
         fs::read_to_string(root.path().join("documents/.gitignore")).unwrap(),
-        "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n"
+        "*\n!*/\n!*.yaml\n!.gitignore\n"
     );
 
     let pointer_path = root.path().join("documents/pleadings/summons.pdf.yaml");

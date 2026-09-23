@@ -893,13 +893,21 @@ enum SiteCmd {
         dry_run: bool,
     },
     /// Import a seed-shaped YAML document through the logged-in deployment.
+    ///
+    /// With neither `MODEL_NAME` nor `SEED_FILE`, imports every supported
+    /// seed document in `seeds/` at the repository root — the convention
+    /// every Project repository already follows. With no `seeds/` directory,
+    /// prints a notice and succeeds.
     Import {
         /// Singular glossary term, such as `person`, `entity`,
-        /// `person_project_role`, or `person_entity_role`.
-        #[arg(required_unless_present = "dir", conflicts_with = "dir")]
+        /// `person_project_role`, or `person_entity_role`. Requires
+        /// `SEED_FILE`; omit both to import `seeds/` at the repository root.
+        #[arg(requires = "seed_file")]
         model_name: Option<String>,
-        /// YAML document using the standard `lookup_fields` / `records` shape.
-        #[arg(required_unless_present = "dir", conflicts_with = "dir")]
+        /// YAML document using the standard `lookup_fields` / `records`
+        /// shape. Requires `MODEL_NAME`; omit both to import `seeds/` at the
+        /// repository root.
+        #[arg(requires = "model_name")]
         seed_file: Option<PathBuf>,
         /// Replace every field represented in each matching seed record.
         #[arg(long)]
@@ -912,9 +920,6 @@ enum SiteCmd {
         /// Requires `--host`. Does not read or write `~/.navigator.json`.
         #[arg(long, requires = "host")]
         ci: bool,
-        /// Import every yaml document in DIR whose stem is a supported seed model
-        #[arg(long)]
-        dir: Option<PathBuf>,
         #[command(flatten)]
         host: HostOpt,
     },
@@ -2323,7 +2328,6 @@ fn main() -> ExitCode {
                 overwrite,
                 dry_run,
                 ci,
-                dir,
                 host,
             } => {
                 let credential = if ci {
@@ -2333,16 +2337,23 @@ fn main() -> ExitCode {
                 } else {
                     remote::SeedCredential::Stored { host: host.host }
                 };
-                match dir {
-                    Some(dir) => runtime()
-                        .block_on(remote::seed_directory(credential, &dir, overwrite, dry_run)),
-                    None => runtime().block_on(remote::seed(
+                match (model_name, seed_file) {
+                    (Some(model_name), Some(seed_file)) => runtime().block_on(remote::seed(
                         credential,
-                        &model_name.expect("clap requires MODEL_NAME without --dir"),
-                        &seed_file.expect("clap requires SEED_FILE without --dir"),
+                        &model_name,
+                        &seed_file,
                         overwrite,
                         dry_run,
                     )),
+                    (None, None) => runtime().block_on(remote::seed_directory(
+                        credential,
+                        Path::new("seeds"),
+                        overwrite,
+                        dry_run,
+                    )),
+                    (Some(_), None) | (None, Some(_)) => {
+                        unreachable!("clap requires MODEL_NAME and SEED_FILE together")
+                    }
                 }
             }
             SiteCmd::Login { host, no_browser } => {
@@ -3726,8 +3737,8 @@ fn run_render(
     // Gate on validation: render only when there are no blocking
     // (Error-severity) violations. Use the same DB-free classified rule
     // set as `validate`. Yellow advisories (e.g. N112, "step allowed but
-    // not built yet" — which every lawyer_review gate earns) are printed
-    // but must not block rendering, mirroring `validate` / `site seed`.
+    // not built yet") are printed but must not block rendering, mirroring
+    // `validate` / `site seed`.
     let source = rules::SourceFile {
         path: file.to_path_buf(),
         contents: contents.clone(),

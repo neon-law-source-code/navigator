@@ -15,18 +15,17 @@ use crate::remote::DocumentClient;
 /// The exact `documents/.gitignore` every Project repository must carry.
 ///
 /// Deny everything, then re-admit subdirectories, pointer files, and this
-/// file. Dropping `*` leaves three negations of nothing, and the directory
+/// file. Dropping `*` leaves two negations of nothing, and the directory
 /// silently ignores nothing at all. `Y014` and `scaffold` share these bytes
 /// with `site sync` / `site pull` so a new repository cannot drift from the
 /// guard those commands write.
 ///
-/// Both pointer spellings are admitted, and both must stay admitted for as
-/// long as [`POINTER_READ_EXTENSIONS`] reads both. This line is the backstop
-/// keeping legal bytes out of Git: admitting only `.yaml` while a repository
-/// still carries `.yml` pointers would leave those pointers ignored and
-/// untracked, which looks from the outside exactly like a repository that has
-/// no documents.
-pub(crate) const DOCUMENTS_GITIGNORE: &str = "*\n!*/\n!*.yaml\n!*.yml\n!.gitignore\n";
+/// Only the written spelling is admitted. [`POINTER_READ_EXTENSIONS`] keeps
+/// `.yml` *readable* so a pointer committed before the LAW-25 rename still
+/// resolves, and this file does not disturb one already tracked — it only
+/// stops a fresh `.yml` file from being swept into Git by an unqualified
+/// `git add`.
+pub(crate) const DOCUMENTS_GITIGNORE: &str = "*\n!*/\n!*.yaml\n!.gitignore\n";
 
 /// The extension Navigator writes a document pointer with.
 ///
@@ -1163,19 +1162,20 @@ mod tests {
         assert_eq!(strip_pointer_extension("a.pdf"), None);
     }
 
-    /// The guard that keeps legal bytes out of Git has to admit every
-    /// spelling the walkers read. Admitting only `.yaml` while a repository
-    /// still carries `.yml` pointers leaves those pointers ignored and
-    /// untracked — which reads from outside exactly like a repository with no
-    /// documents at all.
+    /// The gitignore admits only the written spelling. The retired `.yml`
+    /// spelling stays *readable* via [`POINTER_READ_EXTENSIONS`] for pointers
+    /// committed before the rename; this only keeps a fresh one from being
+    /// swept into Git by an unqualified `git add`.
     #[test]
-    fn the_documents_gitignore_admits_every_readable_pointer_extension() {
-        for extension in POINTER_READ_EXTENSIONS {
-            assert!(
-                DOCUMENTS_GITIGNORE.contains(&format!("!*.{extension}\n")),
-                "documents/.gitignore must re-admit *.{extension}, got {DOCUMENTS_GITIGNORE:?}"
-            );
-        }
+    fn the_documents_gitignore_admits_only_the_written_pointer_extension() {
+        assert!(
+            DOCUMENTS_GITIGNORE.contains(&format!("!*.{POINTER_EXTENSION}\n")),
+            "documents/.gitignore must re-admit *.{POINTER_EXTENSION}, got {DOCUMENTS_GITIGNORE:?}"
+        );
+        assert!(
+            !DOCUMENTS_GITIGNORE.contains("!*.yml\n"),
+            "documents/.gitignore must not re-admit the retired *.yml spelling, got {DOCUMENTS_GITIGNORE:?}"
+        );
         assert!(
             DOCUMENTS_GITIGNORE.starts_with("*\n"),
             "it must deny everything first, or the negations negate nothing"

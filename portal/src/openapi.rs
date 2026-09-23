@@ -3325,7 +3325,8 @@ pub fn document_with_base(base: &str) -> Value {
                 "---\nkind: trust\ntitle: Trust\ncode: trust\nrespondent_type: entity\nconfidential: false\n\
                  questionnaire:\n  BEGIN:\n    _: END\n  END: {}\n\
                  workflow:\n  BEGIN:\n    next: lawyer_review\n  \
-                 lawyer_review:\n    next: END\n  END: {}\n---\n\nBody.\n",
+                 lawyer_review:\n    next: onchain\n  \
+                 onchain:\n    next: END\n  END: {}\n---\n\nBody.\n",
               "path": "trust.md"
             }
           },
@@ -3339,8 +3340,8 @@ pub fn document_with_base(base: &str) -> Value {
                               "items": { "$ref": "#/components/schemas/ValidationViolation" } }
             },
             "example": { "path": "trust.md", "clean": true,
-                         "violations": [ { "code": "N112", "line": 9,
-                           "message": "workflow step `lawyer_review` is allowed but its automation is not built yet (from state `lawyer_review`)" } ] }
+                         "violations": [ { "code": "N112", "line": 16,
+                           "message": "workflow step `onchain` is allowed but its automation is not built yet (from state `onchain`)" } ] }
           },
           "ValidationViolation": {
             "type": "object",
@@ -3788,9 +3789,9 @@ mod tests {
             .filter(|v| rules::severity_for_code(v.code) == rules::Severity::Error)
             .map(|v| v.code)
             .collect();
-        // The example must carry no *blocking* errors. Its mandatory
-        // lawyer_review gate earns the yellow N112 advisory, which is
-        // expected and non-blocking.
+        // The example must carry no *blocking* errors. Its `onchain` step
+        // earns the yellow N112 advisory, which is expected and
+        // non-blocking; its mandatory `lawyer_review` gate earns none.
         assert!(
             error_codes.is_empty(),
             "OpenAPI ValidateRequest example must lint free of errors; got {error_codes:?}"

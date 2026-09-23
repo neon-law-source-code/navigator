@@ -65,18 +65,63 @@ fn catalog_index_content(
                 eyebrow: m.audience.clone(),
                 title: m.title.clone(),
                 summary: m.benefit.clone(),
+                ..webapp::catalog_index::CatalogMaterial::default()
             })
             .collect(),
         contact_email: views::brand::firm_email().to_string(),
         footnote: String::new(),
         include_testimonials,
         brand_key: String::new(),
+        kinds: Vec::new(),
     }
 }
 
 const NOTATIONS_INDEX_TITLE: &str = "Notations";
 const NOTATIONS_BLOB_BASE: &str =
     "https://github.com/neon-law-source-code/navigator/blob/main/templates/";
+
+// Every bundled notation's raw Markdown, hoisted to module scope so both
+// `notation_preview_docs` (the show pages) and `notations_index_content`
+// (the catalog cards) read the same bytes — the single source LAW-53 grounds
+// each card's `kind:` facet in, rather than a hand-typed guess that can
+// drift from what the template actually declares.
+const ONBOARDING: &str = include_str!("../../templates/notations/neon_law/onboarding.md");
+const OFFBOARDING: &str = include_str!("../../templates/notations/neon_law/offboarding.md");
+const RESCISSION_NOTICE: &str =
+    include_str!("../../templates/notations/neon_law/rescission_notice_nevada.md");
+const WITNESS_AFFIDAVIT: &str =
+    include_str!("../../templates/notations/neon_law/witness_affidavit_nevada.md");
+const ANSWER_TO_COUNTERCLAIM: &str =
+    include_str!("../../templates/notations/neon_law/answer_to_counterclaim_nevada.md");
+const ENGAGEMENT_LETTER: &str =
+    include_str!("../../templates/notations/neon_law/engagement_letter_nevada.md");
+const SUMMONS: &str = include_str!("../../templates/notations/neon_law/summons_nevada.md");
+const FORM_990: &str =
+    include_str!("../../templates/notations/forms/united_states/federal/irs/us__form_990.md");
+const NATURALIZATION: &str = include_str!(
+    "../../templates/notations/forms/united_states/federal/uscis/us__naturalization.md"
+);
+const NV_LLC: &str =
+    include_str!("../../templates/notations/forms/united_states/nevada/state/nv__llc_formation.md");
+const NV_PROFIT_CORP: &str = include_str!(
+    "../../templates/notations/forms/united_states/nevada/state/nv__profit_corp_formation.md"
+);
+const NV_BUSINESS_TRUST: &str = include_str!(
+    "../../templates/notations/forms/united_states/nevada/state/nv__business_trust_formation.md"
+);
+const NV_NONPROFIT: &str = include_str!(
+    "../../templates/notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
+);
+const NV_ANNUAL_REPORT: &str =
+    include_str!("../../templates/notations/forms/united_states/nevada/state/nv__annual_report.md");
+const NV_DISSOLUTION: &str =
+    include_str!("../../templates/notations/forms/united_states/nevada/state/nv__dissolution.md");
+const NV_MODIFIED_BUSINESS_TAX: &str = include_str!(
+    "../../templates/notations/forms/united_states/nevada/state/nv__modified_business_tax.md"
+);
+const NV_CHARITABLE: &str = include_str!(
+    "../../templates/notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
+);
 
 /// A notation's card: the default link opens the show page at
 /// `/notations/{slug}` (built from [`notation_preview_docs`]) — a letter's
@@ -86,18 +131,63 @@ const NOTATIONS_BLOB_BASE: &str =
 /// just an eyebrow word, because it also becomes the URL's `{slug}` — and,
 /// through the sitewide `stamp_document_title` path-derived tab title, the
 /// words that title-case into the browser tab's title.
+///
+/// `eyebrow` names only the jurisdiction or authority (`"Nevada"`,
+/// `"Federal"`, `"Firm"`) — LAW-53 moved the kind itself out of this
+/// hand-typed line and into `kind`/`kind_label`/`category`, derived from
+/// `src`'s own `kind:` frontmatter via [`views::kind_catalog::declared_kind`]
+/// (the same classifier `S103` runs), so the card's kind can never drift
+/// from what the template actually declares the way a hand-typed eyebrow
+/// could (and had: a `kind: pleading` fixture once carried a `"Filing"`
+/// eyebrow).
 fn notation_card(
     eyebrow: &str,
     title: &str,
     slug: &str,
     summary: &str,
+    src: &str,
 ) -> webapp::catalog_index::CatalogMaterial {
+    let kind = views::kind_catalog::declared_kind(src).unwrap_or_default();
+    let entry = views::kind_catalog::entries()
+        .into_iter()
+        .find(|entry| entry.kind == kind);
     webapp::catalog_index::CatalogMaterial {
         href: format!("/notations/{slug}"),
         eyebrow: eyebrow.to_string(),
         title: title.to_string(),
         summary: summary.to_string(),
+        kind: kind.clone(),
+        kind_label: entry.as_ref().map_or_else(String::new, |e| e.label.clone()),
+        category: entry
+            .as_ref()
+            .map_or_else(String::new, |e| e.category.clone()),
+        category_slug: entry.map_or_else(String::new, |e| e.category_slug.clone()),
     }
+}
+
+/// Every `kind:` value `S103` accepts (LAW-53), for `/notations`' kind
+/// catalog section — a direct projection of `views::kind_catalog::entries()`,
+/// itself built from `rules::kind::Kind`, so this list can never drift from
+/// the gate.
+fn kind_catalog_entries() -> Vec<webapp::catalog_index::KindCatalogEntry> {
+    views::kind_catalog::entries()
+        .into_iter()
+        .map(|entry| webapp::catalog_index::KindCatalogEntry {
+            kind: entry.kind,
+            label: entry.label,
+            category: entry.category,
+            category_slug: entry.category_slug,
+            definition: entry.definition,
+            rules: entry
+                .rules
+                .into_iter()
+                .map(|rule| webapp::catalog_index::KindRule {
+                    code: rule.code,
+                    note: rule.note,
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 /// One bundled notation's show-page content, projected from its own
@@ -118,47 +208,6 @@ fn preview_doc(slug: &str, source_path: &str, src: &str) -> webapp::notation_pre
 /// `/notations/{slug}`.
 #[allow(clippy::too_many_lines)] // The literal source-to-preview inventory is reviewed as one catalog.
 fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
-    const ONBOARDING: &str = include_str!("../../templates/notations/neon_law/onboarding.md");
-    const OFFBOARDING: &str = include_str!("../../templates/notations/neon_law/offboarding.md");
-    const RESCISSION_NOTICE: &str =
-        include_str!("../../templates/notations/neon_law/rescission_notice_nevada.md");
-    const WITNESS_AFFIDAVIT: &str =
-        include_str!("../../templates/notations/neon_law/witness_affidavit_nevada.md");
-    const ANSWER_TO_COUNTERCLAIM: &str =
-        include_str!("../../templates/notations/neon_law/answer_to_counterclaim_nevada.md");
-    const ENGAGEMENT_LETTER: &str =
-        include_str!("../../templates/notations/neon_law/engagement_letter_nevada.md");
-    const SUMMONS: &str = include_str!("../../templates/notations/neon_law/summons_nevada.md");
-    const FORM_990: &str =
-        include_str!("../../templates/notations/forms/united_states/federal/irs/us__form_990.md");
-    const NATURALIZATION: &str = include_str!(
-        "../../templates/notations/forms/united_states/federal/uscis/us__naturalization.md"
-    );
-    const NV_LLC: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__llc_formation.md"
-    );
-    const NV_PROFIT_CORP: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__profit_corp_formation.md"
-    );
-    const NV_BUSINESS_TRUST: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__business_trust_formation.md"
-    );
-    const NV_NONPROFIT: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
-    );
-    const NV_ANNUAL_REPORT: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__annual_report.md"
-    );
-    const NV_DISSOLUTION: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__dissolution.md"
-    );
-    const NV_MODIFIED_BUSINESS_TAX: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__modified_business_tax.md"
-    );
-    const NV_CHARITABLE: &str = include_str!(
-        "../../templates/notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
-    );
-
     vec![
         preview_doc(
             "onboarding-letter",
@@ -259,112 +308,130 @@ fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
         introduction: Some(introduction),
         materials: vec![
             notation_card(
-                "Letter",
+                "Firm",
                 "Onboarding Letter",
                 "onboarding-letter",
                 "The sample letter that opens a matter (`onboarding__letter`).",
+                ONBOARDING,
             ),
             notation_card(
-                "Letter",
+                "Firm",
                 "Closing Letter",
                 "offboarding-letter",
                 "The sample letter that closes a matter (`offboarding__letter`).",
+                OFFBOARDING,
             ),
             notation_card(
-                "Filing · Nevada",
+                "Nevada",
                 "Notice of Rescission",
                 "nevada-rescission-notice",
                 "Fixture notice of rescission for a Nevada matter.",
+                RESCISSION_NOTICE,
             ),
             notation_card(
-                "Filing · Nevada",
+                "Nevada",
                 "Affidavit of Percipient Witness",
                 "nevada-witness-affidavit",
                 "Fixture affidavit of a percipient witness for a Nevada matter.",
+                WITNESS_AFFIDAVIT,
             ),
             notation_card(
-                "Filing · Nevada",
+                "Nevada",
                 "Answer to Counterclaim",
                 "nevada-answer-to-counterclaim",
                 "Fixture answer to a counterclaim in Nevada.",
+                ANSWER_TO_COUNTERCLAIM,
             ),
             notation_card(
-                "Letter · Nevada",
+                "Nevada",
                 "Engagement Letter — Arbitration",
                 "nevada-engagement-letter",
                 "Fixture arbitration engagement letter for a Nevada matter.",
+                ENGAGEMENT_LETTER,
             ),
             notation_card(
-                "Filing · Nevada",
+                "Nevada",
                 "Summons",
                 "nevada-summons",
                 "Fixture civil summons for a Nevada matter.",
+                SUMMONS,
             ),
             notation_card(
-                "Form · Federal",
+                "Federal",
                 "IRS Form 990",
                 "irs-form-990",
                 "Return of Organization Exempt From Income Tax.",
+                FORM_990,
             ),
             notation_card(
-                "Form · Federal",
+                "Federal",
                 "Application for Naturalization (N-400)",
                 "application-for-naturalization",
                 "Intake summary for Form N-400.",
+                NATURALIZATION,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada LLC Formation",
                 "nevada-llc-formation",
                 "Articles of organization for a Nevada limited-liability company.",
+                NV_LLC,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada Profit Corporation Formation",
                 "nevada-profit-corporation-formation",
                 "Articles of incorporation for a Nevada profit corporation.",
+                NV_PROFIT_CORP,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada Business Trust Formation",
                 "nevada-business-trust-formation",
                 "Certificate of business trust for Nevada.",
+                NV_BUSINESS_TRUST,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada Nonprofit Articles of Incorporation (501(c)(3))",
                 "nevada-nonprofit-formation",
                 "Articles that form a Nevada nonprofit seeking 501(c)(3) status.",
+                NV_NONPROFIT,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada Annual List",
                 "nevada-annual-list",
                 "Annual list of managers, members, and registered agent.",
+                NV_ANNUAL_REPORT,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada LLC Articles of Dissolution",
                 "nevada-llc-dissolution",
                 "The filing that dissolves a Nevada LLC.",
+                NV_DISSOLUTION,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada Modified Business Tax Return",
                 "nevada-modified-business-tax",
                 "Nevada Modified Business Tax return.",
+                NV_MODIFIED_BUSINESS_TAX,
             ),
             notation_card(
-                "Form · Nevada",
+                "Nevada",
                 "Nevada Charitable Solicitation Registration",
                 "nevada-charitable-solicitation-registration",
                 "Registration before soliciting donations in Nevada.",
+                NV_CHARITABLE,
             ),
         ],
         contact_email: views::brand::firm_email().to_string(),
         footnote: String::new(),
         include_testimonials: false,
         brand_key: String::new(),
+        kinds: kind_catalog_entries(),
     }
 }
 
@@ -1305,6 +1372,74 @@ mod notation_catalog_tests {
                 "preview body must come from {source_path}"
             );
         }
+    }
+
+    /// LAW-53: every catalog card's `kind` facet must come from the
+    /// template's own frontmatter, not a hand-typed eyebrow. Before this
+    /// grounding, `nevada-witness-affidavit` and two other `kind: pleading`
+    /// fixtures carried a `"Filing"` eyebrow that had drifted from the
+    /// template's real declared kind — this pins the fix and guards the
+    /// regression.
+    #[test]
+    fn every_catalog_card_derives_its_kind_from_the_templates_own_frontmatter() {
+        let catalog = notations_index_content();
+        for material in &catalog.materials {
+            assert!(
+                !material.kind.is_empty(),
+                "{} has no derived kind",
+                material.href
+            );
+            assert!(
+                !material.category_slug.is_empty(),
+                "{} has no derived category",
+                material.href
+            );
+        }
+        let by_href = |href: &str| {
+            catalog
+                .materials
+                .iter()
+                .find(|m| m.href == href)
+                .unwrap_or_else(|| panic!("no card for {href}"))
+        };
+        assert_eq!(by_href("/notations/onboarding-letter").kind, "onboarding");
+        assert_eq!(by_href("/notations/offboarding-letter").kind, "offboarding");
+        assert_eq!(
+            by_href("/notations/nevada-rescission-notice").kind,
+            "letter"
+        );
+        // The regression this test guards: a witness affidavit, an answer to
+        // a counterclaim, and a summons are `kind: pleading`, never
+        // `kind: filing` — the eyebrow they used to carry.
+        for href in [
+            "/notations/nevada-witness-affidavit",
+            "/notations/nevada-answer-to-counterclaim",
+            "/notations/nevada-summons",
+        ] {
+            assert_eq!(by_href(href).kind, "pleading", "{href}");
+            assert_eq!(by_href(href).category_slug, "court-paper", "{href}");
+        }
+        assert_eq!(by_href("/notations/nevada-llc-formation").kind, "filing");
+        assert_eq!(
+            by_href("/notations/nevada-llc-formation").category_slug,
+            "filing"
+        );
+    }
+
+    /// The kind catalog (LAW-53) mirrors `views::kind_catalog::entries()`
+    /// exactly — every kind `S103` accepts, with none dropped or invented.
+    #[test]
+    fn the_kind_catalog_matches_the_shared_source() {
+        let catalog = notations_index_content();
+        let expected = views::kind_catalog::entries();
+        assert_eq!(catalog.kinds.len(), expected.len());
+        let agreement = catalog
+            .kinds
+            .iter()
+            .find(|entry| entry.kind == "agreement")
+            .expect("agreement is in the kind catalog");
+        assert_eq!(agreement.category_slug, "instrument");
+        assert!(agreement.rules.iter().any(|rule| rule.code == "N123"));
     }
 
     /// The naturalization form declares a branching `workflow:` block

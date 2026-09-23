@@ -18,12 +18,17 @@ uuid.workspace = true
 url.workspace = true
 word.workspace = true
 forms.workspace = true
+# `kind_catalog` projects `rules::kind::Kind` (the same enum `S103`
+# validates a declared `kind:` against) into the `/notations` kind catalog,
+# so the docs page and the template gallery's kind/category facet cannot
+# drift from the gate (LAW-53). `views` is never compiled to `wasm32` —
+# only `webapp --features web` is — so this carries no wasm32 cost.
+rules.workspace = true
 
 [dev-dependencies]
 # Layer-1 accessibility gate (`tests/accessibility.rs`) uses these
 # assertion helpers for structural invariants.
 regex = "1"
-rules.workspace = true
 tempfile.workspace = true
 
 [dependencies.tokio]

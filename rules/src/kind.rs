@@ -172,6 +172,66 @@ pub enum Kind {
     EngagementBillingRecords,
 }
 
+/// The group a [`Kind`] belongs to, read by `/notations`' kind catalog
+/// (LAW-53) to group both the catalog and the template gallery. See
+/// [`Kind::category`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    /// Goes out on the firm's own letterhead: a letter, the engagement that
+    /// opens a matter, the letter that closes one, and an analytical memo.
+    Correspondence,
+    /// An instrument a client or counterparty executes: a will, a trust, a
+    /// directive, or a private agreement.
+    Instrument,
+    /// A document filed with a government body.
+    Filing,
+    /// Court paper filed with a court.
+    CourtPaper,
+    /// A public content page — never filed on a matter.
+    Content,
+    /// The engineering intake that opens a GitHub issue or pull request.
+    Engineering,
+    /// A matter dashboard: a page type an attorney composes from registered
+    /// sections (see [`Kind::is_dashboard`]).
+    MatterDashboard,
+    /// An asset-lane-only classification for a filed byte artifact — never a
+    /// template's own declared kind, so never shown on `/notations`.
+    FiledAsset,
+}
+
+impl Category {
+    /// The URL-safe, kebab-case value this category filters by on
+    /// `/notations`.
+    #[must_use]
+    pub fn slug(self) -> &'static str {
+        match self {
+            Category::Correspondence => "correspondence",
+            Category::Instrument => "instrument",
+            Category::Filing => "filing",
+            Category::CourtPaper => "court-paper",
+            Category::Content => "content",
+            Category::Engineering => "engineering",
+            Category::MatterDashboard => "matter-dashboard",
+            Category::FiledAsset => "filed-asset",
+        }
+    }
+
+    /// The human-readable label this category renders under.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Category::Correspondence => "Correspondence",
+            Category::Instrument => "Instrument",
+            Category::Filing => "Filing",
+            Category::CourtPaper => "Court paper",
+            Category::Content => "Content",
+            Category::Engineering => "Engineering",
+            Category::MatterDashboard => "Matter dashboard",
+            Category::FiledAsset => "Filed asset",
+        }
+    }
+}
+
 impl Kind {
     /// Every recognized kind, in declaration order.
     pub const ALL: &'static [Kind] = &[
@@ -557,6 +617,91 @@ impl Kind {
         }
     }
 
+    /// The category `/notations` groups this kind under — the docs page's
+    /// same-source-as-`S103` grouping (LAW-53). Deliberately an exhaustive
+    /// `match`: adding a [`Kind`] fails to compile until it declares which
+    /// group it falls into.
+    #[must_use]
+    pub fn category(self) -> Category {
+        match self {
+            // The kinds that go out on the firm's own letterhead (mirrors
+            // `default_output`'s `"letter"` grouping, see
+            // `letterhead_kinds_default_to_letter`).
+            Kind::Letter | Kind::Onboarding | Kind::Offboarding | Kind::Memo => {
+                Category::Correspondence
+            }
+            // Instruments a client or counterparty executes: a will, a
+            // trust, a directive, and a private agreement.
+            Kind::Will | Kind::Trust | Kind::Directive | Kind::Agreement => Category::Instrument,
+            // A government filing pairs with `output: form` and the
+            // `AcroForm` fill path — distinct from an instrument the firm
+            // drafts for a party to sign.
+            Kind::Filing => Category::Filing,
+            // Court paper, calibrated to a jurisdiction's own geometry.
+            Kind::Pleading => Category::CourtPaper,
+            // Public content pages, never filed on a matter.
+            Kind::Event | Kind::Post | Kind::Workshop => Category::Content,
+            // The engineering intake — borrows the questionnaire grammar but
+            // is not a legal instrument.
+            Kind::Github => Category::Engineering,
+            // The ten matter-dashboard page types (see `is_dashboard`).
+            Kind::ReviewQueueWorkbench
+            | Kind::VerifierSplitView
+            | Kind::MatterStatusConsole
+            | Kind::DocketDeadlineBoard
+            | Kind::DocumentWorkbench
+            | Kind::AuthorityLibrary
+            | Kind::DiscoveryCockpit
+            | Kind::HearingConsole
+            | Kind::DeliverablePackage
+            | Kind::EngagementBillingRecords => Category::MatterDashboard,
+            // Asset-lane-only classifications: never declared in a
+            // template's frontmatter, so never shown on `/notations`.
+            Kind::Transcript
+            | Kind::InboundContract
+            | Kind::CertificateOfNaturalization
+            | Kind::Exhibit
+            | Kind::ClosedRepository
+            | Kind::Invoice
+            | Kind::Unclassified => Category::FiledAsset,
+        }
+    }
+
+    /// The kind-specific structural lint rules bound to this kind, as
+    /// `(code, one-sentence requirement)` pairs — the same source `S103`'s
+    /// accepted vocabulary comes from, read by the `/notations` kind catalog
+    /// (LAW-53) so its "Rules" column cannot drift from what the gate
+    /// actually enforces.
+    ///
+    /// Empty for a kind bound to no rule beyond the universal S-family and
+    /// M-family Markdown rules every file — regardless of kind — is already
+    /// held to.
+    #[must_use]
+    pub fn structural_rules(self) -> Vec<(&'static str, String)> {
+        let mut rules = Vec::new();
+        if let Some(note) = crate::f123::outline_requirement_note(self.as_str()) {
+            rules.push((crate::f123::F123HarvardOutlineRequired::CODE, note));
+        }
+        if self == Kind::Memo {
+            rules.push((
+                crate::f117::F117GlossaryBackedCustomText::CODE,
+                "Every `custom_text__*` state must be allowlisted, and a memo's allowlist carries \
+                 no section role: the question presented, the analysis, and the recommendation are \
+                 body prose the attorney writes at `lawyer_review`, never questionnaire state."
+                    .to_string(),
+            ));
+        }
+        if self == Kind::Github {
+            rules.push((
+                crate::f119::F119GithubNotation::CODE,
+                "The questionnaire may declare only the engineering-intake field grammar; a \
+                 `github` notation binds to no respondent and never reaches lawyer review."
+                    .to_string(),
+            ));
+        }
+        rules
+    }
+
     /// True when this kind may be declared in `lane`.
     ///
     /// One vocabulary spans both of Navigator's document lanes, but not
@@ -723,7 +868,7 @@ pub fn declared(contents: &str) -> Option<Kind> {
 
 #[cfg(test)]
 mod tests {
-    use super::{declared, Kind, Lane};
+    use super::{declared, Category, Kind, Lane};
 
     #[test]
     fn parse_round_trips_every_kind() {
@@ -1116,5 +1261,132 @@ mod tests {
         assert_eq!(declared("---\ntitle: T\n---\n"), None);
         assert_eq!(declared("---\ntitle: T\nkind: bogus\n---\n"), None);
         assert_eq!(declared("no frontmatter"), None);
+    }
+
+    #[test]
+    fn correspondence_is_exactly_the_letterhead_kinds() {
+        // Mirrors `letterhead_kinds_default_to_letter`: the same four kinds
+        // that default to the `"letter"` render profile are grouped as
+        // `Category::Correspondence`.
+        for kind in [
+            Kind::Letter,
+            Kind::Onboarding,
+            Kind::Offboarding,
+            Kind::Memo,
+        ] {
+            assert_eq!(
+                kind.category(),
+                Category::Correspondence,
+                "{}",
+                kind.as_str()
+            );
+        }
+        for kind in Kind::ALL
+            .iter()
+            .filter(|k| k.category() == Category::Correspondence)
+        {
+            assert_eq!(kind.default_output(), "letter", "{}", kind.as_str());
+        }
+    }
+
+    #[test]
+    fn every_dashboard_kind_shares_one_category() {
+        for kind in Kind::ALL.iter().filter(|k| k.is_dashboard()) {
+            assert_eq!(
+                kind.category(),
+                Category::MatterDashboard,
+                "{}",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn asset_lane_only_kinds_use_the_filed_asset_category() {
+        for kind in [
+            Kind::Transcript,
+            Kind::InboundContract,
+            Kind::CertificateOfNaturalization,
+            Kind::Exhibit,
+            Kind::ClosedRepository,
+            Kind::Invoice,
+            Kind::Unclassified,
+        ] {
+            assert_eq!(kind.category(), Category::FiledAsset, "{}", kind.as_str());
+        }
+    }
+
+    #[test]
+    fn no_template_lane_kind_uses_the_filed_asset_category() {
+        // `FiledAsset` names a document classification for an `assets` row,
+        // never a template's own declared `kind:` — so no kind S103 accepts
+        // may be grouped there, or `/notations` would render a category no
+        // author could ever pick.
+        for kind in Kind::ALL.iter().filter(|k| k.valid_for(Lane::Template)) {
+            assert_ne!(kind.category(), Category::FiledAsset, "{}", kind.as_str());
+        }
+    }
+
+    #[test]
+    fn category_slug_and_label_are_populated_for_every_kind() {
+        for kind in Kind::ALL {
+            assert!(!kind.category().slug().is_empty());
+            assert!(!kind.category().label().is_empty());
+        }
+    }
+
+    #[test]
+    fn the_outline_bound_kinds_carry_n123() {
+        for kind in [
+            Kind::Agreement,
+            Kind::Offboarding,
+            Kind::Pleading,
+            Kind::Will,
+        ] {
+            let rules = kind.structural_rules();
+            assert!(
+                rules.iter().any(|(code, _)| *code == "N123"),
+                "{} should carry N123: {rules:?}",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn memo_carries_n117_and_github_carries_n119() {
+        assert!(Kind::Memo
+            .structural_rules()
+            .iter()
+            .any(|(code, _)| *code == "N117"));
+        assert!(Kind::Github
+            .structural_rules()
+            .iter()
+            .any(|(code, _)| *code == "N119"));
+    }
+
+    #[test]
+    fn most_kinds_carry_no_kind_specific_structural_rule() {
+        // The common case: a kind bound to no rule beyond the universal
+        // S-family and M-family Markdown rules every file is held to,
+        // regardless of kind.
+        for kind in [
+            Kind::Letter,
+            Kind::Filing,
+            Kind::Trust,
+            Kind::Directive,
+            Kind::Onboarding,
+            Kind::Event,
+            Kind::Post,
+            Kind::Workshop,
+            Kind::ReviewQueueWorkbench,
+            Kind::DeliverablePackage,
+        ] {
+            assert!(
+                kind.structural_rules().is_empty(),
+                "{} unexpectedly carries {:?}",
+                kind.as_str(),
+                kind.structural_rules()
+            );
+        }
     }
 }

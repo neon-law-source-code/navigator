@@ -49,6 +49,8 @@ const DELETE_YOUR_DEBT_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-debt/services.yaml");
 const SUMMONS_HOME_YAML: &str = include_str!("../locales/en/summons/home.yaml");
 const SUMMONS_SERVICES_YAML: &str = include_str!("../locales/en/summons/services.yaml");
+const DAYBRIDGE_HOME_YAML: &str = include_str!("../locales/en/daybridge/home.yaml");
+const DAYBRIDGE_SERVICES_YAML: &str = include_str!("../locales/en/daybridge/services.yaml");
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
 const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shook/services.yaml");
@@ -86,6 +88,8 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::DeleteYourDebt, "services") => Some(DELETE_YOUR_DEBT_SERVICES_YAML),
         (BrandKey::Summons, "home") => Some(SUMMONS_HOME_YAML),
         (BrandKey::Summons, "services") => Some(SUMMONS_SERVICES_YAML),
+        (BrandKey::Daybridge, "home") => Some(DAYBRIDGE_HOME_YAML),
+        (BrandKey::Daybridge, "services") => Some(DAYBRIDGE_SERVICES_YAML),
         (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
         (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
         (BrandKey::Neon, "notations") => Some(NEON_NOTATIONS_YAML),
@@ -698,6 +702,40 @@ fn privacy_content(copy: views::locales::PrivacyCopy) -> webapp::home::PrivacyCo
     }
 }
 
+fn daybridge_content(copy: views::locales::DaybridgeCopy) -> webapp::home::DaybridgeContent {
+    webapp::home::DaybridgeContent {
+        eyebrow: copy.eyebrow,
+        fee_label: copy.fee_label,
+        fee_price: copy.fee_price,
+        fee_unit: copy.fee_unit,
+        fee_body: copy.fee_body,
+        fee_note: copy.fee_note,
+        response_heading: copy.response_heading,
+        response_body: copy.response_body,
+        motions_heading: copy.motions_heading,
+        motions_body: copy.motions_body,
+        costs_heading: copy.costs_heading,
+        costs_body: copy.costs_body,
+        process_label: copy.process_label,
+        process_heading: copy.process_heading,
+        steps: copy.steps,
+        closing_heading: copy.closing_heading,
+        closing_body: copy.closing_body,
+    }
+}
+
+fn practice_link(copy: PracticeLinkCopy) -> webapp::home::PracticeLink {
+    webapp::home::PracticeLink {
+        mark: practice_mark(copy.mark),
+        heading: copy.heading,
+        body: copy.body,
+        href: copy.href,
+        logo_href: String::new(),
+        font_family: String::new(),
+        primary_color: String::new(),
+    }
+}
+
 /// A sibling practice's public home, when it has one.
 ///
 /// `None` while the practice is held out of launch, because
@@ -745,25 +783,7 @@ pub fn home_for_host(
             }
         }),
         practices_heading: copy.practices_heading,
-        practices: copy
-            .practices
-            .into_iter()
-            .map(
-                |PracticeLinkCopy {
-                     mark,
-                     heading,
-                     body,
-                     href,
-                 }| webapp::home::PracticeLink {
-                    mark: practice_mark(mark),
-                    heading,
-                    body,
-                    href,
-                    logo_href: String::new(),
-                    font_family: String::new(),
-                },
-            )
-            .collect(),
+        practices: copy.practices.into_iter().map(practice_link).collect(),
         provenance: copy.provenance.map(provenance_to_home),
         company: copy.company.map(|copy| webapp::home::CompanyContent {
             booking_href: copy.booking_href,
@@ -825,6 +845,7 @@ pub fn home_for_host(
         bare: None,
         estate: copy.estate.map(estate_content),
         privacy: copy.privacy.map(privacy_content),
+        daybridge: copy.daybridge.map(daybridge_content),
     }
 }
 

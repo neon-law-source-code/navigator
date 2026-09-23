@@ -1,5 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190 48" role="img" aria-labelledby="title">
-  <title>DeleteYourDebt.com</title>
-  <rect x="4" y="5" width="38" height="38" rx="19" fill="#1f6f4a"/><path d="M15 24h16M24 15v18" stroke="#fff" stroke-width="3"/>
-  <text x="52" y="30" fill="#1f6f4a" font-family="Arial,sans-serif" font-size="16">DELETEYOURDEBT</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">DeleteYourDebt.com</title>
+  <style>
+    .mark { fill: none; stroke: #1f6f4a; }
+    @media (prefers-color-scheme: dark) { .mark { stroke: #32b377; } }
+  </style>
+  <path class="mark" d="M18 14h13c11 0 19 7.7 19 18s-8 18-19 18H18V38" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="mark" d="m12 32 14-10m-14 10 14 10" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

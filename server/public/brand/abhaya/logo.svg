@@ -1,5 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 170 48" role="img" aria-labelledby="title">
-  <title>Abhaya Immigration</title>
-  <path d="M24 5 39 14v18L24 43 9 32V14z" fill="#1f4e79"/><path d="M24 13v22M16 19l8 5 8-5" fill="none" stroke="#fff" stroke-width="3"/>
-  <text x="50" y="30" fill="#1f4e79" font-family="Arial,sans-serif" font-size="17">ABHAYA</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Abhaya Immigration</title>
+  <style>
+    .mark { fill: none; stroke: #1f4e79; }
+    .sun { fill: #1f4e79; }
+    @media (prefers-color-scheme: dark) {
+      .mark { stroke: #68a3d8; }
+      .sun { fill: #68a3d8; }
+    }
+  </style>
+  <path class="mark" d="M14 52V29C14 18.5 21.8 11 32 11s18 7.5 18 18v23" stroke-width="4" stroke-linecap="round"/>
+  <path class="mark" d="M23 52V31c0-5.4 3.7-9 9-9s9 3.6 9 9v21" stroke-width="4" stroke-linecap="round"/>
+  <circle class="sun" cx="32" cy="34" r="4"/>
 </svg>

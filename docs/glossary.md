@@ -190,20 +190,20 @@ instead is the failure mode: it drifts from the record and cannot be re-verified
 ## Brand
 
 A closed key naming which house brand a request resolves to — [`views::brand::BrandKey`](../views/src/brand.rs) (`neon`,
-`delete-your-data`, `lawyer-shook`). **A brand is a registry entry, not a binary**: each key names its own
-[`Branding`](../views/src/brand.rs), and the resolver that maps a request's `Host:` header onto a key
-([`views::brand::registered_brand_key`](../views/src/brand.rs)) runs inside the *same* `neon-server` binary for every
-key it serves. One repository, one running process, N house brands — adding one is a code change to the registry (a new
-key, its hosts, its `Branding`) with a covering test, which is the right cost for a legal identity, and there is no
-runtime flag that can move a page from one brand's hosts to another's.
+`delete-your-data`, `lawyer-shook`, `vesta`, `misericordia`, `abhaya`, `delete-your-debt`, `summons`, `daybridge`). **A
+brand is a registry entry, not a binary**: each key names its own [`Branding`](../views/src/brand.rs), and the resolver
+that maps a request's `Host:` header onto a key ([`views::brand::registered_brand_key`](../views/src/brand.rs)) runs
+inside the *same* `neon-server` binary for every key it serves. One repository, one running process, N house brands —
+adding one is a code change to the registry (a new key, its hosts, its `Branding`) with a covering test, which is the
+right cost for a legal identity, and there is no runtime flag that can move a page from one brand's hosts to another's.
 
 **Distinct from the data-driven `brand` table** (`store::brands`, ENG-496) — a name, a unique key, and an
 authorization/identity record, not a routing registry entry. `firm_id: None` is system-wide (Owner-created, every Firm
 sees it); a live `firm_id` is scoped to that Firm (created only by its Admin DRI). It carries no host: `hosts()` and
 `registered_brand_key` keep resolving only the compiled `BrandKey` enum above, and a runtime `brand` row publishes no
-marketing page. The three compiled keys (`neon`, `delete-your-data`, `lawyer-shook`) migrate into system-wide rows on
-first boot so the one authorization table names every brand a Firm may attach, but their real presentation — hosts,
-colours, fonts, logos, copy — stays exactly where this entry describes it, unchanged.
+marketing page. The nine compiled keys migrate into system-wide rows on first boot so the one authorization table names
+every brand a Firm may attach, but their real presentation — hosts, colours, fonts, logos, copy — stays exactly where
+this entry describes it, unchanged.
 
 Owner (for a system-wide row) or a Firm's Admin DRI (for that Firm's own row) create, edit, and delete `brand` rows at
 `/app/admin/brands`, `/app/admin/brands/new`, and `/app/admin/brands/{key}/edit` (ENG-586). `primary_color` is a free
@@ -213,7 +213,7 @@ the primary itself must clear 3:1 against the light page surface — never a clo
 uploaded logo (PNG or SVG, sanitized against script content) and an uploaded `.woff2` font (attested under a closed
 open-licence list), both served from the public assets bucket; `typeface = "uploaded"` is what tells the tokens
 stylesheet to read the row's own font rather than a compiled catalog entry. Deleting a row is refused while any
-`firm_brand` or `project.brand` value still names its key. None of this touches the three compiled keys' own served
+`firm_brand` or `project.brand` value still names its key. None of this touches the nine compiled keys' own served
 hosts, marketing pages, or fallback presentation — editing `neon`'s row changes what `/public/css/brand-neon-tokens.css`
 renders, not which hosts resolve to it.
 
@@ -979,8 +979,8 @@ Distinct from [Brand](#brand), which is the storefront a request resolved to.
 
 `store::firms::attach_brand` validates `brand_key` against the `brand` table (`store::brands`, ENG-496): a live row
 carrying that key, not the closed `CLOSED_BRAND_KEYS` array directly. A Firm may therefore wear any brand a `brand` row
-names, not only the three compiled ones. `store::firms::CLOSED_BRAND_KEYS` names `neon`, `delete-your-data`, and
-`lawyer-shook`; `store::seed` migrates them into `brand` rows on first boot so validation has a catalog from the start.
+names, not only the nine compiled ones. `store::firms::CLOSED_BRAND_KEYS` names every entry in the compiled registry;
+`store::seed` migrates them into `brand` rows on first boot so validation has a catalog from the start.
 
 Every footer names the Firm actually wearing the request's resolved brand, not a compiled constant (ENG-589):
 `webapp::firm_footer::resolve_firm_footer_model` reads the Firm's Entity for the legal name and `firm_brand` for the

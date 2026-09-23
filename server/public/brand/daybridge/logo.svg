@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Daybridge Divorce Law</title>
+  <style>
+    .mark { fill: none; stroke: #255c67; }
+    .sun { fill: #255c67; }
+    @media (prefers-color-scheme: dark) {
+      .mark { stroke: #78b9c5; }
+      .sun { fill: #78b9c5; }
+    }
+  </style>
+  <circle class="sun" cx="32" cy="19" r="6"/>
+  <path class="mark" d="M8 46h48M13 46c2.5-13 9-20 19-20s16.5 7 19 20M19 46v-7M45 46v-7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

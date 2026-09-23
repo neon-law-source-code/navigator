@@ -1,0 +1,111 @@
+head_title: "Divorce services — {site_name}"
+meta_description: >-
+  Divorce representation from Daybridge Divorce Law, a practice of Shook Law
+  PLLC. The attorney fee is $10 a day while retained, with case costs paid
+  separately. Attorney advertisement.
+title: Divorce services
+hero_mark: scales
+tagline: "$10 a day, plus case costs"
+hero_lines:
+  - text: Move the case forward
+    accent_words: 1
+  - text: one useful step at a time
+    accent_words: 0
+hero_lead: >-
+  We focus on divorce and the agreements, motions, and court papers that move
+  the case toward completion. Shook Law PLLC is the law firm you would retain.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Start a conversation
+skin: practice
+bands:
+  - kind: cards
+    anchor: work
+    overline: The work
+    heading: What we handle
+    description: >-
+      The written retainer identifies the work we agree to do. A licensed
+      attorney prepares and reviews it.
+    items:
+      - title: Divorce planning and case strategy
+        body:
+          - - text: >-
+                Identify the decisions, deadlines, documents, and next useful
+                step in the divorce process.
+      - title: Agreements and proposed resolutions
+        body:
+          - - text: >-
+                Draft and review terms intended to resolve the issues the
+                engagement covers.
+      - title: Motions and court papers
+        body:
+          - - text: >-
+                Prepare the motions and related papers included in the agreed
+                scope. A first draft is prepared within five business days
+                after we receive the information and documents we need, unless
+                we agree to a different schedule in writing.
+  - kind: cards
+    anchor: fees
+    overline: Fees
+    heading: What it costs
+    description: >-
+      The attorney fee is $10 for each day we are retained. Your written
+      retainer defines when billing starts and stops and what work is included.
+    items:
+      - title: Attorney fee
+        body:
+          - - text: >-
+                $10 per day while we are retained. The sooner the engagement
+                is complete, the less you pay in attorney fees.
+      - title: Case costs
+        body:
+          - - text: >-
+                Court filing fees, service fees, transcripts, experts, and
+                similar third-party charges are separate from the attorney fee.
+      - title: No promised outcome
+        body:
+          - - text: >-
+                The fee buys legal work, not a particular result. Every case is
+                different, and a court or another party may affect the schedule.
+  - kind: cards
+    anchor: communication
+    overline: Communication
+    heading: Questions should not disappear into a void
+    description: >-
+      We respond as soon as possible and say when an issue needs more time,
+      information, or a scheduled conversation.
+    items:
+      - title: Send the question
+        body:
+          - - text: >-
+                Use the communication channel in your retainer so the question
+                reaches the matter file and the people responsible for it.
+      - title: Know what happens next
+        body:
+          - - text: >-
+                We answer when we can and identify the information or decision
+                needed when we cannot answer yet.
+  - kind: cards
+    anchor: about
+    overline: About
+    heading: Why Daybridge
+    description: ""
+    items:
+      - title: The name
+        body:
+          - - text: >-
+                Daybridge is about getting from a hard present into a clearer
+                next chapter. The bridge is the work; the day ahead is yours.
+      - title: The firm
+        body:
+          - - text: >-
+                Daybridge Divorce Law is a trade name of Shook Law PLLC, a
+                Nevada professional limited liability company. Shook Law PLLC
+                is the law firm you would retain.
+  - kind: cta
+    heading: Tell us what is happening
+    body: >-
+      Include the closest deadline and say whether a case has already been
+      filed. We will tell you whether we can help and what we need to begin.
+    email: "{firm_email}"
+    email_subject: Divorce matter

@@ -2705,6 +2705,12 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
         typeface: "libre-franklin",
         primary_hex: "#4A2545",
     },
+    CompiledBrand {
+        key: "daybridge",
+        name: "Daybridge Divorce Law",
+        typeface: "source-serif-4",
+        primary_hex: "#255C67",
+    },
 ];
 
 /// The published wordmark [`COMPILED_BRANDS`] seeds for `key`, if it names a

@@ -63,6 +63,9 @@ pub struct ChromeBrand {
     pub label: String,
     pub href: String,
     pub current: bool,
+    /// The brand's own mark, shown beside its family link.
+    #[serde(default)]
+    pub logo_href: String,
     /// What this brand does, carried from the footer model so the family
     /// block reads the same on a public page as it does inside `/app`.
     #[serde(default)]
@@ -298,6 +301,7 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
                     label: brand.label.clone(),
                     href: brand.href.clone(),
                     current: brand.current,
+                    logo_href: brand.logo_href.clone(),
                     byline: brand.byline.clone(),
                 })
                 .collect(),
@@ -380,11 +384,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
         firm_logo_href: FIRM_BRAND.logo_href.to_string(),
         firm_home_href: FIRM_BRAND.home_href.to_string(),
         legal_entity: FIRM_BRAND.legal_entity.to_string(),
-        attribution: if brand.site_name == FIRM_BRAND.legal_entity {
-            String::new()
-        } else {
-            format!("A practice of {}", FIRM_BRAND.legal_entity)
-        },
+        attribution: firm_attribution(brand),
         disclaimer: views::brand::firm_disclaimer().to_string(),
         trademark: trademark.to_string(),
         trademark_registration: registration.to_string(),
@@ -452,6 +452,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
                 label: brand.label,
                 href: brand.href,
                 current: brand.current,
+                logo_href: brand.logo_href,
                 byline: brand.byline,
             })
             .collect(),
@@ -475,6 +476,19 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
             })
             .collect(),
         social: chrome_social(),
+    }
+}
+
+#[cfg(feature = "server")]
+fn firm_attribution(brand: &views::brand::SiteBrand) -> String {
+    use views::brand::{DAYBRIDGE_BRANDING, FIRM_BRAND};
+
+    if brand.site_name == FIRM_BRAND.legal_entity
+        || brand.site_name == DAYBRIDGE_BRANDING.firm.site_name
+    {
+        String::new()
+    } else {
+        format!("A practice of {}", FIRM_BRAND.legal_entity)
     }
 }
 
@@ -571,15 +585,17 @@ mod tests {
             }],
             brands: vec![
                 ChromeBrand {
-                    label: "Emerging Technologies Counsel".to_string(),
+                    label: "Neon Law".to_string(),
                     href: "https://www.neonlaw.com".to_string(),
                     current: true,
+                    logo_href: "/public/logo.svg".to_string(),
                     byline: "flat-fee legal services for emerging tech".to_string(),
                 },
                 ChromeBrand {
-                    label: "Protect your info".to_string(),
+                    label: "DeleteYourData.com".to_string(),
                     href: "https://www.deleteyourdata.com".to_string(),
                     current: false,
+                    logo_href: "/public/brand/delete-your-data/logo.svg".to_string(),
                     byline: "protect your personal information".to_string(),
                 },
             ],
@@ -836,8 +852,8 @@ mod tests {
         assert_eq!(
             labels,
             [
-                "Emerging Technologies Counsel",
-                "Protect your info",
+                "Neon Law",
+                "DeleteYourData.com",
                 "DeleteYourDebt.com",
                 "Vesta Estate Planning",
                 "Misericordia Injury Law",
@@ -1044,8 +1060,12 @@ mod tests {
             } else {
                 assert_eq!(
                     chrome.attribution,
-                    "A practice of Shook Law PLLC",
-                    "{} wears a trade name and is owed the line",
+                    if *key == views::brand::BrandKey::Daybridge {
+                        ""
+                    } else {
+                        "A practice of Shook Law PLLC"
+                    },
+                    "{} has the expected attribution treatment",
                     key.as_str()
                 );
             }

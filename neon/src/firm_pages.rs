@@ -669,7 +669,8 @@ fn resolve_firm_contact_content(
         | BrandKey::Misericordia
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
-        | BrandKey::Summons => format!(
+        | BrandKey::Summons
+        | BrandKey::Daybridge => format!(
             "Reach {firm_name}, a practice of Shook Law PLLC, about legal services. \
              Attorney advertisement. Nothing here is legal advice without a signed retainer for \
              an active project."
@@ -715,7 +716,8 @@ pub(crate) fn resolve_firm_home_content(
         | BrandKey::Vesta
         | BrandKey::Misericordia
         | BrandKey::Abhaya
-        | BrandKey::DeleteYourDebt => locales::home_for_host(branding, deployment_host),
+        | BrandKey::DeleteYourDebt
+        | BrandKey::Daybridge => locales::home_for_host(branding, deployment_host),
     }
 }
 
@@ -816,6 +818,7 @@ fn portfolio_practices() -> Vec<webapp::home::PracticeLink> {
                 href: key.public_home_href(),
                 logo_href: branding.firm.logo_href.to_string(),
                 font_family: key.default_typeface().stack.to_string(),
+                primary_color: key.default_palette().light.primary.to_string(),
             }
         })
         .collect()
@@ -838,6 +841,7 @@ mod coming_soon_page_tests {
                     || content.estate.is_some()
                     || content.privacy.is_some()
                     || content.company.is_some()
+                    || content.daybridge.is_some()
                     || !content.practices.is_empty());
             let holding_design = content
                 .bare
@@ -972,14 +976,16 @@ mod lawyer_shook_holding_page_tests {
         assert!(content
             .practices
             .iter()
-            .all(|practice| !practice.logo_href.is_empty() && !practice.font_family.is_empty()));
+            .all(|practice| !practice.logo_href.is_empty()
+                && !practice.font_family.is_empty()
+                && !practice.primary_color.is_empty()));
         let summons = content
             .practices
             .iter()
             .find(|practice| practice.href == "https://www.summonsdefense.nyc")
             .expect("Lawyer Shook links its Summons Defense NYC practice");
         assert_eq!(summons.heading, "Summons Defense");
-        assert_eq!(summons.body, "NYC summonses and OATH hearings");
+        assert_eq!(summons.body, "NYC summons defense at OATH hearings");
         assert!(content.provenance.is_none());
         // The one link on the page: an existing client's way to `/app`.
         let sign_in_text: String = bare.sign_in.iter().map(|run| run.text.as_str()).collect();

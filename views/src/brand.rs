@@ -617,7 +617,7 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     firm_memberships: FIRM_MEMBERSHIPS,
     firm_social: &[],
     firm_family: BrandKey::ALL,
-    firm_trademark: "LAWYER SHOOK",
+    firm_trademark: "",
     firm_trademark_registration: "",
     firm_trademark_record_url: "",
     consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
@@ -834,6 +834,53 @@ pub static SUMMONS_BRANDING: Branding = Branding {
     brand_key: BrandKey::Summons,
 };
 
+/// The `daybridge` house brand. Page copy lives in
+/// `neon/locales/en/daybridge/`; the site remains outside the public launch
+/// set while its design and engagement terms are reviewed.
+pub static DAYBRIDGE_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "Daybridge Divorce Law",
+        home_href: "/",
+    tagline: "Divorce counsel for $10 a day while retained, with case costs paid separately.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "/public/brand/daybridge/logo.svg",
+        social_image: "",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@daybridgedivorce.com",
+    support_domain: "daybridgedivorce.com",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: FIRM_OFFICES,
+    firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
+    firm_family: &[
+        BrandKey::Neon,
+        BrandKey::DeleteYourData,
+        BrandKey::DeleteYourDebt,
+        BrandKey::Vesta,
+        BrandKey::Misericordia,
+        BrandKey::Abhaya,
+        BrandKey::Summons,
+        BrandKey::Daybridge,
+    ],
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "daybridgedivorce.com",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Daybridge Divorce Law is operated by Shook Law PLLC. The attorney fee is $10 for each day the firm is retained, as defined by the written retainer. Court filing fees, service fees, and other case costs are separate. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Divorce representation from Daybridge Divorce Law, operated by Shook Law PLLC. $10 a day while retained, with case costs paid separately under the written retainer.",
+    portal_only: false,
+    brand_key: BrandKey::Daybridge,
+};
+
 /// A closed key naming which house brand a request resolves to. Distinct
 /// from `portal::hosting::Site`, which names the *binary*: a `BrandKey`
 /// names one request's resolved identity, and one running binary can resolve
@@ -852,6 +899,8 @@ pub enum BrandKey {
     DeleteYourDebt,
     /// The NYC summons / OATH practice, presented publicly as Summons Defense.
     Summons,
+    /// The daily-fee divorce practice.
+    Daybridge,
 }
 
 impl BrandKey {
@@ -865,6 +914,7 @@ impl BrandKey {
         Self::Abhaya,
         Self::LawyerShook,
         Self::Summons,
+        Self::Daybridge,
     ];
 
     /// The compiled keys whose hosts currently serve a public site. The
@@ -892,6 +942,7 @@ impl BrandKey {
             Self::Abhaya => "abhaya",
             Self::DeleteYourDebt => "delete-your-debt",
             Self::Summons => "summons",
+            Self::Daybridge => "daybridge",
         }
     }
 
@@ -920,7 +971,8 @@ impl BrandKey {
             Self::Misericordia => "accidents and injury claims",
             Self::Abhaya => "visas, green cards, and citizenship",
             Self::DeleteYourDebt => "defend against debt collectors",
-            Self::Summons => "NYC summonses and OATH hearings",
+            Self::Summons => "NYC summons defense at OATH hearings",
+            Self::Daybridge => "divorce counsel for $10 a day plus costs",
         }
     }
 
@@ -986,7 +1038,8 @@ impl BrandKey {
             | Self::Misericordia
             | Self::Abhaya
             | Self::DeleteYourDebt
-            | Self::Summons => &["home", "services"],
+            | Self::Summons
+            | Self::Daybridge => &["home", "services"],
         }
     }
 
@@ -1016,6 +1069,7 @@ impl BrandKey {
             }
             // The public holding page keeps the service catalog unpublished.
             Self::Summons => path == "/",
+            Self::Daybridge => matches!(path, "/" | "/services" | "/contact"),
         }
     }
 
@@ -1043,6 +1097,7 @@ impl BrandKey {
             Self::Abhaya => "abhayaimmigration.com",
             Self::DeleteYourDebt => "deleteyourdebt.com",
             Self::Summons => "summonsdefense.nyc",
+            Self::Daybridge => "daybridgedivorce.com",
         }
     }
 
@@ -1098,6 +1153,7 @@ impl BrandKey {
             Self::Abhaya => &["www.abhayaimmigration.com", "staging.abhayaimmigration.com"],
             Self::DeleteYourDebt => &["www.deleteyourdebt.com", "staging.deleteyourdebt.com"],
             Self::Summons => &["www.summonsdefense.nyc", "staging.summonsdefense.nyc"],
+            Self::Daybridge => &["www.daybridgedivorce.com", "staging.daybridgedivorce.com"],
         }
     }
 
@@ -1117,6 +1173,7 @@ impl BrandKey {
             Self::Abhaya => &ABHAYA_BRANDING,
             Self::DeleteYourDebt => &DELETE_YOUR_DEBT_BRANDING,
             Self::Summons => &SUMMONS_BRANDING,
+            Self::Daybridge => &DAYBRIDGE_BRANDING,
         }
     }
 
@@ -1144,6 +1201,7 @@ impl BrandKey {
             Self::Abhaya => Some("NAVIGATOR_LOCAL_ABHAYA_PORT"),
             Self::DeleteYourDebt => Some("NAVIGATOR_LOCAL_DELETE_YOUR_DEBT_PORT"),
             Self::Summons => Some("NAVIGATOR_LOCAL_SUMMONS_PORT"),
+            Self::Daybridge => Some("NAVIGATOR_LOCAL_DAYBRIDGE_PORT"),
         }
     }
 }
@@ -2885,7 +2943,7 @@ mod tests {
         );
         assert_eq!(LAWYER_SHOOK_BRANDING.firm.legal_entity, "Shook Law PLLC");
         assert_eq!(LAWYER_SHOOK_BRANDING.support_domain, "lawyershook.com");
-        assert_eq!(LAWYER_SHOOK_BRANDING.firm_trademark, "LAWYER SHOOK");
+        assert!(LAWYER_SHOOK_BRANDING.firm_trademark.is_empty());
         assert!(LAWYER_SHOOK_BRANDING.firm_trademark_registration.is_empty());
     }
 

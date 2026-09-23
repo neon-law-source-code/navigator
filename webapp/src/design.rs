@@ -639,6 +639,7 @@ fn demo_family() -> Vec<FooterBrandLink> {
         label: label.to_string(),
         href: href.to_string(),
         current,
+        logo_href: String::new(),
         byline: byline.to_string(),
     })
     .collect()

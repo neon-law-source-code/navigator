@@ -48,9 +48,17 @@ pub(crate) fn PracticeCard(
     href: String,
     #[props(default)] logo_href: String,
     #[props(default)] font_family: String,
+    #[props(default)] primary_color: String,
     heading_id: String,
 ) -> Element {
-    let style = (!font_family.is_empty()).then(|| format!("font-family: {font_family};"));
+    let mut declarations = Vec::new();
+    if !font_family.is_empty() {
+        declarations.push(format!("font-family: {font_family};"));
+    }
+    if !primary_color.is_empty() {
+        declarations.push(format!("--practice-brand: {primary_color};"));
+    }
+    let style = (!declarations.is_empty()).then(|| declarations.join(" "));
     let is_external = is_external_href(&href);
     rsx! {
         a {
@@ -205,6 +213,7 @@ mod tests {
                     href: "https://www.vestaestateplanning.com".to_string(),
                     logo_href: "/public/brand/vesta.svg".to_string(),
                     font_family: "EB Garamond, serif".to_string(),
+                    primary_color: "var(--nav-primary)".to_string(),
                     heading_id: "practice-vesta".to_string(),
                 }
             }
@@ -215,6 +224,10 @@ mod tests {
         let html = dioxus_ssr::render(&dom);
         assert!(html.contains(r#"src="/public/brand/vesta.svg""#), "{html}");
         assert!(html.contains("font-family: EB Garamond, serif;"), "{html}");
+        assert!(
+            html.contains("--practice-brand: var(--nav-primary);"),
+            "{html}"
+        );
         assert!(!html.contains("data-practice-mark"), "{html}");
     }
 }

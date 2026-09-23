@@ -3983,6 +3983,7 @@ mod tests {
                 "www.abhayaimmigration.com",
                 "www.lawyershook.com",
                 "www.summonsdefense.nyc",
+                "www.daybridgedivorce.com",
             ],
             "a production public host pulls in every other registered brand's production host — \
              ENG-808: the full registry, not only the launched ones"
@@ -3997,6 +3998,7 @@ mod tests {
                 "staging.abhayaimmigration.com",
                 "staging.lawyershook.com",
                 "staging.summonsdefense.nyc",
+                "staging.daybridgedivorce.com",
             ],
             "a staging public host pulls in only the other brands' staging hosts"
         );

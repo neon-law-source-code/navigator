@@ -327,7 +327,7 @@ Workspace as usual.
 ## Grounding TLS in the release inventory
 
 A next release must carry every registered house brand's certificate, not only the launched ones.
-`views::brand::BrandKey::ALL` names eight compiled keys today; `views::brand::release_brand_hosts()` is those keys
+`views::brand::BrandKey::ALL` names nine compiled keys today; `views::brand::release_brand_hosts()` is those keys
 crossed with the hosts each one serves (`www.<domain>` and `staging.<domain>`) — the **release inventory**
 `cli::devx::ship` reads to render every brand's `ManagedCertificate` and Ingress rule, in both environments, whether or
 not that brand has launched.

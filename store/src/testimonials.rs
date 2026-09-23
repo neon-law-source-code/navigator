@@ -356,6 +356,38 @@ pub async fn published_for_home(
         .collect())
 }
 
+/// Published testimonials for one house brand, ordered exactly as the public
+/// home and testimonials pages display them.
+pub async fn published_for_brand(
+    surreal: &SurrealDb,
+    brand: &str,
+    limit: u64,
+) -> Result<Vec<PublishedTestimonial>, TestimonialError> {
+    let query = format!(
+        "SELECT {SELECT} FROM testimonial WHERE project_id IN \
+         (SELECT VALUE id FROM project WHERE brand = $brand) \
+         AND consented_at != NONE AND published_at != NONE \
+         ORDER BY display_order, published_at DESC LIMIT $limit"
+    );
+    let mut response = surreal
+        .query(query)
+        .bind(("brand", brand.to_string()))
+        .bind(("limit", limit))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<TestimonialRow> = response.take(0)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(PublishedTestimonial {
+                id: record_uuid(&row.id)?,
+                quote: row.quote,
+                attribution_label: row.attribution_label,
+            })
+        })
+        .collect())
+}
+
 async fn find_replay(
     surreal: &SurrealDb,
     input: &NewTestimonial<'_>,
@@ -426,6 +458,14 @@ mod tests {
         let rows = published_for_home(&surreal, 10).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].quote, "Published quote.");
+        assert_eq!(
+            published_for_brand(&surreal, "neon", 10).await.unwrap(),
+            rows
+        );
+        assert!(published_for_brand(&surreal, "delete-your-data", 10)
+            .await
+            .unwrap()
+            .is_empty());
         let public = format!("{:?}", rows[0]);
         assert!(
             !public.contains("Published matter"),

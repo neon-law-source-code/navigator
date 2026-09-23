@@ -31,40 +31,54 @@ pub fn TestimonialSection(heading: String, lead: String, cards: Vec<TestimonialC
         section { class: "testimonial-section",
             div { class: "testimonial-section__head",
                 h2 { "{heading}" }
-                p { class: "nav-text-muted", "{lead}" }
+                if !lead.trim().is_empty() {
+                    p { class: "nav-text-muted", "{lead}" }
+                }
             }
-            div { class: "testimonial-grid",
-                for card in cards.iter() {
-                    article { class: "nav-card testimonial-card",
-                        div { class: "nav-card__body testimonial-card__body",
-                            if let Some(label) = &card.product_label {
-                                p { class: "testimonial-card__label", "{label}" }
-                            }
-                            blockquote { class: "testimonial-card__quote",
-                                p { "\u{201C}{card.quote}\u{201D}" }
-                            }
-                            if !card.attribution.trim().is_empty() {
-                                div { class: "testimonial-card__by",
-                                    if let Some(url) = &card.profile_image_url {
-                                        img {
-                                            class: "testimonial-card__avatar",
-                                            src: "{url}",
-                                            alt: "{card.attribution} profile image",
-                                            width: "56",
-                                            height: "56",
-                                        }
-                                    } else {
-                                        div {
-                                            class: "testimonial-card__avatar testimonial-card__avatar--initials",
-                                            "aria-hidden": "true",
-                                            "{initials(&card.attribution)}"
-                                        }
+            TestimonialCards { cards }
+        }
+    }
+}
+
+/// The card grid without a heading, for pages that already own the heading
+/// level or place testimonials after another catalog.
+#[component]
+pub fn TestimonialCards(cards: Vec<TestimonialCard>) -> Element {
+    if cards.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div { class: "testimonial-grid",
+            for card in cards.iter() {
+                article { class: "nav-card testimonial-card",
+                    div { class: "nav-card__body testimonial-card__body",
+                        if let Some(label) = &card.product_label {
+                            p { class: "testimonial-card__label", "{label}" }
+                        }
+                        blockquote { class: "testimonial-card__quote",
+                            p { "\u{201C}{card.quote}\u{201D}" }
+                        }
+                        if !card.attribution.trim().is_empty() {
+                            div { class: "testimonial-card__by",
+                                if let Some(url) = &card.profile_image_url {
+                                    img {
+                                        class: "testimonial-card__avatar",
+                                        src: "{url}",
+                                        alt: "{card.attribution} profile image",
+                                        width: "56",
+                                        height: "56",
                                     }
+                                } else {
                                     div {
-                                        p { class: "testimonial-card__name", "{card.attribution}" }
-                                        if let Some(detail) = &card.detail {
-                                            p { class: "nav-text-muted testimonial-card__detail", "{detail}" }
-                                        }
+                                        class: "testimonial-card__avatar testimonial-card__avatar--initials",
+                                        "aria-hidden": "true",
+                                        "{initials(&card.attribution)}"
+                                    }
+                                }
+                                div {
+                                    p { class: "testimonial-card__name", "{card.attribution}" }
+                                    if let Some(detail) = &card.detail {
+                                        p { class: "nav-text-muted testimonial-card__detail", "{detail}" }
                                     }
                                 }
                             }

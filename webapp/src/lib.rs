@@ -116,6 +116,7 @@ pub mod start_door;
 pub mod team_home;
 pub mod team_page;
 pub mod template_gallery;
+pub mod testimonials_page;
 pub mod transactional_page;
 pub mod walker_step;
 

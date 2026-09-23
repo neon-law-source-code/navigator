@@ -853,8 +853,8 @@ mod tests {
         ("Privacy", "/privacy"),
         ("Team", "/team"),
         ("Terms", "/terms"),
+        ("Testimonials", "/testimonials"),
         ("UX", "https://neon-law-source-code.github.io/navigator-ux/"),
-        ("Workshops", "/workshops"),
     ];
 
     /// The firm's legal strip: the copyright line that names the entity, the

@@ -62,6 +62,7 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/team",
     "/blog",
     "/blog/{slug}",
+    "/testimonials",
     // The talks catalog and every talk beneath it. Anonymous like the rest of
     // this table: a talk is published to be read.
     "/presentations",
@@ -71,7 +72,8 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/presentations/{slug}/display/{step}",
     "/presentations/{slug}/certificate",
     "/presentations/{slug}/certificate/sent",
-    // The public Navigator workshops.
+    // The public Navigator workshop materials remain under their original
+    // paths; the retired index itself redirects to `/presentations`.
     "/workshops",
     "/workshops/{slug}",
     "/workshops/{slug}/slides",
@@ -103,7 +105,7 @@ pub const PUBLIC_PATHS: &[&str] = &[
 pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
     match key {
         // Privacy keeps the annual product on one page, with office details separate.
-        BrandKey::DeleteYourData => ["/", "/contact"]
+        BrandKey::DeleteYourData => ["/", "/contact", "/testimonials"]
             .iter()
             .map(|path| (*path).to_string())
             .collect(),
@@ -112,12 +114,15 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
         | BrandKey::Summons
-        | BrandKey::Daybridge => ["/", "/services", "/contact"]
+        | BrandKey::Daybridge => ["/", "/services", "/contact", "/testimonials"]
             .iter()
             .map(|path| (*path).to_string())
             .collect(),
         // Lawyer Shook is a bare holding page: `/` is the whole surface.
-        BrandKey::LawyerShook => std::iter::once("/".to_string()).collect(),
+        BrandKey::LawyerShook => ["/", "/testimonials"]
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect(),
         BrandKey::Neon => {
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
@@ -126,8 +131,8 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
                 "/contact",
                 "/team",
                 "/blog",
-                "/workshops",
                 "/presentations",
+                "/testimonials",
             ]
             .iter()
             .map(|path| (*path).to_string())

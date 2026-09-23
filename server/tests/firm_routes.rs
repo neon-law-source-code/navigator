@@ -285,15 +285,13 @@ async fn the_neon_home_lead_modal_reuses_the_contact_form_contract() {
 
 #[tokio::test]
 async fn the_footer_carries_the_pages_the_header_does_not() {
-    // All ten routes are one click away from every public page. Checked on
+    // All twelve routes are one click away from every public page. Checked on
     // `/navigator` rather than `/`, because the footer is shared chrome and a
     // page that is not the home page proves it renders everywhere.
     //
-    // Workshops joined the row when the classes became public, and Docs when the
-    // workspace documentation did. While either was gated neither row carried
-    // it, so that the site never sent a signed-out reader at a login door; now
-    // that anyone may read them, these links are what stop each being reachable
-    // only by typing the URL.
+    // Docs joined the row when workspace documentation became public. The
+    // testimonials page is a public firm surface, so it stays one click away
+    // on the same row.
     //
     // `/privacy` and `/terms` ride the row on the same footing as the rest.
     // UX is the one entry that links off-site, to the platform's design
@@ -310,8 +308,8 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         "/privacy",
         "/team",
         "/terms",
+        "/testimonials",
         "https://neon-law-source-code.github.io/navigator-ux/",
-        "/workshops",
     ];
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/navigator").await).await;
@@ -889,7 +887,7 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
     assert!(body.contains("Build a legal library to suit your company"));
     assert!(body.matches("Keep building.").count() >= 2);
     assert!(body.contains(r#"href="/presentations/rust-in-peace""#));
-    assert!(body.contains(r#"href="/workshops""#));
+    assert!(body.contains(r#"href="/presentations""#));
     assert!(body.contains(r##"href="#pricing""##));
     // The pricing anchor includes the starting retainer and withdrawal terms.
     assert!(body.contains(r#"id="pricing" class="company-pricing""#));
@@ -1294,7 +1292,6 @@ async fn the_workshops_surface_reads_anonymously() {
     let app = site_app_with_talks().await;
 
     for path in [
-        "/workshops",
         "/workshops/use-the-navigator",
         "/workshops/use-the-navigator/slides",
         "/workshops/use-the-navigator/step/1",
@@ -1312,6 +1309,17 @@ async fn the_workshops_surface_reads_anonymously() {
         anon_get(&app, "/workshops/genai-training").await.status(),
         StatusCode::NOT_FOUND,
         "an unknown class is a 404, not a login redirect"
+    );
+}
+
+#[tokio::test]
+async fn the_retired_workshops_index_redirects_to_presentations() {
+    let app = site_app_with_talks().await;
+    let response = anon_get(&app, "/workshops").await;
+    assert_eq!(response.status(), StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(
+        response.headers().get("location").unwrap(),
+        "/presentations"
     );
 }
 
@@ -1365,7 +1373,7 @@ async fn the_three_classes_render_and_land_beside_each_other() {
     );
 
     // The catalog lists all three, simple titles and all.
-    let index = body_string(role_get(&app, "/workshops", lawyer).await).await;
+    let index = body_string(role_get(&app, "/presentations", lawyer).await).await;
     for href in [
         "href=\"/workshops/use-the-navigator\"",
         "href=\"/workshops/deploy-the-navigator\"",

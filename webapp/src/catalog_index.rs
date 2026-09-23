@@ -8,7 +8,8 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    CatalogHero, PublicShell, SiteHeader, SiteNavLink, SocialMeta, CATALOG_STYLESHEET_HREF,
+    CatalogHero, PublicShell, SiteHeader, SiteNavLink, SocialMeta, TestimonialCard,
+    TestimonialSection, CATALOG_STYLESHEET_HREF,
 };
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
@@ -40,6 +41,12 @@ pub struct CatalogIndexContent {
     pub contact_email: String,
     /// The line under the list. Empty renders nothing.
     pub footnote: String,
+    /// Whether the catalog ends with the public testimonials section.
+    #[serde(default)]
+    pub include_testimonials: bool,
+    /// The request's resolved brand, used only for the server-side store read.
+    #[serde(default)]
+    pub brand_key: String,
 }
 
 /// The [`CatalogIndexContent`] the portal pre-layer injects, read back in
@@ -52,6 +59,8 @@ pub struct InjectedCatalogIndex(pub CatalogIndexContent);
 pub struct CatalogIndexView {
     pub chrome: PublicChrome,
     pub content: CatalogIndexContent,
+    #[serde(default)]
+    pub testimonials: Vec<TestimonialCard>,
 }
 
 /// Resolve the shared chrome and this category's injected content.
@@ -64,9 +73,27 @@ pub async fn catalog_index_view() -> Result<CatalogIndexView, ServerFnError> {
     .await
     .map(|axum::Extension(c)| c.0)
     .unwrap_or_default();
+    let surreal = consume_context::<store::surreal::SurrealDb>();
+    let testimonials = if content.include_testimonials {
+        store::testimonials::published_for_brand(&surreal, &content.brand_key, 12)
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?
+            .into_iter()
+            .map(|testimonial| TestimonialCard {
+                quote: testimonial.quote,
+                attribution: testimonial.attribution_label.unwrap_or_default(),
+                detail: None,
+                profile_image_url: None,
+                product_label: None,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     Ok(CatalogIndexView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
+        testimonials,
     })
 }
 
@@ -79,14 +106,22 @@ pub fn CatalogIndexEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        CatalogIndexPage { chrome: view.chrome, content: view.content }
+        CatalogIndexPage {
+            chrome: view.chrome,
+            content: view.content,
+            testimonials: view.testimonials,
+        }
     }
 }
 
 /// The pure index page. Prop-driven, so it server-renders and unit-tests
 /// without a server future.
 #[component]
-pub fn CatalogIndexPage(chrome: PublicChrome, content: CatalogIndexContent) -> Element {
+pub fn CatalogIndexPage(
+    chrome: PublicChrome,
+    content: CatalogIndexContent,
+    #[props(default)] testimonials: Vec<TestimonialCard>,
+) -> Element {
     let header = rsx! {
         SiteHeader {
             brand_name: chrome.brand_name.clone(),
@@ -154,6 +189,13 @@ pub fn CatalogIndexPage(chrome: PublicChrome, content: CatalogIndexContent) -> E
                     p { class: "catalog-more", "{content.footnote}" }
                 }
             }
+            }
+            if content.include_testimonials {
+                TestimonialSection {
+                    heading: "Testimonials".to_string(),
+                    lead: String::new(),
+                    cards: testimonials,
+                }
             }
         }
     }
@@ -246,6 +288,8 @@ mod tests {
             ],
             contact_email: "support@example.org".to_string(),
             footnote: "More classes land here as we run them.".to_string(),
+            include_testimonials: false,
+            brand_key: String::new(),
         }
     }
 
@@ -338,6 +382,8 @@ mod tests {
                 ],
                 contact_email: "support@example.org".to_string(),
                 footnote: String::new(),
+                include_testimonials: false,
+                brand_key: String::new(),
             };
             rsx! {
                 CatalogIndexPage { chrome: PublicChrome::default(), content }

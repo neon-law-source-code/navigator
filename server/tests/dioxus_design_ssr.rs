@@ -287,14 +287,11 @@ async fn gallery_renders_pricing_testimonial_and_disclaimer_sections() {
     );
     // An off-site CTA opens a new tab with the OWASP rel pair.
     assert!(html.contains(r#"rel="noopener noreferrer""#), "{html}");
-    // Testimonials: a themed quote card with the generated-initials avatar.
+    // Testimonials are an intentional empty state until a client requests
+    // publication; the design gallery must not invent a quote to illustrate it.
     assert!(
-        html.contains("testimonial-card"),
-        "renders testimonials: {html}"
-    );
-    assert!(
-        html.contains("testimonial-card__avatar--initials"),
-        "initials avatar: {html}"
+        !html.contains("testimonial-card"),
+        "empty testimonials: {html}"
     );
     // The legal disclaimer partial, with its three load-bearing UPL points.
     assert!(

@@ -193,11 +193,12 @@ const FIRM_NAV: &[NavLink] = &[NavLink::leaf(
 /// profile is a contact card, not a substitute for that regulated notice.
 ///
 /// Every entry here is Navigator's own public surface — the platform itself,
-/// its blog, its docs, its talks and templates and workshops, the firm's own
+/// its blog, its docs, its talks and templates, the firm's own
 /// two-person roster, the design showcase — routes a white-label brand has no
 /// occasion to link, so this row belongs to [`BrandKey::Neon`] alone.
 ///
-/// Nine entries. [`firm_footer_nav`] appends Contact, Privacy, and Terms —
+/// Eight entries. [`firm_footer_nav`] appends Testimonials, Contact, Privacy,
+/// and Terms —
 /// present on every brand's row — bringing Neon's own footer to twelve, the
 /// count that shaped the row's layout: three even rows of four on a wide
 /// viewport and one list of twelve on a narrow one, so a thirteenth would
@@ -215,7 +216,6 @@ const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("Presentations", "/presentations"),
     NavLink::leaf("Team", "/team"),
     NavLink::leaf("UX", "https://neon-law-source-code.github.io/navigator-ux/"),
-    NavLink::leaf("Workshops", "/workshops"),
 ];
 
 /// One bar license a named attorney holds: the jurisdiction, the number that
@@ -1061,15 +1061,15 @@ impl BrandKey {
                 path.trim_end_matches('/'),
                 "/business" | "/services" | "/disputes"
             ),
-            Self::DeleteYourData => matches!(path, "/" | "/contact"),
-            Self::LawyerShook => path == "/",
-            Self::Vesta => matches!(path, "/" | "/services" | "/contact"),
+            Self::DeleteYourData => matches!(path, "/" | "/contact" | "/testimonials"),
+            Self::LawyerShook => matches!(path, "/" | "/testimonials"),
+            Self::Vesta => matches!(path, "/" | "/services" | "/contact" | "/testimonials"),
             Self::Misericordia | Self::Abhaya | Self::DeleteYourDebt => {
-                matches!(path, "/" | "/services" | "/contact")
+                matches!(path, "/" | "/services" | "/contact" | "/testimonials")
             }
             // The public holding page keeps the service catalog unpublished.
-            Self::Summons => path == "/",
-            Self::Daybridge => matches!(path, "/" | "/services" | "/contact"),
+            Self::Summons => matches!(path, "/" | "/testimonials"),
+            Self::Daybridge => matches!(path, "/" | "/services" | "/contact" | "/testimonials"),
         }
     }
 
@@ -1744,7 +1744,7 @@ pub fn firm_trademark() -> (&'static str, &'static str, &'static str) {
 /// entirely, so the gate also requires [`firm_family`] to be non-empty —
 /// empty exactly when a manifest renamed the firm, per
 /// [`Branding::firm_family`]. Every other brand's row, house or mounted,
-/// carries only three entries:
+/// carries Testimonials plus the three legal/contact entries:
 ///
 /// Privacy and Terms sit in this row on the same footing as the Blog and
 /// Notations, not in a smaller strip beneath it. They are the two documents a
@@ -1771,6 +1771,7 @@ pub fn firm_footer_nav() -> Vec<NavLink> {
     } else {
         Vec::new()
     };
+    nav.push(NavLink::leaf("Testimonials", "/testimonials"));
     nav.push(NavLink::leaf("Contact", "/contact"));
     nav.push(NavLink::leaf("Privacy", branding.privacy_url));
     nav.push(NavLink::leaf("Terms", branding.terms_url));
@@ -1867,7 +1868,7 @@ mod tests {
             let footer = super::firm_footer_nav();
             assert_eq!(
                 footer.iter().map(|n| n.label).collect::<Vec<_>>(),
-                ["Contact", "Privacy", "Terms"],
+                ["Contact", "Privacy", "Terms", "Testimonials"],
                 "off Neon, only the firm's own legal surface remains"
             );
             assert_eq!(
@@ -2414,8 +2415,8 @@ mod tests {
                 "Privacy",
                 "Team",
                 "Terms",
+                "Testimonials",
                 "UX",
-                "Workshops"
             ]
         );
         assert_eq!(
@@ -2458,7 +2459,7 @@ mod tests {
     async fn the_footer_nav_keeps_only_contact_privacy_and_terms_off_the_firms_own_brand() {
         scope(&super::ABHAYA_BRANDING, async {
             let footer: Vec<&str> = super::firm_footer_nav().iter().map(|n| n.label).collect();
-            assert_eq!(footer, ["Contact", "Privacy", "Terms"]);
+            assert_eq!(footer, ["Contact", "Privacy", "Terms", "Testimonials"]);
             assert_eq!(
                 super::firm_footer_nav()
                     .iter()
@@ -2559,18 +2560,14 @@ mod tests {
         assert_eq!(presentations.href, "/presentations");
     }
 
-    /// The workshop catalog stays one click from every page.
-    ///
-    /// The footer entry is the only thing keeping the public catalog off
-    /// "reachable by typing the URL", which is why it is asserted here rather
-    /// than left to the alphabetical list above.
+    /// The public testimonials page stays one click from every page.
     #[test]
-    fn the_public_workshop_catalog_is_linked_from_the_footer() {
-        let workshops = super::firm_footer_nav()
+    fn the_public_testimonials_page_is_linked_from_the_footer() {
+        let testimonials = super::firm_footer_nav()
             .into_iter()
-            .find(|n| n.label == "Workshops")
-            .expect("the public workshop catalog is linked");
-        assert_eq!(workshops.href, "/workshops");
+            .find(|n| n.label == "Testimonials")
+            .expect("the public testimonials page is linked");
+        assert_eq!(testimonials.href, "/testimonials");
     }
 
     #[test]

@@ -204,7 +204,7 @@ async fn the_sitemap_expands_over_loaded_content() {
         // The raw-Markdown twin, which is what an LLM crawler fetches.
         "/presentations/rust-in-peace.md",
         "/presentations/rust-in-peace/step/1",
-        "/workshops",
+        "/testimonials",
         "/workshops/use-the-navigator",
         "/workshops/use-the-navigator.md",
         "/workshops/use-the-navigator/step/1",

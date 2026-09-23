@@ -3023,7 +3023,12 @@ pub const FIRM_SERVICES_PATH: &str = "/services";
 pub fn catalog_index_router(
     path: &str,
     content: webapp::catalog_index::CatalogIndexContent,
+    surreal: store::surreal::SurrealDb,
 ) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
     Router::<FullstackState>::new()
         .route(
             path,
@@ -3033,7 +3038,7 @@ pub fn catalog_index_router(
                 .layer(from_fn_with_state(content, inject_catalog_index)),
         )
         .with_state(FullstackState::new(
-            ServeConfig::new(),
+            cfg,
             webapp::catalog_index::CatalogIndexEntry,
         ))
 }
@@ -3044,6 +3049,16 @@ async fn inject_catalog_index(
     mut req: Request,
     next: Next,
 ) -> Response {
+    let mut content = content;
+    if content.include_testimonials {
+        content.brand_key = req
+            .extensions()
+            .get::<views::brand::BrandKey>()
+            .copied()
+            .unwrap_or_default()
+            .as_str()
+            .to_string();
+    }
     req.extensions_mut()
         .insert(webapp::catalog_index::InjectedCatalogIndex(content));
     next.run(req).await
@@ -3499,6 +3514,8 @@ pub const PRESENTATION_PATHS: MaterialPaths = MaterialPaths {
 pub const WORKSHOP_INDEX_PATH: &str = "/workshops";
 /// The public index of the talks.
 pub const PRESENTATION_INDEX_PATH: &str = "/presentations";
+/// The public testimonials page.
+pub const TESTIMONIALS_PATH: &str = "/testimonials";
 /// The public catalog of shipped notations.
 pub const NOTATIONS_INDEX_PATH: &str = "/notations";
 /// A workshop's hub.
@@ -3510,6 +3527,19 @@ pub const PRESENTATION_MATERIAL_PATH: &str = "/presentations/{slug}";
 pub const WORKSHOP_CERTIFICATE_PATH: &str = "/workshops/{slug}/certificate";
 /// The presentations twin of [`WORKSHOP_CERTIFICATE_PATH`].
 pub const PRESENTATION_CERTIFICATE_PATH: &str = "/presentations/{slug}/certificate";
+
+/// Keep the retired workshops index reachable after the catalog collapse.
+pub fn retired_workshops_router() -> Router {
+    Router::new().route(
+        WORKSHOP_INDEX_PATH,
+        get(|| async {
+            (
+                StatusCode::MOVED_PERMANENTLY,
+                [(header::LOCATION, PRESENTATION_INDEX_PATH)],
+            )
+        }),
+    )
+}
 
 /// One category's five read routers, ungated.
 ///
@@ -4035,6 +4065,30 @@ async fn inject_doc(
     }
 }
 
+/// The public testimonials page. Its page shell is static, but its published
+/// rows are read from the store for the request's resolved house brand.
+pub fn testimonials_router(path: &str, surreal: store::surreal::SurrealDb) -> Router {
+    let injected = webapp::testimonials_page::InjectedTestimonials::default();
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
+        Box::new(move || Box::new(injected.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+        Box::new(move || Box::new(surreal.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+    ]));
+
+    Router::<FullstackState>::new()
+        .route(
+            path,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_public_utility)),
+        )
+        .with_state(FullstackState::new(
+            cfg,
+            webapp::testimonials_page::TestimonialsPageEntry,
+        ))
+}
+
 /// The firm home page (`/`) — the Dioxus SSR port (#641 / #730 PR6). Static
 /// copy (`content`) is resolved brand-safely by the caller; approved
 /// testimonials are read per request from the injected store handle.
@@ -4049,6 +4103,7 @@ pub fn home_router(
     let injected = webapp::home::InjectedHome {
         content,
         lead_capture,
+        brand_key: String::new(),
     };
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         Box::new(move || Box::new(injected.clone()) as Box<dyn std::any::Any>)

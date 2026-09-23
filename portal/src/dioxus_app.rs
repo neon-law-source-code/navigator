@@ -4018,8 +4018,14 @@ pub fn home_router(
     path: &str,
     content: webapp::home::HomeContent,
     surreal: store::surreal::SurrealDb,
+    lead_capture: Option<webapp::lead_capture::LeadCaptureCopy>,
+    sessions: crate::SessionStore,
+    secure_cookies: bool,
 ) -> Router {
-    let injected = webapp::home::InjectedHome(content);
+    let injected = webapp::home::InjectedHome {
+        content,
+        lead_capture,
+    };
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
         Box::new(move || Box::new(injected.clone()) as Box<dyn std::any::Any>)
             as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
@@ -4032,7 +4038,11 @@ pub fn home_router(
             path,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_public_utility)),
+                .layer(from_fn(inject_public_utility))
+                .layer(from_fn_with_state(
+                    (sessions, secure_cookies),
+                    crate::lead_capture::inject_page_context,
+                )),
         )
         .with_state(FullstackState::new(cfg, webapp::home::HomePageEntry))
 }

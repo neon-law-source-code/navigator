@@ -7,6 +7,7 @@ use crate::components::{
     is_external_href, PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
     TestimonialCard, TestimonialSection, THEME_STYLESHEET_HREF,
 };
+use crate::lead_capture::{LeadCaptureContext, LeadCaptureCopy, LeadCaptureForm};
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 pub use crate::components::PracticeMark;
@@ -165,9 +166,14 @@ pub struct BareStatement {
     pub sign_in: Vec<CopyRun>,
 }
 
-/// The [`HomeContent`] injected into the render context by the portal router.
+/// The [`HomeContent`] and any firm-owned lead copy injected into the render
+/// context by the portal router. Only Neon supplies lead copy; sibling brands
+/// receive `None` and therefore do not render this firm's lead modal.
 #[derive(Clone, Default)]
-pub struct InjectedHome(pub HomeContent);
+pub struct InjectedHome {
+    pub content: HomeContent,
+    pub lead_capture: Option<LeadCaptureCopy>,
+}
 
 /// Everything the page renders.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -175,16 +181,18 @@ pub struct HomePageView {
     pub chrome: PublicChrome,
     pub content: HomeContent,
     #[serde(default)]
+    pub lead_capture: Option<LeadCaptureCopy>,
+    #[serde(default)]
+    pub lead_context: LeadCaptureContext,
+    #[serde(default)]
     pub testimonials: Vec<TestimonialCard>,
 }
 
 /// Resolve the chrome and the static home content.
 #[server]
 pub async fn home_page_view() -> Result<HomePageView, ServerFnError> {
-    let content =
-        crate::public_chrome::copy_from_request_or_context(consume_context::<InjectedHome>)
-            .await
-            .0;
+    let injected =
+        crate::public_chrome::copy_from_request_or_context(consume_context::<InjectedHome>).await;
     let surreal = consume_context::<store::surreal::SurrealDb>();
     let testimonials = store::testimonials::published_for_home(&surreal, 6)
         .await
@@ -194,7 +202,12 @@ pub async fn home_page_view() -> Result<HomePageView, ServerFnError> {
         .collect();
     Ok(HomePageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
-        content,
+        content: injected.content,
+        lead_capture: injected.lead_capture,
+        lead_context: crate::public_chrome::copy_from_request_or_context(
+            consume_context::<LeadCaptureContext>,
+        )
+        .await,
         testimonials,
     })
 }
@@ -227,6 +240,8 @@ pub fn HomePageEntry() -> Element {
         HomePage {
             chrome: view.chrome,
             content: view.content,
+            lead_capture: view.lead_capture,
+            lead_context: view.lead_context,
             testimonials: view.testimonials,
         }
     }
@@ -238,6 +253,8 @@ pub fn HomePageEntry() -> Element {
 pub fn HomePage(
     chrome: PublicChrome,
     content: HomeContent,
+    #[props(default)] lead_capture: Option<LeadCaptureCopy>,
+    #[props(default)] lead_context: LeadCaptureContext,
     #[props(default)] testimonials: Vec<TestimonialCard>,
 ) -> Element {
     if let Some(bare) = content.bare.clone() {
@@ -331,6 +348,9 @@ pub fn HomePage(
         }
         document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
         document::Stylesheet { href: HOME_STYLESHEET_HREF }
+        if lead_capture.is_some() {
+            document::Script { src: "/public/js/lead-capture-modal.js", defer: true }
+        }
         if content.estate.is_some() {
             document::Stylesheet { href: "/public/css/vesta.css" }
         }
@@ -339,7 +359,11 @@ pub fn HomePage(
         }
         PublicShell { header, footer,
             if let Some(company) = content.company.as_ref() {
-                company::CompanyHome { content: content.clone(), company: company.clone() }
+                company::CompanyHome {
+                    content: content.clone(),
+                    company: company.clone(),
+                    lead_capture_enabled: lead_capture.is_some(),
+                }
             } else if let Some(estate) = content.estate.as_ref() {
                 estate::EstateHome { content: content.clone(), estate: estate.clone() }
             } else if let Some(privacy) = content.privacy.as_ref() {
@@ -351,12 +375,23 @@ pub fn HomePage(
             section { class: "home-statement",
                 h1 { class: "home-statement__heading", "{content.heading}" }
                 p { class: "home-statement__lead", "{content.lead}" }
-                a {
-                    class: "nav-btn nav-btn--primary home-statement__cta",
-                    href: "{content.contact_href}",
-                    target: if is_external_href(&content.contact_href) { Some("_blank") } else { None },
-                    rel: if is_external_href(&content.contact_href) { Some("noopener noreferrer") } else { None },
-                    "{content.contact_label}"
+                div { class: "home-statement__actions",
+                    a {
+                        class: "nav-btn nav-btn--primary home-statement__cta",
+                        href: "{content.contact_href}",
+                        target: if is_external_href(&content.contact_href) { Some("_blank") } else { None },
+                        rel: if is_external_href(&content.contact_href) { Some("noopener noreferrer") } else { None },
+                        "{content.contact_label}"
+                    }
+                    if lead_capture.is_some() {
+                        a {
+                            class: "nav-btn nav-btn--secondary home-lead-modal__trigger",
+                            href: "/contact",
+                            "aria-haspopup": "dialog",
+                            "data-lead-modal-trigger": "true",
+                            "Get in touch"
+                        }
+                    }
                 }
             }
             if let Some(service) = content.service.as_ref() {
@@ -377,6 +412,35 @@ pub fn HomePage(
                 }
             }
             }
+            if let Some(copy) = lead_capture {
+                HomeLeadModal { copy, context: lead_context }
+            }
+        }
+    }
+}
+
+/// The Neon home-page lead form. The trigger is an ordinary `/contact` link
+/// until the small first-party script enhances it into a native dialog.
+#[component]
+fn HomeLeadModal(copy: LeadCaptureCopy, context: LeadCaptureContext) -> Element {
+    rsx! {
+        dialog {
+            class: "home-lead-modal",
+            id: "home-lead-modal",
+            "aria-labelledby": "home-lead-modal-title",
+            "aria-modal": "true",
+            "data-lead-modal": "true",
+            header { class: "home-lead-modal__header",
+                h2 { class: "home-lead-modal__title", id: "home-lead-modal-title", "Get in touch" }
+                button {
+                    class: "nav-btn nav-btn--secondary home-lead-modal__close",
+                    r#type: "button",
+                    "aria-label": "Close",
+                    "data-lead-modal-close": "true",
+                    "×"
+                }
+            }
+            LeadCaptureForm { copy, context }
         }
     }
 }
@@ -692,6 +756,84 @@ mod tests {
             "CTA links to the firm inbox"
         );
         assert!(out.contains("Contact us"), "CTA label");
+    }
+
+    fn lead_copy() -> LeadCaptureCopy {
+        LeadCaptureCopy {
+            consent_sentence: "By sending this, you agree that Neon Law may email you about this inquiry. Sending it does not make you a client, and nothing on this page is legal advice. See our Privacy Policy.".to_string(),
+            phone_helper: "Optional. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Our Privacy Policy and texting terms explain how we text and what we keep.".to_string(),
+            sms_label: "Yes, Neon Law may send me text messages about this inquiry at this number, including automated texts. Texting is not a condition of hiring the firm.".to_string(),
+        }
+    }
+
+    #[test]
+    fn neon_home_lead_modal_reuses_the_native_lead_form_contract() {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome::default(),
+                    content: HomeContent {
+                        contact_label: "Book Consultation".to_string(),
+                        company: Some(CompanyContent::default()),
+                        ..HomeContent::default()
+                    },
+                    lead_capture: Some(lead_copy()),
+                    lead_context: LeadCaptureContext {
+                        csrf_token: "home-csrf".to_string(),
+                        source_path: "/".to_string(),
+                    },
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+        let copy = lead_copy();
+
+        assert!(out.contains("Book Consultation"), "primary CTA: {out}");
+        assert!(
+            out.contains(r#"data-lead-modal-trigger="true""#),
+            "trigger: {out}"
+        );
+        assert!(out.contains(r#"href="/contact""#), "no-JS fallback: {out}");
+        assert!(
+            out.contains(r#"action="/leads""#),
+            "shared POST target: {out}"
+        );
+        assert!(
+            out.contains(r#"name="source_path" value="/""#),
+            "home attribution: {out}"
+        );
+        assert!(
+            out.contains(&format!(
+                r#"name="consent_version" value="{}""#,
+                copy.consent_sentence
+            )),
+            "consent version: {out}"
+        );
+        assert!(out.contains(r#"name="website""#), "honeypot name: {out}");
+        assert!(
+            out.contains(r#"class="nav-honeypot nav-visually-hidden" aria-hidden="true""#),
+            "honeypot hidden: {out}"
+        );
+        let (phone_helper_before_link, _) = copy
+            .phone_helper
+            .split_once("Privacy Policy and texting terms")
+            .expect("phone helper links to the texting terms");
+        assert!(out.contains(phone_helper_before_link), "SMS helper: {out}");
+        assert!(out.contains(&copy.sms_label), "SMS label: {out}");
+        assert!(
+            out.contains(r#"href="/privacy""#),
+            "privacy wording link: {out}"
+        );
+        assert!(
+            out.contains(r#"href="/privacy#text-messaging-sms""#),
+            "texting terms link: {out}"
+        );
+        assert!(
+            out.contains(r#"aria-labelledby="home-lead-modal-title""#),
+            "dialog label: {out}"
+        );
     }
 
     #[test]

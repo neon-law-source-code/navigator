@@ -483,11 +483,19 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     let practice_catalog = locales::home(&views::brand::DEFAULT_BRANDING)
         .practices
         .clone();
-    let home_copy = branded_map(branding, |resolved| {
-        webapp::home::InjectedHome(resolve_firm_home_content(resolved, deployment_host))
+    let home_copy = branded_map(branding, |resolved| webapp::home::InjectedHome {
+        content: resolve_firm_home_content(resolved, deployment_host),
+        lead_capture: home_lead_capture(resolved),
     });
     routers.push(with_branded(
-        dioxus_app::home_router("/", home, state.surreal.clone()),
+        dioxus_app::home_router(
+            "/",
+            home,
+            state.surreal.clone(),
+            home_lead_capture(branding),
+            state.sessions.clone(),
+            portal::secure_cookies(state),
+        ),
         home_copy,
     ));
     // The practice pages the home page's cards lead into. Static copy like the
@@ -709,6 +717,14 @@ pub(crate) fn resolve_firm_home_content(
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt => locales::home_for_host(branding, deployment_host),
     }
+}
+
+/// Only Neon puts its existing lead capture form on the home page. The other
+/// house brands keep their own home-page CTA and do not receive this copy.
+fn home_lead_capture(
+    branding: &views::brand::Branding,
+) -> Option<webapp::lead_capture::LeadCaptureCopy> {
+    (branding.brand_key == BrandKey::Neon).then(|| locales::lead_capture(branding))
 }
 
 /// The public holding page keeps the authored service catalog unpublished.

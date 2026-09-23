@@ -1,5 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" role="img" aria-labelledby="title">
-  <title>Misericordia Injury Law</title>
-  <circle cx="24" cy="24" r="19" fill="#7a1f2b"/><path d="M24 12v24M12 24h24" stroke="#fff" stroke-width="3"/>
-  <text x="52" y="30" fill="#7a1f2b" font-family="Georgia,serif" font-size="16">MISERICORDIA</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Misericordia Injury Law</title>
+  <style>
+    .mark { fill: none; stroke: #7a1f2b; }
+    @media (prefers-color-scheme: dark) { .mark { stroke: #df838f; } }
+  </style>
+  <path class="mark" d="M12 23c0-7 5-12 12-12 4.3 0 7.2 2.2 8 5.2C32.8 13.2 35.7 11 40 11c7 0 12 5 12 12 0 12-12.6 22.2-20 28-7.4-5.8-20-16-20-28Z" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="mark" d="M18 31c4.5 0 8.6 2.2 14 8 5.4-5.8 9.5-8 14-8" stroke-width="4" stroke-linecap="round"/>
 </svg>

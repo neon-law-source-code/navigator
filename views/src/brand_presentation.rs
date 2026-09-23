@@ -81,7 +81,7 @@ pub const TYPEFACES: &[Typeface] = &[
         stack: "ui-sans-serif, system-ui, sans-serif",
         operator_licence_required: false,
     },
-    // The five practice-brand faces. All OFL-1.1, so none sets
+    // The six practice-brand faces. All OFL-1.1, so none sets
     // `operator_licence_required`: a fork may redistribute them, unlike GORP.
     // Their bytes ride the same bucket lane as every other web font here, so
     // a fresh clone carries none of them and no request ever leaves for a
@@ -128,7 +128,7 @@ pub const TYPEFACES: &[Typeface] = &[
     },
 ];
 
-/// Primaries and accents taken from the three compiled house-brand token
+/// Primaries and accents taken from the nine compiled house-brand token
 /// sheets, named so a select can refuse free text.
 pub const PALETTE: &[Palette] = &[
     Palette {
@@ -239,7 +239,7 @@ pub const PALETTE: &[Palette] = &[
             border: Some("#8f842d"),
         },
     },
-    // --- The five practice brands ------------------------------------
+    // --- The six practice brands -------------------------------------
     // Every primary below is a light-mode colour that clears WCAG AA on
     // white; each also carries a dark-mode primary raised to clear 7:1 on
     // the dark canvas, because the specified colours fail AA outright
@@ -435,6 +435,44 @@ pub const PALETTE: &[Palette] = &[
             border: None,
         },
     },
+    // Deep blue-green from the Daybridge mark: calm movement toward the
+    // other side, without borrowing Neon Law's brighter technology teal.
+    Palette {
+        id: "daybridge",
+        label: "Daybridge blue-green",
+        light: PaletteScheme {
+            primary: "#255C67",
+            primary_hover: "#1e4b54",
+            primary_active: "#173a41",
+            on_primary: "#ffffff",
+            on_brand: "#ffffff",
+            link: "#255C67",
+            link_hover: "#173a41",
+            surface_subtle: "#edf5f6",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+        dark: PaletteScheme {
+            primary: "#78B9C5",
+            primary_hover: "#91c7d0",
+            primary_active: "#add5dc",
+            on_primary: "#0d1117",
+            on_brand: "#0d1117",
+            link: "#78B9C5",
+            link_hover: "#91c7d0",
+            surface_subtle: "#142b30",
+            bg: None,
+            surface: None,
+            surface_raised: None,
+            text: None,
+            text_muted: None,
+            border: None,
+        },
+    },
 ];
 
 /// Look up a typeface by the id stored on a brand row.
@@ -470,6 +508,9 @@ impl BrandKey {
             Self::Summons => {
                 typeface_by_id("libre-franklin").expect("libre-franklin is catalogued")
             }
+            Self::Daybridge => {
+                typeface_by_id("source-serif-4").expect("source-serif-4 is catalogued")
+            }
         }
     }
 
@@ -499,7 +540,8 @@ impl BrandKey {
             | Self::Vesta
             | Self::Abhaya
             | Self::DeleteYourDebt
-            | Self::Summons => None,
+            | Self::Summons
+            | Self::Daybridge => None,
         }
     }
 
@@ -521,6 +563,7 @@ impl BrandKey {
                 palette_by_id("delete-your-debt").expect("delete-your-debt is catalogued")
             }
             Self::Summons => palette_by_id("oath").expect("oath is catalogued"),
+            Self::Daybridge => palette_by_id("daybridge").expect("daybridge is catalogued"),
         }
     }
 }
@@ -981,7 +1024,7 @@ mod tests {
 
     /// ENG-586: `store::seed` now migrates each compiled brand's row with its
     /// real primary hex (not a palette id) in `primary_color`. This proves
-    /// the three house brands still resolve their compiled `Palette`
+    /// the compiled house brands still resolve their compiled `Palette`
     /// unchanged regardless — the fallback this function already carried for
     /// "legacy hex" covers it, so the seed change is not a rendering change.
     #[test]

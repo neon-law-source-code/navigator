@@ -44,6 +44,7 @@ pub const CLOSED_BRAND_KEYS: &[&str] = &[
     "abhaya",
     "lawyer-shook",
     "summons",
+    "daybridge",
 ];
 
 /// Whether a `brand` row exists carrying this key — the live check
@@ -2137,7 +2138,7 @@ mod tests {
     }
 
     /// ENG-587: a Firm can wear a brand created at runtime through
-    /// `store::brands::create`, not just one of the three compiled house
+    /// `store::brands::create`, not just one of the nine compiled house
     /// brands — `attach_brand` validates against live `brand` rows, not a
     /// closed list, against the fully applied schema.
     #[tokio::test]

@@ -57,6 +57,11 @@ const COMPILED_SITES: &[CompiledSite] = &[
         www: "www.summonsdefense.nyc",
         live: true,
     },
+    CompiledSite {
+        key: "daybridge",
+        www: "www.daybridgedivorce.com",
+        live: false,
+    },
 ];
 
 /// One brand key as `/app` listings should print it.

@@ -475,6 +475,28 @@ static DELETE_YOUR_DEBT_HEAD: std::sync::LazyLock<String> =
 static SUMMONS_HEAD: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| bucket_font_head("Libre Franklin", "libre-franklin/LibreFranklin"));
 
+static DAYBRIDGE_HEAD: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| bucket_font_head("Source Serif 4", "source-serif-4/SourceSerif4"));
+
+/// Lawyer Shook is the portfolio directory, so its cards need every sibling
+/// brand's face in addition to the page's own Tinos. Keep this list explicit:
+/// a card may name only a compiled brand face, and loading a brand's token
+/// sheet here would also overwrite the holding page's palette.
+static LAWYER_SHOOK_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "{}{}{}{}{}{}{}{}{}",
+        *TINOS_HEAD,
+        *GORP_HEAD,
+        *PLUS_JAKARTA_SANS_HEAD,
+        bucket_font_head("EB Garamond", "eb-garamond/EBGaramond"),
+        bucket_font_head("Source Sans 3", "source-sans-3/SourceSans3"),
+        bucket_font_head("Source Serif 4", "source-serif-4/SourceSerif4"),
+        *ABHAYA_HEAD,
+        *DELETE_YOUR_DEBT_HEAD,
+        *SUMMONS_HEAD,
+    )
+});
+
 /// The `@font-face` head fragment a page wears when this process serves
 /// `key` — the preload and declarations injected at the end of every rendered
 /// `<head>`.
@@ -489,12 +511,13 @@ pub fn font_head(key: views::brand::BrandKey) -> &'static str {
     match key {
         views::brand::BrandKey::Neon => &GORP_HEAD,
         views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
-        views::brand::BrandKey::LawyerShook => &TINOS_HEAD,
+        views::brand::BrandKey::LawyerShook => &LAWYER_SHOOK_HEAD,
         views::brand::BrandKey::Vesta => &VESTA_HEAD,
         views::brand::BrandKey::Misericordia => &MISERICORDIA_HEAD,
         views::brand::BrandKey::Abhaya => &ABHAYA_HEAD,
         views::brand::BrandKey::DeleteYourDebt => &DELETE_YOUR_DEBT_HEAD,
         views::brand::BrandKey::Summons => &SUMMONS_HEAD,
+        views::brand::BrandKey::Daybridge => &DAYBRIDGE_HEAD,
     }
 }
 
@@ -894,6 +917,7 @@ async fn inject_public_utility(mut req: Request, next: Next) -> Response {
                 label: brand.label.clone(),
                 href: brand.href.clone(),
                 current: brand.current,
+                logo_href: brand.logo_href.clone(),
                 byline: brand.byline.clone(),
             })
             .collect();
@@ -4349,6 +4373,27 @@ mod tests {
         assert!(fragment.contains("Tinos-Regular.woff2"), "{fragment}");
         assert!(fragment.contains("Tinos-Bold.woff2"), "{fragment}");
         assert_eq!(fragment.matches("font-family:'Tinos'").count(), 2);
+    }
+
+    #[test]
+    fn the_lawyer_shook_head_declares_every_portfolio_face() {
+        let fragment = font_head(views::brand::BrandKey::LawyerShook);
+        for family in [
+            "GORP Serif",
+            "Plus Jakarta Sans",
+            "Tinos",
+            "EB Garamond",
+            "Source Sans 3",
+            "Source Serif 4",
+            "Mukta",
+            "Public Sans",
+            "Libre Franklin",
+        ] {
+            assert!(
+                fragment.contains(&format!("font-family:'{family}'")),
+                "Lawyer Shook omits {family}: {fragment}"
+            );
+        }
     }
 
     /// A hostile asset origin cannot break out of the `<style>` element it is

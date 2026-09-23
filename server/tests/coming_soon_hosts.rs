@@ -48,6 +48,12 @@ async fn summons_serves_only_coming_soon_on_production_and_staging() {
             html.contains("/public/css/brand-summons-tokens.css"),
             "{host}"
         );
+        let head = html.split_once("</head>").expect("document head").0;
+        assert!(head.contains(r#"rel="icon""#), "{host}: {head}");
+        assert!(
+            head.contains(r#"href="/public/brand/summons/logo.svg""#),
+            "{host} must use the Summons mark as its favicon: {head}"
+        );
         assert!(html.contains("Libre Franklin"), "{host}");
         assert!(!html.contains("GORP"), "{host}");
         assert!(!html.contains("holding-page__paragraph"), "{host}");

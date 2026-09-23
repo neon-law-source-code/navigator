@@ -113,6 +113,12 @@ async fn lawyer_shook_lists_the_launched_family_and_keeps_the_firm_notice() {
     ] {
         assert!(html.contains(expected), "missing {expected}");
     }
+    let head = html.split_once("</head>").expect("document head").0;
+    assert!(head.contains(r#"rel="icon""#), "missing favicon: {head}");
+    assert!(
+        head.contains(r#"href="/public/brand/lawyer-shook/logo.svg""#),
+        "the Lawyer Shook tab must use its supplied mark: {head}"
+    );
 }
 
 #[tokio::test]
@@ -124,7 +130,7 @@ async fn vesta_services_agree_with_the_lifetime_offer() {
 }
 
 #[tokio::test]
-async fn vesta_and_lawyer_shook_share_the_company_footer_treatment() {
+async fn vesta_and_lawyer_shook_omit_the_lawyer_shook_trademark_notice() {
     for html in [
         preview(BrandKey::Vesta, "/").await,
         page("staging.lawyershook.com", "/").await,
@@ -133,6 +139,8 @@ async fn vesta_and_lawyer_shook_share_the_company_footer_treatment() {
         assert!(footer.contains("https://www.lawyershook.com"));
         assert!(footer.contains("Everyone deserves to be seen."));
         assert!(!footer.contains("Our family"));
+        assert!(!footer.contains("LAWYER SHOOK"));
+        assert!(!footer.contains("common-law mark of Shook Law PLLC"));
     }
 }
 

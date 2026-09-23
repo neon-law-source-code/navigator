@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    is_external_href, PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
+    is_external_href, BrandFavicon, PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
     TestimonialCard, TestimonialSection, THEME_STYLESHEET_HREF,
 };
 use crate::lead_capture::{LeadCaptureContext, LeadCaptureCopy, LeadCaptureForm};
@@ -13,6 +13,8 @@ use crate::public_chrome::{PublicChrome, PublicFooter};
 pub use crate::components::PracticeMark;
 mod company;
 pub use company::CompanyContent;
+mod daybridge;
+pub use daybridge::DaybridgeContent;
 mod estate;
 pub use estate::EstateContent;
 mod privacy;
@@ -57,9 +59,12 @@ pub struct PracticeLink {
     /// Optional identity mark for a parent-brand directory card.
     #[serde(default)]
     pub logo_href: String,
-    /// Optional display face for a parent-brand directory card.
+    /// Optional brand face for a parent-brand directory card.
     #[serde(default)]
     pub font_family: String,
+    /// Optional primary colour for a parent-brand directory card.
+    #[serde(default)]
+    pub primary_color: String,
 }
 
 /// The decorative mark a provenance step opens on, drawn by the view and
@@ -153,6 +158,9 @@ pub struct HomeContent {
     /// The annual privacy product, authored in the brand catalog.
     #[serde(default)]
     pub privacy: Option<PrivacyContent>,
+    /// The Daybridge daily-fee divorce offer.
+    #[serde(default)]
+    pub daybridge: Option<DaybridgeContent>,
 }
 
 /// The firm's notice and sign-in. When [`HomeContent::bare`] is set, this
@@ -267,6 +275,7 @@ pub fn HomePage(
                 site_name: chrome.brand_name.clone(),
                 image: chrome.social_image.clone(),
             }
+            BrandFavicon { logo_href: chrome.logo_href.clone() }
             // The base theme (background/text from tokens) and the resolved
             // brand's palette and typeface. Every other public page picks
             // these up from `PublicShell` and `PublicFooter`; this page
@@ -357,6 +366,9 @@ pub fn HomePage(
         if content.privacy.is_some() {
             document::Stylesheet { href: "/public/css/privacy.css" }
         }
+        if content.daybridge.is_some() {
+            document::Stylesheet { href: "/public/css/daybridge.css" }
+        }
         PublicShell { header, footer,
             if let Some(company) = content.company.as_ref() {
                 company::CompanyHome {
@@ -368,6 +380,8 @@ pub fn HomePage(
                 estate::EstateHome { content: content.clone(), estate: estate.clone() }
             } else if let Some(privacy) = content.privacy.as_ref() {
                 privacy::PrivacyHome { content: content.clone(), privacy: privacy.clone() }
+            } else if let Some(daybridge) = content.daybridge.as_ref() {
+                daybridge::DaybridgeHome { content: content.clone(), daybridge: daybridge.clone() }
             } else {
             // The page opens on the question. No photograph above it and no
             // glow behind it: the question is the page, so it is the first
@@ -649,6 +663,7 @@ fn PracticeLinks(heading: String, practices: Vec<PracticeLink>) -> Element {
                         href: practice.href.clone(),
                         logo_href: practice.logo_href.clone(),
                         font_family: practice.font_family.clone(),
+                        primary_color: practice.primary_color.clone(),
                         heading_id: format!("home-practice-heading-{index}"),
                     }
                 }
@@ -702,6 +717,7 @@ mod tests {
                             href: "/disputes".to_string(),
                             logo_href: String::new(),
                             font_family: String::new(),
+                            primary_color: String::new(),
                         }],
                         service: Some(ServiceSection {
                             heading: "What we do".to_string(),
@@ -731,6 +747,7 @@ mod tests {
                         }),
                         provenance: None,
                         privacy: None,
+                        daybridge: None,
                         company: None,
                         bare: None,
                         estate: None,
@@ -1440,6 +1457,7 @@ mod tests {
                             href: "/services".to_string(),
                             logo_href: String::new(),
                             font_family: String::new(),
+                            primary_color: String::new(),
                         }],
                         ..HomeContent::default()
                     },

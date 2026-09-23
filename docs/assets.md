@@ -151,11 +151,10 @@ own family. The generated `brand-{key}-tokens.css` declares the same faces along
 
 ### The practice brands' typefaces
 
-The five practice brands wear six more OFL-1.1 families on the same lane. `cli::assets::BUCKET_FONT_FAMILIES` is the one
-list all of it reads: `--family` names an entry, `assets verify` probes every entry's two faces, and the orphan scan
-spares them. A family joins those three at once rather than one and not the others, which is what went wrong — the five
-brands shipped while a hand-written two-entry list stayed at two, so `assets verify` reported a clean origin over six
-families it never probed.
+The practice brands wear six more OFL-1.1 families on the same lane. `cli::assets::BUCKET_FONT_FAMILIES` is the one list
+all of it reads: `--family` names an entry, `assets verify` probes every entry's two faces, and the orphan scan spares
+them. A family joins those three at once, so a face cannot ship without joining both the verification and orphan-scan
+contracts.
 
 | `--family` | Family | Brands |
 | --- | --- | --- |
@@ -163,7 +162,7 @@ families it never probed.
 | `plus-jakarta-sans` | Plus Jakarta Sans | DeleteYourData.com |
 | `eb-garamond` | EB Garamond | Vesta Estate Planning (headings and body) |
 | `source-sans-3` | Source Sans 3 | Misericordia Injury Law (body) |
-| `source-serif-4` | Source Serif 4 | Misericordia Injury Law (display) |
+| `source-serif-4` | Source Serif 4 | Misericordia Injury Law (display); Daybridge Divorce Law |
 | `mukta` | Mukta | Abhaya Immigration |
 | `public-sans` | Public Sans | DeleteYourDebt.com |
 | `libre-franklin` | Libre Franklin | the summons practice |
@@ -179,7 +178,10 @@ cargo run -p cli -- ops assets fonts upload --family eb-garamond \
 
 We redistribute these bytes from our own buckets, so each family's grant travels with it:
 `server/public/fonts/<family>/OFL.txt` carries the upstream notice verbatim, tracked even though the faces are not.
-Lawyer Shook's Tinos is the one family whose faces are tracked instead — see below.
+Lawyer Shook's Tinos is the one family whose faces are tracked instead — see below. Because Lawyer Shook is also the
+portfolio directory, its page head declares the sibling brands' bucket-served faces as well; each card then renders in
+the typeface named by its compiled brand key without importing a sibling token sheet and overwriting Lawyer Shook's
+palette.
 
 The published faces are latin subsets. That is right while the English-only invariant holds, but `views` chose Mukta for
 Abhaya specifically for its Devanagari coverage: a Hindi surface would need those faces taken from the upstream release

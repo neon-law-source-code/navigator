@@ -117,6 +117,7 @@ pub use site_footer::{
 // for the same channel links outside the footer, but they are not part of
 // this crate's public component API.
 pub(crate) use site_footer::{mailto_href, tel_href};
+pub(crate) use site_header::BrandFavicon;
 pub use site_header::{SiteHeader, SiteNavLink};
 pub use social::SocialMeta;
 pub use tabs::{Tab, Tabs};

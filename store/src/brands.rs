@@ -1430,7 +1430,7 @@ mod tests {
 
     /// ENG-586: deleting a brand a Firm wears, or that a Project names, is
     /// refused; deleting an unworn, unnamed brand removes the row. Uses
-    /// runtime-created keys rather than the three compiled ones: ENG-587
+    /// runtime-created keys rather than the nine compiled ones: ENG-587
     /// drops `firm_brand`/`project.brand`'s closed `ASSERT`, so the
     /// reference check must hold for any key, not only the legacy three
     /// (which a fresh test engine now seeds as `brand` rows anyway — see

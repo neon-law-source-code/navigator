@@ -165,6 +165,8 @@ pub struct FooterBrandLink {
     pub label: String,
     pub href: String,
     pub current: bool,
+    /// The brand's own mark; decorative because the adjacent text names it.
+    pub logo_href: String,
     /// What this brand does, in a few words. A cold reader learns nothing
     /// from "Vesta" or "Abhaya", so the family list is close to useless as
     /// bare wordmarks. Empty renders the wordmark alone.
@@ -630,17 +632,28 @@ pub fn SiteFooterLegal(
                                                 span {
                                                     class: "site-footer__family-current",
                                                     "aria-current": "true",
-                                                    "{brand.label}"
+                                                    if !brand.logo_href.is_empty() {
+                                                        img { class: "site-footer__family-logo", src: "{brand.logo_href}", alt: "" }
+                                                    }
+                                                    span { "{brand.label}" }
                                                 }
                                             } else if brand.href.is_empty() {
-                                                span { class: "site-footer__family-current", "{brand.label}" }
+                                                span { class: "site-footer__family-current",
+                                                    if !brand.logo_href.is_empty() {
+                                                        img { class: "site-footer__family-logo", src: "{brand.logo_href}", alt: "" }
+                                                    }
+                                                    span { "{brand.label}" }
+                                                }
                                             } else {
                                                 a {
                                                     class: "site-footer__family-link",
                                                     href: "{brand.href}",
                                                     target: "_blank",
                                                     rel: "noopener noreferrer",
-                                                    "{brand.label}"
+                                                    if !brand.logo_href.is_empty() {
+                                                        img { class: "site-footer__family-logo", src: "{brand.logo_href}", alt: "" }
+                                                    }
+                                                    span { "{brand.label}" }
                                                 }
                                             }
                                             if !brand.byline.is_empty() {
@@ -1913,21 +1926,24 @@ mod tests {
     fn three_firm_brands() -> Vec<FooterBrandLink> {
         vec![
             FooterBrandLink {
-                label: "Emerging Technologies Counsel".to_string(),
+                label: "Neon Law".to_string(),
                 href: "https://www.neonlaw.com".to_string(),
                 current: true,
+                logo_href: "/public/logo.svg".to_string(),
                 byline: String::new(),
             },
             FooterBrandLink {
-                label: "Protect your info".to_string(),
+                label: "DeleteYourData.com".to_string(),
                 href: "https://www.deleteyourdata.com".to_string(),
                 current: false,
+                logo_href: "/public/brand/delete-your-data/logo.svg".to_string(),
                 byline: String::new(),
             },
             FooterBrandLink {
                 label: "Lawyer Shook".to_string(),
                 href: "https://www.lawyershook.com".to_string(),
                 current: false,
+                logo_href: "/public/brand/lawyer-shook/logo.svg".to_string(),
                 byline: String::new(),
             },
         ]
@@ -1975,13 +1991,13 @@ mod tests {
             family.contains(r#"<h2 class="site-footer__family-heading">Our Family</h2>"#),
             "the row is headed by the words its landmark is named with: {family}"
         );
-        let neon = family.find("Emerging Technologies Counsel").expect("neon");
-        let dyd = family.find("Protect your info").expect("dyd");
+        let neon = family.find("Neon Law").expect("neon");
+        let dyd = family.find("DeleteYourData.com").expect("dyd");
         let shook = family.find("Lawyer Shook").expect("lawyer shook");
         assert!(neon < dyd && dyd < shook, "registry order: {family}");
         assert!(
             family.contains(
-                r#"<span class="site-footer__family-current" aria-current="true">Emerging Technologies Counsel</span>"#
+                r#"<span class="site-footer__family-current" aria-current="true"><img class="site-footer__family-logo" src="/public/logo.svg" alt=""/><span>Neon Law</span></span>"#
             ),
             "the current brand is text, marked current: {family}"
         );
@@ -1991,7 +2007,7 @@ mod tests {
         );
         assert!(
             family.contains(
-                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com" target="_blank" rel="noopener noreferrer">Protect your info</a>"#
+                r#"<a class="site-footer__family-link" href="https://www.deleteyourdata.com" target="_blank" rel="noopener noreferrer"><img class="site-footer__family-logo" src="/public/brand/delete-your-data/logo.svg" alt=""/><span>DeleteYourData.com</span></a>"#
             ),
             "other brands link their home host, off-site, in a new tab: {family}"
         );
@@ -2023,12 +2039,14 @@ mod tests {
                             label: "Neon Law".to_string(),
                             href: "https://www.neonlaw.com".to_string(),
                             current: true,
+                            logo_href: String::new(),
                             byline: String::new(),
                         },
                         FooterBrandLink {
                             label: "Acme Runtime Brand".to_string(),
                             href: String::new(),
                             current: false,
+                            logo_href: String::new(),
                             byline: String::new(),
                         },
                     ],
@@ -2057,6 +2075,7 @@ mod tests {
                         label: "Neon Law".to_string(),
                         href: "https://www.neonlaw.com".to_string(),
                         current: true,
+                        logo_href: String::new(),
                         byline: String::new(),
                     }],
                 }
@@ -2225,12 +2244,14 @@ mod tests {
                             label: "Neon Law".to_string(),
                             href: String::new(),
                             current: true,
+                            logo_href: String::new(),
                             byline: "flat-fee legal services for emerging tech".to_string(),
                         },
                         FooterBrandLink {
                             label: "Abhaya Immigration".to_string(),
                             href: "https://www.abhayaimmigration.com".to_string(),
                             current: false,
+                            logo_href: String::new(),
                             byline: "visas, green cards, and citizenship".to_string(),
                         },
                     ],

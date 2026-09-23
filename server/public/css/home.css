@@ -288,7 +288,7 @@
    which is the affordance that says it is clickable. */
 .nav-theme a.home-practice:hover,
 .nav-theme a.home-practice:focus-visible {
-  border-color: var(--firm-brand);
+  border-color: var(--practice-brand, var(--firm-brand));
   color: inherit;
   text-decoration: none;
   transform: translateY(-2px);
@@ -296,7 +296,7 @@
 
 .home-practice:hover .home-practice__heading,
 .home-practice:focus-visible .home-practice__heading {
-  color: var(--firm-brand-strong);
+  color: var(--practice-brand, var(--firm-brand-strong));
 }
 
 /* The wave. A circle anchored off the box's bottom-left corner, scaled from
@@ -318,8 +318,8 @@
   border-radius: 50%;
   background: radial-gradient(
     circle at 30% 70%,
-    var(--firm-brand) 0%,
-    color-mix(in srgb, var(--firm-brand) 45%, transparent) 45%,
+    var(--practice-brand, var(--firm-brand)) 0%,
+    color-mix(in srgb, var(--practice-brand, var(--firm-brand)) 45%, transparent) 45%,
     transparent 72%
   );
   opacity: 0;
@@ -377,7 +377,7 @@
 
 .home-practice__heading {
   margin: 0;
-  font-family: var(--firm-serif);
+  font-family: inherit;
   font-size: clamp(1.25rem, 2.5vw, 1.5rem);
   font-weight: 600;
   line-height: 1.15;

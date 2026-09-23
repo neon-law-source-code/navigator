@@ -26,6 +26,35 @@ use dioxus::prelude::*;
 
 use crate::components::ExternalLink;
 
+/// Hoist a public brand's mark into the document head as its browser-tab icon.
+///
+/// Header-bearing pages render this through [`SiteHeader`]. Bare holding pages
+/// render it directly, so choosing a quieter page frame never drops the brand
+/// identity from the browser tab.
+#[component]
+pub(crate) fn BrandFavicon(logo_href: String) -> Element {
+    if logo_href.is_empty() {
+        return rsx! {};
+    }
+
+    let mime_type = if std::path::Path::new(&logo_href)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+    {
+        "image/svg+xml"
+    } else {
+        "image/png"
+    };
+
+    rsx! {
+        document::Link {
+            rel: "icon",
+            r#type: mime_type,
+            href: "{logo_href}",
+        }
+    }
+}
+
 /// One navigation destination. `current` marks the active page so the anchor
 /// carries `aria-current="page"` and the active-link styling.
 #[derive(Clone, PartialEq, Eq)]
@@ -89,20 +118,7 @@ pub fn SiteHeader(
         // declines to draw. A browser that cannot use it falls back to
         // requesting `/favicon.ico`, which this deployment does not serve — one
         // 404 for a tab icon, not a broken page.
-        if !logo_href.is_empty() {
-            document::Link {
-                rel: "icon",
-                r#type: if std::path::Path::new(&logo_href)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-                {
-                    "image/svg+xml"
-                } else {
-                    "image/png"
-                },
-                href: "{logo_href}",
-            }
-        }
+        BrandFavicon { logo_href: logo_href.clone() }
         // Without this a phone lays the page out in a 980px imaginary window and
         // scales the result down, so every `max-width` breakpoint in the
         // stylesheet is measured against a viewport the device does not have —

@@ -15,8 +15,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+mod daybridge;
 mod estate;
 mod privacy;
+pub use daybridge::DaybridgeCopy;
 pub use privacy::PrivacyCopy;
 pub mod services;
 pub mod shared;
@@ -113,6 +115,9 @@ pub struct HomeCopy {
     /// Annual data removal and privacy protection.
     #[serde(default)]
     pub privacy: Option<PrivacyCopy>,
+    /// Divorce counsel with a daily attorney fee and separately paid costs.
+    #[serde(default)]
+    pub daybridge: Option<DaybridgeCopy>,
 }
 
 /// The home page's provenance section: the flow a request follows, the

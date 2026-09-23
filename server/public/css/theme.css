@@ -1368,6 +1368,13 @@ a.nav-pagination__link:hover {
     transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.site-footer__family-logo {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  object-fit: contain;
+}
+
 /* `.nav-theme a` is more specific than the chip class, so the link colour and
    hover underline are re-asserted away at matching specificity: a chip is a
    tile, and answers a pointer the way the contact tiles do — brand border,

@@ -1,5 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" role="img" aria-labelledby="title">
-  <title>Shook Law PLLC</title>
-  <rect width="48" height="48" rx="4" fill="#4a2545"/><path d="M12 24h24M24 12v24" stroke="#fff" stroke-width="3"/>
-  <text x="58" y="30" fill="#4a2545" font-family="Arial,sans-serif" font-size="16">SHOOK LAW PLLC</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Summons defense</title>
+  <style>
+    .mark { fill: none; stroke: #4a2545; }
+    @media (prefers-color-scheme: dark) { .mark { stroke: #c58bbd; } }
+  </style>
+  <path class="mark" d="M32 7 51 14v15c0 12.7-7.7 22.3-19 28-11.3-5.7-19-15.3-19-28V14l19-7Z" stroke-width="4" stroke-linejoin="round"/>
+  <path class="mark" d="M24 20h13l5 5v18H24V20Z" stroke-width="3" stroke-linejoin="round"/>
+  <path class="mark" d="M37 20v6h5M29 32h8M29 38h8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

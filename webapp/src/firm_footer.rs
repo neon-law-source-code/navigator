@@ -21,6 +21,9 @@ pub struct FirmFooterBrand {
     pub label: String,
     pub href: String,
     pub current: bool,
+    /// The compiled brand mark shown beside the name in public family rows.
+    #[serde(default)]
+    pub logo_href: String,
     /// What this brand actually does, in a few words. Empty for a
     /// runtime-created brand that has no compiled line.
     #[serde(default)]
@@ -93,6 +96,11 @@ pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooter
             label: compiled_footer_label(*key),
             href: key.public_home_href(),
             current: *key == current,
+            logo_href: key
+                .resolve_branding(&views::brand::DEFAULT_BRANDING)
+                .firm
+                .logo_href
+                .to_string(),
             byline: key.family_byline().to_string(),
         })
         .collect()
@@ -103,8 +111,8 @@ pub fn compiled_family_brands(current: views::brand::BrandKey) -> Vec<FirmFooter
 #[cfg(feature = "server")]
 fn compiled_footer_label(key: views::brand::BrandKey) -> String {
     match key {
-        views::brand::BrandKey::Neon => "Emerging Technologies Counsel".to_string(),
-        views::brand::BrandKey::DeleteYourData => "Protect your info".to_string(),
+        views::brand::BrandKey::Neon => "Neon Law".to_string(),
+        views::brand::BrandKey::DeleteYourData => "DeleteYourData.com".to_string(),
         _ => key
             .resolve_branding(&views::brand::DEFAULT_BRANDING)
             .firm
@@ -131,6 +139,11 @@ pub fn compiled_firm_footer_model(
             label: compiled_footer_label(current),
             href: String::new(),
             current: true,
+            logo_href: current
+                .resolve_branding(&views::brand::DEFAULT_BRANDING)
+                .firm
+                .logo_href
+                .to_string(),
             byline: current.family_byline().to_string(),
         });
     }
@@ -188,6 +201,14 @@ pub async fn resolve_firm_footer_model(
         let compiled = views::brand::BrandKey::ALL
             .iter()
             .find(|candidate| candidate.as_str() == key);
+        // Daybridge's public family row intentionally omits the Lawyer Shook
+        // holding page, whether the compiled fallback or live Firm rows feed
+        // the footer.
+        if current == views::brand::BrandKey::Daybridge
+            && compiled == Some(&views::brand::BrandKey::LawyerShook)
+        {
+            continue;
+        }
         // Same reachability rule the compiled fallback applies: a row in the
         // `brand` table does not mean a host serves it. A runtime-created
         // brand has no compiled key and so no launch state — it is listed,
@@ -205,6 +226,14 @@ pub async fn resolve_firm_footer_model(
                 .map(|key| key.public_home_href())
                 .unwrap_or_default(),
             current: key == current.as_str(),
+            logo_href: compiled
+                .map(|key| {
+                    key.resolve_branding(&views::brand::DEFAULT_BRANDING)
+                        .firm
+                        .logo_href
+                        .to_string()
+                })
+                .unwrap_or_default(),
             // A runtime brand carries no compiled line; a compiled one does.
             byline: compiled
                 .map(|key| key.family_byline().to_string())
@@ -263,15 +292,17 @@ mod tests {
                 FirmFooter {
                     model: model(vec![
                         FirmFooterBrand {
-                            label: "Emerging Technologies Counsel".to_string(),
+                            label: "Neon Law".to_string(),
                             href: "https://www.neonlaw.com".to_string(),
                             current: true,
+                            logo_href: "/public/logo.svg".to_string(),
                             byline: "flat-fee legal services for emerging tech".to_string(),
                         },
                         FirmFooterBrand {
-                            label: "Protect your info".to_string(),
+                            label: "DeleteYourData.com".to_string(),
                             href: "https://www.deleteyourdata.com".to_string(),
                             current: false,
+                            logo_href: "/public/brand/delete-your-data/logo.svg".to_string(),
                             byline: String::new(),
                         },
                     ]),
@@ -279,8 +310,8 @@ mod tests {
             }
         }
         let html = ssr(app);
-        assert!(!html.contains("Emerging Technologies Counsel"), "{html}");
-        assert!(!html.contains("Protect your info"), "{html}");
+        assert!(!html.contains("Neon Law"), "{html}");
+        assert!(!html.contains("DeleteYourData.com"), "{html}");
         assert!(!html.contains("<nav"), "{html}");
         assert!(!html.contains("<a "), "{html}");
     }
@@ -336,8 +367,8 @@ mod tests {
         assert_eq!(
             labels,
             [
-                "Emerging Technologies Counsel",
-                "Protect your info",
+                "Neon Law",
+                "DeleteYourData.com",
                 "DeleteYourDebt.com",
                 "Vesta Estate Planning",
                 "Misericordia Injury Law",
@@ -362,11 +393,11 @@ mod tests {
     fn the_footer_uses_the_requested_public_family_labels() {
         assert_eq!(
             compiled_footer_label(views::brand::BrandKey::Neon),
-            "Emerging Technologies Counsel"
+            "Neon Law"
         );
         assert_eq!(
             compiled_footer_label(views::brand::BrandKey::DeleteYourData),
-            "Protect your info"
+            "DeleteYourData.com"
         );
     }
 
@@ -423,7 +454,7 @@ mod tests {
         assert_eq!(model.legal_entity, "Shook Law PLLC");
         assert_eq!(model.brands.len(), 2);
         assert!(model.brands[0].current);
-        assert_eq!(model.brands[0].label, "Emerging Technologies Counsel");
+        assert_eq!(model.brands[0].label, "Neon Law");
     }
 
     /// A second Firm wearing a runtime-created brand (never one of the compiled

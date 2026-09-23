@@ -122,6 +122,7 @@ mod tests {
                 href: "/disputes".into(),
                 logo_href: String::new(),
                 font_family: String::new(),
+                primary_color: String::new(),
             },
             PracticeLink {
                 mark: PracticeMark::Technology,
@@ -130,6 +131,7 @@ mod tests {
                 href: "/personal".into(),
                 logo_href: String::new(),
                 font_family: String::new(),
+                primary_color: String::new(),
             },
         ]
     }

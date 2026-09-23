@@ -474,7 +474,8 @@ mod tests {
     fn release_targets_covers_the_full_registry_not_only_live_brands() {
         let production = release_targets("www.neonlaw.com");
         assert_eq!(production.len(), views::brand::BrandKey::ALL.len());
-        assert!(production.iter().all(|(key, _)| key.is_live()));
+        assert!(production.iter().any(|(key, _)| !key.is_live()));
+        assert!(production.contains(&(BrandKey::Daybridge, "www.daybridgedivorce.com")));
         let staging = release_targets("staging.neonlaw.com");
         assert!(staging.iter().all(|(_, host)| host.starts_with("staging.")));
     }

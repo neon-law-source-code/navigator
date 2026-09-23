@@ -1,0 +1,146 @@
+/* Daybridge stays calm and direct: one fee, three commitments, one path forward. */
+.daybridge-home {
+  --daybridge-rule: var(--nav-color-border);
+  --daybridge-ink: var(--nav-color-text);
+}
+
+.daybridge-home h1,
+.daybridge-home h2,
+.daybridge-home h3,
+.daybridge-price {
+  font-family: var(--brand-font-display);
+  font-weight: 500;
+  letter-spacing: -.035em;
+}
+
+.daybridge-home p { line-height: 1.65; }
+
+.daybridge-eyebrow {
+  color: var(--nav-color-primary);
+  font-family: var(--nav-font-family);
+  font-size: .76rem;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+
+.daybridge-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, .75fr);
+  align-items: center;
+  gap: clamp(2rem, 7vw, 7rem);
+  padding: clamp(4rem, 9vw, 8rem) 0;
+}
+
+.daybridge-hero h1 {
+  max-width: 10ch;
+  margin: 1rem 0 1.5rem;
+  font-size: clamp(4rem, 8vw, 7.5rem);
+  line-height: .92;
+  text-wrap: balance;
+}
+
+.daybridge-lead {
+  max-width: 34rem;
+  color: var(--nav-color-text-muted);
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+}
+
+.daybridge-cta { margin-top: 1.4rem; border-radius: 999px; }
+
+.daybridge-fee {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(2rem, 4vw, 3.5rem);
+  border: 1px solid var(--daybridge-rule);
+  border-radius: 50% 50% 1.25rem 1.25rem / 4rem 4rem 1.25rem 1.25rem;
+  background: var(--nav-color-surface-subtle);
+}
+
+.daybridge-fee::after {
+  position: absolute;
+  right: -4rem;
+  bottom: -5rem;
+  width: 12rem;
+  height: 8rem;
+  border: 2px solid var(--nav-color-primary);
+  border-bottom: 0;
+  border-radius: 12rem 12rem 0 0;
+  content: '';
+  opacity: .2;
+}
+
+.daybridge-fee__mark { float: right; width: 64px; height: 64px; }
+
+.daybridge-price {
+  margin: 2.25rem 0 .75rem;
+  color: var(--daybridge-ink);
+  font-size: clamp(4rem, 7vw, 6.5rem);
+  line-height: .9;
+}
+
+.daybridge-price span {
+  font-family: var(--nav-font-family);
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.daybridge-fee__body { max-width: 25rem; font-size: 1.05rem; }
+.daybridge-note { color: var(--nav-color-text-muted); font-size: .85rem; }
+
+.daybridge-promises {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-block: 1px solid var(--daybridge-rule);
+}
+
+.daybridge-promises article { padding: 2.5rem clamp(1.25rem, 3vw, 2.5rem); }
+.daybridge-promises article + article { border-left: 1px solid var(--daybridge-rule); }
+
+.daybridge-promises__number {
+  color: var(--nav-color-primary);
+  font-size: .75rem;
+  font-weight: 750;
+  letter-spacing: .12em;
+}
+
+.daybridge-promises h2 { margin: 1rem 0; font-size: clamp(1.7rem, 3vw, 2.35rem); line-height: 1.05; }
+.daybridge-promises p { margin: 0; color: var(--nav-color-text-muted); }
+
+.daybridge-process { padding: clamp(4rem, 8vw, 7rem) 0; }
+.daybridge-process > h2 { max-width: 16ch; margin: 1rem 0 3rem; font-size: clamp(2.5rem, 5vw, 4.5rem); line-height: 1; }
+.daybridge-process ol { max-width: 48rem; margin: 0 0 0 auto; padding: 0; list-style: none; }
+
+.daybridge-process li {
+  display: grid;
+  grid-template-columns: 3rem 1fr;
+  gap: 1.25rem;
+  padding: 1.75rem 0;
+  border-top: 1px solid var(--daybridge-rule);
+}
+
+.daybridge-process li > span { color: var(--nav-color-primary); font-weight: 750; }
+.daybridge-process h3 { margin: 0 0 .5rem; font-size: 1.65rem; }
+.daybridge-process li p { margin: 0; color: var(--nav-color-text-muted); }
+
+.daybridge-closing {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 3rem;
+  padding: clamp(3rem, 6vw, 5rem);
+  border-radius: 1.25rem;
+  background: var(--nav-color-surface-subtle);
+}
+
+.daybridge-closing h2 { margin: 0 0 .75rem; font-size: clamp(2.3rem, 4vw, 3.5rem); }
+.daybridge-closing p { max-width: 38rem; margin: 0; color: var(--nav-color-text-muted); }
+.daybridge-closing .daybridge-cta { flex: none; margin: 0; }
+
+@media (max-width: 760px) {
+  .daybridge-hero { grid-template-columns: 1fr; }
+  .daybridge-promises { grid-template-columns: 1fr; }
+  .daybridge-promises article + article { border-top: 1px solid var(--daybridge-rule); border-left: 0; }
+  .daybridge-closing { align-items: flex-start; flex-direction: column; }
+}

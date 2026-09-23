@@ -111,7 +111,8 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
         | BrandKey::Misericordia
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
-        | BrandKey::Summons => ["/", "/services", "/contact"]
+        | BrandKey::Summons
+        | BrandKey::Daybridge => ["/", "/services", "/contact"]
             .iter()
             .map(|path| (*path).to_string())
             .collect(),
@@ -200,7 +201,8 @@ pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
         | BrandKey::Misericordia
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
-        | BrandKey::Summons) => practice_brand_llms_txt(key),
+        | BrandKey::Summons
+        | BrandKey::Daybridge) => practice_brand_llms_txt(key),
         BrandKey::DeleteYourData => {
             let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
             let mark = branding.firm.site_name;

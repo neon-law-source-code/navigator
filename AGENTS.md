@@ -66,6 +66,11 @@ The fixture seeds three matters, each with its own client, its own practice, and
 
 The three live in the `neon-law-staging` organization, and each repository is named for the Project code it mounts on.
 
+## Use CLIs and MCPs over Computer Use
+
+`navigator` - our own app or the CLI target
+`gh` - github CLI for PRs
+
 ## Cursor Cloud specific instructions
 
 A Cursor Cloud Agent boots from [`.cursor/environment.json`](.cursor/environment.json), whose `install` runs
@@ -78,10 +83,3 @@ cargo nextest run --workspace --test-threads 4 && cargo test -p features
 ```
 
 Start SurrealDB and set `NAVIGATOR_SURREAL_*` (root/root) to include the server-mode lane; otherwise it self-skips.
-
-## Configured MCP servers
-
-- `codex_app`
-- `codex_apps` — Linear, GitHub, Google Drive, Gmail, Google Calendar, Notion, Slack,
-  Sites, Descript, and legal research
-- `node_repl`

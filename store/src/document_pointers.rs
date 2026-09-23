@@ -17,11 +17,11 @@ pub struct DocumentPointer {
     pub current_version: PointerVersion,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_version: Option<Uuid>,
-    /// Present only on an evidence capture routed through `site authorities
-    /// create` (`documents/evidence/**`): the global Authority — no
-    /// `project_id` — this capture's bytes were archived under. Absent for
-    /// every other document kind, which stays a plain Project document with
-    /// no Authority of its own.
+    /// Present only on an Authority capture routed through `site authorities
+    /// create` (`documents/cases/**` or `documents/rules/**`): the global
+    /// Authority — no `project_id` — this capture's bytes were archived
+    /// under. Absent for every other document kind, which stays a plain
+    /// Project document with no Authority of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authority_id: Option<Uuid>,
 }
@@ -36,7 +36,7 @@ pub struct PointerVersion {
     pub sha256: String,
     pub size_bytes: i64,
     /// Where this revision was captured from, and when — carried only by an
-    /// evidence capture's pointer (see [`DocumentPointer::authority_id`]),
+    /// Authority capture's pointer (see [`DocumentPointer::authority_id`]),
     /// so the portal can render a real citation/link instead of an opaque
     /// file. Absent for every other document kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]

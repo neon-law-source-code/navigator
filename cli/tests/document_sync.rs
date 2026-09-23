@@ -386,21 +386,21 @@ fn sync_dry_run_lists_work_without_writing_or_needing_a_login() {
     assert!(!root.path().join("documents/.gitignore").exists());
 }
 
-/// `documents/evidence/**` is an Authority, not a Project document — the
+/// `documents/cases/**` is an Authority, not a Project document — the
 /// dry-run report has to say so rather than naming an inferred `kind`, since
 /// there is no per-Project kind for this route at all.
 #[test]
-fn sync_dry_run_reports_an_evidence_capture_as_an_authority_upload() {
+fn sync_dry_run_reports_a_case_capture_as_an_authority_upload() {
     let root = TempDir::new().unwrap();
     manifest(root.path(), "staging.example.com");
     write(
         root.path(),
-        "documents/evidence/roe.html",
+        "documents/cases/roe.html",
         b"synthetic capture",
     );
     write(
         root.path(),
-        "documents/evidence/roe.html.evidence.yaml",
+        "documents/cases/roe.html.authority.yaml",
         "class: case_law\ncitation: 410 U.S. 113 (1973)\ntitle: Roe v. Wade\n",
     );
 
@@ -410,12 +410,92 @@ fn sync_dry_run_reports_an_evidence_capture_as_an_authority_upload() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "would upload documents/evidence/roe.html as an Authority upload",
+            "would upload documents/cases/roe.html as an Authority upload",
         ))
         // The sidecar is metadata, never an upload target of its own — one
         // planned upload, not two.
         .stdout(predicate::str::contains("1 upload planned"))
-        .stdout(predicate::str::contains("evidence.yaml").not());
+        .stdout(predicate::str::contains("authority.yaml").not());
+}
+
+/// `documents/rules/**` is the same Authority route as `documents/cases/**`,
+/// for every non-case-law class (statute, regulation, administrative,
+/// secondary).
+#[test]
+fn sync_dry_run_reports_a_rule_capture_as_an_authority_upload() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(
+        root.path(),
+        "documents/rules/nrs-86-201.html",
+        b"synthetic capture",
+    );
+    write(
+        root.path(),
+        "documents/rules/nrs-86-201.html.authority.yaml",
+        "class: statute\ncitation: NRS 86.201\ntitle: Nevada LLC formation\n",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "would upload documents/rules/nrs-86-201.html as an Authority upload",
+        ))
+        .stdout(predicate::str::contains("1 upload planned"));
+}
+
+/// Case law staged under `documents/rules/` (or the reverse) is refused
+/// before any network call — the folder and the sidecar's declared `class`
+/// must agree.
+#[test]
+fn sync_refuses_case_law_staged_under_rules() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(
+        root.path(),
+        "documents/rules/roe.html",
+        b"synthetic capture",
+    );
+    write(
+        root.path(),
+        "documents/rules/roe.html.authority.yaml",
+        "class: case_law\ncitation: 410 U.S. 113 (1973)\ntitle: Roe v. Wade\n",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("documents/cases/"));
+}
+
+/// A statute staged under `documents/cases/` is refused the same way, in the
+/// other direction.
+#[test]
+fn sync_refuses_a_statute_staged_under_cases() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(
+        root.path(),
+        "documents/cases/nrs-86-201.html",
+        b"synthetic capture",
+    );
+    write(
+        root.path(),
+        "documents/cases/nrs-86-201.html.authority.yaml",
+        "class: statute\ncitation: NRS 86.201\ntitle: Nevada LLC formation\n",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("documents/rules/"));
 }
 
 /// `documents/invoices/**` maps to the new `invoice` kind.
@@ -461,11 +541,11 @@ fn sync_refuses_an_invoice_filename_that_does_not_match_the_pattern() {
         .stderr(predicate::str::contains("INV-<digits>"));
 }
 
-/// An evidence capture with no sidecar is refused before any network call —
+/// A case capture with no sidecar is refused before any network call —
 /// `authorities create` needs `class`/`citation`/`title`, which cannot be
 /// scraped from arbitrary HTML.
 #[tokio::test(flavor = "multi_thread")]
-async fn sync_refuses_an_evidence_capture_with_no_sidecar() {
+async fn sync_refuses_a_case_capture_with_no_sidecar() {
     let server = MockServer::start().await;
     let host = server.uri();
     let root = TempDir::new().unwrap();
@@ -474,7 +554,7 @@ async fn sync_refuses_an_evidence_capture_with_no_sidecar() {
     let credential_path = credentials(creds.path(), &host);
     write(
         root.path(),
-        "documents/evidence/roe.html",
+        "documents/cases/roe.html",
         b"synthetic capture",
     );
 
@@ -484,17 +564,17 @@ async fn sync_refuses_an_evidence_capture_with_no_sidecar() {
         .args(["site", "sync"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("evidence.yaml"));
+        .stderr(predicate::str::contains("authority.yaml"));
 
-    assert!(root.path().join("documents/evidence/roe.html").is_file());
+    assert!(root.path().join("documents/cases/roe.html").is_file());
 }
 
-/// `documents/evidence/**` routes through `site authorities create` rather
+/// `documents/cases/**` routes through `site authorities create` rather
 /// than the ordinary per-Project document upload: it never files an
 /// internal matter document, and the pointer it writes back carries the
 /// resulting `authority_id` alongside `canonical_url`/`checked_on`.
 #[tokio::test(flavor = "multi_thread")]
-async fn sync_routes_an_evidence_capture_through_authorities_create() {
+async fn sync_routes_a_case_capture_through_authorities_create() {
     let server = MockServer::start().await;
     let host = server.uri();
     let root = TempDir::new().unwrap();
@@ -502,10 +582,10 @@ async fn sync_routes_an_evidence_capture_through_authorities_create() {
     manifest(root.path(), &host);
     let credential_path = credentials(creds.path(), &host);
     let source_bytes = b"synthetic capture bytes";
-    write(root.path(), "documents/evidence/roe.html", source_bytes);
+    write(root.path(), "documents/cases/roe.html", source_bytes);
     write(
         root.path(),
-        "documents/evidence/roe.html.evidence.yaml",
+        "documents/cases/roe.html.authority.yaml",
         "class: case_law\n\
          citation: \"410 U.S. 113 (1973)\"\n\
          title: Roe v. Wade\n\
@@ -558,13 +638,13 @@ async fn sync_routes_an_evidence_capture_through_authorities_create() {
         .success()
         .stdout(predicate::str::contains("1 uploaded"));
 
-    assert!(!root.path().join("documents/evidence/roe.html").exists());
+    assert!(!root.path().join("documents/cases/roe.html").exists());
     assert!(!root
         .path()
-        .join("documents/evidence/roe.html.evidence.yaml")
+        .join("documents/cases/roe.html.authority.yaml")
         .exists());
-    let pointer = fs::read_to_string(root.path().join("documents/evidence/roe.html.yaml"))
-        .expect("evidence pointer written");
+    let pointer = fs::read_to_string(root.path().join("documents/cases/roe.html.yaml"))
+        .expect("authority pointer written");
     assert!(pointer.contains("kind: exhibit"), "{pointer}");
     assert!(
         pointer.contains(&format!("authority_id: {authority_id}")),
@@ -581,8 +661,83 @@ async fn sync_routes_an_evidence_capture_through_authorities_create() {
     assert!(pointer.contains("checked_on:"), "{pointer}");
     assert!(pointer.contains("created_at:"), "{pointer}");
     let parsed = store::document_pointers::DocumentPointer::from_yaml(&pointer)
-        .expect("evidence pointer validates");
+        .expect("authority pointer validates");
     assert!(parsed.validate().is_ok());
+}
+
+/// `documents/rules/**` is the identical Authority route, for a `statute`
+/// class rather than `case_law` — the split lives in the folder, not in a
+/// second code path.
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_routes_a_rule_capture_through_authorities_create() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let source_bytes = b"synthetic capture bytes";
+    write(root.path(), "documents/rules/nrs-86-201.html", source_bytes);
+    write(
+        root.path(),
+        "documents/rules/nrs-86-201.html.authority.yaml",
+        "class: statute\n\
+         citation: \"NRS 86.201\"\n\
+         title: Nevada LLC formation\n",
+    );
+    let project_id = Uuid::now_v7();
+    let authority_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+
+    mount_project_lookup(&server, project_id).await;
+    Mock::given(method("POST"))
+        .and(path("/app/api/authorities"))
+        .and(header("authorization", "Bearer test-token"))
+        .and(body_json(serde_json::json!({
+            "class": "statute",
+            "citation": "NRS 86.201",
+            "title": "Nevada LLC formation",
+            "short_cite": null,
+            "publisher": null,
+            "issued_on": null,
+            "canonical_url": null,
+            "checked_on": null,
+            "archive_base64": base64_of(source_bytes),
+            "content_type": "text/html",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": authority_id,
+            "class": "statute",
+            "citation": "NRS 86.201",
+            "short_cite": null,
+            "title": "Nevada LLC formation",
+            "publisher": null,
+            "issued_on": null,
+            "canonical_url": null,
+            "checked_on": null,
+            "archived_asset_id": asset_id,
+            "inserted_at": "2026-09-16T00:00:00Z",
+            "updated_at": "2026-09-16T00:00:00Z",
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 uploaded"));
+
+    assert!(!root.path().join("documents/rules/nrs-86-201.html").exists());
+    let pointer = fs::read_to_string(root.path().join("documents/rules/nrs-86-201.html.yaml"))
+        .expect("authority pointer written");
+    assert!(
+        pointer.contains(&format!("authority_id: {authority_id}")),
+        "{pointer}"
+    );
 }
 
 /// `documents/invoices/**` uploads through the ordinary document door, same

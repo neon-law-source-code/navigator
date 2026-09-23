@@ -1,27 +1,56 @@
 name: project-publish
 
-# The reusable publication half of a Project repository. The caller owns only
-# the two deployment coordinates that are safe to declare in source: project
-# and host. Publisher credentials remain deployment configuration.
+# The reusable publication half of a Project repository. The Project code and
+# deployment host both come from the checkout's own navigator.yaml — the
+# caller passes nothing. Publisher credentials remain deployment
+# configuration.
 
 on:
   workflow_call:
     inputs:
       project:
-        description: Project code declared by navigator.yaml.
-        required: true
+        description: >-
+          Deprecated, ignored: the Project code is read from navigator.yaml's
+          project.name. Kept only so an unmigrated caller's `with:` block does
+          not fail workflow_call's undeclared-input check; remove it from
+          callers and then from here.
+        required: false
         type: string
+        default: ""
       host:
-        description: Deployment host declared by navigator.yaml.
-        required: true
+        description: >-
+          Deprecated, ignored: the deployment host is read from
+          navigator.yaml's project.host. Kept only so an unmigrated caller's
+          `with:` block does not fail workflow_call's undeclared-input check;
+          remove it from callers and then from here.
+        required: false
         type: string
+        default: ""
 
+# Workflow-level `concurrency` cannot read a file, so it keys on the caller
+# repository rather than the resolved Project code — the two agree, since a
+# Project repository publishes exactly one Project.
 concurrency:
-  group: project-publish-${{ inputs.project }}
+  group: project-publish-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
+  read-manifest:
+    runs-on: ubuntu-latest
+    outputs:
+      project: ${{ steps.manifest.outputs.project }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read navigator.yaml
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          project="$(ruby -e 'require "yaml"; m = YAML.safe_load(File.read("navigator.yaml"), aliases: false) || {}; p = m["project"]; p = {} unless p.is_a?(Hash); name = p["name"]; abort("navigator.yaml is missing project.name") unless name.is_a?(String) && !name.strip.empty?; puts name.strip')"
+          echo "project=${project}" >> "${GITHUB_OUTPUT}"
+
   publish:
+    needs: read-manifest
     if: vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER != ''
     runs-on: ubuntu-latest
     permissions:
@@ -79,5 +108,5 @@ jobs:
           applications_bucket: ${{ vars.NAVIGATOR_APP_PUBLISHER_BUCKET }}
           workload_identity_provider: ${{ vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
           service_account: ${{ vars.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
-          repository: ${{ inputs.project }}
+          repository: ${{ needs.read-manifest.outputs.project }}
           dist_dir: ${{ steps.application.outputs.dist_dir }}

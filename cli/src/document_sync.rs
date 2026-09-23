@@ -9,6 +9,7 @@ use std::os::windows::fs::MetadataExt;
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::remote::DocumentClient;
 
@@ -524,8 +525,7 @@ async fn sync_authority_capture(
 /// Synchronize the current Project repository's staged documents in the other
 /// direction: download each committed pointer's own revision into the local
 /// staging path it names. Hydrate-only — a live document the checkout carries
-/// no pointer for is not imported; that remains `site sync`'s and a browser
-/// filing's own lane.
+/// no pointer for is not imported; `project sync` owns complete discovery.
 pub(crate) async fn run_pull(root: &Path, dry_run: bool) -> ExitCode {
     match pull(root, dry_run).await {
         Ok(()) => ExitCode::SUCCESS,
@@ -534,6 +534,293 @@ pub(crate) async fn run_pull(root: &Path, dry_run: bool) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// Reconcile the complete caller-visible live document inventory into the
+/// current Project checkout. Unlike `site pull`, this discovers documents
+/// whose pointer has never existed locally.
+pub(crate) async fn run_project_sync(root: &Path, dry_run: bool) -> ExitCode {
+    match project_sync(root, dry_run).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("navigator: {error:#}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ProjectSyncPlan {
+    label: String,
+    pointer: store::document_pointers::DocumentPointer,
+    pointer_target: PathBuf,
+    document_target: PathBuf,
+    pointer_changed: bool,
+    document_changed: bool,
+}
+
+fn inventory_filename(document: &crate::remote::LiveDocumentSummary) -> Result<String> {
+    let filename = document
+        .filename
+        .as_deref()
+        .filter(|name| {
+            let path = Path::new(name);
+            path.components().count() == 1 && path.file_name().is_some()
+        })
+        .ok_or_else(|| anyhow!("document {} has no safe filename", document.id))?;
+    Ok(filename.to_string())
+}
+
+fn inventory_relative_path(document: &crate::remote::LiveDocumentSummary) -> Result<PathBuf> {
+    if let Some(slug) = document.slug.as_deref() {
+        let relative = PathBuf::from(slug);
+        if relative.as_os_str().is_empty()
+            || relative.is_absolute()
+            || relative
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+            || relative.file_name().is_none()
+        {
+            return Err(anyhow!("document {} has unsafe slug `{slug}`", document.id));
+        }
+        return Ok(relative);
+    }
+    Ok(PathBuf::from("unclassified")
+        .join(document.id.to_string())
+        .join(inventory_filename(document)?))
+}
+
+fn pointer_target_for_document(root: &Path, relative: &Path) -> Result<PathBuf> {
+    let source = root.join("documents").join(relative);
+    let mut retired = source.as_os_str().to_os_string();
+    retired.push(".yml");
+    let retired = PathBuf::from(retired);
+    if retired.exists() {
+        return Err(anyhow!(
+            "{} uses a retired pointer suffix; rename it to {}.yaml before syncing",
+            retired.display(),
+            source.display()
+        ));
+    }
+    let mut target = source.into_os_string();
+    target.push(format!(".{POINTER_EXTENSION}"));
+    Ok(PathBuf::from(target))
+}
+
+fn raw_document_is_git_ignored(root: &Path, target: &Path) -> Result<()> {
+    let relative = target
+        .strip_prefix(root)
+        .map_err(|_| anyhow!("{} is outside {}", target.display(), root.display()))?;
+    let status = std::process::Command::new("git")
+        .args(["check-ignore", "--quiet", "--"])
+        .arg(relative)
+        .current_dir(root)
+        .status()
+        .with_context(|| format!("verify Git ignores {}", relative.display()))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "refusing to download {} because Git does not ignore it",
+            relative.display()
+        ))
+    }
+}
+
+fn current_pointer_matches(
+    path: &Path,
+    pointer: &store::document_pointers::DocumentPointer,
+) -> Result<bool> {
+    match std::fs::read_to_string(path) {
+        Ok(raw) => Ok(store::document_pointers::DocumentPointer::from_yaml(&raw)? == *pointer),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("read {}", path.display())),
+    }
+}
+
+fn project_sync_plans(
+    root: &Path,
+    documents: Vec<crate::remote::LiveDocumentSummary>,
+) -> Result<Vec<ProjectSyncPlan>> {
+    let mut grouped: BTreeMap<String, Vec<crate::remote::LiveDocumentSummary>> = BTreeMap::new();
+    for document in documents {
+        let key = document
+            .slug
+            .clone()
+            .unwrap_or_else(|| format!("@{}", document.id));
+        grouped.entry(key).or_default().push(document);
+    }
+    let mut plans = Vec::with_capacity(grouped.len());
+    for (_, revisions) in grouped {
+        let current = revisions
+            .first()
+            .ok_or_else(|| anyhow!("empty document revision group"))?;
+        let relative = inventory_relative_path(current)?;
+        let document_target = root.join("documents").join(&relative);
+        let pointer_target = pointer_target_for_document(root, &relative)?;
+        let kind = current
+            .kind
+            .clone()
+            .unwrap_or_else(|| "unclassified".to_string());
+        let pointer = store::document_pointers::DocumentPointer {
+            kind,
+            visibility: current.visibility.clone(),
+            current_version: store::document_pointers::PointerVersion {
+                version: revisions.len(),
+                asset_id: current.id,
+                created_at: current.inserted_at.clone(),
+                sha256: current.sha256_hex.clone(),
+                size_bytes: current.byte_size,
+                canonical_url: None,
+                checked_on: None,
+            },
+            previous_version: revisions.get(1).map(|revision| revision.id),
+            authority_id: None,
+        };
+        pointer
+            .validate()
+            .map_err(|error| anyhow!("invalid live pointer for {}: {error}", relative.display()))?;
+        let pointer_changed = !current_pointer_matches(&pointer_target, &pointer)?;
+        let document_changed = !matches_digest(&document_target, &pointer.current_version.sha256)?;
+        plans.push(ProjectSyncPlan {
+            label: format!("documents/{}", slash_path(&relative)?),
+            pointer,
+            pointer_target,
+            document_target,
+            pointer_changed,
+            document_changed,
+        });
+    }
+    Ok(plans)
+}
+
+async fn stage_project_sync(
+    plans: &[ProjectSyncPlan],
+    client: &DocumentClient,
+    staging: &tempfile::TempDir,
+) -> Result<Vec<StagedPull>> {
+    let downloads = staging.path().join("downloads");
+    std::fs::create_dir_all(&downloads).context("create project sync downloads")?;
+    let mut staged = Vec::new();
+    let mut unreadable = Vec::new();
+    for plan in plans {
+        if plan.pointer_changed {
+            let staged_path = downloads.join(staged.len().to_string());
+            std::fs::write(&staged_path, plan.pointer.to_yaml()?)?;
+            staged.push(StagedPull {
+                target: plan.pointer_target.clone(),
+                staged: staged_path,
+            });
+        }
+        if plan.document_changed {
+            match client
+                .download_revision(plan.pointer.current_version.asset_id)
+                .await
+            {
+                Ok(bytes)
+                    if store::documents::sha256_hex(&bytes)
+                        == plan.pointer.current_version.sha256 =>
+                {
+                    let staged_path = downloads.join(staged.len().to_string());
+                    std::fs::write(&staged_path, bytes)?;
+                    staged.push(StagedPull {
+                        target: plan.document_target.clone(),
+                        staged: staged_path,
+                    });
+                }
+                Ok(bytes) => unreadable.push(format!(
+                    "{}: could not read: sha256 mismatch (expected {}, received {})",
+                    plan.label,
+                    plan.pointer.current_version.sha256,
+                    store::documents::sha256_hex(&bytes)
+                )),
+                Err(error) => unreadable.push(format!("{}: could not read: {error:#}", plan.label)),
+            }
+        }
+    }
+    if unreadable.is_empty() {
+        return Ok(staged);
+    }
+    for failure in &unreadable {
+        eprintln!("{failure}");
+    }
+    Err(anyhow!(
+        "{} document(s) could not read; checkout unchanged",
+        unreadable.len()
+    ))
+}
+
+async fn project_sync(root: &Path, dry_run: bool) -> Result<()> {
+    let root = root.canonicalize().context("resolve checkout")?;
+    recover_interrupted_pull(&root)?;
+    let (project, host) = read_manifest(&root)?;
+    let client = DocumentClient::connect(host.as_deref(), &project).await?;
+    let plans = project_sync_plans(&root, client.list_documents().await?)?;
+
+    let mut added = 0usize;
+    let mut updated = 0usize;
+    let mut skipped = 0usize;
+    for plan in &plans {
+        if !plan.pointer_target.exists() {
+            added += 1;
+            if dry_run {
+                println!("would add {}", plan.label);
+            }
+        } else if plan.pointer_changed || plan.document_changed {
+            updated += 1;
+            if dry_run {
+                println!("would update {}", plan.label);
+            }
+        } else {
+            skipped += 1;
+            if dry_run {
+                println!("skip {}", plan.label);
+            }
+        }
+    }
+    if dry_run {
+        println!("{added} added, {updated} updated, {skipped} skipped");
+        return Ok(());
+    }
+
+    let documents = root.join("documents");
+    std::fs::create_dir_all(&documents)
+        .with_context(|| format!("create {}", documents.display()))?;
+    ensure_documents_tree_is_safe(&documents)?;
+    let ignore = documents.join(".gitignore");
+    match std::fs::read_to_string(&ignore) {
+        Ok(contents) if contents == DOCUMENTS_GITIGNORE => {}
+        Ok(_) => {
+            return Err(anyhow!(
+                "{} does not carry Navigator's document ignore rules",
+                ignore.display()
+            ))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::write(&ignore, DOCUMENTS_GITIGNORE)
+                .with_context(|| format!("write {}", ignore.display()))?;
+        }
+        Err(error) => return Err(error).with_context(|| format!("read {}", ignore.display())),
+    }
+    for plan in &plans {
+        raw_document_is_git_ignored(&root, &plan.document_target)?;
+    }
+
+    let staging = tempfile::tempdir().context("create project sync staging area")?;
+    let staged = stage_project_sync(&plans, &client, &staging).await?;
+    if !staged.is_empty() {
+        let mut transaction = begin_pull_transaction(&root, staging, staged)?;
+        match publish_pull_transaction(&root, &mut transaction) {
+            Ok(_) => {}
+            Err(PublicationFailure::BeforeCommit(error)) => {
+                rollback_pull_transaction(&root, &transaction.path, &transaction.state)?;
+                return Err(error);
+            }
+            Err(PublicationFailure::AfterCommit(error)) => return Err(error),
+        }
+    }
+    println!("{added} added, {updated} updated, {skipped} skipped");
+    Ok(())
 }
 
 /// The local staging path a pointer's own bytes belong at — its committed

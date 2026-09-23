@@ -446,7 +446,8 @@ pub(crate) async fn diff(pointer: &Path, a: usize, b: usize) -> ExitCode {
     .await
 }
 
-/// Every committed pointer (`*.yml`) below `<root>/documents/`, as paths
+/// Every committed pointer (`*.yaml`, plus retired `*.yml`) below
+/// `<root>/documents/`, as paths
 /// relative to `root`, sorted for a stable report order. `root` carrying no
 /// `documents/` at all yields an empty list rather than an error — the
 /// common case for every repository that has not adopted the asset lane.

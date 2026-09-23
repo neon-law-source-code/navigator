@@ -28,7 +28,7 @@ holds that Project's notation templates and application workspaces side by side:
 ├── apps/
 │   └── portal/        # React + Vite; discovered by its package.json
 ├── templates/         # *.md notation blueprints
-├── documents/         # *.yml asset pointers; staged bytes are ignored and removed after sync
+├── documents/         # *.yaml asset pointers; legal-document bytes stay ignored
 ├── seeds/             # lookup_fields / records YAML for `navigator site import`
 ├── .agents/skills/    # kept identical to Navigator's own canonical copies
 ├── AGENTS.md
@@ -114,7 +114,7 @@ navigator site sync
 ```
 
 The command derives the document slug from its path below `documents/`, uploads the bytes through Navigator's
-authenticated API, writes `<filename>.yml` only after the upload succeeds, and then removes the staged file. Object
+authenticated API, writes `<filename>.yaml` only after the upload succeeds, and then removes the staged file. Object
 storage and the `assets` revision chain remain authoritative. A retry of identical bytes is a no-op at the API and
 returns the same pointer, so an interrupted run can safely continue. `--dry-run` lists pending uploads without logging
 in or changing the checkout.
@@ -194,6 +194,32 @@ missing or corrupt storage object, and a live row with no slug, are errors a per
 object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix. Uploading, filing a new
 revision, or removing a document is `navigator site sync`. Plain `navigator project gate`, without `--check`, makes no
 document request.
+
+**`navigator project sync` reconciles the complete live Project into the checkout.** Run it with no positional arguments
+from the repository root. It reads the Project code and host from `navigator.yaml`, asks the live site for every
+document visible through the caller's matter lens, then creates or refreshes each YAML pointer and downloads the current
+revision to the ignored path beside it. This includes documents filed through the site that have no local pointer yet.
+
+The command reports each document as added, updated, or skipped. A second run skips matching pointers and bytes.
+`navigator project sync --dry-run` performs the authorized inventory and reports the same plan without writing files or
+downloading bytes. A revision that the inventory lists but the download door refuses is reported as `could not read`;
+the command never describes an authorization failure as a missing document. Pointer and byte changes publish together,
+so any failed download leaves all document targets unchanged.
+
+`project sync` is the complete remote-to-local operation. `site pull` remains the offline-pointer-oriented hydration
+tool, and `site sync` remains the explicit local-to-remote upload operation. `project sync` never uploads staged files.
+Before downloading, it verifies that Git ignores every raw target. Only `.yaml` pointers and `documents/.gitignore` are
+eligible for source control.
+
+**`navigator site document verify` answers "did it land?" in one of three modes, chosen by what you pass.** With no
+flags it checks pointer shape only — every `*.yaml` below `documents/` must parse — and opens no connection, which is
+what a pull request runs. With `--host <host>` it checks each pointer against the live asset record using your own
+`navigator site login` session, reporting the same drift `log` and `get` report: a revision missing from the live chain,
+a `sha256` or size that disagrees, or an operative revision the pointer does not name. With `--ci --host <host>` it runs
+that identical live check but mints the session from the GitHub Actions run's own OIDC token, because a runner carries
+no stored login; that is the mode a push to `main` uses. The `--host` mode exists so that an operator who has just
+uploaded a document can confirm the asset exists remotely without reading a CI job (LAW-12). Before it, `--host` was
+accepted and then ignored, and verify reported success offline for a checkout whose bytes were already deleted.
 
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing

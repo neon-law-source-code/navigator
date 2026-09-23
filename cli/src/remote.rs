@@ -11,6 +11,7 @@
 //! | `projects create` | `POST /app/api/projects` (plus `GET /app/api/people`, `/entities`, `/entity-types`, `/jurisdictions`) |
 //! | `projects close` | `POST /app/api/projects/{id}/lifecycle`, then a repository archive upload |
 //! | `project setup` | `GET /app/api/projects` plus the authenticated surface, Slack, and Notion setup doors |
+//! | `project sync` | `GET /app/api/projects/{id}/documents` plus each current revision's download door |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
 //! | `notation preview` | `POST /app/projects/{project_code}/notations/draft` |
@@ -413,6 +414,20 @@ pub(crate) struct RevisionsResponse {
     pub(crate) revisions: Vec<RevisionSummary>,
 }
 
+/// One filed document revision returned by the Project inventory door. The
+/// server applies the caller's matter lens before this shape reaches the CLI.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct LiveDocumentSummary {
+    pub(crate) id: Uuid,
+    pub(crate) byte_size: i64,
+    pub(crate) sha256_hex: String,
+    pub(crate) filename: Option<String>,
+    pub(crate) kind: Option<String>,
+    pub(crate) visibility: String,
+    pub(crate) slug: Option<String>,
+    pub(crate) inserted_at: String,
+}
+
 /// Authenticated client for the one Project's document-sync operations.
 pub(crate) struct DocumentClient {
     base: String,
@@ -517,6 +532,30 @@ impl DocumentClient {
             ));
         }
         serde_json::from_str(&text).context("parse document integrity response")
+    }
+
+    /// Every document revision visible through the caller's Project lens.
+    pub(crate) async fn list_documents(&self) -> Result<Vec<LiveDocumentSummary>> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "list documents failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse document inventory response")
     }
 
     /// A client aimed at a test server, with no login lookup.

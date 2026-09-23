@@ -212,6 +212,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
             "drift",
             "gate",
             "setup",
+            "sync",
             "help"
         ]
     );

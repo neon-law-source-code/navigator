@@ -199,9 +199,10 @@ fn windows_cli_and_lsp_check_is_path_scoped_and_optional() {
         "Windows must check both cli and lsp with --locked"
     );
     assert!(
-        steps
-            .iter()
-            .any(|step| { step["run"].as_str() == Some("cargo test --locked -p cli --test gate") }),
+        steps.iter().any(|step| {
+            step["run"].as_str()
+                == Some("cargo test --locked -p cli --test project_repository --test gate")
+        }),
         "Windows must run the focused CLI integration tests"
     );
     assert!(

@@ -2284,8 +2284,10 @@ jobs:
         let mut warnings = Vec::new();
         validate_layout(root.path(), &mut errors, &mut warnings);
         assert!(
-            errors.iter().any(|finding| finding.path.ends_with("AGENTS.md")
-                && finding.message.contains("canonical contract")),
+            errors
+                .iter()
+                .any(|finding| finding.path.ends_with("AGENTS.md")
+                    && finding.message.contains("canonical contract")),
             "{errors:?}"
         );
         assert!(warnings.is_empty(), "{warnings:?}");
@@ -2473,7 +2475,9 @@ jobs:
         std::fs::write(root.path().join("AGENTS.md"), "# Working in acme\n").unwrap();
         let found = layout_findings(root.path());
         assert!(
-            found.iter().any(|finding| finding.contains("canonical contract")),
+            found
+                .iter()
+                .any(|finding| finding.contains("canonical contract")),
             "{found:?}"
         );
     }

@@ -2789,14 +2789,16 @@ mod tests {
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
         clause_list, create_notation_draft, document_upload, ensure_no_unused_selections,
-        fetch_status, mail_file, matter_close, notation_answers, notation_approve,
-        notation_create, notation_document, notation_list, notation_request_changes,
-        notation_status, notation_update, notion_ensure, notion_reconcile,
-        parse_scripted_selection, picker_selection_fields, projects_create, retainer_approve,
-        retainer_send, scripted_picker_selection_fields, seed, seed_directory, select_candidate,
-        slack_ensure, CoverageSummary, DocumentClient, SeedCredential, StepQuestion, StepResponse,
+        fetch_status, mail_file, matter_close, notation_answers, notation_approve, notation_create,
+        notation_document, notation_list, notation_request_changes, notation_status,
+        notation_update, notion_ensure, notion_reconcile, parse_scripted_selection,
+        picker_selection_fields, projects_create, retainer_approve, retainer_send,
+        scripted_picker_selection_fields, seed, seed_directory, select_candidate, slack_ensure,
+        CoverageSummary, DocumentClient, SeedCredential, StepQuestion, StepResponse,
     };
-    use super::{exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, server_error};
+    use super::{
+        exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, server_error,
+    };
     use crate::credentials::{self, Credentials, HostCredential};
     use uuid::Uuid;
     use wiremock::matchers::{body_json, method, path, query_param};

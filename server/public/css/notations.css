@@ -66,7 +66,7 @@
   gap: .5rem;
 }
 .notations-specimen figcaption { border-bottom: 1px solid var(--nav-teal-500); }
-.notations-specimen pre { background: transparent; color: inherit; border: 0; padding: 1.4rem; margin: 0; overflow-x: auto; font-size: clamp(.76rem, .95vw, .9rem); line-height: 1.8; }
+.notations-specimen pre, .notations-specimen .nav-code pre { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 1.4rem 5rem 1.4rem 1.4rem; margin: 0; overflow-x: auto; font-size: clamp(.76rem, .95vw, .9rem); line-height: 1.8; }
 .notations-specimen code { background: transparent; color: inherit; }
 .notations-specimen__footer { background: var(--notation-accent); color: var(--notation-ink); border-radius: 0 0 12px 12px; letter-spacing: 0; }
 .notations-page .fm-band { padding-block: clamp(3rem, 7vw, 7rem); }
@@ -95,5 +95,5 @@
   .notations-hero { grid-template-columns: 1fr; }
   .notations-hero h1 { max-width: 13ch; }
   .notations-specimen { transform: none; margin-right: 12px; }
-  .notations-specimen pre { font-size: .76rem; }
+  .notations-specimen pre, .notations-specimen .nav-code pre { font-size: .76rem; }
 }

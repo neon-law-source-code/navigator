@@ -344,6 +344,10 @@ mod tests {
         let out = html();
         assert!(out.contains("nav-code"), "code block wrapper: {out}");
         assert!(
+            out.contains("data-copy-code=\"true\""),
+            "frontmatter can be copied: {out}"
+        );
+        assert!(
             out.contains("onboarding__letter"),
             "frontmatter content: {out}"
         );

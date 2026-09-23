@@ -262,7 +262,10 @@ fn render_markdown(src: &str) -> String {
         &mut out,
         views::markdown::highlight_code_blocks(events).into_iter(),
     );
-    out
+    // Highlighted fences already carry a copy button. This pass adds one to a
+    // raw `<pre>` an author wrote as HTML, and leaves the highlighted ones
+    // alone.
+    views::components::code::decorate_copy_buttons(&out)
 }
 
 /// Drop a single leading top-level (`# `) heading so the rendered body

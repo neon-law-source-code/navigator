@@ -279,7 +279,7 @@ fn render_demo_slides_place_the_command_beside_the_document() {
         .expect("read the workshop stylesheet");
 
     let layout = css
-        .split_once(".workshop-slide > .material-body:has(pre + p > img) {")
+        .split_once(".workshop-slide > .material-body:has(.nav-code + p > img) {")
         .and_then(|(_, rest)| rest.split_once('}'))
         .map(|(declarations, _)| declarations)
         .expect("render-demo slides must own a code-and-document grid");
@@ -288,7 +288,7 @@ fn render_demo_slides_place_the_command_beside_the_document() {
     assert!(layout.contains("grid-template-rows: auto minmax(0, 1fr);"));
 
     let document = css
-        .split_once(".workshop-slide > .material-body:has(pre + p > img) > p:has(> img) {")
+        .split_once(".workshop-slide > .material-body:has(.nav-code + p > img) > p:has(> img) {")
         .and_then(|(_, rest)| rest.split_once('}'))
         .map(|(declarations, _)| declarations)
         .expect("the rendered document must occupy the second grid column");

@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    CatalogHero, PublicShell, SiteHeader, SiteNavLink, SocialMeta, TestimonialCard,
+    CatalogHero, PlainCodeBlock, PublicShell, SiteHeader, SiteNavLink, SocialMeta, TestimonialCard,
     TestimonialSection, CATALOG_STYLESHEET_HREF,
 };
 use crate::public_chrome::{PublicChrome, PublicFooter};
@@ -224,7 +224,7 @@ fn NotationsIntroduction(content: crate::marketing_page::PageContent) -> Element
                 }
                 figure { class: "notations-specimen", id: "notation-source",
                     figcaption { span { "agreement.md" } }
-                    pre { code { "{specimen}" } }
+                    PlainCodeBlock { code: specimen.to_string() }
                     div { class: "notations-specimen__footer",
                         span { "YAML Frontmatter" }
                         span { "+" }

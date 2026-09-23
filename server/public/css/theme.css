@@ -2209,14 +2209,54 @@ a.nav-pagination__link:hover {
   width: auto;
 }
 
-/* Server-highlighted code block — syntect emits an inline-styled <pre>. */
+/* Server-highlighted code block — syntect emits an inline-styled <pre>.
+   The copy button sits on the block, not in the scrolling source, so a long
+   line scrolls under it and the control stays put. `min-width: 0` lets the
+   block shrink inside a grid column instead of forcing the page wider. */
 .nav-code {
-  overflow-x: auto;
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nav-code__copy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 1;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius-sm);
+  background: var(--nav-color-surface);
+  color: var(--nav-color-text);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nav-code__copy:hover {
+  background: var(--nav-color-surface-raised);
+  color: var(--nav-color-text);
+}
+
+.nav-code__copy[data-copied="true"] {
+  background: var(--nav-color-primary);
+  border-color: var(--nav-color-primary);
+  color: var(--nav-color-on-primary);
+}
+
+.nav-code__copy:focus-visible {
+  outline: 2px solid var(--nav-color-primary);
+  outline-offset: 2px;
 }
 
 .nav-code pre {
   margin: 0;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 5rem 0.75rem 1rem;
+  overflow-x: auto;
   border-radius: var(--nav-radius-sm);
   border: 1px solid var(--nav-color-border);
 }
@@ -3486,12 +3526,12 @@ a.nav-link:hover {
   margin-top: 2rem;
 }
 
-.template-notation pre {
+.template-notation .nav-code pre {
   background: var(--nav-color-surface-raised);
   border: 1px solid var(--nav-color-border);
   border-radius: var(--nav-radius-sm);
   overflow-x: auto;
-  padding: 1rem;
+  padding: 1rem 5rem 1rem 1rem;
 }
 
 /* Lawyer workbench (`/lawyer`) — the project KPI overview, the calendar

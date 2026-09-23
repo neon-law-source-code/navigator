@@ -193,6 +193,101 @@ pub fn code_block(code: &str) -> String {
     highlight(code, "rust")
 }
 
+/// The control a reader uses to copy one code block.
+///
+/// Shared by the Dioxus `CodeBlock` / `PlainCodeBlock` components and by
+/// [`with_copy_button`]. The hook is `data-copy-code`; `/public/js/copy-code.js`
+/// listens for it. The button carries no inline handler — `script-src` forbids
+/// those — and its accessible name is "Copy code".
+pub const COPY_BUTTON_OPEN: &str = "<button type=\"button\" class=\"nav-code__copy\" data-copy-code=\"true\" aria-label=\"Copy code\">Copy</button>";
+
+/// Wrap one `<pre>…</pre>` so the block can be copied in one click.
+#[must_use]
+pub fn with_copy_button(pre_html: &str) -> String {
+    format!("<div class=\"nav-code\">{COPY_BUTTON_OPEN}{pre_html}</div>")
+}
+
+/// Wrap every `<pre>` that is not already inside `.nav-code`.
+///
+/// Inline `<code>` is left alone. A second pass is a no-op, so a highlighter
+/// that already called [`with_copy_button`] and a later HTML pass can both run.
+#[must_use]
+pub fn decorate_copy_buttons(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    // `true` while the open element is the copy-button wrapper. A `<pre>`
+    // nested in one already has its button.
+    let mut inside_nav_code: Vec<bool> = Vec::new();
+    let mut rest = html;
+    while !rest.is_empty() {
+        let Some(rel) = rest.find('<') else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..rel]);
+        rest = &rest[rel..];
+
+        if is_open_tag(rest, "pre") && !inside_nav_code.iter().any(|inside| *inside) {
+            let Some(end) = rest.find("</pre>") else {
+                out.push_str(rest);
+                break;
+            };
+            let end = end + "</pre>".len();
+            out.push_str(&with_copy_button(&rest[..end]));
+            rest = &rest[end..];
+            continue;
+        }
+
+        if is_open_tag(rest, "div") {
+            let Some(tag_end) = rest.find('>') else {
+                out.push('<');
+                rest = &rest[1..];
+                continue;
+            };
+            let tag = &rest[..=tag_end];
+            inside_nav_code.push(tag_has_class(tag, "nav-code"));
+            out.push_str(tag);
+            rest = &rest[tag_end + 1..];
+            continue;
+        }
+
+        if let Some(after) = rest.strip_prefix("</div>") {
+            inside_nav_code.pop();
+            out.push_str("</div>");
+            rest = after;
+            continue;
+        }
+
+        out.push('<');
+        rest = &rest[1..];
+    }
+    out
+}
+
+fn is_open_tag(html: &str, name: &str) -> bool {
+    let Some(after) = html.strip_prefix('<').and_then(|s| s.strip_prefix(name)) else {
+        return false;
+    };
+    after.starts_with(|c: char| c.is_ascii_whitespace() || c == '>')
+}
+
+fn tag_has_class(tag: &str, class: &str) -> bool {
+    attr_value(tag, "class")
+        .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+}
+
+fn attr_value<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let needle = format!("{name}=");
+    let start = tag.find(&needle)? + needle.len();
+    let rest = tag.get(start..)?;
+    let quote = rest.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let value = rest.get(quote.len_utf8()..)?;
+    let end = value.find(quote)?;
+    value.get(..end)
+}
+
 fn html_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -349,6 +444,34 @@ pub fn open(name: &str) -> Result<Matter, Error> {
             "angle brackets escaped: {out}"
         );
         assert!(!out.contains("Vec<String>"), "no raw angle brackets: {out}");
+    }
+
+    #[test]
+    fn a_highlighted_block_can_be_copied_and_decorating_twice_does_not_nest() {
+        let once = super::decorate_copy_buttons(&highlight("let x = 1;", "rust"));
+        let button = once.find("data-copy-code").expect("copy hook");
+        let pre = once.find("<pre").expect("pre");
+        assert!(
+            button < pre,
+            "the button sits beside the source, not inside it: {once}"
+        );
+        assert!(
+            once.contains("let") && once.contains('1'),
+            "source survives wrapping: {once}"
+        );
+        assert!(!once.contains("onclick"), "no inline handler: {once}");
+        let twice = super::decorate_copy_buttons(&once);
+        assert_eq!(
+            twice.matches("data-copy-code").count(),
+            1,
+            "a second pass must not nest another button: {twice}"
+        );
+    }
+
+    #[test]
+    fn decorating_leaves_inline_code_and_prose_untouched() {
+        let html = "<p>Call <code>highlight</code> from the server.</p>";
+        assert_eq!(super::decorate_copy_buttons(html), html);
     }
 
     #[test]

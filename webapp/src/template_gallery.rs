@@ -20,7 +20,9 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Card, LegalBlueprintDisclaimer, PublicShell, SiteHeader, SiteNavLink};
+use crate::components::{
+    Card, LegalBlueprintDisclaimer, PlainCodeBlock, PublicShell, SiteHeader, SiteNavLink,
+};
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// The gallery index's `<meta description>`, as the page set it.
@@ -266,9 +268,7 @@ pub fn template_detail_body(view: &TemplateDetailView) -> Element {
                         "header — the machine-readable contract the questionnaire "
                         "and workflow run on. Here is this template's, verbatim:"
                     }
-                    pre {
-                        code { "{fenced}" }
-                    }
+                    PlainCodeBlock { code: fenced }
                 }
                 p {
                     a {

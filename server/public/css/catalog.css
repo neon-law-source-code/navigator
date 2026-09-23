@@ -711,6 +711,12 @@
   color: inherit !important;
 }
 
+/* A thumbnail is a miniature of the slide, `inert`, and too small for a
+   control. The copy button belongs on the slide itself. */
+.slide-thumb__preview .nav-code__copy {
+  display: none;
+}
+
 .slide-thumb__caption {
   margin-top: auto;
   overflow: hidden;
@@ -1149,31 +1155,31 @@
 /* A render-demo slide pairs the command with its document output. Put the two
    side by side so a portrait PDF page can use the full canvas height instead
    of shrinking into the short row left beneath a wide code block. */
-.workshop-slide > .material-body:has(pre + p > img) {
+.workshop-slide > .material-body:has(.nav-code + p > img) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.58fr);
   grid-template-rows: auto minmax(0, 1fr);
   column-gap: clamp(0.75rem, 2vw, 1.5rem);
 }
 
-.workshop-slide > .material-body:has(pre + p > img) > h3 {
+.workshop-slide > .material-body:has(.nav-code + p > img) > h3 {
   grid-column: 1 / -1;
 }
 
-.workshop-slide > .material-body:has(pre + p > img) > pre {
+.workshop-slide > .material-body:has(.nav-code + p > img) > .nav-code {
   align-self: center;
   min-width: 0;
   margin-bottom: 0;
 }
 
-.workshop-slide > .material-body:has(pre + p > img) > p:has(> img) {
+.workshop-slide > .material-body:has(.nav-code + p > img) > p:has(> img) {
   grid-column: 2;
   grid-row: 2;
   align-items: stretch;
   margin-block: 0;
 }
 
-.workshop-slide > .material-body:has(pre + p > img) > p > img {
+.workshop-slide > .material-body:has(.nav-code + p > img) > p > img {
   height: 100%;
 }
 

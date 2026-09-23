@@ -121,6 +121,12 @@ pub enum Kind {
     /// [`Kind::Transcript`]: this is a document classification for an
     /// `assets` row, never a template's own declared kind.
     ClosedRepository,
+    /// The Firm's invoice to the client, downloaded from the billing system
+    /// and staged under `documents/invoices/`. Same asset-lane-only caveat
+    /// as [`Kind::Transcript`], and defaults to `internal` visibility like
+    /// every other asset-lane kind `navigator site sync` routes without an
+    /// explicit override.
+    Invoice,
     /// A filed artifact nobody has classified yet — an inbound email
     /// attachment, a blank-kind lawyer upload, an expunge tombstone.
     ///
@@ -188,6 +194,7 @@ impl Kind {
         Kind::CertificateOfNaturalization,
         Kind::Exhibit,
         Kind::ClosedRepository,
+        Kind::Invoice,
         Kind::Unclassified,
         Kind::ReviewQueueWorkbench,
         Kind::VerifierSplitView,
@@ -224,6 +231,7 @@ impl Kind {
             Kind::CertificateOfNaturalization => "certificate_of_naturalization",
             Kind::Exhibit => "exhibit",
             Kind::ClosedRepository => "closed_repository",
+            Kind::Invoice => "invoice",
             Kind::Unclassified => "unclassified",
             Kind::ReviewQueueWorkbench => "review_queue_workbench",
             Kind::VerifierSplitView => "verifier_split_view",
@@ -271,6 +279,7 @@ impl Kind {
             Kind::ClosedRepository => {
                 "The archive of a closed Project's repository at its final commit (asset-lane only)"
             }
+            Kind::Invoice => "The Firm's invoice to the client (asset-lane only)",
             Kind::Unclassified => "A filed artifact nobody has classified yet (asset-lane only)",
             Kind::ReviewQueueWorkbench => {
                 "A matter dashboard: a filterable item rail, a detail pane, and a per-item status"
@@ -345,6 +354,7 @@ impl Kind {
             | Kind::CertificateOfNaturalization
             | Kind::Exhibit
             | Kind::ClosedRepository
+            | Kind::Invoice
             | Kind::Unclassified
             | Kind::ReviewQueueWorkbench
             | Kind::VerifierSplitView
@@ -394,6 +404,7 @@ impl Kind {
             | Kind::CertificateOfNaturalization
             | Kind::Exhibit
             | Kind::ClosedRepository
+            | Kind::Invoice
             | Kind::Unclassified
             | Kind::ReviewQueueWorkbench
             | Kind::VerifierSplitView
@@ -531,6 +542,7 @@ impl Kind {
             | Kind::CertificateOfNaturalization
             | Kind::Exhibit
             | Kind::ClosedRepository
+            | Kind::Invoice
             | Kind::Unclassified
             | Kind::ReviewQueueWorkbench
             | Kind::VerifierSplitView
@@ -597,6 +609,7 @@ impl Kind {
                 | Kind::CertificateOfNaturalization
                 | Kind::Exhibit
                 | Kind::ClosedRepository
+                | Kind::Invoice
                 | Kind::Unclassified => false,
             },
             // Everything that can be *filed on a matter*: the three
@@ -622,6 +635,7 @@ impl Kind {
                 | Kind::CertificateOfNaturalization
                 | Kind::Exhibit
                 | Kind::ClosedRepository
+                | Kind::Invoice
                 | Kind::Unclassified => true,
                 Kind::Event
                 | Kind::Post
@@ -748,6 +762,7 @@ mod tests {
             Kind::CertificateOfNaturalization,
             Kind::Exhibit,
             Kind::ClosedRepository,
+            Kind::Invoice,
             Kind::Unclassified,
         ] {
             assert!(!kind.valid_for(Lane::Template), "{}", kind.as_str());

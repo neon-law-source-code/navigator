@@ -3698,9 +3698,9 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
     }
 }
 
-const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, unclassified.";
+const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, invoice, unclassified.";
 
-const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, and everything else to unclassified. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
+const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, invoices to invoice, and everything else to unclassified — except documents/evidence/**, which is not a Project document at all: it is routed through `site authorities create` (a sidecar carrying citation/class/title/canonical_url/checked_on is required beside each capture) and its committed pointer carries an authority_id rather than a plain kind inference. A documents/invoices/** filename must match `INV-<digits>.<ext>`. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
 
 /// Render one notation template to PDF or editable Word. Validates the file against the
 /// notation rule set, resolves the render frame (`output:` frontmatter →

@@ -386,6 +386,260 @@ fn sync_dry_run_lists_work_without_writing_or_needing_a_login() {
     assert!(!root.path().join("documents/.gitignore").exists());
 }
 
+/// `documents/evidence/**` is an Authority, not a Project document — the
+/// dry-run report has to say so rather than naming an inferred `kind`, since
+/// there is no per-Project kind for this route at all.
+#[test]
+fn sync_dry_run_reports_an_evidence_capture_as_an_authority_upload() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(
+        root.path(),
+        "documents/evidence/roe.html",
+        b"synthetic capture",
+    );
+    write(
+        root.path(),
+        "documents/evidence/roe.html.evidence.yaml",
+        "class: case_law\ncitation: 410 U.S. 113 (1973)\ntitle: Roe v. Wade\n",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "would upload documents/evidence/roe.html as an Authority upload",
+        ))
+        // The sidecar is metadata, never an upload target of its own — one
+        // planned upload, not two.
+        .stdout(predicate::str::contains("1 upload planned"))
+        .stdout(predicate::str::contains("evidence.yaml").not());
+}
+
+/// `documents/invoices/**` maps to the new `invoice` kind.
+#[test]
+fn sync_dry_run_reports_an_invoice_kind() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(
+        root.path(),
+        "documents/invoices/INV-1.pdf",
+        b"synthetic invoice",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "would upload documents/invoices/INV-1.pdf as kind `invoice`",
+        ));
+}
+
+/// A `documents/invoices/` filename that does not match the synthetic
+/// `INV-<digits>.<ext>` pattern is refused before any network call — even
+/// under `--dry-run`, since preflight runs ahead of the dry-run early
+/// return.
+#[test]
+fn sync_refuses_an_invoice_filename_that_does_not_match_the_pattern() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(
+        root.path(),
+        "documents/invoices/january-statement.pdf",
+        b"synthetic invoice",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("INV-<digits>"));
+}
+
+/// An evidence capture with no sidecar is refused before any network call —
+/// `authorities create` needs `class`/`citation`/`title`, which cannot be
+/// scraped from arbitrary HTML.
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_refuses_an_evidence_capture_with_no_sidecar() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    write(
+        root.path(),
+        "documents/evidence/roe.html",
+        b"synthetic capture",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("evidence.yaml"));
+
+    assert!(root.path().join("documents/evidence/roe.html").is_file());
+}
+
+/// `documents/evidence/**` routes through `site authorities create` rather
+/// than the ordinary per-Project document upload: it never files an
+/// internal matter document, and the pointer it writes back carries the
+/// resulting `authority_id` alongside `canonical_url`/`checked_on`.
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_routes_an_evidence_capture_through_authorities_create() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let source_bytes = b"synthetic capture bytes";
+    write(root.path(), "documents/evidence/roe.html", source_bytes);
+    write(
+        root.path(),
+        "documents/evidence/roe.html.evidence.yaml",
+        "class: case_law\n\
+         citation: \"410 U.S. 113 (1973)\"\n\
+         title: Roe v. Wade\n\
+         canonical_url: https://example.test/roe\n\
+         checked_on: \"2026-09-05\"\n",
+    );
+    let project_id = Uuid::now_v7();
+    let authority_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+
+    mount_project_lookup(&server, project_id).await;
+    Mock::given(method("POST"))
+        .and(path("/app/api/authorities"))
+        .and(header("authorization", "Bearer test-token"))
+        .and(body_json(serde_json::json!({
+            "class": "case_law",
+            "citation": "410 U.S. 113 (1973)",
+            "title": "Roe v. Wade",
+            "short_cite": null,
+            "publisher": null,
+            "issued_on": null,
+            "canonical_url": "https://example.test/roe",
+            "checked_on": "2026-09-05",
+            "archive_base64": base64_of(source_bytes),
+            "content_type": "text/html",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": authority_id,
+            "class": "case_law",
+            "citation": "410 U.S. 113 (1973)",
+            "short_cite": null,
+            "title": "Roe v. Wade",
+            "publisher": null,
+            "issued_on": null,
+            "canonical_url": "https://example.test/roe",
+            "checked_on": "2026-09-05",
+            "archived_asset_id": asset_id,
+            "inserted_at": "2026-09-16T00:00:00Z",
+            "updated_at": "2026-09-16T00:00:00Z",
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 uploaded"));
+
+    assert!(!root.path().join("documents/evidence/roe.html").exists());
+    assert!(!root
+        .path()
+        .join("documents/evidence/roe.html.evidence.yaml")
+        .exists());
+    let pointer = fs::read_to_string(root.path().join("documents/evidence/roe.html.yaml"))
+        .expect("evidence pointer written");
+    assert!(pointer.contains("kind: exhibit"), "{pointer}");
+    assert!(
+        pointer.contains(&format!("authority_id: {authority_id}")),
+        "{pointer}"
+    );
+    assert!(
+        pointer.contains(&format!("asset_id: {asset_id}")),
+        "{pointer}"
+    );
+    assert!(
+        pointer.contains("canonical_url: https://example.test/roe"),
+        "{pointer}"
+    );
+    assert!(pointer.contains("checked_on:"), "{pointer}");
+    assert!(pointer.contains("created_at:"), "{pointer}");
+    let parsed = store::document_pointers::DocumentPointer::from_yaml(&pointer)
+        .expect("evidence pointer validates");
+    assert!(parsed.validate().is_ok());
+}
+
+/// `documents/invoices/**` uploads through the ordinary document door, same
+/// as any other kind — only the folder-derived `kind` and the filename
+/// check are new.
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_uploads_an_invoice_with_kind_invoice() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let source_bytes = b"synthetic invoice bytes";
+    write(root.path(), "documents/invoices/INV-42.pdf", source_bytes);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+
+    mount_project_lookup(&server, project_id).await;
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "INV-42.pdf",
+            "content_base64": base64_of(source_bytes),
+            "content_type": "application/pdf",
+            "kind": "invoice",
+            "visibility": "internal",
+            "slug": "invoices/INV-42.pdf"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "kind": "invoice",
+            "visibility": "internal",
+            "current_version": {
+                "version": 1,
+                "asset_id": asset_id,
+                "created_at": "2026-09-05T12:00:00Z",
+                "sha256": sha256(source_bytes),
+                "size_bytes": i64::try_from(source_bytes.len()).unwrap()
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 uploaded"));
+
+    let pointer = fs::read_to_string(root.path().join("documents/invoices/INV-42.pdf.yaml"))
+        .expect("invoice pointer written");
+    assert!(pointer.contains("kind: invoice"), "{pointer}");
+}
+
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_refuses_a_symlinked_documents_root_before_network_or_writes() {

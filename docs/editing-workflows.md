@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Editing a legal workflow
 
 Use this guide to change a shipped workflow. For a new matter type, start with [agent workflows](agent-workflows.md) and

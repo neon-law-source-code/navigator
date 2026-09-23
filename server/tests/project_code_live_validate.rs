@@ -5,7 +5,7 @@
 //! to give shape feedback as the lawyer types. The script also previews the
 //! resulting code, and that preview is copy a lawyer reads before committing
 //! a value they can never change — so it has to agree with the contract in
-//! `docs/glossary.md#project`: the code is stored exactly as supplied, with
+//! `docs/glossary/project.md`: the code is stored exactly as supplied, with
 //! nothing generated or appended. The server-rendered help text is covered by
 //! `webapp::project_new::tests`; that test renders HTML only, so the
 //! client-side script is the one surface that can carry retired wording

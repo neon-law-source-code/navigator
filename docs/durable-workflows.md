@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Durable workflows
 
 How Neon Law Navigator runs long-lived, crash-safe work — retainer intake, Drive sync, the nightly Archives backup — on

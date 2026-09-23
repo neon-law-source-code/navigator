@@ -176,7 +176,7 @@ fn escape_attribute(raw: &str) -> String {
 /// Like [`render`], but every link destination is passed through
 /// `rewrite` first and every heading gets a slug `id` so in-page anchors
 /// resolve. Used to serve repo-relative Markdown (a README, a doc) on the
-/// web: a link written for a git reader (`docs/glossary.md#project`,
+/// web: a link written for a git reader (`docs/glossary/project.md`,
 /// `templates/x/y.md`) is retargeted onto its site route, and a
 /// same-page anchor (`#trademarks`) lands on the matching heading.
 #[must_use]

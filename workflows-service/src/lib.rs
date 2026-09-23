@@ -11,7 +11,7 @@
 //! and a `main.rs` binary that boots the HTTP server Restate
 //! discovers and dispatches into.
 //!
-//! See `docs/glossary.md` (Workflow Runtime, Restate, Durable
+//! See `docs/glossary/` (Workflow Runtime, Restate, Durable
 //! execution) for the architectural arc.
 
 pub mod asset_config;

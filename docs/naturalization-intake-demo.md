@@ -4,7 +4,7 @@ This local demo opens a USCIS Form N-400 notation, then hands questionnaire inta
 services run in KIND.
 
 `templates/notations/forms/united_states/federal/uscis/us__naturalization.md` defines ten questions and parks at
-[`lawyer_review`](glossary.md#lawyer-review) before generating the vendored N-400 AcroForm. The blank lives in the
+[`lawyer_review`](glossary/lawyer-review.md) before generating the vendored N-400 AcroForm. The blank lives in the
 assets bucket. First run [`navigator forms sync`](gov-forms.md#vendoring) against this environment to upload a prepared
 blank or verify its pin.
 

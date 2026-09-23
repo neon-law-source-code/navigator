@@ -129,15 +129,19 @@ fn validate_help_keeps_the_directory_flags() {
 #[test]
 fn validate_errors_only_hides_advisories_but_not_their_count() {
     let dir = TempDir::new().unwrap();
-    write(dir.path(), "docs/lib.rs", "pub fn placeholder() {}\n");
     write(
         dir.path(),
-        "docs/a_long.md",
+        "docs/glossary/lib.rs",
+        "pub fn placeholder() {}\n",
+    );
+    write(
+        dir.path(),
+        "docs/glossary/a_long.md",
         &format!("Intro.\n\n{}\n", "x".repeat(130)),
     );
     write(
         dir.path(),
-        "docs/m_one.md",
+        "docs/glossary/m_one.md",
         "Body.\n\nSee [lib](lib.rs) for detail.\n",
     );
 

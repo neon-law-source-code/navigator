@@ -1,16 +1,13 @@
----
-publish: true
----
-
 # Documentation
 
-Published guides also appear at `/docs` in one alphabetical catalog. This page is the map: every document under `docs/`,
-grouped by topic, with a stable place for anything new to land. `cli/tests/docs_index_completeness.rs` fails the build
-when a file exists under `docs/` with no entry here, so this list cannot decay the way the old seven-line stub did.
+The website publishes one of these, the glossary, at `/glossary`; the rest are contributor docs read in the repository.
+This page is the map: every document under `docs/`, grouped by topic, with a stable place for anything new to land.
+`cli/tests/docs_index_completeness.rs` fails the build when a file exists under `docs/` with no entry here, so this list
+cannot decay the way the old seven-line stub did.
 
 ## Start here
 
-- [`glossary.md`](glossary.md) — canonical vocabulary, one alphabetical list of terms.
+- [`glossary/`](glossary/README.md) — canonical vocabulary, one file per term, published on one page at `/glossary`.
 - [`agent-workflows.md`](agent-workflows.md) — the five action recipes every agent task reduces to.
 - [`gitops.md`](gitops.md) — branch, PR, release, and deploy flow.
 - [`workspace-layout.md`](workspace-layout.md) — what each crate in the monorepo owns.

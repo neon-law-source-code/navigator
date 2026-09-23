@@ -588,7 +588,6 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         brand_bundle: None,
         surreal: store::surreal::test_support::mem().await,
         workshops: WorkshopIndex::new(materials),
-        docs: portal::DocsIndex::empty(),
         blog: portal::BlogIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: portal::google_oauth::GoogleOauthConfig::passthrough(),
@@ -1730,15 +1729,11 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     // `/app/lawyer` and `/admin` are listed as bare roots deliberately: each has
     // its own dashboard handler, so protection there cannot be inferred from
     // a gated descendant.
-    let mut state = empty_state().await;
-    state.docs = portal::docs::loader::bundled();
+    let state = empty_state().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // `/docs` and `/docs/glossary` have left this list. The
-    // workspace documentation reads anonymously now — the repository is
-    // source-available, so a login door stood in front of the manual for
-    // software anyone can clone. `/app/docs` is the surface that still
-    // answers the login door, and it is listed below in its place.
+    // The documentation is the anonymous `/glossary` now, and every retired
+    // `/docs` and `/app/docs` path redirects to it, so none is listed here.
     for path in [
         "/app/projects",
         "/app/lawyer",
@@ -1746,8 +1741,6 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/team",
         "/app/admin/brands",
         "/app/owner",
-        "/app/docs",
-        "/app/docs/glossary",
         "/templates",
     ] {
         let resp = app
@@ -2155,8 +2148,7 @@ async fn the_design_gallery_reads_anonymously() {
     // `303` to the login door that every other shared Navigator tool answers
     // with. Probed on the live router, because this is a property of router
     // composition rather than of any policy bundle.
-    let mut state = empty_state().await;
-    state.docs = portal::docs::loader::bundled();
+    let state = empty_state().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let resp = app
         .oneshot(
@@ -2405,13 +2397,15 @@ async fn robots_txt_advertises_sitemap_and_blocks_private_surfaces() {
     assert!(body.contains("Disallow: /app"));
     assert!(body.contains("Disallow: /admin"));
     assert!(body.contains("Sitemap: https://www.neonlaw.com/sitemap.xml"));
-    // `/docs` and `/templates` sit behind the session boundary (#732), so
-    // the policy names each rather than pointing a crawler at a login
-    // redirect. `/design` reads anonymously now, and stays disallowed for the
-    // other reason: a contributor reference gallery is not a page to index.
+    // `/templates` sits behind the session boundary (#732), so the policy
+    // names it rather than pointing a crawler at a login redirect. `/design`
+    // and `/glossary` read anonymously, and stay disallowed for the other
+    // reason: a contributor reference is not a page to index. `/docs` is only
+    // a redirect to the glossary now, and keeps its line with it.
     for authenticated in [
         "Disallow: /docs",
         "Disallow: /design",
+        "Disallow: /glossary",
         "Disallow: /templates",
     ] {
         assert!(body.contains(authenticated), "{authenticated} in {body}");
@@ -2501,7 +2495,6 @@ async fn crawler_discovery_ignores_internal_request_host_when_canonical_host_is_
 async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     let mut state =
         empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".into()))).await;
-    state.docs = portal::docs::loader::bundled();
     state.blog = portal::blog::load_dir(std::path::Path::new(portal::DEFAULT_BLOG_DIR)).unwrap();
     state.workshops = WorkshopIndex::new(
         portal::workshops::loader::load_navigator(std::path::Path::new(
@@ -2547,13 +2540,12 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
         "sitemap should not list authenticated app routes: {body}"
     );
     // `/templates` is authenticated (#732), and a sitemap entry pointing at a
-    // login redirect is worse than no entry at all. `/docs` and
-    // `/design` read anonymously now but stay unadvertised for the same
-    // reason as each other: both are contributor references, not pages a
-    // search result should land a prospective client on. Advertising the
-    // documentation is a separate decision from un-gating it, and is
-    // deliberately not made here.
-    for authenticated in ["/docs", "/design", "/templates"] {
+    // login redirect is worse than no entry at all. `/glossary` and
+    // `/design` read anonymously but stay unadvertised for the same reason as
+    // each other: both are contributor references, not pages a search result
+    // should land a prospective client on. The retired `/docs` is only a
+    // redirect now.
+    for authenticated in ["/docs", "/glossary", "/design", "/templates"] {
         assert!(
             !body.contains(&format!("<loc>https://www.neonlaw.com{authenticated}")),
             "sitemap must not advertise authenticated {authenticated}: {body}"
@@ -10162,7 +10154,7 @@ async fn assert_unregistered_host_redirects(
 /// support-chat widget) — but the one shared footer, with the firm's office
 /// and association affiliation, is under the notice along with its two practice cards.
 fn assert_holding_host_chrome(body: &str) {
-    let standing_line = format!("{}.", views::brand::JTA_STANDING);
+    let standing_line = views::brand::JTA_STANDING.to_string();
     for (marker, present) in [
         (r#"class="site-header""#, false),
         ("nav-theme public-shell", false),
@@ -19339,217 +19331,123 @@ async fn delete_of_non_bootstrap_client_person_still_succeeds() {
 }
 
 // ---------------------------------------------------------------------------
-// Published workspace docs at /docs/:slug (portal::docs).
+// The glossary at /glossary (portal::glossary), and the retired /docs paths.
 // ---------------------------------------------------------------------------
 
-/// State whose docs index is the real baked `docs/` tree (every other
-/// field matches `empty_state`).
-async fn state_with_docs() -> AppState {
-    let mut state = empty_state().await;
-    state.docs = portal::docs::loader::bundled();
-    state
-}
-
-/// `GET uri` as a signed-in reader.
-///
-/// The shared Navigator surface — docs, the template gallery, `/design`,
-/// and the API documentation — sits behind one session boundary
-/// (#732), so rendering any of it takes a session. Client is the least
-/// privileged role that crosses the boundary, which keeps these assertions
-/// about the page rather than about a role.
+/// `GET uri` as a signed-in reader. Client is the least privileged role that
+/// crosses the session boundary, which keeps these assertions about the page
+/// rather than about a role.
 async fn get_signed_in(app: axum::Router, uri: &str) -> axum::http::Response<Body> {
     get_with_role(app, uri, store::persons::Role::Client).await
 }
 
 #[tokio::test]
-async fn docs_glossary_renders_headings() {
+async fn the_glossary_renders_every_term_on_one_page() {
     let app = server::neon_router(
-        state_with_docs().await,
+        empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/docs/glossary").await;
+    let resp = get_signed_in(app, "/glossary").await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    // Firm-branded page title from the doc's leading H1. `/docs` is mounted
-    // once, in the composition every brand binary shares, so a second wordmark
-    // here would publish another organization's identity on the firm's own host
-    // and on every white-label tenant's. These are the Firm's own operating
-    // docs.
+    let content_type = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     assert!(
-        body.contains("<title>Neon Law | Docs | Glossary</title>"),
-        "docs pages wear the firm brand on every host"
+        content_type.contains("charset=utf-8"),
+        "the glossary is served as UTF-8: {content_type}"
     );
-    // The title carries the whole distinction: a docs page wearing a retired
-    // wordmark would attribute the workspace's documentation to an organization
-    // that does not build it.
+    let body = body_string(resp).await;
+    // The header governs decoding; the shipped Dioxus template (which this
+    // harness replaces with dioxus-server's default) declares it again, so a
+    // saved copy of the page reads the same.
+    assert!(
+        include_str!("../../webapp/index.html").contains("<meta charset=\"UTF-8\""),
+        "the shipped document template declares UTF-8 so an em dash never reads as `â€”`"
+    );
+    assert!(
+        body.contains("\u{2014}") && !body.contains("\u{e2}\u{20ac}"),
+        "em dashes in definitions survive the round trip intact"
+    );
+    // `/glossary` is mounted once, in the composition every brand binary
+    // shares, so it wears the firm brand on every host.
+    assert!(
+        body.contains("<title>Neon Law | Glossary</title>"),
+        "the glossary wears the firm brand on every host"
+    );
     assert!(
         body.contains("/public/logo.png"),
-        "the NL mark in the docs header"
+        "the NL mark in the header"
     );
+    for term in store::glossary::terms() {
+        assert!(
+            body.contains(&format!("id=\"{}\"", term.slug)),
+            "`#{}` must land on its term",
+            term.slug
+        );
+        assert!(
+            body.contains(&format!("href=\"#{}\"", term.slug)),
+            "the side index must link `#{}`",
+            term.slug
+        );
+    }
     assert!(
-        !body.contains(&format!(
-            "<title>{} | Docs | Glossary</title>",
-            ["Neon", "Law", "Foundation"].join(" ")
-        )),
-        "the retired wordmark must not return"
-    );
-    // A known heading renders as an <h2> with a slug id so #council lands.
-    assert!(
-        body.contains("<h2 id=\"council\">Council</h2>"),
-        "glossary should render the Council heading with an anchor id"
-    );
-    // Cross-doc link rewritten to a site route.
-    assert!(body.contains("href=\"/docs/notation\""));
-    assert!(
-        body.contains("class=\"docs-article\""),
-        "article pages retain their reading layout"
-    );
-    assert!(
-        !body.contains("docs-catalog"),
-        "the catalog presentation belongs only to /docs"
+        body.contains("aria-label=\"Glossary terms\""),
+        "the side index is named navigation"
     );
 }
 
 #[tokio::test]
-async fn docs_index_is_a_flat_accessible_catalog_of_every_published_guide() {
-    let docs = portal::docs::loader::bundled();
+async fn the_glossary_reads_anonymously() {
     let app = server::neon_router(
-        state_with_docs().await,
+        empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let response = get_signed_in(app, "/docs").await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = body_string(response).await;
-
-    assert!(
-        body.contains("class=\"docs-catalog\""),
-        "catalog shell: {body}"
-    );
-    assert!(
-        body.contains("aria-label=\"Documentation catalog\""),
-        "named catalog navigation: {body}"
-    );
-    assert!(
-        body.contains("<ol class=\"docs-catalog__cards\""),
-        "ordered cards: {body}"
-    );
-    assert!(
-        !body.contains("docs-article"),
-        "root uses catalog, not article: {body}"
-    );
-    assert_eq!(body.matches("<h1").count(), 1, "one page heading: {body}");
-    assert!(
-        body.contains("Start with Glossary"),
-        "the index offers a direct first stop: {body}"
-    );
-    for retired_copy in [
-        "Reading room",
-        "Published guides, A–Z.",
-        "Choose a title. Start with the glossary.",
-        "Accession",
-        "Read guide",
-    ] {
-        assert!(
-            !body.contains(retired_copy),
-            "{retired_copy} must not return: {body}"
-        );
-    }
-
-    let mut published: Vec<_> = docs
-        .docs()
-        .iter()
-        .filter(|doc| doc.slug != "index")
-        .collect();
-    published.sort_by_cached_key(|doc| doc.title.to_lowercase());
-    let cards_start = body
-        .find("<ol class=\"docs-catalog__cards\"")
-        .expect("catalog cards");
-    let cards = &body[cards_start..];
-    let mut previous = 0;
-    for doc in published {
-        let href = format!("href=\"/docs/{}\"", doc.slug);
-        let position = cards
-            .find(&href)
-            .unwrap_or_else(|| panic!("missing {href}: {cards}"));
-        assert!(
-            position > previous,
-            "catalog order for {}: {cards}",
-            doc.title
-        );
-        previous = position;
-    }
-    assert!(
-        body.contains("class=\"neon-card docs-catalog__card\""),
-        "each catalog destination is a navigation card: {body}"
-    );
-}
-
-#[tokio::test]
-async fn docs_notation_renders_teaching_order_headings() {
-    let app = server::neon_router(
-        state_with_docs().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let resp = get_signed_in(app, "/docs/notation").await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/glossary")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    // Template precedes Notation by design — both headings present.
-    assert!(body.contains("<h2 id=\"template\">Template</h2>"));
-    assert!(body.contains("<h2 id=\"notation\">Notation</h2>"));
-    // notation links glossary.md#asset → /docs/glossary#asset.
-    assert!(body.contains("href=\"/docs/glossary#asset\""));
 }
 
 #[tokio::test]
-async fn every_published_doc_is_200() {
-    // Every opt-in doc renders for a signed-in reader.
-    let docs = portal::docs::loader::bundled();
-    for doc in docs.docs() {
-        if doc.slug == "index" {
-            continue;
-        }
-        let app = server::neon_router(
-            state_with_docs().await,
-            std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-        );
-        let uri = format!("/docs/{}", doc.slug);
-        let resp = get_signed_in(app, &uri).await;
-        assert_eq!(resp.status(), StatusCode::OK, "{uri} should be 200");
-    }
-    for slug in [
-        "deployment-secrets",
-        "gke-prod",
-        "dns",
-        "cloud-operations",
-        "multi-cloud",
-        "rego-policy",
+async fn every_retired_docs_path_redirects_to_the_glossary() {
+    let app = server::neon_router(
+        empty_state().await,
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    for path in [
+        "/docs",
+        "/docs/glossary",
+        "/docs/notation",
+        "/docs/index",
+        "/docs/no-such-doc",
+        "/app/docs",
+        "/app/docs/glossary",
     ] {
-        assert!(
-            docs.find(slug).is_none(),
-            "sensitive infrastructure doc {slug} must stay unpublished"
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::PERMANENT_REDIRECT,
+            "{path} must redirect permanently"
+        );
+        assert_eq!(
+            resp.headers().get("location").unwrap(),
+            "/glossary",
+            "{path} must land on the glossary"
         );
     }
-}
-
-#[tokio::test]
-async fn docs_index_slug_redirects_to_canonical_docs_root() {
-    let app = server::neon_router(
-        state_with_docs().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let resp = get_signed_in(app, "/docs/index").await;
-    assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(resp.headers().get("location").unwrap(), "/docs");
-}
-
-#[tokio::test]
-async fn docs_unknown_slug_is_404() {
-    let app = server::neon_router(
-        state_with_docs().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let resp = get_signed_in(app, "/docs/no-such-doc").await;
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 /// True if `s` contains a digit-group run matching `groups` separated
@@ -19597,7 +19495,7 @@ fn contains_dash_digit_pattern(s: &str, groups: &[usize]) -> bool {
 }
 
 #[test]
-fn docs_carry_no_client_confidences() {
+fn the_glossary_carries_no_client_confidences() {
     // The published-docs guardrail (RPC 1.6): the confidentiality
     // boundary is portal auth on the database, but as a belt-and-braces
     // check no published doc may contain an obvious client identifier —
@@ -19605,18 +19503,18 @@ fn docs_carry_no_client_confidences() {
     // placeholders today; this keeps it that way. (A real client name
     // can't be matched mechanically; the DB/portal boundary is what
     // actually protects it.)
-    for doc in portal::docs::loader::bundled().docs() {
+    for entry in &portal::glossary::content().entries {
         assert!(
-            !contains_dash_digit_pattern(&doc.body_html, &[3, 2, 4]),
-            "/docs/{} contains an SSN-shaped string — published docs must \
-             carry no client confidence",
-            doc.slug
+            !contains_dash_digit_pattern(&entry.body_html, &[3, 2, 4]),
+            "/glossary#{} contains an SSN-shaped string — the published \
+             glossary must carry no client confidence",
+            entry.slug
         );
         assert!(
-            !contains_dash_digit_pattern(&doc.body_html, &[2, 7]),
-            "/docs/{} contains an EIN-shaped string — published docs must \
-             carry no client confidence",
-            doc.slug
+            !contains_dash_digit_pattern(&entry.body_html, &[2, 7]),
+            "/glossary#{} contains an EIN-shaped string — the published \
+             glossary must carry no client confidence",
+            entry.slug
         );
     }
 }

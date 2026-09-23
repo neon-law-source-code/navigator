@@ -15,7 +15,7 @@ Every notation has YAML frontmatter with `title`, `code`, `jurisdiction`, `respo
 is explained, in plain English and for attorneys, in [`docs/frontmatter.md`](../docs/frontmatter.md).
 
 A notation's template half is also called a **Draft** — the lawyer's word for the same authored file, used
-interchangeably with Template. See the [Draft](../docs/glossary.md#draft) glossary entry, which also separates it from
+interchangeably with Template. See the [Draft](../docs/glossary/draft.md) glossary entry, which also separates it from
 the lowercase `draft` states that appear inside a running Notation.
 
 ## Three shelves

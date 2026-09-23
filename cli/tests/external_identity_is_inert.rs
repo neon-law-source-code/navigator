@@ -11,7 +11,7 @@
 //! the docs hold only because this table is inert:
 //!
 //! - a Clerk "never receives lawyer-work, advice, Git, MCP, or `/app/lawyer`
-//!   authority by inheritance" ([`docs/glossary.md`](../../docs/glossary.md)),
+//!   authority by inheritance" ([`docs/glossary/`](../../docs/glossary/README.md)),
 //!   so a Clerk who *is* GitHub user `12345` gains nothing by being recorded as
 //!   such; and
 //! - Project participation never grants source-forge access

@@ -178,8 +178,8 @@ pub struct FooterBrandLink {
 #[derive(Clone, PartialEq, Eq)]
 pub struct FooterMembership {
     pub label: String,
-    /// The full standing sentence, minus its trailing period: the firm's
-    /// association-specific standing and the association's name.
+    /// The firm's standing with the association (`Mission-Aligned
+    /// Partner`), shown as the link text beside the association's mark.
     pub standing: String,
     pub href: String,
     /// The association's mark, already resolved to this deployment's asset
@@ -679,25 +679,33 @@ pub fn SiteFooterLegal(
                                 for membership in memberships.iter() {
                                     li { class: "site-footer__membership", key: "{membership.href}",
                                         // The association's own mark, on a
-                                        // dark tile. The image is decorative;
-                                        // the standing line beside it names
-                                        // the relationship.
+                                        // dark tile. The standing line is
+                                        // short ("Mission-Aligned Partner"),
+                                        // so the mark is what names the
+                                        // association, and its alt text says
+                                        // so; without a mark, the line spells
+                                        // the name out itself.
                                         if membership.logo_href.is_empty() {
                                             Icon { name: IconName::AwardFill }
+                                            ExternalLink {
+                                                class: "site-footer__membership-link".to_string(),
+                                                href: membership.href.clone(),
+                                                "{membership.standing}, {membership.label}"
+                                            }
                                         } else {
                                             span { class: "site-footer__membership-badge",
                                                 img {
                                                     class: "site-footer__membership-logo",
                                                     src: "{membership.logo_href}",
-                                                    alt: "",
+                                                    alt: "{membership.label}",
                                                     loading: "lazy",
                                                 }
                                             }
-                                        }
-                                        ExternalLink {
-                                            class: "site-footer__membership-link".to_string(),
-                                            href: membership.href.clone(),
-                                            "{membership.standing}."
+                                            ExternalLink {
+                                                class: "site-footer__membership-link".to_string(),
+                                                href: membership.href.clone(),
+                                                "{membership.standing}"
+                                            }
                                         }
                                     }
                                 }
@@ -846,7 +854,7 @@ mod tests {
         ("API", "/api"),
         ("Blog", "/blog"),
         ("Contact", "/contact"),
-        ("Docs", "/docs"),
+        ("Glossary", "/glossary"),
         ("Navigator", "/navigator"),
         ("Notations", "/notations"),
         ("Presentations", "/presentations"),
@@ -2112,8 +2120,8 @@ mod tests {
             .map(|(line, _)| line)
             .expect("the memberships render as a list");
         assert!(
-            line.contains(&format!("{JTA_STANDING}.")),
-            "the line names the association in full: {line}"
+            line.contains(&JTA_STANDING.to_string()),
+            "the line states the firm's standing: {line}"
         );
         assert!(
             line.contains(
@@ -2131,9 +2139,9 @@ mod tests {
         );
         assert!(
             line.contains(
-                r#"<span class="site-footer__membership-badge"><img class="site-footer__membership-logo" src="/public/img/justice-technology-association/logo.png" alt="" loading="lazy"/>"#
+                r#"<span class="site-footer__membership-badge"><img class="site-footer__membership-logo" src="/public/img/justice-technology-association/logo.png" alt="Justice Technology Association" loading="lazy"/>"#
             ),
-            "the association's mark is decorative — the sentence is the meaning: {line}"
+            "the standing line is short, so the mark names the association: {line}"
         );
         assert!(
             !line.contains("award-fill") && !line.contains(r#"aria-hidden="true""#),
@@ -2343,7 +2351,7 @@ mod tests {
             "the association's mark renders as an image: {out}"
         );
         assert!(
-            out.contains(&format!("{JTA_STANDING}.")),
+            out.contains(&JTA_STANDING.to_string()),
             "and the sentence still names it: {out}"
         );
     }

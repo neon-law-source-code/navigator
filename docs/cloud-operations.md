@@ -278,9 +278,10 @@ Production remains propose-only. Run the same confirmation there yourself.
 
 ## Website publication
 
-Top-level files in `docs/` are already published at `/docs/:slug` by `portal::docs`. The site bakes the docs into the
-binary with `include_str!`, renders markdown under the firm brand, and rewrites top-level doc links to site routes. That
-gives every maintainer and LLM the same documentation surface.
+The website publishes one doc: the glossary. Each term in `docs/glossary/` renders on the one page at `/glossary`
+through `portal::glossary`, which bakes the terms into the binary, renders them under the firm brand, and turns links
+between terms into in-page anchors. Every other file in `docs/` is contributor documentation read in the repository, and
+the retired `/docs` routes redirect to the glossary.
 
 Good next steps for the website:
 

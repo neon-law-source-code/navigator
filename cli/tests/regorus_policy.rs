@@ -37,10 +37,7 @@ fn regorus_matches_every_checked_in_policy_decision() {
     let tests = include_str!("../../portal/policy/navigator_test.rego");
     let test_names = test_rule_names(tests);
 
-    // 178 + 9 for `/app/docs` (renamed from `/app/docs` by ENG-84): four
-    // admitted tiers at the hub, two of them
-    // again one document deeper, and the three denials that matter — a client
-    // at the hub, a client at a document, and an anonymous request.
+    // 178 + 9 for the former `/app/docs` hub (since removed, below).
     //
     // + 4 for `/app/team`, the firm team home: each firm tier is admitted, and
     // the client and anonymous requests are denied.
@@ -281,9 +278,14 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // `/app/projects`, lawyer-tier publish/unpublish, and Client, Clerk, and
     // anonymous publish denials.
     // 474 + 8 = 482.
+    //
+    // − 9 for retiring the `/app/docs` hub: it is now an anonymous redirect to
+    // the public `/glossary`, mounted outside the policy layer, so its rules
+    // and their nine decisions went with it.
+    // 482 − 9 = 473.
     assert_eq!(
         test_names.len(),
-        482,
+        473,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

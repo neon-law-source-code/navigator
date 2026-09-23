@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Safe public experimentation
 
 Navigator is public so people can read it, run it, fork it, prototype quickly, and build portal experiences without

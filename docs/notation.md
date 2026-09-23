@@ -1,13 +1,9 @@
----
-publish: true
----
-
 # Notation vocabulary
 
 This doc holds the notation-system vocabulary — what the markdown templates produce, how they're filled in, and the
 rules that validate them. It is kept in teaching order rather than alphabetically, because Template precedes Notation by
 design: you read what a Template *declares* before you read what a Notation *runs*. The rest of the workspace vocabulary
-lives in [`glossary.md`](glossary.md).
+lives in [`glossary/`](glossary/README.md).
 
 ## Template
 
@@ -22,7 +18,7 @@ and no workflow has run.
 Identified by a stable `code` like `nv__llc_formation` or `onboarding__letter`.
 
 **Draft** is the same noun in the lawyer's English: a Draft *is* a Template, and either spelling names this file and its
-four parts. The [Draft](glossary.md#draft) glossary entry holds the synonym and separates it from the lowercase `draft`
+four parts. The [Draft](glossary/draft.md) glossary entry holds the synonym and separates it from the lowercase `draft`
 workflow state a running Notation carries, described below.
 
 ### The four parts
@@ -39,7 +35,7 @@ beneath it.
 
 3. **Workflow** — the `workflow:` block: composable `<prefix>__<discriminator>` step states that `workflows-service`
    executes against Restate. See [`durable-workflows.md`](durable-workflows.md) and the Workflow Runtime entry in
-   [`glossary.md`](glossary.md).
+   [`glossary/`](glossary/README.md).
 
 4. **Body** — the Markdown prose below the frontmatter fence, carrying `{{question_code}}` and `{{type__role.field}}`
    placeholders that are resolved at render and assembly time.
@@ -61,7 +57,7 @@ Nesting them under a real `metadata:` key would be a breaking parser change touc
   [`notation-authoring.md`](notation-authoring.md).
 
 > **Storage.** The markdown body lives in [`cloud::StorageService`](../cloud/) like every other artifact: the
-  `templates.body` TEXT column is gone; `templates.asset_id` references an [Asset](glossary.md#asset) holding the bytes.
+  `templates.body` TEXT column is gone; `templates.asset_id` references an [Asset](glossary/asset.md) holding the bytes.
   Read via [`store::templates::body`](../store/src/templates.rs); the seed and `navigator site seed` paths ingest it
   (sha-dedup). `site seed` creates only workspace-shared rows (`project_id IS NULL`) and question catalog rows; it never
   creates a Project or a client-facing Notation. Templates are workspace-scoped code-like assets governed by git, not by
@@ -83,12 +79,12 @@ Nesting them under a real `metadata:` key would be a breaking parser change touc
 
 ## Notation
 
-A Template **come to life.** One running instance of a Template, bound to a specific [Person](glossary.md#person) — the
-respondent — a [Project](glossary.md#project), and optionally an [Entity](glossary.md#entity), carrying a workflow
+A Template **come to life.** One running instance of a Template, bound to a specific [Person](glossary/person.md) — the
+respondent — a [Project](glossary/project.md), and optionally an [Entity](glossary/entity.md), carrying a workflow
 `state` such as `draft`, `lawyer_review`, or `signed`.
 
 > **Client English.** A Notation in the context of its Project is what clients call an
-  **[Engagement](glossary.md#engagement--retainer)** (or a **Retainer**, when the bound Template is a retainer). The
+  **[Engagement](glossary/engagement--retainer.md)** (or a **Retainer**, when the bound Template is a retainer). The
   schema noun is `Notation`; the marketing noun is Engagement.
 
 The Questions the Template declared are *asked* here; the [Answers](#answer) the respondent gives are stored against
@@ -122,7 +118,7 @@ prose.
 An imported Word document is matter work product, not a reusable Git-backed [Template](#template) and not a single
 [`notation_clause`](../store/src/notation_clauses.rs) spliced into `{{custom_clauses}}`. `store::notation_documents`
 owns a third shape: one `notation_document` identity per Notation, tied to the immutable original `.docx`
-[Asset](glossary.md#asset) it was parsed from, plus an append-only chain of `notation_document_version` rows holding
+[Asset](glossary/asset.md) it was parsed from, plus an append-only chain of `notation_document_version` rows holding
 that document's Notation Markdown at each point in its life.
 
 - One document identity per Notation (`notation_document`), pinned to the original Word `asset_id` for its whole life —
@@ -167,8 +163,8 @@ to. **The Template declares the questionnaire; the Notation asks it.**
 > **Status — declared and walked.** The questionnaire state machine is structurally validated by the [`N104` rule
   implementation](../rules/src/f104.rs) **and** executed step-by-step by
   [`portal::retainer_walk`](../portal/src/retainer_walk.rs): one question per request, one [Answer](#answer) per
-  advance, one [Notation Event](glossary.md#notation-event) per transition. The walker shares its runtime surface with
-  the [Workflow Runtime](glossary.md#workflow-runtime) — both implement `workflows::StateMachineRuntime`, keyed by
+  advance, one [Notation Event](glossary/notation-event.md) per transition. The walker shares its runtime surface with
+  the [Workflow Runtime](glossary/workflow-runtime.md) — both implement `workflows::StateMachineRuntime`, keyed by
   `MachineKind` and `notation_id` — so a single Restate virtual object per Notation hosts both timelines on one logical
   journal. See [`docs/retainer_intake.md`](retainer_intake.md) for the end-to-end walkthrough.
 
@@ -215,7 +211,7 @@ OS-assigned ephemeral port chosen at random, opens no store, and holds no sessio
 One prompt presented to a respondent during Template traversal. Identified by a stable `code` (e.g. `client_name`,
 `organizer_state`). Has an `answer_type` — `string`, `int`, `bool`, `choice`, etc. — that the form layer uses to render
 the right input. When a questionnaire state uses the typed grammar `<type>__<role>`, its `<type>` prefix is a [Question
-Type](glossary.md#question-type) from `store::question_registry` (record / reference / custom, singular / plural) — the
+Type](glossary/question-type.md) from `store::question_registry` (record / reference / custom, singular / plural) — the
 closed vocabulary `N113`–`N117` and the render/form-fill evaluator all share. Use glossary-backed states and dotted
 fields for durable nouns: `person__client` with `{{person__client.name}}`, not `custom_text__client_name`.
 

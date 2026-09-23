@@ -45,17 +45,6 @@ async fn site_app() -> Router {
     site_router(site_state().await)
 }
 
-/// The firm host with the bundled workspace documentation loaded.
-///
-/// The shared builder ships `DocsIndex::empty()`, so `/docs` would 404 on it for
-/// want of content rather than for want of a route — which would let an
-/// anonymous-access assertion pass against a page that renders nothing.
-async fn site_app_with_docs() -> Router {
-    let mut state = site_state().await;
-    state.docs = portal::docs::loader::bundled();
-    site_router(state)
-}
-
 /// The firm host with the bundled Catalog materials loaded.
 ///
 /// The shared builder ships an empty `WorkshopIndex`, so a talk's own page
@@ -301,7 +290,7 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         "/api",
         "/blog",
         "/contact",
-        "/docs",
+        "/glossary",
         "/navigator",
         "/notations",
         "/presentations",
@@ -775,43 +764,29 @@ async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
     }
 }
 
-/// The workspace documentation reads for a visitor with no account.
-///
-/// It sat behind the session boundary while the source was closed. The
-/// repository is source-available now, so a login door stood in front of the one
-/// document that explains how to run software anyone can clone. This asserts the
-/// hub, one document beneath it, and the `/docs/{slug}` redirect all
-/// answer a browser that has never signed in — a `303` to `/auth/login` is
-/// the failure.
+/// The glossary — the documentation — reads for a visitor with no account,
+/// and every retired documentation path sends that visitor to it rather than
+/// to the login door.
 #[tokio::test]
-async fn the_workspace_documentation_reads_anonymously() {
-    let app = site_app_with_docs().await;
+async fn the_glossary_reads_anonymously_on_the_firm_host() {
+    let app = site_app().await;
 
-    for path in ["/docs", "/docs/glossary"] {
+    let response = anon_get(&app, "/glossary").await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "/glossary renders for a reader with no account"
+    );
+
+    for path in ["/docs", "/docs/glossary", "/docs/index", "/app/docs"] {
         let response = anon_get(&app, path).await;
+        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT, "{path}");
         assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "{path} renders for a reader with no account"
+            response.headers().get("location").unwrap(),
+            "/glossary",
+            "{path} gets the glossary, not a login redirect"
         );
     }
-
-    // The canonicalizing redirect is the pre-layer's, not the login door's.
-    let response = anon_get(&app, "/docs/index").await;
-    assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(
-        response.headers().get("location").unwrap(),
-        "/docs",
-        "an anonymous reader gets the canonical URL, not a login redirect"
-    );
-
-    // `/app/docs` is untouched. It is a second door to the same index
-    // wearing the application chrome, and what it gates is that surface.
-    assert_eq!(
-        anon_get(&app, "/app/docs").await.status(),
-        StatusCode::SEE_OTHER,
-        "the in-application documentation surface stays behind the boundary"
-    );
 }
 
 #[tokio::test]

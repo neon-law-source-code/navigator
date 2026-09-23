@@ -141,7 +141,6 @@ pub async fn app_state_with_email(
         applications_storage: storage.clone(),
         forms_registry: Arc::new(forms::registry().expect("forms registry loads")),
         workshops: WorkshopIndex::empty(),
-        docs: portal::DocsIndex::empty(),
         blog: portal::BlogIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: portal::google_oauth::GoogleOauthConfig::passthrough(),

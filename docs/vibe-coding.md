@@ -4,7 +4,7 @@ Read [`public-contributor-safety.md`](public-contributor-safety.md) first. This 
 prototype freely, but share only source and synthetic or firm-owned fixtures. Client data, legal files, real contact
 details, and production identifiers never enter Git, Linear, agent transcripts, or another external planning surface.
 
-A Project's **portal** is a React application built with Vite, living in that [Project](glossary.md#project)'s own
+A Project's **portal** is a React application built with Vite, living in that [Project](glossary/project.md)'s own
 private repository, that Navigator serves at `/app/projects/<code>/portal`. It is what the client sees, and it is the
 one surface in this product where the fast, exploratory way of working — build the screen, look at it, keep going —
 produces the thing that actually ships. Nothing is translated afterward. The React you like is the React that serves.
@@ -112,7 +112,7 @@ shipped, duplicate, or blocked issue stops before the first edit.
 
 Grounding a Project-application issue means reading, in this order:
 
-1. [`glossary`](glossary.md), then the narrowest relevant doc from [`index`](index.md).
+1. [`glossary`](glossary/README.md), then the narrowest relevant doc from [`index`](index.md).
 2. [`project-repositories`](project-repositories.md) — the repository contract, and what the mount gate does and does
    not prove.
 3. [`command-boundary`](command-boundary.md) and the `/api` read clusters — whether the read or write this screen needs

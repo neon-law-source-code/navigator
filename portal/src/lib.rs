@@ -108,7 +108,6 @@ pub mod contract_review_walk;
 pub mod conversation;
 pub mod csrf;
 pub mod dioxus_app;
-pub mod docs;
 pub mod documents;
 pub mod docusign_auth;
 pub mod email;
@@ -121,6 +120,7 @@ pub mod expunge;
 pub mod expunge_request_route;
 pub mod expunge_route;
 pub mod github_oidc;
+pub mod glossary;
 pub mod google_oauth;
 pub mod gov_forms;
 pub mod hosting;
@@ -178,7 +178,6 @@ pub use portal_only::PortalOnly;
 pub use auth::{AuthClaims, AuthConfig};
 pub use blog::{BlogIndex, BlogPost};
 pub use config::{AppConfig, ConfigError};
-pub use docs::{Doc, DocsIndex};
 pub use marketing::MarketingDoc;
 // The A2A confirmation gate looks the *approver* up in `persons`, so a
 // test that drives the gate must inject the same `Principal` the auth
@@ -312,9 +311,6 @@ pub struct AppState {
     /// engine cannot serve anything.
     pub surreal: store::surreal::SurrealDb,
     pub workshops: WorkshopIndex,
-    /// Workspace docs published at `/docs/{slug}`, baked from the
-    /// `docs/` tree at compile time. See [`docs`].
-    pub docs: DocsIndex,
     /// Firm blog posts served at `/blog`, loaded at boot from a
     /// directory of dated `.md` files. See [`blog`].
     pub blog: BlogIndex,
@@ -490,12 +486,6 @@ impl FromRef<AppState> for store::surreal::SurrealDb {
 impl FromRef<AppState> for WorkshopIndex {
     fn from_ref(s: &AppState) -> Self {
         s.workshops.clone()
-    }
-}
-
-impl FromRef<AppState> for DocsIndex {
-    fn from_ref(s: &AppState) -> Self {
-        s.docs.clone()
     }
 }
 
@@ -901,36 +891,9 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
     );
-    // #956 Phase 4: the workspace documentation renders through Dioxus at
-    // /docs and /docs/{slug}. Its pre-layer resolves the doc from
-    // the compiled-in DocsIndex and owns the canonicalizing redirects and the
-    // unknown-slug 404.
-    let dioxus_docs_index = dioxus_app::docs_router(
-        dioxus_app::DOCS_PATH,
-        Some(dioxus_app::DOCS_INDEX_SLUG),
-        state.docs.clone(),
-    );
-    let dioxus_doc = dioxus_app::docs_router(dioxus_app::DOC_PATH, None, state.docs.clone());
-    // The same documentation, a second door: inside the authenticated
-    // application, wearing the app chrome, for the tiers that operate
-    // Navigator. The public mount above is unchanged — this adds a reader, it
-    // does not move one.
-    let dioxus_app_docs_index = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOCS_PATH,
-        Some(dioxus_app::DOCS_INDEX_SLUG),
-        state.docs.clone(),
-        state.sessions.clone(),
-        state.policy.clone(),
-        state.auth.clone(),
-    );
-    let dioxus_app_doc = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOC_PATH,
-        None,
-        state.docs.clone(),
-        state.sessions.clone(),
-        state.policy.clone(),
-        state.auth.clone(),
-    );
+    // The documentation is the glossary: one page at /glossary, and every
+    // retired /docs and /app/docs path a permanent redirect to it.
+    let dioxus_glossary = dioxus_app::glossary_router();
     let dioxus_app_team = dioxus_app::app_team_router(
         state.sessions.clone(),
         state.policy.clone(),
@@ -1857,8 +1820,6 @@ pub fn bootstrap(
         // The per-notation clause editor (#956 Phase 4) renders through Dioxus
         // at `/app/lawyer/notations/{id}/clauses`.
         dioxus_clause_editor,
-        dioxus_app_docs_index,
-        dioxus_app_doc,
         dioxus_app_team,
         dioxus_app_brands,
         dioxus_app_brands_edit,
@@ -1919,16 +1880,12 @@ pub fn bootstrap(
     // `host_dioxus` because that list is firm-host-only and the gallery is a
     // shared Navigator tool that must answer on both hosts.
     //
-    // `/docs` and `/docs/{slug}` mount the same way, and for the same
-    // reason: the workspace documentation is the manual for software anyone
-    // can clone. It sat behind the session boundary while the source was
-    // closed, which put a login door in front of the one document that
-    // explains how to run what is now public — the argument that already
-    // un-gated the Navigator classes. `/app/docs` is untouched: it is the
-    // second, role-restricted door to the same index wearing the application
-    // chrome, and it stays gated because it is part of the authenticated
-    // surface, not because the documents are.
-    for public_router in [dioxus_app::design_router(), dioxus_docs_index, dioxus_doc] {
+    // `/glossary` mounts the same way, and for the same reason: the glossary
+    // is the manual for software anyone can clone. The retired `/docs` and
+    // `/app/docs` paths are bare redirects to it, so they need no session at
+    // all.
+    router = router.merge(dioxus_app::retired_docs_router());
+    for public_router in [dioxus_app::design_router(), dioxus_glossary] {
         router = router.merge(
             public_router.route_layer(axum::middleware::from_fn_with_state(
                 boundary_sessions.clone(),
@@ -2302,6 +2259,7 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/app",
     "/auth",
     "/docs",
+    "/glossary",
     "/api",
 ];
 
@@ -2888,6 +2846,7 @@ Disallow: /admin
 Disallow: /auth
 Disallow: /docs
 Disallow: /design
+Disallow: /glossary
 Disallow: /templates
 ";
 
@@ -2948,10 +2907,10 @@ pub type SitemapPaths = fn(&AppState, views::brand::BrandKey) -> std::collection
 /// The host-owned public GET surfaces this router publishes: the documents
 /// every brand serves, plus the brand's own anonymous pages.
 ///
-/// Only host pages appear: the shared Navigator tools that used to be listed
-/// here — `/docs`, `/templates`, `/design` — are authenticated
-/// now, and a sitemap entry pointing at a login redirect is worse than no
-/// entry at all.
+/// Only host pages appear: `/templates` is authenticated, and a sitemap
+/// entry pointing at a login redirect is worse than no entry at all;
+/// `/glossary` and `/design` are contributor references rather than pages a
+/// search result should land a prospective client on.
 fn sitemap_paths(
     state: &AppState,
     brand_paths: SitemapPaths,

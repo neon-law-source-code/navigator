@@ -15,7 +15,7 @@
 /// be a first-class authority rather than a case record with its fields
 /// bent to fit (#896).
 ///
-/// [Authority]: https://www.neonlaw.com/docs/glossary
+/// [Authority]: https://www.neonlaw.com/glossary
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthorityClass {
     /// A judicial decision — the reported or slip opinion.

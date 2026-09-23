@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Government Forms: Vendor, Map, Fill, File
 
 Neon Law Navigator fills official government PDF forms from questionnaire answers and files them through a lawyer-gated

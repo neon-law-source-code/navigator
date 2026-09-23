@@ -237,7 +237,7 @@ A well-tested mono repo keeps things in sync.
 
 ### DevX: Glossary & Ontology
 
-www.neonlaw.com/docs/glossary
+www.neonlaw.com/glossary
 
 ![Ferris organizes a shared vocabulary in a magical library](img/rust-in-peace/devx-glossary-ontology.png)
 

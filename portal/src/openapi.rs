@@ -701,7 +701,7 @@ pub fn document_with_base(base: &str) -> Value {
                   "closure_reason": { "type": ["string", "null"], "enum": ["pitch_declined", "pitch_lapsed", "pitch_withdrawn", "pitch_superseded", "engagement_completed", "client_terminated", "firm_withdrew", null] },
                   "source_state": { "type": "string",
                     "enum": ["not_enabled", "pending", "unknown", "attached", "initialized", "failed"],
-                    "description": "Derived from repository_url/forge_provisioned_at/git_initialized_at — never a stored column. See docs/glossary.md#project." }
+                    "description": "Derived from repository_url/forge_provisioned_at/git_initialized_at — never a stored column. See docs/glossary/project.md." }
                 } } }
               } } },
               "401": { "description": "No authenticated session", "content": { "application/json": {

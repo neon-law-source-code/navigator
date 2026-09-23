@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Retainer intake walkthrough
 
 The retainer-intake flow is a pair of durable state machines per [Notation](notation.md#notation), declared in the
@@ -9,7 +5,7 @@ frontmatter of the [shared onboarding letter](../templates/notations/neon_law/on
 [`portal::retainer_walk`](../portal/src/retainer_walk.rs) module:
 
 1. **Questionnaire walker** — one question per request, one [Answer](notation.md#answer) per advance, one
-   [Notation Event](glossary.md#notation-event) per transition. Walks the state chain `BEGIN` → `entity` →
+   [Notation Event](glossary/notation-event.md) per transition. Walks the state chain `BEGIN` → `entity` →
    `address__principal_office` → `person__client` → `project__engagement` → `custom_datetime__engagement_start_date` →
    `custom_text__engagement_scope` → `custom_single_choice__governing_law` → `END` — seven questions in all. The
    matter's scope renders from the clause spliced at `{{custom_clauses}}`, written per client; fees are set in a
@@ -19,7 +15,7 @@ frontmatter of the [shared onboarding letter](../templates/notations/neon_law/on
    persistence, and "sent for signature".
 
 Both timelines share the same runtime surface ([`workflows::StateMachineRuntime`](../workflows/src/runtime.rs)), keyed
-by `(MachineKind, notation_id)`, and run as a single [Restate](glossary.md#restate) virtual object per Notation. The
+by `(MachineKind, notation_id)`, and run as a single [Restate](glossary/restate.md) virtual object per Notation. The
 worker that hosts the object lives in [`workflows-service/`](../workflows-service/).
 
 ## Questionnaire state machine
@@ -108,12 +104,12 @@ sequenceDiagram
 ```
 
 The two `db` arrows have two different writers: the walker writes [Answers](notation.md#answer) directly; the worker is
-the sole writer of [Notation Events](glossary.md#notation-event), inside [`ctx.run`](glossary.md#ctxrun) so a crash +
+the sole writer of [Notation Events](glossary/notation-event.md), inside [`ctx.run`](glossary/ctxrun.md) so a crash +
 replay reuses the cached row id instead of double-inserting.
 
 ## Persistence
 
-**[Restate](glossary.md#restate) is the source of truth for state; the `notation_event` table is the durable projection
+**[Restate](glossary/restate.md) is the source of truth for state; the `notation_event` table is the durable projection
 of that state.** A signal lands in Restate's keyed state first; the SurrealDB row is the worker's `ctx.run` side effect,
 journaled so a replay never double-writes.
 

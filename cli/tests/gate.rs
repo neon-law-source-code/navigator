@@ -1396,16 +1396,16 @@ fn error_buried_among_warnings(dir: &Path) {
     // M061 is the web-portability advisory, not the disk-resolution
     // error, so its target has to exist for M057 to stay quiet. A
     // same-directory `lib.rs` is the shape the renderer cannot rewrite.
-    write(dir, "docs/lib.rs", "pub fn placeholder() {}\n");
+    write(dir, "docs/glossary/lib.rs", "pub fn placeholder() {}\n");
     write(
         dir,
-        "docs/a_long.md",
+        "docs/glossary/a_long.md",
         &format!("Intro.\n\n{}\n", "x".repeat(130)),
     );
     for name in ["m_one.md", "n_two.md", "z_three.md"] {
         write(
             dir,
-            &format!("docs/{name}"),
+            &format!("docs/glossary/{name}"),
             "Body.\n\nSee [lib](lib.rs) for detail.\n",
         );
     }
@@ -1546,10 +1546,14 @@ fn gate_recapitulation_gathers_errors_from_every_pass() {
 fn gate_prints_no_recapitulation_when_there_are_no_errors() {
     let dir = TempDir::new().unwrap();
     // Advisories only — M061 never fails the gate.
-    write(dir.path(), "docs/lib.rs", "pub fn placeholder() {}\n");
     write(
         dir.path(),
-        "docs/guide.md",
+        "docs/glossary/lib.rs",
+        "pub fn placeholder() {}\n",
+    );
+    write(
+        dir.path(),
+        "docs/glossary/guide.md",
         "Body.\n\nSee [lib](lib.rs) for detail.\n",
     );
     let (stdout, code) = gate_output(dir.path(), &[]);

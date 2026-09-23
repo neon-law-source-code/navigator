@@ -210,7 +210,7 @@ const FIRM_NAV: &[NavLink] = &[NavLink::leaf(
 const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("API", "/api"),
     NavLink::leaf("Blog", "/blog"),
-    NavLink::leaf("Docs", "/docs"),
+    NavLink::leaf("Glossary", "/glossary"),
     NavLink::leaf("Navigator", "/navigator"),
     NavLink::leaf("Notations", "/notations"),
     NavLink::leaf("Presentations", "/presentations"),
@@ -374,13 +374,11 @@ const FIRM_SOCIAL: &[FirmSocial] = &[
 /// the same line. A bundle that renames the firm publishes none — see
 /// [`Branding::firm_memberships`].
 ///
-/// The name is the association's own — the Justice Technology Association
-/// spells it out in full on its mark — rather than the short form it is
-/// known by in conversation.
-/// The Justice Technology Association standing sentence, minus its trailing
-/// period — the one source every render and every test derives from, so a
-/// copy change touches this line alone.
-pub const JTA_STANDING: &str = "Mission-Aligned Partner of the Justice Technology Association";
+/// The firm's standing with the Justice Technology Association — the
+/// footer's link text beside the association's mark, which names the
+/// association itself. The one source every render and every test derives
+/// from, so a copy change touches this line alone.
+pub const JTA_STANDING: &str = "Mission-Aligned Partner";
 
 const FIRM_MEMBERSHIPS: &[FirmMembership] = &[FirmMembership {
     name: "Justice Technology Association",
@@ -2408,7 +2406,7 @@ mod tests {
                 "API",
                 "Blog",
                 "Contact",
-                "Docs",
+                "Glossary",
                 "Navigator",
                 "Notations",
                 "Presentations",

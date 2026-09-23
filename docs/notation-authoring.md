@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Authoring notations
 
 This is the how-to companion to [`notation.md`](notation.md). That doc defines the *vocabulary* (Template, Notation,
@@ -12,8 +8,8 @@ enforces, what runs after a client finishes intake, and what is still on the roa
 ## What a notation is, in one paragraph
 
 A **Template** is a static blueprint: one markdown file with YAML frontmatter, checked into `templates/`. A **Notation**
-is that Template come to life — one running instance bound to a [Person](glossary.md#person) (the respondent), exactly
-one [Project](glossary.md#project), and optionally an [Entity](glossary.md#entity) — advancing through two state
+is that Template come to life — one running instance bound to a [Person](glossary/person.md) (the respondent), exactly
+one [Project](glossary/project.md), and optionally an [Entity](glossary/entity.md) — advancing through two state
 machines the Template declares. In client English a Notation-in-a-Project is the **Engagement** (or **Retainer**). The
 Template *declares*; Restate *runs*. Everything below is about writing good Templates and growing what their workflows
 can do.
@@ -157,8 +153,8 @@ New legal matters follow a fixed order (see [`agent-workflows.md`](agent-workflo
 Feature-first, so the composition is specified before the prose exists:
 
 1. **Write the composition `.feature` first.** Describe the matter as a sequence or branching graph of reusable workflow
-   steps, using only Person / Entity nouns from [`glossary.md`](glossary.md). The feature is the product-level spec; the
-   template satisfies it by composing already-known steps.
+   steps, using only Person / Entity nouns from [`glossary/`](glossary/README.md). The feature is the product-level
+   spec; the template satisfies it by composing already-known steps.
 2. **Write the template + questionnaire.** Create the markdown file under `templates/notations/forms/...` for a
    government form, or `templates/notations/neon_law/...` for a firm template. Declare the `questionnaire:` walk and the
    `workflow:` states. Body prose uses `{{question_code}}` placeholders. If a questionnaire state uses a
@@ -495,7 +491,7 @@ route advance a signed retainer to END (see External integrations above).
    language preference and `notation_session` renders the base question prompt directly. See
    [`AGENTS.md`](../AGENTS.md).
 5. ~~**Template storage and scoping.**~~ **Shipped.** Template bodies moved from the inline `templates.body` TEXT column
-   to `cloud::StorageService` (`templates.asset_id` references an [Asset](glossary.md#asset) holding the bytes);
+   to `cloud::StorageService` (`templates.asset_id` references an [Asset](glossary/asset.md) holding the bytes);
    `templates.project_id` plus two partial unique indexes add project-scoped templates alongside the shared catalog,
    resolved by `store::templates::resolve` (prefer Project, fall back to shared). The seed + `navigator site seed` paths
    ingest bodies into Assets; render paths read them back via `store::templates::body`. See

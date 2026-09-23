@@ -834,7 +834,7 @@ mod tests {
             "the family row carries over: {tenant_out}"
         );
         assert!(
-            tenant_out.contains(&format!("{JTA_STANDING}."))
+            tenant_out.contains(&JTA_STANDING.to_string())
                 && tenant_out.contains(r#"href="https://justicetechassociation.org/get-involved""#),
             "the membership line carries over: {tenant_out}"
         );
@@ -887,7 +887,7 @@ mod tests {
     #[cfg(feature = "server")]
     #[tokio::test]
     async fn every_brand_renders_the_firms_jta_standing() {
-        let expected = format!("{JTA_STANDING}.");
+        let expected = JTA_STANDING.to_string();
 
         for key in views::brand::BrandKey::ALL {
             let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);

@@ -13,7 +13,8 @@ fn repo_root() -> PathBuf {
 }
 
 /// Every `.md` file under `docs/`, as paths relative to `docs/` itself (e.g. `access-model.md`,
-/// `deploy/gke-ship-example.md`), excluding `index.md` — the map does not need to list itself.
+/// `deploy/gke-ship-example.md`), excluding `index.md` — the map does not need to list itself —
+/// and the glossary's per-term entries, which `glossary/README.md` and the `/glossary` page index.
 fn docs_markdown_files(docs_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     let mut stack = vec![docs_dir.to_path_buf()];
@@ -31,7 +32,9 @@ fn docs_markdown_files(docs_dir: &Path) -> Vec<String> {
                     .expect("path under docs_dir")
                     .to_string_lossy()
                     .replace('\\', "/");
-                if relative != "index.md" {
+                let glossary_term =
+                    relative.starts_with("glossary/") && relative != "glossary/README.md";
+                if relative != "index.md" && !glossary_term {
                     files.push(relative);
                 }
             }

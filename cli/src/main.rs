@@ -10,11 +10,11 @@ mod assets;
 mod authorities;
 mod credentials;
 mod devx;
-mod docs;
 mod document_read;
 mod document_sync;
 mod firms_doctor;
 mod forms_sync;
+mod glossary;
 #[allow(dead_code)]
 mod intake;
 mod login;
@@ -379,6 +379,12 @@ enum Command {
         /// checkout validate before anyone runs a build.
         #[arg(long)]
         ci: bool,
+    },
+    /// Read the Neon Law Navigator glossary — the ontology, one term per
+    /// file under `docs/glossary/`, embedded in this binary.
+    Glossary {
+        #[command(subcommand)]
+        action: GlossaryCmd,
     },
     /// Interact with a project hosted on a navigator site.
     ///
@@ -1086,12 +1092,6 @@ enum DevCmd {
         /// Workspace root containing vendor/sendgrid.
         #[arg(default_value = ".")]
         root: PathBuf,
-    },
-    /// Published workspace docs helpers — list every published page, or
-    /// print a canonical glossary term.
-    Docs {
-        #[command(subcommand)]
-        action: DocsAction,
     },
 }
 
@@ -1835,40 +1835,29 @@ enum FormsAction {
 }
 
 #[derive(Subcommand)]
-enum DocsAction {
-    /// List every published docs page, including each glossary term
-    /// anchor.
+enum GlossaryCmd {
+    /// List every term as its slug and title, alphabetical by slug. The
+    /// slug is the term's `/glossary#<slug>` anchor.
     List,
-    /// Print canonical Neon Law Navigator vocabulary from
-    /// `docs/glossary.md`. With no argument prints every term; with one
-    /// argument prints just that term or anchor slug.
-    Glossary {
-        /// Optional term or glossary anchor slug to look up.
-        term: Option<String>,
+    /// Print one term's definition. Accepts the title in any case or its
+    /// slug.
+    Show {
+        /// Term title or slug, e.g. `"Lawyer Review"` or `lawyer-review`.
+        term: String,
     },
-    /// Print the glossary as Markdown a Notion page can hold: every
-    /// repository-relative and sibling-doc link resolved to a public
-    /// GitHub URL, in-page anchors unlinked, frontmatter and H1 dropped.
-    /// The push half of the Notion round trip.
-    GlossaryNotion,
-    /// Check the alphabetical index block at the top of `docs/glossary.md`
-    /// against the page's own `## ` headings, or rewrite it with
-    /// `--write`. The index is derived data; hand-editing it is what
-    /// lets a Notion round trip drift.
-    GlossaryIndex {
-        /// Rewrite the index in place instead of only reporting drift.
-        #[arg(long)]
-        write: bool,
-    },
-    /// Check the per-term schema boxes in `docs/glossary.md` against the
-    /// shipped `navigator.surql`, or rewrite them with `--write`. A term
-    /// naming a `SurrealDB` table carries that table's columns and types as
-    /// rendered art; the boxes are derived data, like the index.
-    GlossaryTables {
+    /// Check every term's schema box against the shipped
+    /// `navigator.surql`, or rewrite them with `--write`. A term naming a
+    /// `SurrealDB` table carries that table's columns and types as rendered
+    /// art; the boxes are derived data.
+    Tables {
         /// Rewrite the boxes in place instead of only reporting drift.
         #[arg(long)]
         write: bool,
     },
+    /// Print the glossary as one Markdown page Notion can hold: every
+    /// repository-relative link resolved to a public GitHub URL and
+    /// sibling-term links unlinked. The push half of the Notion round trip.
+    Notion,
 }
 
 #[derive(Subcommand)]
@@ -2215,12 +2204,11 @@ fn main() -> ExitCode {
         // The docs reference helpers need no cluster, so they are handled
         // here rather than routed into the KIND dispatcher with the rest
         // of `dev`.
-        Command::Dev(DevCmd::Docs { action }) => match action {
-            DocsAction::List => docs::list(),
-            DocsAction::Glossary { term } => docs::glossary(term.as_deref()),
-            DocsAction::GlossaryIndex { write } => docs::glossary_index(write),
-            DocsAction::GlossaryTables { write } => docs::glossary_tables(write),
-            DocsAction::GlossaryNotion => docs::glossary_notion(),
+        Command::Glossary { action } => match action {
+            GlossaryCmd::List => glossary::list(),
+            GlossaryCmd::Show { term } => glossary::show(&term),
+            GlossaryCmd::Tables { write } => glossary::tables(write),
+            GlossaryCmd::Notion => glossary::notion(),
         },
         Command::Forms { action } => match action {
             FormsAction::Sync { bucket } => forms_sync::run_sync(bucket.as_deref()),

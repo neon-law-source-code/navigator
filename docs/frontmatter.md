@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Frontmatter: the cover sheet on every file
 
 This page is for the attorney who is about to write or edit a file in Neon Law Navigator — a notation template, a blog

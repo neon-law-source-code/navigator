@@ -28,9 +28,9 @@ The first two columns are independent. A Clerk who is *also* a client of the fir
 role on the person row (their firm work) and a `person_project_role` row on their personal matter with the client
 participation. The system answers "what can this person do" by reading both.
 
-`person_firm_role` is the ownership join: a person may belong to a [`firm`](glossary.md#firm) as `admin`, `lawyer`, or
+`person_firm_role` is the ownership join: a person may belong to a [`firm`](glossary/firm.md) as `admin`, `lawyer`, or
 `clerk`, with an `is_dri` marker — the Firm's **Admin DRI**, not a matter DRI (see
-[glossary](glossary.md#directly-responsible-individual-dri)). Every active Firm holds exactly one: creation is atomic
+[glossary](glossary/directly-responsible-individual-dri.md)). Every active Firm holds exactly one: creation is atomic
 with an initial designation, `store::firms::appoint_admin_dri` is the only writer thereafter (Owner-only, one
 transaction), and `store::firms::admin_dri_invariant_report` is a read-only deployment-wide scan for a Firm that is not
 (ENG-499). It does not overload `person.role`. Owner remains the one system-wide super-owner tier; clients do not get a
@@ -65,7 +65,7 @@ through, rather than each call site deriving its own `person_firm_role` filter:
   outcome, and a stable reason code, ids only (ENG-464) — so every Firm-scoped allow/deny decision is auditable from the
   one place every caller already routes through.
 - Owner holds every capability on every Firm with no membership row — the system-wide governance tier
-  `docs/glossary.md#firm` describes. Client holds none. Admin, Lawyer, and Clerk need a `person_firm_role` row on the
+  `docs/glossary/firm.md` describes. Client holds none. Admin, Lawyer, and Clerk need a `person_firm_role` row on the
   target Firm, and only some capabilities admit a non-Admin membership (`ManageMembership` is Admin-only).
 - Firm capability does not replace Project participation. A Firm-scoped capability answers "may this actor act on this
   Firm's own rows" (its people, its matters-as-a-list, its membership); it says nothing about a specific matter's
@@ -176,7 +176,7 @@ Owner's. `/app/admin/leads` is the same Owner/Admin door: the public contact que
 ### *anonymous*
 
 No row in `person` at all. Sees the host's own public pages and the login door, and nothing else. Nearly every page on
-the firm's host is anonymous, including the [presentations](glossary.md#presentation) catalog at `/presentations`, every
+the firm's host is anonymous, including the [presentations](glossary/presentation.md) catalog at `/presentations`, every
 talk beneath it, and the `/workshops` catalog and workshop material.
 
 Every shared Navigator surface — `/app`, the JSON API, `/templates/*`, `/app/api`, and `/app/api/openapi.json` —
@@ -201,12 +201,11 @@ The anonymous allowlist is explicit, small, and pinned by `portal/tests/router_c
   `workflows-service`, a separate host, and `web` answers `404` for it
   (`portal/tests/router_contract.rs::web_does_not_serve_the_github_webhook_receiver`);
 - the DocuSign consent callback, the provider's return leg of an admin-initiated consent grant;
-- the two contributor reference surfaces, `/design` and the workspace documentation at `/docs` and
-  `/docs/{slug}`. Both render their own `200` for a reader with no account rather than answering the login door, and
-  both carry `inject_optional_session` so a signed-in reader still gets the authenticated nav. The documentation is
-  anonymous because the repository is source-available: those documents are the manual for software anyone can clone, so
-  a login door in front of them guarded nothing. `/app/docs` is a second door to the same index wearing the application
-  chrome, and it stays gated — what it restricts is that surface, not the documents.
+- the two contributor reference surfaces, `/design` and the glossary at `/glossary`. Both render their own `200` for a
+  reader with no account rather than answering the login door, and both carry `inject_optional_session` so a signed-in
+  reader still gets the authenticated nav. The glossary is anonymous because the repository is source-available: it is
+  the ontology of software anyone can clone, so a login door in front of it guarded nothing. The retired `/docs`,
+  `/docs/{slug}`, `/app/docs`, and `/app/docs/{slug}` paths are anonymous permanent redirects to it.
 
 `/app/mcp` is **not** on this allowlist — a caller still needs a credential — but it is not behind the session-cookie
 boundary either. It mounts a Bearer-only stack (`require_auth`, `require_policy`, and in production
@@ -240,7 +239,7 @@ The OAuth callback resolves the IdP-authenticated subject against the table
 An unrecognised provider subject without an email remains refused: Navigator cannot safely create a Person without an
 address. Existing linked subjects still resolve without an email claim.
 
-Owner and Admin can also create a Client from a [Lead](glossary.md#lead) at `/app/admin/leads/{id}`:
+Owner and Admin can also create a Client from a [Lead](glossary/lead.md) at `/app/admin/leads/{id}`:
 `store::leads::convert` calls `store::persons::create` with the submitted mailbox and phone. A mailbox that already
 belongs to a Person is refused and the queue offers a link to that row instead.
 
@@ -371,11 +370,11 @@ which is precisely the disclosure the participation ledger exists to prevent; th
 The public lead queue is the same shape at `/app/admin/leads` and `/app/admin/leads/{id}`: Owner and Admin reach it
 through the `/app/admin` route bypass, and Lawyer, Clerk, and client are refused by omission. The list masks a recorded
 phone to its last four digits; the row page shows the full number, accepts a status among `new`, `contacted`,
-`converted`, `declined`, and `unsubscribed`, and creates or links a [Person](glossary.md#person) for the mailbox
+`converted`, `declined`, and `unsubscribed`, and creates or links a [Person](glossary/person.md) for the mailbox
 (`store::persons::create`, never a second identity table). After conversion, the queue reads name, email, and phone from
 that Person row. Handler logs name `lead_id`, `outcome`, and the actor's person id, never the address. Contacting a lead
 is attorney work under professional ethics (advertising and solicitation), not a sales sequence. See
-[glossary](glossary.md#lead).
+[glossary](glossary/lead.md).
 
 ## What `participation` is NOT
 
@@ -389,7 +388,7 @@ If someone should see a Project's portal files, add or remove the `person_projec
 or expose the git repository.
 
 If you find yourself reaching for `disclosures` to decide whether someone can see a project, stop — you want
-`person_project_role`. See [glossary entry "Disclosure"](glossary.md#disclosure).
+`person_project_role`. See [glossary entry "Disclosure"](glossary/disclosure.md).
 
 ## What an External System Identity is not
 
@@ -648,4 +647,4 @@ on firm-side create paths, and a finding's text reaches a client through nothing
 - [`docs/oidc.md`](oidc.md) — Authorization Code + PKCE login flow and how the person row is upserted.
 - `portal/policy/navigator.rego` — the embedded Rego. `portal::policy` — the `require_policy` middleware that
   evaluates it in process.
-- [`docs/glossary.md`](glossary.md) — Person, Project, Disclosure, Participation.
+- [`docs/glossary/`](glossary/README.md) — Person, Project, Disclosure, Participation.

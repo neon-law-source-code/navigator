@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Marketing copy
 
 The firm's public home, practice, and marketing pages publish English only. The words live in

@@ -1,4 +1,4 @@
-//! Drift guard for workflow-prefix vocabulary in `docs/glossary.md`.
+//! Drift guard for workflow-prefix vocabulary in `docs/glossary/`.
 //!
 //! Every state-name prefix accepted by the workflow engine needs a glossary
 //! entry with a link, so readers can jump from the term to the implementation
@@ -6,32 +6,29 @@
 
 use workflows::step::STEP_PREFIXES;
 
-const GLOSSARY: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md"));
-
 #[test]
 fn every_workflow_prefix_has_a_linked_glossary_entry() {
     for (prefix, _) in STEP_PREFIXES {
         let heading = glossary_heading_for_prefix(prefix);
         let section = glossary_section(heading)
-            .unwrap_or_else(|| panic!("missing glossary heading `## {heading}` for `{prefix}`"));
+            .unwrap_or_else(|| panic!("missing glossary term `{heading}` for `{prefix}`"));
         assert!(
             section.contains(']') && section.contains("]("),
-            "`## {heading}` must link to the authoring docs or source"
+            "`{heading}` must link to the authoring docs or source"
         );
         assert!(
             section.contains(&format!("`{prefix}`"))
                 || (*prefix == "witnesses" && section.contains("Signature step kind")),
-            "`## {heading}` must mention the literal workflow prefix `{prefix}`"
+            "`{heading}` must mention the literal workflow prefix `{prefix}`"
         );
     }
 }
 
 fn glossary_section(heading: &str) -> Option<&'static str> {
-    let marker = format!("## {heading}\n");
-    let start = GLOSSARY.find(&marker)? + marker.len();
-    let rest = &GLOSSARY[start..];
-    let end = rest.find("\n## ").unwrap_or(rest.len());
-    Some(rest[..end].trim())
+    store::glossary::terms()
+        .iter()
+        .find(|term| term.title == heading)
+        .map(|term| term.body.as_str())
 }
 
 fn glossary_heading_for_prefix(prefix: &str) -> &'static str {

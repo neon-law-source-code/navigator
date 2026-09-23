@@ -6,7 +6,7 @@
 //! directory and flags the ones that point nowhere — catching typos and
 //! dangling references anywhere in the tree. Its sibling
 //! [`crate::M061WebPortableLink`] adds the *website* half: whether a
-//! resolvable link is also renderable once published at `/docs/:slug`.
+//! resolvable link is also renderable once published at `/glossary`.
 //!
 //! Only inline links (`[text](target)`) are checked; image embeds
 //! (`![alt](src)`) route through the asset seam, not the repo tree.

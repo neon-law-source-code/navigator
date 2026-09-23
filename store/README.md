@@ -11,4 +11,5 @@ It serves every application component that reads or writes durable domain state.
 keep the schema, vocabulary, authorization scope, and test data consistent across all interfaces.
 
 Role determines an authenticated person's application tier; Project participation determines matter scope. See the
-[glossary](../docs/glossary.md), [access model](../docs/access-model.md), and [test database](../docs/test-database.md).
+[glossary](../docs/glossary/README.md), [access model](../docs/access-model.md), and [test
+database](../docs/test-database.md).

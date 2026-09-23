@@ -30,7 +30,7 @@ cannot complete safely, stop and report the condition rather than combining unre
 
 ## Ground the issue
 
-Read `docs/public-contributor-safety.md`, `docs/glossary.md`, and the narrowest relevant source of truth from
+Read `docs/public-contributor-safety.md`, `docs/glossary/`, and the narrowest relevant source of truth from
 `docs/index.md`. Fetch the Linear issue with `get_issue` using `includeRelations: true`, then use `list_comments` and
 read from the opening body through the last comment. Treat an existing triage comment as evidence, not authority:
 refresh every claim against `origin/main` before editing.

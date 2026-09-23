@@ -1,7 +1,3 @@
----
-publish: true
----
-
 # Bulk contact import
 
 One engine, three surfaces, for turning a list of organizations and the people who work at them into Neon Law Navigator

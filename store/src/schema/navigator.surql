@@ -49,7 +49,7 @@ DEFINE TABLE IF NOT EXISTS project SCHEMAFULL PERMISSIONS NONE;
 --
 -- `READONLY` makes immutability structural rather than a property of which
 -- handlers happen to omit `code` from their update commands (see
--- `docs/glossary.md#project`): a Project's route, portal mount, and
+-- `docs/glossary/project.md`): a Project's route, portal mount, and
 -- documents-bucket prefix all key off the exact spelling chosen at
 -- matter-open, so a direct write that rewrites it must be refused by the
 -- engine itself, not only by the absence of a handler that offers to.
@@ -60,7 +60,7 @@ DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;
 -- Which house brand's storefront this matter was opened through, written by
 -- the server from the resolved request `Host:`, never accepted from a
--- client-submitted form (see `docs/glossary.md#project`). Required after the
+-- client-submitted form (see `docs/glossary/project.md`). Required after the
 -- guarded backfill near the `brand` table: this first definition remains
 -- optional until `store::schema::apply` validates historical rows and supplies
 -- the established default before it tightens this field. Validated
@@ -919,7 +919,7 @@ DEFINE FIELD OVERWRITE updated_at ON git_repository TYPE datetime DEFAULT time::
 DEFINE INDEX OVERWRITE git_repository_remote_hash ON git_repository FIELDS remote_hash UNIQUE;
 
 -- `glossary_terms`: the firm vocabulary as reference data (#894) —
--- authored in `docs/glossary.md`, materialized here by
+-- authored in `docs/glossary/`, materialized here by
 -- `store::glossary::materialize`, keyed by the published-docs anchor
 -- `slug`. Canonical seed data, identical in every deployment.
 --

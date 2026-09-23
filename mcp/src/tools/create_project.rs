@@ -7,7 +7,7 @@
 //! the Project is the durable home for Persons and Documents;
 //! Notations attach later as Templates ship.
 //!
-//! [Matter]: ../../../docs/glossary.md#matter
+//! [Matter]: ../../../docs/glossary/matter.md
 
 use serde::Deserialize;
 use serde_json::{json, Value};

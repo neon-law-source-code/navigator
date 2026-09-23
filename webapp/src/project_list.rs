@@ -224,6 +224,19 @@ async fn all_brands_for_display(
     Ok(brands)
 }
 
+/// Resolve a Project's raw brand key to its display name, falling back to the
+/// key itself on drift — the same defensive posture `entity_name`'s `?` takes
+/// for a dangling FK, kept as a plain function (rather than a closure built in
+/// `get_project_list`) so that function stays under clippy's line budget.
+#[cfg(feature = "server")]
+fn resolve_brand_name(brands: &[store::brands::Brand], key: &str) -> String {
+    brands
+        .iter()
+        .find(|b| b.key == key)
+        .map_or(key, |b| b.name.as_str())
+        .to_string()
+}
+
 /// One composite comparator so the first requested `?sort=` field is primary
 /// and later fields only break ties (the JSON:API `SortSpec` precedence
 /// contract).
@@ -390,13 +403,7 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
     let brands = all_brands_for_display(&surreal)
         .await
         .map_err(loader_error)?;
-    let by_brand = |key: &str| {
-        brands
-            .iter()
-            .find(|b| b.key == key)
-            .map_or(key, |b| b.name.as_str())
-            .to_string()
-    };
+    let by_brand = |key: &str| resolve_brand_name(&brands, key);
 
     // Lifecycle badges: two batched queries. A failed lookup propagates rather
     // than collapsing to "no engagement" and badging every matter falsely.

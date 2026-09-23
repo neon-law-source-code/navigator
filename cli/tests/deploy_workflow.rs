@@ -1347,7 +1347,7 @@ fn the_checker_probes_for_every_release_output() {
     );
 }
 
-/// The Windows CLI+LSP check moved here from `ci.yml`'s pull_request gate, so
+/// The Windows CLI+LSP check moved here from `ci.yml`'s `pull_request` gate, so
 /// it runs on a release (or a `kind-ci/**` iteration) instead of on every PR
 /// that touches `cli/` or `lsp/`. It shares no inputs with the built images
 /// `integration` loads, so it shares `integration`'s gate rather than

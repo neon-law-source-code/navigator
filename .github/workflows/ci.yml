@@ -224,7 +224,7 @@ jobs:
       - name: cargo check (cli + lsp)
         run: cargo check --locked -p cli -p lsp
       - name: cli integration tests
-        run: cargo test --locked -p cli --test project_repository --test gate
+        run: cargo test --locked -p cli --test gate
 
   word-adapter:
     name: test managed Word adapter

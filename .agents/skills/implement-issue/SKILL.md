@@ -21,7 +21,7 @@ Before editing, confirm that `pwd -P` is a non-primary entry from `git worktree 
 changes. Fetch and signed-rebase on the shipped baseline:
 
 ```bash
-git fetch origin main
+rtk git fetch origin main
 git rebase -S origin/main
 ```
 
@@ -81,6 +81,12 @@ Run `cargo run -p cli --quiet -- project gate` after the change, plus the focuse
 surface requires under `docs/agent-workflows.md`. For Rust or runtime changes, run formatting, clippy with warnings
 denied, the workspace tests, and coverage as that document requires. Verify user-facing changes through the documented
 browser loop.
+
+For agent-facing Rust output, use `rtk cargo build`, `check`, `clippy`, `test`, or `nextest` when RTK is installed. It
+compresses repetitive Cargo output but does not speed compilation. Keep formatting, coverage, project gates,
+machine-readable output, and raw diagnostics on ordinary Cargo commands. Use `rtk git`/`rtk gh` for human-facing Git or
+GitHub summaries; keep raw commands for revision values, rebases, API/JSON, patches, auth tokens, and exact body/URL
+operations.
 
 Before opening the PR, rebase with `git rebase -S origin/main` again and rerun the affected checks. Keep the issue
 identifier out of public prose except the bare identifier permitted by `docs/agent-workflows.md`. Then follow

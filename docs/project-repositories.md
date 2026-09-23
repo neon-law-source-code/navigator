@@ -142,9 +142,9 @@ checkout once the Authority is filed, the same lifecycle as any other staged bin
 
 The two folders split [`AuthorityClass`](../rules/src/citation.rs): `documents/cases/` holds `case_law` alone, and
 `documents/rules/` holds every other class — `statute`, `regulation`, `administrative`, and `secondary`. The sidecar's
-declared `class` must agree with the folder it is staged under; a mismatch (a statute staged under `cases/`, or case
-law staged under `rules/`) is refused before either the network or `documents/.gitignore` is touched, naming the folder
-the capture actually belongs under.
+declared `class` must agree with the folder it is staged under; a mismatch (a statute staged under `cases/`, or case law
+staged under `rules/`) is refused before either the network or `documents/.gitignore` is touched, naming the folder the
+capture actually belongs under.
 
 Every pointer `sync` writes, whatever the route, keeps `current_version.created_at` as an RFC 3339 UTC timestamp; `site
 document verify` fails a pointer that lacks one.

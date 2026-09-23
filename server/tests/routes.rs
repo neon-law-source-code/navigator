@@ -8788,6 +8788,36 @@ async fn lawyer_projects_list_renders_created_and_last_commit_columns() {
     );
 }
 
+/// Every Project already carries a required `brand` (ENG-587); the lawyer
+/// list surfaces its resolved display name rather than the raw
+/// `store::brands` key.
+#[tokio::test]
+async fn lawyer_projects_list_renders_the_resolved_brand_name() {
+    let (state, surreal) = state_with_engines().await;
+    let (_project_id, _lawyer, cookie, _csrf) = lawyer_project_fixture(&surreal).await;
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("Brand"), "{body}");
+    assert!(body.contains(r#"class="project-brand""#), "{body}");
+    assert!(
+        body.contains("Neon Law"),
+        "the fixture's default brand key resolves to its seeded display name: {body}"
+    );
+}
+
 #[tokio::test]
 async fn client_portal_lists_single_project_with_kpi_cards() {
     let (state, _surreal) = state_with_engines().await;

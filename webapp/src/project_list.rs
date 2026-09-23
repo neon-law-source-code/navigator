@@ -57,6 +57,12 @@ pub struct ProjectRow {
     pub status: String,
     /// The resolved entity (matter owner) name; `?` when the FK does not resolve.
     pub entity_name: String,
+    /// The house brand's storefront this matter was opened through, resolved
+    /// from `store::brands` to its display name — the raw key
+    /// (`store::projects::Project::brand`) when no live `brand` row matches,
+    /// which is the same defensive fallback `entity_name`'s `?` gives a
+    /// dangling FK rather than panicking the whole list over one row.
+    pub brand_name: String,
     /// `store::projects::Project::inserted_at` (RFC 3339) — when the matter
     /// was opened.
     pub created_at: String,
@@ -164,6 +170,7 @@ fn parse_sort(raw: &str) -> Vec<(String, bool)> {
 #[cfg(feature = "server")]
 fn project_row(
     entity_name: String,
+    brand_name: String,
     m: store::projects::Project,
     has_engagement: bool,
     has_closing: bool,
@@ -178,6 +185,7 @@ fn project_row(
     );
     ProjectRow {
         entity_name,
+        brand_name,
         id: m.id.to_string(),
         code: m.code,
         name: m.name,
@@ -202,6 +210,20 @@ async fn injected_projects_scope() -> ProjectListScope {
         .unwrap_or_default()
 }
 
+/// Every brand key a Project may carry, system-wide and Firm-scoped alike —
+/// unscoped by viewer role, unlike `store::brands::visible_for_actor`: a
+/// Lawyer reading the projects list is already authorized to see the matter,
+/// and a brand's name here is display data, not the `/app/admin/brands`
+/// management surface that access check guards.
+#[cfg(feature = "server")]
+async fn all_brands_for_display(
+    surreal: &store::surreal::SurrealDb,
+) -> Result<Vec<store::brands::Brand>, store::brands::BrandError> {
+    let mut brands = store::brands::system_wide(surreal).await?;
+    brands.extend(store::brands::all_firm_scoped(surreal).await?);
+    Ok(brands)
+}
+
 /// One composite comparator so the first requested `?sort=` field is primary
 /// and later fields only break ties (the JSON:API `SortSpec` precedence
 /// contract).
@@ -210,6 +232,7 @@ fn sort_matters(
     matters: &mut [store::projects::Project],
     parsed: &[(String, bool)],
     by_entity: impl Fn(uuid::Uuid) -> String,
+    by_brand: impl Fn(&str) -> String,
 ) {
     matters.sort_by(|a, b| {
         parsed
@@ -221,6 +244,7 @@ fn sort_matters(
                         "name" => a.name.cmp(&b.name),
                         "status" => a.status.cmp(&b.status),
                         "entity_name" => by_entity(a.entity_id).cmp(&by_entity(b.entity_id)),
+                        "brand" => by_brand(&a.brand).cmp(&by_brand(&b.brand)),
                         "created_at" => a.inserted_at.cmp(&b.inserted_at),
                         _ => std::cmp::Ordering::Equal,
                     };
@@ -363,13 +387,24 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
             .to_string()
     };
 
+    let brands = all_brands_for_display(&surreal)
+        .await
+        .map_err(loader_error)?;
+    let by_brand = |key: &str| {
+        brands
+            .iter()
+            .find(|b| b.key == key)
+            .map_or(key, |b| b.name.as_str())
+            .to_string()
+    };
+
     // Lifecycle badges: two batched queries. A failed lookup propagates rather
     // than collapsing to "no engagement" and badging every matter falsely.
     let (has_engagement, has_closing) = store::projects::matter_lifecycle_sets(&surreal, &matters)
         .await
         .map_err(loader_error)?;
 
-    sort_matters(&mut matters, &parsed, by_entity);
+    sort_matters(&mut matters, &parsed, by_entity, by_brand);
     let last_committed_ats = fetch_last_committed_ats(&matters).await;
 
     let rows = matters
@@ -377,9 +412,17 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
         .zip(last_committed_ats)
         .map(|(m, last_committed_at)| {
             let entity_name = by_entity(m.entity_id);
+            let brand_name = by_brand(&m.brand);
             let has_eng = has_engagement.contains(&m.id);
             let has_close = has_closing.contains(&m.id);
-            project_row(entity_name, m, has_eng, has_close, last_committed_at)
+            project_row(
+                entity_name,
+                brand_name,
+                m,
+                has_eng,
+                has_close,
+                last_committed_at,
+            )
         })
         .collect();
 
@@ -443,6 +486,7 @@ pub fn LawyerProjects() -> Element {
         Column::sortable("name", "Name"),
         Column::sortable("status", "Status"),
         Column::sortable("entity_name", "Entity"),
+        Column::sortable("brand", "Brand"),
         Column::sortable("created_at", "Created"),
         Column::fixed("last_committed_at", "Last commit"),
     ];
@@ -510,6 +554,7 @@ pub fn LawyerProjects() -> Element {
                                 }
                             }
                             td { class: "project-entity", "{row.entity_name}" }
+                            td { class: "project-brand", "{row.brand_name}" }
                             td { class: "project-created-at", "{row.created_at}" }
                             td { class: "project-last-committed-at",
                                 {row.last_committed_at.clone().unwrap_or_else(|| "—".to_string())}

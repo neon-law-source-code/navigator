@@ -41,9 +41,18 @@ Load-bearing rules from those docs:
 
   ```bash
   cargo fmt
-  cargo clippy --workspace --all-targets -- -D warnings
-  cargo nextest run --workspace && cargo test -p features
+  rtk cargo clippy --workspace --all-targets -- -D warnings
+  rtk cargo nextest run --workspace && rtk cargo test -p features
   ```
+
+  When RTK is installed, use it for agent-facing `cargo build`, `check`, `clippy`, `test`, and `nextest` commands so
+  repetitive compiler and passing-test output is collapsed while failures, warnings, and exit codes remain visible. RTK
+  reduces command output and context usage; it does not make Rust compilation faster. Keep `cargo fmt`, coverage,
+  `project gate`, machine-readable `--message-format` consumers, and raw diagnostics on their ordinary commands.
+
+  The same rule applies to Git and GitHub output: use `rtk git` and `rtk gh` for human-facing status, history, diffs,
+  and PR summaries. Keep raw `git` for porcelain/plumbing, revision values, rebases, and exact machine checks; keep raw
+  `gh` for API/JSON, patches, auth tokens, and exact PR body or URL operations.
 
   Total line coverage stays ≥ 91.0%, and the default nextest profile prints failures only.
 - **Let CI's own scope test decide what "touches Rust" means.** The `changes` job in

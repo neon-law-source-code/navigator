@@ -18,10 +18,11 @@ description: >
 - **One canonical shutdown-signal helper** for service lifecycle (SIGTERM + SIGINT). No ad-hoc `ctrl_c().await.unwrap()`
   inline in `main`.
 - **Axum body/consuming extractors go LAST** in handler argument order — the body can only be consumed once.
-- **Iterate on failure-only output.** Test with `cargo nextest run` (the workspace default profile prints failures only,
-  in full) and compile-check with `cargo build -q --message-format short` — not bare `cargo test`/`cargo build`, whose
-  success noise buries the diagnostic that matters. The one exception is the cucumber `features` package: nextest cannot
-  drive its custom harness, so those suites run with `cargo test -p features`.
+- **Iterate on failure-only output.** When installed, use RTK for agent-facing `cargo build`, `check`, `clippy`,
+  `test`, and `nextest` commands; it collapses repetitive success output while preserving failures, warnings, and exit
+  codes. RTK reduces context usage, not Rust compile time. Keep `cargo fmt`, coverage, project gates, machine-readable
+  `--message-format` consumers, and raw diagnostics on ordinary Cargo commands. The one exception is the cucumber
+  `features` package: nextest cannot drive its custom harness, so those suites run with `rtk cargo test -p features`.
 - **Comments and tests describe the present.** No "we used to…"/"legacy" narration and no deprecated-but-kept flags or
   aliases — delete the old path; git history holds the past. Keep the *why* behind a live invariant, nothing else.
 - **A removal removes the whole seam.** Deleting the caller is half the job. In the same change, delete the types,

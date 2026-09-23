@@ -62,7 +62,7 @@ Before reading the diff, check the current checkout and preserve any user change
 ```bash
 pwd -P
 git worktree list --porcelain
-git status --short --branch
+rtk git status --short --branch
 gh repo view --json nameWithOwner -q .nameWithOwner
 ```
 
@@ -75,8 +75,8 @@ Fetch both sides, then review the PR's actual head against the current shipped b
 when the PR was opened:
 
 ```bash
-git fetch origin
-git fetch origin pull/<N>/head:review-pr-<N>
+rtk git fetch origin
+rtk git fetch origin pull/<N>/head:review-pr-<N>
 gh pr view <N> --repo <owner>/<repo> \
   --json title,body,state,isDraft,author,baseRefName,baseRefOid,headRefName,headRefOid,additions,deletions,changedFiles,mergeable,reviewDecision,statusCheckRollup
 gh pr diff <N> --repo <owner>/<repo> --patch
@@ -193,7 +193,7 @@ Give every finding one of three dispositions, because that split is what the res
 Work on the PR branch itself, in your own worktree, never on the detached `review-pr-<N>` ref:
 
 ```bash
-git fetch origin
+rtk git fetch origin
 git switch --create <headRefName> --track origin/<headRefName>
 git rev-parse HEAD   # must equal the headRefOid recorded in step 1
 ```
@@ -206,7 +206,7 @@ states the durable reason a reader can still check in a year: the rule in `AGENT
 the behavior at the boundary. Never the review conversation, never a chat tool, never a person.
 
 ```bash
-git commit -S -m "fix(store): reject an empty participation set at the boundary"
+rtk git commit -S -m "fix(store): reject an empty participation set at the boundary"
 ```
 
 Re-run the narrowest gate that actually covers what you changed, and write down its exact scope — the command, the
@@ -215,16 +215,21 @@ complete one is not.
 
 ```bash
 cargo run -p cli --quiet -- project gate
-cargo nextest run -p <package>
-cargo fmt --check && cargo clippy -p <package> --all-targets -- -D warnings
+cargo fmt --check
+rtk cargo nextest run -p <package>
+rtk cargo clippy -p <package> --all-targets -- -D warnings
 ```
+
+When RTK is installed, use it for agent-facing Cargo build/check/clippy/test/nextest output. It compresses repetitive
+output while preserving failures and exit codes; it does not improve compile time. Keep project gates, formatting,
+coverage, machine-readable output, and raw diagnostics on ordinary Cargo commands.
 
 Then confirm the remote head is still where you left it and push fast-forward only:
 
 ```bash
-git fetch origin
+rtk git fetch origin
 git rev-parse origin/<headRefName>   # unchanged since the switch above?
-git push origin HEAD:<headRefName>
+rtk git push origin HEAD:<headRefName>
 ```
 
 If the remote head moved while you worked, `git rebase origin/<headRefName>`, re-run the gate, and push again. A
@@ -237,7 +242,7 @@ courtesy. This is the one push that rewrites the author's commits, and it is all
 their base. Rebase signed, then prove the replay is faithful before the lease goes anywhere near the remote:
 
 ```bash
-git fetch origin
+rtk git fetch origin
 BEFORE=$(git rev-parse origin/<headRefName>)
 BASE=$(git merge-base "$BEFORE" origin/main)
 git rebase -S origin/main
@@ -255,7 +260,7 @@ faithful patch and a passing build are different claims. Then push against the S
 landed while you worked rejects the push instead of vanishing:
 
 ```bash
-git push --force-with-lease=<headRefName>:$BEFORE origin HEAD:<headRefName>
+rtk git push --force-with-lease=<headRefName>:$BEFORE origin HEAD:<headRefName>
 ```
 
 Rebasing makes you the last pusher, which engages `require_last_push_approval` exactly as landing a fix does — step 8
@@ -270,7 +275,7 @@ pushed head is the head you gated, then approve it:
 ```bash
 git rev-parse HEAD
 gh pr view <N> --repo <owner>/<repo> --json headRefOid -q .headRefOid   # must match
-gh pr review <N> --repo <owner>/<repo> --approve --body-file <path>
+rtk gh pr review <N> --repo <owner>/<repo> --approve --body-file <path>
 ```
 
 The approval body carries, in this order: the head SHA it approves; what was fixed, one line per commit with its SHA and

@@ -85,7 +85,7 @@ to say the same thing worse.
    ```bash
    cargo run -p cli --quiet -- glossary tables --write
    cargo run -p cli --quiet -- project gate
-   cargo nextest run -p cli -p store -p portal
+   rtk cargo nextest run -p cli -p store -p portal
    ```
 
    `store::glossary::GLOSSARY` is `include_dir!`, so a glossary edit changes compiled data and the rows every boot

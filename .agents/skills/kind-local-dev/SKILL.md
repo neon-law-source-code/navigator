@@ -35,7 +35,7 @@ than merge — PRs squash and merge commits are disabled — and sign it, becaus
 queue.
 
 ```bash
-git fetch origin
+rtk git fetch origin
 git rebase -S origin/main
 ```
 

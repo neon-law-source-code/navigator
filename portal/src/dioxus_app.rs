@@ -246,6 +246,10 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
     } else {
         html
     };
+    // Markdown code is HTML, not a Dioxus component, so it cannot hoist
+    // `document::Script` itself. A page that already hoisted the script (a
+    // `CodeBlock`) is left alone.
+    let html = attach_copy_code_script(&html);
 
     if let Ok(csp) = HeaderValue::from_str(&csp_with_nonce(&nonce, crate::asset_csp_origin(), chat))
     {
@@ -348,6 +352,23 @@ fn close_with_script(html: &str, script: &str) -> String {
         Some(at) => format!("{}{script}{}", &html[..at], &html[at..]),
         None => html.to_string(),
     }
+}
+
+/// Load the code-copy script once when the page rendered a copy button.
+///
+/// The button is in the HTML either way. This is what makes a markdown fence
+/// (which is not a Dioxus node) copyable, without shipping the script on a
+/// page that has no code.
+fn attach_copy_code_script(html: &str) -> String {
+    if !html.contains("data-copy-code") || html.contains(webapp::components::COPY_CODE_SCRIPT_HREF)
+    {
+        return html.to_string();
+    }
+    let tag = format!(
+        "<script src=\"{}\" defer></script>",
+        webapp::components::COPY_CODE_SCRIPT_HREF
+    );
+    close_with_script(html, &tag)
 }
 
 /// The rendered sample-matter banner, built once.
@@ -4955,6 +4976,32 @@ mod tests {
         assert_eq!(
             close_with_script("<p>fragment</p>", "<script></script>"),
             "<p>fragment</p>"
+        );
+    }
+
+    #[test]
+    fn a_rendered_code_block_loads_the_copy_script_once() {
+        let html = "<html><body><div class=\"nav-code\"><button data-copy-code=\"true\">Copy</button><pre><code>let x = 1;</code></pre></div></body></html>";
+        let out = attach_copy_code_script(html);
+        assert_eq!(out.matches("/public/js/copy-code.js").count(), 1, "{out}");
+        assert!(
+            out.contains("defer"),
+            "the script does not block parsing: {out}"
+        );
+        let again = attach_copy_code_script(&out);
+        assert_eq!(
+            again.matches("/public/js/copy-code.js").count(),
+            1,
+            "a second pass must not add another tag: {again}"
+        );
+    }
+
+    #[test]
+    fn a_page_without_code_does_not_load_the_copy_script() {
+        let html = "<html><body><p>Hello</p></body></html>";
+        assert!(
+            !attach_copy_code_script(html).contains("copy-code.js"),
+            "a page with no code block must not ship the script"
         );
     }
 

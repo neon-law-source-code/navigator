@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::pricing::{DayRateBadge, PricingCard, PricingSection};
 use crate::components::{
-    BillMarkGlyph, PlatformMark, PlatformMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell,
-    SiteHeader, SiteNavLink, SocialMeta,
+    BillMarkGlyph, PlainCodeBlock, PlatformMark, PlatformMarkGlyph, PracticeMark,
+    PracticeMarkGlyph, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
 };
 use crate::lead_capture::{LeadCaptureContext, LeadCaptureCopy, LeadCaptureForm};
 use crate::litigation_page::HeroWord;
@@ -914,12 +914,14 @@ pub(crate) fn Bands(
                                             Prose { runs: paragraph.clone() }
                                         }
                                     }
-                                    // One `<pre>` per command. A reader
+                                    // One block per command. A reader
                                     // triple-clicks a line to select it, and two
                                     // commands in one block select together.
+                                    // The copy button is the one-click path.
                                     for command in package.commands.iter() {
-                                        pre { class: "fm-package__command",
-                                            code { "{command}" }
+                                        PlainCodeBlock {
+                                            code: command.clone(),
+                                            class: "fm-package__command".to_string(),
                                         }
                                     }
                                 }
@@ -1205,6 +1207,11 @@ mod tests {
             out.matches(r#"class="fm-package__command""#).count(),
             1,
             "one install command, because brew upgrades in place: {out}"
+        );
+        assert_eq!(
+            out.matches("data-copy-code=\"true\"").count(),
+            1,
+            "the command has one copy button: {out}"
         );
         assert!(
             out.contains(crate::cli_release::HOMEBREW_INSTALL_COMMAND),

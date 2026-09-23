@@ -336,7 +336,7 @@ fn render_markdown(src: &str) -> String {
 
     let mut out = String::new();
     html::push_html(&mut out, out_events.into_iter());
-    out
+    views::components::code::decorate_copy_buttons(&out)
 }
 
 fn markdown_file_dest(dest: &str) -> bool {

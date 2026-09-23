@@ -433,6 +433,19 @@ async fn gallery_syntax_highlights_snippets_server_side() {
     // HTML with no client highlighter.
     assert!(html.contains("nav-code"), "renders a code block: {html}");
     assert!(
+        html.contains("data-copy-code=\"true\""),
+        "each block can be copied: {html}"
+    );
+    assert!(
+        html.contains("/public/js/copy-code.js"),
+        "the copy script is hoisted once: {html}"
+    );
+    assert_eq!(
+        html.matches("/public/js/copy-code.js").count(),
+        1,
+        "one script tag for every block on the page: {html}"
+    );
+    assert!(
         html.contains("style=\"color:"),
         "syntect-highlighted tokens: {html}"
     );

@@ -27,7 +27,7 @@ pub fn render(src: &str) -> String {
     let parser = Parser::new_ext(src, markdown_options());
     let mut out = String::new();
     html::push_html(&mut out, parser);
-    out
+    code::decorate_copy_buttons(&out)
 }
 
 /// Replace each fenced/indented code block in a pulldown event stream with
@@ -63,7 +63,7 @@ pub fn highlight_code_blocks(events: Vec<Event<'_>>) -> Vec<Event<'_>> {
             Event::Text(text) if lang.is_some() => code.push_str(&text),
             Event::End(TagEnd::CodeBlock) if lang.is_some() => {
                 let lang = lang.take().unwrap_or_default();
-                let html = code::highlight(&code, &lang);
+                let html = code::with_copy_button(&code::highlight(&code, &lang));
                 out.push(Event::Html(CowStr::from(html)));
                 code.clear();
             }
@@ -218,7 +218,7 @@ pub fn render_with_link_rewrite(src: &str, rewrite: impl Fn(&str) -> String) -> 
 
     let mut out = String::new();
     html::push_html(&mut out, out_events.into_iter());
-    out
+    code::decorate_copy_buttons(&out)
 }
 
 /// Concatenate the text of a heading from the events following its
@@ -278,6 +278,38 @@ mod tests {
         assert!(
             !html.contains("class=\"language-rust\""),
             "no hljs class: {html}"
+        );
+        assert!(
+            html.contains("data-copy-code=\"true\""),
+            "highlighted fence carries a copy button: {html}"
+        );
+        // The workshop renderer runs the HTML pass after highlighting. A fence
+        // that already has a button must not gain a second one.
+        let again = super::code::decorate_copy_buttons(&html);
+        assert_eq!(
+            again.matches("data-copy-code=\"true\"").count(),
+            1,
+            "decorating highlighted HTML must not nest a button: {again}"
+        );
+    }
+
+    #[test]
+    fn plain_render_puts_a_copy_button_on_each_fenced_block() {
+        let html = render(
+            "```bash\ncargo test\n```\n\nUse `cargo` inline.\n\n```rust\nfn main() {}\n```\n",
+        );
+        assert_eq!(
+            html.matches("data-copy-code=\"true\"").count(),
+            2,
+            "one button per fence, not per inline code: {html}"
+        );
+        assert!(
+            html.contains("<code>cargo</code>"),
+            "inline code stays inline: {html}"
+        );
+        assert!(
+            !html.contains("onclick"),
+            "the button has no inline handler: {html}"
         );
     }
 

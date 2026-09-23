@@ -227,6 +227,19 @@ pub(super) fn CompanyHome(
             section { id: "pricing", class: "company-pricing", "aria-labelledby": "company-pricing-title",
                 h2 { id: "company-pricing-title", "{company.pricing_heading}" }
                 p { class: "company-pricing__terms", "{company.retainer_note}" }
+                section { class: "company-packages company-packages--start", "aria-labelledby": "company-packages-title",
+                    h3 { id: "company-packages-title", "{company.drafting_heading}" }
+                    p { class: "company-packages__subtitle", "{company.drafting_body}" }
+                    div { class: "company-packages__grid",
+                        for package in company.drafting_packages.iter() {
+                            article {
+                                h4 { "{package[0]}" }
+                                p { class: "company-package-price", "{package[1]}" }
+                                p { "{package[2]}" }
+                            }
+                        }
+                    }
+                }
                 div { class: "company-pricing__grid",
                     article { class: "company-membership",
                         h3 { "{company.membership_label}" }
@@ -299,19 +312,6 @@ pub(super) fn CompanyHome(
                                 }
                         }
                         p { class: "company-note", "{company.simulator_note}" }
-                    }
-                }
-            }
-            section { class: "company-packages", "aria-labelledby": "company-packages-title",
-                h2 { id: "company-packages-title", "{company.drafting_heading}" }
-                p { class: "company-packages__subtitle", "{company.drafting_body}" }
-                div { class: "company-packages__grid",
-                    for package in company.drafting_packages.iter() {
-                        article {
-                            h3 { "{package[0]}" }
-                            p { class: "company-package-price", "{package[1]}" }
-                            p { "{package[2]}" }
-                        }
                     }
                 }
             }

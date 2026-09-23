@@ -1,7 +1,8 @@
 head_title: "{site_name} | Home"
 meta_description: >-
   We help technology founders handle contracts, hiring, and growth.
-  Start with a $10,000 retainer. Your $50-a-day plan includes contract review within five business days.
+  Start with a $10,000 retainer. $5,000 covers the initial contracts.
+  $50 a day keeps Neon Law as your counsel and registered agent, with a response within five business days.
 heading: Keep building.
 lead: Emerging Technologies Counsel
 contact_label: Book a consultation
@@ -27,21 +28,21 @@ company:
   flow_steps: [Scope, Draft, Review, Sign]
   packages: [MSA, Employment, Cap Table]
   pause_label: Pause motion
-  pricing_heading: Start with a $10,000 retainer.
+  pricing_heading: $10,000 retainer. $5,000 for all your contracts.
   video_label: Neon Law presentation
-  membership_label: Your legal plan
+  membership_label: Counsel and registered agent
   membership_price: "$50"
   membership_unit: / day
-  membership_body: We draw the plan charge daily.
+  membership_body: This daily fee applies whether we are writing contracts or reviewing them.
   retainer_amount: 10000
   membership_features:
-    - We review contracts within five business days of acceptance as part of your plan
+    - We serve as your counsel
+    - We act as your registered agent and send you notice in jurisdictions where we accept that role
+    - We respond to notices and review requests within five business days
     - Access our template library
-    - Act as your registered agent in certain jurisdictions
-    - Tell others Neon Law is your counsel
     - Shared Slack channel for privileged communication
-  simulator_heading: Revisions at Scale
-  simulator_body: Example charges from a retainer
+  simulator_heading: Same-day review
+  simulator_body: Choose a size when you need review the same day instead of within five business days.
   simulator_days_label: Plan days
   simulator_size_label: Same-day contract size
   simulator_size_hint: Choose a size to estimate the same-day fee.
@@ -53,12 +54,11 @@ company:
     - [Small, "$1,000"]
     - [Medium, "$3,000"]
     - [Large, "$5,000"]
-  drafting_heading: Notation Packages
-  drafting_body: Build a legal library to suit your company's needs.
+  drafting_heading: Starting amounts
+  drafting_body: The retainer is held in trust. The contract fee covers the first agreements.
   drafting_packages:
-    - [Master services agreement, "$5,000", "We deliver service agreements to your CRM, inbox, or wherever your team needs them."]
-    - [Employment, "$5,000", "Onboard and offboard contractors and employees worldwide."]
-    - [Equity, "$5,000", "Cap table setup and equity plans for your team and investors."]
+    - [Retainer, "$10,000", "Held in trust. We draw after we perform the work and return what is unearned."]
+    - [All your contracts, "$5,000", "Master services agreement, employment agreements, and equity agreements."]
   closing_heading: Keep building.
   closing_body: "We handle the legal work."
   litigation_heading: Protect what you build.

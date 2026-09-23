@@ -946,6 +946,18 @@ mod tests {
         assert_eq!(company["retainer_amount"].as_u64(), Some(10_000));
         assert_eq!(company["review_rows"][0][1].as_str(), Some("$1,000"));
         assert_eq!(company["review_rows"][2][1].as_str(), Some("$5,000"));
+        assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$10,000"));
+        assert_eq!(
+            company["drafting_packages"][1][0].as_str(),
+            Some("All your contracts")
+        );
+        assert_eq!(company["drafting_packages"][1][1].as_str(), Some("$5,000"));
+        assert_eq!(
+            company["drafting_packages"]
+                .as_sequence()
+                .map(|rows| rows.len()),
+            Some(2)
+        );
         assert!(company["simulator_note"]
             .as_str()
             .unwrap()

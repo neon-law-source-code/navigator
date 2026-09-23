@@ -1188,8 +1188,9 @@
 }
 
 .company-packages { margin: 0 0 6rem; }
+.company-packages--start { margin: 0 0 3rem; }
 .company-packages__subtitle { margin: -1rem 0 2rem; font-size: 1.15rem; }
-.company-packages__grid { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--company-line); }
+.company-packages__grid { display: grid; grid-template-columns: repeat(2, 1fr); border-block: 1px solid var(--company-line); }
 .company-packages__grid article { padding: 2rem; }
 .company-packages__grid article:first-child { padding-left: 0; }
 .company-packages__grid article + article { border-left: 1px solid var(--company-line); }

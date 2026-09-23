@@ -153,7 +153,7 @@ pub(crate) async fn check(
             Ok(live) if live.revisions.iter().any(|revision| revision.operative) => {
                 "the live chain is missing from the integrity report".to_string()
             }
-            _ => "no live document for this pointer; run `navigator project sync` to upload it or remove the pointer".to_string(),
+            _ => "no live document for this pointer; run `navigator site sync` to upload it or remove the pointer".to_string(),
         };
         errors.push(CheckFailure {
             location: local.relative().to_string(),

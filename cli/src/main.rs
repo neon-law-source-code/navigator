@@ -593,7 +593,7 @@ enum ProjectsCmd {
         /// missing `documents/.gitignore`. A missing or corrupt object, or a
         /// live row with no slug, needs a person. Under `--ci` any of those
         /// fixes fails the job and names the fix. Uploading or removing a
-        /// document is `navigator project sync`.
+        /// document is `navigator site sync`.
         #[arg(long)]
         check: bool,
         /// Re-hash every stored object while `--check` is running.

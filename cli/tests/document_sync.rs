@@ -519,6 +519,216 @@ fn sync_dry_run_reports_an_invoice_kind() {
         ));
 }
 
+/// `documents/memos/**` maps to the new `memo` kind (LAW-60).
+#[test]
+fn sync_dry_run_reports_a_memo_kind() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    write(
+        root.path(),
+        "documents/memos/case-assessment.md",
+        b"# Case assessment\n\nSynthetic memo body.",
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "sync", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "would upload documents/memos/case-assessment.md as kind `memo`",
+        ));
+}
+
+/// LAW-60's own repro: the first upload of a staged Markdown memo is filed
+/// as `kind: memo` — not `unclassified` — with no hand-written pointer
+/// required.
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_uploads_a_memo_with_kind_memo() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let source_bytes = b"# Case assessment\n\nSynthetic memo body.";
+    write(
+        root.path(),
+        "documents/memos/case-assessment.md",
+        source_bytes,
+    );
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+
+    mount_project_lookup(&server, project_id).await;
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "case-assessment.md",
+            "content_base64": base64_of(source_bytes),
+            "content_type": "application/octet-stream",
+            "kind": "memo",
+            "visibility": "internal",
+            "slug": "memos/case-assessment.md"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "kind": "memo",
+            "visibility": "internal",
+            "current_version": {
+                "version": 1,
+                "asset_id": asset_id,
+                "created_at": "2026-09-05T12:00:00Z",
+                "sha256": sha256(source_bytes),
+                "size_bytes": i64::try_from(source_bytes.len()).unwrap()
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 uploaded"));
+
+    let pointer = fs::read_to_string(root.path().join("documents/memos/case-assessment.md.yaml"))
+        .expect("memo pointer written");
+    assert!(pointer.contains("kind: memo"), "{pointer}");
+}
+
+/// LAW-60's second acceptance criterion: a later revision of the same
+/// staged memo is not refused with `kind_changed`. Sync always sends an
+/// existing pointer's own `kind` on a revision (never re-inferring it), so
+/// once the first upload correctly recorded `memo`, a second sync of an
+/// edited file keeps sending `memo` and never disagrees with the server.
+#[tokio::test(flavor = "multi_thread")]
+#[allow(clippy::too_many_lines)]
+async fn sync_of_a_memo_revision_keeps_kind_memo_and_is_not_refused() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    let project_id = Uuid::now_v7();
+    let first_asset_id = Uuid::now_v7();
+    let second_asset_id = Uuid::now_v7();
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let first_bytes = b"# Case assessment\n\nFirst draft.";
+    write(
+        root.path(),
+        "documents/memos/case-assessment.md",
+        first_bytes,
+    );
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "case-assessment.md",
+            "content_base64": base64_of(first_bytes),
+            "content_type": "application/octet-stream",
+            "kind": "memo",
+            "visibility": "internal",
+            "slug": "memos/case-assessment.md"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "kind": "memo",
+            "visibility": "internal",
+            "current_version": {
+                "version": 1,
+                "asset_id": first_asset_id,
+                "created_at": "2026-09-05T12:00:00Z",
+                "sha256": sha256(first_bytes),
+                "size_bytes": i64::try_from(first_bytes.len()).unwrap()
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 uploaded"));
+
+    // The pointer survives; only the staged binary is removed. Re-adding
+    // the file (an edit, then re-staging) is what a later revision is.
+    // Every sync also reconciles the visibility of every *existing*
+    // pointer it finds — including one with no staged revision beside it
+    // yet — so the surviving pointer from the first sync draws that call
+    // too, before the second upload.
+    Mock::given(method("PATCH"))
+        .and(path(format!(
+            "/app/api/projects/{project_id}/documents/{first_asset_id}"
+        )))
+        .and(body_json(serde_json::json!({ "visibility": "internal" })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "changed": false })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let second_bytes = b"# Case assessment\n\nRevised after the client call.";
+    write(
+        root.path(),
+        "documents/memos/case-assessment.md",
+        second_bytes,
+    );
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "case-assessment.md",
+            "content_base64": base64_of(second_bytes),
+            "content_type": "application/octet-stream",
+            "kind": "memo",
+            "visibility": "internal",
+            "slug": "memos/case-assessment.md"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "kind": "memo",
+            "visibility": "internal",
+            "current_version": {
+                "version": 2,
+                "asset_id": second_asset_id,
+                "created_at": "2026-09-06T12:00:00Z",
+                "sha256": sha256(second_bytes),
+                "size_bytes": i64::try_from(second_bytes.len()).unwrap()
+            },
+            "previous_version": first_asset_id
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 uploaded"));
+
+    let pointer = fs::read_to_string(root.path().join("documents/memos/case-assessment.md.yaml"))
+        .expect("memo pointer written");
+    assert!(pointer.contains("kind: memo"), "{pointer}");
+    assert!(pointer.contains(&second_asset_id.to_string()), "{pointer}");
+}
+
 /// A `documents/invoices/` filename that does not match the synthetic
 /// `INV-<digits>.<ext>` pattern is refused before any network call — even
 /// under `--dry-run`, since preflight runs ahead of the dry-run early

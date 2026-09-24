@@ -1626,6 +1626,11 @@ fn inferred_kind(relative: &Path) -> &'static str {
         Some("exhibits") => "exhibit",
         Some("agreements") => "agreement",
         Some("invoices") => "invoice",
+        // LAW-60: a case-assessment memo or a scan transcript staged under
+        // `documents/` had no folder that filed it as anything but
+        // `unclassified`.
+        Some("memos") => "memo",
+        Some("transcripts") => "transcript",
         // `documents/cases/**` and `documents/rules/**` never reach this
         // default: `sync` routes them through `sync_authority_capture` before
         // `inferred_kind` is ever called for those folders, and the Authority
@@ -1755,6 +1760,14 @@ mod tests {
         assert_eq!(inferred_kind(Path::new("exhibits/photo.png")), "exhibit");
         assert_eq!(inferred_kind(Path::new("agreements/nda.pdf")), "agreement");
         assert_eq!(inferred_kind(Path::new("invoices/INV-1.pdf")), "invoice");
+        // LAW-60: a case-assessment memo or a scan transcript staged under
+        // `documents/memos/` or `documents/transcripts/` now files as its
+        // own kind rather than falling into `unclassified`.
+        assert_eq!(inferred_kind(Path::new("memos/case-assessment.md")), "memo");
+        assert_eq!(
+            inferred_kind(Path::new("transcripts/deposition.md")),
+            "transcript"
+        );
         assert_eq!(inferred_kind(Path::new("misc/note.txt")), "unclassified");
     }
 

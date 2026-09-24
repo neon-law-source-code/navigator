@@ -1464,9 +1464,12 @@ jobs:
   # `integration` rather than after it — dropping either job costs the other
   # no wall-clock.
   #
-  # Still advisory: it names no downstream job's `needs:`, so a red Windows
-  # run cannot block `release-tag` and is not in `notify-failure`'s `needs:`
-  # either, so it cannot page engineering on its own.
+  # A HARD GATE, via the `windows-integration` job below: `release-tag` needs
+  # `windows-integration`, and `windows-integration` needs this job (and
+  # `integration`), so a red Windows run blocks the tag and everything that
+  # publishes off it. Still not in `notify-failure`'s `needs:`, so it cannot
+  # page engineering on its own — but it can no longer let a release through
+  # silently either.
   windows-cli-lsp:
     name: cargo check + integration tests (cli + lsp, Windows)
     needs: release-version
@@ -1527,9 +1530,31 @@ jobs:
   # the other side: it reports a version whose tag already names this commit as
   # publishable, so re-running the whole workflow republishes instead of
   # skipping every job and reporting success for having done nothing.
+  # THE GATE. `build`'s two matrix legs and `windows-cli-lsp` all start
+  # together, needing only `release-version` — but before this job existed,
+  # only `integration` (which itself needs `build`) stood between them and
+  # `release-tag`. `windows-cli-lsp` ran alongside everything else and its
+  # result gated NOTHING: a red Windows cargo-check/integration-tests leg
+  # still let `release-tag` create the immutable tag and `publish-*` push
+  # images. This job is the single place all four legs — both `build` matrix
+  # jobs (transitively, via `integration`), `integration` itself, and
+  # `windows-cli-lsp` — must have succeeded before anything publishes. Named
+  # for the two things it directly waits on (`integration`'s KIND e2e suite
+  # and `windows-cli-lsp`), since `release-tag` only needs this one job.
+  windows-integration:
+    name: windows integration
+    needs: [release-version, integration, windows-cli-lsp]
+    if: >-
+      github.repository == 'neon-law-source-code/navigator'
+      && (needs.release-version.outputs.publishable == 'true'
+          || startsWith(github.ref_name, 'kind-ci/'))
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "build, integration, and windows-cli-lsp all passed"
+
   release-tag:
     name: tag ${{ needs.release-version.outputs.tag }}
-    needs: [integration, release-version]
+    needs: [windows-integration, release-version]
     if: needs.release-version.outputs.publishable == 'true'
     runs-on: ubuntu-latest
     # THE ONLY JOB IN THIS FILE THAT WRITES A GIT REF, and it only ever creates

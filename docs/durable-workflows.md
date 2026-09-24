@@ -79,6 +79,30 @@ Restate admits **at most one invocation per workflow key**. The key choice *is* 
 - **Manual runs** key on a unique `manual-<uuid>`, so every click actually executes and notifies — a test button that
   deduped against the nightly run would look broken.
 
+## Redriving a completed run
+
+Restate admits at most one invocation per workflow key, so a run that *completed* — even with a bounded provider
+failure such as `input_digest_mismatch` — can't be resubmitted through its normal trigger. `EmailSummary` keys on the
+receipt id, and intake only submits on the inbound webhook: SendGrid never re-POSTs a message that already got a 202.
+
+`navigator ops email-summary redrive --receipt <uuid>` recovers that case:
+
+1. Refuses when the receipt's Slack delivery is already `confirmed` — this can never risk a second post.
+2. Purges the retained, completed invocation for that receipt id's workflow key.
+3. Resubmits the identical `EmailSummaryRequest` intake would have built (same project, channel, provider models, and
+   digest — `workflows::EmailSummaryConfig::request_for` is the one construction path both intake and a redrive use, so
+   they can't diverge on run configuration the way intake and the worker once diverged on digest framing).
+
+It never creates a second receipt, letter, or archive — those are digest-keyed in SurrealDB already and a redrive never
+touches them. Output is identifier-and-status only: the receipt id, the invocation id, and whether anything was
+purged — never a summary, a letter, or any client content.
+
+It reads the same environment a deployment's own `web`/worker already source — `NAVIGATOR_SURREAL_*` for the database,
+`NAVIGATOR_SUMMARY_*` / `RESTATE_BROKER_URL` for the summary-lane configuration, and `RESTATE_ADMIN_URL` /
+`RESTATE_ADMIN_TOKEN` / `RESTATE_AUTH_TOKEN` for Restate itself — so there is no separate `--deployment` flag to keep in
+sync with it; source the target deployment's environment first, the same way an operator would before any other `ops`
+command that reaches a live cluster.
+
 ## Auth: two tokens, two ports
 
 The single most error-prone area: there are **two different credentials** on **two different ports**, and conflating

@@ -30,6 +30,7 @@ pub mod deployments;
 mod dns;
 mod doctor;
 mod e2e;
+mod email_summary_redrive;
 mod flake_hunt;
 mod garage;
 mod gcp;
@@ -1011,6 +1012,9 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
                 deployments::apply(&root, &deployment, dry_run)
             }
         }
+        crate::Command::Ops(crate::OpsCmd::EmailSummary(crate::EmailSummaryCmd::Redrive {
+            receipt,
+        })) => email_summary_redrive::run(receipt),
         crate::Command::Ops(crate::OpsCmd::Dns(DnsCmd::Setup {
             domains,
             gateway_ip,

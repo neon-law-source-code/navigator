@@ -136,6 +136,23 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
         }
     };
 
+    let manifest_path = match manifest_path.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!(
+                "navigator: release version: could not resolve the workspace manifest: {error}"
+            );
+            return ExitCode::from(2);
+        }
+    };
+    let root = manifest_path.parent().unwrap_or(Path::new("."));
+    if !no_commit {
+        if let Err(error) = check_commit_checkout(root) {
+            eprintln!("navigator: release version: {error}");
+            return ExitCode::from(2);
+        }
+    }
+
     let rewritten = match set_workspace_version(&manifest, &version) {
         Ok(text) => text,
         Err(error) => {
@@ -149,7 +166,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
             "navigator: {} already at version {version}",
             manifest_path.display()
         );
-    } else if let Err(error) = std::fs::write(manifest_path, &rewritten) {
+    } else if let Err(error) = std::fs::write(&manifest_path, &rewritten) {
         eprintln!("navigator: release version: could not write the workspace manifest: {error}");
         return ExitCode::from(2);
     } else {
@@ -167,7 +184,6 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
     // did not. That check still runs — in `ci.yml`'s always-run gate and in the
     // `cut-release` preflight — but it now verifies this sweep rather than
     // standing in for it.
-    let root = manifest_path.parent().unwrap_or(Path::new("."));
     let swept = match crate::release_pins::sweep(root, &version) {
         Ok(swept) => swept,
         Err(error) => {
@@ -208,7 +224,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
     let lockfile = manifest_path.with_file_name("Cargo.lock");
     let lock_present = lockfile.exists();
     if lock_present {
-        if let Err(error) = refresh_lockfile(manifest_path) {
+        if let Err(error) = refresh_lockfile(&manifest_path) {
             eprintln!(
                 "navigator: release-version: could not refresh {}: {error}",
                 lockfile.display()
@@ -219,11 +235,11 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
     }
 
     if no_commit {
-        println!("navigator: --no-commit: staged nothing; commit and tag it yourself");
+        println!("navigator: --no-commit: files are written; commit them on a release branch and open a PR");
         return ExitCode::SUCCESS;
     }
 
-    commit_bump(&version, lock_present, &swept)
+    commit_bump(root, &version, lock_present, &swept)
 }
 
 /// Refresh `Cargo.lock` so every workspace crate's locked version equals the one
@@ -264,24 +280,35 @@ fn cargo_update(manifest_path: &Path, offline: bool) -> Result<(), String> {
     }
 }
 
-/// Commit the bump on the current branch, refusing `main`. The commit carries the
-/// manifest and the refreshed lock together; it forms a PR, and the operator
-/// merges it and tags the merged commit.
-fn commit_bump(version: &str, lock_present: bool, swept: &[crate::release_pins::Pin]) -> ExitCode {
+/// Automatic release commits require a clean, named branch outside `main`.
+/// Check before any write so a refusal preserves the checkout and index.
+fn check_commit_checkout(root: &Path) -> Result<(), String> {
     let branch = std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output();
-    if let Ok(output) = &branch {
-        if output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "main" {
-            eprintln!(
-                "navigator: release-version: refusing to commit on `main` — it takes no direct \
-                 commits. The version is written; open a branch, commit Cargo.toml, and PR it, \
-                 then tag the merged commit {version}."
-            );
-            return ExitCode::from(2);
-        }
+        .current_dir(root)
+        .args(["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .output()
+        .map_err(|error| format!("could not read the release branch: {error}"))?;
+    if !branch.status.success() || String::from_utf8_lossy(&branch.stdout).trim() == "main" {
+        return Err("a release commit requires a named branch other than main".to_string());
     }
+    let status = std::process::Command::new("git")
+        .current_dir(root)
+        .args(["status", "--porcelain", "--untracked-files=all"])
+        .output()
+        .map_err(|error| format!("could not check the release worktree: {error}"))?;
+    if !status.status.success() || !status.stdout.is_empty() {
+        return Err("a release commit requires a clean index and working tree".to_string());
+    }
+    Ok(())
+}
 
+/// Commit the manifest, lockfile, and swept pins in their own checkout.
+fn commit_bump(
+    root: &Path,
+    version: &str,
+    lock_present: bool,
+    swept: &[crate::release_pins::Pin],
+) -> ExitCode {
     // Both files or neither: the release builds with `--locked`, so a commit
     // carrying the manifest alone names a version its own lock refuses to build.
     let mut paths = vec!["Cargo.toml".to_string()];
@@ -298,27 +325,27 @@ fn commit_bump(version: &str, lock_present: bool, swept: &[crate::release_pins::
         }
     }
     let staged = std::process::Command::new("git")
+        .current_dir(root)
         .arg("add")
         .args(&paths)
         .status();
     let committed = staged.is_ok_and(|status| status.success())
         && std::process::Command::new("git")
+            .current_dir(root)
             .args(["commit", "-m", &format!("chore(release): {version}")])
             .status()
             .is_ok_and(|status| status.success());
 
     if committed {
         println!(
-            "navigator: committed chore(release): {version}. Push it, open a PR, and after it \
-             lands on main tag that commit:\n    git tag {version} && git push origin {version}"
+            "navigator: committed release version bump. Push the branch and open a PR; \
+             deploy.yml creates the tag after merge."
         );
         ExitCode::SUCCESS
     } else {
-        // Not fatal — the file is written. The operator can commit by hand.
         eprintln!(
-            "navigator: release-version: could not create the commit (no git repo, or nothing \
-             to commit). Cargo.toml is written; commit it yourself, then tag the merged commit \
-             {version}."
+            "navigator: release-version: could not create the release commit. Review the \
+             written files and index, commit them on the release branch, and open a PR."
         );
         ExitCode::from(2)
     }

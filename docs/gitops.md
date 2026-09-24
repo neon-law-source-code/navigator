@@ -502,12 +502,20 @@ runtime environment variable `NAVIGATOR_RELEASE_TAG`.
 is where it is written down — but a version that departs from it publishes just as well, provided it is newer than the
 last one. What the date really bought was uniqueness, and comparing against the tags buys that directly.
 
-**`ops release-default-tag` computes today's name, so nobody has to by hand.** When the operator running `cut-release`
-names no version, this command prints today's `YY.M.D` on stdout — or nothing, when a version at or past it is already
-published, which is not an error. It sits upstream of `release-version` rather than inside it: `release-version` still
-requires an explicit `--tag` and still derives nothing, for the reason above the table — a clock-derived name is a fact
-about when a command ran, not an operator decision. This command only supplies the candidate a human would otherwise
-have worked out by counting days since the last release; naming the release is still `--tag`'s job.
+**`ops cut-release` selects today's UTC version and writes the bump.** It compares `YY.M.D` with the release tags
+fetched from `origin` and delegates the write to `ops release version`. A covered date or operational error exits 2.
+`--repo` selects the worktree for the tags, root manifest, pins, lockfile, and commit. Relative `--manifest-path` values
+resolve from that worktree's root; the manifest must be its root `Cargo.toml`. Automatic commits require a clean index
+and worktree on a named branch other than `main`.
+
+`--dry-run` prints only the candidate on stdout and leaves release files unchanged. It checks tag ordering; [the
+cut-release skill](../.agents/skills/cut-release/SKILL.md) supplies the browser/axe gate and verifies the selected
+version, pins, and lockfile before push. An explicit version, including a hotfix, uses `ops release version --tag` and
+skips the daily probe. `deploy.yml` creates the tag after merge.
+
+**`ops release-default-tag` probes the daily name.** It prints today's `YY.M.D` when the version is newer than every
+published tag. A covered date produces empty stdout, a reason on stderr, and exit 0. `ops release version --tag` writes
+the exact version the operator supplies.
 
 Three shape facts still hold, because they are semver's:
 

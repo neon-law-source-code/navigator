@@ -9,6 +9,7 @@ use serde::Deserialize;
 mod assets;
 mod authorities;
 mod credentials;
+mod cut_release;
 mod devx;
 mod document_read;
 mod document_sync;
@@ -1267,24 +1268,36 @@ enum OpsCmd {
         #[command(subcommand)]
         action: AssetsAction,
     },
-    /// The version the `cut-release` skill should hand to `--tag` on
-    /// `ops release version` when the operator names none: today's UTC date
-    /// under the `YY.M.D` convention, unless a release already exists that
-    /// makes today's date no improvement over what is already published.
+    /// Name today's UTC `YY.M.D` and write it as the workspace version, or
+    /// fail if that name is not a new release.
     ///
-    /// Prints the bare tag on stdout and nothing else when there is one, so a
-    /// caller can capture it directly: `tag=$(navigator ops
-    /// release-default-tag)`. Prints nothing to stdout — only a
-    /// human-readable reason on stderr — when today is already covered, so an
-    /// empty capture means "nothing to cut" rather than a value to parse.
-    /// Exits 0 either way: "nothing to cut today" is the ordinary answer on
-    /// most days, not a failure.
+    /// Compares today's date against published tags and delegates the write
+    /// to `ops release version`. A covered date or operational error exits 2.
+    /// Hotfixes and other explicit names use `ops release version --tag`.
+    CutRelease {
+        /// Git checkout supplying the release tags, workspace files, and commit.
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Root Cargo.toml in --repo; relative paths resolve from its worktree root.
+        #[arg(long, default_value = "Cargo.toml")]
+        manifest_path: PathBuf,
+        /// Compare against the tags already in this clone instead of fetching
+        /// from `origin` first. Offline, and only as current as the clone.
+        #[arg(long)]
+        no_fetch: bool,
+        /// Write the manifest but create no commit.
+        #[arg(long)]
+        no_commit: bool,
+        /// Print today's tag and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Probe today's UTC `YY.M.D` against published tags.
     ///
-    /// This changes nothing about `ops release version`, which still requires
-    /// `--tag` and still derives nothing — see its own doc for why. This
-    /// command only answers the narrower question of what today's date would
-    /// even be called and whether it is worth asking for; naming the release
-    /// is still `--tag`'s job.
+    /// Prints the bare candidate on stdout when it is newer than every
+    /// release. A covered date prints only a reason on stderr and exits 0.
+    /// `ops cut-release` writes a daily cut; `ops release version --tag`
+    /// writes an explicitly named version.
     ReleaseDefaultTag {
         /// Git checkout whose tags are the record of what has been released.
         #[arg(long, default_value = ".")]
@@ -2272,6 +2285,7 @@ fn main() -> ExitCode {
         Command::Ops(
             action @ (OpsCmd::Lsp { .. }
             | OpsCmd::Assets { .. }
+            | OpsCmd::CutRelease { .. }
             | OpsCmd::ReleaseDefaultTag { .. }
             | OpsCmd::Release { .. }
             | OpsCmd::Notices { .. }
@@ -2289,6 +2303,20 @@ fn main() -> ExitCode {
                 }
             },
             OpsCmd::Notices { out, check } => notices::run(&out, check),
+            OpsCmd::CutRelease {
+                repo,
+                manifest_path,
+                no_fetch,
+                no_commit,
+                dry_run,
+            } => cut_release::run(
+                chrono::Utc::now(),
+                &repo,
+                !no_fetch,
+                &manifest_path,
+                no_commit,
+                dry_run,
+            ),
             OpsCmd::ReleaseDefaultTag { repo, no_fetch } => {
                 release_default_tag::run(chrono::Utc::now(), &repo, !no_fetch)
             }

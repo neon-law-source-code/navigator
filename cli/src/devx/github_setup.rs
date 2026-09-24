@@ -474,7 +474,7 @@ fn origin_slug(forge: &GovernedForge) -> Result<String> {
 fn slug_from_remote(url: &str, governed_host: &str) -> Result<String> {
     let (host, path) =
         split_remote(url).ok_or_else(|| anyhow!("cannot parse the `origin` remote {url:?}"))?;
-    if !host.eq_ignore_ascii_case(governed_host) {
+    if !host_matches_governed(host, governed_host) {
         bail!(
             "`origin` points at {host}, not {governed_host}; `ops github setup` only \
              reconciles repositories on {governed_host}"
@@ -483,6 +483,23 @@ fn slug_from_remote(url: &str, governed_host: &str) -> Result<String> {
     let path = path.trim_matches('/');
     validate_slug(path.strip_suffix(".git").unwrap_or(path))
         .with_context(|| format!("read a repository out of the `origin` remote {url:?}"))
+}
+
+/// Whether `host` (from a parsed `origin` remote) names the governed host
+/// (LAW-56).
+///
+/// A forge's alternate SSH-over-443 endpoint for a network that blocks port
+/// 22 is conventionally `ssh.<host>` — the same repositories as `<host>`,
+/// reached through a different hostname (this is documented behavior for the
+/// governed host this deployment actually uses). The fleet's own
+/// new-repository steps set `origin` to exactly that form
+/// (`ssh://git@ssh.<host>:443/...`), so refusing it here as a different host
+/// refused the governed host's own documented remote. Composed from
+/// `governed_host` rather than a literal, so this file names no forge host
+/// of its own — see `cli/tests/forge_coordinate_retired.rs`.
+fn host_matches_governed(host: &str, governed_host: &str) -> bool {
+    host.eq_ignore_ascii_case(governed_host)
+        || host.eq_ignore_ascii_case(&format!("ssh.{governed_host}"))
 }
 
 /// Split either remote spelling into `(host, path)`: the URL form
@@ -3735,6 +3752,33 @@ mod tests {
                 .to_string();
             assert!(error.contains(A_GOVERNED_HOST), "{remote}: {error}");
         }
+    }
+
+    /// LAW-56: the fleet-standard new-repository origin form
+    /// (`ssh://git@ssh.<host>:443/owner/repo`) is a forge's own alternate SSH
+    /// endpoint for a network that blocks port 22 — the same repositories
+    /// the plain host names — and must resolve on the governed host, not be
+    /// refused as a different one.
+    #[test]
+    fn the_ssh_over_443_alias_resolves_on_its_own_governed_host() {
+        assert_eq!(
+            slug_from_remote(
+                &format!("ssh://git@ssh.{A_GOVERNED_HOST}:443/ux/core"),
+                A_GOVERNED_HOST,
+            )
+            .unwrap(),
+            "ux/core",
+        );
+        // The alias is specific to *its* governed host — it must not let a
+        // remote onto an unrelated configured host through.
+        assert!(
+            slug_from_remote(
+                &format!("ssh://git@ssh.{A_GOVERNED_HOST}:443/ux/core"),
+                "another.example",
+            )
+            .is_err(),
+            "ssh.<host> must not alias an unrelated governed host"
+        );
     }
 
     /// A remote on *another* configured host is refused by the same rule.

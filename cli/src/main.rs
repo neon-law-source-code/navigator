@@ -18,6 +18,7 @@ mod glossary;
 #[allow(dead_code)]
 mod intake;
 mod login;
+mod lsp_download;
 mod lsp_publish;
 mod mcp_bridge;
 mod notations_preview;
@@ -411,6 +412,26 @@ enum Command {
     Site {
         #[command(subcommand)]
         action: SiteCmd,
+    },
+    /// Download the `navigator-lsp` release archive matching this binary's
+    /// own version and the host platform, and write a working
+    /// `navigator-lsp` executable to the Downloads directory.
+    ///
+    /// Resolves the exact `navigator-lsp-<tag>-<platform>` archive
+    /// `.github/workflows/deploy.yml` attaches to *this* binary's own
+    /// GitHub Release — never "latest" — via `views::lsp::LSP_RELEASE_ARCHIVES`.
+    /// A version mismatch or missing release asset is refused with the tag
+    /// it looked for, not a silent fallback.
+    ///
+    /// Distinct from `ops lsp publish` (the operator upload side) and from
+    /// the Zed extension's own runtime resolution — this is the door a
+    /// human without operator access uses to get the binary locally. See
+    /// `docs/lsp/README.md`.
+    Lsp {
+        /// Directory to write the extracted `navigator-lsp` executable
+        /// into. Defaults to the platform's Downloads directory.
+        #[arg(long)]
+        dir: Option<PathBuf>,
     },
 
     // ─────────────── Operator ───────────────
@@ -2229,6 +2250,7 @@ fn main() -> ExitCode {
                 )),
             },
         },
+        Command::Lsp { dir } => lsp_download::run_download(cli_version(), dir),
         Command::Notation { action } => match action {
             NotationCmd::Preview {
                 file,

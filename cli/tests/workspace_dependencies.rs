@@ -106,6 +106,7 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "surrealdb",
     "symphonia",
     "syntect",
+    "tar",
     "telemetry",
     "tempfile",
     "thiserror",

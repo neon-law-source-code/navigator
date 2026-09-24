@@ -53,6 +53,28 @@ pub fn FirmFooter(model: FirmFooterModel) -> Element {
     }
 }
 
+/// The compact footer for the client-facing matter portal. Unlike the
+/// application-wide [`FirmFooter`], this names the Project's own brand: one
+/// signed-in person can have matters opened through different practices.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ClientPortalFooterModel {
+    pub brand_name: String,
+    pub legal_entity: String,
+    pub copyright_year: i32,
+}
+
+/// The client portal's one-line attribution and copyright notice.
+#[component]
+pub fn ClientPortalFooter(model: ClientPortalFooterModel) -> Element {
+    rsx! {
+        footer { class: "app-footer app-footer--client-portal",
+            p { class: "app-footer__copyright",
+                "{model.brand_name} is powered by Neon Law Navigator. © {model.copyright_year} {model.legal_entity}"
+            }
+        }
+    }
+}
+
 /// Render the footer to a standalone HTML string for injection into every
 /// `/app` HTML response. Server-only: `dioxus-ssr` is not in the wasm bundle.
 #[cfg(feature = "server")]

@@ -240,6 +240,18 @@ pub struct ProjectDetailView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The practice whose public storefront opened this Project. The client
+    /// matter view alone wears this mark rather than the deployment's mark.
+    #[serde(default)]
+    pub brand_name: String,
+    /// The Project brand's firm of record, rendered in the client portal
+    /// copyright notice.
+    #[serde(default)]
+    pub legal_entity: String,
+    /// The calendar year for the Project-brand copyright notice, resolved on
+    /// the server so the browser bundle needs no clock dependency.
+    #[serde(default)]
+    pub copyright_year: i32,
     /// The resolved brand's tokens stylesheet href, so the page wears
     /// its own palette rather than the firm's on a non-default host.
     #[serde(default)]
@@ -338,6 +350,7 @@ fn format_usd(cents: i64) -> String {
 #[server]
 #[cfg_attr(feature = "server", allow(clippy::too_many_lines))]
 pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
+    use chrono::Datelike;
     use std::sync::Arc;
 
     let axum::extract::Path(code) =
@@ -406,6 +419,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     if !visible {
         return Ok(not_found(id, role, logo, csrf_token));
     }
+    let (logo, brand_name, legal_entity) = project_brand_chrome(&surreal, &project.brand).await;
     let client_dri =
         store::projects::participation_for_person(&surreal, person_id.unwrap_or_default(), id)
             .await
@@ -523,12 +537,68 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         role,
         viewing_as_dri,
         logo,
+        brand_name,
+        legal_entity,
+        copyright_year: chrono::Utc::now().year(),
         tokens_href,
         pending_intake,
         testimonial,
         can_edit_testimonial,
         selected_tab: parse_matter_tab(query.tab.as_deref(), can_edit_testimonial),
     })
+}
+
+/// Resolve the Project's brand after the client-scope gate succeeds. The
+/// project row carries a closed compiled key, while the store row supplies an
+/// uploaded logo or a firm-specific legal entity when either has changed.
+#[cfg(feature = "server")]
+async fn project_brand_chrome(
+    surreal: &store::surreal::SurrealDb,
+    project_brand: &str,
+) -> (Option<crate::components::AppLogo>, String, String) {
+    let compiled = views::brand::BrandKey::parse(project_brand);
+    let branding = compiled.map(|key| key.resolve_branding(&views::brand::DEFAULT_BRANDING));
+    let fallback_name = branding.map_or_else(
+        || project_brand.to_string(),
+        |branding| branding.firm.site_name.to_string(),
+    );
+    let fallback_legal_entity = branding.map_or_else(
+        || project_brand.to_string(),
+        |branding| branding.firm.legal_entity.to_string(),
+    );
+    let fallback_logo = branding.and_then(|branding| {
+        (!branding.firm.logo_href.is_empty()).then(|| crate::components::AppLogo {
+            src: branding.firm.logo_href.to_string(),
+            href: branding.firm.home_href.to_string(),
+            brand_name: fallback_name.clone(),
+        })
+    });
+
+    let brand = store::brands::find_by_key(surreal, project_brand)
+        .await
+        .ok()
+        .flatten();
+    let brand_name = brand
+        .as_ref()
+        .map(|brand| brand.name.clone())
+        .unwrap_or(fallback_name);
+    let legal_entity = brand
+        .as_ref()
+        .and_then(|brand| brand.legal_entity.clone())
+        .unwrap_or(fallback_legal_entity);
+    let logo = brand
+        .and_then(|brand| {
+            brand
+                .logo_object_key
+                .map(|object_key| crate::components::AppLogo {
+                    src: format!("/assets/{object_key}"),
+                    href: "/".to_string(),
+                    brand_name: brand_name.clone(),
+                })
+        })
+        .or(fallback_logo);
+
+    (logo, brand_name, legal_entity)
 }
 
 /// Start the per-Project Slack virtual object after a client has passed the
@@ -991,6 +1061,15 @@ pub fn ClientProjectDetailPage(view: ProjectDetailView) -> Element {
                 }
             }
         }
+        if !view.brand_name.is_empty() && !view.legal_entity.is_empty() {
+            crate::firm_footer::ClientPortalFooter {
+                model: crate::firm_footer::ClientPortalFooterModel {
+                    brand_name: view.brand_name.clone(),
+                    legal_entity: view.legal_entity.clone(),
+                    copyright_year: view.copyright_year,
+                }
+            }
+        }
     }
 }
 
@@ -1110,6 +1189,31 @@ mod render_tests {
     }
 
     #[test]
+    fn client_portal_wears_the_project_brand_in_its_header_and_footer() {
+        let html = render_page(ProjectDetailView {
+            code: "abhaya-case".into(),
+            name: "Sample Matter".into(),
+            brand_name: "Abhaya Immigration".into(),
+            legal_entity: "Shook Law PLLC".into(),
+            copyright_year: 2026,
+            logo: Some(crate::components::AppLogo {
+                src: "/public/brand/abhaya/logo.svg".into(),
+                href: "/".into(),
+                brand_name: "Abhaya Immigration".into(),
+            }),
+            ..ProjectDetailView::default()
+        });
+        assert!(html.contains("/public/brand/abhaya/logo.svg"), "{html}");
+        assert!(
+            html.contains(
+                "Abhaya Immigration is powered by Neon Law Navigator. © 2026 Shook Law PLLC"
+            ),
+            "{html}"
+        );
+        assert!(html.contains("app-footer--client-portal"), "{html}");
+    }
+
+    #[test]
     fn obsolete_form_class_names_are_gone() {
         let source = include_str!("portal_project_detail.rs")
             .split("mod render_tests")
@@ -1122,7 +1226,7 @@ mod render_tests {
 
 #[cfg(all(test, feature = "server"))]
 mod tests {
-    use super::{notation_rows, notation_status_label};
+    use super::{notation_rows, notation_status_label, project_brand_chrome};
     use cloud::StorageService;
     use store::signatures::SignatureState;
 
@@ -1144,6 +1248,31 @@ mod tests {
             notation_status_label("unknown__state", None, false, false, false),
             "In progress"
         );
+    }
+
+    #[tokio::test]
+    async fn project_brand_chrome_uses_the_project_brand_not_the_request_brand() {
+        let surreal = store::surreal::test_support::mem().await;
+        let key = "client-portal-brand";
+        store::brands::create(
+            &surreal,
+            store::persons::Role::Owner,
+            None,
+            &store::brands::NewBrand {
+                name: "Project Practice".to_string(),
+                key: key.to_string(),
+                legal_entity: Some("Shook Law PLLC".to_string()),
+                is_law_firm: true,
+                ..store::brands::NewBrand::default()
+            },
+        )
+        .await
+        .expect("test brand inserts");
+
+        let (logo, name, legal_entity) = project_brand_chrome(&surreal, key).await;
+        assert_eq!(name, "Project Practice");
+        assert_eq!(legal_entity, "Shook Law PLLC");
+        assert!(logo.is_none());
     }
 
     /// Signature evidence, not workflow state, decides the label — with

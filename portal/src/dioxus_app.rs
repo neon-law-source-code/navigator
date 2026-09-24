@@ -248,7 +248,7 @@ pub(crate) async fn dioxus_document_head(req: Request, next: Next) -> Response {
     // the eight real `/app` pages render their navbar directly rather than
     // through a shared `NavigatorShell`, so there is no shell marker to key
     // off. See `webapp::firm_footer`.
-    let html = if renders_app_footer(&path) {
+    let html = if renders_app_footer(&path) && !page_supplies_app_footer(&html) {
         let model = footer_model.unwrap_or_else(|| {
             webapp::firm_footer::compiled_firm_footer_model(views::brand::brand_key(), {
                 use chrono::Datelike;
@@ -433,6 +433,12 @@ static SAMPLE_MATTERS_BANNER: std::sync::LazyLock<String> =
 /// `/app/team`, and the rest — without naming each one.
 fn renders_app_footer(path: &str) -> bool {
     path.starts_with("/app/")
+}
+
+/// The client matter component supplies a Project-branded footer itself. The
+/// response wrapper retains the generic footer for every other `/app` page.
+fn page_supplies_app_footer(html: &str) -> bool {
+    html.contains("app-footer--client-portal")
 }
 
 /// Insert `banner` as the first child of the document body.
@@ -4617,6 +4623,13 @@ mod tests {
         let footer = webapp::firm_footer::render_firm_footer(model);
         assert!(footer.contains("Shook Law PLLC"), "{footer}");
         assert!(footer.contains('©'), "{footer}");
+    }
+
+    #[test]
+    fn a_client_matter_footer_is_not_replaced_by_the_application_footer() {
+        let page = r#"<footer class=\"app-footer app-footer--client-portal\"></footer>"#;
+        assert!(page_supplies_app_footer(page));
+        assert!(!page_supplies_app_footer("<main>matter</main>"));
     }
 
     /// The route-scoped policy widens `img-src`/`font-src` to the deployment

@@ -101,7 +101,10 @@ async fn daybridge_home_publishes_the_reviewed_daily_fee_offer() {
             footer.contains(r#"href="https://www.lawyershook.com""#),
             "{host} the practice footer's copyright links Lawyer Shook: {footer}"
         );
-        assert!(!html.contains("A practice of Shook Law PLLC"), "{host} {html}");
+        assert!(
+            !html.contains("A practice of Shook Law PLLC"),
+            "{host} {html}"
+        );
         assert!(!html.to_lowercase().contains("guaranteed result"));
     }
 }

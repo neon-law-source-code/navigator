@@ -17,6 +17,14 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 fn navigator() -> Command {
     let mut command = Command::cargo_bin("navigator").unwrap();
     command.env_remove("GITHUB_REPOSITORY");
+    // `GITHUB_REF`/`GITHUB_EVENT_NAME` are ambient in a real GitHub Actions
+    // job — including the one running *this* test binary — and a pull
+    // request's `GITHUB_REF` (`refs/pull/<n>/merge`) satisfies
+    // `can_mint_ci_session_for`. Left set, a `--ci` run here reaches
+    // `live_status`'s own live-row request against this test's mock server,
+    // which no fixture below mocks.
+    command.env_remove("GITHUB_REF");
+    command.env_remove("GITHUB_EVENT_NAME");
     command
 }
 

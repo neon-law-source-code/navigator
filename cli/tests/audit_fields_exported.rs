@@ -568,3 +568,73 @@ fn redaction_aggregates_colliding_points_and_preserves_instance_resource_identit
     );
     assert!(output[0].labels.is_empty());
 }
+
+#[test]
+fn self_scrape_component_labels_survive_redaction_without_collapsing_series() {
+    let root = workspace_root();
+    let source = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    let config = collector_config(&source);
+    let component_labels = [
+        "exporter",
+        "processor",
+        "data_type",
+        "otel_signal",
+        "receiver",
+        "transport",
+        "grpc_method",
+        "grpc_status",
+        "grpc_target",
+    ];
+    let allowed = allowed_keys(&source);
+    for label in component_labels {
+        assert!(
+            allowed.contains(label),
+            "self-scrape label {label:?} must survive fail-closed redaction"
+        );
+    }
+
+    let label_set = config
+        .pointer("/processors/metricstransform/transforms/0/operations/0/label_set")
+        .and_then(serde_json::Value::as_array)
+        .expect("metricstransform declares an aggregation label set");
+    let label_set: BTreeSet<&str> = label_set
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    for label in component_labels {
+        assert!(
+            label_set.contains(label),
+            "self-scrape label {label:?} must remain a series dimension"
+        );
+    }
+
+    let points = vec![
+        SyntheticMetricPoint {
+            resource: BTreeSet::from(["service.instance.id=otel-a".into()]),
+            labels: BTreeMap::from([
+                ("processor".into(), "batch".into()),
+                ("redaction_redacted_keys".into(), String::new()),
+            ]),
+            value: 2,
+        },
+        SyntheticMetricPoint {
+            resource: BTreeSet::from(["service.instance.id=otel-a".into()]),
+            labels: BTreeMap::from([
+                ("processor".into(), "memory_limiter".into()),
+                ("redaction_redacted_keys".into(), String::new()),
+            ]),
+            value: 3,
+        },
+    ];
+    let output = aggregate_redacted_metric_points(points, &[]);
+    assert_eq!(
+        output.len(),
+        2,
+        "distinct collector components remain distinct series"
+    );
+    assert_eq!(
+        output.iter().map(|point| point.value).sum::<u64>(),
+        5,
+        "preserving component labels does not lose self-scrape points"
+    );
+}

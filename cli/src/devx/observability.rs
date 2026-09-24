@@ -39,6 +39,7 @@
 //! render-time Dash0 opt-in, and the `envFrom` patch builder — are covered by
 //! the `tests` module below.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::process::Command;
 use std::thread::sleep;
@@ -50,6 +51,7 @@ use k8s_openapi::api::core::v1::Endpoints;
 use kube::{api::Api, Client as KubernetesClient, Config as KubernetesConfig};
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 
 use super::gcp::{
     auth::adc_token_provider,
@@ -105,6 +107,7 @@ const COLLECTOR_MONITORING_YAML: &str =
 /// The placeholder every deploy-side manifest carries for the GCP project.
 const PROJECT_PLACEHOLDER: &str = "YOUR_PROJECT_ID";
 const NAMESPACE_PLACEHOLDER: &str = "YOUR_NAMESPACE";
+const CONFIG_CHECKSUM_PLACEHOLDER: &str = "YOUR_CONFIG_CHECKSUM";
 const DASH0_ENDPOINT_KEY: &str = "DASH0_ENDPOINT";
 const DASH0_DATASET_KEY: &str = "DASH0_DATASET";
 const DASH0_TOKEN_KEY: &str = "DASH0_TOKEN";
@@ -791,7 +794,61 @@ pub fn render_manifest(
             .replace(DASH0_TAIL_SAMPLING_BLOCK, "")
             .replace(", otlp/dash0", ""),
     };
-    Ok(rendered)
+    if template.contains(CONFIG_CHECKSUM_PLACEHOLDER) {
+        let checksum = collector_config_checksum(&rendered)?;
+        Ok(rendered.replace(CONFIG_CHECKSUM_PLACEHOLDER, &checksum))
+    } else {
+        Ok(rendered)
+    }
+}
+
+/// Render the Collector manifest for a release roll using the same source and
+/// deployment coordinates as `devx observability apply`. The release path
+/// deliberately shares this renderer so a collector fix cannot be present in
+/// one operator lane and absent from the other.
+pub(super) fn render_collector_for_ship(
+    cfg: &ShipConfig,
+    deployment: &super::deployments::Deployment,
+) -> Result<String> {
+    render_manifest(
+        OTEL_COLLECTOR_YAML,
+        &cfg.project_id,
+        &cfg.namespace,
+        &cfg.secret_name,
+        dash0_coordinates(deployment),
+        dash0_sampling_percentage(deployment)?,
+    )
+}
+
+/// Hash only the rendered collector configuration. Changing credentials or
+/// unrelated Deployment metadata must not restart a collector whose pipeline
+/// did not change, while changing a processor or pipeline must restart it.
+fn collector_config_checksum(rendered: &str) -> Result<String> {
+    let config = serde_yaml::Deserializer::from_str(rendered)
+        .map(serde_yaml::Value::deserialize)
+        .filter_map(Result::ok)
+        .find(|document| {
+            document.get("kind").and_then(serde_yaml::Value::as_str) == Some("ConfigMap")
+                && document
+                    .get("metadata")
+                    .and_then(|metadata| metadata.get("name"))
+                    .and_then(serde_yaml::Value::as_str)
+                    == Some("otel-collector-config")
+        })
+        .and_then(|document| {
+            document
+                .get("data")
+                .and_then(|data| data.get("config.yaml"))
+                .and_then(serde_yaml::Value::as_str)
+                .map(str::to_owned)
+        })
+        .context("rendered collector manifest has no otel-collector-config data")?;
+    let mut checksum = String::with_capacity(64);
+    for byte in Sha256::digest(config.as_bytes()) {
+        write!(&mut checksum, "{byte:02x}")
+            .map_err(|_| anyhow::anyhow!("format rendered collector checksum"))?;
+    }
+    Ok(checksum)
 }
 
 fn validate_sampling_percentage(value: &str) -> Result<()> {

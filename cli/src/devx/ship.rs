@@ -731,6 +731,25 @@ fn render_manifests_with(subs: &[Substitution]) -> Result<TempDir> {
     Ok(tmp)
 }
 
+/// The complete release plan rendered from one deployment row. The Collector
+/// is carried alongside the application tree so a release roll can surface
+/// and reconcile observability drift in the same operator-visible plan.
+struct RenderedReleasePlan {
+    application: TempDir,
+    collector: String,
+}
+
+fn render_release_plan(
+    subs: &[Substitution],
+    cfg: &ShipConfig,
+    deployment: &super::deployments::Deployment,
+) -> Result<RenderedReleasePlan> {
+    Ok(RenderedReleasePlan {
+        application: render_manifests_with(subs)?,
+        collector: super::observability::render_collector_for_ship(cfg, deployment)?,
+    })
+}
+
 /// The `SecretProviderClass`, relative to the rendered GKE kustomize root.
 const SECRET_PROVIDER_CLASS: &str = "secrets/secret-provider-class.yaml";
 
@@ -1801,8 +1820,8 @@ fn roll(
     //    reaches the cluster until step 5, which is what lets step 4 abort
     //    for free.
     let subs = resolve_substitutions_for_deployment(&deployment.name, &tag, coordinate)?;
-    let rendered = render_manifests_with(&subs)?;
-    let target = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
+    let rendered = render_release_plan(&subs, cfg, deployment)?;
+    let target = rendered.application.path().join(GKE_KUSTOMIZE_SUBPATH);
 
     // 3b. Render the Secret Manager catalog for THIS deployment: drop every
     //     entry it does not write. A deployment that declines DocuSign cannot
@@ -1853,6 +1872,15 @@ fn roll(
     //    any manifest delta (env, sidecars, volumes, container renames)
     //    that landed in `main` reaches the cluster, and every image lands on
     //    `tag` in the same write. Always runs; no external overlay folder.
+    let collector_changed = reconcile_collector_manifest(
+        cfg,
+        dry_run,
+        &rendered.collector,
+        rendered.application.path(),
+    )?;
+    if collector_changed {
+        wait_rollouts(cfg, dry_run, "120s", &["otel-collector"])?;
+    }
     reconcile_manifests(cfg, dry_run, &target)?;
 
     // 6. Wait on the rollouts the reconcile started. The apply in step 5
@@ -1989,6 +2017,69 @@ fn reconcile_manifests(cfg: &ShipConfig, dry_run: bool, target: &Path) -> Result
             .with_context(|| format!("spawn kubectl {verb} -k {}", target.display()))?;
         Ok(status.code().unwrap_or(-1))
     })
+}
+
+/// Reconcile the rendered Collector manifest separately from the application
+/// kustomization. A changed `ConfigMap` is a named release finding and applies
+/// the checksum-annotated Deployment, which restarts the Collector when its
+/// pipeline changed. An unchanged manifest is left alone.
+fn reconcile_collector_manifest(
+    cfg: &ShipConfig,
+    dry_run: bool,
+    manifest: &str,
+    rendered_root: &Path,
+) -> Result<bool> {
+    let path = rendered_root.join("otel-collector.yaml");
+    fs::write(&path, manifest)
+        .with_context(|| format!("write rendered collector manifest {}", path.display()))?;
+    let changed = reconcile_manifest_file(dry_run, |verb| {
+        let status = kubectl_ctx(cfg)
+            .arg(verb)
+            .arg("-f")
+            .arg(&path)
+            .status()
+            .with_context(|| format!("spawn kubectl {verb} -f {}", path.display()))?;
+        Ok(status.code().unwrap_or(-1))
+    })?;
+    if changed {
+        eprintln!(
+            "==> collector manifest drift: rendered collector differs from the live ConfigMap/Deployment"
+        );
+    } else {
+        eprintln!("==> collector manifest is converged");
+    }
+    Ok(changed)
+}
+
+/// Diff one manifest file and apply it only when the live object differs.
+/// `kubectl diff` exit 1 means drift; greater values mean the cluster was not
+/// checked and must abort the release.
+fn reconcile_manifest_file<R>(dry_run: bool, mut run_verb: R) -> Result<bool>
+where
+    R: FnMut(&str) -> Result<i32>,
+{
+    let changed = match run_verb("diff") {
+        Ok(0) => false,
+        Ok(1) => true,
+        Ok(code) => {
+            bail!("kubectl diff -f failed (exit {code}); the collector manifest was NOT checked")
+        }
+        Err(error) => {
+            return Err(error)
+                .context("kubectl diff -f could not run; the collector manifest was NOT checked")
+        }
+    };
+    if changed && !dry_run {
+        let code = run_verb("apply")?;
+        if code != 0 {
+            bail!("kubectl apply -f failed (exit {code}); the collector was NOT fully reconciled");
+        }
+    } else if dry_run {
+        eprintln!(
+            "DRY-RUN: collector manifest rendered and diffed above; skipping `kubectl apply`"
+        );
+    }
+    Ok(changed)
 }
 
 /// Drive the reconcile's `kubectl -k` verbs in order. `run_verb` returns the
@@ -4700,6 +4791,79 @@ mod tests {
             !path.exists(),
             "the rendered manifest temp dir must be gone after drop"
         );
+    }
+
+    #[test]
+    fn rendered_release_plan_includes_collector_when_config_changes() {
+        let coordinates: BTreeMap<String, String> = FULL_ENV
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect();
+        let deployment = super::super::deployments::Deployment {
+            name: "example-prod".into(),
+            kms_key: "projects/my-org-prod/locations/us-west4/keyRings/sops/cryptoKeys/navigator"
+                .into(),
+            provisioned: true,
+            coordinates,
+            encrypted_keys: BTreeSet::new(),
+        };
+        let subs = resolve_substitutions_for_deployment(&deployment.name, "26.9.24", |key| {
+            deployment.coordinates.get(key).cloned()
+        })
+        .expect("release substitutions resolve");
+        let first = render_release_plan(&subs, &sample_config(), &deployment)
+            .expect("release plan renders");
+        assert!(first.collector.contains("name: otel-collector-config"));
+        assert!(first.collector.contains("checksum/otel-collector-config: "));
+        assert!(!first.collector.contains("YOUR_CONFIG_CHECKSUM"));
+
+        let mut changed = deployment.clone();
+        changed
+            .coordinates
+            .insert("DASH0_ENDPOINT".into(), "https://dash0.example".into());
+        changed
+            .coordinates
+            .insert("DASH0_DATASET".into(), "staging".into());
+        changed.encrypted_keys.insert("DASH0_TOKEN".into());
+        let changed_subs = resolve_substitutions_for_deployment(&changed.name, "26.9.24", |key| {
+            changed.coordinates.get(key).cloned()
+        })
+        .expect("changed release substitutions resolve");
+        let second = render_release_plan(&changed_subs, &sample_config(), &changed)
+            .expect("changed release plan renders");
+        let checksum = |manifest: &str| {
+            manifest
+                .lines()
+                .find_map(|line| line.trim().strip_prefix("checksum/otel-collector-config: "))
+                .map(str::to_owned)
+                .expect("collector checksum annotation is rendered")
+        };
+        assert_ne!(
+            checksum(&first.collector),
+            checksum(&second.collector),
+            "a collector config change must change the release plan checksum"
+        );
+    }
+
+    #[test]
+    fn collector_manifest_drift_applies_only_after_a_successful_diff() {
+        let mut commands = Vec::new();
+        let changed = reconcile_manifest_file(false, |verb| {
+            commands.push(verb.to_owned());
+            Ok(i32::from(verb == "diff"))
+        })
+        .expect("collector drift applies");
+        assert!(changed);
+        assert_eq!(commands, ["diff".to_owned(), "apply".to_owned()]);
+
+        let mut dry_run_commands = Vec::new();
+        let unchanged = reconcile_manifest_file(true, |verb| {
+            dry_run_commands.push(verb.to_owned());
+            Ok(0)
+        })
+        .expect("unchanged collector diff succeeds");
+        assert!(!unchanged);
+        assert_eq!(dry_run_commands, ["diff".to_owned()]);
     }
 
     #[test]

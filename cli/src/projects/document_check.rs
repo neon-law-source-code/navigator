@@ -128,6 +128,7 @@ pub(crate) async fn check(
     }
 
     let mut fixes = Vec::new();
+    let mut claimed: BTreeSet<String> = BTreeSet::new();
     for slug in &live_slugs {
         reconcile_slug(
             dir,
@@ -139,11 +140,12 @@ pub(crate) async fn check(
             deep,
             &mut errors,
             &mut fixes,
+            &mut claimed,
         )
         .await?;
     }
     for (slug, local) in &locals {
-        if live_slugs.contains(slug) {
+        if claimed.contains(slug) {
             continue;
         }
         if !matches!(local, Local::Pointer { .. }) {
@@ -191,6 +193,27 @@ fn located(locals: &BTreeMap<String, Local>, slug: &str) -> String {
 
 fn pointer_relative(slug: &str) -> String {
     format!("documents/{slug}.yaml")
+}
+
+fn filename_extension(filename: &str) -> Option<&str> {
+    Path::new(filename)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+}
+
+/// The local pointer key for a live `slug`. A document filed before #786 can
+/// carry a `slug` with no extension of its own (LAW-62): the committed
+/// pointer must still retain the document extension ahead of its `.yaml`
+/// suffix (`Y003`), so this takes the extension from the operative
+/// revision's stored `filename` and appends it, unless `slug` already ends
+/// with it.
+fn local_key(slug: &str, filename: &str) -> String {
+    match filename_extension(filename) {
+        Some(extension) if !slug.ends_with(&format!(".{extension}")) => {
+            format!("{slug}.{extension}")
+        }
+        _ => slug.to_string(),
+    }
 }
 
 /// Problems with one row. A missing slug and a bad object are both reported.
@@ -278,6 +301,7 @@ async fn reconcile_slug(
     deep: bool,
     errors: &mut Vec<CheckFailure>,
     fixes: &mut Vec<CheckFix>,
+    claimed: &mut BTreeSet<String>,
 ) -> Result<()> {
     let live = match client.list_revisions(slug).await {
         Ok(live) => live,
@@ -289,8 +313,19 @@ async fn reconcile_slug(
             return Ok(());
         }
     };
+    // A legacy extensionless slug (LAW-62) is keyed in `locals` under the
+    // pointer's own filename-derived key, not the bare slug, because the
+    // pointer must retain the document extension (`Y003`).
+    let key = live
+        .revisions
+        .iter()
+        .find(|revision| revision.operative)
+        .map_or_else(
+            || slug.to_string(),
+            |revision| local_key(slug, &revision.filename),
+        );
     let desired =
-        match desired_pointer(local_pointer(locals.get(slug)), &live.kind, &live.revisions) {
+        match desired_pointer(local_pointer(locals.get(&key)), &live.kind, &live.revisions) {
             Ok(pointer) => pointer,
             Err(message) => {
                 errors.push(CheckFailure {
@@ -301,27 +336,30 @@ async fn reconcile_slug(
             }
         };
     let storage_ok = operative_storage_ok(assets, desired.current_version.asset_id, deep, errors);
-    match locals.get(slug) {
+    match locals.get(&key) {
         Some(Local::Pointer {
             relative,
             absolute,
             pointer,
         }) => {
             if pointer.as_ref() == &desired {
+                claimed.insert(key);
                 return Ok(());
             }
             let relative = relative.clone();
             let absolute = absolute.clone();
             apply_fix(write, &absolute, &relative, REWRITE, &desired, fixes)?;
+            claimed.insert(key);
         }
         None if storage_ok => {
-            let relative = pointer_relative(slug);
+            let relative = pointer_relative(&key);
             let absolute = dir.join(&relative);
             apply_fix(write, &absolute, &relative, WRITE_POINTER, &desired, fixes)?;
+            claimed.insert(key.clone());
             if write {
                 if let Ok(Some(pointer)) = read_pointer(&absolute) {
                     locals.insert(
-                        slug.to_string(),
+                        key,
                         Local::Pointer {
                             relative,
                             absolute,
@@ -516,6 +554,17 @@ mod tests {
         asset_id: Uuid,
         sha: &str,
     ) {
+        mount_revisions_named(server, project_id, slug, asset_id, sha, "summons.pdf").await;
+    }
+
+    async fn mount_revisions_named(
+        server: &MockServer,
+        project_id: Uuid,
+        slug: &str,
+        asset_id: Uuid,
+        sha: &str,
+        filename: &str,
+    ) {
         Mock::given(method("GET"))
             .and(path(format!(
                 "/app/api/projects/{project_id}/documents/revisions"
@@ -530,7 +579,7 @@ mod tests {
                     "created_at": "2026-09-05T12:00:00Z",
                     "sha256": sha,
                     "size_bytes": 18,
-                    "filename": "summons.pdf",
+                    "filename": filename,
                     "visibility": "internal",
                     "operative": true
                 }]
@@ -765,5 +814,89 @@ mod tests {
             error.location == asset_id.to_string() && error.message.contains("no slug")
         }));
         assert!(!dir.path().join("documents").exists());
+    }
+
+    /// LAW-62: a document filed before #786 can carry a live `slug` with no
+    /// extension of its own. Writing the pointer at `documents/<slug>.yaml`
+    /// fails `Y003` (no document extension before the `.yaml` suffix), so
+    /// the check must take the extension from the stored filename and write
+    /// `documents/<slug>.<ext>.yaml` instead.
+    #[tokio::test]
+    async fn a_legacy_extensionless_slug_writes_a_pointer_with_the_stored_extension() {
+        let (server, project_id, asset_id) = server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let slug = "summons-wendell-prine";
+        mount_integrity(
+            &server,
+            project_id,
+            serde_json::json!({ "assets": [asset(asset_id, Some(slug), true, None)] }),
+        )
+        .await;
+        mount_revisions_named(
+            &server,
+            project_id,
+            slug,
+            asset_id,
+            SHA,
+            "summons-wendell-prine.pdf",
+        )
+        .await;
+
+        let outcome = check(dir.path(), &client(&server, project_id), true, false)
+            .await
+            .unwrap();
+
+        assert!(!outcome.rejects(false), "{outcome:?}");
+        assert!(
+            outcome.fixes.iter().any(|fix| {
+                fix.path == "documents/summons-wendell-prine.pdf.yaml"
+                    && fix.action == WRITE_POINTER
+            }),
+            "{:?}",
+            outcome.fixes
+        );
+        assert!(dir
+            .path()
+            .join("documents/summons-wendell-prine.pdf.yaml")
+            .exists());
+        assert!(!dir
+            .path()
+            .join("documents/summons-wendell-prine.yaml")
+            .exists());
+    }
+
+    /// The extension-carrying pointer this fix writes must not be mistaken
+    /// for an orphan (no live document matches its filename-derived local
+    /// key) or rewritten on every subsequent run.
+    #[tokio::test]
+    async fn a_legacy_extensionless_pointer_already_on_disk_is_not_reported_as_orphaned() {
+        let (server, project_id, asset_id) = server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let slug = "summons-wendell-prine";
+        let relative = "documents/summons-wendell-prine.pdf.yaml";
+        write_tree(dir.path(), relative, &pointer_yaml(asset_id, SHA));
+        gitignore(dir.path());
+        mount_integrity(
+            &server,
+            project_id,
+            serde_json::json!({ "assets": [asset(asset_id, Some(slug), true, None)] }),
+        )
+        .await;
+        mount_revisions_named(
+            &server,
+            project_id,
+            slug,
+            asset_id,
+            SHA,
+            "summons-wendell-prine.pdf",
+        )
+        .await;
+
+        let outcome = check(dir.path(), &client(&server, project_id), true, false)
+            .await
+            .unwrap();
+
+        assert!(!outcome.rejects(false), "{outcome:?}");
+        assert!(outcome.fixes.is_empty(), "{:?}", outcome.fixes);
     }
 }

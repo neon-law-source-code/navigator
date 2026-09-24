@@ -450,10 +450,20 @@ over the whole tree: the content rules, the layout, and — because this is the 
 reading each built `dist/`. One command, one job; on a push to `main` the same run also checks `navigator.yaml` against
 the live row.
 
-The `documents` job runs `navigator project gate --check --ci`. The host and Project code come from `navigator.yaml`,
-and the session is minted at `POST /auth/ci/document-token`. It runs unconditionally alongside the others. A repository
-with no `documents/` directory still runs the check, so a live document with no pointer is reported. `--ci` writes
-nothing: a fix the gate would make locally fails the job. It is one of the required check's dependencies.
+The `documents` job runs `navigator project gate --check --ci`. `--check` (LAW-62) runs only the live document check —
+comparing committed pointers with the live record — and none of `verify`'s offline passes, so `documents` never builds
+and never reaches the origin pass; that pass already ran, over the same tree, in `verify`. The host and Project code
+come from `navigator.yaml`, and the session is minted at `POST /auth/ci/document-token`. It runs unconditionally
+alongside the others. A repository with no `documents/` directory still runs the check, so a live document with no
+pointer is reported. `--ci` writes nothing: a fix the gate would make locally fails the job. It is one of the required
+check's dependencies.
+
+**This mint is not a GCP credential.** `POST /auth/ci/document-token` (and `seeds`' own `POST /auth/ci/seed-token`)
+verifies GitHub's OIDC token directly against GitHub's own issuer and returns an HMAC-signed Navigator session — a
+project-scoped API credential, nothing more. Neither job authenticates to GCP, federates an identity into one, or holds
+a GCP credential of any kind; `id-token: write` here grants only the token these two doors read. The one job in this
+file that does reach GCP is `cd.yml`'s `publish` job, through the genuinely separate Workload Identity Federation path
+documented under [Publishing the built bundle](#publishing-the-built-bundle) below.
 
 The `seeds` job retains its main-only live check. `navigator project gate` covers the offline shape of every
 `seeds/*.yaml` document on pull requests, while the live reconciliation remains outside the required `ci` dependencies

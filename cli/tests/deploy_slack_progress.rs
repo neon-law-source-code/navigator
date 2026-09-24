@@ -45,6 +45,7 @@ const NARRATED_JOBS: &[&str] = &[
     "release-cli-build-macos",
     "release-windows-cli-publish",
     "release-homebrew-tap",
+    "release-zed-extension",
 ];
 
 fn repo_root() -> PathBuf {

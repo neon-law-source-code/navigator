@@ -157,7 +157,12 @@ pub fn highlight(code: &str, lang: &str) -> String {
     // `<code>` element so the coloured block keeps the same `<pre><code>` shape
     // as the fallback (and as standard code-block markup).
     highlighted_html_for_string(code, &SYNTAX_SET, syntax, &THEME).map_or_else(
-        |_| format!("<pre tabindex=\"0\"><code>{}</code></pre>", html_escape(code)),
+        |_| {
+            format!(
+                "<pre tabindex=\"0\"><code>{}</code></pre>",
+                html_escape(code)
+            )
+        },
         |html| wrap_tokens_in_code(&html),
     )
 }

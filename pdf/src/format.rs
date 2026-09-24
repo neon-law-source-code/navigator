@@ -148,12 +148,15 @@ pub enum OutputFormat {
     /// around headings. An engagement letter is read once, carefully, by
     /// someone deciding whether to sign it.
     Letter(LetterBlocks),
-    /// An executed contract. **No letterhead**: a contract between
-    /// represented parties is not firm correspondence, and an instrument
-    /// that gets signed must not go out over the drafter's branding
-    /// (LAW-14). Only a small running header on continuation pages names
-    /// the firm, so a page copied or faxed away from the rest still says
-    /// which document it came from.
+    /// An executed contract. **No letterhead, and no firm marks
+    /// anywhere in the frame**: a contract between represented parties is
+    /// not firm correspondence, and an instrument that gets signed must
+    /// not go out over the drafter's branding (LAW-14). This carries the
+    /// same "no firm marks" contract [`OutputFormat::Plain`] already
+    /// gives `will`, `trust`, and `directive` — a contract used to carry a
+    /// small running header naming the firm on continuation pages, but
+    /// that is still the firm's mark on the client's own instrument, so
+    /// it is gone too (LAW-59).
     ///
     /// **The frame does not number anything.** `rules`' `N123` already
     /// requires a contract body to carry its own Harvard markers — that
@@ -290,44 +293,38 @@ impl OutputFormat {
             // clause to find where one section ends and the next begins,
             // which the old 10pt/0.54em setting with run-in bold headings
             // at body size actively defeated.
-            Self::Contract => format!(
-                concat!(
-                    "#set page(\n",
-                    "  paper: \"us-letter\",\n",
-                    "  margin: (x: 1in, top: 1in, bottom: 0.9in),\n",
-                    // A page split from the rest of the contract — copied,
-                    // faxed, or simply dropped — should say which document
-                    // it belongs to. This small grey line is all that names
-                    // the firm anywhere in the frame, and it is deliberately
-                    // not the letterhead: a provenance mark on a stray page,
-                    // not branding on an executed instrument.
-                    "  header: context if counter(page).get().first() > 1 [",
-                    "#align(right)[#text(size: 7.5pt, tracking: 0.1em, fill: luma(45%))[",
-                    "#upper[{name}]]]],\n",
-                    "  footer: context align(center)[#text(size: 7.5pt, fill: luma(45%))[",
-                    "Page #counter(page).display() of #counter(page).final().first()]],\n",
-                    ")\n",
-                    "#set text(size: 11pt, hyphenate: false)\n",
-                    "#set par(justify: true, leading: 0.72em, spacing: 1.05em)\n",
-                    // A hierarchy a reader can see: the instrument's title,
-                    // then its sections, then anything nested under them.
-                    // The frame sizes and spaces the heading; the marker
-                    // itself is the body's, and the frame prints it as
-                    // written.
-                    "#show heading.where(level: 1): set text(size: 15pt, weight: \"bold\")\n",
-                    "#show heading.where(level: 1): set block(above: 0em, below: 1.4em)\n",
-                    "#show heading.where(level: 2): set text(size: 12pt, weight: \"bold\")\n",
-                    "#show heading.where(level: 2): set block(above: 1.9em, below: 0.85em)\n",
-                    "#show heading: set text(weight: \"bold\")\n",
-                    "#show heading: set block(above: 1.4em, below: 0.7em)\n",
-                    // A signature block that splits across a page break is a
-                    // defect on an executed instrument: a page of orphaned
-                    // rows reads as a different document from the one the
-                    // first signer saw. Keep every table whole.
-                    "#show table: set block(breakable: false)\n\n",
-                ),
-                name = esc(&letterhead.name),
-            ),
+            // No `header:` field at all (LAW-59): a contract used to carry
+            // a small running header naming the firm on continuation
+            // pages, but that is still the firm's mark on the client's own
+            // instrument. `letterhead` is unused here now — the frame
+            // takes it only because [`OutputFormat::Letter`] needs it.
+            Self::Contract => concat!(
+                "#set page(\n",
+                "  paper: \"us-letter\",\n",
+                "  margin: (x: 1in, top: 1in, bottom: 0.9in),\n",
+                "  footer: context align(center)[#text(size: 7.5pt, fill: luma(45%))[",
+                "Page #counter(page).display() of #counter(page).final().first()]],\n",
+                ")\n",
+                "#set text(size: 11pt, hyphenate: false)\n",
+                "#set par(justify: true, leading: 0.72em, spacing: 1.05em)\n",
+                // A hierarchy a reader can see: the instrument's title,
+                // then its sections, then anything nested under them.
+                // The frame sizes and spaces the heading; the marker
+                // itself is the body's, and the frame prints it as
+                // written.
+                "#show heading.where(level: 1): set text(size: 15pt, weight: \"bold\")\n",
+                "#show heading.where(level: 1): set block(above: 0em, below: 1.4em)\n",
+                "#show heading.where(level: 2): set text(size: 12pt, weight: \"bold\")\n",
+                "#show heading.where(level: 2): set block(above: 1.9em, below: 0.85em)\n",
+                "#show heading: set text(weight: \"bold\")\n",
+                "#show heading: set block(above: 1.4em, below: 0.7em)\n",
+                // A signature block that splits across a page break is a
+                // defect on an executed instrument: a page of orphaned
+                // rows reads as a different document from the one the
+                // first signer saw. Keep every table whole.
+                "#show table: set block(breakable: false)\n\n",
+            )
+            .to_string(),
             // Court paper is a different geometry entirely — no letterhead,
             // no shared page-chrome constants, calibrated per jurisdiction.
             // `pleading::preamble` is the one place that geometry is
@@ -931,12 +928,12 @@ mod tests {
     }
 
     #[test]
-    fn contract_names_the_firm_only_on_continuation_pages() {
-        // A page separated from the rest of a contract should say which
-        // document it belongs to. With the letterhead gone (LAW-14), a
-        // one-page contract names the firm nowhere at all — its title is
-        // what identifies it, and an executed instrument carries none of
-        // the drafter's branding.
+    fn contract_names_the_firm_nowhere_on_any_page() {
+        // A contract is the client's instrument, not firm correspondence
+        // (LAW-14, LAW-59): no letterhead, and — since LAW-59 — no small
+        // running header on continuation pages either. A one-page contract
+        // already carried no firm mark; this proves a multi-page one
+        // carries none now either.
         let lh = Letterhead::default();
         let one_page =
             super::render_document("Short body.", OutputFormat::Contract, &lh).expect("renders");
@@ -947,8 +944,6 @@ mod tests {
             "a one-page contract must carry no firm mark at all"
         );
 
-        // A document spanning several pages: the header repeats once per
-        // continuation page, on top of the letterhead's own appearance.
         let mut body = String::new();
         for n in 1..=60 {
             write!(
@@ -964,8 +959,8 @@ mod tests {
         assert!(pages > 1, "fixture must actually span pages: {pages}");
         assert_eq!(
             crate::passage::occurrence_count(&many_pages, "NEON LAW").expect("counts"),
-            pages - 1,
-            "the provenance header shows once per continuation page and never on page one \
+            0,
+            "a contract carries no firm mark on any page, including continuation pages \
              — {pages} pages total"
         );
     }
@@ -1021,11 +1016,12 @@ mod tests {
                 "the letter must keep its letterhead — `{element}` is missing: {letter}"
             );
         }
-        // The one firm mark that remains is the continuation-page
-        // provenance header, which names the firm and nothing else.
+        // LAW-59: the frame used to keep one firm mark — a continuation-page
+        // provenance header — but that is still the firm's mark on the
+        // client's own instrument, so no `header:` field remains at all.
         assert!(
-            contract.contains("counter(page).get().first() > 1"),
-            "the provenance header must stay: {contract}"
+            !contract.contains("header:"),
+            "the contract frame must carry no header at all: {contract}"
         );
         // A contract is paginated like a letter.
         assert!(

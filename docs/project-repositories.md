@@ -211,15 +211,18 @@ tool, and `site sync` remains the explicit local-to-remote upload operation. `pr
 Before downloading, it verifies that Git ignores every raw target. Only `.yaml` pointers and `documents/.gitignore` are
 eligible for source control.
 
-**`navigator site document verify` answers "did it land?" in one of three modes, chosen by what you pass.** With no
-flags it checks pointer shape only — every `*.yaml` below `documents/` must parse — and opens no connection, which is
-what a pull request runs. With `--host <host>` it checks each pointer against the live asset record using your own
-`navigator site login` session, reporting the same drift `log` and `get` report: a revision missing from the live chain,
-a `sha256` or size that disagrees, or an operative revision the pointer does not name. With `--ci --host <host>` it runs
-that identical live check but mints the session from the GitHub Actions run's own OIDC token, because a runner carries
-no stored login; that is the mode a push to `main` uses. The `--host` mode exists so that an operator who has just
-uploaded a document can confirm the asset exists remotely without reading a CI job (LAW-12). Before it, `--host` was
-accepted and then ignored, and verify reported success offline for a checkout whose bytes were already deleted.
+**`navigator project gate --check` answers "did it land?"** — the standalone *site document verify* command was retired
+onto this one flag (26.9.24), so there is one verb rather than two for the same question. Plain `navigator project gate`
+(no `--check`) checks pointer shape only — every `*.yaml` below `documents/` must parse — and opens no connection, which
+is what a pull request runs. `navigator project gate --check` additionally checks each pointer against the live asset
+record using your own `navigator site login` session (the host comes from `navigator.yaml`, not a flag), reporting the
+same drift `log` and `get` report: a revision missing from the live chain, a `sha256` or size that disagrees, or an
+operative revision the pointer does not name; a drifted or missing pointer is rewritten in the checkout rather than
+merely reported. `navigator project gate --check --ci` runs that identical live check but mints the session from the
+GitHub Actions run's own OIDC token, because a runner carries no stored login, and reports every fix as a finding
+instead of writing it, since the checkout is about to be discarded; that is the mode a push to `main` uses. The local
+`--check` mode exists so that an operator who has just uploaded a document can confirm the asset exists remotely without
+reading a CI job (LAW-12).
 
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
@@ -725,9 +728,9 @@ the finding carries the surviving path and the remedy rather than the anonymous 
 on any path component, so a `.claude/skills/` — which the root-only rule never looked below at all — and an
 `apps/<app>/CLAUDE.md` are both refused where they sit. `navigator project gate` requires the canonical CODEOWNERS file
 and that `AGENTS.md` exist and name the Lawyers team as where a Navigator CLI gap is filed rather than recorded as a
-workaround in the matter repository. The same `validate` walk extracts `navigator …` invocations from the repository's
-Markdown and checks each against this binary's clap command tree, so a documented verb that no longer exists fails the
-gate at the commit that introduced the rename.
+workaround in the matter repository. The same `validate` walk extracts every *navigator …* invocation from the
+repository's Markdown and checks each against this binary's clap command tree, so a documented verb that no longer
+exists fails the gate at the commit that introduced the rename.
 
 **`AGENTS.md` is one canonical file everywhere.** It carries the same short tool list and Navigator safety contract in
 every Project repository. Project-specific identity and coordinates belong in `navigator.yaml` and the live Project row,

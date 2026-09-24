@@ -264,6 +264,10 @@ const VITE_LOCKFILES: &[&str] = &[
 /// plus the general engineering council, are the initial set. `stay-in-repo`
 /// joins them as the shared scope rule every Project repository's `AGENTS.md`
 /// used to hand-write on its own, three times, in three different voices.
+/// `legal-writing` (LAW-58) is the writing discipline both review councils
+/// and the litigation filing gate assume the underlying prose already
+/// meets — every Project repository drafts memos, letters, and briefs, so
+/// it is fleet-wide rather than repo-local.
 const SYNCED_SKILLS: &[(&str, &str)] = &[
     (
         "council",
@@ -292,6 +296,10 @@ const SYNCED_SKILLS: &[(&str, &str)] = &[
     (
         "server",
         include_str!("../../../.agents/skills/server/SKILL.md"),
+    ),
+    (
+        "legal-writing",
+        include_str!("../../../.agents/skills/legal-writing/SKILL.md"),
     ),
 ];
 
@@ -2466,6 +2474,41 @@ jobs:
                 "{name} still points at a Navigator-only path: {violations:?}"
             );
         }
+    }
+
+    /// ENG-870: a synced skill's documented `navigator …` invocation must
+    /// resolve against *this build's* live clap tree, checked here — in
+    /// Navigator's own test suite — rather than only when `project gate`
+    /// happens to run inside a Project repository that carries the synced
+    /// copy. That gap is exactly how a retired verb (`project repository
+    /// sync-skills`, `project repository deliver`) survived in synced
+    /// skill text after the command it named was removed: the caller lived
+    /// in a Project repository, "not searchable from the Navigator
+    /// checkout" (ENG-870's own words) — until now.
+    #[test]
+    fn every_synced_skill_documents_only_commands_that_resolve() {
+        let tree = crate::navigator_command();
+        for (name, contents) in SYNCED_SKILLS {
+            let found = crate::projects::cli_docs::unresolved_invocations(contents, &tree);
+            assert!(
+                found.is_empty(),
+                "synced skill `{name}` documents a command that does not resolve: {found:?}"
+            );
+        }
+    }
+
+    /// ENG-870 named this doc specifically: it still documented the
+    /// retired `navigator site document verify` after that verb moved onto
+    /// `navigator project gate --check`.
+    #[test]
+    fn project_repositories_doc_documents_only_commands_that_resolve() {
+        let tree = crate::navigator_command();
+        let contents = include_str!("../../../docs/project-repositories.md");
+        let found = crate::projects::cli_docs::unresolved_invocations(contents, &tree);
+        assert!(
+            found.is_empty(),
+            "docs/project-repositories.md documents a command that does not resolve: {found:?}"
+        );
     }
 
     #[test]

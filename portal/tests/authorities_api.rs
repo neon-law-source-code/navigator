@@ -112,8 +112,21 @@ fn request_body(citation: &str, archive: &[u8]) -> Vec<u8> {
 }
 
 async fn post(app: &Router, session: Option<&portal::SessionData>, body: Vec<u8>) -> (u16, Value) {
+    request(app, "POST", session, body).await
+}
+
+async fn patch(app: &Router, session: Option<&portal::SessionData>, body: Vec<u8>) -> (u16, Value) {
+    request(app, "PATCH", session, body).await
+}
+
+async fn request(
+    app: &Router,
+    method: &str,
+    session: Option<&portal::SessionData>,
+    body: Vec<u8>,
+) -> (u16, Value) {
     let mut builder = Request::builder()
-        .method("POST")
+        .method(method)
         .uri("/app/api/authorities")
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(session) = session {
@@ -278,4 +291,173 @@ async fn an_asset_write_failure_records_no_authority() {
         "a fresh create must carry a real archived_asset_id — an Authority row already sitting \
          there from the failed attempt would have been found instead of created"
     );
+}
+
+// ---------------------------------------------------------------------
+// PATCH /app/api/authorities (LAW-61)
+// ---------------------------------------------------------------------
+
+/// LAW-61's own repro: a field left out of the update stays unchanged, and
+/// the corrected field persists.
+#[tokio::test]
+async fn a_field_left_out_of_the_patch_stays_unchanged_and_the_correction_persists() {
+    let fixture = fixture().await;
+    let (status, created) = post(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        request_body("7 U.S. 7", b"first archive"),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let id = created["id"].clone();
+
+    let (status, updated) = patch(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        serde_json::to_vec(&json!({"id": id, "issued_on": "2025-01-29"})).unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(updated["issued_on"], "2025-01-29");
+    assert_eq!(
+        updated["title"], created["title"],
+        "a field left out of the patch stays unchanged"
+    );
+    assert_eq!(updated["citation"], created["citation"]);
+}
+
+#[tokio::test]
+async fn update_locates_the_authority_by_citation() {
+    let fixture = fixture().await;
+    post(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        request_body("8 U.S. 8", b"bytes"),
+    )
+    .await;
+
+    let (status, updated) = patch(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        serde_json::to_vec(&json!({"citation": "8 U.S. 8", "title": "Corrected Title"})).unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(updated["title"], "Corrected Title");
+}
+
+#[tokio::test]
+async fn update_with_neither_id_nor_citation_is_a_typed_400() {
+    let fixture = fixture().await;
+    let (status, json) = patch(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        serde_json::to_vec(&json!({"title": "New Title"})).unwrap(),
+    )
+    .await;
+    assert_eq!(status, 400);
+    assert_eq!(json["error"], "identifier_required");
+}
+
+#[tokio::test]
+async fn update_with_both_id_and_citation_is_a_typed_400() {
+    let fixture = fixture().await;
+    let (_, created) = post(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        request_body("9 U.S. 9", b"bytes"),
+    )
+    .await;
+
+    let (status, json) = patch(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        serde_json::to_vec(&json!({"id": created["id"], "citation": "9 U.S. 9"})).unwrap(),
+    )
+    .await;
+    assert_eq!(status, 400);
+    assert_eq!(json["error"], "ambiguous_identifier");
+}
+
+#[tokio::test]
+async fn update_of_an_unknown_authority_is_404() {
+    let fixture = fixture().await;
+    let (status, json) = patch(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        serde_json::to_vec(&json!({"citation": "no such citation", "title": "x"})).unwrap(),
+    )
+    .await;
+    assert_eq!(status, 404);
+    assert_eq!(json["error"], "not_found");
+}
+
+#[tokio::test]
+async fn update_replaces_the_archived_asset_when_a_new_file_is_given() {
+    let fixture = fixture().await;
+    let (_, created) = post(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        request_body("10 U.S. 10", b"first archive"),
+    )
+    .await;
+
+    let (status, updated) = patch(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        serde_json::to_vec(&json!({
+            "id": created["id"],
+            "archive_base64": base64::engine::general_purpose::STANDARD.encode(b"second archive"),
+        }))
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_ne!(
+        updated["archived_asset_id"], created["archived_asset_id"],
+        "a new --file must replace the archived asset"
+    );
+
+    let new_asset_id: uuid::Uuid = updated["archived_asset_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let fetched = store::assets::fetch(&fixture.surreal, &fixture.storage, new_asset_id)
+        .await
+        .expect("fetch the replaced archive");
+    assert_eq!(fetched, b"second archive");
+}
+
+#[tokio::test]
+async fn update_forbids_a_clerk_and_a_client() {
+    let fixture = fixture().await;
+    let (_, created) = post(
+        &fixture.app,
+        Some(&fixture.lawyer_session),
+        request_body("11 U.S. 11", b"bytes"),
+    )
+    .await;
+    for role in [Role::Clerk, Role::Client] {
+        let session = portal::SessionData::fresh("synthetic-sub", role);
+        let (status, _) = patch(
+            &fixture.app,
+            Some(&session),
+            serde_json::to_vec(&json!({"id": created["id"], "title": "x"})).unwrap(),
+        )
+        .await;
+        assert_eq!(status, 403, "{role:?} must be forbidden");
+    }
+}
+
+#[tokio::test]
+async fn update_requires_authentication() {
+    let fixture = fixture().await;
+    let (status, _) = patch(
+        &fixture.app,
+        None,
+        serde_json::to_vec(&json!({"citation": "12 U.S. 12", "title": "x"})).unwrap(),
+    )
+    .await;
+    assert_eq!(status, 401);
 }

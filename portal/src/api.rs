@@ -163,6 +163,16 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
                 store::documents::MAX_DOCUMENT_UPLOAD_REQUEST_BYTES,
             )),
         ),
+        // LAW-61: correct a field on an existing Authority. Shares the
+        // create door's body-size limit since it can carry the same
+        // archived-artifact bytes.
+        (
+            "PATCH",
+            "/app/api/authorities",
+            patch(crate::authorities_api::update_authority_door).layer(DefaultBodyLimit::max(
+                store::documents::MAX_DOCUMENT_UPLOAD_REQUEST_BYTES,
+            )),
+        ),
         ("GET", "/app/api/entities/{id}", get(get_entity)),
         ("PATCH", "/app/api/entities/{id}", patch(update_entity)),
         ("DELETE", "/app/api/entities/{id}", delete(delete_entity)),

@@ -183,9 +183,119 @@ pub async fn create(
     .await
 }
 
+/// What `navigator site authorities update` needs. Exactly one of `id` or
+/// `citation` must be given to locate the existing Authority; every other
+/// field is optional and left unchanged when absent.
+#[allow(clippy::too_many_arguments)]
+pub(crate) struct UpdateAuthorityArgs<'a> {
+    pub(crate) id: Option<Uuid>,
+    pub(crate) citation: Option<&'a str>,
+    pub(crate) title: Option<&'a str>,
+    pub(crate) short_cite: Option<&'a str>,
+    pub(crate) publisher: Option<&'a str>,
+    pub(crate) issued_on: Option<&'a str>,
+    pub(crate) canonical_url: Option<&'a str>,
+    pub(crate) checked_on: Option<&'a str>,
+    pub(crate) file: Option<&'a Path>,
+    pub(crate) content_type: Option<&'a str>,
+}
+
+pub(crate) async fn update_authority(
+    host: Option<&str>,
+    args: &UpdateAuthorityArgs<'_>,
+) -> Result<AuthorityResponse> {
+    match (args.id, args.citation) {
+        (None, None) => return Err(anyhow!("give the Authority's id or --citation")),
+        (Some(_), Some(_)) => {
+            return Err(anyhow!("give the Authority's id or --citation, not both"))
+        }
+        _ => {}
+    }
+
+    let archive_base64 = match args.file {
+        Some(file) => {
+            let bytes = std::fs::read(file).with_context(|| format!("read {}", file.display()))?;
+            Some(base64::engine::general_purpose::STANDARD.encode(&bytes))
+        }
+        None => None,
+    };
+    let (base, token) = crate::remote::resolve(host)?;
+    let body = serde_json::json!({
+        "id": args.id,
+        "citation": args.citation,
+        "title": args.title,
+        "short_cite": args.short_cite,
+        "publisher": args.publisher,
+        "issued_on": args.issued_on,
+        "canonical_url": args.canonical_url,
+        "checked_on": args.checked_on,
+        "archive_base64": archive_base64,
+        "content_type": args.content_type,
+    });
+    let url = format!("{base}/app/api/authorities");
+    let response = client()
+        .patch(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .send()
+        .await
+        .with_context(|| format!("PATCH {url}"))?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "authority update failed: {status}: {}",
+            first_line(&text)
+        ));
+    }
+    serde_json::from_str(&text).context("parse authority response")
+}
+
+/// `navigator site authorities update <ID> | --citation …` — correct a
+/// field on an existing Authority, leaving every field left out unchanged.
+#[allow(clippy::too_many_arguments)]
+pub async fn update(
+    host: Option<&str>,
+    id: Option<Uuid>,
+    citation: Option<&str>,
+    title: Option<&str>,
+    short_cite: Option<&str>,
+    publisher: Option<&str>,
+    issued_on: Option<&str>,
+    canonical_url: Option<&str>,
+    checked_on: Option<&str>,
+    file: Option<&Path>,
+    content_type: Option<&str>,
+) -> ExitCode {
+    run(async {
+        let authority = update_authority(
+            host,
+            &UpdateAuthorityArgs {
+                id,
+                citation,
+                title,
+                short_cite,
+                publisher,
+                issued_on,
+                canonical_url,
+                checked_on,
+                file,
+                content_type,
+            },
+        )
+        .await?;
+        print!(
+            "{}",
+            serde_yaml::to_string(&authority).context("render authority as yaml")?
+        );
+        Ok(())
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
-    use super::create;
+    use super::{create, update};
     use crate::credentials::{self, Credentials, HostCredential};
     use std::process::ExitCode;
     use std::sync::LazyLock;
@@ -318,6 +428,122 @@ mod tests {
             None,
             &file,
             Some("application/pdf"),
+        )
+        .await;
+
+        assert_eq!(exit_code, ExitCode::SUCCESS);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn update_refuses_without_an_identifier() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::logged_in(&server_uri);
+
+        let exit_code = update(
+            Some(server_uri.as_str()),
+            None,
+            None,
+            Some("New Title"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        assert_eq!(exit_code, ExitCode::from(2));
+        assert!(
+            server.received_requests().await.unwrap().is_empty(),
+            "give id or --citation before ever reaching the network"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn update_refuses_both_an_id_and_a_citation() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::logged_in(&server_uri);
+
+        let exit_code = update(
+            Some(server_uri.as_str()),
+            Some(uuid::Uuid::now_v7()),
+            Some("410 U.S. 113 (1973)"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        assert_eq!(exit_code, ExitCode::from(2));
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    /// LAW-61's repro: a field left off the command line stays unchanged —
+    /// proven here at the request-shaping level: the PATCH body carries
+    /// `null` for every field this call did not pass.
+    #[tokio::test(flavor = "current_thread")]
+    async fn update_forms_a_patch_request_leaving_unset_fields_null() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::logged_in(&server_uri);
+        let authority_id = uuid::Uuid::now_v7();
+
+        Mock::given(method("PATCH"))
+            .and(path("/app/api/authorities"))
+            .and(body_json(serde_json::json!({
+                "id": null,
+                "citation": "410 U.S. 113 (1973)",
+                "title": null,
+                "short_cite": null,
+                "publisher": null,
+                "issued_on": "2025-01-29",
+                "canonical_url": null,
+                "checked_on": null,
+                "archive_base64": null,
+                "content_type": null,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": authority_id,
+                "class": "case_law",
+                "citation": "410 U.S. 113 (1973)",
+                "short_cite": null,
+                "title": "Roe v. Wade",
+                "publisher": null,
+                "issued_on": "2025-01-29",
+                "canonical_url": null,
+                "checked_on": null,
+                "archived_asset_id": null,
+                "inserted_at": "2026-09-16T00:00:00Z",
+                "updated_at": "2026-09-24T00:00:00Z",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let exit_code = update(
+            Some(server_uri.as_str()),
+            None,
+            Some("410 U.S. 113 (1973)"),
+            None,
+            None,
+            None,
+            Some("2025-01-29"),
+            None,
+            None,
+            None,
+            None,
         )
         .await;
 

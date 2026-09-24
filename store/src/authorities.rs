@@ -65,6 +65,9 @@ pub enum AuthorityError {
     /// module could not read back.
     #[error("writing to the citation apparatus returned no usable row")]
     WriteReturnedNothing,
+    /// [`update`] found no Authority matching the given id or citation.
+    #[error("no authority matches that id or citation")]
+    NotFound,
 }
 
 fn is_authority_citation_conflict(error: &surrealdb::Error) -> bool {
@@ -161,6 +164,122 @@ async fn by_citation(
         .and_then(surrealdb::IndexedResults::check)?;
     let row: Option<AuthorityRow> = response.take(0)?;
     Ok(row.and_then(AuthorityRow::into_authority))
+}
+
+async fn by_id(db: &SurrealDb, id: Uuid) -> Result<Option<Authority>, surrealdb::Error> {
+    let mut response = db
+        .query(format!(
+            "SELECT {AUTHORITY_SELECT} FROM {AUTHORITY_TABLE} WHERE id = $id LIMIT 1"
+        ))
+        .bind(("id", record_id(AUTHORITY_TABLE, id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let row: Option<AuthorityRow> = response.take(0)?;
+    Ok(row.and_then(AuthorityRow::into_authority))
+}
+
+/// How [`find`] and [`update`] locate an existing Authority. `citation` and
+/// `class` are the row's identity (see the module docs on [`record`]) —
+/// there is deliberately no variant that changes either; a caller wanting a
+/// different citation or class wants a new Authority, not an update of this
+/// one.
+#[derive(Debug, Clone, Copy)]
+pub enum AuthorityLookup<'a> {
+    Id(Uuid),
+    Citation(&'a str),
+}
+
+/// Find an existing Authority by id or by citation.
+///
+/// # Errors
+/// Propagates any database error.
+pub async fn find(
+    db: &SurrealDb,
+    lookup: AuthorityLookup<'_>,
+) -> Result<Option<Authority>, AuthorityError> {
+    Ok(match lookup {
+        AuthorityLookup::Id(id) => by_id(db, id).await?,
+        AuthorityLookup::Citation(citation) => by_citation(db, citation).await?,
+    })
+}
+
+/// What [`update`] may change on an existing Authority. Every field is
+/// "leave unchanged when absent" — there is no way to blank a field back to
+/// `None` through this patch, since nothing in the issue that motivated it
+/// (LAW-61) asked for that, and `citation`/`class` are not here at all:
+/// they are immutable (see [`AuthorityLookup`]).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AuthorityPatch<'a> {
+    pub title: Option<&'a str>,
+    pub short_cite: Option<&'a str>,
+    pub publisher: Option<&'a str>,
+    pub issued_on: Option<&'a str>,
+    pub canonical_url: Option<&'a str>,
+    pub checked_on: Option<&'a str>,
+    /// A new artifact version to archive in place of the current one.
+    /// `None` leaves the existing `archived_asset_id` untouched.
+    pub archived_asset_id: Option<Uuid>,
+}
+
+/// Update the Authority found by `lookup`, leaving every field `patch`
+/// leaves as `None` unchanged.
+///
+/// # Errors
+/// [`AuthorityError::NotFound`] when `lookup` matches no row, or on a
+/// database failure.
+pub async fn update(
+    db: &SurrealDb,
+    lookup: AuthorityLookup<'_>,
+    patch: &AuthorityPatch<'_>,
+) -> Result<Authority, AuthorityError> {
+    let existing = find(db, lookup).await?.ok_or(AuthorityError::NotFound)?;
+    let title = patch.title.map_or(existing.title.clone(), str::to_string);
+    let short_cite = patch
+        .short_cite
+        .map(str::to_string)
+        .or_else(|| existing.short_cite.clone());
+    let publisher = patch
+        .publisher
+        .map(str::to_string)
+        .or_else(|| existing.publisher.clone());
+    let issued_on = patch
+        .issued_on
+        .map(str::to_string)
+        .or_else(|| existing.issued_on.clone());
+    let canonical_url = patch
+        .canonical_url
+        .map(str::to_string)
+        .or_else(|| existing.canonical_url.clone());
+    let checked_on = patch
+        .checked_on
+        .map(str::to_string)
+        .or_else(|| existing.checked_on.clone());
+    let archived_asset_id = patch.archived_asset_id.or(existing.archived_asset_id);
+
+    let mut response = writing(|| {
+        db.query(format!(
+            "UPDATE $id SET \
+             title = $title, short_cite = $short_cite, publisher = $publisher, \
+             issued_on = $issued_on, canonical_url = $canonical_url, checked_on = $checked_on, \
+             archived_asset_id = $archived_asset_id, updated_at = time::now() \
+             RETURN {AUTHORITY_SELECT}"
+        ))
+        .bind(("id", record_id(AUTHORITY_TABLE, existing.id)))
+        .bind(("title", title.clone()))
+        .bind(("short_cite", short_cite.clone()))
+        .bind(("publisher", publisher.clone()))
+        .bind(("issued_on", issued_on.clone()))
+        .bind(("canonical_url", canonical_url.clone()))
+        .bind(("checked_on", checked_on.clone()))
+        .bind((
+            "archived_asset_id",
+            archived_asset_id.map(|id| record_id("asset", id)),
+        ))
+    })
+    .await?;
+    let row: Option<AuthorityRow> = response.take(0)?;
+    row.and_then(AuthorityRow::into_authority)
+        .ok_or(AuthorityError::WriteReturnedNothing)
 }
 
 /// What a new [`Authority`] needs.
@@ -614,11 +733,13 @@ pub async fn delete_for_project(db: &SurrealDb, project_id: Uuid) -> Result<(), 
 mod tests {
     use super::{
         citations_for_use, cite, cite_in_matter, class_of, client_visible_uses, delete_for_project,
-        disposition_of, record, uses_for_project, NewAuthority, NewCitation,
+        disposition_of, find, record, update, uses_for_project, AuthorityError, AuthorityLookup,
+        AuthorityPatch, NewAuthority, NewCitation,
     };
     use crate::surreal::test_support::mem;
     use crate::test_support::seed_project_surreal;
     use rules::citation::{AuthorityClass, Disposition};
+    use uuid::Uuid;
 
     fn case(citation: &str, title: &str) -> NewAuthority<'static> {
         NewAuthority {
@@ -954,5 +1075,113 @@ mod tests {
             .await
             .expect("authority still exists");
         assert_eq!(survivor.id, a.id);
+    }
+
+    /// LAW-61: a field left out of the patch stays unchanged.
+    #[tokio::test]
+    async fn update_leaves_an_omitted_field_unchanged() {
+        let surreal = mem().await;
+        let mut new = case("14 U.S. 14", "Example");
+        new.issued_on = Some("2026-02-01");
+        let original = record(&surreal, &new).await.expect("record");
+
+        let updated = update(
+            &surreal,
+            AuthorityLookup::Id(original.id),
+            &AuthorityPatch {
+                short_cite: Some("Ex."),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update");
+
+        assert_eq!(updated.short_cite.as_deref(), Some("Ex."));
+        assert_eq!(
+            updated.issued_on.as_deref(),
+            Some("2026-02-01"),
+            "a field left out of the patch must stay unchanged"
+        );
+        assert_eq!(updated.title, original.title);
+    }
+
+    /// LAW-61's own repro: a corrected `issued_on` persists, found by
+    /// citation rather than id.
+    #[tokio::test]
+    async fn update_by_citation_persists_a_corrected_issued_on() {
+        let surreal = mem().await;
+        let mut new = case("15 U.S. 15", "Example");
+        new.issued_on = Some("2026-02-01");
+        record(&surreal, &new).await.expect("record");
+
+        let updated = update(
+            &surreal,
+            AuthorityLookup::Citation("15 U.S. 15"),
+            &AuthorityPatch {
+                issued_on: Some("2025-01-29"),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update");
+
+        assert_eq!(updated.issued_on.as_deref(), Some("2025-01-29"));
+
+        let reread = find(&surreal, AuthorityLookup::Citation("15 U.S. 15"))
+            .await
+            .expect("find")
+            .expect("still exists");
+        assert_eq!(
+            reread.issued_on.as_deref(),
+            Some("2025-01-29"),
+            "the correction persists"
+        );
+    }
+
+    /// A new `--file` replaces the archived artifact's asset id.
+    #[tokio::test]
+    async fn update_replaces_the_archived_asset_id_when_given() {
+        let surreal = mem().await;
+        let original = record(&surreal, &case("16 U.S. 16", "Example"))
+            .await
+            .expect("record");
+        assert_eq!(original.archived_asset_id, None);
+
+        let new_asset = Uuid::now_v7();
+        let updated = update(
+            &surreal,
+            AuthorityLookup::Id(original.id),
+            &AuthorityPatch {
+                archived_asset_id: Some(new_asset),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update");
+
+        assert_eq!(updated.archived_asset_id, Some(new_asset));
+    }
+
+    /// `update` on an id or citation that matches nothing is `NotFound`,
+    /// not a write that manufactures a row.
+    #[tokio::test]
+    async fn update_on_an_unknown_identifier_is_not_found() {
+        let surreal = mem().await;
+
+        let by_id = update(
+            &surreal,
+            AuthorityLookup::Id(Uuid::now_v7()),
+            &AuthorityPatch::default(),
+        )
+        .await;
+        assert!(matches!(by_id, Err(AuthorityError::NotFound)));
+
+        let by_citation = update(
+            &surreal,
+            AuthorityLookup::Citation("no such citation"),
+            &AuthorityPatch::default(),
+        )
+        .await;
+        assert!(matches!(by_citation, Err(AuthorityError::NotFound)));
     }
 }

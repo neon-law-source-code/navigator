@@ -30,9 +30,10 @@ own persistence logic.
   database credentials. With neither `MODEL_NAME` nor `SEED_FILE`, it imports every supported seed document in `seeds/`
   at the repository root instead, printing a notice and succeeding when `seeds/` is absent. GitHub Actions runs
   `navigator site import --ci --host <host>` and exchanges OIDC at `POST /auth/ci/seed-token` for a project-scoped seed
-  session, without reading `~/.navigator.json`. Supported models are `person`, `entity`, `person_project_role`, and
-  `person_entity_role`. Join-table documents use nested natural keys (`person.email` with `project.code`, or
-  `person.email` with `entity.name`) rather than UUIDs.
+  session, without reading `~/.navigator.json`. Supported models are `person`, `entity`, `person_project_role`,
+  `person_entity_role`, and `address`. Join-table documents use nested natural keys (`person.email` with `project.code`,
+  or `person.email` with `entity.name`) rather than UUIDs; `address` nests `person.email` too, keyed by `(person.email,
+  line1, postal_code)` rather than UUIDs.
 - **Document upload.** `navigator site document upload --project <code> --file <path> --kind <kind>` reads the file
   locally and sends it with the same bearer to `POST /app/api/projects/{id}/documents`. `--kind` is required and must be
   an asset-lane value — the same enum OpenAPI publishes on that operation. `navigator site sync` uses this door for each

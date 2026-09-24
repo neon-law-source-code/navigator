@@ -229,6 +229,27 @@ pub async fn for_entity(db: &SurrealDb, entity_id: Uuid) -> Result<Vec<Address>,
         .collect())
 }
 
+/// Every address belonging to one person, oldest first — the counterpart
+/// of [`for_entity`] (LAW-57).
+///
+/// # Errors
+///
+/// [`AddressError::Db`] if the lookup fails.
+pub async fn for_person(db: &SurrealDb, person_id: Uuid) -> Result<Vec<Address>, AddressError> {
+    let mut response = db
+        .query(format!(
+            "SELECT {SELECT} FROM {TABLE} WHERE person_id = $person_id ORDER BY inserted_at ASC"
+        ))
+        .bind(("person_id", record_id(PERSON_TABLE, person_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<AddressRow> = response.take(0)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(AddressRow::into_address)
+        .collect())
+}
+
 /// Find this entity's address at `line1`/`postal_code`, creating it if
 /// absent — the canonical seed's idempotence contract, on the natural
 /// key the seeder matches on.
@@ -248,6 +269,30 @@ pub async fn find_or_create_for_entity(
 ) -> Result<(Address, bool), AddressError> {
     if let Some(entity_id) = new.entity_id {
         let existing = for_entity(db, entity_id)
+            .await?
+            .into_iter()
+            .find(|a| a.line1 == new.line1 && a.postal_code == new.postal_code);
+        if let Some(found) = existing {
+            return Ok((found, false));
+        }
+    }
+    Ok((create(db, new).await?, true))
+}
+
+/// [`find_or_create_for_entity`]'s counterpart for a person-linked address
+/// (LAW-57) — `navigator site import`'s natural key for the `address`
+/// seed model.
+///
+/// # Errors
+///
+/// [`AddressError::NoSuchPerson`] when `new.person_id` names no person, and
+/// [`AddressError::Db`] if a lookup or the insert fails.
+pub async fn find_or_create_for_person(
+    db: &SurrealDb,
+    new: &NewAddress,
+) -> Result<(Address, bool), AddressError> {
+    if let Some(person_id) = new.person_id {
+        let existing = for_person(db, person_id)
             .await?
             .into_iter()
             .find(|a| a.line1 == new.line1 && a.postal_code == new.postal_code);
@@ -303,8 +348,8 @@ struct CountRow {
 #[cfg(test)]
 mod tests {
     use super::{
-        count, create, find_by_id, find_or_create_for_entity, for_entity, list_all, Address,
-        AddressError, NewAddress,
+        count, create, find_by_id, find_or_create_for_entity, find_or_create_for_person,
+        for_entity, for_person, list_all, Address, AddressError, NewAddress,
     };
     use crate::persons::{self, NewPerson};
     use crate::surreal::test_support::mem;
@@ -497,5 +542,53 @@ mod tests {
             .map(|a: Address| a.id)
             .collect();
         assert_eq!(ids, [first.id, second.id]);
+    }
+
+    /// [`for_entity`]'s counterpart for a person (LAW-57).
+    #[tokio::test]
+    async fn for_person_returns_every_address_that_person_holds() {
+        let db = mem().await;
+        let person = persons::create(&db, &NewPerson::new("Libra", "libra@example.com"))
+            .await
+            .unwrap();
+        let mut home = at("1 Fremont St");
+        home.person_id = Some(person.id);
+        let written = create(&db, &home).await.unwrap();
+
+        assert_eq!(for_person(&db, person.id).await.unwrap(), vec![written]);
+        assert!(for_person(&db, Uuid::now_v7()).await.unwrap().is_empty());
+    }
+
+    /// `navigator site import`'s natural key for the `address` seed model
+    /// (LAW-57): a person's (street, ZIP) pair.
+    #[tokio::test]
+    async fn find_or_create_for_person_matches_the_seeders_natural_key() {
+        let db = mem().await;
+        let person = persons::create(&db, &NewPerson::new("Libra", "libra@example.com"))
+            .await
+            .unwrap();
+        let mut new = at("1 Fremont St");
+        new.person_id = Some(person.id);
+
+        let (first, created) = find_or_create_for_person(&db, &new).await.unwrap();
+        assert!(created, "the first call inserts");
+        let (second, created_again) = find_or_create_for_person(&db, &new).await.unwrap();
+        assert!(!created_again, "the second call finds");
+        assert_eq!(first, second);
+        assert_eq!(for_person(&db, person.id).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn find_or_create_for_person_refuses_a_person_who_does_not_exist() {
+        let db = mem().await;
+        let nobody = Uuid::now_v7();
+        let mut new = at("1 Fremont St");
+        new.person_id = Some(nobody);
+
+        let refused = find_or_create_for_person(&db, &new).await;
+        assert!(matches!(
+            refused,
+            Err(AddressError::NoSuchPerson(id)) if id == nobody
+        ));
     }
 }

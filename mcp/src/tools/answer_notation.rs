@@ -211,6 +211,7 @@ fn map_notation_err(err: NotationSessionError) -> ToolError {
         NotationSessionError::Answer(e) => ToolError::Internal(e.to_string()),
         NotationSessionError::Notation(e) => ToolError::Internal(e.to_string()),
         NotationSessionError::Reask(e) => ToolError::Internal(e.to_string()),
+        NotationSessionError::Address(e) => ToolError::Internal(e.to_string()),
         NotationSessionError::QuestionNotSeeded(c) => {
             ToolError::Internal(format!("question `{c}` not seeded in store"))
         }

@@ -777,8 +777,9 @@ enum SiteCmd {
     /// prints a notice and succeeds.
     Import {
         /// Singular glossary term, such as `person`, `entity`,
-        /// `person_project_role`, or `person_entity_role`. Requires
-        /// `SEED_FILE`; omit both to import `seeds/` at the repository root.
+        /// `person_project_role`, `person_entity_role`, or `address`.
+        /// Requires `SEED_FILE`; omit both to import `seeds/` at the
+        /// repository root.
         #[arg(requires = "seed_file")]
         model_name: Option<String>,
         /// YAML document using the standard `lookup_fields` / `records`
@@ -1897,6 +1898,37 @@ enum AuthoritiesAction {
         #[arg(long)]
         content_type: Option<String>,
     },
+    /// Correct a field on an existing Authority, found by `<ID>` or
+    /// `--citation`. Fields left out stay unchanged. `--citation` and
+    /// `--class` are immutable — they are the Authority's identity;
+    /// changing either means a new Authority, not an update of this one.
+    Update {
+        #[command(flatten)]
+        host: HostOpt,
+        /// The Authority's id. Give this or `--citation`, not both.
+        id: Option<uuid::Uuid>,
+        /// Look up the Authority by citation instead of id.
+        #[arg(long)]
+        citation: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        short_cite: Option<String>,
+        #[arg(long)]
+        publisher: Option<String>,
+        #[arg(long)]
+        issued_on: Option<String>,
+        #[arg(long)]
+        canonical_url: Option<String>,
+        #[arg(long)]
+        checked_on: Option<String>,
+        /// A new artifact version to archive in place of the current one.
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// MIME type of `--file`. Defaults to `application/octet-stream`.
+        #[arg(long)]
+        content_type: Option<String>,
+    },
 }
 
 /// A matter document is only ever reached through a Project on a site, so
@@ -2264,6 +2296,31 @@ fn main() -> ExitCode {
                     canonical_url.as_deref(),
                     checked_on.as_deref(),
                     &file,
+                    content_type.as_deref(),
+                )),
+                AuthoritiesAction::Update {
+                    host,
+                    id,
+                    citation,
+                    title,
+                    short_cite,
+                    publisher,
+                    issued_on,
+                    canonical_url,
+                    checked_on,
+                    file,
+                    content_type,
+                } => runtime().block_on(authorities::update(
+                    host.host.as_deref(),
+                    id,
+                    citation.as_deref(),
+                    title.as_deref(),
+                    short_cite.as_deref(),
+                    publisher.as_deref(),
+                    issued_on.as_deref(),
+                    canonical_url.as_deref(),
+                    checked_on.as_deref(),
+                    file.as_deref(),
                     content_type.as_deref(),
                 )),
             },
@@ -3582,7 +3639,7 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
 
 const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, invoice, unclassified.";
 
-const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, invoices to invoice, and everything else to unclassified — except documents/cases/** and documents/rules/**, which are not Project documents at all: each is routed through `site authorities create` (a sidecar carrying citation/class/title/canonical_url/checked_on is required beside each capture) and its committed pointer carries an authority_id rather than a plain kind inference. documents/cases/** is case_law only; documents/rules/** is every other Authority class (statute, regulation, administrative, secondary) — a sidecar whose class disagrees with its folder is refused. A documents/invoices/** filename must match `INV-<digits>.<ext>`. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
+const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, invoices to invoice, memos to memo, transcripts to transcript, and everything else to unclassified — except documents/cases/** and documents/rules/**, which are not Project documents at all: each is routed through `site authorities create` (a sidecar carrying citation/class/title/canonical_url/checked_on is required beside each capture) and its committed pointer carries an authority_id rather than a plain kind inference. documents/cases/** is case_law only; documents/rules/** is every other Authority class (statute, regulation, administrative, secondary) — a sidecar whose class disagrees with its folder is refused. A documents/invoices/** filename must match `INV-<digits>.<ext>`. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
 
 /// Render one notation template to PDF or editable Word (`pdf`/`word`,
 /// `output_extension` `"pdf"`/`"docx"` respectively). Validates the file

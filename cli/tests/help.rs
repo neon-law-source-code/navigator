@@ -502,6 +502,16 @@ fn site_help_lists_the_live_deployment_members() {
     );
 }
 
+/// LAW-61: `create` alone left no way to correct a field on an existing
+/// Authority. `update` is the fix; this pins its presence in `--help` the
+/// way the issue's own repro checked for its absence.
+#[test]
+fn site_authorities_help_lists_create_and_update() {
+    let output = help(&["site", "authorities", "--help"]);
+
+    assert_eq!(command_names(&output), vec!["create", "update", "help"]);
+}
+
 #[test]
 fn site_document_upload_help_requires_kind() {
     let output = unwrapped(&help(&["site", "document", "upload", "--help"]));

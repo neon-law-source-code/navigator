@@ -338,7 +338,7 @@ fn commit_bump(
 
     if committed {
         println!(
-            "navigator: committed chore(release): {version}. Push the branch and open a PR; \
+            "navigator: committed release version bump. Push the branch and open a PR; \
              deploy.yml creates the tag after merge."
         );
         ExitCode::SUCCESS

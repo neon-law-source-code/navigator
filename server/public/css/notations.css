@@ -97,3 +97,149 @@
   .notations-specimen { transform: none; margin-right: 12px; }
   .notations-specimen pre, .notations-specimen .nav-code pre { font-size: .76rem; }
 }
+
+/* ------------------------------------------------------------------ */
+/* The kind catalog (LAW-53): every S103-accepted `kind:`, generated    */
+/* from the same source the gate validates against.                    */
+/* ------------------------------------------------------------------ */
+
+.kind-catalog { max-width: 1120px; margin: 0 auto 3rem; padding-inline: 1.5rem; }
+.kind-catalog__intro { max-width: 66ch; color: var(--nav-color-text-muted); margin-bottom: 1.5rem; }
+.kind-catalog__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.kind-catalog__entry {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius);
+  background: var(--nav-color-surface);
+}
+.kind-catalog__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.kind-catalog__value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95rem;
+}
+.kind-catalog__category { font-size: 0.75rem; }
+.kind-catalog__definition { margin: 0 0 0.5rem; }
+.kind-catalog__rules { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.kind-catalog__rules--none {
+  padding: 0;
+  list-style: none;
+  color: var(--nav-color-text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* The template gallery (LAW-53): a kind facet above a grid of preview  */
+/* cards grouped by category — modeled on opening a new document from   */
+/* a template gallery.                                                  */
+/* ------------------------------------------------------------------ */
+
+.template-gallery-wrapper { margin-bottom: 2rem; }
+
+/* Visually hidden but still focusable and clickable via its `<label for>` —
+   the standard accessible radio-pill technique. */
+.nav-template-filter__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.template-filter__pill {
+  display: inline-block;
+  margin: 0 0.5rem 0.5rem 0;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--nav-color-border);
+  border-radius: 999px;
+  background: var(--nav-color-surface);
+  color: var(--nav-color-text);
+  cursor: pointer;
+  font-size: 0.875rem;
+  user-select: none;
+}
+.nav-template-filter__input:checked + .template-filter__pill {
+  /* `--notation-ink` is scoped to `.notations-page` (the hero/bands); the
+     gallery renders as its sibling, so this uses the underlying global
+     token directly rather than an out-of-scope custom property. */
+  background: var(--nav-teal-950);
+  border-color: var(--nav-teal-950);
+  color: #fff;
+}
+.nav-template-filter__input:focus-visible + .template-filter__pill {
+  outline: 3px solid var(--nav-teal-600);
+  outline-offset: 2px;
+}
+
+.template-gallery__group { margin-bottom: 2rem; }
+.template-gallery__group > h3 {
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
+}
+.template-gallery__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1.25rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.template-card { min-width: 0; }
+.template-card__link {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius);
+  background: var(--nav-color-surface);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+.template-card__link:hover,
+.template-card__link:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: var(--nav-shadow);
+}
+/* The stylized cover: the model is opening a new Word document from a
+   template gallery, where every entry shows a first-page preview — this is
+   the lightweight stand-in until a rendered thumbnail lands. */
+.template-card__face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 6rem;
+  /* Same out-of-scope-token note as the checked filter pill above. */
+  background: var(--nav-teal-950);
+  color: var(--nav-teal-subtle);
+}
+.template-card__face-kind {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.template-card__body { padding: 1rem 1.1rem; }
+.template-card__body h3 { margin: 0.15rem 0 0.35rem; font-size: 1.05rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .template-card__link { transition: none; }
+}

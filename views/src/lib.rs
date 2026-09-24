@@ -11,6 +11,7 @@ pub mod brand_bundle;
 pub mod brand_presentation;
 pub mod components;
 pub mod harvard_outline;
+pub mod kind_catalog;
 pub mod locales;
 pub mod lsp;
 pub mod markdown;

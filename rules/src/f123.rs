@@ -115,6 +115,35 @@ pub(crate) fn is_outlined(kind: &str) -> bool {
     OUTLINED_KINDS.iter().any(|(name, _, _)| *name == kind)
 }
 
+/// A one-sentence, human-readable statement of the `N123` requirement
+/// [`OUTLINED_KINDS`] binds `kind` to, for a reader who is not parsing lint
+/// output — the `/notations` kind catalog's "Rules" column
+/// ([`crate::kind::Kind::structural_rules`]). `None` for a kind this rule
+/// does not bind, so that surface never invents a requirement `OUTLINED_KINDS`
+/// does not actually enforce.
+pub(crate) fn outline_requirement_note(kind: &str) -> Option<String> {
+    OUTLINED_KINDS
+        .iter()
+        .find(|(name, _, _)| *name == kind)
+        .map(|(_, scheme, title)| {
+            let scheme_clause = format!(
+                "Depth-1 sections must be numbered with {} (`{}`, `{}`, …)",
+                scheme.name(),
+                scheme.first_marker(),
+                match scheme {
+                    Scheme::Roman => "II.",
+                    Scheme::Arabic => "2.",
+                }
+            );
+            match title {
+                Title::Required => {
+                    format!("{scheme_clause}, and the body must open with its own `# ` title.")
+                }
+                Title::FromFrame => format!("{scheme_clause}."),
+            }
+        })
+}
+
 pub struct F123HarvardOutlineRequired;
 
 impl F123HarvardOutlineRequired {
@@ -602,6 +631,36 @@ mod tests {
 
     fn lint(kind: &str, body: &str) -> Vec<crate::Violation> {
         F123HarvardOutlineRequired.lint(&file(&tmpl(kind, body)))
+    }
+
+    #[test]
+    fn outline_requirement_note_describes_every_bound_kind() {
+        use super::outline_requirement_note;
+        let agreement = outline_requirement_note("agreement").expect("agreement is bound");
+        assert!(agreement.contains("Roman numerals"), "{agreement}");
+        assert!(agreement.contains("must open with its own"), "{agreement}");
+
+        let offboarding = outline_requirement_note("offboarding").expect("offboarding is bound");
+        assert!(offboarding.contains("Roman numerals"), "{offboarding}");
+        assert!(
+            !offboarding.contains("must open with its own"),
+            "the frame supplies offboarding's title: {offboarding}"
+        );
+
+        let pleading = outline_requirement_note("pleading").expect("pleading is bound");
+        assert!(pleading.contains("Arabic numerals"), "{pleading}");
+
+        let will = outline_requirement_note("will").expect("will is bound");
+        assert!(will.contains("Roman numerals"), "{will}");
+    }
+
+    #[test]
+    fn outline_requirement_note_is_none_for_an_unbound_kind() {
+        use super::outline_requirement_note;
+        assert_eq!(outline_requirement_note("letter"), None);
+        assert_eq!(outline_requirement_note("filing"), None);
+        assert_eq!(outline_requirement_note("trust"), None);
+        assert_eq!(outline_requirement_note("directive"), None);
     }
 
     /// A body for a kind that renders without chrome and so must name

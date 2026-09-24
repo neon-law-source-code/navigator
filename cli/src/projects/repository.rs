@@ -3215,29 +3215,28 @@ jobs:
         assert_eq!(errors.len(), 1, "{errors:?}");
     }
 
-    /// The retired `gate.yml`/`publish.yml` filenames are still accepted —
-    /// removing that transition without notice is what this warning exists
-    /// to prevent — but a repository carrying either one is told to rename it
-    /// before the next release refuses it outright.
+    /// This binary is past [`FINAL_RETIRED_WORKFLOW_RELEASE`], so a retired
+    /// `gate.yml` is an error, not a warning — the door `docs/gate.md`
+    /// promised this release would close.
     #[test]
-    fn a_retired_workflow_filename_is_accepted_with_a_warning() {
+    fn a_retired_workflow_filename_is_refused() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         let ci_contents = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
         std::fs::remove_file(root.path().join(WORKFLOW)).unwrap();
         std::fs::write(root.path().join(RETIRED_WORKFLOW), &ci_contents).unwrap();
 
-        assert_eq!(layout_findings(root.path()), Vec::<String>::new());
-        let warnings = layout_warnings(root.path());
+        let found = layout_findings(root.path());
         assert!(
-            warnings
+            found
                 .iter()
                 .any(|message| message.contains(RETIRED_WORKFLOW)
                     && message.contains(WORKFLOW)
                     && message.contains(FINAL_RETIRED_WORKFLOW_RELEASE)
-                    && message.contains("the release after that refuses it")),
-            "{warnings:?}"
+                    && message.contains("this release refuses it")),
+            "{found:?}"
         );
+        assert_eq!(layout_warnings(root.path()), Vec::<String>::new());
     }
 
     /// The bound `docs/gate.md` documents: once this binary's own release is
@@ -3280,22 +3279,23 @@ jobs:
     }
 
     #[test]
-    fn a_retired_cd_workflow_filename_is_accepted_with_a_warning() {
+    fn a_retired_cd_workflow_filename_is_refused() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         let cd_contents = std::fs::read_to_string(root.path().join(CD_WORKFLOW)).unwrap();
         std::fs::remove_file(root.path().join(CD_WORKFLOW)).unwrap();
         std::fs::write(root.path().join(RETIRED_CD_WORKFLOW), &cd_contents).unwrap();
 
-        assert_eq!(layout_findings(root.path()), Vec::<String>::new());
-        let warnings = layout_warnings(root.path());
+        let found = layout_findings(root.path());
         assert!(
-            warnings
+            found
                 .iter()
                 .any(|message| message.contains(RETIRED_CD_WORKFLOW)
-                    && message.contains(CD_WORKFLOW)),
-            "{warnings:?}"
+                    && message.contains(CD_WORKFLOW)
+                    && message.contains("this release refuses it")),
+            "{found:?}"
         );
+        assert_eq!(layout_warnings(root.path()), Vec::<String>::new());
     }
 
     /// A `.yaml` spelling of the CI gate reports the extension it actually

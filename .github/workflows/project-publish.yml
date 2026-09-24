@@ -62,7 +62,7 @@ jobs:
       # lags until a release publishes the action. No `version:` input here —
       # this workflow reads no manifest of its own, so it takes the default,
       # navigator.yaml's own version.
-      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.23
+      - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.24
       # Application discovery lives in the CLI (`cli/src/projects/repository.rs`)
       # now, not in this workflow. `dist_dir` is a plain path-suffix trim of
       # the manifest the CLI already resolved, not a second detection pass.
@@ -102,7 +102,7 @@ jobs:
       # name (`cli::devx::gcp::app_publisher::ensure_publisher_grant`). A host
       # carries no GCP project id, so no string transform of it can be trusted
       # to land on the bucket the grant actually names.
-      - uses: neon-law-source-code/navigator/.github/actions/application-publish@26.9.23
+      - uses: neon-law-source-code/navigator/.github/actions/application-publish@26.9.24
         if: steps.application.outputs.dist_dir != ''
         with:
           applications_bucket: ${{ vars.NAVIGATOR_APP_PUBLISHER_BUCKET }}

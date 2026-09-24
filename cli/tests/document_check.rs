@@ -187,3 +187,107 @@ async fn project_gate_check_reports_a_missing_object() {
         yaml
     );
 }
+
+/// LAW-62: `--check --ci` used to run the whole offline gate — content
+/// rules, YAML, seeds, layout, and, because a Project can declare one, the
+/// origin pass reading each application's built `dist/` — before ever
+/// reaching the live document check below. `documents` never builds, so a
+/// portal with no `dist/` failed every such run with a `Y009` finding even
+/// though the live records matched exactly. `--check` must run only the
+/// live document check.
+#[tokio::test(flavor = "multi_thread")]
+async fn project_gate_check_ci_skips_the_offline_gate_and_the_origin_pass() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = root_with_manifest(&host);
+    // A portal with no `dist/`: the origin pass would refuse this under
+    // `--ci` if `--check` still ran the offline gate first.
+    fs::create_dir_all(root.path().join("portal")).unwrap();
+    write(
+        root.path(),
+        "documents/.gitignore",
+        "*\n!*/\n!*.yaml\n!.gitignore\n",
+    );
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    let relative = "documents/pleadings/summons.pdf.yaml";
+    write(root.path(), relative, pointer(asset_id));
+
+    Mock::given(method("GET"))
+        .and(path("/actions/oidc"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "value": "github-oidc-token" })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/auth/ci/document-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            serde_json::json!({ "token": "test-token", "project_code": "acme" }),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .and(header("authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/api/projects/{project_id}/documents/integrity"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "assets": [{
+                "asset_id": asset_id,
+                "slug": "pleadings/summons.pdf",
+                "exists": true,
+                "size_bytes": 18,
+                "recorded_size": 18
+            }],
+            "integrations": []
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/api/projects/{project_id}/documents/revisions"
+        )))
+        .and(query_param("slug", "pleadings/summons.pdf"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "kind": "filing",
+            "revisions": [{
+                "version": 1,
+                "asset_id": asset_id,
+                "created_at": "2026-09-05T12:00:00Z",
+                "sha256": SHA,
+                "size_bytes": 18,
+                "filename": "summons.pdf",
+                "visibility": "internal",
+                "operative": true
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env(
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            format!("{host}/actions/oidc"),
+        )
+        .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "runner-token")
+        .args(["project", "gate", "--check", "--ci"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("documents:"))
+        .stdout(predicate::str::contains("Y009").not())
+        .stdout(predicate::str::contains("dist/").not());
+}

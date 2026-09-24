@@ -588,17 +588,19 @@ enum ProjectsCmd {
     /// blockquote spacing, S102 paragraph packing) are applied in place; what
     /// is left needs a human. Every Project repository's CI runs this command.
     ///
-    /// `--check` compares committed document pointers with the live record.
-    /// It rewrites a drifted pointer, writes a missing pointer, and writes a
-    /// missing `documents/.gitignore`. It never writes to the live site.
+    /// `--check` (LAW-62) runs only the live document check, comparing
+    /// committed pointers with the live record, and skips every offline pass
+    /// above entirely — a separate CI job asks it after `verify` has already
+    /// run those, including the origin pass, over the same tree.
     Gate {
         /// Never writes to the live site.
         ///
-        /// Rewrites a drifted pointer, writes a missing pointer, and writes a
-        /// missing `documents/.gitignore`. A missing or corrupt object, or a
-        /// live row with no slug, needs a person. Under `--ci` any of those
-        /// fixes fails the job and names the fix. Uploading or removing a
-        /// document is `navigator site sync`.
+        /// Checks only the live document record; every offline pass above is
+        /// skipped (LAW-62). Rewrites a drifted pointer, writes a missing
+        /// pointer, and writes a missing `documents/.gitignore`. A missing or
+        /// corrupt object, or a live row with no slug, needs a person. Under
+        /// `--ci` any of those fixes fails the job and names the fix.
+        /// Uploading or removing a document is `navigator site sync`.
         #[arg(long)]
         check: bool,
         /// Re-hash every stored object while `--check` is running.
@@ -606,11 +608,13 @@ enum ProjectsCmd {
         deep: bool,
         /// Hold the run to what CI can prove. Nothing is written, so a file the
         /// gate would have fixed is a finding rather than a silent rewrite of a
-        /// checkout about to be discarded; the origin pass (`Y009`) reads each
-        /// declared application's built `dist/` rather than skipping it; and on
-        /// a push to `main` the live-status door opens, exchanging GitHub
-        /// Actions OIDC at `POST /auth/ci/document-token` to check
-        /// `navigator.yaml` against the row the deployment holds. With
+        /// checkout about to be discarded. Without `--check`, the origin pass
+        /// (`Y009`) reads each declared application's built `dist/` rather than
+        /// skipping it — `--check` runs no offline pass at all, so it never
+        /// reaches the origin pass or needs a `dist/`. Either way, on a push to
+        /// `main` (or a pull request merge ref) the live-status door opens,
+        /// exchanging GitHub Actions OIDC at `POST /auth/ci/document-token` to
+        /// check `navigator.yaml` against the row the deployment holds. With
         /// `--check`, a pointer or gitignore the gate would write fails the
         /// job instead. The host is the one `navigator.yaml` declares — there
         /// is nothing to pass.
@@ -3287,8 +3291,13 @@ fn run_validate_scan(dir: &std::path::Path, errors_only: bool, ci: bool) -> Exit
 /// an Error-severity finding or, under `--ci`, a file it had to fix. With
 /// `--ci` it also asks the deployment whether `navigator.yaml` agrees with the
 /// live row, which is the one question an offline pass cannot answer.
-/// `--check` is the live document check; without it this function makes no
-/// document request.
+///
+/// `--check` (LAW-62) runs only the live document check, comparing committed
+/// pointers against what the deployment holds: it makes no offline pass over
+/// the tree at all. That offline pass — content rules, YAML, seeds, layout,
+/// and, once it has built, the origin pass reading `dist/` — is `verify`'s
+/// job; running it again here from a checkout that `documents` never builds
+/// is both redundant and, for the origin pass specifically, impossible.
 async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     let root = match gate_root() {
         Ok(root) => root,
@@ -3298,6 +3307,11 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
         }
     };
     let dir = root.as_path();
+
+    if check {
+        return run_document_check_gate(dir, ci, deep).await;
+    }
+
     let question_codes = rules::canonical_question_codes();
 
     // The markdown pass and the autofix are one walk: every safe-by-construction
@@ -3349,16 +3363,6 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
         }
     }
 
-    if check {
-        match projects::document_check::run(dir, ci, deep).await {
-            Ok(outcome) => append_document_check(ci, &outcome, &mut gate_errors),
-            Err(error) => {
-                eprintln!("navigator: {error:#}");
-                return crate::remote::exit_code_for(&error);
-            }
-        }
-    }
-
     // Close by naming every failing line again in one block, so the answer
     // to "which line do I fix" is the last thing on screen rather than
     // something to be found by scrolling.
@@ -3376,6 +3380,30 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     }
     // The one question this tree cannot answer about itself: whether the
     // manifest still agrees with the row the deployment holds.
+    projects::gate::live_status(dir).await
+}
+
+/// `--check` alone (LAW-62): the live document check, and nothing an offline
+/// pass could have already told the caller. `verify` runs the full offline
+/// gate — including this same live-row question, at the end of [`run_gate`]
+/// above — so this makes only the one request unique to `documents`:
+/// comparing committed pointers against what the deployment holds.
+async fn run_document_check_gate(dir: &std::path::Path, ci: bool, deep: bool) -> ExitCode {
+    let mut gate_errors = Vec::new();
+    match projects::document_check::run(dir, ci, deep).await {
+        Ok(outcome) => append_document_check(ci, &outcome, &mut gate_errors),
+        Err(error) => {
+            eprintln!("navigator: {error:#}");
+            return crate::remote::exit_code_for(&error);
+        }
+    }
+    print_error_recap(&gate_errors);
+    if !gate_errors.is_empty() {
+        return ExitCode::from(1);
+    }
+    if !ci || !is_project_repository(dir) {
+        return ExitCode::SUCCESS;
+    }
     projects::gate::live_status(dir).await
 }
 

@@ -1,22 +1,16 @@
-//! `navigator ops cut-release` — name today's UTC `YY.M.D` and write it as
-//! the workspace version, or fail if that name is not a new release.
+//! `navigator ops cut-release` names today's UTC `YY.M.D`, compares it with
+//! published tags, and writes the workspace version when the name is new.
 //!
-//! This is the programmatic cut: [`crate::release_default_tag`] answers
-//! "what would today be called?", and [`crate::release_version`] writes a
-//! name it is given. Those stay separate because `ops release version` still
-//! derives nothing — a clock-derived `--tag` is how `deploy.yml` once
-//! published names the source never wrote. This command is allowed to look
-//! at the clock because naming today *is* its job.
-//!
-//! [`crate::release_default_tag`] exits 0 when today is already covered —
-//! that is the ordinary probe. This command is the opposite: an operator
-//! (or a cron) that asked to cut, and cannot, must not read that as
-//! success.
+//! The clock is sampled once at the CLI boundary. The decision uses that date
+//! and the tag list; the writer uses the selected repository's root manifest.
+//! `--dry-run` prints the candidate without writing release files. A covered
+//! date or an operational error exits 2. `ops release-default-tag` is the
+//! read-only probe whose covered-date result exits 0.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 
 use crate::release_check::{fetch_tags, release_tags};
@@ -63,7 +57,13 @@ pub fn run(
         }
         Ok(Decision::Cut(tag)) => {
             println!("navigator: cut-release: today's UTC date names {tag}");
-            crate::release_version::run(manifest_path, &tag, no_commit)
+            match workspace_manifest(repo, manifest_path) {
+                Ok(manifest) => crate::release_version::run(&manifest, &tag, no_commit),
+                Err(error) => {
+                    eprintln!("navigator: cut-release: {error:#}");
+                    ExitCode::from(2)
+                }
+            }
         }
         Ok(Decision::AlreadyCovered { today, published }) => {
             match published {
@@ -83,6 +83,30 @@ pub fn run(
             ExitCode::from(2)
         }
     }
+}
+
+/// The tags, manifest, pins, lockfile, and commit belong to one worktree.
+fn workspace_manifest(repo: &Path, manifest_path: &Path) -> Result<PathBuf> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .context("resolve the release worktree")?;
+    if !output.status.success() {
+        bail!("could not resolve the release worktree");
+    }
+    let root = PathBuf::from(String::from_utf8(output.stdout)?.trim())
+        .canonicalize()
+        .context("resolve the release worktree root")?;
+    let manifest = root
+        .join(manifest_path)
+        .canonicalize()
+        .context("resolve the workspace manifest")?;
+    if manifest != root.join("Cargo.toml") {
+        bail!("--manifest-path must name the root Cargo.toml in --repo");
+    }
+    Ok(manifest)
 }
 
 fn decide_from_repo(now: DateTime<Utc>, repo: &Path, fetch: bool) -> Result<Decision> {

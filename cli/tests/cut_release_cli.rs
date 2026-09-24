@@ -3,10 +3,8 @@
 //! covers today. `--dry-run` is the rehearsal — stdout is the tag, nothing
 //! is written.
 //!
-//! These run against the real clock (there is no `--now` to inject one), so
-//! the cuttable case computes the expected tag the same way the binary does,
-//! and the covered case anchors on a fixed tag far enough in the future to
-//! stay past today for the life of this repository.
+//! Fixed-date ordering lives in the decision unit tests. CLI smoke tests
+//! accept either UTC date bracketing the subprocess, including midnight.
 
 use assert_cmd::Command;
 use chrono::{Datelike, Utc};
@@ -60,6 +58,7 @@ fn dry_run_prints_todays_date_when_nothing_is_released_yet() {
     let dir = tempfile::tempdir().expect("tempdir");
     init_repo(dir.path());
 
+    let before = today_tag();
     let output = navigator()
         .args([
             "ops",
@@ -73,10 +72,11 @@ fn dry_run_prints_todays_date_when_nothing_is_released_yet() {
         .expect("run navigator");
 
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        today_tag(),
-        "stdout must be exactly today's date and nothing else"
+    let after = today_tag();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        [before.as_str(), after.as_str()].contains(&stdout.trim()),
+        "{stdout}"
     );
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("--dry-run"),
@@ -107,11 +107,7 @@ fn fails_loudly_when_a_later_version_is_already_released() {
         .output()
         .expect("run navigator");
 
-    assert!(
-        !output.status.success(),
-        "already-covered must be a failure, got status {:?}",
-        output.status
-    );
+    assert_eq!(output.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&output.stdout).trim().is_empty(),
         "stdout must be empty when there is nothing to cut"
@@ -141,8 +137,7 @@ fn a_directory_with_no_git_history_fails_rather_than_guessing() {
 }
 
 /// `--no-commit` writes today's version into the manifest and leaves
-/// dependency pins alone. The tags come from `--repo`; the file comes
-/// from `--manifest-path`.
+/// dependency pins alone. The manifest belongs to the selected repository.
 #[test]
 fn writes_todays_version_without_committing() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -150,6 +145,7 @@ fn writes_todays_version_without_committing() {
     let manifest = dir.path().join("Cargo.toml");
     fs::write(&manifest, MANIFEST).expect("write manifest");
 
+    let before = today_tag();
     navigator()
         .args([
             "ops",
@@ -165,9 +161,11 @@ fn writes_todays_version_without_committing() {
         .success();
 
     let written = fs::read_to_string(&manifest).expect("read manifest");
-    let today = today_tag();
+    let after = today_tag();
     assert!(
-        written.contains(&format!("version = \"{today}\"")),
+        [before, after]
+            .iter()
+            .any(|tag| written.contains(&format!("version = \"{tag}\""))),
         "the workspace version must be today's UTC date, got: {written}"
     );
     assert!(
@@ -206,4 +204,146 @@ fn dry_run_does_not_write_the_manifest() {
         fs::read_to_string(&manifest).expect("read manifest"),
         MANIFEST
     );
+}
+
+fn seed_cut_repo(root: &std::path::Path) {
+    init_repo(root);
+    fs::write(root.join("Cargo.toml"), MANIFEST).expect("manifest");
+    assert!(git(root, &["add", "Cargo.toml"]).status.success());
+    assert!(git(root, &["commit", "--quiet", "-m", "manifest"])
+        .status
+        .success());
+    assert!(git(root, &["switch", "-c", "release-test"])
+        .status
+        .success());
+}
+
+#[test]
+fn repo_selects_the_manifest_and_commit_without_touching_the_callers_checkout() {
+    let target = tempfile::tempdir().expect("target");
+    let caller = tempfile::tempdir().expect("caller");
+    seed_cut_repo(target.path());
+    seed_cut_repo(caller.path());
+    let caller_head = git(caller.path(), &["rev-parse", "HEAD"]).stdout;
+    let target_head = git(target.path(), &["rev-parse", "HEAD"]).stdout;
+
+    let output = navigator()
+        .current_dir(caller.path())
+        .args(["ops", "cut-release", "--repo"])
+        .arg(target.path())
+        .arg("--no-fetch")
+        .output()
+        .expect("cut release");
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        git(caller.path(), &["rev-parse", "HEAD"]).stdout,
+        caller_head
+    );
+    assert_eq!(
+        fs::read_to_string(caller.path().join("Cargo.toml")).unwrap(),
+        MANIFEST
+    );
+    assert_ne!(
+        git(target.path(), &["rev-parse", "HEAD"]).stdout,
+        target_head
+    );
+    assert!(git(target.path(), &["status", "--porcelain"])
+        .stdout
+        .is_empty());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("git tag"));
+}
+
+#[test]
+fn a_manifest_in_another_checkout_is_refused_before_writing() {
+    let target = tempfile::tempdir().expect("target");
+    let other = tempfile::tempdir().expect("other");
+    seed_cut_repo(target.path());
+    seed_cut_repo(other.path());
+    navigator()
+        .current_dir(target.path())
+        .args([
+            "ops",
+            "cut-release",
+            "--no-fetch",
+            "--no-commit",
+            "--manifest-path",
+        ])
+        .arg(other.path().join("Cargo.toml"))
+        .assert()
+        .code(2);
+    assert_eq!(
+        fs::read_to_string(other.path().join("Cargo.toml")).unwrap(),
+        MANIFEST
+    );
+}
+
+#[test]
+fn automatic_commit_refuses_staged_changes_before_writing() {
+    let target = tempfile::tempdir().expect("target");
+    seed_cut_repo(target.path());
+    fs::write(target.path().join("unrelated.txt"), "unrelated work").unwrap();
+    assert!(git(target.path(), &["add", "unrelated.txt"])
+        .status
+        .success());
+    let head = git(target.path(), &["rev-parse", "HEAD"]).stdout;
+    navigator()
+        .current_dir(target.path())
+        .args(["ops", "cut-release", "--no-fetch"])
+        .assert()
+        .code(2);
+    assert_eq!(git(target.path(), &["rev-parse", "HEAD"]).stdout, head);
+    assert_eq!(
+        fs::read_to_string(target.path().join("Cargo.toml")).unwrap(),
+        MANIFEST
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&git(target.path(), &["diff", "--cached", "--name-only"]).stdout)
+            .trim(),
+        "unrelated.txt"
+    );
+}
+
+#[test]
+fn automatic_commit_refuses_main_and_detached_head_without_writes() {
+    for checkout in ["main", "--detach"] {
+        let target = tempfile::tempdir().expect("target");
+        seed_cut_repo(target.path());
+        assert!(git(target.path(), &["switch", checkout]).status.success());
+        navigator()
+            .current_dir(target.path())
+            .args(["ops", "cut-release", "--no-fetch"])
+            .assert()
+            .code(2);
+        assert_eq!(
+            fs::read_to_string(target.path().join("Cargo.toml")).unwrap(),
+            MANIFEST
+        );
+        assert!(git(target.path(), &["status", "--porcelain"])
+            .stdout
+            .is_empty());
+    }
+}
+
+#[test]
+fn fetch_failure_and_covered_date_preserve_release_files() {
+    for covered in [false, true] {
+        let target = tempfile::tempdir().expect("target");
+        seed_cut_repo(target.path());
+        let mut command = navigator();
+        command
+            .current_dir(target.path())
+            .args(["ops", "cut-release"]);
+        if covered {
+            assert!(git(target.path(), &["tag", "99.12.31"]).status.success());
+            command.arg("--no-fetch");
+        }
+        command.assert().code(2);
+        assert_eq!(
+            fs::read_to_string(target.path().join("Cargo.toml")).unwrap(),
+            MANIFEST
+        );
+        assert!(git(target.path(), &["status", "--porcelain"])
+            .stdout
+            .is_empty());
+    }
 }

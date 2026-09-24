@@ -40,9 +40,11 @@
 //! are content-free by construction, carrying identifiers and enums only, which
 //! is what makes exporting all of them safe. So the gate is scoped to them.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
+
+use serde::Deserialize;
 
 /// The module holding the agent-authorization records.
 const SOURCE: &str = "portal/src/a2a.rs";
@@ -427,4 +429,142 @@ fn metrics_aggregate_after_redaction_before_export() {
                 .expect("metrics must declare exporters"),
         "metrics aggregation must be configured before export"
     );
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SyntheticMetricPoint {
+    resource: BTreeSet<String>,
+    labels: BTreeMap<String, String>,
+    value: u64,
+}
+
+fn aggregate_redacted_metric_points(
+    mut points: Vec<SyntheticMetricPoint>,
+    redacted_labels: &[&str],
+) -> Vec<SyntheticMetricPoint> {
+    for point in &mut points {
+        if let Some(instance) = point.labels.remove("service_instance_id") {
+            point
+                .resource
+                .insert(format!("service.instance.id={instance}"));
+        }
+        for label in redacted_labels {
+            point.labels.remove(*label);
+        }
+        point.labels.remove("redaction_redacted_keys");
+    }
+
+    let mut grouped: BTreeMap<(BTreeSet<String>, BTreeMap<String, String>), u64> = BTreeMap::new();
+    for point in points {
+        let key = (point.resource, point.labels);
+        *grouped.entry(key).or_default() += point.value;
+    }
+    grouped
+        .into_iter()
+        .map(|((resource, labels), value)| SyntheticMetricPoint {
+            resource,
+            labels,
+            value,
+        })
+        .collect()
+}
+
+fn collector_config(collector: &str) -> serde_json::Value {
+    serde_yaml::Deserializer::from_str(collector)
+        .map(|document| serde_yaml::Value::deserialize(document).expect("YAML parses"))
+        .find(|document: &serde_yaml::Value| {
+            document.get("kind").and_then(serde_yaml::Value::as_str) == Some("ConfigMap")
+                && document
+                    .get("metadata")
+                    .and_then(|metadata| metadata.get("name"))
+                    .and_then(serde_yaml::Value::as_str)
+                    == Some("otel-collector-config")
+        })
+        .and_then(|document| {
+            document
+                .get("data")
+                .and_then(|data| data.get("config.yaml"))
+                .and_then(serde_yaml::Value::as_str)
+                .and_then(|config| serde_yaml::from_str::<serde_yaml::Value>(config).ok())
+        })
+        .and_then(|config| serde_json::to_value(config).ok())
+        .expect("collector config parses")
+}
+
+#[test]
+fn redaction_aggregates_colliding_points_and_preserves_instance_resource_identity() {
+    let root = workspace_root();
+    let source = fs::read_to_string(root.join(COLLECTOR)).expect("read the collector config");
+    let config = collector_config(&source);
+    let processors = config
+        .pointer("/service/pipelines/metrics/processors")
+        .and_then(serde_json::Value::as_array)
+        .expect("metrics pipeline declares processors");
+    let processors: Vec<&str> = processors
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    let identity = processors
+        .iter()
+        .position(|processor| *processor == "transform/metric_identity")
+        .expect("metrics moves service_instance_id into resource identity");
+    let redaction = processors
+        .iter()
+        .position(|processor| *processor == "redaction")
+        .expect("metrics pipeline redacts");
+    let drop_summary = processors
+        .iter()
+        .position(|processor| *processor == "transform/drop_redaction_keys")
+        .expect("metrics drops redaction_redacted_keys");
+    let aggregation = processors
+        .iter()
+        .position(|processor| *processor == "metricstransform")
+        .expect("metrics pipeline aggregates");
+    let batch = processors
+        .iter()
+        .position(|processor| *processor == "batch")
+        .expect("metrics pipeline batches");
+    assert!(identity < redaction && redaction < drop_summary && drop_summary < aggregation);
+    assert!(aggregation < batch);
+
+    let label_set = config
+        .pointer("/processors/metricstransform/transforms/0/operations/0/label_set")
+        .and_then(serde_json::Value::as_array)
+        .expect("metricstransform declares an aggregation label set");
+    let label_set: BTreeSet<&str> = label_set
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert!(!label_set.contains("service_instance_id"));
+    assert!(!label_set.contains("redaction_redacted_keys"));
+    assert!(label_set.contains("service.instance.id"));
+
+    let points = vec![
+        SyntheticMetricPoint {
+            resource: BTreeSet::new(),
+            labels: BTreeMap::from([
+                ("service_instance_id".into(), "otel-a".into()),
+                ("country".into(), "US".into()),
+                ("redaction_redacted_keys".into(), "country".into()),
+            ]),
+            value: 2,
+        },
+        SyntheticMetricPoint {
+            resource: BTreeSet::new(),
+            labels: BTreeMap::from([
+                ("service_instance_id".into(), "otel-a".into()),
+                ("country".into(), "CA".into()),
+                ("redaction_redacted_keys".into(), "country".into()),
+            ]),
+            value: 3,
+        },
+    ];
+    let output = aggregate_redacted_metric_points(points, &["country"]);
+    assert_eq!(output.len(), 1, "redaction collisions become one series");
+    assert_eq!(output[0].value, 5, "redaction preserves the total value");
+    assert_eq!(
+        output[0].resource,
+        BTreeSet::from(["service.instance.id=otel-a".into()])
+    );
+    assert!(output[0].labels.is_empty());
 }

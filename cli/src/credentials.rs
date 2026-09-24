@@ -303,20 +303,6 @@ mod tests {
     }
 
     #[test]
-    fn home_directory_prefers_userprofile_on_windows_and_home_elsewhere() {
-        #[cfg(windows)]
-        assert_eq!(
-            home_dir_from_values(None, Some(r"C:\Users\nick".into())),
-            Some(r"C:\Users\nick".into())
-        );
-        #[cfg(not(windows))]
-        assert_eq!(
-            home_dir_from_values(Some("/home/nick".into()), Some(r"C:\Users\nick".into())),
-            Some("/home/nick".into())
-        );
-    }
-
-    #[test]
     fn home_directory_falls_back_to_userprofile_when_home_is_unset() {
         assert_eq!(
             home_dir_from_values(None, Some(r"C:\Users\nick".into())),

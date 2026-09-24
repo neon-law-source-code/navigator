@@ -70,6 +70,57 @@ fn auth_whoami_with_an_unknown_host_reports_not_logged_in() {
 }
 
 #[test]
+fn auth_whoami_without_home_uses_userprofile_for_the_credentials_path() {
+    let userprofile = tempfile::tempdir().unwrap();
+    let expected_path = userprofile.path().join(".navigator.json");
+    let output = AssertCommand::cargo_bin("navigator")
+        .unwrap()
+        .args(["site", "whoami", "--host", "https://live.example.com"])
+        .env_remove("NAVIGATOR_CREDENTIALS_FILE")
+        .env_remove("NAVIGATOR_CONFIG_DIR")
+        .env_remove("HOME")
+        .env("USERPROFILE", userprofile.path())
+        .output()
+        .expect("run navigator site whoami");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!("checked {}", expected_path.display())),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn auth_whoami_still_uses_the_explicit_credentials_file_override() {
+    let override_dir = tempfile::tempdir().unwrap();
+    let fallback_dir = tempfile::tempdir().unwrap();
+    let override_path = override_dir.path().join("override.json");
+    std::fs::write(
+        &override_path,
+        r#"{"hosts":{"https://live.example.com":{"token":"test-token","person_email":"test@example.com","role":"lawyer","expires_at":4102444800}}}"#,
+    )
+    .unwrap();
+
+    let output = AssertCommand::cargo_bin("navigator")
+        .unwrap()
+        .args(["site", "whoami", "--host", "https://live.example.com"])
+        .env("NAVIGATOR_CREDENTIALS_FILE", &override_path)
+        .env("NAVIGATOR_CONFIG_DIR", fallback_dir.path())
+        .env("HOME", fallback_dir.path())
+        .env("USERPROFILE", fallback_dir.path())
+        .output()
+        .expect("run navigator site whoami");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("test@example.com"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
 fn auth_whoami_reports_a_corrupt_credential_file() {
     let dir = tempfile::tempdir().unwrap();
     let creds = dir.path().join("navigator.json");

@@ -34,8 +34,8 @@
 //! [`crate::assets::ingest_content`], which writes an `asset` row with
 //! the document-metadata fields left unset.
 
-use std::path::Path;
 use std::sync::Arc;
+use std::{fmt, path::Path};
 
 use chrono::Utc;
 use cloud::{StorageError, StorageService};
@@ -78,12 +78,44 @@ pub fn document_upload_size_message(actual: usize) -> String {
 /// The repository pointer path must retain the uploaded filename's extension.
 /// A slug without one cannot be represented as `documents/<slug>.yml` while
 /// also satisfying the Project gate's pointer rule.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum DocumentSlugError {
-    #[error(
-        "document slug `{slug}` must retain the filename extension from `{filename}` so it can be represented as a repository pointer"
-    )]
     MissingOrMismatchedExtension { filename: String, slug: String },
+}
+
+impl fmt::Display for DocumentSlugError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingOrMismatchedExtension { filename, slug } => {
+                if let Some(suggested_slug) = suggested_slug(filename, slug) {
+                    write!(
+                        formatter,
+                        "document slug `{slug}` must carry the source extension from `{filename}`; use `{suggested_slug}` so it can be represented as a repository pointer"
+                    )
+                } else {
+                    write!(
+                        formatter,
+                        "document slug `{slug}` must carry the source extension from `{filename}` so it can be represented as a repository pointer"
+                    )
+                }
+            }
+        }
+    }
+}
+
+impl std::error::Error for DocumentSlugError {}
+
+fn suggested_slug(filename: &str, slug: &str) -> Option<String> {
+    let extension = Path::new(filename)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .filter(|extension| !extension.is_empty())?;
+    let stem = slug
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .filter(|stem| !stem.is_empty() && !stem.ends_with('/') && !stem.ends_with('\\'))
+        .unwrap_or(slug);
+    Some(format!("{stem}.{extension}"))
 }
 
 /// Reject a document identity that cannot be represented by a repository
@@ -578,6 +610,10 @@ mod tests {
         assert!(validate_document_slug("complaint.PDF", "dkt-001-complaint.pdf").is_ok());
 
         let error = validate_document_slug("complaint.pdf", "dkt-001-complaint").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "document slug `dkt-001-complaint` must carry the source extension from `complaint.pdf`; use `dkt-001-complaint.pdf` so it can be represented as a repository pointer"
+        );
         assert!(matches!(
             error,
             DocumentSlugError::MissingOrMismatchedExtension { .. }

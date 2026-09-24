@@ -9,6 +9,7 @@ use serde::Deserialize;
 mod assets;
 mod authorities;
 mod credentials;
+mod cut_release;
 mod devx;
 mod document_read;
 mod document_sync;
@@ -1267,6 +1268,33 @@ enum OpsCmd {
         #[command(subcommand)]
         action: AssetsAction,
     },
+    /// Name today's UTC `YY.M.D` and write it as the workspace version, or
+    /// fail if that name is not a new release.
+    ///
+    /// This is the programmatic cut: it looks at the clock, compares today's
+    /// date against every published tag, and either hands that name to the
+    /// same write `ops release version --tag` performs or exits 2. A version
+    /// at or past today is already published — that is a failure here, not
+    /// the quiet "nothing to do" `ops release-default-tag` reports. Hotfixes
+    /// and other names still go through `ops release version --tag`.
+    CutRelease {
+        /// Git checkout whose tags are the record of what has been released.
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// The workspace manifest to rewrite.
+        #[arg(long, default_value = "Cargo.toml")]
+        manifest_path: PathBuf,
+        /// Compare against the tags already in this clone instead of fetching
+        /// from `origin` first. Offline, and only as current as the clone.
+        #[arg(long)]
+        no_fetch: bool,
+        /// Write the manifest but create no commit.
+        #[arg(long)]
+        no_commit: bool,
+        /// Print today's tag and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// The version the `cut-release` skill should hand to `--tag` on
     /// `ops release version` when the operator names none: today's UTC date
     /// under the `YY.M.D` convention, unless a release already exists that
@@ -1284,7 +1312,8 @@ enum OpsCmd {
     /// `--tag` and still derives nothing — see its own doc for why. This
     /// command only answers the narrower question of what today's date would
     /// even be called and whether it is worth asking for; naming the release
-    /// is still `--tag`'s job.
+    /// is still `--tag`'s job. `ops cut-release` is the command that acts on
+    /// that answer.
     ReleaseDefaultTag {
         /// Git checkout whose tags are the record of what has been released.
         #[arg(long, default_value = ".")]
@@ -2272,6 +2301,7 @@ fn main() -> ExitCode {
         Command::Ops(
             action @ (OpsCmd::Lsp { .. }
             | OpsCmd::Assets { .. }
+            | OpsCmd::CutRelease { .. }
             | OpsCmd::ReleaseDefaultTag { .. }
             | OpsCmd::Release { .. }
             | OpsCmd::Notices { .. }
@@ -2289,6 +2319,20 @@ fn main() -> ExitCode {
                 }
             },
             OpsCmd::Notices { out, check } => notices::run(&out, check),
+            OpsCmd::CutRelease {
+                repo,
+                manifest_path,
+                no_fetch,
+                no_commit,
+                dry_run,
+            } => cut_release::run(
+                chrono::Utc::now(),
+                &repo,
+                !no_fetch,
+                &manifest_path,
+                no_commit,
+                dry_run,
+            ),
             OpsCmd::ReleaseDefaultTag { repo, no_fetch } => {
                 release_default_tag::run(chrono::Utc::now(), &repo, !no_fetch)
             }

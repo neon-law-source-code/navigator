@@ -502,12 +502,16 @@ runtime environment variable `NAVIGATOR_RELEASE_TAG`.
 is where it is written down — but a version that departs from it publishes just as well, provided it is newer than the
 last one. What the date really bought was uniqueness, and comparing against the tags buys that directly.
 
-**`ops release-default-tag` computes today's name, so nobody has to by hand.** When the operator running `cut-release`
-names no version, this command prints today's `YY.M.D` on stdout — or nothing, when a version at or past it is already
-published, which is not an error. It sits upstream of `release-version` rather than inside it: `release-version` still
-requires an explicit `--tag` and still derives nothing, for the reason above the table — a clock-derived name is a fact
-about when a command ran, not an operator decision. This command only supplies the candidate a human would otherwise
-have worked out by counting days since the last release; naming the release is still `--tag`'s job.
+**`ops cut-release` names today and writes the bump, or fails.** It looks at the UTC clock, compares today's `YY.M.D`
+against every published tag, and either hands that name to the same write `ops release version --tag` performs or fails
+with exit status 2. A version at or past today is already published — that is a failure, not a quiet no-op. `--dry-run`
+prints the tag and writes nothing. Hotfixes and other names still go through `ops release version --tag`.
+
+**`ops release-default-tag` is the quiet probe of the same question.** It prints today's `YY.M.D` on stdout — or
+nothing, when a version at or past it is already published, which is not an error. It sits upstream of `release-version`
+rather than inside it: `release-version` still requires an explicit `--tag` and still derives nothing, for the reason
+above the table — a clock-derived name is a fact about when a command ran, not an operator decision. A caller that needs
+"nothing to cut today" to be success uses this command; a caller that asked to cut uses `ops cut-release`.
 
 Three shape facts still hold, because they are semver's:
 

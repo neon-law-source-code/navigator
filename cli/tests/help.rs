@@ -589,6 +589,18 @@ fn site_login_help_exposes_headless_mode() {
 }
 
 #[test]
+fn ops_cut_release_help_exposes_the_rehearsal_and_write_flags() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args(["ops", "cut-release", "--help"])
+        .assert()
+        .success()
+        .stdout(str::contains("--dry-run"))
+        .stdout(str::contains("--no-commit"))
+        .stdout(str::contains("--no-fetch"));
+}
+
+#[test]
 fn ops_help_lists_operator_members() {
     let output = help(&["ops", "--help"]);
 
@@ -598,6 +610,7 @@ fn ops_help_lists_operator_members() {
             "application",
             "assets",
             "brand-readiness",
+            "cut-release",
             "deployments",
             "dns",
             "doctor",

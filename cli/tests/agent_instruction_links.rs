@@ -279,18 +279,38 @@ fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
     }
 }
 
+/// Deliberate per-skill line-count ceilings, not measurements: raising one is
+/// a conscious choice made when the catalog owner decides that skill should
+/// grow. Add an entry here to put a new skill under the same policy instead
+/// of writing another bespoke size-gate test.
+const SKILL_DOCUMENTATION_SIZE_POLICIES: &[(&str, usize)] = &[("random-refactor", 81)];
+
+/// Every skill named in [`SKILL_DOCUMENTATION_SIZE_POLICIES`] must stay at or
+/// under its ceiling. One shared test enforces every policy so the check
+/// does not need to be re-implemented per skill.
 #[test]
-fn random_refactor_skill_respects_documentation_size_policy() {
-    // This is a deliberate policy ceiling, not a measurement; raising it must
-    // be a conscious choice when the catalog owner decides the skill should grow.
-    const MAX_LINES: usize = 81;
+fn skills_respect_documentation_size_policy() {
     let root = repo_root();
-    let skill_path = root.join(CANONICAL_SKILLS).join("random-refactor/SKILL.md");
-    let skill = fs::read_to_string(&skill_path).expect("read canonical random-refactor skill");
-    let lines = skill.lines().count();
+    let violations: Vec<String> = SKILL_DOCUMENTATION_SIZE_POLICIES
+        .iter()
+        .filter_map(|(name, max_lines)| {
+            let relative_path = format!("{CANONICAL_SKILLS}/{name}/SKILL.md");
+            let skill = fs::read_to_string(root.join(&relative_path))
+                .unwrap_or_else(|error| panic!("read canonical {name} skill: {error}"));
+            let lines = skill.lines().count();
+            (lines > *max_lines).then(|| {
+                format!(
+                    "{relative_path} has {lines} lines; allowed maximum is {max_lines}. \
+                     Trim the file or deliberately raise the budget."
+                )
+            })
+        })
+        .collect();
+
     assert!(
-        lines <= MAX_LINES,
-        "random-refactor skill documentation size policy: .agents/skills/random-refactor/SKILL.md has {lines} lines; allowed maximum is {MAX_LINES}. Trim the file or deliberately raise the budget."
+        violations.is_empty(),
+        "documentation size policy violated:\n  {}",
+        violations.join("\n  ")
     );
 }
 

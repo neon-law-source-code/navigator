@@ -45,10 +45,12 @@ cargo run -p cli -- dev browser-e2e
 
 ### Testing
 
-Run before pushing to remote.
+Run the focused test while writing the change. Before pushing a pull request, run `navigator validate`, or the CLI crate
+when `navigator` is not on `PATH`. Do not re-run the workspace suite at that step. CI runs it.
 
 ```bash
-cargo nextest run --workspace && cargo test -p features
+navigator validate
+cargo run -p cli --quiet -- validate
 ```
 
 ### Local K8 Development
@@ -86,7 +88,9 @@ A Cursor Cloud Agent boots from [`.cursor/environment.json`](.cursor/environment
 ```bash
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 export RUSTFLAGS="-C link-arg=-fuse-ld=lld -C strip=symbols"
-cargo nextest run --workspace --test-threads 4 && cargo test -p features
+navigator validate
 ```
+
+When `navigator` is not on `PATH`, run the same check through the CLI crate: `cargo run -p cli --quiet -- validate`.
 
 Start SurrealDB and set `NAVIGATOR_SURREAL_*` (root/root) to include the server-mode lane; otherwise it self-skips.

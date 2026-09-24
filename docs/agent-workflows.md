@@ -56,53 +56,30 @@ When a dirty tree is ready to land:
 
 1. Survey `git status --porcelain`, `git diff`, `git diff --staged`, and untracked files.
 2. Group paths by concern: one blast radius per commit.
-3. Run the matching gate. Markdown changes require the workspace pass:
+3. Run the content gate. Do not re-run the workspace tests, the `features` harness, or coverage here. Those ran while
+   the change was written, and CI runs them again. Use `navigator validate` when the binary is on `PATH`, and the CLI
+   crate otherwise:
 
    ```bash
-   cargo run -p cli --quiet -- project gate
+   navigator validate
    ```
-
-   The client-data gate rides along with the workspace test suite in step 4; there is no separate command.
-
-4. If the PR changes Rust files or build/runtime configuration, run the full Rust gate:
 
    ```bash
-   cargo fmt
-   cargo clippy --workspace --all-targets -- -D warnings
-   cargo nextest run --workspace
-   cargo test -p features
+   cargo run -p cli --quiet -- validate
    ```
 
-   Verify coverage locally; green tests do not prove the 91.0% workspace line floor. Match CI's coverage topology: Each
-   test opens its own embedded store; tests requiring KIND, Rauthy, Garage, Restate, or a browser skip and contribute no
-   coverage:
-
-   ```bash
-   cargo llvm-cov --workspace --fail-under-lines 91.0 \
-     --ignore-filename-regex '(cli/src/devx/(browser_e2e|chrome|e2e|garage|orchestrate|staging)|features/src/webdriver)\.rs$'
-   ```
-
-   This local number reads below CI's real number, so treat it as a differential sign check, not proof against the
-   floor: it skips doctests, which CI covers with a separate `cargo test --workspace --doc` step, and it excludes the
-   `features` crate's cucumber suites, which CI runs with `cargo test -p features` and folds into the same coverage
-   counters.
-
-   The floor covers the whole workspace, not the diff, and may pass uncovered additions. Give each handler, route, and
-   branch a non-gated router test against an embedded store; use browser e2e only as live proof. Explain genuinely
-   unreachable lines in the PR. See [`test-database.md`](test-database.md).
-
-5. Stage explicit paths for each group, not `git add -A`.
-6. Use Conventional Commit subjects; use the PR title as the squash-merge commit title.
-7. For public or portal UI, capture the running app with headless Chrome and embed the artifact from
+4. Stage explicit paths for each group, not `git add -A`.
+5. Use Conventional Commit subjects; use the PR title as the squash-merge commit title.
+6. For public or portal UI, capture the running app with headless Chrome and embed the artifact from
    `/tmp/navigator-screenshots/` in the PR description through `pr-image-upload`; never commit it, self-host it, or use
    a raw `/tmp` URL. Rendering tests are not live proof. For authenticated pages, follow
    [`open-admin-server`](../.agents/skills/open-admin-server/SKILL.md): grant lawyer against `web`'s database and
    authenticate through Rauthy, never a hand-written cookie.
-8. Push and open a PR against `main`, ready for review, not as a draft, linking its Linear issue with a bare
+7. Push and open a PR against `main`, ready for review, not as a draft, linking its Linear issue with a bare
    `Closes ENG-NN` trailer in the body — see [Linking a PR to its Linear issue](#linking-a-pr-to-its-linear-issue).
    Auto-merge is armed only on a non-draft open; a draft holds the PR for a human. CI enables auto-merge on a ready open
    — do not run `gh pr merge` yourself; let auto-merge land it.
-9. Clean up task-owned local resources before ending the session. See [Resource cleanup](#resource-cleanup).
+8. Clean up task-owned local resources before ending the session. See [Resource cleanup](#resource-cleanup).
 
 If the work should become multiple PRs, decide that before committing. Use the Engineering Council for real sequencing
 questions.
@@ -279,8 +256,8 @@ Implement only the defined fix:
   to that path.
 - Restart and click through UI or behavior changes. Embed requested captures through GitHub user attachments, never a
   raw `/tmp` path.
-- Run the workspace gate. Coverage findings require the CI-equivalent `cargo llvm-cov` pass and a non-gated router test,
-  not harness-gated e2e alone; see [Create a PR](#create-a-pr).
+- Run the focused test for the fix. Coverage findings require a non-gated router test, not harness-gated e2e alone.
+  CI measures the 91.0% line floor. Opening a PR does not re-run that suite; see [Create a PR](#create-a-pr).
 - Commit on the branch as a Conventional Commit referencing the finding, and push so CI re-runs:
 
 ```bash
@@ -344,9 +321,9 @@ Treat a failed Action as a narrow task and start from its first actionable failu
    formatting, or unrelated warnings.
 5. When the failure exposes a behavior gap, add the non-gated covering test that would have caught it. Do not add a test
    merely to restate an infrastructure outage.
-6. Re-run the failed command and the directly affected gate. For a coverage failure, run the `cargo llvm-cov` pass from
-   [Create a PR](#create-a-pr) — CI exports no lcov, so the per-file table it prints is the diagnostic — and read it for
-   the file that regressed.
+6. Re-run the failed command and the directly affected gate. For a coverage failure, run `cargo llvm-cov --workspace
+   --fail-under-lines 91.0` — CI exports no lcov, so the per-file table it prints is the diagnostic — and read it for
+   the file that regressed. Opening a new PR does not re-run that suite.
 7. Commit, push, and report the root cause, minimum fix, local proof, and any unrelated failing checks left untouched.
 
 `.github/workflows/ci.yml` owns PR commands; [`gitops.md`](gitops.md) maps release and integration workflows. Propose,

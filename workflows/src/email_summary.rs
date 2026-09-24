@@ -93,7 +93,9 @@ pub const SUMMARY_PROMPT_VERSION: &str = "email-summary-v1";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NormalizedEmail {
     pub body: String,
-    pub input_digest: String,
+    /// SHA-256 of the archived bytes alone. This is not the receipt identity;
+    /// compare archives against a receipt with [`scoped_email_digest`].
+    pub content_digest: String,
     pub original_chars: usize,
     pub truncated: bool,
     pub attachment_count: usize,
@@ -152,7 +154,7 @@ pub fn normalize_email(raw: &[u8], max_chars: usize) -> Result<NormalizedEmail, 
     let body = body.chars().take(max_chars).collect::<String>();
     Ok(NormalizedEmail {
         body: body.trim().to_string(),
-        input_digest: digest_hex(raw),
+        content_digest: digest_hex(raw),
         original_chars,
         truncated,
         attachment_count,
@@ -198,8 +200,30 @@ pub fn build_prompt(input: &NormalizedEmail, run: &EmailSummaryRunConfig) -> Str
     )
 }
 
+/// The receipt identity for one summary-lane message: SHA-256 over
+/// `deployment NUL receiving_mailbox NUL raw`. Intake stores it as the
+/// receipt's `raw_digest` and the run configuration's `input_digest`; the
+/// worker recomputes it from the archived bytes and the receipt's own scope.
+///
+/// `receiving_mailbox` must already be normalized (trimmed, lowercase) exactly
+/// as the receipt stores it. Changing this framing re-keys every receipt,
+/// archive, and letter, so a golden-vector test pins it.
+#[must_use]
+pub fn scoped_email_digest(deployment: &str, receiving_mailbox: &str, raw: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(deployment.as_bytes());
+    hasher.update([0]);
+    hasher.update(receiving_mailbox.as_bytes());
+    hasher.update([0]);
+    hasher.update(raw);
+    hex(&hasher.finalize())
+}
+
 fn digest_hex(raw: &[u8]) -> String {
-    let digest = Sha256::digest(raw);
+    hex(&Sha256::digest(raw))
+}
+
+fn hex(digest: &[u8]) -> String {
     let mut output = String::with_capacity(digest.len() * 2);
     for byte in digest {
         let _ = write!(output, "{byte:02x}");
@@ -451,10 +475,61 @@ mod tests {
     }
 
     #[test]
+    fn scoped_digest_matches_the_pinned_receipt_framing() {
+        // Independently computed: SHA-256("staging\0intake@parse.example.com\0" + raw).
+        // A change here re-keys every existing receipt, archive, and letter.
+        assert_eq!(
+            scoped_email_digest(
+                "staging",
+                "intake@parse.example.com",
+                b"From: a@example.com\r\n\r\nbody"
+            ),
+            "71f55e8a7f7d627b68ad2192978e826610c1294f6b37e990c679e2a268578bcc"
+        );
+    }
+
+    #[test]
+    fn scoped_digest_changes_with_deployment_mailbox_and_raw_bytes() {
+        let raw = b"From: a@example.com\r\n\r\nbody".as_slice();
+        let base = scoped_email_digest("staging", "intake@parse.example.com", raw);
+        assert_ne!(
+            base,
+            scoped_email_digest("production", "intake@parse.example.com", raw)
+        );
+        assert_ne!(
+            base,
+            scoped_email_digest("staging", "other@parse.example.com", raw)
+        );
+        assert_ne!(
+            base,
+            scoped_email_digest(
+                "staging",
+                "intake@parse.example.com",
+                b"From: a@example.com\r\n\r\nbody!"
+            )
+        );
+        // The NUL framing keeps a scope boundary from sliding between fields.
+        assert_ne!(
+            scoped_email_digest("ab", "c", raw),
+            scoped_email_digest("a", "bc", raw)
+        );
+    }
+
+    #[test]
+    fn content_digest_is_not_the_scoped_receipt_digest() {
+        let raw = b"From: a@example.com\r\n\r\nbody";
+        let normalized = normalize_email(raw, 1_000).expect("valid MIME");
+        assert_ne!(
+            normalized.content_digest,
+            scoped_email_digest("staging", "intake@parse.example.com", raw)
+        );
+    }
+
+    #[test]
     fn prompt_preserves_run_identity_and_marks_email_as_untrusted() {
         let input = NormalizedEmail {
             body: "Please review this request".to_string(),
-            input_digest: "a".repeat(64),
+            content_digest: "b".repeat(64),
             original_chars: 27,
             truncated: false,
             attachment_count: 0,
@@ -464,13 +539,14 @@ mod tests {
             "claude-test",
             "global",
             "summary-v9",
-            input.input_digest.clone(),
+            "a".repeat(64),
         )
         .expect("valid config");
 
         let prompt = build_prompt(&input, &config);
         assert!(prompt.contains("Prompt version: summary-v9"));
-        assert!(prompt.contains(&format!("Input digest: {}", input.input_digest)));
+        assert!(prompt.contains(&format!("Input digest: {}", config.input_digest)));
+        assert!(!prompt.contains(&input.content_digest));
         assert!(prompt.contains("<email-body>\nPlease review this request\n</email-body>"));
         assert!(prompt.contains("untrusted email text"));
     }

@@ -14939,6 +14939,30 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     assert_eq!(store::letters::list_all(&surreal).await.unwrap().len(), 1);
     assert_eq!(store::email_receipts::count(&surreal).await.unwrap(), 1);
+
+    // The worker verifies the archive by recomputing the scoped digest from
+    // the archived bytes and the receipt's own scope. Intake must have stored
+    // and submitted exactly that value, under one workflow key for both sends.
+    let sends = restate.received_requests().await.unwrap();
+    assert_eq!(sends.len(), 2);
+    assert_eq!(sends[0].url.path(), sends[1].url.path());
+    let request: workflows::EmailSummaryRequest = serde_json::from_slice(&sends[0].body).unwrap();
+    let retried: workflows::EmailSummaryRequest = serde_json::from_slice(&sends[1].body).unwrap();
+    assert_eq!(request, retried);
+    let receipt = store::email_receipts::find_by_id(&surreal, request.receipt_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let archived = state.storage.get(&receipt.archive_key).await.unwrap().bytes;
+    let worker_digest =
+        workflows::scoped_email_digest(&receipt.deployment, &receipt.receiving_mailbox, &archived);
+    assert_eq!(worker_digest, receipt.raw_digest);
+    assert_eq!(request.gemini.input_digest, receipt.raw_digest);
+    assert_eq!(request.claude.input_digest, receipt.raw_digest);
+    assert_eq!(
+        worker_digest,
+        workflows::scoped_email_digest("staging", "intake@parse.example.com", raw)
+    );
 }
 
 #[tokio::test]

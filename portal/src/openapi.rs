@@ -2833,7 +2833,7 @@ pub fn document_with_base(base: &str) -> Value {
             "type": "object",
             "required": ["model", "yaml"],
             "properties": {
-              "model": { "type": "string", "description": "Supported singular glossary term: `person`, `entity`, `person_project_role`, or `person_entity_role`." },
+              "model": { "type": "string", "description": "Supported singular glossary term: `person`, `entity`, `person_project_role`, `person_entity_role`, or `address`." },
               "yaml": { "type": "string", "description": "Seed YAML with `lookup_fields` and `records`." },
               "overwrite": { "type": "boolean", "default": false },
               "dry_run": { "type": "boolean", "default": false, "description": "Return the reconciliation plan without writing." }

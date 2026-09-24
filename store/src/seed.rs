@@ -380,15 +380,18 @@ pub enum SeedModel {
     Entity,
     PersonProjectRole,
     PersonEntityRole,
+    /// A person's postal address (LAW-57).
+    Address,
 }
 
 impl SeedModel {
     /// Every model a CI-minted seed session may reconcile.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Person,
         Self::Entity,
         Self::PersonProjectRole,
         Self::PersonEntityRole,
+        Self::Address,
     ];
 
     /// Resolve the singular glossary term, Surreal table name, or PascalCase
@@ -399,8 +402,9 @@ impl SeedModel {
             "entity" => Ok(Self::Entity),
             "person_project_role" => Ok(Self::PersonProjectRole),
             "person_entity_role" => Ok(Self::PersonEntityRole),
+            "address" => Ok(Self::Address),
             _ => anyhow::bail!(
-                "unsupported seed model `{value}`; supported glossary terms: person, entity, person_project_role, person_entity_role"
+                "unsupported seed model `{value}`; supported glossary terms: person, entity, person_project_role, person_entity_role, address"
             ),
         }
     }
@@ -412,6 +416,7 @@ impl SeedModel {
             Self::Entity => "entity",
             Self::PersonProjectRole => "person_project_role",
             Self::PersonEntityRole => "person_entity_role",
+            Self::Address => "address",
         }
     }
 }
@@ -579,6 +584,9 @@ pub async fn reconcile_yaml(
         SeedModel::PersonEntityRole => {
             reconcile_person_entity_roles(surreal, yaml, actor, scope_project.as_ref()).await
         }
+        SeedModel::Address => {
+            reconcile_addresses(surreal, yaml, actor, scope_project.as_ref()).await
+        }
     }
 }
 
@@ -646,6 +654,25 @@ pub fn validate_yaml(model: SeedModel, yaml: &str) -> anyhow::Result<()> {
                         record.person.email.to_ascii_lowercase(),
                         record.entity.name.to_ascii_lowercase(),
                         record.role.to_ascii_lowercase()
+                    )
+                }),
+            )
+        }
+        SeedModel::Address => {
+            let records = parse_seed::<OperatorAddressRec>(
+                yaml,
+                model,
+                &["person_id", "line1", "postal_code"],
+            )?;
+            require_unique(
+                model,
+                "person.email, line1, and postal_code",
+                records.iter().map(|record| {
+                    format!(
+                        "{}\u{0}{}\u{0}{}",
+                        record.person.email.to_ascii_lowercase(),
+                        record.line1.to_ascii_lowercase(),
+                        record.postal_code.to_ascii_lowercase()
                     )
                 }),
             )
@@ -1006,6 +1033,23 @@ struct OperatorPersonEntityRoleRec {
     role: String,
 }
 
+/// A person's postal address (LAW-57). The natural key is
+/// `(person.email, line1, postal_code)` — the same (street, ZIP) pair
+/// `store::addresses::find_or_create_for_person` matches on, scoped to the
+/// referenced person.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperatorAddressRec {
+    person: OperatorPersonRef,
+    line1: String,
+    #[serde(default)]
+    line2: Option<String>,
+    city: String,
+    region: String,
+    postal_code: String,
+    country: String,
+}
+
 async fn reconcile_person_project_roles(
     surreal: &SurrealDb,
     yaml: &str,
@@ -1120,6 +1164,75 @@ async fn reconcile_person_entity_roles(
         } else {
             if !actor.dry_run {
                 crate::entity_roles::grant(surreal, person.id, entity.id, &rec.role).await?;
+            }
+            report.created += 1;
+            report.records.push(ReconcileRecord {
+                key,
+                action: ReconcileAction::New,
+                ..ReconcileRecord::default()
+            });
+        }
+    }
+    Ok(report)
+}
+
+/// Attach a person's postal address (LAW-57). Like
+/// [`reconcile_person_project_roles`] and [`reconcile_person_entity_roles`],
+/// this is a fact table keyed by its natural key rather than a mutable
+/// record: an existing (person, line1, postal_code) match is left
+/// untouched — `overwrite` has no meaning here, since the natural key
+/// already names every field this model's identity depends on.
+async fn reconcile_addresses(
+    surreal: &SurrealDb,
+    yaml: &str,
+    actor: &ReconcileActor<'_>,
+    scope_project: Option<&crate::projects::Project>,
+) -> anyhow::Result<ReconcileReport> {
+    let mut report = ReconcileReport {
+        model: SeedModel::Address.term().to_string(),
+        ..ReconcileReport::default()
+    };
+    for rec in parse_seed::<OperatorAddressRec>(
+        yaml,
+        SeedModel::Address,
+        &["person_id", "line1", "postal_code"],
+    )? {
+        let key = format!("{} / {} {}", rec.person.email, rec.line1, rec.postal_code);
+        let person = crate::persons::find_by_email_ci(surreal, &rec.person.email)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "address seed references unknown person email {:?}",
+                    rec.person.email
+                )
+            })?;
+        if let Some(scope) = scope_project {
+            authorize_person_project_scope(surreal, person.id, scope).await?;
+        }
+        let new = crate::addresses::NewAddress {
+            person_id: Some(person.id),
+            entity_id: None,
+            line1: rec.line1,
+            line2: rec.line2,
+            city: rec.city,
+            region: rec.region,
+            postal_code: rec.postal_code,
+            country: rec.country,
+        };
+        let existing = crate::addresses::for_person(surreal, person.id)
+            .await?
+            .into_iter()
+            .any(|a| a.line1 == new.line1 && a.postal_code == new.postal_code);
+        if existing {
+            report.unchanged += 1;
+            report.records.push(ReconcileRecord {
+                key,
+                action: ReconcileAction::Unchanged,
+                ..ReconcileRecord::default()
+            });
+        } else {
+            if !actor.dry_run {
+                crate::addresses::create(surreal, &new).await?;
             }
             report.created += 1;
             report.records.push(ReconcileRecord {
@@ -4096,6 +4209,12 @@ records:
         )
     }
 
+    fn address_yaml(email: &str, line1: &str, postal_code: &str) -> String {
+        format!(
+            "lookup_fields:\n  - person_id\n  - line1\n  - postal_code\nrecords:\n  - person:\n      email: {email}\n    line1: {line1}\n    city: Reno\n    region: NV\n    postal_code: {postal_code}\n    country: US\n"
+        )
+    }
+
     #[test]
     fn seed_model_parse_accepts_glossary_terms_and_pascal_case_file_stems() {
         assert_eq!(SeedModel::parse("person").unwrap(), SeedModel::Person);
@@ -4107,7 +4226,80 @@ records:
             SeedModel::parse("person_entity_role").unwrap(),
             SeedModel::PersonEntityRole
         );
+        assert_eq!(SeedModel::parse("address").unwrap(), SeedModel::Address);
         assert!(SeedModel::parse("question").is_err());
+    }
+
+    /// LAW-57: importing an address attaches it to the Person.
+    #[tokio::test]
+    async fn address_seed_attaches_to_the_person() {
+        let surreal = mem_surreal().await;
+        persons::create(
+            &surreal,
+            &NewPerson::new("Jane Example", "jane@example.com"),
+        )
+        .await
+        .unwrap();
+
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::Address,
+            &address_yaml("jane@example.com", "123 Main St", "89501"),
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("address seed reconciles");
+        assert_eq!((report.created, report.unchanged), (1, 0));
+
+        let person = persons::find_by_email_ci(&surreal, "jane@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        let addresses = crate::addresses::for_person(&surreal, person.id)
+            .await
+            .unwrap();
+        assert_eq!(addresses.len(), 1, "the address attached to the person");
+        assert_eq!(addresses[0].line1, "123 Main St");
+        assert_eq!(addresses[0].postal_code, "89501");
+
+        // Re-seeding the same (person, line1, postal_code) is a no-op.
+        let again = reconcile_yaml(
+            &surreal,
+            SeedModel::Address,
+            &address_yaml("jane@example.com", "123 Main St", "89501"),
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("re-seed is a no-op");
+        assert_eq!((again.created, again.unchanged), (0, 1));
+        assert_eq!(
+            crate::addresses::for_person(&surreal, person.id)
+                .await
+                .unwrap()
+                .len(),
+            1,
+            "re-seeding must not duplicate the address"
+        );
+    }
+
+    #[tokio::test]
+    async fn address_seed_referencing_an_unknown_person_is_refused() {
+        let surreal = mem_surreal().await;
+
+        let refused = reconcile_yaml(
+            &surreal,
+            SeedModel::Address,
+            &address_yaml("nobody@example.com", "123 Main St", "89501"),
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await;
+        assert!(refused.is_err());
     }
 
     #[tokio::test]

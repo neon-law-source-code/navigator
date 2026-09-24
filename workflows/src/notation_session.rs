@@ -195,6 +195,11 @@ pub enum NotationSessionError {
     Reask(#[from] store::reask::ReaskError),
     #[error("answer store: {0}")]
     Answer(#[from] store::answers::AnswerError),
+    /// LAW-57: a client-facing address-shaped question falls back to the
+    /// respondent's stored [`store::addresses::Address`] when no answer
+    /// exists yet — see [`address_prior_value`].
+    #[error("address store: {0}")]
+    Address(#[from] store::addresses::AddressError),
     #[error("spec parse: {0}")]
     Spec(#[from] WorkflowSpecError),
     #[error("encoding questionnaire snapshot: {0}")]
@@ -713,18 +718,66 @@ pub async fn client_intake_step(
         if is_author_facing_help(code) {
             question.help_text = None;
         }
+        let mut prior_value = latest_value
+            .get(code)
+            .or_else(|| latest_value.get(question_code_for_state(code)))
+            .cloned();
+        if prior_value.is_none() {
+            prior_value = address_prior_value(surreal, person_id, code).await?;
+        }
         return Ok(ClientIntakeStep::NeedsAnswer {
             question,
-            prior_value: latest_value
-                .get(code)
-                .or_else(|| latest_value.get(question_code_for_state(code)))
-                .cloned(),
+            prior_value,
             position: idx + 1,
             total,
             steps: client_codes.clone(),
         });
     }
     Ok(ClientIntakeStep::Complete { total })
+}
+
+/// LAW-57: when a client-facing, address-shaped question (`address__…` or
+/// bare `address`) has no answer on file yet, pre-fill it from the
+/// respondent's own stored [`store::addresses::Address`] rather than
+/// leaving the field blank. Scoped deliberately narrow: this only ever
+/// reads the *notation's own client* (`person_id`) — never another role's
+/// address — and only when the question's type token is `address` or
+/// `addresses` (the same closed vocabulary `rules::f115`'s field-shape
+/// registry uses). Returns the most recently recorded address as one
+/// display line, the same shape a lawyer's free-typed address answer takes
+/// today (see `TEST_ENTITY_ADDRESS` in this module's tests) — there is no
+/// structured "address answer" shape to match.
+async fn address_prior_value(
+    surreal: &store::surreal::SurrealDb,
+    person_id: Uuid,
+    code: &str,
+) -> Result<Option<String>, NotationSessionError> {
+    let type_token = code
+        .split_once("__")
+        .map_or(code, |(type_token, _)| type_token);
+    if !matches!(type_token, "address" | "addresses") {
+        return Ok(None);
+    }
+    Ok(store::addresses::for_person(surreal, person_id)
+        .await?
+        .into_iter()
+        .next_back()
+        .map(|address| format_address_line(&address)))
+}
+
+/// One display line for a stored [`store::addresses::Address`] —
+/// `line1[, line2], city, region postal_code, country`.
+fn format_address_line(address: &store::addresses::Address) -> String {
+    let mut parts = vec![address.line1.clone()];
+    if let Some(line2) = address.line2.as_ref().filter(|line2| !line2.is_empty()) {
+        parts.push(line2.clone());
+    }
+    parts.push(format!(
+        "{}, {} {}",
+        address.city, address.region, address.postal_code
+    ));
+    parts.push(address.country.clone());
+    parts.join(", ")
 }
 
 /// Record one client-sourced answer to a client-facing question on
@@ -2613,7 +2666,55 @@ mod tests {
         assert_eq!(row.authored_by_person_id, Some(lawyer_id));
     }
 
-    use super::{client_intake_step, record_client_answer, ClientIntakeStep};
+    use super::{address_prior_value, client_intake_step, record_client_answer, ClientIntakeStep};
+
+    /// LAW-57: a client-facing address-shaped question with no answer yet
+    /// pre-fills from the person's stored [`store::addresses::Address`].
+    #[tokio::test]
+    async fn address_prior_value_prefills_from_the_persons_stored_address() {
+        let surreal = db().await;
+        let person_id = seed_person(&surreal, "libra@example.com").await;
+        store::addresses::create(
+            &surreal,
+            &store::addresses::NewAddress {
+                person_id: Some(person_id),
+                line1: "1 Fremont St".into(),
+                city: "Las Vegas".into(),
+                region: "NV".into(),
+                postal_code: "89101".into(),
+                country: "US".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let value = address_prior_value(&surreal, person_id, "address__principal_office")
+            .await
+            .unwrap();
+        assert_eq!(
+            value.as_deref(),
+            Some("1 Fremont St, Las Vegas, NV 89101, US")
+        );
+
+        // A question whose type token is not address-shaped never triggers
+        // the fallback.
+        assert_eq!(
+            address_prior_value(&surreal, person_id, "person__client")
+                .await
+                .unwrap(),
+            None
+        );
+
+        // No address on file at all: no fallback value, not an error.
+        let nobody = seed_person(&surreal, "no-address@example.com").await;
+        assert_eq!(
+            address_prior_value(&surreal, nobody, "address__principal_office")
+                .await
+                .unwrap(),
+            None
+        );
+    }
 
     /// Start a retainer notation whose questions carry the shipped
     /// audiences, returning `(notation_id, respondent_id)`.

@@ -24,7 +24,6 @@
 //! lane keeps the path-secret contract unchanged.
 
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -33,7 +32,6 @@ use axum::extract::{FromRequest, Multipart, Path, State};
 use axum::http::{HeaderMap, Request, StatusCode};
 use axum::response::IntoResponse;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -350,35 +348,33 @@ fn verify_summary_signature(
     Ok(())
 }
 
+/// The allowlisted SMTP envelope recipient that received this message,
+/// normalized as the receipt stores it. The first envelope recipient that
+/// matches the allowlist wins, so the digest and the stored
+/// `receiving_mailbox` can never name different mailboxes.
+fn summary_receiving_mailbox(config: &SummaryIntakeConfig, email: &InboundEmail) -> Option<String> {
+    email
+        .envelope
+        .as_ref()?
+        .to
+        .iter()
+        .find(|candidate| {
+            config
+                .envelope_recipients
+                .iter()
+                .any(|configured| normalize_address(candidate) == normalize_address(configured))
+        })
+        .map(|value| normalize_address(value))
+}
+
 /// Digest the immutable raw message with the receiving mailbox and deployment
-/// scope. The outer multipart boundary is not part of the digest, so a retry
-/// with a different boundary reaches the same receipt and archive.
+/// scope, via the same [`workflows::scoped_email_digest`] the worker uses to
+/// verify the archive. The outer multipart boundary is not part of the digest,
+/// so a retry with a different boundary reaches the same receipt and archive.
 #[must_use]
 pub fn summary_raw_digest(config: &SummaryIntakeConfig, email: &InboundEmail) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(config.deployment.as_bytes());
-    hasher.update([0]);
-    let mailbox = config
-        .envelope_recipients
-        .iter()
-        .find(|recipient| {
-            email.envelope.as_ref().is_some_and(|envelope| {
-                envelope
-                    .to
-                    .iter()
-                    .any(|candidate| normalize_address(candidate) == normalize_address(recipient))
-            })
-        })
-        .map_or_else(String::new, |recipient| normalize_address(recipient));
-    hasher.update(mailbox.as_bytes());
-    hasher.update([0]);
-    hasher.update(&email.raw);
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        let _ = write!(hex, "{byte:02x}");
-    }
-    hex
+    let mailbox = summary_receiving_mailbox(config, email).unwrap_or_default();
+    workflows::scoped_email_digest(&config.deployment, &mailbox, &email.raw)
 }
 
 fn stable_uuid_from_digest(digest: &str) -> Uuid {
@@ -654,24 +650,11 @@ pub async fn persist_summary(
         .first()
         .map(|mailroom| mailroom.id)
         .ok_or(InboundError::NoMailroom)?;
-    let digest = summary_raw_digest(config, email);
+    let receiving_mailbox =
+        summary_receiving_mailbox(config, email).ok_or(InboundError::InvalidEnvelope)?;
+    let digest = workflows::scoped_email_digest(&config.deployment, &receiving_mailbox, &email.raw);
     let archive_key = summary_archive_key(&digest);
     let letter_id = stable_uuid_from_digest(&digest);
-    let Some(receiving_mailbox) = email
-        .envelope
-        .as_ref()
-        .and_then(|envelope| {
-            envelope.to.iter().find(|candidate| {
-                config
-                    .envelope_recipients
-                    .iter()
-                    .any(|configured| normalize_address(candidate) == normalize_address(configured))
-            })
-        })
-        .map(|value| normalize_address(value))
-    else {
-        return Err(InboundError::InvalidEnvelope);
-    };
     let ensured = store::email_receipts::ensure(
         surreal,
         &store::email_receipts::NewEmailReceipt {
@@ -1042,6 +1025,75 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
             .rsplit_once('-')
             .map_or("", |(_, tail)| tail.trim_end_matches(".eml"));
         assert!(slug.len() <= 40, "slug too long: {} chars", slug.len());
+    }
+
+    fn summary_config(recipients: &[&str], deployment: &str) -> super::SummaryIntakeConfig {
+        super::SummaryIntakeConfig {
+            envelope_recipients: recipients.iter().map(|r| (*r).to_string()).collect(),
+            inbound_public_key: String::new(),
+            deployment: deployment.to_string(),
+            workflow_ingress: String::new(),
+            project_id: String::new(),
+            channel_id: String::new(),
+            gemini_model: String::new(),
+            gemini_location: String::new(),
+            claude_model: String::new(),
+            claude_location: String::new(),
+            max_input_chars: 0,
+            max_output_tokens: 0,
+        }
+    }
+
+    fn summary_email(envelope_to: &[&str], raw: &[u8]) -> InboundEmail {
+        InboundEmail {
+            envelope: Some(super::SmtpEnvelope {
+                to: envelope_to.iter().map(|r| (*r).to_string()).collect(),
+                from: None,
+            }),
+            raw: raw.to_vec(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn intake_digest_is_the_shared_scoped_digest_of_the_stored_mailbox() {
+        let raw = b"From: a@example.com\r\n\r\nbody";
+        let config = summary_config(&["Intake@Parse.Example.com"], "staging");
+        let email = summary_email(&[" intake@parse.example.com "], raw);
+        let mailbox = super::summary_receiving_mailbox(&config, &email).expect("allowlisted");
+        assert_eq!(mailbox, "intake@parse.example.com");
+        assert_eq!(
+            super::summary_raw_digest(&config, &email),
+            workflows::scoped_email_digest("staging", &mailbox, raw)
+        );
+        assert_ne!(
+            super::summary_raw_digest(&config, &email),
+            super::summary_raw_digest(
+                &summary_config(&["intake@parse.example.com"], "production"),
+                &email
+            )
+        );
+    }
+
+    #[test]
+    fn digest_and_stored_mailbox_agree_when_several_recipients_are_allowlisted() {
+        // Allowlist order differs from envelope order. The digest must be
+        // scoped to the same mailbox the receipt stores, or the worker's
+        // recomputation from the receipt cannot match.
+        let raw = b"From: a@example.com\r\n\r\nbody";
+        let config = summary_config(
+            &["first@parse.example.com", "second@parse.example.com"],
+            "staging",
+        );
+        let email = summary_email(
+            &["second@parse.example.com", "first@parse.example.com"],
+            raw,
+        );
+        let mailbox = super::summary_receiving_mailbox(&config, &email).expect("allowlisted");
+        assert_eq!(
+            super::summary_raw_digest(&config, &email),
+            workflows::scoped_email_digest("staging", &mailbox, raw)
+        );
     }
 
     fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {

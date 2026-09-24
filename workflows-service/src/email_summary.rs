@@ -16,9 +16,10 @@ use restate_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use store::email_receipts::EmailReceipt;
 use workflows::{
-    build_prompt, deliver_summary, normalize_email, parse_summary, DeliveryResult,
-    EmailSummaryRequest, EmailSummaryRunConfig, ProviderDelivery, SlackBot, SummaryDeliveryError,
-    SummaryDeliveryMessage, SummaryProvider, DEFAULT_MAX_INPUT_CHARS, DEFAULT_MAX_OUTPUT_TOKENS,
+    build_prompt, deliver_summary, normalize_email, parse_summary, scoped_email_digest,
+    DeliveryResult, EmailSummaryRequest, EmailSummaryRunConfig, ProviderDelivery, SlackBot,
+    SummaryDeliveryError, SummaryDeliveryMessage, SummaryProvider, DEFAULT_MAX_INPUT_CHARS,
+    DEFAULT_MAX_OUTPUT_TOKENS,
 };
 
 const DEFAULT_METADATA_TOKEN_URL: &str =
@@ -153,7 +154,15 @@ async fn summarize_provider(
             });
         }
     };
-    if input.input_digest != receipt.raw_digest || config.input_digest != receipt.raw_digest {
+    // Prove the archived bytes are the ones this receipt admitted, under the
+    // receipt's own deployment and mailbox scope, and that the immutable run
+    // configuration was captured for the same receipt.
+    let archived_digest = scoped_email_digest(
+        &receipt.deployment,
+        &receipt.receiving_mailbox,
+        &object.bytes,
+    );
+    if archived_digest != receipt.raw_digest || config.input_digest != receipt.raw_digest {
         return Ok(ProviderDelivery::Failed {
             model,
             status: "input_digest_mismatch".to_string(),
@@ -329,8 +338,6 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use cloud::{StaticTokenSource, StorageError, StoredObject, VertexError};
-    use sha2::Digest as _;
-    use std::fmt::Write as _;
     use std::sync::Arc;
     use store::email_receipts::EmailReceipt;
     use uuid::Uuid;
@@ -394,6 +401,19 @@ mod tests {
             updated_at: now,
         }
     }
+
+    /// The digest intake stores for `archive` under [`receipt`]'s scope.
+    fn intake_digest(archive: &[u8]) -> String {
+        workflows::scoped_email_digest("staging", "support@example.com", archive)
+    }
+
+    const ARCHIVE: &[u8] = b"From: sender@example.com\r\n\
+        To: intake@example.com\r\n\
+        Content-Type: text/plain\r\n\r\n\
+        A bounded summary body\r\n";
+
+    const GEMINI_PATH: &str = "/v1/projects/synthetic-project/locations/global/publishers/google/models/summary-model:generateContent";
+    const CLAUDE_PATH: &str = "/v1/projects/synthetic-project/locations/global/publishers/anthropic/models/summary-model:rawPredict";
 
     fn config(provider: SummaryProvider, digest: &str) -> EmailSummaryRunConfig {
         EmailSummaryRunConfig::new(provider, "summary-model", "global", "summary-v1", digest)
@@ -512,10 +532,7 @@ mod tests {
             To: intake@example.com\r\n\
             Content-Type: text/plain\r\n\r\n\
             A bounded summary body\r\n";
-        let mut digest = String::with_capacity(64);
-        for byte in sha2::Sha256::digest(archive) {
-            write!(digest, "{byte:02x}").expect("writing to String");
-        }
+        let digest = intake_digest(archive);
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/projects/synthetic-project/locations/global/publishers/google/models/summary-model:generateContent"))
@@ -573,10 +590,7 @@ mod tests {
             To: intake@example.com\r\n\
             Content-Type: text/plain\r\n\r\n\
             A bounded summary body\r\n";
-        let mut digest = String::with_capacity(64);
-        for byte in sha2::Sha256::digest(archive) {
-            write!(digest, "{byte:02x}").expect("writing to String");
-        }
+        let digest = intake_digest(archive);
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(
@@ -611,10 +625,7 @@ mod tests {
             To: intake@example.com\r\n\
             Content-Type: text/plain\r\n\r\n\
             A bounded summary body\r\n";
-        let mut digest = String::with_capacity(64);
-        for byte in sha2::Sha256::digest(archive) {
-            write!(digest, "{byte:02x}").expect("writing to String");
-        }
+        let digest = intake_digest(archive);
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(
@@ -652,10 +663,7 @@ mod tests {
             To: intake@example.com\r\n\
             Content-Type: text/plain\r\n\r\n\
             A bounded summary body\r\n";
-        let mut digest = String::with_capacity(64);
-        for byte in sha2::Sha256::digest(archive) {
-            write!(digest, "{byte:02x}").expect("writing to String");
-        }
+        let digest = intake_digest(archive);
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(503))
@@ -688,10 +696,7 @@ mod tests {
             To: intake@example.com\r\n\
             Content-Type: text/plain\r\n\r\n\
             A bounded summary body\r\n";
-        let mut digest = String::with_capacity(64);
-        for byte in sha2::Sha256::digest(archive) {
-            write!(digest, "{byte:02x}").expect("writing to String");
-        }
+        let digest = intake_digest(archive);
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(403))
@@ -716,5 +721,116 @@ mod tests {
             result,
             ProviderDelivery::Failed { status, .. } if status.starts_with("provider_error:")
         ));
+    }
+
+    #[tokio::test]
+    async fn a_valid_archive_reaches_both_provider_adapters() {
+        let digest = intake_digest(ARCHIVE);
+        let server = MockServer::start().await;
+        let json = r#"{\"summary\":\"Useful\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"#;
+        Mock::given(method("POST"))
+            .and(path(GEMINI_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"candidates":[{{"content":{{"parts":[{{"text":"{json}"}}]}}}}]}}"#
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(CLAUDE_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"content":[{{"type":"text","text":"{json}"}}]}}"#
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+        for provider in [SummaryProvider::Gemini, SummaryProvider::Claude] {
+            let result = summarize_provider(
+                Arc::new(MemoryStorage {
+                    bytes: Some(ARCHIVE.to_vec()),
+                }),
+                Some(providers(&server.uri())),
+                provider,
+                receipt(&digest),
+                config(provider, &digest),
+                "synthetic-project".to_string(),
+            )
+            .await
+            .expect("provider response is represented in the summary");
+            assert!(
+                matches!(&result, ProviderDelivery::Succeeded { result, .. } if result.summary == "Useful"),
+                "{provider:?} did not succeed"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn tampered_archive_bytes_are_rejected_before_provider_call() {
+        let digest = intake_digest(ARCHIVE);
+        let mut tampered = ARCHIVE.to_vec();
+        tampered.extend_from_slice(b"appended\r\n");
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        for provider in [SummaryProvider::Gemini, SummaryProvider::Claude] {
+            let result = summarize_provider(
+                Arc::new(MemoryStorage {
+                    bytes: Some(tampered.clone()),
+                }),
+                Some(providers(&server.uri())),
+                provider,
+                receipt(&digest),
+                config(provider, &digest),
+                "synthetic-project".to_string(),
+            )
+            .await
+            .expect("tampering is represented in the summary");
+            assert!(matches!(
+                result,
+                ProviderDelivery::Failed { status, .. } if status == "input_digest_mismatch"
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn archive_outside_the_receipt_scope_is_rejected() {
+        // Same bytes, but the receipt claims another deployment or mailbox:
+        // the scoped digest no longer matches, so nothing reaches Vertex.
+        let digest = intake_digest(ARCHIVE);
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let mut other_deployment = receipt(&digest);
+        other_deployment.deployment = "production".to_string();
+        let mut other_mailbox = receipt(&digest);
+        other_mailbox.receiving_mailbox = "other@example.com".to_string();
+        let mut raw_only = receipt(&digest);
+        raw_only.raw_digest = workflows::normalize_email(ARCHIVE, 1_000)
+            .expect("valid MIME")
+            .content_digest;
+        for receipt in [other_deployment, other_mailbox, raw_only] {
+            let result = summarize_provider(
+                Arc::new(MemoryStorage {
+                    bytes: Some(ARCHIVE.to_vec()),
+                }),
+                Some(providers(&server.uri())),
+                SummaryProvider::Gemini,
+                receipt.clone(),
+                config(SummaryProvider::Gemini, &receipt.raw_digest),
+                "synthetic-project".to_string(),
+            )
+            .await
+            .expect("scope mismatch is represented in the summary");
+            assert!(matches!(
+                result,
+                ProviderDelivery::Failed { status, .. } if status == "input_digest_mismatch"
+            ));
+        }
     }
 }

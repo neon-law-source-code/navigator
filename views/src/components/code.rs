@@ -157,9 +157,29 @@ pub fn highlight(code: &str, lang: &str) -> String {
     // `<code>` element so the coloured block keeps the same `<pre><code>` shape
     // as the fallback (and as standard code-block markup).
     highlighted_html_for_string(code, &SYNTAX_SET, syntax, &THEME).map_or_else(
-        |_| format!("<pre><code>{}</code></pre>", html_escape(code)),
+        |_| {
+            format!(
+                "<pre tabindex=\"0\"><code>{}</code></pre>",
+                html_escape(code)
+            )
+        },
         |html| wrap_tokens_in_code(&html),
     )
+}
+
+/// Insert `tabindex="0"` into a `<pre …>` opening tag so it can receive
+/// keyboard focus when it scrolls. Every block this module emits can: both
+/// `.nav-code pre` (`server/public/css/theme.css`) and page-specific
+/// overrides such as `.notations-specimen pre` set `overflow-x: auto`, and a
+/// scrollable region with no other focusable content fails axe's
+/// `scrollable-region-focusable` WCAG A/AA rule unless it is itself reachable
+/// by keyboard. A no-op if the tag already carries a `tabindex` (`highlight`'s
+/// own output does, by the time [`decorate_copy_buttons`] sees it).
+fn ensure_pre_focusable(pre_html: &str) -> String {
+    if pre_html.contains("tabindex") {
+        return pre_html.to_string();
+    }
+    pre_html.replacen("<pre", "<pre tabindex=\"0\"", 1)
 }
 
 /// Insert a `<code>` element between syntect's `<pre …>` wrapper and its
@@ -176,8 +196,8 @@ fn wrap_tokens_in_code(html: &str) -> String {
     if open_end >= close_start {
         return html.to_string();
     }
-    let mut out = String::with_capacity(html.len() + "<code></code>".len());
-    out.push_str(&html[..=open_end]);
+    let mut out = String::with_capacity(html.len() + "<code></code> tabindex=\"0\"".len());
+    out.push_str(&ensure_pre_focusable(&html[..=open_end]));
     out.push_str("<code>");
     out.push_str(&html[open_end + 1..close_start]);
     out.push_str("</code>");
@@ -232,7 +252,7 @@ pub fn decorate_copy_buttons(html: &str) -> String {
                 break;
             };
             let end = end + "</pre>".len();
-            out.push_str(&with_copy_button(&rest[..end]));
+            out.push_str(&with_copy_button(&ensure_pre_focusable(&rest[..end])));
             rest = &rest[end..];
             continue;
         }
@@ -480,5 +500,56 @@ pub fn open(name: &str) -> Result<Matter, Error> {
         let out = highlight("greeting: hello", "no-such-lang");
         assert!(out.contains("<pre"), "still a pre block: {out}");
         assert!(out.contains("greeting"), "source text present: {out}");
+    }
+
+    /// `.nav-code pre` (and page overrides like `.notations-specimen pre`) set
+    /// `overflow-x: auto`, so a syntax-highlighted block must be keyboard
+    /// reachable itself or axe's `scrollable-region-focusable` rule fails
+    /// (`server/tests/accessibility_e2e.rs`, the `/notations` full-document
+    /// audit).
+    #[test]
+    fn a_highlighted_block_is_keyboard_focusable() {
+        let out = highlight("let x = 1;", "rust");
+        assert!(
+            out.contains("<pre tabindex=\"0\""),
+            "highlighted pre carries a tabindex: {out}"
+        );
+    }
+
+    /// A highlighter error falls back to the escaped block, which must stay
+    /// just as reachable as the coloured one.
+    #[test]
+    fn a_plain_fallback_block_is_keyboard_focusable() {
+        let out = highlight("greeting: hello", "no-such-lang");
+        assert!(
+            out.contains("<pre tabindex=\"0\""),
+            "plain pre carries a tabindex: {out}"
+        );
+    }
+
+    /// A fenced block that never goes through [`highlight`] — the workshop and
+    /// marketing prose paths deliberately skip colouring — still gets a
+    /// tabindex from [`decorate_copy_buttons`] when it wraps the copy button.
+    #[test]
+    fn decorating_an_unhighlighted_pre_makes_it_keyboard_focusable() {
+        let html = "<pre><code>brew install navigator</code></pre>";
+        let out = super::decorate_copy_buttons(html);
+        assert!(
+            out.contains("<pre tabindex=\"0\""),
+            "decorated pre carries a tabindex: {out}"
+        );
+    }
+
+    /// [`decorate_copy_buttons`] must not add a second `tabindex` to a block
+    /// that already highlighted through [`highlight`].
+    #[test]
+    fn decorating_an_already_focusable_pre_does_not_duplicate_the_tabindex() {
+        let html = highlight("let x = 1;", "rust");
+        let out = super::decorate_copy_buttons(&html);
+        assert_eq!(
+            out.matches("tabindex").count(),
+            1,
+            "exactly one tabindex: {out}"
+        );
     }
 }

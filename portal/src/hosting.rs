@@ -385,8 +385,6 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
             channel_id: config.channel_id,
             gemini_model: config.gemini_model,
             gemini_location: config.gemini_location,
-            claude_model: config.claude_model,
-            claude_location: config.claude_location,
             max_input_chars: config.max_input_chars,
             max_output_tokens: config.max_output_tokens,
         });

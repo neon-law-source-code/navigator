@@ -1069,8 +1069,6 @@ alongside it.
 | Summary envelope | `NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS` | Unset/off by default; blank values fail |
 | Summary Gemini model | `NAVIGATOR_SUMMARY_GEMINI_MODEL` | Optional Vertex model override |
 | Summary Gemini location | `NAVIGATOR_SUMMARY_GEMINI_LOCATION` | Optional Vertex location override |
-| Summary Claude model | `NAVIGATOR_SUMMARY_CLAUDE_MODEL` | Optional model override |
-| Summary Claude location | `NAVIGATOR_SUMMARY_CLAUDE_LOCATION` | Optional location override |
 | Summary input limit | `NAVIGATOR_SUMMARY_MAX_INPUT_CHARS` | Optional input limit |
 | Summary output limit | `NAVIGATOR_SUMMARY_MAX_OUTPUT_TOKENS` | Optional output limit |
 | DKIM fence | `NAVIGATOR_DKIM_REQUIRE_DOMAIN` | Optional domain pin |

@@ -111,8 +111,6 @@ pub struct SummaryIntakeConfig {
     pub channel_id: String,
     pub gemini_model: String,
     pub gemini_location: String,
-    pub claude_model: String,
-    pub claude_location: String,
     pub max_input_chars: usize,
     pub max_output_tokens: u32,
 }
@@ -738,21 +736,11 @@ fn summary_workflow_request(
     )
     .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?
     .with_limits(config.max_input_chars, config.max_output_tokens);
-    let claude = workflows::EmailSummaryRunConfig::new(
-        workflows::SummaryProvider::Claude,
-        &config.claude_model,
-        &config.claude_location,
-        workflows::SUMMARY_PROMPT_VERSION,
-        &receipt.raw_digest,
-    )
-    .map_err(|error| InboundError::WorkflowConfig(error.to_string()))?
-    .with_limits(config.max_input_chars, config.max_output_tokens);
     Ok(workflows::EmailSummaryRequest {
         receipt_id: receipt.id,
         project_id: config.project_id.clone(),
         channel_id: config.channel_id.clone(),
         gemini,
-        claude,
     })
 }
 
@@ -1037,8 +1025,6 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
             channel_id: String::new(),
             gemini_model: String::new(),
             gemini_location: String::new(),
-            claude_model: String::new(),
-            claude_location: String::new(),
             max_input_chars: 0,
             max_output_tokens: 0,
         }
@@ -1153,8 +1139,6 @@ Content-Type: text/plain\r\n\r\nhello\r\n--nav--\r\n";
             channel_id: "C-SYNTHETIC".into(),
             gemini_model: "gemini-test".into(),
             gemini_location: "global".into(),
-            claude_model: "claude-test".into(),
-            claude_location: "global".into(),
             max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
             max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
         };

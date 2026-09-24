@@ -67,9 +67,9 @@ pub use slack::{
 };
 pub use speech::{GoogleSpeechConfig, GoogleSpeechTranscriptProvider, SpeechError};
 pub use vertex::{
-    ClaudeVertexAdapter, GeminiVertexAdapter, MetadataTokenSource, StaticTokenSource, VertexError,
-    VertexRequest, VertexResponse, VertexTokenSource, DEFAULT_CLAUDE_SUMMARY_LOCATION,
-    DEFAULT_CLAUDE_SUMMARY_MODEL, DEFAULT_GEMINI_SUMMARY_LOCATION, DEFAULT_GEMINI_SUMMARY_MODEL,
+    GeminiVertexAdapter, MetadataTokenSource, StaticTokenSource, VertexError, VertexRequest,
+    VertexResponse, VertexTokenSource, DEFAULT_GEMINI_SUMMARY_LOCATION,
+    DEFAULT_GEMINI_SUMMARY_MODEL,
 };
 pub use workspace::{
     documents_prefix, is_navigator_repository, is_valid_slug, DeploymentWorkspace,

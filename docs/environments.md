@@ -130,7 +130,10 @@ present blank value fails boot. There is no compiled default.
 `NAVIGATOR_SUMMARY_CHANNEL_ID`, `SENDGRID_INBOUND_PUBLIC_KEY`, the row's HTTPS `RESTATE_BROKER_URL`, and
 `NAVIGATOR_GCP_PROJECT_ID`; web and `workflows-service` must receive the same gate and coordinates. The GCP project must
 have Vertex AI enabled and the runtime service account must have `roles/aiplatform.user`. Model, location, and
-input/output limits have shared defaults and can be overridden per row.
+input/output limits have shared defaults and can be overridden per row. Gemini is the only summary provider. Claude was
+removed on 2026-09-24 because Vertex Model Garden granted the deployment projects no request quota for
+`anthropic-claude-haiku-4-5` and refused the self-serve increase for lack of usage history; restoring it means a quota
+grant first, then the adapter from git history.
 
 Every hosted row uses `NAVIGATOR_ENVIRONMENT=production` and `NAVIGATOR_CREDENTIAL_ENVIRONMENT=production`.
 `neon-law-stg` remains the proving release ring through its config, namespace, data plane, and hostname—not through a

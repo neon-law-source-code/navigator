@@ -8,11 +8,13 @@ use thiserror::Error;
 
 /// The providers supported by the summary lane. The model and location are
 /// deliberately stored per run rather than inferred from the environment.
+///
+/// Gemini is the only provider; see `cloud::vertex` for why Claude was removed
+/// and how to restore it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SummaryProvider {
     Gemini,
-    Claude,
 }
 
 /// Immutable provider/model choices captured when a summary run starts.
@@ -38,7 +40,6 @@ pub struct EmailSummaryRequest {
     pub project_id: String,
     pub channel_id: String,
     pub gemini: EmailSummaryRunConfig,
-    pub claude: EmailSummaryRunConfig,
 }
 
 impl EmailSummaryRunConfig {
@@ -475,6 +476,30 @@ mod tests {
     }
 
     #[test]
+    fn a_journaled_request_that_still_names_claude_deserializes() {
+        // Requests journaled before Claude was removed carry a `claude` run
+        // configuration; replaying one must not fail to decode.
+        let digest = "a".repeat(64);
+        let run = |provider: &str| {
+            serde_json::json!({
+                "provider": provider, "model": "m", "location": "global",
+                "prompt_version": "v1", "input_digest": digest,
+                "max_input_chars": 1000, "max_output_tokens": 100
+            })
+        };
+        let journaled = serde_json::json!({
+            "receipt_id": uuid::Uuid::nil(),
+            "project_id": "synthetic-project",
+            "channel_id": "C-SYNTHETIC",
+            "gemini": run("gemini"),
+            "claude": run("claude"),
+        });
+        let request: EmailSummaryRequest =
+            serde_json::from_value(journaled).expect("legacy request decodes");
+        assert_eq!(request.gemini.provider, SummaryProvider::Gemini);
+    }
+
+    #[test]
     fn scoped_digest_matches_the_pinned_receipt_framing() {
         // Independently computed: SHA-256("staging\0intake@parse.example.com\0" + raw).
         // A change here re-keys every existing receipt, archive, and letter.
@@ -535,8 +560,8 @@ mod tests {
             attachment_count: 0,
         };
         let config = EmailSummaryRunConfig::new(
-            SummaryProvider::Claude,
-            "claude-test",
+            SummaryProvider::Gemini,
+            "gemini-test",
             "global",
             "summary-v9",
             "a".repeat(64),

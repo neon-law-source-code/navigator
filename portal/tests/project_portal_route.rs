@@ -190,8 +190,8 @@ async fn the_portal_mount_and_the_matter_show_page_both_resolve() {
         "the matter show page must survive the portal mount"
     );
     assert!(
-        body_string(matter).await.contains("class=\"app-footer\""),
-        "every /app page carries the minimal footer"
+        body_string(matter).await.contains("class=\"app-footer"),
+        "every /app page carries a footer, generic or Project-branded"
     );
 
     // The bare mount redirects to the trailing-slash form the Vite base joins

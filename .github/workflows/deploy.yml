@@ -1554,7 +1554,7 @@ jobs:
 
   release-tag:
     name: tag ${{ needs.release-version.outputs.tag }}
-    needs: [windows-integration, release-version]
+    needs: [windows-integration, integration, release-version]
     if: needs.release-version.outputs.publishable == 'true'
     runs-on: ubuntu-latest
     # THE ONLY JOB IN THIS FILE THAT WRITES A GIT REF, and it only ever creates

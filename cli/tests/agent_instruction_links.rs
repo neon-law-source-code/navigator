@@ -245,11 +245,6 @@ fn redline_skill_preflights_native_word_capabilities() {
 /// before any edit.
 #[test]
 fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
-    // #773 (docs-only, so this workspace suite never ran on it) added the
-    // RTK guidance paragraph and crossed the prior 80-line ceiling. The
-    // ceiling exists to catch further growth, not to relitigate content a
-    // docs PR already merged — raised to match what actually shipped.
-    const MAX_LINES: usize = 81;
     let root = repo_root();
     let skill_path = root.join(CANONICAL_SKILLS).join("random-refactor/SKILL.md");
     let skill = fs::read_to_string(&skill_path).expect("read canonical random-refactor skill");
@@ -282,11 +277,20 @@ fn random_refactor_skill_grounds_a_file_against_book_stdlib_and_repo() {
             "random-refactor skill must contain {required:?}"
         );
     }
+}
 
+#[test]
+fn random_refactor_skill_respects_documentation_size_policy() {
+    // This is a deliberate policy ceiling, not a measurement; raising it must
+    // be a conscious choice when the catalog owner decides the skill should grow.
+    const MAX_LINES: usize = 81;
+    let root = repo_root();
+    let skill_path = root.join(CANONICAL_SKILLS).join("random-refactor/SKILL.md");
+    let skill = fs::read_to_string(&skill_path).expect("read canonical random-refactor skill");
     let lines = skill.lines().count();
     assert!(
         lines <= MAX_LINES,
-        "random-refactor skill must not grow (was {MAX_LINES} lines, now {lines})"
+        "random-refactor skill documentation size policy: .agents/skills/random-refactor/SKILL.md has {lines} lines; allowed maximum is {MAX_LINES}. Trim the file or deliberately raise the budget."
     );
 }
 

@@ -138,9 +138,15 @@ jobs:
       - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.24
         with:
           version: ${{ needs.read-manifest.outputs.version }}
-      # Host and Project code come from navigator.yaml. `--ci` exchanges
-      # GitHub Actions OIDC and writes nothing: a pointer or gitignore the
-      # gate would fix locally fails this job.
+      # `--check` runs only the live document check (LAW-62): comparing
+      # committed pointers against what the deployment holds. `verify`
+      # already ran the whole offline gate — content rules, YAML, seeds,
+      # layout, and, because it built first, the origin pass — over the same
+      # tree, so this job never builds and asks only what that offline pass
+      # cannot: whether the live records agree with the checkout. Host and
+      # Project code come from navigator.yaml. `--ci` exchanges GitHub
+      # Actions OIDC and writes nothing: a pointer or gitignore the gate
+      # would fix locally fails this job.
       - name: navigator project gate --check
         run: navigator project gate --check --ci
 

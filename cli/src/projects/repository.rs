@@ -2699,6 +2699,41 @@ jobs:
         );
     }
 
+    /// LAW-62: `documents` used to run `navigator project gate --check --ci`,
+    /// which ran the whole gate — including the origin pass that reads the
+    /// built `dist/` — not just the live document check. The job checked out
+    /// and installed the CLI but never built, so every caller with a portal
+    /// failed with a missing-`dist/` finding even though the live document
+    /// check itself passed. The fix is in `--check` itself
+    /// (`run_document_check_gate` in `cli/src/main.rs`): it now runs only the
+    /// live document check, so `documents` has nothing to build — `verify`
+    /// already ran the whole offline gate, including the origin pass, after
+    /// its own build.
+    #[test]
+    fn the_documents_job_never_builds() {
+        let generated = include_str!("../../../.github/workflows/project-gate.yml");
+        let documents = generated
+            .split_once("\n  documents:\n")
+            .expect("no documents job")
+            .1
+            .split_once("\n  seeds:\n")
+            .expect("documents is not followed by seeds")
+            .0;
+        assert!(
+            !documents.contains("navigator project build"),
+            "documents has nothing to build now that `--check` runs only the \
+             live document check:\n{documents}"
+        );
+        assert!(
+            documents.contains("navigator project gate --check --ci"),
+            "{documents}"
+        );
+        assert!(
+            documents.contains("/.github/actions/navigator-install@"),
+            "documents validates without installing the pinned CLI:\n{documents}"
+        );
+    }
+
     /// ENG-674: application discovery is a CLI call now (`navigator site
     /// project applications --manifest`, then `navigator project
     /// build`), not a `hashFiles(...)`/glob guard reimplemented in the

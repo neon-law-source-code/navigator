@@ -372,9 +372,14 @@ fn only_a_release_or_a_branch_iteration_builds() {
 /// under a different version. Created here, a failure above the line costs
 /// nothing but a re-run.
 ///
-/// Both halves are asserted. `release-tag` must wait for `integration`, or the
-/// ref would again precede the proof; and every publisher must wait for
-/// `release-tag`, or an artifact could exist under a version no ref names.
+/// Both halves are asserted. `release-tag` must wait, transitively, for
+/// `integration`, or the ref would again precede the proof; and every
+/// publisher must wait for `release-tag`, or an artifact could exist under a
+/// version no ref names. Since the Windows CLI/LSP check became a hard
+/// release gate, `release-tag` reaches `integration` through
+/// `windows-integration` rather than directly — GitHub Actions still refuses
+/// to start `release-tag` until every job in that chain has completed, so
+/// both hops are asserted rather than only the direct one.
 #[test]
 fn the_release_tag_is_created_between_the_proof_and_the_publish() {
     let workflow: serde_yaml::Value =
@@ -386,9 +391,14 @@ fn the_release_tag_is_created_between_the_proof_and_the_publish() {
         "deploy.yml must declare the `release-tag` job that creates the release ref"
     );
     assert!(
-        job_needs(&workflow, "release-tag").contains(&"integration".to_string()),
-        "release-tag must wait for integration: a ref created before the proof is a name spent on \
-         an unproved tree"
+        job_needs(&workflow, "release-tag").contains(&"windows-integration".to_string()),
+        "release-tag must wait for windows-integration: a ref created before the proof is a name \
+         spent on an unproved tree"
+    );
+    assert!(
+        job_needs(&workflow, "windows-integration").contains(&"integration".to_string()),
+        "windows-integration must itself wait for integration, or release-tag's wait on it would \
+         no longer prove the tree before creating the ref"
     );
     assert_eq!(
         tag_job["if"].as_str(),

@@ -379,7 +379,9 @@ fn only_a_release_or_a_branch_iteration_builds() {
 /// release gate, `release-tag` reaches `integration` through
 /// `windows-integration` rather than directly — GitHub Actions still refuses
 /// to start `release-tag` until every job in that chain has completed, so
-/// both hops are asserted rather than only the direct one.
+/// both hops are asserted rather than only the direct one. `windows-integration`
+/// must also wait for `windows-cli-lsp`, or a red Windows check would still
+/// let the tag be created.
 #[test]
 fn the_release_tag_is_created_between_the_proof_and_the_publish() {
     let workflow: serde_yaml::Value =
@@ -395,10 +397,15 @@ fn the_release_tag_is_created_between_the_proof_and_the_publish() {
         "release-tag must wait for windows-integration: a ref created before the proof is a name \
          spent on an unproved tree"
     );
+    let proof = job_needs(&workflow, "windows-integration");
     assert!(
-        job_needs(&workflow, "windows-integration").contains(&"integration".to_string()),
+        proof.contains(&"integration".to_string()),
         "windows-integration must itself wait for integration, or release-tag's wait on it would \
          no longer prove the tree before creating the ref"
+    );
+    assert!(
+        proof.contains(&"windows-cli-lsp".to_string()),
+        "windows-integration must wait for windows-cli-lsp, so a red Windows check still blocks the tag"
     );
     assert_eq!(
         tag_job["if"].as_str(),

@@ -90,7 +90,8 @@ async fn vesta_offers_lifetime_edits_and_the_shared_booking_calendar() {
     assert!(!html.contains("calendar.app.google"));
     assert!(!html.contains("Coming soon"));
     assert!(!html.contains("not yet available"));
-    assert!(html.contains("does not replace"));
+    assert!(html.contains("do not replace the signatures"));
+    assert!(!html.contains("Read the video transcript"));
 }
 
 #[tokio::test]
@@ -160,8 +161,8 @@ async fn vesta_has_an_explainer_instead_of_numbered_steps() {
     assert!(!html.contains("vesta-step__number"));
     assert!(html.contains("<video"));
     assert!(html.contains("/public/img/vesta-home/vesta-explainer.mp4"));
-    assert!(html.contains("Read the video transcript"));
-    assert!(html.contains("does not replace required signing"));
+    assert!(!html.contains("Read the video transcript"));
+    assert!(!html.contains("does not replace required signing"));
     let brand = BrandKey::Vesta;
     assert_eq!(brand.default_typeface().id, "eb-garamond");
     assert!(brand.display_typeface().is_none());

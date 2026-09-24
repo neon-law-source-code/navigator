@@ -663,8 +663,6 @@ fn estate_content(copy: views::locales::EstateCopy) -> webapp::home::EstateConte
         // The catalog authors the object key; the page needs the URL it
         // resolves to in this deployment.
         video_src: views::assets::asset_url(&copy.video_src),
-        transcript_label: copy.transcript_label,
-        video_transcript: copy.video_transcript,
         process_label: copy.process_label,
         process_heading: copy.process_heading,
         steps: copy.steps,

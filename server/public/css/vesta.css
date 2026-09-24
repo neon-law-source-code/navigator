@@ -44,6 +44,3 @@
 
 .vesta-video { border-top: 1px solid var(--vesta-rule); padding: 3rem 0; }
 .vesta-video video { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: scale-down; background: var(--nav-color-surface-subtle); border: 1px solid var(--vesta-rule); }
-.vesta-video details { margin-top: 1rem; color: var(--nav-color-text-muted); }
-.vesta-video summary { cursor: pointer; text-underline-offset: .2em; text-decoration: underline; }
-.vesta-video details p { max-width: 50rem; }

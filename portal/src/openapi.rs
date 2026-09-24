@@ -435,6 +435,63 @@ pub fn document_with_base(base: &str) -> Value {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } }
             }
+          },
+          "patch": {
+            "summary": "Correct a field on an existing Authority (LAW-61)",
+            "description": "Exactly one of `id` or `citation` locates the Authority to update. Every other field is optional and left unchanged when absent. `citation` and `class` are immutable — they are the Authority's identity (see `POST /app/api/authorities`); changing either means a new Authority, not an update of this one. When `archive_base64` is given it is ingested as a new content asset and replaces `archived_asset_id`; the previous archive is left in place. Authorization: Lawyer tier only, the same gate as create.",
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "citation": { "type": "string", "description": "Looks up the existing Authority. Give this or `id`, not both." },
+                    "title": { "type": "string" },
+                    "short_cite": { "type": "string" },
+                    "publisher": { "type": "string" },
+                    "issued_on": { "type": "string" },
+                    "canonical_url": { "type": "string" },
+                    "checked_on": { "type": "string" },
+                    "archive_base64": { "type": "string", "format": "byte", "description": "A new artifact version's bytes, base64-encoded." },
+                    "content_type": { "type": "string", "description": "Defaults to application/octet-stream when absent or blank." }
+                  }
+                }
+              } }
+            },
+            "responses": {
+              "200": { "description": "The updated Authority", "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "class": { "type": "string" },
+                    "citation": { "type": "string" },
+                    "short_cite": { "type": "string", "nullable": true },
+                    "title": { "type": "string" },
+                    "publisher": { "type": "string", "nullable": true },
+                    "issued_on": { "type": "string", "nullable": true },
+                    "canonical_url": { "type": "string", "nullable": true },
+                    "checked_on": { "type": "string", "nullable": true },
+                    "archived_asset_id": { "type": "string", "format": "uuid", "nullable": true },
+                    "inserted_at": { "type": "string", "format": "date-time" },
+                    "updated_at": { "type": "string", "format": "date-time" }
+                  }
+                }
+              } } },
+              "400": { "description": "Neither id nor citation was given (`identifier_required`), both were (`ambiguous_identifier`), or archive_base64 is not valid base64 or decodes to zero bytes (`archive_unreadable`)", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No authority matches the given id or citation (`not_found`)", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
           }
         },
         "/app/api/entities/{id}": {

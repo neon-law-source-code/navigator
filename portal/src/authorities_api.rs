@@ -146,3 +146,124 @@ pub(crate) async fn create_authority_door(
         }
     }
 }
+
+/// `PATCH /app/api/authorities` request body (LAW-61). Exactly one of `id`
+/// or `citation` locates the Authority to update; every other field is
+/// optional and left unchanged when absent. There is deliberately no
+/// `class` or (mutating) `citation` field — see
+/// [`store::authorities::AuthorityLookup`].
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct UpdateAuthorityRequest {
+    id: Option<uuid::Uuid>,
+    citation: Option<String>,
+    title: Option<String>,
+    short_cite: Option<String>,
+    publisher: Option<String>,
+    issued_on: Option<String>,
+    canonical_url: Option<String>,
+    checked_on: Option<String>,
+    /// A new artifact version to archive in place of the current one.
+    archive_base64: Option<String>,
+    content_type: Option<String>,
+}
+
+/// `PATCH /app/api/authorities` — correct a field on an existing Authority
+/// (LAW-61). Lawyer-tier only, the same gate as [`create_authority_door`].
+///
+/// `400 identifier_required` when neither `id` nor `citation` is given;
+/// `400 ambiguous_identifier` when both are; `404 not_found` when the
+/// identifier matches no row. `--citation` and `class` are not accepted
+/// here at all — they are the Authority's identity (see
+/// [`store::authorities::AuthorityLookup`]), and changing either is a new
+/// Authority, not an update of this one. When `archive_base64` is given, it
+/// is ingested as a new content asset and replaces `archived_asset_id`;
+/// the previous archive is left in place (assets are never deleted), so a
+/// caller who kept the old asset id can still reach the earlier bytes.
+pub(crate) async fn update_authority_door(
+    State(state): State<ApiState>,
+    _lawyer: LawyerSession,
+    Json(input): Json<UpdateAuthorityRequest>,
+) -> Result<Response, ApiError> {
+    let lookup = match (input.id, trimmed(input.citation.as_deref())) {
+        (Some(id), None) => store::authorities::AuthorityLookup::Id(id),
+        (None, Some(citation)) => store::authorities::AuthorityLookup::Citation(citation),
+        (None, None) => {
+            return Ok(bad_request(
+                "identifier_required",
+                "one of id or citation is required",
+            ))
+        }
+        (Some(_), Some(_)) => {
+            return Ok(bad_request(
+                "ambiguous_identifier",
+                "give id or citation, not both",
+            ))
+        }
+    };
+
+    let archived_asset_id = match trimmed(input.archive_base64.as_deref()) {
+        Some(encoded) => {
+            let bytes = {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD
+                    .decode(encoded.as_bytes())
+                    .ok()
+                    .filter(|bytes| !bytes.is_empty())
+            };
+            let Some(bytes) = bytes else {
+                return Ok(bad_request(
+                    "archive_unreadable",
+                    "archive_base64 is not valid base64, or decodes to zero bytes.",
+                ));
+            };
+            let content_type =
+                trimmed(input.content_type.as_deref()).unwrap_or("application/octet-stream");
+            match store::assets::ingest_content(
+                &state.surreal,
+                &state.storage,
+                &bytes,
+                content_type,
+            )
+            .await
+            {
+                Ok(id) => Some(id),
+                Err(error) => {
+                    tracing::error!(error = %error, "api: authority archive ingest failed");
+                    return Err(ApiError::Db(
+                        "the archived artifact could not be persisted".to_string(),
+                    ));
+                }
+            }
+        }
+        None => None,
+    };
+
+    let patch = store::authorities::AuthorityPatch {
+        title: trimmed(input.title.as_deref()),
+        short_cite: trimmed(input.short_cite.as_deref()),
+        publisher: trimmed(input.publisher.as_deref()),
+        issued_on: trimmed(input.issued_on.as_deref()),
+        canonical_url: trimmed(input.canonical_url.as_deref()),
+        checked_on: trimmed(input.checked_on.as_deref()),
+        archived_asset_id,
+    };
+
+    match store::authorities::update(&state.surreal, lookup, &patch).await {
+        Ok(authority) => Ok(Json(authority).into_response()),
+        Err(store::authorities::AuthorityError::NotFound) => Ok((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "not_found",
+                "message": "no authority matches that id or citation",
+            })),
+        )
+            .into_response()),
+        Err(error) => {
+            tracing::error!(error = %error, "api: authority update failed");
+            Err(ApiError::Db(
+                "the authority could not be updated".to_string(),
+            ))
+        }
+    }
+}

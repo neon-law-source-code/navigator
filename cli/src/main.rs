@@ -1897,6 +1897,37 @@ enum AuthoritiesAction {
         #[arg(long)]
         content_type: Option<String>,
     },
+    /// Correct a field on an existing Authority, found by `<ID>` or
+    /// `--citation`. Fields left out stay unchanged. `--citation` and
+    /// `--class` are immutable — they are the Authority's identity;
+    /// changing either means a new Authority, not an update of this one.
+    Update {
+        #[command(flatten)]
+        host: HostOpt,
+        /// The Authority's id. Give this or `--citation`, not both.
+        id: Option<uuid::Uuid>,
+        /// Look up the Authority by citation instead of id.
+        #[arg(long)]
+        citation: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        short_cite: Option<String>,
+        #[arg(long)]
+        publisher: Option<String>,
+        #[arg(long)]
+        issued_on: Option<String>,
+        #[arg(long)]
+        canonical_url: Option<String>,
+        #[arg(long)]
+        checked_on: Option<String>,
+        /// A new artifact version to archive in place of the current one.
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// MIME type of `--file`. Defaults to `application/octet-stream`.
+        #[arg(long)]
+        content_type: Option<String>,
+    },
 }
 
 /// A matter document is only ever reached through a Project on a site, so
@@ -2264,6 +2295,31 @@ fn main() -> ExitCode {
                     canonical_url.as_deref(),
                     checked_on.as_deref(),
                     &file,
+                    content_type.as_deref(),
+                )),
+                AuthoritiesAction::Update {
+                    host,
+                    id,
+                    citation,
+                    title,
+                    short_cite,
+                    publisher,
+                    issued_on,
+                    canonical_url,
+                    checked_on,
+                    file,
+                    content_type,
+                } => runtime().block_on(authorities::update(
+                    host.host.as_deref(),
+                    id,
+                    citation.as_deref(),
+                    title.as_deref(),
+                    short_cite.as_deref(),
+                    publisher.as_deref(),
+                    issued_on.as_deref(),
+                    canonical_url.as_deref(),
+                    checked_on.as_deref(),
+                    file.as_deref(),
                     content_type.as_deref(),
                 )),
             },

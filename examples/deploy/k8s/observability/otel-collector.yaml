@@ -85,6 +85,15 @@ data:
         detectors: [env, gcp]
         timeout: 5s
         override: false
+      # Prometheus self-scrape exposes pod identity as a metric label. Move it
+      # into the resource before fail-closed redaction so collector replicas
+      # remain distinct without carrying a high-cardinality metric dimension.
+      transform/metric_identity:
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(resource.attributes["service.instance.id"], attributes["service_instance_id"]) where attributes["service_instance_id"] != nil
+              - delete_key(attributes, "service_instance_id")
       # FAIL-CLOSED redaction (LEGAL #1–#4). allow_all_keys=false => every
       # attribute key NOT listed here is deleted from spans, logs, and metric
       # datapoints. This is the primary privilege control; it drops url.path /
@@ -242,6 +251,14 @@ data:
         # NEW attribute key shows up as a rising redaction count (Step 7
         # watches this), without ever logging the dropped value.
         summary: debug
+      # Redaction's debug summary is useful while diagnosing the allow-list,
+      # but its key-name string is not a metric dimension. Remove it before
+      # aggregation so it cannot create duplicate series or add cardinality.
+      transform/drop_redaction_keys:
+        metric_statements:
+          - context: datapoint
+            statements:
+              - delete_key(attributes, "redaction_redacted_keys")
       # Redaction can make distinct metric points share one label set. Sum those
       # points before batching so one collapsed series cannot reject the batch.
       metricstransform:
@@ -438,7 +455,7 @@ data:
           exporters: [otlp/dash0]
         metrics:
           receivers: [otlp, prometheus/self]
-          processors: [memory_limiter, resourcedetection, redaction, metricstransform, batch]
+          processors: [memory_limiter, resourcedetection, transform/metric_identity, redaction, transform/drop_redaction_keys, metricstransform, batch]
           exporters: [googlecloud, otlp/dash0]
         logs:
           receivers: [otlp]

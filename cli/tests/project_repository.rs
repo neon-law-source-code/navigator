@@ -368,6 +368,23 @@ fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
     assert!(source.contains("needs: [read-manifest, verify, documents, seeds]"));
 }
 
+#[test]
+fn the_seed_import_action_uses_the_repository_root() {
+    let source = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.github/actions/seed-import/action.yml"),
+    )
+    .unwrap();
+
+    assert!(
+        source.contains(r#"navigator site import --ci --host "${HOST}""#),
+        "the seed-import action must use the CLI's root-only import form",
+    );
+    assert!(
+        !source.contains("inputs.dir"),
+        "the seed-import action must not pass the removed directory input",
+    );
+}
+
 fn gate(dir: &Path) -> assert_cmd::assert::Assert {
     navigator()
         .current_dir(dir)

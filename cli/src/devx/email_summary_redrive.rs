@@ -95,12 +95,8 @@ async fn redrive_with(
     .await
     .context("resubmit the EmailSummary workflow")?;
 
-    match parse_invocation_id(&body) {
-        Some(invocation_id) => {
-            println!("receipt {receipt_id}: resubmitted, invocation {invocation_id}");
-        }
-        None => println!("receipt {receipt_id}: resubmitted"),
-    }
+    let _ = parse_invocation_id(&body);
+    println!("EmailSummary workflow resubmitted");
     Ok(())
 }
 

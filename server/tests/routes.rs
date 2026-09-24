@@ -14869,8 +14869,6 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
         channel_id: "C-SYNTHETIC".into(),
         gemini_model: "gemini-test".into(),
         gemini_location: "global".into(),
-        claude_model: "claude-test".into(),
-        claude_location: "global".into(),
         max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
         max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
     });
@@ -14958,7 +14956,6 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
         workflows::scoped_email_digest(&receipt.deployment, &receipt.receiving_mailbox, &archived);
     assert_eq!(worker_digest, receipt.raw_digest);
     assert_eq!(request.gemini.input_digest, receipt.raw_digest);
-    assert_eq!(request.claude.input_digest, receipt.raw_digest);
     assert_eq!(
         worker_digest,
         workflows::scoped_email_digest("staging", "intake@parse.example.com", raw)
@@ -14978,8 +14975,6 @@ async fn summary_intake_rejects_tampered_body_and_missing_envelope() {
         channel_id: "C-SYNTHETIC".into(),
         gemini_model: "gemini-test".into(),
         gemini_location: "global".into(),
-        claude_model: "claude-test".into(),
-        claude_location: "global".into(),
         max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
         max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
     });

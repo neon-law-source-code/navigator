@@ -18,8 +18,6 @@ pub const INBOUND_PUBLIC_KEY_ENV: &str = "SENDGRID_INBOUND_PUBLIC_KEY";
 pub const GCP_PROJECT_ENV: &str = "NAVIGATOR_GCP_PROJECT_ID";
 pub const GEMINI_MODEL_ENV: &str = "NAVIGATOR_SUMMARY_GEMINI_MODEL";
 pub const GEMINI_LOCATION_ENV: &str = "NAVIGATOR_SUMMARY_GEMINI_LOCATION";
-pub const CLAUDE_MODEL_ENV: &str = "NAVIGATOR_SUMMARY_CLAUDE_MODEL";
-pub const CLAUDE_LOCATION_ENV: &str = "NAVIGATOR_SUMMARY_CLAUDE_LOCATION";
 pub const MAX_INPUT_CHARS_ENV: &str = "NAVIGATOR_SUMMARY_MAX_INPUT_CHARS";
 pub const MAX_OUTPUT_TOKENS_ENV: &str = "NAVIGATOR_SUMMARY_MAX_OUTPUT_TOKENS";
 pub const CI_HARNESS_ENV: &str = "NAVIGATOR_CI_HARNESS";
@@ -38,8 +36,6 @@ pub struct EmailSummaryConfig {
     pub channel_id: String,
     pub gemini_model: String,
     pub gemini_location: String,
-    pub claude_model: String,
-    pub claude_location: String,
     pub max_input_chars: usize,
     pub max_output_tokens: u32,
 }
@@ -91,10 +87,6 @@ impl EmailSummaryConfig {
             .unwrap_or_else(|| cloud::DEFAULT_GEMINI_SUMMARY_MODEL.to_string());
         let gemini_location = non_empty(get(GEMINI_LOCATION_ENV))
             .unwrap_or_else(|| cloud::DEFAULT_GEMINI_SUMMARY_LOCATION.to_string());
-        let claude_model = non_empty(get(CLAUDE_MODEL_ENV))
-            .unwrap_or_else(|| cloud::DEFAULT_CLAUDE_SUMMARY_MODEL.to_string());
-        let claude_location = non_empty(get(CLAUDE_LOCATION_ENV))
-            .unwrap_or_else(|| cloud::DEFAULT_CLAUDE_SUMMARY_LOCATION.to_string());
         let max_input_chars = positive_usize(
             MAX_INPUT_CHARS_ENV,
             get(MAX_INPUT_CHARS_ENV),
@@ -113,8 +105,6 @@ impl EmailSummaryConfig {
             (CHANNEL_ENV, &channel_id),
             (GEMINI_MODEL_ENV, &gemini_model),
             (GEMINI_LOCATION_ENV, &gemini_location),
-            (CLAUDE_MODEL_ENV, &claude_model),
-            (CLAUDE_LOCATION_ENV, &claude_location),
         ] {
             if value.chars().any(char::is_whitespace) {
                 return Err(EmailSummaryConfigError::InvalidToken(key));
@@ -135,8 +125,6 @@ impl EmailSummaryConfig {
             channel_id,
             gemini_model,
             gemini_location,
-            claude_model,
-            claude_location,
             max_input_chars,
             max_output_tokens,
         }))

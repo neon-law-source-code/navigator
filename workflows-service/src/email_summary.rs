@@ -8,10 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use cloud::{
-    ClaudeVertexAdapter, GeminiVertexAdapter, MetadataTokenSource, StorageService, VertexError,
-    VertexRequest,
-};
+use cloud::{GeminiVertexAdapter, MetadataTokenSource, StorageService, VertexError, VertexRequest};
 use restate_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use store::email_receipts::EmailReceipt;
@@ -27,12 +24,11 @@ const DEFAULT_METADATA_TOKEN_URL: &str =
 const PROVIDER_ATTEMPTS: usize = 3;
 const SUMMARY_OUTPUT_MAX_CHARS: usize = 8_000;
 
-/// The two provider transports share the worker's Workload Identity token
-/// source but retain separate model/location choices in each request.
+/// The provider transport, authenticated with the worker's Workload Identity
+/// token source. Gemini is the only summary provider; see `cloud::vertex`.
 #[derive(Clone)]
 pub struct SummaryProviders {
     pub gemini: GeminiVertexAdapter,
-    pub claude: ClaudeVertexAdapter,
 }
 
 impl SummaryProviders {
@@ -47,8 +43,7 @@ impl SummaryProviders {
             .unwrap_or_else(|_| DEFAULT_METADATA_TOKEN_URL.to_string());
         let token_source = Arc::new(MetadataTokenSource::new(metadata_url)?);
         Ok(Some(Self {
-            gemini: GeminiVertexAdapter::new(token_source.clone())?,
-            claude: ClaudeVertexAdapter::new(token_source)?,
+            gemini: GeminiVertexAdapter::new(token_source)?,
         }))
     }
 }
@@ -111,7 +106,6 @@ async fn call_provider(
 ) -> Result<cloud::VertexResponse, VertexError> {
     match provider {
         SummaryProvider::Gemini => providers.gemini.generate_content(request).await,
-        SummaryProvider::Claude => providers.claude.raw_predict(request).await,
     }
 }
 
@@ -247,9 +241,7 @@ impl EmailSummaryService {
             .await?
             .into_inner();
 
-        if request.gemini.input_digest != receipt.raw_digest
-            || request.claude.input_digest != receipt.raw_digest
-        {
+        if request.gemini.input_digest != receipt.raw_digest {
             return Err(
                 TerminalError::new("summary run configuration does not match receipt").into(),
             );
@@ -279,35 +271,7 @@ impl EmailSummaryService {
             .into_inner()
         };
 
-        let claude = {
-            let storage = Arc::clone(&self.storage);
-            let providers = self.providers.clone();
-            let receipt_for_provider = receipt.clone();
-            let config = request.claude.clone();
-            let project_id = request.project_id.clone();
-            ctx.run(move || async move {
-                Ok(Json(
-                    summarize_provider(
-                        storage,
-                        providers,
-                        SummaryProvider::Claude,
-                        receipt_for_provider,
-                        config,
-                        project_id,
-                    )
-                    .await?,
-                ))
-            })
-            .name("summarize-claude")
-            .await?
-            .into_inner()
-        };
-
-        let message = SummaryDeliveryMessage {
-            receipt_id,
-            gemini,
-            claude,
-        };
+        let message = SummaryDeliveryMessage { receipt_id, gemini };
         let surreal = self.surreal.clone();
         let slack = Arc::clone(&self.slack);
         let channel_id = request.channel_id.clone();
@@ -413,7 +377,6 @@ mod tests {
         A bounded summary body\r\n";
 
     const GEMINI_PATH: &str = "/v1/projects/synthetic-project/locations/global/publishers/google/models/summary-model:generateContent";
-    const CLAUDE_PATH: &str = "/v1/projects/synthetic-project/locations/global/publishers/anthropic/models/summary-model:rawPredict";
 
     fn config(provider: SummaryProvider, digest: &str) -> EmailSummaryRunConfig {
         EmailSummaryRunConfig::new(provider, "summary-model", "global", "summary-v1", digest)
@@ -423,11 +386,8 @@ mod tests {
     fn providers(base_url: &str) -> SummaryProviders {
         let token = Arc::new(StaticTokenSource::new("test-token"));
         SummaryProviders {
-            gemini: cloud::GeminiVertexAdapter::new(token.clone())
+            gemini: cloud::GeminiVertexAdapter::new(token)
                 .expect("gemini adapter")
-                .with_base_url(base_url),
-            claude: cloud::ClaudeVertexAdapter::new(token)
-                .expect("claude adapter")
                 .with_base_url(base_url),
         }
     }
@@ -620,44 +580,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn valid_claude_output_uses_the_claude_transport() {
-        let archive = b"From: sender@example.com\r\n\
-            To: intake@example.com\r\n\
-            Content-Type: text/plain\r\n\r\n\
-            A bounded summary body\r\n";
-        let digest = intake_digest(archive);
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path(
-                "/v1/projects/synthetic-project/locations/global/publishers/anthropic/models/summary-model:rawPredict",
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_string(
-                r#"{"content":[{"type":"text","text":"{\"summary\":\"Useful\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"}]}"#,
-            ))
-            .mount(&server)
-            .await;
-
-        let result = summarize_provider(
-            Arc::new(MemoryStorage {
-                bytes: Some(archive.to_vec()),
-            }),
-            Some(providers(&server.uri())),
-            SummaryProvider::Claude,
-            receipt(&digest),
-            config(SummaryProvider::Claude, &digest),
-            "synthetic-project".to_string(),
-        )
-        .await
-        .expect("provider response is represented in the summary");
-
-        assert!(matches!(
-            result,
-            ProviderDelivery::Succeeded { model, result }
-                if model == "summary-model" && result.summary == "Useful"
-        ));
-    }
-
-    #[tokio::test]
     async fn retryable_provider_failures_are_retried_then_quarantined() {
         let archive = b"From: sender@example.com\r\n\
             To: intake@example.com\r\n\
@@ -724,7 +646,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_valid_archive_reaches_both_provider_adapters() {
+    async fn a_valid_archive_reaches_the_gemini_adapter() {
         let digest = intake_digest(ARCHIVE);
         let server = MockServer::start().await;
         let json = r#"{\"summary\":\"Useful\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"#;
@@ -736,15 +658,8 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        Mock::given(method("POST"))
-            .and(path(CLAUDE_PATH))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                r#"{{"content":[{{"type":"text","text":"{json}"}}]}}"#
-            )))
-            .expect(1)
-            .mount(&server)
-            .await;
-        for provider in [SummaryProvider::Gemini, SummaryProvider::Claude] {
+        {
+            let provider = SummaryProvider::Gemini;
             let result = summarize_provider(
                 Arc::new(MemoryStorage {
                     bytes: Some(ARCHIVE.to_vec()),
@@ -775,7 +690,8 @@ mod tests {
             .expect(0)
             .mount(&server)
             .await;
-        for provider in [SummaryProvider::Gemini, SummaryProvider::Claude] {
+        {
+            let provider = SummaryProvider::Gemini;
             let result = summarize_provider(
                 Arc::new(MemoryStorage {
                     bytes: Some(tampered.clone()),

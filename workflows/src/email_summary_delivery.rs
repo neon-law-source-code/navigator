@@ -21,7 +21,6 @@ pub enum ProviderDelivery {
 pub struct SummaryDeliveryMessage {
     pub receipt_id: Uuid,
     pub gemini: ProviderDelivery,
-    pub claude: ProviderDelivery,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,8 +42,6 @@ pub enum SummaryDeliveryError {
 pub fn render_summary_message(message: &SummaryDeliveryMessage) -> String {
     let mut output = format!("Support summary receipt: {}\n", message.receipt_id);
     output.push_str(&render_provider("Gemini", &message.gemini));
-    output.push('\n');
-    output.push_str(&render_provider("Claude", &message.claude));
     truncate(&output, MAX_SLACK_CHARS)
 }
 
@@ -167,21 +164,29 @@ mod tests {
                     missing_information: vec![],
                 },
             },
-            claude: ProviderDelivery::Failed {
-                model: "claude-test".to_string(),
-                status: "provider timeout".to_string(),
-            },
         }
     }
 
     #[test]
-    fn renders_partial_failure_and_escapes_slack_markup() {
+    fn renders_the_gemini_summary_and_escapes_slack_markup() {
         let rendered = render_summary_message(&message(Uuid::nil()));
         assert!(rendered.contains("*Gemini* (gemini-test)"));
-        assert!(rendered.contains("*Claude* (claude-test)\nFailure: provider timeout"));
+        assert!(!rendered.contains("Claude"));
         assert!(rendered.contains("&lt;@U123&gt;"));
         assert!(rendered.contains("Review &amp; reply"));
         assert!(!rendered.contains("<@U123>"));
+    }
+
+    #[test]
+    fn renders_a_bounded_provider_failure_as_status_only() {
+        let rendered = render_summary_message(&SummaryDeliveryMessage {
+            receipt_id: Uuid::nil(),
+            gemini: ProviderDelivery::Failed {
+                model: "gemini-test".to_string(),
+                status: "provider timeout".to_string(),
+            },
+        });
+        assert!(rendered.contains("*Gemini* (gemini-test)\nFailure: provider timeout"));
     }
 
     #[test]

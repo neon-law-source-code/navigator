@@ -841,7 +841,7 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
     assert_eq!(body.matches("<h1").count(), 1);
     for text in [
         "Keep building.",
-        "Emerging Technologies Counsel",
+        "Counsel for what you’re building.",
         "Pause motion",
         "deal-exhibition",
         "site-header",
@@ -850,12 +850,12 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
         assert!(body.contains(text), "missing {text}: {body}");
     }
     let experience = body
-        .find("Legal judgment, in software.")
+        .find("Experience that moves you forward.")
         .expect("experience section");
     let pricing = body.find("id=\"pricing\"").expect("pricing anchor");
     assert!(experience < pricing, "show experience before fees");
-    assert!(body.contains("We built a battle-tested 30 PB data warehouse for Apple Finance"));
-    assert!(body.contains("Retainer and setup"));
+    assert!(body.contains("a 30-petabyte data warehouse for Apple Finance"));
+    assert!(body.contains("Start with a solid foundation."));
     assert!(body.contains("One-time setup"));
     assert!(body.contains("Master services, employment, and equity agreements."));
     assert!(body.matches("Keep building.").count() >= 2);
@@ -876,34 +876,20 @@ async fn home_explains_retainer_and_additional_fees() {
     let body = body_string(anon_get(&app, "/").await).await;
     for text in [
         "$50",
-        "$10,000 retainer",
-        "$5,000 one-time setup",
-        "The daily fee covers writing and review.",
+        "$500",
+        "$5,000",
+        "Flat fee. Master services, employment, and equity agreements.",
+        "A $10,000 retainer is held in trust when you sign up.",
         "We draw after we perform the work.",
         "The engagement letter sets scope, rates, and refunds.",
-        "$1,000",
-        "$3,000",
-        "$5,000",
-        "10 days × $50 = $500",
-        "30 days × $50 = $1,500",
-        "After selected services: $1,500 earned, $8,500 remains held in trust.",
-        "After selected services: $3,500 earned, $6,500 remains held in trust.",
-        "After selected services: $5,500 earned, $4,500 remains held in trust.",
-        "After selected services: $2,500 earned, $7,500 remains held in trust.",
-        "After selected services: $4,500 earned, $5,500 remains held in trust.",
-        "After selected services: $6,500 earned, $3,500 remains held in trust.",
-        "We respond within five business days",
-        "Same-day review is a sized fee.",
-        "The size sets the fee.",
-        "5 p.m. PST",
-        "We serve as your counsel",
-        "We send registered-agent notice where we accept that role",
-        "Privileged Slack channel",
-        "Same-day review",
-        "Starting retainer",
-        "Earned charges",
-        "Request same-day review before 5 p.m. PST. We confirm size and fee before we begin.",
-        "Master services, employment, and equity agreements.",
+        "Contract drafting and review. Five-business-day turnaround.",
+        "Contract review with a one-day turnaround.",
+        "Each contract includes up to 50 pages. Each additional page is $5.",
+        "US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt.",
+        "Registered-agent notice where we accept that role",
+        "A shared Slack channel",
+        "Your business. In confidence.",
+        "We treat your legal matters as confidential.",
         "per active case",
         "You pay legal fees and case expenses.",
         "BUSL-1.1",
@@ -911,7 +897,14 @@ async fn home_explains_retainer_and_additional_fees() {
     ] {
         assert!(body.contains(text), "missing fee or scope: {text}");
     }
-    assert!(!body.contains("We hold your retainer in trust."));
+    for retired in [
+        "company-simulator",
+        "Same-day review",
+        "Privileged Slack channel",
+        "$3,000",
+    ] {
+        assert!(!body.contains(retired), "superseded offer: {retired}");
+    }
     assert!(!body.contains(
         "We review contracts within five business days of acceptance as part of your plan"
     ));
@@ -923,13 +916,11 @@ async fn home_explains_retainer_and_additional_fees() {
     assert!(!body.contains("This daily fee applies whether"));
     assert!(!body.contains("Choose a size when you need review the same day instead"));
     assert!(!body.contains("30 days cost $1,500."));
-    let starting_amounts = body.find("Retainer and setup").expect("retainer and setup");
-    let daily_plan = body
-        .find("Counsel and registered agent")
-        .expect("daily counsel plan");
+    let starting_amounts = body.find("Start with a solid foundation.").expect("setup");
+    let daily_plan = body.find("Ongoing counsel").expect("daily counsel plan");
     assert!(
         starting_amounts < daily_plan,
-        "the $10,000 retainer and $5,000 setup must appear before the daily plan"
+        "the $5,000 setup must appear before the daily plan"
     );
     assert!(body.contains(r#"href="/navigator""#), "missing /navigator");
     // The two sibling practices are named in the same section either way; the

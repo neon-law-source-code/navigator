@@ -298,7 +298,7 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         page(
             mark,
             "/",
-            "Counsel for technology companies. $50 a day. $5,000 one-time setup. Litigation from $5,000 a month per active case.",
+            "Counsel for technology companies. $5,000 flat-fee setup. $50 a day with five-business-day contract turnaround. $500 express review in one day. Contracts include 50 pages; each additional page is $5. Separate $10,000 retainer.",
         ),
         page(
             "Neon Law Navigator",

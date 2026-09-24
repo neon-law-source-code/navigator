@@ -801,17 +801,11 @@ pub fn home_for_host(
             membership_unit: copy.membership_unit,
             membership_body: copy.membership_body,
             membership_features: copy.membership_features,
-            retainer_amount: copy.retainer_amount,
-            simulator_heading: copy.simulator_heading,
-            simulator_body: copy.simulator_body,
-            simulator_days_label: copy.simulator_days_label,
-            simulator_size_label: copy.simulator_size_label,
-            simulator_size_hint: copy.simulator_size_hint,
-            simulator_plan_label: copy.simulator_plan_label,
-            simulator_review_label: copy.simulator_review_label,
-            simulator_total_label: copy.simulator_total_label,
-            simulator_note: copy.simulator_note,
-            review_rows: copy.review_rows,
+            express_heading: copy.express_heading,
+            express_price: copy.express_price,
+            express_unit: copy.express_unit,
+            express_body: copy.express_body,
+            page_note: copy.page_note,
             drafting_heading: copy.drafting_heading,
             drafting_body: copy.drafting_body,
             drafting_packages: copy.drafting_packages,
@@ -939,31 +933,24 @@ mod tests {
     use webapp::marketing_page::Band as RenderedBand;
 
     #[test]
-    fn home_company_contract_publishes_membership_and_separate_review_prices() {
+    fn home_company_contract_publishes_setup_daily_and_express_prices() {
         let copy: serde_yaml::Value = serde_yaml::from_str(NEON_HOME_YAML).unwrap();
         let company = &copy["company"];
         assert_eq!(company["membership_price"].as_str(), Some("$50"));
-        assert_eq!(company["retainer_amount"].as_u64(), Some(10_000));
-        assert_eq!(company["review_rows"][0][1].as_str(), Some("$1,000"));
-        assert_eq!(company["review_rows"][2][1].as_str(), Some("$5,000"));
-        assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$10,000"));
+        assert_eq!(company["express_price"].as_str(), Some("$500"));
         assert_eq!(
-            company["drafting_packages"][1][0].as_str(),
+            company["drafting_packages"][0][0].as_str(),
             Some("One-time setup")
         );
-        assert!(company["drafting_packages"][1][2]
-            .as_str()
-            .unwrap()
-            .contains("Master services, employment, and equity agreements"));
-        assert_eq!(company["drafting_packages"][1][1].as_str(), Some("$5,000"));
+        assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$5,000"));
         assert_eq!(
             company["drafting_packages"].as_sequence().map(Vec::len),
-            Some(2)
+            Some(1)
         );
-        assert!(company["simulator_note"]
+        assert!(company["retainer_note"]
             .as_str()
             .unwrap()
-            .contains("5 p.m. PST"));
+            .contains("$10,000"));
         assert!(company["source_note"]
             .as_str()
             .unwrap()

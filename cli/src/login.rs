@@ -368,13 +368,18 @@ async fn send_response(
 
 /// Best-effort browser open. The URL is always printed too, so a
 /// headless or SSH session can copy it manually.
+#[cfg(target_os = "windows")]
+fn browser_open_command(url: &str) -> Vec<String> {
+    vec!["/C".to_string(), format!(r#"start "" "{url}""#)]
+}
+
 fn open_in_browser(url: &str) {
     #[cfg(target_os = "macos")]
-    let opener = ("open", vec![url]);
+    let opener = ("open", vec![url.to_string()]);
     #[cfg(target_os = "windows")]
-    let opener = ("cmd", vec!["/C", "start", "", url]);
+    let opener = ("cmd", browser_open_command(url));
     #[cfg(all(unix, not(target_os = "macos")))]
-    let opener = ("xdg-open", vec![url]);
+    let opener = ("xdg-open", vec![url.to_string()]);
 
     let (cmd, args) = opener;
     let _ = std::process::Command::new(cmd)
@@ -503,5 +508,14 @@ mod tests {
         assert_eq!(a.len(), 32);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, random_state());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_browser_command_keeps_multi_parameter_urls_together() {
+        let url = "https://example.test/auth/cli/start?redirect=http%3A%2F%2F127.0.0.1%3A60063%2Fcb&state=abc123";
+        let args = browser_open_command(url);
+
+        assert_eq!(args, vec!["/C".to_string(), format!(r#"start "" "{url}""#)]);
     }
 }

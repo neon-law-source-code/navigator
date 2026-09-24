@@ -1,0 +1,60 @@
+kind: agreement
+title: Mutual Non-Disclosure Agreement
+code: business__mutual_nda
+jurisdiction: US
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/mutual-nda
+prompts:
+  company: "What is the company’s full legal name and entity type?"
+  other_party: "What is the other party’s full legal name and entity type?"
+  effective_date: "What date does this agreement take effect?"
+  business_purpose: "What specific business purpose permits use of the information?"
+  business_term: "How long may the parties disclose information under this agreement?"
+  business_survival: >-
+    How long do confidentiality duties continue after termination (trade secrets remain protected while legally
+    qualifying)?
+  law: "Which state’s law governs?"
+  notices: "Who receives notices for each party? Include name, role, business email, and postal address."
+  business_forum: "Which courts have jurisdiction, subject to mandatory law?"
+audiences:
+  company: lawyer
+  other_party: lawyer
+  effective_date: lawyer
+  business_purpose: lawyer
+  business_term: lawyer
+  business_survival: lawyer
+  law: lawyer
+  business_forum: lawyer
+  notices: lawyer
+questionnaire:
+  BEGIN:
+    _: entity__company
+  entity__company:
+    _: entity__other_party
+  entity__other_party:
+    _: custom_datetime__effective_date
+  custom_datetime__effective_date:
+    _: custom_text__business_purpose
+  custom_text__business_purpose:
+    _: custom_text__business_term
+  custom_text__business_term:
+    _: custom_text__business_survival
+  custom_text__business_survival:
+    _: jurisdiction__law
+  jurisdiction__law:
+    _: custom_text__business_forum
+  custom_text__business_forum:
+    _: people__notices
+  people__notices:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

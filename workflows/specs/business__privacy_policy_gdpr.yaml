@@ -1,0 +1,90 @@
+kind: agreement
+title: Privacy Policy (GDPR Enhanced)
+code: business__privacy_policy_gdpr
+jurisdiction: US
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/privacy-policy-gdpr
+prompts:
+  company: "What is the company’s full legal name and entity type?"
+  business_services: "Identify covered websites, apps, audiences, and controller/business role."
+  effective_date: "What is the effective date?"
+  contacts: "Who are the primary and alternate contacts? Include name, title, email, and postal address."
+  business_data: "Inventory data categories, sensitive data, people, and specific sources."
+  business_purposes: "Map each category to its actual purpose and disclose any automated decision-making."
+  business_sharing: >-
+    Map data categories to recipients and purposes; state actual sale, sharing, advertising, and opt-out practices.
+  business_cookies: "Give the cookie notice and preference-center URLs."
+  business_retention: "State retention periods or criteria by category, security practices, and backup treatment."
+  business_rights: >-
+    Give working request methods, verification, authorized-agent, appeal, response, and marketing opt-out procedures.
+  business_state_disclosures: >-
+    Complete applicable state disclosures, including California collection/sale/sharing information for the required
+    period and financial incentives, if any.
+  business_bases: >-
+    Map each processing purpose to its lawful basis, identifying legitimate interests and consent withdrawal methods.
+  business_transfers: >-
+    Identify actual destinations, adequacy decisions or executed safeguards, and how people can obtain a copy.
+  business_representatives: >-
+    Give applicable DPO, EU/UK representative, and competent supervisory-authority details; explain any role that does
+    not apply.
+  business_children: "State intended ages, child-data practices, and parent contact process."
+audiences:
+  company: lawyer
+  business_services: lawyer
+  effective_date: lawyer
+  contacts: lawyer
+  business_data: lawyer
+  business_purposes: lawyer
+  business_sharing: lawyer
+  business_cookies: lawyer
+  business_retention: lawyer
+  business_rights: lawyer
+  business_state_disclosures: lawyer
+  business_bases: lawyer
+  business_transfers: lawyer
+  business_representatives: lawyer
+  business_children: lawyer
+questionnaire:
+  BEGIN:
+    _: entity__company
+  entity__company:
+    _: custom_text__business_services
+  custom_text__business_services:
+    _: custom_datetime__effective_date
+  custom_datetime__effective_date:
+    _: people__contacts
+  people__contacts:
+    _: custom_text__business_data
+  custom_text__business_data:
+    _: custom_text__business_purposes
+  custom_text__business_purposes:
+    _: custom_text__business_sharing
+  custom_text__business_sharing:
+    _: custom_text__business_cookies
+  custom_text__business_cookies:
+    _: custom_text__business_retention
+  custom_text__business_retention:
+    _: custom_text__business_rights
+  custom_text__business_rights:
+    _: custom_text__business_state_disclosures
+  custom_text__business_state_disclosures:
+    _: custom_text__business_bases
+  custom_text__business_bases:
+    _: custom_text__business_transfers
+  custom_text__business_transfers:
+    _: custom_text__business_representatives
+  custom_text__business_representatives:
+    _: custom_text__business_children
+  custom_text__business_children:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

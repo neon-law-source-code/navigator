@@ -77,6 +77,54 @@ pub fn workshop_certificate_spec() -> WorkflowSpec {
 /// callers (and `cli scaffold`) can locate the YAML by code without
 /// reaching into the filesystem.
 pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
+    (
+        "business__mutual_nda",
+        include_str!("../specs/business__mutual_nda.yaml"),
+    ),
+    (
+        "business__one_way_nda",
+        include_str!("../specs/business__one_way_nda.yaml"),
+    ),
+    (
+        "business__advisor_agreement",
+        include_str!("../specs/business__advisor_agreement.yaml"),
+    ),
+    (
+        "business__master_services_agreement",
+        include_str!("../specs/business__master_services_agreement.yaml"),
+    ),
+    (
+        "business__employee_offer_letter",
+        include_str!("../specs/business__employee_offer_letter.yaml"),
+    ),
+    (
+        "business__business_associate_agreement",
+        include_str!("../specs/business__business_associate_agreement.yaml"),
+    ),
+    (
+        "business__dpa_us",
+        include_str!("../specs/business__dpa_us.yaml"),
+    ),
+    (
+        "business__dpa_global",
+        include_str!("../specs/business__dpa_global.yaml"),
+    ),
+    (
+        "business__cookie_notice",
+        include_str!("../specs/business__cookie_notice.yaml"),
+    ),
+    (
+        "business__privacy_policy_us",
+        include_str!("../specs/business__privacy_policy_us.yaml"),
+    ),
+    (
+        "business__privacy_policy_gdpr",
+        include_str!("../specs/business__privacy_policy_gdpr.yaml"),
+    ),
+    (
+        "business__terms_of_use",
+        include_str!("../specs/business__terms_of_use.yaml"),
+    ),
     ("onboarding__letter", RETAINER_INTAKE_SPEC_YAML),
     (
         "nv__llc_formation",

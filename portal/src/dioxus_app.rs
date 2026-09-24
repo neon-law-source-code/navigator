@@ -10,14 +10,14 @@
 //! The mount is deliberately *constrained*: `dioxus-server`'s
 //! `serve_dioxus_application` installs a global fallback that would answer every
 //! unmatched route, so this module never calls it. Instead it serves the client
-//! bundle plus exactly [`DIOXUS_DEMO_PATH`], leaving `web`'s own fallback and
+//! bundle's `/wasm` directory plus exactly [`DIOXUS_DEMO_PATH`], leaving `web`'s own fallback and
 //! all its routes — the JSON API, MCP, A2A, git smart-HTTP, OIDC, webhooks, and
 //! every marketing page — untouched.
 //!
 //! When no bundle directory is present (the default in unit tests and any
 //! deploy that has not built the bundle), [`router`] returns `None` and the
-//! demo page is simply absent — nothing else changes. This also sidesteps
-//! `serve_static_assets`, which panics on a missing public directory.
+//! demo page is simply absent — nothing else changes. The browser bundle is
+//! public; the demo page remains inside the session boundary.
 //!
 //! ## CSP and hydration (a Phase 0 finding)
 //!
@@ -56,7 +56,7 @@ use axum::{
     RequestExt, Router,
 };
 use base64::Engine as _;
-use dioxus_server::{render_handler, DioxusRouterExt, FullstackState, ServeConfig};
+use dioxus_server::{render_handler, FullstackState, ServeConfig};
 
 /// The single low-risk page Phase 0 renders through Dioxus.
 pub const DIOXUS_DEMO_PATH: &str = "/dioxus-demo";
@@ -95,8 +95,7 @@ pub const RETIRED_DOCS_PATHS: [&str; 4] =
 
 /// The environment variable naming the built client-bundle directory. Read by
 /// `dioxus-server`'s `ServeConfig::new` (for the `index.html` template) and
-/// `serve_static_assets` (for the wasm + glue), so this module points both at
-/// the same directory by reading it here first.
+/// the public asset mount (for the wasm + glue).
 const PUBLIC_PATH_ENV: &str = "DIOXUS_PUBLIC_PATH";
 
 /// The bundle directory to serve, or `None` when it is unset or has no
@@ -109,26 +108,32 @@ fn bundle_dir() -> Option<PathBuf> {
 /// Build the constrained Dioxus sub-router, or `None` when no client bundle is
 /// available.
 ///
-/// The returned `Router<()>` serves the client bundle (wasm + wasm-bindgen
-/// glue) at the same-origin paths `webapp`'s `index.html` references and renders
+/// The returned `Router<()>` renders
 /// [`webapp::App`] at [`DIOXUS_DEMO_PATH`], with [`dioxus_document_head`] scoped
 /// to the rendered page. `.merge()` it into the main router after its
 /// `.with_state(...)`.
 #[must_use]
 pub fn router() -> Option<Router> {
-    // Only mount when a real bundle directory exists: `serve_static_assets`
-    // reads the directory eagerly and panics if it is missing, and a demo page
-    // with no wasm to hydrate it is not worth serving.
+    // A demo page with no wasm to hydrate it is not worth serving.
     let _dir = bundle_dir()?;
     Some(
         Router::<FullstackState>::new()
-            .serve_static_assets()
             .route(
                 DIOXUS_DEMO_PATH,
                 get(render_handler).layer(from_fn(dioxus_document_head)),
             )
             .with_state(FullstackState::new(ServeConfig::new(), webapp::App)),
     )
+}
+
+/// Browser code is public; the demo page keeps its own session boundary.
+/// Mount only dx's generated JavaScript and WebAssembly directory; its empty
+/// `assets/` directory must not shadow the object-store `/assets/{*key}` route.
+pub(crate) fn assets_router() -> Option<Router> {
+    Some(Router::new().nest_service(
+        "/wasm",
+        tower_http::services::ServeDir::new(bundle_dir()?.join("wasm")),
+    ))
 }
 
 /// Middleware for the rendered page. It owns the head-level concerns the

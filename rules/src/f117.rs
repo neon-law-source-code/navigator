@@ -43,6 +43,59 @@ struct FrontmatterShape {
 /// role whose value is genuinely one-off narrative or a primitive the
 /// registry has no better shape for — never a glossary noun.
 pub const ALLOWED_CUSTOM_TEXT_ROLES: &[&str] = &[
+    "business_forum", // Negotiated courts; governing law remains a jurisdiction reference.
+    // Business instruments: lawyer-authored schedules and negotiated provisions.
+    // Parties, dates, notice addresses, and governing law use typed states.
+    "business_acceptance", // Describe the actual notice and assent mechanism, including how changes are accepted.
+    "business_accessibility", // Provide an accessibility help channel and available accommodations.
+    "business_agreement",  // Identify the underlying customer agreement.
+    "business_bases", // Map each processing purpose to its lawful basis, identifying legitimate interests and consent withdrawal methods.
+    "business_benefits", // benefit eligibility, leave, and expense reimbursement.
+    "business_charges", // fees, renewals, cancellation, refunds, and support, or clearly state that the service is free.
+    "business_children", // intended ages, child-data practices, and parent contact process.
+    "business_choices", // working preference-center instructions and URL, consent behavior, opt-out signals, and relevant browser controls.
+    "business_classification", // Identify the exemption and confirm current salary and duties requirements, including any occupation-specific rules.
+    "business_compensation", // cash fees, expense rules, and any proposed equity grant with vesting and required approvals.
+    "business_conditions", // List only lawful offer conditions and the sequence for any screening.
+    "business_content_license", // Define content processing, sharing settings, and the license needed to operate the service.
+    "business_cookies",         // the cookie notice and preference-center URLs.
+    "business_cure_period",     // the cure period for a curable material violation.
+    "business_customer_role",   // Is Customer a covered entity or an upstream business associate?
+    "business_data", // Inventory data categories, sensitive data, people, and specific sources.
+    "business_deliverables", // Who owns commissioned deliverables, and what background-IP licenses apply?
+    "business_eligibility",  // the audience, age limits, and organizational authority requirements.
+    "business_exit",         // the account closure and data export procedure.
+    "business_fees", // fees, currency, billing schedule, payment deadline, usage charges, and approved expenses.
+    "business_incentives", // Describe bonus and proposed equity terms, or state none.
+    "business_incident_deadline", // the outer incident reporting deadline; notice must still be without undue delay.
+    "business_inventory", // List every cookie or tracker with provider, purpose, necessary/optional category, lifetime, and data recipients; reconcile against an actual scan.
+    "business_liability", // a reasonable cap, measurement period, and exceptions appropriate to the service and applicable law.
+    "business_local_notices", // Provide applicable state and consumer notices and current official complaint contacts.
+    "business_order", // Describe the signed order, services, users, milestones, dependencies, and acceptance criteria.
+    "business_permitted_use", // Describe permitted personal or business use.
+    "business_prior_materials", // List retained pre-existing materials and their license terms, or state none.
+    "business_privacy",         // the privacy and cookie notice URLs.
+    "business_privacy_policy",  // the published privacy policy URL.
+    "business_processing", // subject matter, duration, nature, purposes, individuals, data, sensitive data, frequency, retention, locations, and controller/processor roles.
+    "business_purpose",    // What specific business purpose permits use of the information?
+    "business_purposes", // Map each category to its actual purpose and disclose any automated decision-making.
+    "business_representatives", // applicable DPO, EU/UK representative, and competent supervisory-authority details; explain any role that does not apply.
+    "business_retention", // retention periods or criteria by category, security practices, and backup treatment.
+    "business_rights", // working request methods, verification, authorized-agent, appeal, response, and marketing opt-out procedures.
+    "business_role",   // title, actual duties, manager, California work location, and start date.
+    "business_salary_basis", // Salary basis is an employment-term primitive.
+    "business_paydays", // Regular payroll days are an employment-term primitive.
+    "business_payroll_frequency", // Payroll frequency is an employment-term primitive.
+    "business_security", // Specify the implemented security controls and any incorporated security schedule.
+    "business_services", // Identify the website, app, and covered services.
+    "business_sharing", // Map data categories to recipients and purposes; state actual sale, sharing, advertising, and opt-out practices.
+    "business_state_disclosures", // Complete applicable state disclosures, including California collection/sale/sharing information for the required period and financial incentives, if any.
+    "business_subprocessor_notice", // What advance notice period applies to subprocessor changes?
+    "business_subprocessors", // List each subprocessor, function, location, and change-notice channel.
+    "business_support", // support hours, availability commitments, service credits, and exclusions.
+    "business_survival", // How long do confidentiality duties continue after termination (trade secrets remain protected while legally qualifying)?
+    "business_term",     // term, renewal, cure period, and termination notice.
+    "business_transfers", // Identify actual destinations, adequacy decisions or executed safeguards, and how people can obtain a copy.
     // Narrative free text — the answer is prose only a human can write.
     "alleged_account",    // creditor's account reference, verbatim
     "contractor_term",    // e.g. "until the project completes"

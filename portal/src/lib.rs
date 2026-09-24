@@ -1729,10 +1729,13 @@ pub fn bootstrap(
     if let Some(oauth) = oauth_routes {
         router = router.merge(oauth);
     }
+    if let Some(bundle_assets) = dioxus_app::assets_router() {
+        router = router.merge(bundle_assets);
+    }
     // Phase 0 of the Dioxus adoption (issue #641): the `webapp` component
     // renders at `/dioxus-demo`, hydrated by a same-origin wasm bundle. The
-    // sub-router owns only that page plus the static bundle paths — never the
-    // global fallback — so every route above is unchanged. Absent a built
+    // sub-router owns only that page — the public bundle is mounted above,
+    // without a global fallback. Absent a built
     // bundle (the default in unit tests and un-built deploys) this is a no-op.
     if let Some(dioxus_router) = dioxus_app::router() {
         router = router.merge(session_boundary(
@@ -2253,6 +2256,7 @@ pub fn host_crawler_and_legal_routes(
 pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/version",
     "/assets",
+    "/wasm",
     "/webhook",
     "/docusign",
     "/public",

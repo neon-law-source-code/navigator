@@ -1,0 +1,59 @@
+kind: agreement
+title: Advisor Agreement
+code: business__advisor_agreement
+jurisdiction: US
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/advisor-agreement
+prompts:
+  company: "What is the company’s full legal name and entity type?"
+  advisor: "What is the advisor’s full legal name?"
+  effective_date: "What date does this agreement take effect?"
+  business_services: "Describe the advisory work, expected availability, and service dates."
+  business_compensation: >-
+    State cash fees, expense rules, and any proposed equity grant with vesting and required approvals.
+  business_prior_materials: "List retained pre-existing materials and their license terms, or state none."
+  law: "Which state’s law governs?"
+  notices: "Who receives notices for each party? Include name, role, business email, and postal address."
+  business_forum: "Which courts have jurisdiction, subject to mandatory law?"
+audiences:
+  company: lawyer
+  advisor: lawyer
+  effective_date: lawyer
+  business_services: lawyer
+  business_compensation: lawyer
+  business_prior_materials: lawyer
+  law: lawyer
+  business_forum: lawyer
+  notices: lawyer
+questionnaire:
+  BEGIN:
+    _: entity__company
+  entity__company:
+    _: person__advisor
+  person__advisor:
+    _: custom_datetime__effective_date
+  custom_datetime__effective_date:
+    _: custom_text__business_services
+  custom_text__business_services:
+    _: custom_text__business_compensation
+  custom_text__business_compensation:
+    _: custom_text__business_prior_materials
+  custom_text__business_prior_materials:
+    _: jurisdiction__law
+  jurisdiction__law:
+    _: custom_text__business_forum
+  custom_text__business_forum:
+    _: people__notices
+  people__notices:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

@@ -1,0 +1,74 @@
+kind: agreement
+title: Master Services Agreement
+code: business__master_services_agreement
+jurisdiction: US
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/master-services-agreement
+prompts:
+  company: "What is the company’s full legal name and entity type?"
+  other_party: "What is the other party’s full legal name and entity type?"
+  effective_date: "What date does this agreement take effect?"
+  business_order: "Describe the signed order, services, users, milestones, dependencies, and acceptance criteria."
+  business_fees: "State fees, currency, billing schedule, payment deadline, usage charges, and approved expenses."
+  business_support: "State support hours, availability commitments, service credits, and exclusions."
+  business_deliverables: "Who owns commissioned deliverables, and what background-IP licenses apply?"
+  business_liability: "Specify each liability cap, its measurement period, carve-outs, and any higher caps."
+  business_term: "State term, renewal, cure period, and termination notice."
+  business_exit: "State export format, transition assistance, retention period, and deletion requirements."
+  law: "Which state’s law governs?"
+  notices: "Who receives notices for each party? Include name, role, business email, and postal address."
+  business_forum: "Which courts have jurisdiction, subject to mandatory law?"
+audiences:
+  company: lawyer
+  other_party: lawyer
+  effective_date: lawyer
+  business_order: lawyer
+  business_fees: lawyer
+  business_support: lawyer
+  business_deliverables: lawyer
+  business_liability: lawyer
+  business_term: lawyer
+  business_exit: lawyer
+  law: lawyer
+  business_forum: lawyer
+  notices: lawyer
+questionnaire:
+  BEGIN:
+    _: entity__company
+  entity__company:
+    _: entity__other_party
+  entity__other_party:
+    _: custom_datetime__effective_date
+  custom_datetime__effective_date:
+    _: custom_text__business_order
+  custom_text__business_order:
+    _: custom_text__business_fees
+  custom_text__business_fees:
+    _: custom_text__business_support
+  custom_text__business_support:
+    _: custom_text__business_deliverables
+  custom_text__business_deliverables:
+    _: custom_text__business_liability
+  custom_text__business_liability:
+    _: custom_text__business_term
+  custom_text__business_term:
+    _: custom_text__business_exit
+  custom_text__business_exit:
+    _: jurisdiction__law
+  jurisdiction__law:
+    _: custom_text__business_forum
+  custom_text__business_forum:
+    _: people__notices
+  people__notices:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

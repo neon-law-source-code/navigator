@@ -18,6 +18,30 @@ A notation's template half is also called a **Draft** — the lawyer's word for 
 interchangeably with Template. See the [Draft](../docs/glossary/draft.md) glossary entry, which also separates it from
 the lowercase `draft` states that appear inside a running Notation.
 
+## Business library
+
+These twelve review drafts pair plain legal prose with typed parties, dates, and governing law, plus fillable commercial
+schedules. Each workflow requires lawyer review and supports a revision loop. Public previews let a reader try the
+questionnaire without saving answers; a real Notation belongs to a Project.
+
+- [Mutual Non-Disclosure Agreement](notations/neon_law/mutual_nda.md)
+- [One-Way Non-Disclosure Agreement](notations/neon_law/one_way_nda.md)
+- [Advisor Agreement](notations/neon_law/advisor_agreement.md)
+- [Master Services Agreement](notations/neon_law/master_services_agreement.md)
+- [Employee Offer Letter (California Exempt)](notations/neon_law/employee_offer_letter.md)
+- [Business Associate Agreement](notations/neon_law/business_associate_agreement.md)
+- [Data Processing Addendum (U.S.)](notations/neon_law/dpa_us.md)
+- [Data Processing Addendum (Global)](notations/neon_law/dpa_global.md)
+- [Cookie Notice](notations/neon_law/cookie_notice.md)
+- [Privacy Policy (U.S.)](notations/neon_law/privacy_policy_us.md)
+- [Privacy Policy (GDPR Enhanced)](notations/neon_law/privacy_policy_gdpr.md)
+- [Terms of Use](notations/neon_law/terms_of_use.md)
+
+Adapted from [General Legal’s CC0 templates](https://github.com/General-Legal/legal-templates). See the [source
+inventory and drafting decisions](../docs/business-notations.md) for the pinned revision, hashes, and substantive
+departures. The source material remains CC0; Navigator’s original additions follow the repository license. These drafts
+require transaction-specific legal review before use.
+
 ## Three shelves
 
 The tree has exactly three top-level shelves:
@@ -64,7 +88,7 @@ form: nv__llc_formation
 `origin_url` is the government page where the blank can be obtained. Git records the exact bytes we vendored; the URL
 records where those bytes came from.
 
-`notations/neon_law/` holds the firm's sample onboarding and closing letters:
+`notations/neon_law/` holds the firm's letters, sample litigation documents, and business templates:
 
 ```text
 templates/notations/neon_law/
@@ -72,10 +96,10 @@ templates/notations/neon_law/
 └── offboarding.md
 ```
 
-These files are the Firm's confidential work product, and the marks are reserved. **NEON LAW** is a registered trademark
-of Neon Law IP LLC (U.S. Reg. No. 6,325,650); **DELETEYOURDATA.COM™** and **LAWYER SHOOK™** are common-law marks of
-Shook Law PLLC; see the [Trademark note in the root README.md](../README.md#trademark). A rebrand goes through the
-white-label seam.
+Each file declares its own confidentiality classification. Public business templates contain no client data. The marks
+are reserved. **NEON LAW** is a registered trademark of Neon Law IP LLC (U.S. Reg. No. 6,325,650);
+**DELETEYOURDATA.COM™** and **LAWYER SHOOK™** are common-law marks of Shook Law PLLC; see the [Trademark note in the
+root README.md](../README.md#trademark). A rebrand goes through the white-label seam.
 
 `navigator project gate` rejects any legal template outside `notations/forms/` or `notations/neon_law/`. Those two
 shelves are the whole legal-notation surface; `github/` sits beside `notations/` for engineering intake, and nowhere
@@ -151,14 +175,14 @@ attorneys in [`docs/frontmatter.md`](../docs/frontmatter.md); editor setup is in
 
 This tree is licensed on the same terms as the rest of the repository, and deliberately so.
 
-**The notation bodies here are `BUSL-1.1`** — the legal prose, the questionnaire prompts, and the workflow definitions
-carried in the same files, exactly like the code that renders them. Adapt them, redistribute them, and make any
-non-production use of them; using them where somebody relies on the result — delivering legal services to other people —
-is production use and needs a commercial licence from Neon Law IP LLC, as is marketing a product or service to customers
-that relies on them. Each version converts to `Apache-2.0` four years after it is published. The prose and the state
-machine are the same file here, so a split licence would ask you to work out which half of a line you are editing; one
-grant means there is one answer. See [`../LICENSE`](../LICENSE) for the grant and [`../NOTICE`](../NOTICE) for what the
-copyright holder says about it.
+**Navigator’s original notation material is `BUSL-1.1`** — the legal prose, the questionnaire prompts, and the workflow
+definitions carried in the same files, exactly like the code that renders them. Adapt them, redistribute them, and make
+any non-production use of them; using them where somebody relies on the result — delivering legal services to other
+people — is production use and needs a commercial licence from Neon Law IP LLC, as is marketing a product or service to
+customers that relies on them. Each version converts to `Apache-2.0` four years after it is published. The prose and the
+state machine are the same file here, so a split licence would ask you to work out which half of a line you are editing;
+one grant means there is one answer. See [`../LICENSE`](../LICENSE) for the grant and [`../NOTICE`](../NOTICE) for what
+the copyright holder says about it.
 
 **The blank government PDFs under `notations/forms/` are not Neon Law IP LLC's to license.** They are works of the
 issuing state or federal agency, reproduced here so the binary embeds the same bytes the repo carries. Neon Law IP LLC

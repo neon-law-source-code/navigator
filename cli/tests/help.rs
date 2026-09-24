@@ -624,6 +624,7 @@ fn ops_help_lists_operator_members() {
             "deployments",
             "dns",
             "doctor",
+            "email-summary",
             "firms",
             "gcp",
             "github",

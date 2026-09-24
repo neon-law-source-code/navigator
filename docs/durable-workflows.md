@@ -81,9 +81,9 @@ Restate admits **at most one invocation per workflow key**. The key choice *is* 
 
 ## Redriving a completed run
 
-Restate admits at most one invocation per workflow key, so a run that *completed* — even with a bounded provider
-failure such as `input_digest_mismatch` — can't be resubmitted through its normal trigger. `EmailSummary` keys on the
-receipt id, and intake only submits on the inbound webhook: SendGrid never re-POSTs a message that already got a 202.
+Restate admits at most one invocation per workflow key, so a run that *completed* — even with a bounded provider failure
+such as `input_digest_mismatch` — can't be resubmitted through its normal trigger. `EmailSummary` keys on the receipt
+id, and intake only submits on the inbound webhook: SendGrid never re-POSTs a message that already got a 202.
 
 `navigator ops email-summary redrive --receipt <uuid>` recovers that case:
 
@@ -94,8 +94,8 @@ receipt id, and intake only submits on the inbound webhook: SendGrid never re-PO
    they can't diverge on run configuration the way intake and the worker once diverged on digest framing).
 
 It never creates a second receipt, letter, or archive — those are digest-keyed in SurrealDB already and a redrive never
-touches them. Output is identifier-and-status only: the receipt id, the invocation id, and whether anything was
-purged — never a summary, a letter, or any client content.
+touches them. Output is identifier-and-status only: the receipt id, the invocation id, and whether anything was purged —
+never a summary, a letter, or any client content.
 
 It reads the same environment a deployment's own `web`/worker already source — `NAVIGATOR_SURREAL_*` for the database,
 `NAVIGATOR_SUMMARY_*` / `RESTATE_BROKER_URL` for the summary-lane configuration, and `RESTATE_ADMIN_URL` /

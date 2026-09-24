@@ -166,10 +166,10 @@ the presentation video. Claims link to the published workshops and presentation.
 $10,000 retainer and the $5,000 initial-contract fee as the two starting amounts, the $50-a-day counsel and
 registered-agent plan with a five-business-day response, an interactive 10- or 30-day fee estimate that keeps the
 same-day review size graph, client Slack access, litigation, employee support, and Navigator, with consultation booking
-as the next step. Its `practices` list is empty: Neon publishes one offer on `/`, and `/business`,
-`/services`, and `/disputes` return 404 without redirects. Other brands omit that block and retain their own home
-layout. The package conveyor illustrates a workflow; it does not report live client activity. Its checkbox pauses the
-page's motion, and reduced-motion preferences disable the animations.
+as the next step. Its `practices` list is empty: Neon publishes one offer on `/`, and `/business`, `/services`, and
+`/disputes` return 404 without redirects. Other brands omit that block and retain their own home layout. The package
+conveyor illustrates a workflow; it does not report live client activity. Its checkbox pauses the page's motion, and
+reduced-motion preferences disable the animations.
 
 ## A copy-only pull request
 

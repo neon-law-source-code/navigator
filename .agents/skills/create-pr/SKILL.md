@@ -30,47 +30,26 @@ Load-bearing rules from those docs:
 - Start every change in a Codex or Claude **New Worktree**, then run `navigator dev worktree-env up --branch <topic>`
   once. The CLI names that linked worktree's PR branch in place, and creates a sibling only when deliberately started
   from the primary checkout outside the app workflow.
-- Run the matching gate first, and open the PR from a green tree. **The gate follows the diff, not the habit.** Every
-  PR owes the tree-wide gate:
+- Run the content gate, then open the PR. Do not re-run the workspace tests, the `features` harness, or coverage at this
+  step. Those already ran while the change was written, and CI runs them again. The local check is `navigator validate`,
+  or the CLI crate when `navigator` is not on `PATH`:
 
   ```bash
-  cargo run -p cli -- project gate
+  navigator validate
   ```
 
-  A PR that touches Rust scope owes the cargo gate on top of it:
-
   ```bash
-  cargo fmt
-  rtk cargo clippy --workspace --all-targets -- -D warnings
-  rtk cargo nextest run --workspace && rtk cargo test -p features
+  cargo run -p cli --quiet -- validate
   ```
 
   When RTK is installed, use it for agent-facing `cargo build`, `check`, `clippy`, `test`, and `nextest` commands so
   repetitive compiler and passing-test output is collapsed while failures, warnings, and exit codes remain visible. RTK
-  reduces command output and context usage; it does not make Rust compilation faster. Keep `cargo fmt`, coverage,
-  `project gate`, machine-readable `--message-format` consumers, and raw diagnostics on their ordinary commands.
+  reduces command output and context usage; it does not make Rust compilation faster. Keep `cargo fmt`, `navigator
+  validate`, machine-readable `--message-format` consumers, and raw diagnostics on their ordinary commands.
 
   The same rule applies to Git and GitHub output: use `rtk git` and `rtk gh` for human-facing status, history, diffs,
   and PR summaries. Keep raw `git` for porcelain/plumbing, revision values, rebases, and exact machine checks; keep raw
   `gh` for API/JSON, patches, auth tokens, and exact PR body or URL operations.
-
-  Total line coverage stays ≥ 91.0%, and the default nextest profile prints failures only.
-- **Let CI's own scope test decide what "touches Rust" means.** The `changes` job in
-  [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) classifies the diff and skips `cargo test (workspace)`
-  outright when nothing matches: `*.rs`, `*.surql`, `*.feature`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`,
-  `.cargo/`, `.config/nextest.toml`, `features/`, or `ci.yml` itself. A pure Markdown, YAML, or asset PR therefore never
-  runs the Rust suite in CI, so running it locally proves nothing that CI will check — run `project gate` and push. Read
-  that job's globs rather than guessing; it fails open, so an unreadable diff runs Rust anyway.
-- **A content change can still be a Rust change.** Prose compiled into the binary is asserted by tests —
-  `neon/content/*.md` by [`server/tests/host_legal_pages.rs`](../../../server/tests/host_legal_pages.rs), locale
-  catalogs by `views::locales`. Before calling a Markdown PR Markdown-only, `git grep` a distinctive phrase you removed;
-  a hit in a `.rs` file means the diff now carries Rust and takes the full cargo gate.
-- **Measure coverage before pushing** — a green `cargo test` reports pass/fail; coverage is a separate read, taken by
-  `cargo llvm-cov --fail-under-lines 91.0` inside the `cargo test (workspace)` check. CI's coverage pass skips
-  harness-gated tests (`new_client_or_skip`, anything needing the KIND stack), so code covered *only* by those counts as
-  uncovered. Give handlers and routes a non-gated test through the router. The floor is a workspace total and can stay
-  green while your change goes uncovered, so cover what you wrote. Full note in the doc's [Create a
-  PR](../../../docs/agent-workflows.md#create-a-pr) gate.
 - Group by blast radius: one reviewable concern per commit, staging each path explicitly.
 - **If the change removes anything, sweep before pushing.** `git grep -n '<removed-name>'` comes back empty apart from
   the test that guards its absence. Manifest entries, fixtures, and doc prose are where a half-removal hides; see

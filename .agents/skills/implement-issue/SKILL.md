@@ -77,10 +77,10 @@ to" prose.
 
 ## Verify and open the PR
 
-Run `cargo run -p cli --quiet -- project gate` after the change, plus the focused test and every gate the changed
-surface requires under `docs/agent-workflows.md`. For Rust or runtime changes, run formatting, clippy with warnings
-denied, the workspace tests, and coverage as that document requires. Verify user-facing changes through the documented
-browser loop.
+Run the focused test that covers the change. Verify user-facing changes through the documented browser loop. When
+opening the PR, follow [`create-pr`](../create-pr/SKILL.md): run `navigator validate`, or `cargo run -p cli --quiet --
+validate` when `navigator` is not on `PATH`. Do not re-run the workspace tests, the `features` harness, or coverage at
+that step. CI runs them.
 
 For agent-facing Rust output, use `rtk cargo build`, `check`, `clippy`, `test`, or `nextest` when RTK is installed. It
 compresses repetitive Cargo output but does not speed compilation. Keep formatting, coverage, project gates,
@@ -88,8 +88,8 @@ machine-readable output, and raw diagnostics on ordinary Cargo commands. Use `rt
 GitHub summaries; keep raw commands for revision values, rebases, API/JSON, patches, auth tokens, and exact body/URL
 operations.
 
-Before opening the PR, rebase with `git rebase -S origin/main` again and rerun the affected checks. Keep the issue
-identifier out of public prose except the bare identifier permitted by `docs/agent-workflows.md`. Then follow
-[`create-pr`](../create-pr/SKILL.md): push and open a pull request against `main`, ready for review, not as a draft.
-Auto-merge is armed only on a non-draft open. Do not stop at a green worktree, and do not open a draft to hold the
-change unless the user asked to hold it.
+Before opening the PR, rebase with `git rebase -S origin/main` again and run `navigator validate` (or the CLI crate).
+Keep the issue identifier out of public prose except the bare identifier permitted by `docs/agent-workflows.md`. Then
+follow [`create-pr`](../create-pr/SKILL.md): push and open a pull request against `main`, ready for review, not as a
+draft. Auto-merge is armed only on a non-draft open. Do not stop at a green worktree, and do not open a draft to hold
+the change unless the user asked to hold it.

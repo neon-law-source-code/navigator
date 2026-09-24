@@ -784,13 +784,29 @@ pub fn home_for_host(
         practices: copy.practices.into_iter().map(practice_link).collect(),
         provenance: copy.provenance.map(provenance_to_home),
         company: copy.company.map(|copy| webapp::home::CompanyContent {
+            principles: copy.principles,
+            services_heading: copy.services_heading,
+            services_note: copy.services_note,
+            services_link: copy.services_link,
+            services: copy.services,
+            community_heading: copy.community_heading,
+            community_body: copy.community_body,
+            community_links: copy.community_links,
             booking_href: copy.booking_href,
             pricing_link: copy.pricing_link,
             retainer_note: copy.retainer_note,
-            flow_caption: copy.flow_caption,
-            flow_steps: copy.flow_steps,
-            packages: copy.packages,
+            retainer_amount: copy.retainer_amount,
+            simulator_heading: copy.simulator_heading,
+            simulator_body: copy.simulator_body,
+            simulator_days_label: copy.simulator_days_label,
+            simulator_reviews_label: copy.simulator_reviews_label,
+            simulator_plan_label: copy.simulator_plan_label,
+            simulator_review_label: copy.simulator_review_label,
+            simulator_contract_label: copy.simulator_contract_label,
+            simulator_total_label: copy.simulator_total_label,
+            simulator_note: copy.simulator_note,
             pause_label: copy.pause_label,
+            packages: copy.packages,
             pricing_heading: copy.pricing_heading,
             video_label: copy.video_label,
             video_src: views::assets::asset_url(views::assets::HOME_PRESENTATION_KEY),
@@ -938,7 +954,7 @@ mod tests {
         assert_eq!(company["express_price"].as_str(), Some("$500"));
         assert_eq!(
             company["drafting_packages"][0][0].as_str(),
-            Some("One-time setup")
+            Some("Contract foundation")
         );
         assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$5,000"));
         assert_eq!(

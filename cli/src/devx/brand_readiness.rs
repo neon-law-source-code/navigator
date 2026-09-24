@@ -474,7 +474,16 @@ mod tests {
     fn release_targets_covers_the_full_registry_not_only_live_brands() {
         let production = release_targets("www.neonlaw.com");
         assert_eq!(production.len(), views::brand::BrandKey::ALL.len());
-        assert!(production.iter().any(|(key, _)| !key.is_live()));
+        // The release inventory is `views::brand::release_brand_hosts`, the
+        // full registry, unfiltered by `is_live()` — not merely the live set
+        // with today's held-out brands mixed in. Comparing against that seam
+        // directly proves the point even when every registered brand happens
+        // to be live, rather than asserting on which ones currently aren't.
+        let full_registry: Vec<(BrandKey, &str)> = views::brand::release_brand_hosts()
+            .into_iter()
+            .filter(|(_, host)| !host.starts_with("staging."))
+            .collect();
+        assert_eq!(production, full_registry);
         assert!(production.contains(&(BrandKey::Daybridge, "www.daybridgedivorce.com")));
         let staging = release_targets("staging.neonlaw.com");
         assert!(staging.iter().all(|(_, host)| host.starts_with("staging.")));

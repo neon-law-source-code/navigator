@@ -60,6 +60,7 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
             code: "llc-formation".into(),
             client_id,
             entity_id,
+            jurisdiction_id: None,
             description: Some("Delaware LLC formation.".into()),
             brand: "neon".to_string(),
             attestation: true,
@@ -112,6 +113,38 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
     );
 }
 
+#[tokio::test]
+async fn opening_a_matter_round_trips_its_jurisdiction() {
+    let surreal = mem_surreal().await;
+    let (client_id, acting_person_id, entity_id) = references(&surreal).await;
+    let jurisdiction = store::jurisdictions::find_or_create(
+        &surreal,
+        &store::jurisdictions::NewJurisdiction::new("California", "CA", "state"),
+    )
+    .await
+    .expect("jurisdiction");
+
+    let project = projects::open_matter(
+        &surreal,
+        &OpenMatterCommand {
+            name: "California Matter".into(),
+            code: "california-matter".into(),
+            client_id,
+            entity_id,
+            jurisdiction_id: Some(jurisdiction.id),
+            description: None,
+            brand: "neon".to_string(),
+            attestation: true,
+            acting_person_id,
+            closed_at: None,
+        },
+    )
+    .await
+    .expect("open the matter");
+
+    assert_eq!(project.jurisdiction_id, Some(jurisdiction.id));
+}
+
 /// ENG-469: `closed_at` opens the matter already closed, in the same
 /// insert — a historical close date that predates the row's own
 /// `inserted_at` (necessarily "now") must still be accepted, because there
@@ -129,6 +162,7 @@ async fn open_matter_with_closed_at_opens_already_closed() {
             code: "already-closed".into(),
             client_id,
             entity_id,
+            jurisdiction_id: None,
             description: None,
             brand: "neon".to_string(),
             attestation: true,
@@ -158,6 +192,7 @@ async fn open_matter_refuses_a_future_closed_at() {
             code: "future-close".into(),
             client_id,
             entity_id,
+            jurisdiction_id: None,
             description: None,
             brand: "neon".to_string(),
             attestation: true,

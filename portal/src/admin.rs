@@ -3043,6 +3043,7 @@ async fn projects_create_lawyer_only(
             code: input.code.clone(),
             client_id: client.id,
             entity_id,
+            jurisdiction_id: None,
             description: nonblank(&input.description),
             brand: views::brand::brand_key().as_str().to_string(),
             attestation: input.attestation.as_deref() == Some("1"),

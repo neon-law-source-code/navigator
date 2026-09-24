@@ -378,6 +378,7 @@ mod tests {
                 code: "acme".into(),
                 client_id: client.id,
                 entity_id,
+                jurisdiction_id: None,
                 description: None,
                 brand: "neon".to_string(),
                 attestation: true,

@@ -23,6 +23,9 @@ cloud.workspace = true
 forms.workspace = true
 comfy-table.workspace = true
 dotenvy.workspace = true
+# `navigator lsp` unpacks the `.tar.gz` release archives it downloads for
+# Linux/macOS, paired with `tar` below.
+flate2.workspace = true
 futures.workspace = true
 google-cloud-auth.workspace = true
 google-cloud-token.workspace = true
@@ -53,6 +56,7 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 store = { workspace = true, features = ["test-support"] }
+tar.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

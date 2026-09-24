@@ -61,14 +61,27 @@ async fn build(world: &mut BrandWorld) {
     ));
 }
 
-#[when(regex = r"^a visitor opens (.+)$")]
+#[when(regex = r"^a visitor opens (\S+)$")]
 async fn visit(world: &mut BrandWorld, path: String) {
+    visit_host(world, path, None).await;
+}
+
+#[when(regex = r#"^a visitor opens (.+) on host "([^"]+)"$"#)]
+async fn visit_on_host(world: &mut BrandWorld, path: String, host: String) {
+    visit_host(world, path, Some(host)).await;
+}
+
+async fn visit_host(world: &mut BrandWorld, path: String, host: Option<String>) {
+    let mut request = Request::builder().uri(path);
+    if let Some(host) = host {
+        request = request.header(axum::http::header::HOST, host);
+    }
     let resp = world
         .app
         .as_ref()
         .expect("app not built")
         .clone()
-        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+        .oneshot(request.body(Body::empty()).unwrap())
         .await
         .unwrap();
     world.last_status = Some(resp.status());
@@ -150,6 +163,14 @@ async fn body_contains(world: &mut BrandWorld, needle: String) {
     assert!(
         world.last_body.contains(&needle),
         "expected response body to contain {needle:?}",
+    );
+}
+
+#[then(regex = r#"^the response body does not contain "(.+)"$"#)]
+async fn body_does_not_contain(world: &mut BrandWorld, needle: String) {
+    assert!(
+        !world.last_body.contains(&needle),
+        "response body unexpectedly contained {needle:?}",
     );
 }
 

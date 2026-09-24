@@ -81,7 +81,7 @@ pub fn CodeBlock(code: String, #[props(default = "rust".to_string())] lang: Stri
                 // is the element's entire content.
                 div { class: "nav-code__source", dangerous_inner_html: "{html}" }
             } else {
-                pre { code { "{fallback}" } }
+                pre { tabindex: "0", code { "{fallback}" } }
             }
         }
     }
@@ -98,9 +98,9 @@ pub(crate) fn PlainCodeBlock(code: String, #[props(default)] class: String) -> E
         div { class: "nav-code",
             CopyCodeButton {}
             if class.is_empty() {
-                pre { code { "{code}" } }
+                pre { tabindex: "0", code { "{code}" } }
             } else {
-                pre { class: "{class}", code { "{code}" } }
+                pre { class: "{class}", tabindex: "0", code { "{code}" } }
             }
         }
     }
@@ -160,6 +160,47 @@ mod tests {
         assert!(
             out.contains("brew install navigator"),
             "command text: {out}"
+        );
+    }
+
+    /// `.nav-code pre` (and page overrides like `.notations-specimen pre`, used
+    /// by the `/notations` specimen this component renders) set
+    /// `overflow-x: auto`, so the block must be keyboard reachable itself or
+    /// axe's `scrollable-region-focusable` rule fails
+    /// (`server/tests/accessibility_e2e.rs`).
+    #[test]
+    fn a_plain_block_is_keyboard_focusable_with_or_without_a_host_class() {
+        fn unclassed() -> Element {
+            rsx! { PlainCodeBlock { code: "brew install navigator".to_string() } }
+        }
+        fn classed() -> Element {
+            rsx! {
+                PlainCodeBlock {
+                    code: "brew install navigator".to_string(),
+                    class: "fm-package__command".to_string(),
+                }
+            }
+        }
+        for (out, label) in [(ssr(unclassed), "unclassed"), (ssr(classed), "classed")] {
+            assert!(
+                out.contains("tabindex=\"0\""),
+                "{label} pre carries a tabindex: {out}"
+            );
+        }
+    }
+
+    /// [`CodeBlock`]'s escaped fallback (rendered before the server highlight
+    /// resolves, or if it fails) must be just as keyboard reachable as
+    /// [`PlainCodeBlock`].
+    #[test]
+    fn a_code_block_fallback_is_keyboard_focusable() {
+        fn app() -> Element {
+            rsx! { CodeBlock { code: "let x = 1;".to_string() } }
+        }
+        let out = ssr(app);
+        assert!(
+            out.contains("tabindex=\"0\""),
+            "fallback pre carries a tabindex: {out}"
         );
     }
 

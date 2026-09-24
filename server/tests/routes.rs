@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, Once};
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use tracing_subscriber::prelude::*;
-use wiremock::matchers::{method, path_regex};
+use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// An `AppState` over a fresh pair of stores.
@@ -14962,6 +14962,241 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
     assert_eq!(
         worker_digest,
         workflows::scoped_email_digest("staging", "intake@parse.example.com", raw)
+    );
+}
+
+/// ENG-889: the intake-written receipt must pass the worker's digest check
+/// and reach both provider adapters. Both sides had green unit tests when
+/// this broke in staging — the worker's own success tests hand-built
+/// `SHA-256(raw)` as the receipt digest, which intake never actually wrote.
+/// This test is the missing link: it takes the real `EmailSummaryRequest`
+/// this router just submitted to Restate and runs it through the real
+/// `summarize_provider`/`deliver_summary` pipeline (`workflows-service`),
+/// against the same `SurrealDB` and storage the POST used, with wiremock
+/// standing in for Vertex and a fake Slack. It fails if either side's
+/// digest framing changes independently.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn summary_pipeline_intake_digest_passes_the_workers_check_and_delivers_to_slack() {
+    let (mut state, surreal) = state_with_engines().await;
+    let restate = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/EmailSummary/[^/]+/run/send$"))
+        .respond_with(ResponseTemplate::new(202))
+        .expect(2)
+        .mount(&restate)
+        .await;
+    state.storage = std::sync::Arc::new(
+        cloud::FsStorage::new(std::env::temp_dir().join(format!(
+            "navigator-summary-pipeline-{}",
+            uuid::Uuid::now_v7()
+        )))
+        .await
+        .unwrap(),
+    );
+    let addr = store::addresses::create(
+        &surreal,
+        &store::addresses::NewAddress {
+            line1: "1 Test".into(),
+            city: "Reno".into(),
+            region: "NV".into(),
+            postal_code: "89501".into(),
+            country: "US".into(),
+            ..store::addresses::NewAddress::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::mailrooms::create(&surreal, "HQ", addr.id)
+        .await
+        .unwrap();
+
+    let vertex = MockServer::start().await;
+    let gemini_path =
+        "/v1/projects/synthetic-project/locations/global/publishers/google/models/summary-model:generateContent";
+    let claude_path = "/v1/projects/synthetic-project/locations/global/publishers/anthropic/models/summary-model:rawPredict";
+    Mock::given(method("POST"))
+        .and(path(gemini_path))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "{\"summary\":\"Gemini summary\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"}]}
+            }]
+        })))
+        .expect(1)
+        .mount(&vertex)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(claude_path))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "content": [{"type": "text", "text": "{\"summary\":\"Claude summary\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"}]
+        })))
+        .expect(1)
+        .mount(&vertex)
+        .await;
+
+    let (public_key, mut headers) = summary_test_key();
+    state.summary_intake = Some(portal::inbound_email::SummaryIntakeConfig {
+        envelope_recipients: vec!["intake@parse.example.com".into()],
+        inbound_public_key: public_key,
+        deployment: "staging".into(),
+        workflow_ingress: restate.uri(),
+        project_id: "synthetic-project".into(),
+        channel_id: "C-SYNTHETIC".into(),
+        gemini_model: "summary-model".into(),
+        gemini_location: "global".into(),
+        claude_model: "summary-model".into(),
+        claude_location: "global".into(),
+        max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
+        max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
+    });
+
+    let raw = b"Message-ID: <eng889@example.com>\r\nFrom: aries@example.com\r\nTo: forged@example.com\r\nSubject: Summary\r\n\r\nBody";
+    let (content_type, body) = build_inbound_multipart_with_envelope(
+        "aries@example.com",
+        "forged@example.com",
+        "intake@parse.example.com",
+        "Summary",
+        "Body",
+        raw,
+    );
+    sign_summary_body(&mut headers, &body);
+    let response = with_headers(
+        Request::builder()
+            .method("POST")
+            .uri("/webhook/sendgrid/inbound/any-token-in-dev")
+            .header("content-type", content_type),
+        &headers,
+    )
+    .body(Body::from(body))
+    .unwrap();
+    let response = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    )
+    .oneshot(response)
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    // Take the real `EmailSummaryRequest` the router just submitted — not a
+    // hand-built one — and run it through the real worker-side pipeline.
+    let sends = restate.received_requests().await.unwrap();
+    assert_eq!(sends.len(), 1);
+    let request: workflows::EmailSummaryRequest = serde_json::from_slice(&sends[0].body).unwrap();
+
+    let providers = workflows_service::email_summary::SummaryProviders {
+        gemini: cloud::GeminiVertexAdapter::new(std::sync::Arc::new(
+            cloud::StaticTokenSource::new("test-token"),
+        ))
+        .unwrap()
+        .with_base_url(vertex.uri()),
+        claude: cloud::ClaudeVertexAdapter::new(std::sync::Arc::new(
+            cloud::StaticTokenSource::new("test-token"),
+        ))
+        .unwrap()
+        .with_base_url(vertex.uri()),
+    };
+    let receipt = store::email_receipts::find_by_id(&surreal, request.receipt_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let gemini = workflows_service::email_summary::summarize_provider(
+        state.storage.clone(),
+        Some(providers.clone()),
+        workflows::SummaryProvider::Gemini,
+        receipt.clone(),
+        request.gemini.clone(),
+        request.project_id.clone(),
+    )
+    .await
+    .unwrap();
+    let claude = workflows_service::email_summary::summarize_provider(
+        state.storage.clone(),
+        Some(providers),
+        workflows::SummaryProvider::Claude,
+        receipt.clone(),
+        request.claude.clone(),
+        request.project_id.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        matches!(gemini, workflows::ProviderDelivery::Succeeded { .. }),
+        "gemini delivery: {gemini:?}"
+    );
+    assert!(
+        matches!(claude, workflows::ProviderDelivery::Succeeded { .. }),
+        "claude delivery: {claude:?}"
+    );
+
+    let slack = std::sync::Arc::new(workflows::CapturingSlackBot::new());
+    let message = workflows::SummaryDeliveryMessage {
+        receipt_id: request.receipt_id,
+        gemini,
+        claude,
+    };
+    let delivery = workflows::deliver_summary(
+        &surreal,
+        slack.clone(),
+        request.receipt_id,
+        &request.channel_id,
+        &message,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(delivery, workflows::DeliveryResult::Sent(_)));
+    assert_eq!(slack.posted_messages().len(), 1);
+
+    // Replay the webhook with a different multipart boundary. Intake's own
+    // idempotency (proved end to end here, not just at the unit level) must
+    // still yield exactly one receipt, one letter, one archive object, and
+    // the delivery this test already confirmed must be untouched.
+    let (retry_content_type, retry_body) = build_inbound_multipart_with_envelope_boundary(
+        "aries@example.com",
+        "forged@example.com",
+        "intake@parse.example.com",
+        "Summary",
+        "Body",
+        raw,
+        "----navigator-summary-pipeline-retry",
+    );
+    let (_retry_public_key, mut retry_headers) = summary_test_key();
+    sign_summary_body(&mut retry_headers, &retry_body);
+    let response = with_headers(
+        Request::builder()
+            .method("POST")
+            .uri("/webhook/sendgrid/inbound/any-token-in-dev")
+            .header("content-type", retry_content_type),
+        &retry_headers,
+    )
+    .body(Body::from(retry_body))
+    .unwrap();
+    let response = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    )
+    .oneshot(response)
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    assert_eq!(store::letters::list_all(&surreal).await.unwrap().len(), 1);
+    assert_eq!(store::email_receipts::count(&surreal).await.unwrap(), 1);
+    let objects = state.storage.list("inbound/").await.unwrap();
+    assert_eq!(objects.len(), 1);
+    let delivery_after_replay = store::email_deliveries::find(&surreal, request.receipt_id)
+        .await
+        .unwrap()
+        .expect("delivery record still exists after replay");
+    assert_eq!(
+        delivery_after_replay.state,
+        store::email_deliveries::CONFIRMED
+    );
+    assert_eq!(
+        slack.posted_messages().len(),
+        1,
+        "the replay must not post again"
     );
 }
 

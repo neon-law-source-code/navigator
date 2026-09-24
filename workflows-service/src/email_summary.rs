@@ -122,7 +122,11 @@ fn retryable(error: &VertexError) -> bool {
     )
 }
 
-async fn summarize_provider(
+/// The `run` handler's per-provider step, outside `ctx.run`'s journaling —
+/// pub so a full-pipeline test (`server`'s intake -> archive -> handler
+/// coverage, ENG-889) can call the same digest-checking, provider-calling
+/// logic the real workflow runs, without needing a live Restate broker.
+pub async fn summarize_provider(
     storage: Arc<dyn StorageService>,
     providers: Option<SummaryProviders>,
     provider: SummaryProvider,

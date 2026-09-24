@@ -1183,6 +1183,9 @@ enum OpsCmd {
     /// only by `apply` and written into that deployment's own Secret Manager.
     #[command(subcommand)]
     Secrets(SecretsCmd),
+    /// Operator recovery for the inbound email-summary Restate workflow.
+    #[command(subcommand)]
+    EmailSummary(EmailSummaryCmd),
     /// GCP project provisioning. The actual REST plumbing lives in
     /// `cli/src/devx/gcp/`; this is the entry point operators reach for
     /// when standing up (or re-running) Neon Law Navigator on a fresh GCP
@@ -1482,8 +1485,43 @@ enum SecretsCmd {
         deployments_dir: Option<PathBuf>,
         /// Print the target project and the object names without decrypting
         /// anything or changing Secret Manager. Needs no KMS permission.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "check")]
         dry_run: bool,
+        /// Decrypt in-process (the same trust `apply` uses) and compare every
+        /// object's SOPS value against Secret Manager `versions/latest` and
+        /// the deployment's Kubernetes Secret, by constant-time equality.
+        /// Prints names and status only — `match`, `differs`, `missing in
+        /// Secret Manager`, or `missing in K8s Secret` — never a value or a
+        /// digest, and exits non-zero on any drift. Changes nothing.
+        #[arg(long, conflicts_with = "dry_run")]
+        check: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EmailSummaryCmd {
+    /// Re-run a completed `EmailSummary` Restate workflow for one receipt —
+    /// the recovery path for a run that completed with a bounded provider
+    /// failure (e.g. `input_digest_mismatch`) before intake can re-POST,
+    /// since `SendGrid` never retries a message that already got a 202.
+    ///
+    /// Refuses when the receipt's Slack delivery is already `confirmed`, so
+    /// this can never risk a second post. Never creates a second receipt,
+    /// letter, or archive: those are digest-keyed in `SurrealDB` already, and
+    /// this command only purges the retained invocation and resubmits the
+    /// identical `EmailSummaryRequest` under the same workflow key (the
+    /// receipt id). Prints the receipt id, the invocation id, and status
+    /// only — never a summary, a letter, or any client content. Reads
+    /// `NAVIGATOR_SURREAL_*` (the deployment's database), the
+    /// `NAVIGATOR_SUMMARY_*` / `RESTATE_BROKER_URL` summary-lane
+    /// configuration, and `RESTATE_ADMIN_URL` / `RESTATE_ADMIN_TOKEN` /
+    /// `RESTATE_AUTH_TOKEN` — the same environment `navigator dev up`/`ops
+    /// ship` already source for the target deployment, so there is no
+    /// separate `--deployment` flag to keep in sync with it.
+    Redrive {
+        /// The receipt to redrive.
+        #[arg(long)]
+        receipt: uuid::Uuid,
     },
 }
 

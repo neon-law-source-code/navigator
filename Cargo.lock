@@ -10860,6 +10860,7 @@ dependencies = [
  "webapp",
  "wiremock",
  "workflows",
+ "workflows-service",
  "zip",
 ]
 

@@ -30,6 +30,7 @@ pub mod deployments;
 mod dns;
 mod doctor;
 mod e2e;
+mod email_summary_redrive;
 mod flake_hunt;
 mod garage;
 mod gcp;
@@ -1002,11 +1003,18 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             deployment,
             deployments_dir,
             dry_run,
-        })) => deployments::apply(
-            &deployments::root(deployments_dir.as_deref())?,
-            &deployment,
-            dry_run,
-        ),
+            check,
+        })) => {
+            let root = deployments::root(deployments_dir.as_deref())?;
+            if check {
+                deployments::check_secrets(&root, &deployment)
+            } else {
+                deployments::apply(&root, &deployment, dry_run)
+            }
+        }
+        crate::Command::Ops(crate::OpsCmd::EmailSummary(crate::EmailSummaryCmd::Redrive {
+            receipt,
+        })) => email_summary_redrive::run(receipt),
         crate::Command::Ops(crate::OpsCmd::Dns(DnsCmd::Setup {
             domains,
             gateway_ip,

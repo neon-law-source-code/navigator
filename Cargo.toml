@@ -222,6 +222,7 @@ walkdir = "2.5"
 webapp = { path = "webapp" }
 wiremock = "0.6"
 workflows = { path = "workflows" }
+workflows-service = { path = "workflows-service" }
 word = { path = "word" }
 restate-sdk = "0.12"
 restate-jwt = { package = "jsonwebtoken", version = "10.4", default-features = false, features = ["rust_crypto"] }

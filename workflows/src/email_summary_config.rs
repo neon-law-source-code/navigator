@@ -8,6 +8,11 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
+use super::email_summary::{
+    EmailSummaryRequest, EmailSummaryRunConfig, SummaryError, SummaryProvider,
+    SUMMARY_PROMPT_VERSION,
+};
+
 /// Environment keys owned by the summary lane.
 pub const ENABLED_ENV: &str = "NAVIGATOR_SUMMARY_ENABLED";
 pub const RECIPIENTS_ENV: &str = "NAVIGATOR_SUMMARY_ENVELOPE_RECIPIENTS";
@@ -57,6 +62,43 @@ pub enum EmailSummaryConfigError {
 }
 
 impl EmailSummaryConfig {
+    /// Build the exact `EmailSummaryRequest` intake submits for one receipt.
+    ///
+    /// The single construction path for both the inbound webhook and an
+    /// operator redrive (`navigator ops email-summary redrive`): each side
+    /// building its own copy of this shape is the bug ENG-889 exists to
+    /// guard against, so a redrive calls this rather than re-deriving the
+    /// run configuration.
+    pub fn request_for(
+        &self,
+        receipt_id: uuid::Uuid,
+        input_digest: &str,
+    ) -> Result<EmailSummaryRequest, SummaryError> {
+        let gemini = EmailSummaryRunConfig::new(
+            SummaryProvider::Gemini,
+            &self.gemini_model,
+            &self.gemini_location,
+            SUMMARY_PROMPT_VERSION,
+            input_digest,
+        )?
+        .with_limits(self.max_input_chars, self.max_output_tokens);
+        let claude = EmailSummaryRunConfig::new(
+            SummaryProvider::Claude,
+            &self.claude_model,
+            &self.claude_location,
+            SUMMARY_PROMPT_VERSION,
+            input_digest,
+        )?
+        .with_limits(self.max_input_chars, self.max_output_tokens);
+        Ok(EmailSummaryRequest {
+            receipt_id,
+            project_id: self.project_id.clone(),
+            channel_id: self.channel_id.clone(),
+            gemini,
+            claude,
+        })
+    }
+
     /// Resolve the production environment, returning `None` for the explicit
     /// default-off posture and an error for an enabled-but-incomplete row.
     pub fn from_env() -> Result<Option<Self>, EmailSummaryConfigError> {
@@ -276,5 +318,38 @@ mod tests {
         values.push((WORKFLOW_INGRESS_ENV, "http://127.0.0.1:9080"));
         values.push((CI_HARNESS_ENV, "1"));
         assert!(EmailSummaryConfig::from_lookup(lookup(&values)).is_ok());
+    }
+
+    #[test]
+    fn request_for_carries_the_given_digest_into_both_providers() {
+        let config = EmailSummaryConfig::from_lookup(lookup(&enabled()))
+            .expect("config parses")
+            .expect("config is enabled");
+        let digest = "a".repeat(64);
+        let receipt_id = uuid::Uuid::now_v7();
+
+        let request = config
+            .request_for(receipt_id, &digest)
+            .expect("a valid 64-hex digest builds a request");
+
+        assert_eq!(request.receipt_id, receipt_id);
+        assert_eq!(request.project_id, config.project_id);
+        assert_eq!(request.channel_id, config.channel_id);
+        assert_eq!(request.gemini.input_digest, digest);
+        assert_eq!(request.claude.input_digest, digest);
+        assert_eq!(request.gemini.provider, SummaryProvider::Gemini);
+        assert_eq!(request.claude.provider, SummaryProvider::Claude);
+    }
+
+    #[test]
+    fn request_for_rejects_a_malformed_digest() {
+        let config = EmailSummaryConfig::from_lookup(lookup(&enabled()))
+            .expect("config parses")
+            .expect("config is enabled");
+
+        let error = config
+            .request_for(uuid::Uuid::now_v7(), "not-a-digest")
+            .expect_err("a non-hex, non-64-char digest is invalid");
+        assert!(matches!(error, SummaryError::InvalidRunConfig));
     }
 }

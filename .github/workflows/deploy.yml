@@ -1464,21 +1464,26 @@ jobs:
   # `integration` rather than after it — dropping either job costs the other
   # no wall-clock.
   #
-  # A HARD GATE, via the `windows-integration` job below: `release-tag` needs
-  # `windows-integration`, and `windows-integration` needs this job (and
-  # `integration`), so a red Windows run blocks the tag and everything that
-  # publishes off it. Still not in `notify-failure`'s `needs:`, so it cannot
-  # page engineering on its own — but it can no longer let a release through
-  # silently either.
+  # A HARD GATE: `release-tag` needs this job directly (see its own `needs:`),
+  # so a red Windows run blocks the tag and everything that publishes off it.
+  # Still not in `notify-failure`'s `needs:`, so it cannot page engineering on
+  # its own — but it can no longer let a release through silently either.
+  #
+  # `timeout-minutes: 60` — run 36013889382 measured checkout + toolchain
+  # install + `cargo check` + both test binaries at ~26 minutes wall clock,
+  # all green, and was then killed by the old 30-minute timeout while
+  # `Swatinem/rust-cache` was still writing the post-job cache archive. A
+  # cancellation there discards a passing run, so the budget needs headroom
+  # past the slowest step, not just the median.
   windows-cli-lsp:
-    name: cargo check + integration tests (cli + lsp, Windows)
+    name: windows integration
     needs: release-version
     if: >-
       github.repository == 'neon-law-source-code/navigator'
       && (needs.release-version.outputs.publishable == 'true'
           || startsWith(github.ref_name, 'kind-ci/'))
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: "0"
     steps:
@@ -1531,30 +1536,18 @@ jobs:
   # publishable, so re-running the whole workflow republishes instead of
   # skipping every job and reporting success for having done nothing.
   # THE GATE. `build`'s two matrix legs and `windows-cli-lsp` all start
-  # together, needing only `release-version` — but before this job existed,
-  # only `integration` (which itself needs `build`) stood between them and
-  # `release-tag`. `windows-cli-lsp` ran alongside everything else and its
-  # result gated NOTHING: a red Windows cargo-check/integration-tests leg
-  # still let `release-tag` create the immutable tag and `publish-*` push
-  # images. This job is the single place all four legs — both `build` matrix
-  # jobs (transitively, via `integration`), `integration` itself, and
-  # `windows-cli-lsp` — must have succeeded before anything publishes. Named
-  # for the two things it directly waits on (`integration`'s KIND e2e suite
-  # and `windows-cli-lsp`), since `release-tag` only needs this one job.
-  windows-integration:
-    name: windows integration
-    needs: [release-version, integration, windows-cli-lsp]
-    if: >-
-      github.repository == 'neon-law-source-code/navigator'
-      && (needs.release-version.outputs.publishable == 'true'
-          || startsWith(github.ref_name, 'kind-ci/'))
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "build, integration, and windows-cli-lsp all passed"
-
+  # together, needing only `release-version` — but before `windows-cli-lsp`
+  # was in `release-tag`'s own `needs:`, only `integration` (which itself
+  # needs `build`) stood between them and `release-tag`, and a red Windows
+  # cargo-check/integration-tests leg still let `release-tag` create the
+  # immutable tag and `publish-*` push images. `release-tag` lists both
+  # `integration` (the KIND e2e suite, transitively covering both `build`
+  # matrix legs) and `windows-cli-lsp` directly rather than through a
+  # rubber-stamp job in between, so a failure on either shows up on
+  # `release-tag` itself instead of one hop away.
   release-tag:
     name: tag ${{ needs.release-version.outputs.tag }}
-    needs: [windows-integration, integration, release-version]
+    needs: [windows-cli-lsp, integration, release-version]
     if: needs.release-version.outputs.publishable == 'true'
     runs-on: ubuntu-latest
     # THE ONLY JOB IN THIS FILE THAT WRITES A GIT REF, and it only ever creates

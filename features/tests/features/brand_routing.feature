@@ -40,10 +40,24 @@ Feature: Public routing on the firm's own host
 
     Examples:
       | host                           | brand                    | title                                      | copy                                  |
+      | staging.neonlaw.com            | Neon Law                 | Neon Law \| Home                           | Keep building.                         |
+      | staging.deleteyourdata.com     | DeleteYourData.com       | DeleteYourData.com \| Home                  | Your Life. Less Exposed.               |
       | staging.vestaestateplanning.com | Vesta Estate Planning    | Vesta Estate Planning \| Home    | For the life you build.                |
       | staging.misericordialaw.com     | Misericordia Injury Law  | Misericordia Injury Law \| Home  | You were hurt. Talk to a lawyer.       |
       | staging.abhayaimmigration.com   | Abhaya Immigration       | Abhaya Immigration \| Home       | Help with your immigration case.       |
       | staging.deleteyourdebt.com      | DeleteYourDebt.com       | DeleteYourDebt.com \| Home        | We defend you against debt collectors. |
+
+  Scenario Outline: A live holding host serves its explicit holding page
+    When a visitor opens / on host "<host>"
+    Then the response status is 200
+    And the page is branded "<brand>"
+    And the response body contains "<title>"
+    And the response body contains "<marker>"
+
+    Examples:
+      | host                       | brand           | title                           | marker                              |
+      | staging.lawyershook.com    | Lawyer Shook    | Lawyer Shook \| Home              | Shook Law PLLC is the legal office |
+      | staging.summonsdefense.nyc | Summons Defense | Summons Defense \| Home          | Coming Soon                        |
 
   Scenario Outline: The firm's published anonymous surface serves at the root
     # Each is anonymous: a stranger deciding whether to hire a lawyer must not

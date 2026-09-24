@@ -9747,38 +9747,133 @@ fn page_declares_og_site_name(body: &str, brand: &str) -> bool {
         || body.contains(&format!("content=\"{brand}\" property=\"og:site_name\""))
 }
 
-fn assert_launched_practice_home(key: views::brand::BrandKey, host: &str, body: &str) {
-    let Some((title, home_copy)) = (match key {
-        views::brand::BrandKey::Vesta => Some((
-            "<title>Vesta Estate Planning | Home</title>",
-            "For the life you build.",
-        )),
-        views::brand::BrandKey::Misericordia => Some((
-            "<title>Misericordia Injury Law | Home</title>",
-            "You were hurt. Talk to a lawyer.",
-        )),
-        views::brand::BrandKey::Abhaya => Some((
-            "<title>Abhaya Immigration | Home</title>",
-            "Help with your immigration case.",
-        )),
-        views::brand::BrandKey::DeleteYourDebt => Some((
-            "<title>DeleteYourDebt.com | Home</title>",
-            "We defend you against debt collectors.",
-        )),
-        _ => None,
-    }) else {
-        return;
-    };
+#[derive(Clone, Copy)]
+enum LiveHomeContract {
+    Authored {
+        title: &'static str,
+        copy: &'static str,
+    },
+    Holding {
+        title: &'static str,
+        marker: &'static str,
+    },
+}
 
-    assert!(body.contains(title), "{host} has the wrong title: {body}");
-    assert!(
-        body.contains(home_copy),
-        "{host} is missing its authored home copy: {body}"
+const LIVE_HOME_CONTRACTS: &[(views::brand::BrandKey, LiveHomeContract)] = &[
+    (
+        views::brand::BrandKey::Neon,
+        LiveHomeContract::Authored {
+            title: "<title>Neon Law | Home</title>",
+            copy: "Keep building.",
+        },
+    ),
+    (
+        views::brand::BrandKey::DeleteYourData,
+        LiveHomeContract::Authored {
+            title: "<title>DeleteYourData.com | Home</title>",
+            copy: "Your Life. Less Exposed.",
+        },
+    ),
+    (
+        views::brand::BrandKey::DeleteYourDebt,
+        LiveHomeContract::Authored {
+            title: "<title>DeleteYourDebt.com | Home</title>",
+            copy: "We defend you against debt collectors.",
+        },
+    ),
+    (
+        views::brand::BrandKey::Vesta,
+        LiveHomeContract::Authored {
+            title: "<title>Vesta Estate Planning | Home</title>",
+            copy: "For the life you build.",
+        },
+    ),
+    (
+        views::brand::BrandKey::Misericordia,
+        LiveHomeContract::Authored {
+            title: "<title>Misericordia Injury Law | Home</title>",
+            copy: "You were hurt. Talk to a lawyer.",
+        },
+    ),
+    (
+        views::brand::BrandKey::Abhaya,
+        LiveHomeContract::Authored {
+            title: "<title>Abhaya Immigration | Home</title>",
+            copy: "Help with your immigration case.",
+        },
+    ),
+    (
+        views::brand::BrandKey::LawyerShook,
+        LiveHomeContract::Holding {
+            title: "<title>Lawyer Shook | Home</title>",
+            marker: "Shook Law PLLC is the legal office",
+        },
+    ),
+    (
+        views::brand::BrandKey::Summons,
+        LiveHomeContract::Holding {
+            title: "<title>Summons Defense | Home</title>",
+            marker: "Coming Soon",
+        },
+    ),
+    (
+        views::brand::BrandKey::Daybridge,
+        LiveHomeContract::Authored {
+            title: "<title>Daybridge Divorce Law | Home</title>",
+            copy: "A way through divorce.",
+        },
+    ),
+];
+
+fn live_home_contract(key: views::brand::BrandKey) -> &'static LiveHomeContract {
+    LIVE_HOME_CONTRACTS
+        .iter()
+        .find_map(|(candidate, contract)| (*candidate == key).then_some(contract))
+        .unwrap_or_else(|| panic!("{key:?} is live but has no home-page contract"))
+}
+
+#[test]
+fn every_live_brand_has_an_explicit_home_page_contract() {
+    assert_eq!(
+        LIVE_HOME_CONTRACTS.len(),
+        views::brand::BrandKey::LIVE.len(),
+        "every live brand must have exactly one home-page contract"
     );
+    for key in views::brand::BrandKey::LIVE {
+        live_home_contract(*key);
+    }
     assert!(
-        !body.contains("Coming Soon"),
-        "{host} must not render a holding page: {body}"
+        LIVE_HOME_CONTRACTS
+            .iter()
+            .all(|(key, _)| views::brand::BrandKey::LIVE.contains(key)),
+        "the contract registry must not contain a held-out brand"
     );
+}
+
+fn assert_live_practice_home(key: views::brand::BrandKey, host: &str, body: &str) {
+    match live_home_contract(key) {
+        LiveHomeContract::Authored { title, copy } => {
+            assert!(body.contains(title), "{host} has the wrong title: {body}");
+            assert!(
+                body.contains(copy),
+                "{host} is missing its authored home copy: {body}"
+            );
+            assert!(
+                !body.contains("Coming Soon"),
+                "{host} must not render a holding page: {body}"
+            );
+        }
+        LiveHomeContract::Holding { title, marker } => {
+            assert!(
+                body.contains(title),
+                "{host} has the wrong holding title: {body}"
+            );
+            assert!(
+                body.contains(marker),
+                "{host} is missing its holding marker: {body}"
+            );
+        }
+    }
     assert!(
         body.contains(&format!("/public/css/brand-{}-tokens.css", key.as_str())),
         "{host} must load its scoped brand tokens: {body}"
@@ -10404,7 +10499,7 @@ async fn every_registered_host_serves_its_brand_and_its_apex_redirects_home() {
                         page_declares_og_site_name(&body, site_name),
                         "{host} wears {site_name}: {body}"
                     );
-                    assert_launched_practice_home(*key, host, &body);
+                    assert_live_practice_home(*key, host, &body);
                 }
                 continue;
             }

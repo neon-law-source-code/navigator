@@ -9,9 +9,10 @@
 //! key. This never creates a second receipt, letter, or archive: those are
 //! digest-keyed in `SurrealDB` already and this command never touches them.
 //!
-//! Diagnostics are identifier-and-status only: this module never logs an
-//! email body, a summary, or any letter/archive content — only the receipt
-//! id, the invocation id, and status words.
+//! Diagnostics are status words only: this module never writes a receipt
+//! id, an invocation id, an email body, a summary, or any letter/archive
+//! content. The operator already supplied the receipt as the command
+//! argument.
 //!
 //! The exact admin-API shape (`sys_invocation` introspection then a purge)
 //! mirrors Restate's documented invocation-lifecycle model but is exercised
@@ -81,9 +82,9 @@ async fn redrive_with(
         .context("build the EmailSummaryRequest")?;
 
     let key = receipt_id.to_string();
-    purge_retained_invocation(admin_url, admin_token, SERVICE, &key, receipt_id).await?;
+    purge_retained_invocation(admin_url, admin_token, SERVICE, &key).await?;
 
-    let body = workflows::start_workflow(
+    workflows::start_workflow(
         &config.workflow_ingress,
         auth_token,
         SERVICE,
@@ -95,7 +96,6 @@ async fn redrive_with(
     .await
     .context("resubmit the EmailSummary workflow")?;
 
-    let _ = parse_invocation_id(&body);
     println!("EmailSummary workflow resubmitted");
     Ok(())
 }
@@ -128,13 +128,12 @@ async fn purge_retained_invocation(
     admin_token: &str,
     service: &str,
     key: &str,
-    receipt_id: Uuid,
 ) -> Result<()> {
     if let Some(invocation_id) = find_invocation_id(admin_url, admin_token, service, key).await? {
         delete_invocation(admin_url, admin_token, &invocation_id).await?;
-        println!("receipt {receipt_id}: purged invocation {invocation_id}");
+        println!("purged retained invocation");
     } else {
-        println!("receipt {receipt_id}: no retained invocation to purge");
+        println!("no retained invocation to purge");
     }
     Ok(())
 }
@@ -195,9 +194,10 @@ async fn delete_invocation(admin_url: &str, admin_token: &str, invocation_id: &s
     Ok(())
 }
 
-/// Pull `invocationId` out of the ingress's JSON response body. `None` when
-/// the shape is unexpected — never a reason to fail a redrive that already
-/// succeeded.
+/// Pull `invocationId` out of the ingress's JSON response body. Used by
+/// tests to pin the Restate response shape; the command itself never
+/// writes the id.
+#[cfg(test)]
 fn parse_invocation_id(body: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(body)
         .ok()?
@@ -284,15 +284,9 @@ mod tests {
         // No DELETE mock at all: this test fails (unmatched request) if the
         // "nothing retained" path ever tries to delete something anyway.
 
-        purge_retained_invocation(
-            &server.uri(),
-            "admin-token",
-            "EmailSummary",
-            "receipt-1",
-            Uuid::now_v7(),
-        )
-        .await
-        .expect("no-op purge succeeds");
+        purge_retained_invocation(&server.uri(), "admin-token", "EmailSummary", "receipt-1")
+            .await
+            .expect("no-op purge succeeds");
     }
 
     fn test_config(ingress: &str) -> workflows::EmailSummaryConfig {
@@ -436,14 +430,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        purge_retained_invocation(
-            &server.uri(),
-            "admin-token",
-            "EmailSummary",
-            "receipt-1",
-            Uuid::now_v7(),
-        )
-        .await
-        .expect("purge succeeds");
+        purge_retained_invocation(&server.uri(), "admin-token", "EmailSummary", "receipt-1")
+            .await
+            .expect("purge succeeds");
     }
 }

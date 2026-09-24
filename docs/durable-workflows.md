@@ -94,8 +94,9 @@ id, and intake only submits on the inbound webhook: SendGrid never re-POSTs a me
    they can't diverge on run configuration the way intake and the worker once diverged on digest framing).
 
 It never creates a second receipt, letter, or archive — those are digest-keyed in SurrealDB already and a redrive never
-touches them. Output is identifier-and-status only: the receipt id, the invocation id, and whether anything was purged —
-never a summary, a letter, or any client content.
+touches them. Output is status words only — whether anything was purged, and that the run was resubmitted — never a
+receipt id, an invocation id, a summary, a letter, or any client content. The operator already supplied the receipt as
+the command argument.
 
 It reads the same environment a deployment's own `web`/worker already source — `NAVIGATOR_SURREAL_*` for the database,
 `NAVIGATOR_SUMMARY_*` / `RESTATE_BROKER_URL` for the summary-lane configuration, and `RESTATE_ADMIN_URL` /

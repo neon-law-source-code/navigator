@@ -1482,8 +1482,16 @@ enum SecretsCmd {
         deployments_dir: Option<PathBuf>,
         /// Print the target project and the object names without decrypting
         /// anything or changing Secret Manager. Needs no KMS permission.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "check")]
         dry_run: bool,
+        /// Decrypt in-process (the same trust `apply` uses) and compare every
+        /// object's SOPS value against Secret Manager `versions/latest` and
+        /// the deployment's Kubernetes Secret, by constant-time equality.
+        /// Prints names and status only — `match`, `differs`, `missing in
+        /// Secret Manager`, or `missing in K8s Secret` — never a value or a
+        /// digest, and exits non-zero on any drift. Changes nothing.
+        #[arg(long, conflicts_with = "dry_run")]
+        check: bool,
     },
 }
 

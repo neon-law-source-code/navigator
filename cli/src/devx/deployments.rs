@@ -56,6 +56,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context, Result};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 use serde::Deserialize;
 use store::deployment::{applicable_web_requirements, Requirement};
 use store::DeploymentEnvironment;
@@ -777,17 +779,7 @@ pub fn apply(root: &Path, name: &str, dry_run: bool) -> Result<()> {
     }
 
     let decrypted = decrypt(&root.join(TREE).join(name).join(SECRETS_FILE))?;
-    let mut payloads = BTreeMap::new();
-    for (object, source) in &plan {
-        let value = match source {
-            Source::Encrypted => decrypted.get(object).cloned(),
-            Source::Coordinate => deployment.coordinates.get(object).cloned(),
-        };
-        let value = value.filter(|value| !value.is_empty()).with_context(|| {
-            format!("{object} resolved to an empty value; Secret Manager was not changed")
-        })?;
-        payloads.insert(object.clone(), value);
-    }
+    let payloads = resolve_payloads(&deployment, &plan, &decrypted)?;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -915,6 +907,238 @@ fn decrypt(path: &Path) -> Result<BTreeMap<String, String>> {
         .map_err(|error| anyhow::anyhow!("parse the decrypted document: {error}"))
 }
 
+/// Resolve every planned object to its plaintext value — from the decrypted
+/// SOPS document or, for a `Source::Coordinate` object, straight from
+/// `config.toml`. Shared by [`apply`] (which writes these values) and
+/// [`check_secrets`] (which only ever compares them).
+fn resolve_payloads(
+    deployment: &Deployment,
+    plan: &BTreeMap<String, Source>,
+    decrypted: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    let mut payloads = BTreeMap::new();
+    for (object, source) in plan {
+        let value = match source {
+            Source::Encrypted => decrypted.get(object).cloned(),
+            Source::Coordinate => deployment.coordinates.get(object).cloned(),
+        };
+        let value = value
+            .filter(|value| !value.is_empty())
+            .with_context(|| format!("{object} resolved to an empty value"))?;
+        payloads.insert(object.clone(), value);
+    }
+    Ok(payloads)
+}
+
+/// One object's drift status against one comparison target. The four values
+/// named by ENG-887's acceptance criteria — never anything richer, so a
+/// value or a digest has no path into this type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckStatus {
+    Match,
+    Differs,
+    MissingInSecretManager,
+    MissingInK8sSecret,
+}
+
+impl CheckStatus {
+    fn label(self) -> &'static str {
+        match self {
+            CheckStatus::Match => "match",
+            CheckStatus::Differs => "differs",
+            CheckStatus::MissingInSecretManager => "missing in Secret Manager",
+            CheckStatus::MissingInK8sSecret => "missing in K8s Secret",
+        }
+    }
+}
+
+/// Constant-time byte comparison. A length mismatch is not itself treated as
+/// sensitive (an object's value length is not secret), but every byte
+/// position that both sides share is still compared without an early return.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// `expected` is the freshly decrypted SOPS value; `actual` is what the same
+/// object currently resolves to at the comparison target, or `None` when the
+/// target has nothing under that name.
+fn classify(expected: &[u8], actual: Option<&[u8]>, missing: CheckStatus) -> CheckStatus {
+    match actual {
+        None => missing,
+        Some(actual) if constant_time_eq(expected, actual) => CheckStatus::Match,
+        Some(_) => CheckStatus::Differs,
+    }
+}
+
+/// Compare every resolved SOPS value against Secret Manager's `versions/latest`
+/// and against the deployment's live Kubernetes Secret. Never returns, logs,
+/// or prints a value — only the pair of [`CheckStatus`] verdicts per object.
+async fn check_payloads(
+    client: &gcp::client::GcpClient,
+    project_id: &str,
+    payloads: &BTreeMap<String, String>,
+    k8s_values: &BTreeMap<String, Option<Vec<u8>>>,
+) -> Result<BTreeMap<String, (CheckStatus, CheckStatus)>> {
+    let mut statuses = BTreeMap::new();
+    for (object, value) in payloads {
+        let sm_value =
+            gcp::secret_manager::access_version(client, project_id, object, "latest").await?;
+        let sm_status = classify(
+            value.as_bytes(),
+            sm_value.as_deref(),
+            CheckStatus::MissingInSecretManager,
+        );
+        let k8s_value = k8s_values.get(object).and_then(|value| value.as_deref());
+        let k8s_status = classify(value.as_bytes(), k8s_value, CheckStatus::MissingInK8sSecret);
+        statuses.insert(object.clone(), (sm_status, k8s_status));
+    }
+    Ok(statuses)
+}
+
+/// Render a `--check` report: one line per object per comparison target,
+/// name and status word only. This is the only place `check` writes to
+/// stdout, so a test can assert directly on this string that no value or
+/// digest ever appears in it.
+fn render_report(statuses: &BTreeMap<String, (CheckStatus, CheckStatus)>) -> String {
+    let mut out = String::new();
+    for (object, (secret_manager, k8s)) in statuses {
+        out.push_str(&format!(
+            "{object} (Secret Manager): {}\n",
+            secret_manager.label()
+        ));
+        out.push_str(&format!("{object} (K8s Secret): {}\n", k8s.label()));
+    }
+    out
+}
+
+/// The deployment's live `web` Kubernetes Secret, as raw `kubectl get -o
+/// json` output, or `None` when the Secret does not exist yet (a deployment
+/// `apply` has never reached). The shell-out itself is not covered by a
+/// test — [`parse_k8s_secret_values`], which does the comparison-relevant
+/// parsing, is.
+fn fetch_k8s_secret_json(config: &ship::ShipConfig) -> Result<Option<String>> {
+    let output = Command::new("kubectl")
+        .args([
+            "--context",
+            config.context.as_str(),
+            "--namespace",
+            config.namespace.as_str(),
+            "get",
+            "secret",
+            config.secret_name.as_str(),
+            "-o",
+            "json",
+        ])
+        .output()
+        .context("read deployment web Kubernetes Secret")?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(
+        String::from_utf8(output.stdout).context("Kubernetes Secret was not UTF-8")?,
+    ))
+}
+
+/// Decode the `.data` map of a `kubectl get secret -o json` payload for each
+/// of `keys`. `json` is `None` when the Secret itself does not exist, which
+/// makes every key `None` (missing), not a parse failure.
+fn parse_k8s_secret_values<'a>(
+    json: Option<&str>,
+    keys: impl Iterator<Item = &'a String>,
+) -> Result<BTreeMap<String, Option<Vec<u8>>>> {
+    let data: BTreeMap<String, String> = match json {
+        None => BTreeMap::new(),
+        Some(json) => {
+            let document: serde_json::Value =
+                serde_json::from_str(json).context("parse Kubernetes Secret JSON")?;
+            match document.get("data").cloned() {
+                Some(data) => {
+                    serde_json::from_value(data).context("parse Kubernetes Secret .data")?
+                }
+                None => BTreeMap::new(),
+            }
+        }
+    };
+    let mut values = BTreeMap::new();
+    for key in keys {
+        let decoded = data
+            .get(key)
+            .map(|encoded| STANDARD.decode(encoded))
+            .transpose()
+            .context("decode Kubernetes Secret value")?;
+        values.insert(key.clone(), decoded);
+    }
+    Ok(values)
+}
+
+/// `navigator ops secrets apply --check` — decrypt in-process, the same
+/// trust boundary [`apply`] uses, and report by name only whether each
+/// projected object's SOPS value matches what is live in Secret Manager and
+/// in the deployment's Kubernetes Secret.
+///
+/// Prints one line per object per comparison target — `match`, `differs`,
+/// `missing in Secret Manager`, or `missing in K8s Secret` — and never a
+/// value or a digest of one. Returns an error (which `main` turns into a
+/// non-zero exit) when anything is not `match`. Changes nothing: Secret
+/// Manager and the Kubernetes Secret are only ever read.
+pub fn check_secrets(root: &Path, name: &str) -> Result<()> {
+    let deployment = Deployment::load(root, name)?;
+
+    let unsatisfied = unsatisfied_requirements(&deployment);
+    if !unsatisfied.is_empty() {
+        bail!(
+            "{name} does not satisfy {} boot requirement(s) that apply to it: {}. Nothing was \
+             checked.",
+            unsatisfied.len(),
+            unsatisfied
+                .iter()
+                .map(describe)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    let (plan, _skipped) = plan(&deployment)?;
+    let project_id = deployment.project_id().to_owned();
+    let ship_config = ship::ShipConfig::from_deployment(&deployment)?;
+    let decrypted = decrypt(&root.join(TREE).join(name).join(SECRETS_FILE))?;
+    let payloads = resolve_payloads(&deployment, &plan, &decrypted)?;
+
+    let k8s_json = fetch_k8s_secret_json(&ship_config)?;
+    let k8s_values = parse_k8s_secret_values(k8s_json.as_deref(), payloads.keys())?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("build tokio runtime")?;
+    let statuses = runtime.block_on(async {
+        let token = gcp::auth::adc_token_provider().await?;
+        let client = gcp::client::GcpClient::new(token);
+        check_payloads(&client, &project_id, &payloads, &k8s_values).await
+    })?;
+
+    print!("{}", render_report(&statuses));
+
+    let drifted: Vec<&str> = statuses
+        .iter()
+        .filter(|(_, (secret_manager, k8s))| {
+            *secret_manager != CheckStatus::Match || *k8s != CheckStatus::Match
+        })
+        .map(|(object, _)| object.as_str())
+        .collect();
+    if !drifted.is_empty() {
+        bail!(
+            "{} object(s) drifted from {name}'s SOPS values: {}",
+            drifted.len(),
+            drifted.join(", ")
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -922,7 +1146,154 @@ mod tests {
     use sha2::{Digest as _, Sha256};
     use store::deployment::GITHUB_AUTOMATION_HOME_PROJECT;
 
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::gcp::client::{GcpClient, GcpService, StaticToken};
     use super::*;
+
+    fn gcp_client(server: &MockServer) -> GcpClient {
+        GcpClient::new(std::sync::Arc::new(StaticToken("test-token".into())))
+            .with_base_url(GcpService::SecretManager, server.uri())
+    }
+
+    #[test]
+    fn classify_reports_match_differs_and_missing() {
+        assert_eq!(
+            classify(b"value", Some(b"value"), CheckStatus::MissingInSecretManager),
+            CheckStatus::Match
+        );
+        assert_eq!(
+            classify(b"value", Some(b"other"), CheckStatus::MissingInSecretManager),
+            CheckStatus::Differs
+        );
+        assert_eq!(
+            classify(b"value", None, CheckStatus::MissingInSecretManager),
+            CheckStatus::MissingInSecretManager
+        );
+        assert_eq!(
+            classify(b"value", None, CheckStatus::MissingInK8sSecret),
+            CheckStatus::MissingInK8sSecret
+        );
+        // A length mismatch is `differs`, not a panic or an early-exit that
+        // would skip comparing the rest.
+        assert_eq!(
+            classify(b"value", Some(b"a-longer-value"), CheckStatus::MissingInK8sSecret),
+            CheckStatus::Differs
+        );
+    }
+
+    #[test]
+    fn parse_k8s_secret_values_reports_present_and_missing_keys() {
+        let json = serde_json::json!({
+            "data": {
+                "SESSION_SECRET": STANDARD.encode(b"live-value"),
+            }
+        })
+        .to_string();
+        let keys = vec!["SESSION_SECRET".to_string(), "OTHER_SECRET".to_string()];
+
+        let values = parse_k8s_secret_values(Some(&json), keys.iter())
+            .expect("valid Kubernetes Secret JSON parses");
+
+        assert_eq!(
+            values.get("SESSION_SECRET").unwrap().as_deref(),
+            Some(b"live-value".as_slice())
+        );
+        assert_eq!(values.get("OTHER_SECRET").unwrap(), &None);
+    }
+
+    #[test]
+    fn parse_k8s_secret_values_of_a_missing_secret_are_all_none() {
+        let keys = vec!["SESSION_SECRET".to_string()];
+        let values =
+            parse_k8s_secret_values(None, keys.iter()).expect("a missing Secret is not an error");
+        assert_eq!(values.get("SESSION_SECRET").unwrap(), &None);
+    }
+
+    #[tokio::test]
+    async fn check_payloads_classifies_match_differs_and_both_kinds_of_missing() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/v1/projects/neon-law-stg/secrets/MATCHES/versions/latest:access",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "payload": { "data": STANDARD.encode(b"same-value") },
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/v1/projects/neon-law-stg/secrets/DRIFTED/versions/latest:access",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "payload": { "data": STANDARD.encode(b"stale-value") },
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/v1/projects/neon-law-stg/secrets/ABSENT/versions/latest:access",
+            ))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let mut payloads = BTreeMap::new();
+        payloads.insert("MATCHES".to_string(), "same-value".to_string());
+        payloads.insert("DRIFTED".to_string(), "fresh-value".to_string());
+        payloads.insert("ABSENT".to_string(), "fresh-value".to_string());
+
+        let mut k8s_values = BTreeMap::new();
+        k8s_values.insert("MATCHES".to_string(), Some(b"same-value".to_vec()));
+        k8s_values.insert("DRIFTED".to_string(), Some(b"fresh-value".to_vec()));
+        // ABSENT deliberately has no entry: missing from the K8s Secret too.
+
+        let statuses = check_payloads(
+            &gcp_client(&server),
+            "neon-law-stg",
+            &payloads,
+            &k8s_values,
+        )
+        .await
+        .expect("every object resolves to a status");
+
+        assert_eq!(
+            statuses.get("MATCHES"),
+            Some(&(CheckStatus::Match, CheckStatus::Match))
+        );
+        assert_eq!(
+            statuses.get("DRIFTED"),
+            Some(&(CheckStatus::Differs, CheckStatus::Match))
+        );
+        assert_eq!(
+            statuses.get("ABSENT"),
+            Some(&(
+                CheckStatus::MissingInSecretManager,
+                CheckStatus::MissingInK8sSecret
+            ))
+        );
+    }
+
+    #[test]
+    fn render_report_never_carries_a_value_only_names_and_status_words() {
+        let mut statuses = BTreeMap::new();
+        statuses.insert(
+            "SESSION_SECRET".to_string(),
+            (CheckStatus::Differs, CheckStatus::MissingInK8sSecret),
+        );
+
+        let report = render_report(&statuses);
+
+        assert!(report.contains("SESSION_SECRET (Secret Manager): differs"));
+        assert!(report.contains("SESSION_SECRET (K8s Secret): missing in K8s Secret"));
+        // The values a real caller would be comparing here — spelled out so
+        // this test fails loudly if a future edit starts interpolating one.
+        for leaked in ["do-not-leak-this-value", "stale-value", "fresh-value"] {
+            assert!(!report.contains(leaked), "report leaked a value: {report}");
+        }
+    }
 
     /// Every deployment in the tree that declares itself provisioned.
     ///

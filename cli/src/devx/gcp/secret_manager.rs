@@ -142,6 +142,61 @@ pub async fn version_state(
         .map(ToOwned::to_owned))
 }
 
+/// Read `secret_id`'s `version` payload — the one call in this module that
+/// touches a value rather than metadata.
+///
+/// `ops secrets apply --check` is the only caller: it needs the live value to
+/// compare against the freshly decrypted SOPS value, by constant-time
+/// equality, so it can report `differs` before a stale value reaches
+/// production. The value returned here must never be logged, printed, or
+/// included in an error — only the comparison's `match`/`differs` verdict may
+/// leave this process. A missing secret or version is `Ok(None)`, matching
+/// [`version_state`]'s convention of treating "not there" as an answer, not a
+/// transport failure.
+pub async fn access_version(
+    client: &GcpClient,
+    project_id: &str,
+    secret_id: &str,
+    version: &str,
+) -> SetupResult<Option<Vec<u8>>> {
+    let response = client
+        .get(
+            GcpService::SecretManager,
+            &format!("/v1/projects/{project_id}/secrets/{secret_id}/versions/{version}:access"),
+        )
+        .await?;
+
+    let status = response.status_u16();
+    if status == 404 {
+        return Ok(None);
+    }
+    if !(200..=299).contains(&status) {
+        return Err(SetupError::BadStatus {
+            // Named, not valued: a non-2xx here is Secret Manager's error
+            // object, which never echoes payload data back.
+            operation: format!("access {secret_id}/versions/{version} in {project_id}"),
+            status,
+            body: response.into_text(),
+        });
+    }
+    let body: serde_json::Value =
+        serde_json::from_str(&response.into_text()).map_err(|source| SetupError::Json {
+            what: "secret version payload",
+            source,
+        })?;
+    let Some(data) = body
+        .get("payload")
+        .and_then(|payload| payload.get("data"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return Ok(None);
+    };
+    let value = STANDARD
+        .decode(data)
+        .map_err(|_| SetupError::Malformed("secret version payload was not valid base64"))?;
+    Ok(Some(value))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -267,6 +322,58 @@ mod tests {
         .await
         .expect("a 404 is an answer, not a failure");
         assert_eq!(state, None);
+    }
+
+    #[tokio::test]
+    async fn access_version_decodes_the_payload() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/v1/projects/neon-law-stg/secrets/SESSION_SECRET/versions/latest:access",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": "projects/1/secrets/SESSION_SECRET/versions/2",
+                "payload": { "data": STANDARD.encode(b"the-live-value") },
+            })))
+            .mount(&server)
+            .await;
+
+        let value = access_version(&client(&server), "neon-law-stg", "SESSION_SECRET", "latest")
+            .await
+            .expect("the version resolves");
+        assert_eq!(value.as_deref(), Some(b"the-live-value".as_slice()));
+    }
+
+    #[tokio::test]
+    async fn access_version_of_a_missing_secret_is_none_not_an_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("NOT_FOUND"))
+            .mount(&server)
+            .await;
+
+        let value = access_version(&client(&server), "neon-law", "MISSING", "latest")
+            .await
+            .expect("a 404 is an answer, not a failure");
+        assert_eq!(value, None);
+    }
+
+    #[tokio::test]
+    async fn a_refused_access_names_the_secret_but_not_a_value() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("PERMISSION_DENIED"))
+            .mount(&server)
+            .await;
+
+        let error = access_version(&client(&server), "neon-law-stg", "SESSION_SECRET", "latest")
+            .await
+            .expect_err("403 fails the read");
+
+        let rendered = error.to_string();
+        assert!(rendered.contains("SESSION_SECRET"));
+        assert!(rendered.contains("403"));
+        assert!(!rendered.contains(&STANDARD.encode(b"the-live-value")));
     }
 
     #[tokio::test]

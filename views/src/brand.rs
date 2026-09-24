@@ -833,8 +833,7 @@ pub static SUMMONS_BRANDING: Branding = Branding {
 };
 
 /// The `daybridge` house brand. Page copy lives in
-/// `neon/locales/en/daybridge/`; the site remains outside the public launch
-/// set while its design and engagement terms are reviewed.
+/// `neon/locales/en/daybridge/`.
 pub static DAYBRIDGE_BRANDING: Branding = Branding {
     firm: SiteBrand {
         site_name: "Daybridge Divorce Law",
@@ -927,6 +926,7 @@ impl BrandKey {
         Self::Abhaya,
         Self::LawyerShook,
         Self::Summons,
+        Self::Daybridge,
     ];
 
     #[must_use]

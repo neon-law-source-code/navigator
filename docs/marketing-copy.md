@@ -51,9 +51,6 @@ Daybridge Divorce Law (`daybridge/`):
 | `neon/locales/en/daybridge/home.yaml` | `/` daily-fee divorce offer |
 | `neon/locales/en/daybridge/services.yaml` | `/services` scope, timing, and cost disclosures |
 
-Daybridge is compiled for local review but remains outside `BrandKey::LIVE`. Its public hosts therefore return `404`
-until launch is separately approved.
-
 Lawyer Shook's `/` combines the firm notice and client sign-in written in Rust
 (`neon::firm_pages::lawyer_shook_holding_content`) with Neon Law and Vesta practice cards from its home catalog. It uses
 the shared footer treatment used by Neon Law and Vesta, including the link to Shook Law PLLC and the common closing

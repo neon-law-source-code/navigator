@@ -60,7 +60,7 @@ const COMPILED_SITES: &[CompiledSite] = &[
     CompiledSite {
         key: "daybridge",
         www: "www.daybridgedivorce.com",
-        live: false,
+        live: true,
     },
 ];
 
@@ -182,6 +182,7 @@ mod tests {
                 "delete-your-debt",
                 "lawyer-shook",
                 "summons",
+                "daybridge",
             ],
             "the live listing set is the launched house brands"
         );

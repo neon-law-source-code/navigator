@@ -140,6 +140,17 @@ data:
           # this label so a panel can chart exporter health per exporter name;
           # it names a collector component, never client data.
           - exporter
+          # The collector's self-scrape also labels processor and receiver
+          # health. Keep component identity through redaction so aggregation
+          # cannot collapse distinct collector series into duplicates.
+          - processor
+          - data_type
+          - otel_signal
+          - receiver
+          - transport
+          - grpc_method
+          - grpc_status
+          - grpc_target
           # --- Neon Law Navigator operational (what telemetry/workflows emit) ---
           - service
           - outcome
@@ -291,6 +302,14 @@ data:
                   - k8s.node.name
                   - container.name
                   - exporter
+                  - processor
+                  - data_type
+                  - otel_signal
+                  - receiver
+                  - transport
+                  - grpc_method
+                  - grpc_status
+                  - grpc_target
                   - service
                   - outcome
                   - handler

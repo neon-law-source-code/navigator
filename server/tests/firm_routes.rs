@@ -208,10 +208,7 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
     assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("$5,000"));
     assert!(body.contains("One-time setup"));
-    assert!(body.contains("All your base agreements"));
-    assert!(
-        body.contains("master services agreement, employment agreements, and equity agreements.")
-    );
+    assert!(body.contains("Master services, employment, and equity agreements."));
     assert!(body.contains("img/neon-home/neon-home-presentation.mp4"));
     assert!(body.contains("<video") && body.contains("video/mp4"));
     assert!(body.contains("href=\"/notations\""));
@@ -853,14 +850,14 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
         assert!(body.contains(text), "missing {text}: {body}");
     }
     let experience = body
-        .find("Accelerating legal judgment with bespoke software.")
+        .find("Legal judgment, in software.")
         .expect("experience section");
     let pricing = body.find("id=\"pricing\"").expect("pricing anchor");
     assert!(experience < pricing, "show experience before fees");
     assert!(body.contains("We built a battle-tested 30 PB data warehouse for Apple Finance"));
-    assert!(body.contains("Starting amounts"));
+    assert!(body.contains("Retainer and setup"));
     assert!(body.contains("One-time setup"));
-    assert!(body.contains("All your base agreements"));
+    assert!(body.contains("Master services, employment, and equity agreements."));
     assert!(body.matches("Keep building.").count() >= 2);
     assert!(body.contains(r#"href="/presentations/rust-in-peace""#));
     assert!(body.contains(r#"href="/presentations""#));
@@ -880,10 +877,10 @@ async fn home_explains_retainer_and_additional_fees() {
     for text in [
         "$50",
         "$10,000 retainer",
-        "$5,000 one-time setup for your base agreements",
-        "This daily fee applies whether we are writing contracts or reviewing them.",
-        "We draw each charge only after we perform the service.",
-        "Your engagement letter explains scope, rates, withdrawal timing, and refunds.",
+        "$5,000 one-time setup",
+        "The daily fee covers writing and review.",
+        "We draw after we perform the work.",
+        "The engagement letter sets scope, rates, and refunds.",
         "$1,000",
         "$3,000",
         "$5,000",
@@ -895,20 +892,20 @@ async fn home_explains_retainer_and_additional_fees() {
         "After selected services: $2,500 earned, $7,500 remains held in trust.",
         "After selected services: $4,500 earned, $5,500 remains held in trust.",
         "After selected services: $6,500 earned, $3,500 remains held in trust.",
-        "We respond to notices and review requests within five business days",
-        "Choose a size when you need review the same day instead of within five business days.",
-        "Same-day contract size",
+        "We respond within five business days",
+        "Same-day review is a sized fee.",
+        "The size sets the fee.",
         "5 p.m. PST",
         "We serve as your counsel",
-        "We act as your registered agent and send you notice in jurisdictions where we accept that role",
-        "Shared Slack channel for privileged communication",
+        "We send registered-agent notice where we accept that role",
+        "Privileged Slack channel",
         "Same-day review",
         "Starting retainer",
-        "Illustrative earned charges",
-        "Request same-day review before 5 p.m. PST. We confirm its scope, size, and fee before beginning.",
-        "All your base agreements: master services agreement, employment agreements, and equity agreements.",
+        "Earned charges",
+        "Request same-day review before 5 p.m. PST. We confirm size and fee before we begin.",
+        "Master services, employment, and equity agreements.",
         "per active case",
-        "discovery-data storage",
+        "You pay legal fees and case expenses.",
         "BUSL-1.1",
         "Commercial licenses available.",
     ] {
@@ -923,14 +920,16 @@ async fn home_explains_retainer_and_additional_fees() {
     assert!(!body.contains("Revisions at Scale"));
     assert!(!body.contains("All your contracts"));
     assert!(!body.contains("Onboard and offboard contractors and employees worldwide."));
+    assert!(!body.contains("This daily fee applies whether"));
+    assert!(!body.contains("Choose a size when you need review the same day instead"));
     assert!(!body.contains("30 days cost $1,500."));
-    let starting_amounts = body.find("Starting amounts").expect("starting amounts");
+    let starting_amounts = body.find("Retainer and setup").expect("retainer and setup");
     let daily_plan = body
         .find("Counsel and registered agent")
         .expect("daily counsel plan");
     assert!(
         starting_amounts < daily_plan,
-        "the $10,000 and $5,000 starting amounts must appear before the daily plan"
+        "the $10,000 retainer and $5,000 setup must appear before the daily plan"
     );
     assert!(body.contains(r#"href="/navigator""#), "missing /navigator");
     // The two sibling practices are named in the same section either way; the

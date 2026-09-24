@@ -759,7 +759,7 @@ fn resolve_firm_contact_content(
 /// Brand-safe like [`resolve_firm_contact_content`]: the `<title>` names the
 /// mounted brand, resolved at router-build time.
 ///
-/// Neon presents membership, notation packages, and booking on one page.
+/// Neon presents membership, the one-time setup fee, and booking on one page.
 /// Other house brands resolve their own home catalogs.
 ///
 /// The summons channel answers a "Coming Soon" holding page instead

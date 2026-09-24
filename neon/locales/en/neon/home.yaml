@@ -1,78 +1,66 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  We help technology founders handle contracts, hiring, and growth.
-  Start with a $10,000 retainer. Your $50-a-day plan includes contract review within five business days.
+  Counsel for technology founders. $5,000 flat-fee setup. $50 a day with five-business-day
+  contract turnaround. $500 express review in one day. Separate $10,000 retainer.
 heading: Keep building.
-lead: Emerging Technologies Counsel
+lead: Counsel for what you’re building.
 contact_label: Book a consultation
 service:
-  heading: Accelerating legal judgment with bespoke software.
+  heading: Experience that moves you forward.
   body:
-    - - text: Our lawyers bring years of experience to decisions about contracts, hiring, equity, and disputes.
-    - - text: We built a battle-tested 30 PB data warehouse for Apple Finance and have taught agentic coding to developers worldwide.
-    - - text: "Explore our "
+    - - text: We help technology founders make the next decision. Contracts, hiring, equity, and the disputes that need a firm hand.
+    - - text: Our experience spans law and engineering, including a 30-petabyte data warehouse for Apple Finance and teaching developers worldwide.
+    - - text: "See how we work in our "
       - text: workshops
         href: /presentations
       - text: " or watch "
       - text: Rust in Peace
         href: /presentations/rust-in-peace
-      - text: " to see how we build Navigator."
+      - text: "."
 practices_heading: ""
 practices: []
 company:
   booking_href: https://calendar.notion.so/meet/shicholas/or15n4yy7
   pricing_link: See pricing
-  retainer_note: "We draw each charge only after we perform the service. We return unearned funds when the engagement ends. Your engagement letter explains scope, rates, withdrawal timing, and refunds."
+  retainer_note: "A $10,000 retainer is held in trust when you sign up. We draw after we perform the work. Unearned funds return when the engagement ends. The engagement letter sets scope, rates, and refunds."
   flow_caption: Notation workflow
   flow_steps: [Scope, Draft, Review, Sign]
   packages: [MSA, Employment, Cap Table]
   pause_label: Pause motion
-  pricing_heading: Start with a $10,000 retainer.
+  pricing_heading: A clear start. A steady hand.
   video_label: Neon Law presentation
-  membership_label: Your legal plan
+  membership_label: Ongoing counsel
   membership_price: "$50"
   membership_unit: / day
-  membership_body: We draw the plan charge daily.
-  retainer_amount: 10000
+  membership_body: Contract drafting and review. Five-business-day turnaround.
   membership_features:
-    - We review contracts within five business days of acceptance as part of your plan
-    - Access our template library
-    - Act as your registered agent in certain jurisdictions
-    - Tell others Neon Law is your counsel
-    - Shared Slack channel for privileged communication
-  simulator_heading: Revisions at Scale
-  simulator_body: Example charges from a retainer
-  simulator_days_label: Plan days
-  simulator_size_label: Same-day contract size
-  simulator_size_hint: Choose a size to estimate the same-day fee.
-  simulator_plan_label: Plan charges after services
-  simulator_review_label: Same-day review after service
-  simulator_total_label: Illustrative earned charges
-  simulator_note: Request same-day review before 5 p.m. PST. We confirm its scope, size, and fee before beginning.
-  review_rows:
-    - [Small, "$1,000"]
-    - [Medium, "$3,000"]
-    - [Large, "$5,000"]
-  drafting_heading: Notation Packages
-  drafting_body: Build a legal library to suit your company's needs.
+    - Counsel for day-to-day decisions
+    - Your contract template library
+    - A shared Slack channel
+    - Registered-agent notice where we accept that role
+  express_heading: When a day matters.
+  express_price: "$500"
+  express_unit: / express review
+  express_body: Contract review with a one-day turnaround.
+  page_note: "Each contract includes up to 50 pages. Each additional page is $5. A page is US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt."
+  drafting_heading: Start with a solid foundation.
+  drafting_body: Your base contracts, prepared for your business.
   drafting_packages:
-    - [Master services agreement, "$5,000", "We deliver service agreements to your CRM, inbox, or wherever your team needs them."]
-    - [Employment, "$5,000", "Onboard and offboard contractors and employees worldwide."]
-    - [Equity, "$5,000", "Cap table setup and equity plans for your team and investors."]
+    - [One-time setup, "$5,000", "Flat fee. Master services, employment, and equity agreements."]
   closing_heading: Keep building.
-  closing_body: "We handle the legal work."
+  closing_body: "We’re with you."
   litigation_heading: Protect what you build.
   litigation_link: Discuss your case
   litigation_price: "$5,000+"
   litigation_unit: / month per active case
-  litigation_body: We represent your company in commercial, employment, intellectual property, and investor disputes.
-  litigation_note: You pay legal fees and case expenses, including discovery-data storage and research fees. Your retainer sets the scope.
-  people_heading: For the people building it.
-  people_body: Immigration and estate planning support for your employees. Separately engaged through our sibling practices.
+  litigation_body: When your business is challenged, we get to work. We represent you in commercial, employment, intellectual property, and investor disputes.
+  litigation_note: You pay legal fees and case expenses. The retainer sets the scope.
+  people_heading: For your people, too.
+  people_body: Immigration and estate planning for your employees, through our sibling practices.
   immigration_label: Abhaya / Immigration
   estate_label: Vesta / Estate planning
-  navigator_heading: Every step. Connected.
-  navigator_body: Navigator connects the documents, decisions, and people behind your work. From the first draft to the final signature.
+  navigator_heading: Your business. In confidence.
+  navigator_body: We treat your legal matters as confidential. Navigator brings your documents, decisions, and legal team together, from the first draft to the final signature.
   navigator_link: Explore Navigator
   source_label: Read the source
   source_note: Available under BUSL-1.1. Evaluation, development, testing, and demonstration are permitted where no one relies on the work. Commercial licenses available.

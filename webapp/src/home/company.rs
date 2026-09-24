@@ -1,4 +1,4 @@
-//! Company counsel: membership, notation packages, and an illustrative work stream.
+//! Company counsel: membership, one-time setup, and an illustrative work stream.
 
 use super::HomeContent;
 use crate::components::is_external_href;
@@ -23,17 +23,11 @@ pub struct CompanyContent {
     pub membership_unit: String,
     pub membership_body: String,
     pub membership_features: Vec<String>,
-    pub retainer_amount: u32,
-    pub simulator_heading: String,
-    pub simulator_body: String,
-    pub simulator_days_label: String,
-    pub simulator_size_label: String,
-    pub simulator_size_hint: String,
-    pub simulator_plan_label: String,
-    pub simulator_review_label: String,
-    pub simulator_total_label: String,
-    pub simulator_note: String,
-    pub review_rows: Vec<[String; 2]>,
+    pub express_heading: String,
+    pub express_price: String,
+    pub express_unit: String,
+    pub express_body: String,
+    pub page_note: String,
     pub drafting_heading: String,
     pub drafting_body: String,
     pub drafting_packages: Vec<[String; 3]>,
@@ -90,36 +84,6 @@ fn SiblingPractice(label: String, href: Option<String>) -> Element {
     }
 }
 
-fn parse_dollars(value: &str) -> u32 {
-    value
-        .chars()
-        .filter_map(|character| character.to_digit(10))
-        .fold(0, |amount, digit| {
-            amount.saturating_mul(10).saturating_add(digit)
-        })
-}
-
-fn format_dollars(amount: u32) -> String {
-    let digits = amount.to_string();
-    let mut formatted = String::with_capacity(digits.len() + digits.len() / 3 + 1);
-    for (index, character) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            formatted.push(',');
-        }
-        formatted.push(character);
-    }
-    format!("${formatted}")
-}
-
-struct FeeScenario {
-    class_name: String,
-    plan_details: String,
-    same_day_price: String,
-    earned_fees: String,
-    remaining_retainer: String,
-    earned_share: u32,
-}
-
 #[component]
 pub(super) fn CompanyHome(
     content: HomeContent,
@@ -127,45 +91,6 @@ pub(super) fn CompanyHome(
     #[props(default)] lead_capture_enabled: bool,
 ) -> Element {
     let booking_external = is_external_href(&company.booking_href);
-    let daily_fee = parse_dollars(&company.membership_price);
-    let retainer_value = format_dollars(company.retainer_amount);
-    let mut fee_scenarios = Vec::new();
-    for days in [10_u32, 30] {
-        for (size_index, row) in company.review_rows.iter().enumerate() {
-            let plan_fees = days.saturating_mul(daily_fee);
-            let same_day_fee = parse_dollars(&row[1]);
-            let earned_fees = plan_fees.saturating_add(same_day_fee);
-            let earned_share = if company.retainer_amount == 0 {
-                0
-            } else {
-                earned_fees
-                    .saturating_mul(100)
-                    .checked_div(company.retainer_amount)
-                    .unwrap_or(0)
-                    .min(100)
-            };
-            let size_key = match size_index {
-                0 => "small",
-                1 => "medium",
-                2 => "large",
-                _ => "other",
-            };
-            fee_scenarios.push(FeeScenario {
-                class_name: format!("company-simulator__summary-case--{days}-{size_key}"),
-                plan_details: format!(
-                    "{days} days × {} = {}",
-                    company.membership_price,
-                    format_dollars(plan_fees)
-                ),
-                same_day_price: row[1].clone(),
-                earned_fees: format_dollars(earned_fees),
-                remaining_retainer: format_dollars(
-                    company.retainer_amount.saturating_sub(earned_fees),
-                ),
-                earned_share,
-            });
-        }
-    }
     rsx! {
         div { class: "company-home",
             section { class: "company-hero",
@@ -226,7 +151,19 @@ pub(super) fn CompanyHome(
             }
             section { id: "pricing", class: "company-pricing", "aria-labelledby": "company-pricing-title",
                 h2 { id: "company-pricing-title", "{company.pricing_heading}" }
-                p { class: "company-pricing__terms", "{company.retainer_note}" }
+                section { class: "company-packages company-packages--start", "aria-labelledby": "company-packages-title",
+                    h3 { id: "company-packages-title", "{company.drafting_heading}" }
+                    p { class: "company-packages__subtitle", "{company.drafting_body}" }
+                    div { class: "company-packages__grid",
+                        for package in company.drafting_packages.iter() {
+                            article {
+                                h4 { "{package[0]}" }
+                                p { class: "company-package-price", "{package[1]}" }
+                                p { "{package[2]}" }
+                            }
+                        }
+                    }
+                }
                 div { class: "company-pricing__grid",
                     article { class: "company-membership",
                         h3 { "{company.membership_label}" }
@@ -234,86 +171,14 @@ pub(super) fn CompanyHome(
                         p { "{company.membership_body}" }
                         ul { for feature in company.membership_features.iter() { li { "{feature}" } } }
                     }
-                    section { class: "company-simulator", "aria-labelledby": "company-simulator-title",
-                        h3 { id: "company-simulator-title", "{company.simulator_heading}" }
-                        p { class: "company-simulator__body", "{company.simulator_body}" }
-                        fieldset {
-                                legend { "{company.simulator_days_label}" }
-                                div { class: "company-simulator__options",
-                                    label { class: "company-simulator__option", r#for: "company-plan-days-10",
-                                        input { class: "nav-radio__input company-simulator__radio", id: "company-plan-days-10", r#type: "radio", name: "company-plan-days", value: "10", checked: true }
-                                        span { "10 days" }
-                                    }
-                                    label { class: "company-simulator__option", r#for: "company-plan-days-30",
-                                        input { class: "nav-radio__input company-simulator__radio", id: "company-plan-days-30", r#type: "radio", name: "company-plan-days", value: "30" }
-                                        span { "30 days" }
-                                    }
-                                }
-                        }
-                        fieldset {
-                                legend { "{company.simulator_size_label}" }
-                                p { class: "company-simulator__hint", "{company.simulator_size_hint}" }
-                                div { class: "company-simulator__options",
-                                    for (index, row) in company.review_rows.iter().enumerate() {
-                                        label { key: "{index}", class: "company-simulator__option", r#for: "company-same-day-size-{index}",
-                                            input { class: "nav-radio__input company-simulator__radio", id: "company-same-day-size-{index}", r#type: "radio", name: "company-same-day-size", value: "{index}", checked: index == 2 }
-                                            span { "{row[0]} · {row[1]}" }
-                                        }
-                                    }
-                                }
-                        }
-                        for scenario in fee_scenarios.iter() {
-                                div { key: "{scenario.class_name}", class: "company-simulator__scenario {scenario.class_name}" ,
-                                    dl { class: "company-simulator__summary-case",
-                                        div { dt { "Starting retainer" } dd { "{retainer_value}" span { "Held in trust" } } }
-                                        div { dt { "{company.simulator_plan_label}" } dd { "{scenario.plan_details}" } }
-                                        div { dt { "{company.simulator_review_label}" } dd { "{scenario.same_day_price}" } }
-                                    }
-                                    div {
-                                        class: "company-simulator__allocation",
-                                        role: "group",
-                                        "aria-label": "{company.simulator_total_label}",
-                                        div {
-                                            class: "company-simulator__chart",
-                                            style: "--earned-share: {scenario.earned_share}%",
-                                            role: "img",
-                                            "aria-label": "After selected services: {scenario.earned_fees} earned, {scenario.remaining_retainer} remains held in trust.",
-                                            span { class: "company-simulator__chart-center",
-                                                strong { "{scenario.earned_share}%" }
-                                                span { "earned" }
-                                            }
-                                        }
-                                        ul { class: "company-simulator__legend",
-                                            li {
-                                                span { class: "company-simulator__swatch", "aria-hidden": "true" }
-                                                span { "Earned charges" }
-                                                strong { "{scenario.earned_fees}" }
-                                            }
-                                            li {
-                                                span { class: "company-simulator__swatch company-simulator__swatch--trust", "aria-hidden": "true" }
-                                                span { "Remaining in trust" }
-                                                strong { "{scenario.remaining_retainer}" }
-                                            }
-                                        }
-                                    }
-                                }
-                        }
-                        p { class: "company-note", "{company.simulator_note}" }
+                    article { class: "company-express",
+                        h3 { "{company.express_heading}" }
+                        p { class: "company-price", "{company.express_price}" span { "{company.express_unit}" } }
+                        p { "{company.express_body}" }
                     }
                 }
-            }
-            section { class: "company-packages", "aria-labelledby": "company-packages-title",
-                h2 { id: "company-packages-title", "{company.drafting_heading}" }
-                p { class: "company-packages__subtitle", "{company.drafting_body}" }
-                div { class: "company-packages__grid",
-                    for package in company.drafting_packages.iter() {
-                        article {
-                            h3 { "{package[0]}" }
-                            p { class: "company-package-price", "{package[1]}" }
-                            p { "{package[2]}" }
-                        }
-                    }
-                }
+                p { class: "company-pricing__terms", "{company.page_note}" }
+                p { class: "company-note", "{company.retainer_note}" }
             }
             section { class: "company-litigation", "aria-labelledby": "company-litigation-title",
                 div {

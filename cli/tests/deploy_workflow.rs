@@ -375,13 +375,11 @@ fn only_a_release_or_a_branch_iteration_builds() {
 /// Both halves are asserted. `release-tag` must wait, transitively, for
 /// `integration`, or the ref would again precede the proof; and every
 /// publisher must wait for `release-tag`, or an artifact could exist under a
-/// version no ref names. Since the Windows CLI/LSP check became a hard
-/// release gate, `release-tag` reaches `integration` through
-/// `windows-integration` rather than directly — GitHub Actions still refuses
-/// to start `release-tag` until every job in that chain has completed, so
-/// both hops are asserted rather than only the direct one. `windows-integration`
-/// must also wait for `windows-cli-lsp`, or a red Windows check would still
-/// let the tag be created.
+/// version no ref names. The Windows CLI/LSP check is a hard release gate:
+/// `release-tag` needs `windows-cli-lsp` directly, beside `integration`, so a
+/// red Windows run blocks the tag. (It once went through a separate
+/// `windows-integration` hop; that job was folded into `release-tag`'s own
+/// `needs:`.)
 #[test]
 fn the_release_tag_is_created_between_the_proof_and_the_publish() {
     let workflow: serde_yaml::Value =
@@ -392,20 +390,20 @@ fn the_release_tag_is_created_between_the_proof_and_the_publish() {
         !tag_job.is_null(),
         "deploy.yml must declare the `release-tag` job that creates the release ref"
     );
-    assert!(
-        job_needs(&workflow, "release-tag").contains(&"windows-integration".to_string()),
-        "release-tag must wait for windows-integration: a ref created before the proof is a name \
-         spent on an unproved tree"
-    );
-    let proof = job_needs(&workflow, "windows-integration");
+    let proof = job_needs(&workflow, "release-tag");
     assert!(
         proof.contains(&"integration".to_string()),
-        "windows-integration must itself wait for integration, or release-tag's wait on it would \
-         no longer prove the tree before creating the ref"
+        "release-tag must wait for integration: a ref created before the proof is a name spent \
+         on an unproved tree"
     );
     assert!(
         proof.contains(&"windows-cli-lsp".to_string()),
-        "windows-integration must wait for windows-cli-lsp, so a red Windows check still blocks the tag"
+        "release-tag must wait for windows-cli-lsp, so a red Windows check blocks the tag"
+    );
+    assert!(
+        workflow["jobs"]["windows-integration"].is_null(),
+        "the windows-integration hop was folded into release-tag's needs; a revived one would be \
+         a second, drifting statement of the same gate"
     );
     assert_eq!(
         tag_job["if"].as_str(),
@@ -1427,11 +1425,15 @@ fn windows_cli_and_lsp_check_runs_alongside_integration() {
         "Windows must cache its Rust dependencies"
     );
 
-    for gated in ["release-tag", "notify", "notify-failure"] {
+    assert!(
+        job_needs(&workflow, "release-tag").contains(&"windows-cli-lsp".to_string()),
+        "release-tag must wait on windows-cli-lsp — the Windows check is a hard release gate"
+    );
+    for advisory in ["notify", "notify-failure"] {
         assert!(
-            !job_needs(&workflow, gated).contains(&"windows-cli-lsp".to_string()),
-            "{gated} must not wait on windows-cli-lsp — it stays advisory, same as it was \
-             outside ci.yml's `ci` aggregator"
+            !job_needs(&workflow, advisory).contains(&"windows-cli-lsp".to_string()),
+            "{advisory} must not wait on windows-cli-lsp — the Windows check blocks the tag but \
+             cannot page engineering on its own"
         );
     }
 }

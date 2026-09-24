@@ -99,6 +99,7 @@ const SYNCED_SKILL_NAMES: &[&str] = &[
     "stay-in-repo",
     "portal-chrome",
     "server",
+    "legal-writing",
 ];
 
 fn workspace_root() -> PathBuf {

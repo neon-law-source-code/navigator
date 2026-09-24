@@ -264,6 +264,10 @@ const VITE_LOCKFILES: &[&str] = &[
 /// plus the general engineering council, are the initial set. `stay-in-repo`
 /// joins them as the shared scope rule every Project repository's `AGENTS.md`
 /// used to hand-write on its own, three times, in three different voices.
+/// `legal-writing` (LAW-58) is the writing discipline both review councils
+/// and the litigation filing gate assume the underlying prose already
+/// meets — every Project repository drafts memos, letters, and briefs, so
+/// it is fleet-wide rather than repo-local.
 const SYNCED_SKILLS: &[(&str, &str)] = &[
     (
         "council",
@@ -292,6 +296,10 @@ const SYNCED_SKILLS: &[(&str, &str)] = &[
     (
         "server",
         include_str!("../../../.agents/skills/server/SKILL.md"),
+    ),
+    (
+        "legal-writing",
+        include_str!("../../../.agents/skills/legal-writing/SKILL.md"),
     ),
 ];
 

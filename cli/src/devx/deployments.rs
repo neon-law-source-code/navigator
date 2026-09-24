@@ -1006,13 +1006,11 @@ async fn check_payloads(
 /// stdout, so a test can assert directly on this string that no value or
 /// digest ever appears in it.
 fn render_report(statuses: &BTreeMap<String, (CheckStatus, CheckStatus)>) -> String {
+    use std::fmt::Write as _;
     let mut out = String::new();
     for (object, (secret_manager, k8s)) in statuses {
-        out.push_str(&format!(
-            "{object} (Secret Manager): {}\n",
-            secret_manager.label()
-        ));
-        out.push_str(&format!("{object} (K8s Secret): {}\n", k8s.label()));
+        let _ = writeln!(out, "{object} (Secret Manager): {}", secret_manager.label());
+        let _ = writeln!(out, "{object} (K8s Secret): {}", k8s.label());
     }
     out
 }
@@ -1206,7 +1204,7 @@ mod tests {
             }
         })
         .to_string();
-        let keys = vec!["SESSION_SECRET".to_string(), "OTHER_SECRET".to_string()];
+        let keys = ["SESSION_SECRET".to_string(), "OTHER_SECRET".to_string()];
 
         let values = parse_k8s_secret_values(Some(&json), keys.iter())
             .expect("valid Kubernetes Secret JSON parses");
@@ -1220,7 +1218,7 @@ mod tests {
 
     #[test]
     fn parse_k8s_secret_values_of_a_missing_secret_are_all_none() {
-        let keys = vec!["SESSION_SECRET".to_string()];
+        let keys = ["SESSION_SECRET".to_string()];
         let values =
             parse_k8s_secret_values(None, keys.iter()).expect("a missing Secret is not an error");
         assert_eq!(values.get("SESSION_SECRET").unwrap(), &None);

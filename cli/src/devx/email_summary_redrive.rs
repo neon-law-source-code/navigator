@@ -3,11 +3,11 @@
 //!
 //! A workflow key admits at most one invocation. A run that completed with a
 //! bounded provider failure (for example `input_digest_mismatch`) can't be
-//! resubmitted through intake — SendGrid never re-POSTs a message that
+//! resubmitted through intake — `SendGrid` never re-POSTs a message that
 //! already got a 202 — so an operator needs a way to purge the retained,
 //! completed invocation and resubmit the identical request under the same
 //! key. This never creates a second receipt, letter, or archive: those are
-//! digest-keyed in SurrealDB already and this command never touches them.
+//! digest-keyed in `SurrealDB` already and this command never touches them.
 //!
 //! Diagnostics are identifier-and-status only: this module never logs an
 //! email body, a summary, or any letter/archive content — only the receipt
@@ -134,17 +134,13 @@ async fn purge_retained_invocation(
     key: &str,
     receipt_id: Uuid,
 ) -> Result<()> {
-    match find_invocation_id(admin_url, admin_token, service, key).await? {
-        Some(invocation_id) => {
-            delete_invocation(admin_url, admin_token, &invocation_id).await?;
-            println!("receipt {receipt_id}: purged invocation {invocation_id}");
-            Ok(())
-        }
-        None => {
-            println!("receipt {receipt_id}: no retained invocation to purge");
-            Ok(())
-        }
+    if let Some(invocation_id) = find_invocation_id(admin_url, admin_token, service, key).await? {
+        delete_invocation(admin_url, admin_token, &invocation_id).await?;
+        println!("receipt {receipt_id}: purged invocation {invocation_id}");
+    } else {
+        println!("receipt {receipt_id}: no retained invocation to purge");
     }
+    Ok(())
 }
 
 /// Look up the invocation id retained for one workflow key via Restate's
@@ -322,10 +318,14 @@ mod tests {
 
     async fn setup_receipt(db: &store::surreal::SurrealDb) -> Uuid {
         use sha2::{Digest as _, Sha256};
-        let digest = Sha256::digest(Uuid::now_v7().as_bytes())
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
+        let digest = Sha256::digest(Uuid::now_v7().as_bytes()).iter().fold(
+            String::new(),
+            |mut out, byte| {
+                use std::fmt::Write as _;
+                let _ = write!(out, "{byte:02x}");
+                out
+            },
+        );
         store::email_receipts::ensure(
             db,
             &store::email_receipts::NewEmailReceipt {

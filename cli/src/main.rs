@@ -1503,11 +1503,11 @@ enum EmailSummaryCmd {
     /// Re-run a completed `EmailSummary` Restate workflow for one receipt —
     /// the recovery path for a run that completed with a bounded provider
     /// failure (e.g. `input_digest_mismatch`) before intake can re-POST,
-    /// since SendGrid never retries a message that already got a 202.
+    /// since `SendGrid` never retries a message that already got a 202.
     ///
     /// Refuses when the receipt's Slack delivery is already `confirmed`, so
     /// this can never risk a second post. Never creates a second receipt,
-    /// letter, or archive: those are digest-keyed in SurrealDB already, and
+    /// letter, or archive: those are digest-keyed in `SurrealDB` already, and
     /// this command only purges the retained invocation and resubmits the
     /// identical `EmailSummaryRequest` under the same workflow key (the
     /// receipt id). Prints the receipt id, the invocation id, and status

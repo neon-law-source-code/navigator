@@ -789,6 +789,19 @@ are deliberately not narrated; the failure page already covers that moment when 
 `cli/tests/deploy_slack_progress.rs` holds the narration complete — a new step added without a post fails that gate,
 because nobody notices a *missing* Slack line.
 
+### The Zed extension
+
+[`zed-navigator-lsp`](https://github.com/neon-law-source-code/zed-navigator-lsp) is the dev extension that attaches
+`navigator-lsp` to Markdown in Zed. `release-zed-extension` hands it each release the way `release-homebrew-tap` hands
+the tap one: the same `navigator-release` dispatch, naming the tag and nothing else, once the Release carries its
+archives. The extension's `bump.yml` sets its version to the tag, builds it, and pushes `v<tag>` — the spelling
+navigator-ux tags with — so the three repositories name one version, and the release waits for that tag.
+
+The dispatch authenticates with `ZED_EXTENSION_TOKEN`, a fine-grained token scoped to `contents: write` on the extension
+and nothing else, and a missing token fails the release as the tap's does. It carries the version only: the extension
+resolves `navigator-lsp` from this repository's Releases at runtime, and nothing here publishes to Zed's extension
+registry. [`cli/tests/zed_extension_dispatch.rs`](../cli/tests/zed_extension_dispatch.rs) holds the contract.
+
 ### What detects a broken pipeline
 
 **Nothing on a clock does.** The nightly train doubled as a daily liveness check on the whole release path: images still

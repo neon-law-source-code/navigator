@@ -2891,6 +2891,86 @@ jobs:
               sleep 10
           done
 
+  # THE ZED EXTENSION FOLLOWS EVERY RELEASE TOO, by the same hand-off the tap
+  # gets. `neon-law-source-code/zed-navigator-lsp` is the dev extension that
+  # attaches `navigator-lsp` to Markdown in Zed; its `bump.yml` sets the
+  # extension's version to this tag and pushes `v<tag>`, the spelling
+  # navigator-ux tags with, so the three repositories name one version.
+  #
+  # This carries the version only. The extension resolves `navigator-lsp` from
+  # this repository's Releases at runtime, so a Zed user picks up a new server
+  # whether or not this job ran — which is why nothing here publishes to Zed's
+  # extension registry.
+  #
+  # The gate is `publishable` and nothing narrower, for the reason
+  # `release-homebrew-tap` gives: a narrower gate fails by skipping silently.
+  release-zed-extension:
+    name: hand the release to the Zed extension
+    needs: [release-windows-cli-publish, release-version]
+    if: needs.release-version.outputs.publishable == 'true'
+    runs-on: ubuntu-latest
+    # Outlasts the confirmation wait below.
+    timeout-minutes: 15
+    # No `contents: write`. The cross-repository grant is the
+    # `ZED_EXTENSION_TOKEN` secret, scoped to `contents: write` on the
+    # extension repository alone.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/actions/slack-progress
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-zed-extension"
+          step: "dispatch the extension bump"
+      - name: dispatch the extension bump
+        env:
+          GH_TOKEN: ${{ secrets.ZED_EXTENSION_TOKEN }}
+          TAG: ${{ needs.release-version.outputs.tag }}
+          EXTENSION_REPO: neon-law-source-code/zed-navigator-lsp
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+              echo "::error::ZED_EXTENSION_TOKEN is unset — the Zed extension cannot be told about ${TAG}, and its version would stop following Navigator's"
+              exit 1
+          fi
+          gh api --method POST "/repos/${EXTENSION_REPO}/dispatches" \
+              -f "event_type=navigator-release" \
+              -f "client_payload[tag]=${TAG}"
+          echo "dispatched navigator-release ${TAG} to ${EXTENSION_REPO}"
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-zed-extension"
+          step: "confirm the extension was tagged"
+      # An accepted dispatch is not a completed bump — `POST /dispatches`
+      # answers 204 the moment the event is queued. The tag is the proof: the
+      # extension's bump pushes `v<tag>` only after the shim builds at that
+      # version. The repository is public, so the run's own token reads it.
+      - name: confirm the extension was tagged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-version.outputs.tag }}
+          EXTENSION_REPO: neon-law-source-code/zed-navigator-lsp
+          BUMP_BUDGET_MINUTES: "10"
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + BUMP_BUDGET_MINUTES * 60))
+          # A read failure looks the same as a tag that has not landed yet, and
+          # both are answered by waiting.
+          until gh api "/repos/${EXTENSION_REPO}/git/ref/tags/v${TAG}" >/dev/null 2>&1; do
+              if [ "${SECONDS}" -ge "${deadline}" ]; then
+                  echo "::error::the Zed extension never tagged v${TAG} after ${BUMP_BUDGET_MINUTES} minutes. The dispatch was accepted, so its bump is what failed: https://github.com/${EXTENSION_REPO}/actions/workflows/bump.yml"
+                  exit 1
+              fi
+              sleep 10
+          done
+          echo "the Zed extension is tagged v${TAG}"
+
   # ---------- Stage 4: post the release report to Slack ----------
   # Sent only after the container images are published. When configured, posts
   # to the #navigator channel via the prod ops incoming webhook
@@ -3151,6 +3231,7 @@ jobs:
         release-cli-build-macos,
         release-windows-cli-publish,
         release-homebrew-tap,
+        release-zed-extension,
         notify,
       ]
     # `main` only: a failed `kind-ci/**` branch iteration is expected churn and

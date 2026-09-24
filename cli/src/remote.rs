@@ -4015,7 +4015,10 @@ mod tests {
             .await
             .expect_err("a bare slug cannot become a repository pointer");
 
-        assert!(error.to_string().contains("complaint.pdf"));
+        assert_eq!(
+            error.to_string(),
+            "document slug `dkt-001-complaint` must carry the source extension from `complaint.pdf`; use `dkt-001-complaint.pdf` so it can be represented as a repository pointer"
+        );
         assert!(server
             .received_requests()
             .await

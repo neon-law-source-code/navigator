@@ -1927,7 +1927,8 @@ enum DocumentAction {
         /// MIME type. Defaults to `application/octet-stream`.
         #[arg(long)]
         content_type: Option<String>,
-        /// Stable document identity. Defaults to the local filename.
+        /// Stable document identity. Must retain the local filename extension
+        /// (for example, `--slug motion.pdf` for `motion.pdf`); defaults to the local filename.
         #[arg(long)]
         slug: Option<String>,
     },

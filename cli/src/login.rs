@@ -152,13 +152,14 @@ pub fn run_whoami(host: Option<&str>) -> ExitCode {
     let base = match resolve_base(host, &creds) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("navigator site whoami: {e:#}");
+            eprintln!("navigator site whoami: {e:#} — checked {}", path.display());
             return ExitCode::from(2);
         }
     };
     let Some(cred) = creds.get(&base) else {
         eprintln!(
-            "navigator site whoami: not logged in to {base} — run `navigator site login --host …`"
+            "navigator site whoami: not logged in to {base} — checked {} — run `navigator site login --host …`",
+            path.display()
         );
         return ExitCode::from(1);
     };

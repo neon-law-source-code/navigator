@@ -151,8 +151,31 @@ pub fn default_credentials_path() -> PathBuf {
     resolve_credentials_path(
         std::env::var("NAVIGATOR_CREDENTIALS_FILE").ok(),
         std::env::var("NAVIGATOR_CONFIG_DIR").ok(),
-        std::env::var("HOME").ok(),
+        home_dir_from_env(),
     )
+}
+
+/// Resolve the operator's home directory using the platform's native
+/// variable, while keeping the other spelling as a fallback for unusual
+/// environments (including tests and Unix shells that set both).
+fn home_dir_from_env() -> Option<String> {
+    let home = std::env::var("HOME").ok().filter(|value| !value.is_empty());
+    let userprofile = std::env::var("USERPROFILE")
+        .ok()
+        .filter(|value| !value.is_empty());
+
+    home_dir_from_values(home, userprofile)
+}
+
+fn home_dir_from_values(home: Option<String>, userprofile: Option<String>) -> Option<String> {
+    #[cfg(windows)]
+    {
+        userprofile.or(home)
+    }
+    #[cfg(not(windows))]
+    {
+        home.or(userprofile)
+    }
 }
 
 /// Pure resolver behind [`default_credentials_path`], taking the three
@@ -276,6 +299,14 @@ mod tests {
         assert_eq!(
             resolve_credentials_path(Some(String::new()), Some(String::new()), Some("/h".into())),
             PathBuf::from("/h/.navigator.json"),
+        );
+    }
+
+    #[test]
+    fn home_directory_falls_back_to_userprofile_when_home_is_unset() {
+        assert_eq!(
+            home_dir_from_values(None, Some(r"C:\Users\nick".into())),
+            Some(r"C:\Users\nick".into())
         );
     }
 

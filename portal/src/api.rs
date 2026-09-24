@@ -1675,6 +1675,8 @@ struct OpenProjectRequest {
     client_id: Uuid,
     entity_id: Uuid,
     #[serde(default)]
+    jurisdiction_id: Option<Uuid>,
+    #[serde(default)]
     description: Option<String>,
     /// The opening attorney's conflict attestation. Must be `true`: a Project
     /// open with no attestation is refused. The attorney attests they have
@@ -1755,6 +1757,7 @@ async fn open_project(
         code: input.code,
         client_id: input.client_id,
         entity_id: input.entity_id,
+        jurisdiction_id: input.jurisdiction_id,
         description: input.description,
         brand: views::brand::brand_key().as_str().to_string(),
         attestation: input.attestation,

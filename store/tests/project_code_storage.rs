@@ -48,6 +48,7 @@ fn command(
         code: code.to_string(),
         client_id,
         entity_id,
+        jurisdiction_id: None,
         description: None,
         brand: "neon".to_string(),
         attestation: true,

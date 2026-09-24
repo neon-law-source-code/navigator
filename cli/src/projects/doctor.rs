@@ -28,6 +28,9 @@ use cloud::workspace::{
 use crate::credentials::{self, Credentials};
 use crate::palette;
 
+const NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID: &str =
+    "NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID";
+
 /// The outcome of one check.
 ///
 /// `Warn` is reserved for configuration that is genuinely optional — a Drive
@@ -134,8 +137,11 @@ pub fn diagnose(probe: &Probe<'_>) -> Diagnosis {
             checks.push(Check::ok(
                 "deployment",
                 format!(
-                    "{:?} serving {:?} Projects",
-                    workspace.deployment, workspace.customer
+                    "{:?} serving {:?} Projects ({} from environment; {} from environment)",
+                    workspace.deployment,
+                    workspace.customer,
+                    cloud::workspace::NAVIGATOR_GCP_PROJECT_ID,
+                    NAVIGATOR_GITHUB_ORG,
                 ),
             ));
             workspace
@@ -158,7 +164,10 @@ pub fn diagnose(probe: &Probe<'_>) -> Diagnosis {
         Ok(drive) => {
             checks.push(Check::ok(
                 "shared drive",
-                format!("id {}", drive.shared_drive_id),
+                format!(
+                    "id {} ({} from environment)",
+                    drive.shared_drive_id, NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID
+                ),
             ));
             checks.push(Check::ok(
                 "projects root",
@@ -469,6 +478,20 @@ mod tests {
                 diagnosis.is_healthy(),
                 "{project_id} should be healthy: {:?}",
                 diagnosis.checks
+            );
+            let deployment_detail = &diagnosis.check("deployment").unwrap().detail;
+            assert!(
+                deployment_detail.contains(cloud::workspace::NAVIGATOR_GCP_PROJECT_ID),
+                "{deployment_detail}"
+            );
+            assert!(
+                deployment_detail.contains(NAVIGATOR_GITHUB_ORG),
+                "{deployment_detail}"
+            );
+            let drive_detail = &diagnosis.check("shared drive").unwrap().detail;
+            assert!(
+                drive_detail.contains(NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID),
+                "{drive_detail}"
             );
             assert_eq!(
                 diagnosis.check("project folder").unwrap().detail,

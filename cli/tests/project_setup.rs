@@ -203,7 +203,10 @@ async fn setup_keeps_running_after_an_authorization_refusal() {
         .await;
     Mock::given(method("POST"))
         .and(path(format!("/app/api/project-surfaces/{project_id}")))
-        .respond_with(ResponseTemplate::new(403).set_body_string("admin tier required"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": "forbidden",
+            "message": "admin tier required"
+        })))
         .mount(&server)
         .await;
     for provider in ["slack", "notion"] {
@@ -231,6 +234,16 @@ async fn setup_keeps_running_after_an_authorization_refusal() {
         report["results"][0]["resources"]["repository"]["outcome"],
         "request_failed"
     );
+    for resource in ["drive", "repository"] {
+        let detail = report["results"][0]["resources"][resource]["detail"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(detail.contains("403"), "{resource}: {detail}");
+        assert!(
+            detail.contains("admin tier required"),
+            "{resource}: {detail}"
+        );
+    }
     assert_eq!(
         report["results"][0]["resources"]["slack"]["outcome"],
         "created"

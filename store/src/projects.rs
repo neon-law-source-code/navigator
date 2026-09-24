@@ -2410,6 +2410,9 @@ pub struct OpenMatterCommand {
     /// The pre-existing entity the matter opens against (`projects.entity_id`
     /// is NOT NULL).
     pub entity_id: Uuid,
+    /// The matter's governing jurisdiction, if the opening caller has
+    /// already resolved one. `None` preserves an unsettled matter.
+    pub jurisdiction_id: Option<Uuid>,
     /// The matter's scope narrative.
     pub description: Option<String>,
     /// Which house brand's storefront this matter was opened through — see
@@ -2569,6 +2572,15 @@ async fn validate_open_references(
     if !attester.role.is_lawyer_tier() {
         return Err(OpenMatterError::AttesterNotAllowed);
     }
+    if let Some(jurisdiction_id) = input.jurisdiction_id {
+        if crate::jurisdictions::find_by_id(surreal, jurisdiction_id)
+            .await
+            .map_err(|error| OpenMatterError::Db(error.to_string()))?
+            .is_none()
+        {
+            return Err(OpenMatterError::NotFound("jurisdiction"));
+        }
+    }
     Ok(attester.role)
 }
 
@@ -2592,6 +2604,10 @@ fn initial_status_and_closed_at(
         "closed",
         Some(closed_at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)),
     ))
+}
+
+fn jurisdiction_record(id: Option<Uuid>) -> Option<surrealdb::types::RecordId> {
+    id.map(|id| record_id(crate::jurisdictions::TABLE, id))
 }
 
 pub async fn open_matter(
@@ -2639,7 +2655,6 @@ pub async fn open_matter(
     // accepted narrowing.
     let attester_participation =
         participation_for_role(validate_open_references(surreal, input).await?);
-
     // Conflict check, before any write. The relationship graph is advisory to
     // clear but authoritative to block: a confident adverse link to a current
     // client hard-stops the open, and no attestation overrides it (a waiver is
@@ -2651,18 +2666,19 @@ pub async fn open_matter(
     if conflict.has_blocking() {
         return Err(OpenMatterError::BlockingConflict(conflict.summary_lines()));
     }
-
     let (status, closed_at) = initial_status_and_closed_at(input.closed_at)?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let description = crate::people_commands::none_if_blank(input.description.as_deref());
+    let jurisdiction_id = jurisdiction_record(input.jurisdiction_id);
     let mut response = writing_project(|| {
         surreal
             .query(format!(
                 r"BEGIN;
                  CREATE $project SET code = $code, name = $name, status = $status,
                     brand = $brand,
-                    entity_id = $entity_id, description = $description,
+                    entity_id = $entity_id, jurisdiction_id = $jurisdiction_id,
+                    description = $description,
                     closed_at = $closed_at,
                     inserted_at = $now, updated_at = $now RETURN {PROJECT_SELECT};
                  CREATE $lawyer_role SET person_id = $attester, project_id = $project, participation = $attester_participation,
@@ -2680,6 +2696,7 @@ pub async fn open_matter(
             .bind(("closed_at", closed_at.clone()))
             .bind(("brand", input.brand.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
+            .bind(("jurisdiction_id", jurisdiction_id.clone()))
             .bind(("description", description.clone()))
             .bind(("attester", record_id("person", input.acting_person_id)))
             .bind(("attester_participation", attester_participation.to_string()))

@@ -207,6 +207,7 @@ pub async fn call(
             code,
             client_id: client.id,
             entity_id,
+            jurisdiction_id: None,
             description: None,
             // Navigator MCP runs firm-side with no per-request host to resolve; it
             // always opens against the firm's own default brand.

@@ -2949,6 +2949,8 @@ pub fn document_with_base(base: &str) -> Value {
                                 "description": "The client of record — a pre-existing `client`-role person, never a firm attorney." },
               "entity_id":    { "type": "string", "format": "uuid",
                                 "description": "The pre-existing entity the matter opens against." },
+              "jurisdiction_id": { "type": ["string", "null"], "format": "uuid",
+                                    "description": "The matter's governing jurisdiction, when settled at open." },
               "description":  { "type": ["string", "null"], "description": "The matter's scope narrative." },
               "attestation":  { "type": "boolean",
                                 "description": "The opening attorney's conflict attestation. Must be true; a missing attestation is refused. Affirms the attorney has checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice. The attester is the authenticated session's person — never taken from this body." },

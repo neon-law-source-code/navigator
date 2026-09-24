@@ -1328,6 +1328,8 @@ struct VisibleEntityType {
 struct VisibleJurisdiction {
     id: Uuid,
     name: String,
+    #[serde(default)]
+    code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1395,7 +1397,7 @@ async fn create_human_entity(
     token: &str,
     client_name: &str,
     jurisdiction_name: &str,
-) -> Result<Uuid> {
+) -> Result<(Uuid, Uuid)> {
     let types_resp = client
         .get(format!("{base}/app/api/entity-types"))
         .bearer_auth(token)
@@ -1436,7 +1438,12 @@ async fn create_human_entity(
         serde_json::from_str(&jurisdictions_body).context("parse GET /app/api/jurisdictions")?;
     let jurisdiction_id = jurisdictions
         .into_iter()
-        .find(|j| j.name.eq_ignore_ascii_case(jurisdiction_name))
+        .find(|j| {
+            j.name.eq_ignore_ascii_case(jurisdiction_name)
+                || j.code
+                    .as_deref()
+                    .is_some_and(|code| code.eq_ignore_ascii_case(jurisdiction_name))
+        })
         .map(|j| j.id)
         .ok_or_else(|| anyhow!("no jurisdiction named `{jurisdiction_name}`"))?;
 
@@ -1461,7 +1468,27 @@ async fn create_human_entity(
     }
     let created: CreatedEntityId =
         serde_json::from_str(&create_body).context("parse POST /app/api/entities")?;
-    Ok(created.id)
+    Ok((created.id, jurisdiction_id))
+}
+
+async fn resolve_entity_selection(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    client_name: &str,
+    selection: EntitySelection<'_>,
+) -> Result<(Uuid, Option<Uuid>)> {
+    match selection {
+        EntitySelection::Existing(needle) => Ok((
+            resolve_existing_entity(client, base, token, needle).await?,
+            None,
+        )),
+        EntitySelection::HumanIn(jurisdiction_name) => {
+            let (entity_id, jurisdiction_id) =
+                create_human_entity(client, base, token, client_name, jurisdiction_name).await?;
+            Ok((entity_id, Some(jurisdiction_id)))
+        }
+    }
 }
 
 /// `navigator project create --code --name --client-email [--entity-name |
@@ -1551,14 +1578,9 @@ pub async fn projects_create(
             ));
         }
 
-        let entity_id = match entity_selection {
-            EntitySelection::Existing(needle) => {
-                resolve_existing_entity(&client, &base, &token, needle).await?
-            }
-            EntitySelection::HumanIn(jurisdiction_name) => {
-                create_human_entity(&client, &base, &token, &person.name, jurisdiction_name).await?
-            }
-        };
+        let (entity_id, jurisdiction_id) =
+            resolve_entity_selection(&client, &base, &token, &person.name, entity_selection)
+                .await?;
 
         let mut payload = serde_json::json!({
             "name": name,
@@ -1567,6 +1589,9 @@ pub async fn projects_create(
             "entity_id": entity_id,
             "attestation": attest,
         });
+        if let Some(jurisdiction_id) = jurisdiction_id {
+            payload["jurisdiction_id"] = serde_json::json!(jurisdiction_id);
+        }
         if let Some(closed_at) = closed_at {
             payload["status"] = serde_json::json!("closed");
             payload["closed_at"] = serde_json::json!(closed_at);
@@ -4240,7 +4265,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/app/api/jurisdictions"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"id": jurisdiction_id, "name": "Nevada"}
+                {"id": jurisdiction_id, "name": "California", "code": "CA"}
             ])))
             .mount(&server)
             .await;
@@ -4268,6 +4293,7 @@ mod tests {
                 "client_id": client_id,
                 "entity_id": created_entity_id,
                 "attestation": true,
+                "jurisdiction_id": jurisdiction_id,
             })))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
                 "id": project_id,
@@ -4287,7 +4313,7 @@ mod tests {
                 "solo-matter",
                 "solo@example.com",
                 None,
-                Some("Nevada"),
+                Some("CA"),
                 true,
                 None,
             )

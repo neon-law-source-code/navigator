@@ -54,7 +54,7 @@ fn integration_result(code: &str, result: Result<IntegrationOutcome>) -> Resourc
             None => resource(outcome.outcome),
         },
         Ok(_) => resource("malformed_result"),
-        Err(_) => resource("request_failed"),
+        Err(error) => resource_with_detail("request_failed", format!("{error:#}")),
     }
 }
 
@@ -78,10 +78,19 @@ fn surface_results(
                 surface_outcome(surfaces.repository_status),
             ),
         ],
-        Err(_) => [
-            ("drive".to_string(), resource("request_failed")),
-            ("repository".to_string(), resource("request_failed")),
-        ],
+        Err(error) => {
+            let detail = format!("{error:#}");
+            [
+                (
+                    "drive".to_string(),
+                    resource_with_detail("request_failed", detail.clone()),
+                ),
+                (
+                    "repository".to_string(),
+                    resource_with_detail("request_failed", detail),
+                ),
+            ]
+        }
     }
 }
 

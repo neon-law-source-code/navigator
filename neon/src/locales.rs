@@ -784,13 +784,29 @@ pub fn home_for_host(
         practices: copy.practices.into_iter().map(practice_link).collect(),
         provenance: copy.provenance.map(provenance_to_home),
         company: copy.company.map(|copy| webapp::home::CompanyContent {
+            principles: copy.principles,
+            services_heading: copy.services_heading,
+            services_note: copy.services_note,
+            services_link: copy.services_link,
+            services: copy.services,
+            community_heading: copy.community_heading,
+            community_body: copy.community_body,
+            community_links: copy.community_links,
             booking_href: copy.booking_href,
             pricing_link: copy.pricing_link,
             retainer_note: copy.retainer_note,
-            flow_caption: copy.flow_caption,
-            flow_steps: copy.flow_steps,
-            packages: copy.packages,
+            retainer_amount: copy.retainer_amount,
+            simulator_heading: copy.simulator_heading,
+            simulator_body: copy.simulator_body,
+            simulator_days_label: copy.simulator_days_label,
+            simulator_reviews_label: copy.simulator_reviews_label,
+            simulator_plan_label: copy.simulator_plan_label,
+            simulator_review_label: copy.simulator_review_label,
+            simulator_contract_label: copy.simulator_contract_label,
+            simulator_total_label: copy.simulator_total_label,
+            simulator_note: copy.simulator_note,
             pause_label: copy.pause_label,
+            packages: copy.packages,
             pricing_heading: copy.pricing_heading,
             video_label: copy.video_label,
             video_src: views::assets::asset_url(views::assets::HOME_PRESENTATION_KEY),
@@ -938,7 +954,7 @@ mod tests {
         assert_eq!(company["express_price"].as_str(), Some("$500"));
         assert_eq!(
             company["drafting_packages"][0][0].as_str(),
-            Some("One-time setup")
+            Some("Contract foundation")
         );
         assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$5,000"));
         assert_eq!(
@@ -1173,13 +1189,20 @@ mod tests {
         assert!(content.practices.is_empty());
     }
 
-    /// The firm's own site markets to emerging technology companies alone.
+    /// The firm's own site markets to businesses alone, never individuals.
     ///
     /// This is the "Done when" of retiring `/personal`, and it is asserted on
     /// the rendered copy rather than on the routing table, because the page
     /// can be unreachable while the words that sold it survive in the hero,
     /// the plan chooser, or a link — which is exactly what happened on
     /// `DeleteYourData`, whose own pages went on offering the retired plan.
+    ///
+    /// PR #804 broadened the hero from "technology founders" to the wider
+    /// business-agreement catalog (employment, privacy, blockchain, tax,
+    /// government contracts), so the audience check widened from the literal
+    /// word "technology" to "business" — the catalog's `services` list still
+    /// opens with `Technology transactions`, it is just no longer the only
+    /// business the hero names.
     #[test]
     fn the_home_page_no_longer_markets_to_individuals() {
         let content = home(&views::brand::DEFAULT_BRANDING);
@@ -1200,7 +1223,7 @@ mod tests {
             );
         }
         assert!(
-            text.to_lowercase().contains("technolog"),
+            text.to_lowercase().contains("business"),
             "and the audience is named: {text}"
         );
     }

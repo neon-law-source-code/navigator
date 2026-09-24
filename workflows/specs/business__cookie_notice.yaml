@@ -1,0 +1,54 @@
+kind: agreement
+title: Cookie Notice
+code: business__cookie_notice
+jurisdiction: US
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/cookie-notice
+prompts:
+  company: "What is the company’s full legal name and entity type?"
+  business_services: "Which website and apps does this notice cover?"
+  effective_date: "What is the effective date?"
+  business_privacy_policy: "Give the published privacy policy URL."
+  business_inventory: >-
+    List every cookie or tracker with provider, purpose, necessary/optional category, lifetime, and data recipients;
+    reconcile against an actual scan.
+  business_choices: >-
+    Give working preference-center instructions and URL, consent behavior, opt-out signals, and relevant browser
+    controls.
+  contacts: "Who are the primary and alternate contacts? Include name, title, email, and postal address."
+audiences:
+  company: lawyer
+  business_services: lawyer
+  effective_date: lawyer
+  business_privacy_policy: lawyer
+  business_inventory: lawyer
+  business_choices: lawyer
+  contacts: lawyer
+questionnaire:
+  BEGIN:
+    _: entity__company
+  entity__company:
+    _: custom_text__business_services
+  custom_text__business_services:
+    _: custom_datetime__effective_date
+  custom_datetime__effective_date:
+    _: custom_text__business_privacy_policy
+  custom_text__business_privacy_policy:
+    _: custom_text__business_inventory
+  custom_text__business_inventory:
+    _: custom_text__business_choices
+  custom_text__business_choices:
+    _: people__contacts
+  people__contacts:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

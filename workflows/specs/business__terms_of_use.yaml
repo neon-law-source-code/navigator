@@ -1,0 +1,89 @@
+kind: agreement
+title: Terms of Use
+code: business__terms_of_use
+jurisdiction: US
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/terms-of-use
+prompts:
+  business_services: "Identify the website, app, and covered services."
+  company: "What is the company’s full legal name and entity type?"
+  effective_date: "What is the effective date?"
+  contacts: "Who are the primary and alternate contacts? Include name, title, email, and postal address."
+  business_acceptance: "Describe the actual notice and assent mechanism, including how changes are accepted."
+  business_eligibility: "State the audience, age limits, and organizational authority requirements."
+  business_permitted_use: "Describe permitted personal or business use."
+  business_content_license: >-
+    Define content processing, sharing settings, and the license needed to operate the service.
+  business_privacy: "Give the privacy and cookie notice URLs."
+  business_charges: >-
+    State fees, renewals, cancellation, refunds, and support, or clearly state that the service is free.
+  business_exit: "Give the account closure and data export procedure."
+  business_liability: >-
+    State a reasonable cap, measurement period, and exceptions appropriate to the service and applicable law.
+  law: "Which state’s law governs?"
+  business_local_notices: "Provide applicable state and consumer notices and current official complaint contacts."
+  business_accessibility: "Provide an accessibility help channel and available accommodations."
+  business_forum: "Which courts have jurisdiction, subject to mandatory law?"
+audiences:
+  business_services: lawyer
+  company: lawyer
+  effective_date: lawyer
+  contacts: lawyer
+  business_acceptance: lawyer
+  business_eligibility: lawyer
+  business_permitted_use: lawyer
+  business_content_license: lawyer
+  business_privacy: lawyer
+  business_charges: lawyer
+  business_exit: lawyer
+  business_liability: lawyer
+  law: lawyer
+  business_forum: lawyer
+  business_local_notices: lawyer
+  business_accessibility: lawyer
+questionnaire:
+  BEGIN:
+    _: custom_text__business_services
+  custom_text__business_services:
+    _: entity__company
+  entity__company:
+    _: custom_datetime__effective_date
+  custom_datetime__effective_date:
+    _: people__contacts
+  people__contacts:
+    _: custom_text__business_acceptance
+  custom_text__business_acceptance:
+    _: custom_text__business_eligibility
+  custom_text__business_eligibility:
+    _: custom_text__business_permitted_use
+  custom_text__business_permitted_use:
+    _: custom_text__business_content_license
+  custom_text__business_content_license:
+    _: custom_text__business_privacy
+  custom_text__business_privacy:
+    _: custom_text__business_charges
+  custom_text__business_charges:
+    _: custom_text__business_exit
+  custom_text__business_exit:
+    _: custom_text__business_liability
+  custom_text__business_liability:
+    _: jurisdiction__law
+  jurisdiction__law:
+    _: custom_text__business_forum
+  custom_text__business_forum:
+    _: custom_text__business_local_notices
+  custom_text__business_local_notices:
+    _: custom_text__business_accessibility
+  custom_text__business_accessibility:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

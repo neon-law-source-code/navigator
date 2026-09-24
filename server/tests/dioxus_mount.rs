@@ -22,8 +22,7 @@ const INDEX_HTML: &str = "<!DOCTYPE html>\n\
 /// under nextest's process-per-test isolation and correct under any runner).
 #[tokio::test]
 async fn dioxus_demo_is_server_rendered_and_absent_without_a_bundle() {
-    // No bundle directory → no Dioxus route. This guard is also what keeps
-    // `serve_static_assets` from panicking on a missing public directory.
+    // No bundle directory → no Dioxus route.
     std::env::remove_var("DIOXUS_PUBLIC_PATH");
     assert!(
         portal::dioxus_app::router().is_none(),
@@ -35,6 +34,13 @@ async fn dioxus_demo_is_server_rendered_and_absent_without_a_bundle() {
     // before the wasm client hydrates it.
     let dir = tempfile::tempdir().expect("temp dir");
     std::fs::write(dir.path().join("index.html"), INDEX_HTML).expect("write index.html");
+    std::fs::create_dir(dir.path().join("assets")).expect("dx assets directory");
+    std::fs::create_dir(dir.path().join("wasm")).expect("wasm directory");
+    std::fs::write(
+        dir.path().join("wasm/webapp.js"),
+        "// browser bundle fixture",
+    )
+    .expect("browser bundle");
     std::env::set_var("DIOXUS_PUBLIC_PATH", dir.path());
 
     let router = portal::dioxus_app::router().expect("a built bundle mounts the Dioxus page");
@@ -111,5 +117,24 @@ async fn dioxus_demo_is_server_rendered_and_absent_without_a_bundle() {
         "the reading face must be preloaded to avoid a fallback-serif flash; got: {html}",
     );
 
+    // A real dx bundle has an assets directory. Mounting it must neither
+    // collide with `/assets/{*key}` nor send anonymous JS requests to login.
+    let state = portal::test_support::app_state(store::test_support::mem_surreal().await).await;
+    let app = portal::bootstrap(state, dir.path(), axum::Router::new(), &[], Vec::new())
+        .expect("bundle and public object assets coexist");
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/wasm/webapp.js")
+                .body(Body::empty())
+                .expect("bundle request"),
+        )
+        .await
+        .expect("bundle response");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.into_body().collect().await.unwrap().to_bytes(),
+        "// browser bundle fixture"
+    );
     std::env::remove_var("DIOXUS_PUBLIC_PATH");
 }

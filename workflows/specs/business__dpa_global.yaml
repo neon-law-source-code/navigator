@@ -1,0 +1,76 @@
+kind: agreement
+title: Data Processing Addendum (Global)
+code: business__dpa_global
+jurisdiction: US
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/dpa-global
+prompts:
+  company: "What is the company’s full legal name and entity type?"
+  other_party: "What is the other party’s full legal name and entity type?"
+  effective_date: "What date does this agreement take effect?"
+  business_agreement: "Identify the underlying customer agreement."
+  business_processing: >-
+    State subject matter, duration, nature, purposes, individuals, data, sensitive data, frequency, retention,
+    locations, and controller/processor roles.
+  business_security: "Specify the implemented security controls and any incorporated security schedule."
+  business_incident_deadline: "State the outer incident reporting deadline; notice must still be without undue delay."
+  contacts: >-
+    Identify the privacy and security contacts for each party, including role, business email, and postal
+    address.
+  business_subprocessors: "List each subprocessor, function, location, and change-notice channel."
+  business_subprocessor_notice: "What advance notice period applies to subprocessor changes?"
+  business_transfers: >-
+    Identify and attach the executed EU SCC modules and completed annexes, UK instrument, Swiss adaptations, transfer
+    assessment, and supplementary measures; state none only if no restricted transfer occurs.
+  business_exit: "Specify return format, deletion deadline, backup expiration, and legally required retention."
+audiences:
+  company: lawyer
+  other_party: lawyer
+  effective_date: lawyer
+  business_agreement: lawyer
+  business_processing: lawyer
+  business_security: lawyer
+  business_incident_deadline: lawyer
+  contacts: lawyer
+  business_subprocessors: lawyer
+  business_subprocessor_notice: lawyer
+  business_transfers: lawyer
+  business_exit: lawyer
+questionnaire:
+  BEGIN:
+    _: entity__company
+  entity__company:
+    _: entity__other_party
+  entity__other_party:
+    _: custom_datetime__effective_date
+  custom_datetime__effective_date:
+    _: custom_text__business_agreement
+  custom_text__business_agreement:
+    _: custom_text__business_processing
+  custom_text__business_processing:
+    _: custom_text__business_security
+  custom_text__business_security:
+    _: custom_text__business_incident_deadline
+  custom_text__business_incident_deadline:
+    _: people__contacts
+  people__contacts:
+    _: custom_text__business_subprocessors
+  custom_text__business_subprocessors:
+    _: custom_text__business_subprocessor_notice
+  custom_text__business_subprocessor_notice:
+    _: custom_text__business_transfers
+  custom_text__business_transfers:
+    _: custom_text__business_exit
+  custom_text__business_exit:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

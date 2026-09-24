@@ -207,14 +207,14 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
     assert!(body.contains("Book a consultation"));
     assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("$5,000"));
-    assert!(body.contains("One-time setup"));
-    assert!(body.contains("Master services, employment, and equity agreements."));
+    assert!(body.contains("Contract foundation"));
+    assert!(body.contains("One time. Contracts as you need them. Scope agreed at the start."));
     assert!(body.contains("img/neon-home/neon-home-presentation.mp4"));
     assert!(body.contains("<video") && body.contains("video/mp4"));
     assert!(body.contains("href=\"/notations\""));
     assert!(!body.contains("Drafting, review, and litigation are priced separately."));
     assert!(body.contains("Commercial licenses available."));
-    assert!(body.contains("/public/navigator-wheel.svg"));
+    assert!(body.contains("/public/ferris.svg"));
     assert!(!body.contains("Our family") && !body.contains("A practice of"));
     assert!(body.contains("https://www.lawyershook.com"));
     for path in ["/business", "/services", "/disputes"] {
@@ -833,7 +833,7 @@ async fn home_publishes_no_amount_in_controversy_and_no_co_counsel_claim() {
 }
 
 #[tokio::test]
-async fn home_presents_company_counsel_and_accessible_package_motion() {
+async fn home_presents_company_counsel_pricing_and_business_library() {
     let app = site_app().await;
     let response = anon_get(&app, "/").await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -841,32 +841,55 @@ async fn home_presents_company_counsel_and_accessible_package_motion() {
     assert_eq!(body.matches("<h1").count(), 1);
     for text in [
         "Keep building.",
-        "Counsel for what you’re building.",
-        "Pause motion",
-        "deal-exhibition",
+        "Attorneys for the Ambitious.",
+        "company-principles",
+        "Justice Tech Association",
+        "Rust NYC",
+        "No VC vig",
+        "pro bono",
         "site-header",
         "site-footer__legal",
     ] {
         assert!(body.contains(text), "missing {text}: {body}");
     }
     let experience = body
-        .find("Experience that moves you forward.")
+        .find("Lawyers who understand what you’re building.")
         .expect("experience section");
     let pricing = body.find("id=\"pricing\"").expect("pricing anchor");
     assert!(experience < pricing, "show experience before fees");
     assert!(body.contains("a 30-petabyte data warehouse for Apple Finance"));
-    assert!(body.contains("Start with a solid foundation."));
-    assert!(body.contains("One-time setup"));
-    assert!(body.contains("Master services, employment, and equity agreements."));
+    assert!(!body.contains("12 years of experience. Nine figures in exits."));
+    assert!(!body.contains("A clear daily meter"));
+    assert!(!body.contains("Separate work quoted before it starts"));
+    assert!(!body.contains("Independent counsel for ambitious companies"));
+    assert!(body.contains("Standard contract reviews returned within five business days"));
+    assert!(body.contains("$500"));
+    assert!(body.contains("/ contract"));
+    assert!(body.contains("deal-exhibition"));
+    assert!(body.contains("Computable Contracts that Scale"));
+    assert!(body.contains("Notations turn essential agreements into clear, fillable documents"));
+    assert!(body.contains("Explore the notations"));
+    assert!(!body.contains("Explore the notations ↗"));
+    assert!(!body.contains("Legal glue for your agreements."));
+    assert!(!body.contains("The work behind your next move."));
+    assert!(body.contains("Counsel on call."));
+    assert!(body.contains("handle the paperwork."));
+    assert!(!body.contains("company-questions"));
+    assert!(!body.contains("A few useful answers."));
+    assert!(body.contains("Your contracts. One fee."));
+    assert!(body.contains("Contract foundation"));
+    assert!(body.contains("One time. Contracts as you need them. Scope agreed at the start."));
     assert!(body.matches("Keep building.").count() >= 2);
     assert!(body.contains(r#"href="/presentations/rust-in-peace""#));
     assert!(body.contains(r#"href="/presentations""#));
     assert!(body.contains(r##"href="#pricing""##));
     // The pricing anchor includes the starting retainer and withdrawal terms.
     assert!(body.contains(r#"id="pricing" class="company-pricing""#));
-    assert!(body.contains(r#"for="pause-deal-flow""#));
-    assert!(body.contains(r#"id="pause-deal-flow""#));
-    assert!(body.contains(r#"class="deal-exhibition__scene" aria-hidden="true""#));
+    assert!(body.contains(r#"src="/public/ferris.svg""#));
+    assert!(body.contains(r#"href="/notations#templates""#));
+    assert!(body.contains("NEON LAW"));
+    assert!(!body.contains("NEON LAW /"));
+    assert!(!body.contains("Twelve business templates"));
     assert!(body.contains(r#"href="https://calendar.notion.so/meet/shicholas/or15n4yy7""#));
 }
 
@@ -878,18 +901,18 @@ async fn home_explains_retainer_and_additional_fees() {
         "$50",
         "$500",
         "$5,000",
-        "Flat fee. Master services, employment, and equity agreements.",
+        "One time. Contracts as you need them. Scope agreed at the start.",
         "A $10,000 retainer is held in trust when you sign up.",
         "We draw after we perform the work.",
         "The engagement letter sets scope, rates, and refunds.",
-        "Contract drafting and review. Five-business-day turnaround.",
-        "Contract review with a one-day turnaround.",
+        "A daily minimum that keeps us on the line.",
+        "Expedited reviews.",
+        "gives you a practical next step within one business days.",
         "Each contract includes up to 50 pages. Each additional page is $5.",
         "US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt.",
-        "Registered-agent notice where we accept that role",
-        "A shared Slack channel",
-        "Your business. In confidence.",
-        "We treat your legal matters as confidential.",
+        "Day-to-day questions over Slack",
+        "Built in Rust. Open to inspection.",
+        "We build production engineering systems to accurately and swiftly solve your matters in confidence.",
         "per active case",
         "You pay legal fees and case expenses.",
         "BUSL-1.1",
@@ -897,12 +920,19 @@ async fn home_explains_retainer_and_additional_fees() {
     ] {
         assert!(body.contains(text), "missing fee or scope: {text}");
     }
-    for retired in [
-        "company-simulator",
-        "Same-day review",
-        "Privileged Slack channel",
-        "$3,000",
+    for allocation in [
+        "After selected services: $5,500 earned, $4,500 remains held in trust.",
+        "After selected services: $6,000 earned, $4,000 remains held in trust.",
+        "After selected services: $6,500 earned, $3,500 remains held in trust.",
+        "After selected services: $7,000 earned, $3,000 remains held in trust.",
     ] {
+        assert!(
+            body.contains(allocation),
+            "incorrect trust allocation: {allocation}"
+        );
+    }
+    assert!(body.contains("company-simulator"));
+    for retired in ["Same-day review", "Privileged Slack channel"] {
         assert!(!body.contains(retired), "superseded offer: {retired}");
     }
     assert!(!body.contains(
@@ -916,8 +946,8 @@ async fn home_explains_retainer_and_additional_fees() {
     assert!(!body.contains("This daily fee applies whether"));
     assert!(!body.contains("Choose a size when you need review the same day instead"));
     assert!(!body.contains("30 days cost $1,500."));
-    let starting_amounts = body.find("Start with a solid foundation.").expect("setup");
-    let daily_plan = body.find("Ongoing counsel").expect("daily counsel plan");
+    let starting_amounts = body.find("Your contracts. One fee.").expect("setup");
+    let daily_plan = body.find("Counsel on call.").expect("daily counsel plan");
     assert!(
         starting_amounts < daily_plan,
         "the $5,000 setup must appear before the daily plan"

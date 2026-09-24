@@ -289,6 +289,56 @@ pub struct SeededTemplate {
 /// body.
 pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
+        label: "notations/neon_law/mutual_nda.md",
+        markdown: include_str!("../../templates/notations/neon_law/mutual_nda.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/one_way_nda.md",
+        markdown: include_str!("../../templates/notations/neon_law/one_way_nda.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/advisor_agreement.md",
+        markdown: include_str!("../../templates/notations/neon_law/advisor_agreement.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/master_services_agreement.md",
+        markdown: include_str!("../../templates/notations/neon_law/master_services_agreement.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/employee_offer_letter.md",
+        markdown: include_str!("../../templates/notations/neon_law/employee_offer_letter.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/business_associate_agreement.md",
+        markdown: include_str!(
+            "../../templates/notations/neon_law/business_associate_agreement.md"
+        ),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/dpa_us.md",
+        markdown: include_str!("../../templates/notations/neon_law/dpa_us.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/dpa_global.md",
+        markdown: include_str!("../../templates/notations/neon_law/dpa_global.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/cookie_notice.md",
+        markdown: include_str!("../../templates/notations/neon_law/cookie_notice.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/privacy_policy_us.md",
+        markdown: include_str!("../../templates/notations/neon_law/privacy_policy_us.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/privacy_policy_gdpr.md",
+        markdown: include_str!("../../templates/notations/neon_law/privacy_policy_gdpr.md"),
+    },
+    SeededTemplate {
+        label: "notations/neon_law/terms_of_use.md",
+        markdown: include_str!("../../templates/notations/neon_law/terms_of_use.md"),
+    },
+    SeededTemplate {
         label: "notations/neon_law/onboarding.md",
         markdown: canonical::TEMPLATE_ONBOARDING_LETTER,
     },

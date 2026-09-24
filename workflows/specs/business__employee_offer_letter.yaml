@@ -1,0 +1,76 @@
+kind: letter
+output: contract
+title: Employee Offer Letter (California Exempt)
+code: business__employee_offer_letter
+jurisdiction: CA
+respondent_type: person_and_entity
+confidential: false
+origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates/employee-offer-letter
+prompts:
+  company: "What is the company’s full legal name and entity type?"
+  employee: "What is the employee’s full legal name?"
+  accept_by: "What is the acceptance deadline?"
+  business_role: "State title, actual duties, manager, California work location, and start date."
+  business_classification: >-
+    Identify the exemption and confirm current salary and duties requirements, including any occupation- specific rules.
+  annual_salary: "What is the annual salary?"
+  business_salary_basis: "What is the salary basis?"
+  business_paydays: "On which days is the employee paid?"
+  business_payroll_frequency: "What is the payroll frequency?"
+  business_incentives: "Describe bonus and proposed equity terms, or state none."
+  business_benefits: "State benefit eligibility, leave, and expense reimbursement."
+  business_conditions: "List only lawful offer conditions and the sequence for any screening."
+  contacts: "Who are the primary and alternate contacts? Include name, title, email, and postal address."
+audiences:
+  company: lawyer
+  employee: lawyer
+  accept_by: lawyer
+  business_role: lawyer
+  business_classification: lawyer
+  annual_salary: lawyer
+  business_salary_basis: lawyer
+  business_paydays: lawyer
+  business_payroll_frequency: lawyer
+  business_incentives: lawyer
+  business_benefits: lawyer
+  business_conditions: lawyer
+  contacts: lawyer
+questionnaire:
+  BEGIN:
+    _: entity__company
+  entity__company:
+    _: person__employee
+  person__employee:
+    _: custom_datetime__accept_by
+  custom_datetime__accept_by:
+    _: custom_text__business_role
+  custom_text__business_role:
+    _: custom_text__business_classification
+  custom_text__business_classification:
+    _: custom_usd__annual_salary
+  custom_usd__annual_salary:
+    _: custom_text__business_salary_basis
+  custom_text__business_salary_basis:
+    _: custom_text__business_paydays
+  custom_text__business_paydays:
+    _: custom_text__business_payroll_frequency
+  custom_text__business_payroll_frequency:
+    _: custom_text__business_incentives
+  custom_text__business_incentives:
+    _: custom_text__business_benefits
+  custom_text__business_benefits:
+    _: custom_text__business_conditions
+  custom_text__business_conditions:
+    _: people__contacts
+  people__contacts:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    _: lawyer_review
+  lawyer_review:
+    approved: END
+    changes_requested: reask__draft
+  reask__draft:
+    resubmitted: lawyer_review
+  END: {}

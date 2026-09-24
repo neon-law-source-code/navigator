@@ -85,6 +85,94 @@ const NOTATIONS_BLOB_BASE: &str =
 // (the catalog cards) read the same bytes — the single source LAW-53 grounds
 // each card's `kind:` facet in, rather than a hand-typed guess that can
 // drift from what the template actually declares.
+// Public business templates: slug, title, source path, review scope, and source.
+const BUSINESS_NOTATIONS: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "mutual-nda",
+        "Mutual Non-Disclosure Agreement",
+        "notations/neon_law/mutual_nda.md",
+        "Two-way confidentiality for a shared business discussion.",
+        include_str!("../../templates/notations/neon_law/mutual_nda.md"),
+    ),
+    (
+        "one-way-nda",
+        "One-Way Non-Disclosure Agreement",
+        "notations/neon_law/one_way_nda.md",
+        "Confidentiality when your company shares information with another party.",
+        include_str!("../../templates/notations/neon_law/one_way_nda.md"),
+    ),
+    (
+        "advisor-agreement",
+        "Advisor Agreement",
+        "notations/neon_law/advisor_agreement.md",
+        "Advisory services, compensation, and ownership of the work.",
+        include_str!("../../templates/notations/neon_law/advisor_agreement.md"),
+    ),
+    (
+        "master-services-agreement",
+        "Master Services Agreement",
+        "notations/neon_law/master_services_agreement.md",
+        "Services, payment, intellectual property, and a clear way to exit.",
+        include_str!("../../templates/notations/neon_law/master_services_agreement.md"),
+    ),
+    (
+        "employee-offer-letter",
+        "Employee Offer Letter (California Exempt)",
+        "notations/neon_law/employee_offer_letter.md",
+        "A California offer with fillable role, pay, and benefit terms.",
+        include_str!("../../templates/notations/neon_law/employee_offer_letter.md"),
+    ),
+    (
+        "business-associate-agreement",
+        "Business Associate Agreement",
+        "notations/neon_law/business_associate_agreement.md",
+        "HIPAA duties for services that handle protected health information.",
+        include_str!("../../templates/notations/neon_law/business_associate_agreement.md"),
+    ),
+    (
+        "dpa-us",
+        "Data Processing Addendum (U.S.)",
+        "notations/neon_law/dpa_us.md",
+        "U.S. processing instructions, safeguards, and subprocessor terms.",
+        include_str!("../../templates/notations/neon_law/dpa_us.md"),
+    ),
+    (
+        "dpa-global",
+        "Data Processing Addendum (Global)",
+        "notations/neon_law/dpa_global.md",
+        "U.S. and European processing, with required transfer-document review.",
+        include_str!("../../templates/notations/neon_law/dpa_global.md"),
+    ),
+    (
+        "cookie-notice",
+        "Cookie Notice",
+        "notations/neon_law/cookie_notice.md",
+        "A clear account of cookies, tracking, and visitor choices.",
+        include_str!("../../templates/notations/neon_law/cookie_notice.md"),
+    ),
+    (
+        "privacy-policy-us",
+        "Privacy Policy (U.S.)",
+        "notations/neon_law/privacy_policy_us.md",
+        "U.S. data practices, retention, and privacy request procedures.",
+        include_str!("../../templates/notations/neon_law/privacy_policy_us.md"),
+    ),
+    (
+        "privacy-policy-gdpr",
+        "Privacy Policy (GDPR Enhanced)",
+        "notations/neon_law/privacy_policy_gdpr.md",
+        "Privacy disclosures for U.S., European, UK, and Swiss audiences.",
+        include_str!("../../templates/notations/neon_law/privacy_policy_gdpr.md"),
+    ),
+    (
+        "terms-of-use",
+        "Terms of Use",
+        "notations/neon_law/terms_of_use.md",
+        "Website access, content rights, service terms, and user protections.",
+        include_str!("../../templates/notations/neon_law/terms_of_use.md"),
+    ),
+];
+
 const ONBOARDING: &str = include_str!("../../templates/notations/neon_law/onboarding.md");
 const OFFBOARDING: &str = include_str!("../../templates/notations/neon_law/offboarding.md");
 const RESCISSION_NOTICE: &str =
@@ -208,7 +296,11 @@ fn preview_doc(slug: &str, source_path: &str, src: &str) -> webapp::notation_pre
 /// `/notations/{slug}`.
 #[allow(clippy::too_many_lines)] // The literal source-to-preview inventory is reviewed as one catalog.
 fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
-    vec![
+    let mut docs: Vec<_> = BUSINESS_NOTATIONS
+        .iter()
+        .map(|(slug, _, path, _, source)| preview_doc(slug, path, source))
+        .collect();
+    docs.extend([
         preview_doc(
             "onboarding-letter",
             "notations/neon_law/onboarding.md",
@@ -294,7 +386,8 @@ fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
             "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
             NV_CHARITABLE,
         ),
-    ]
+    ]);
+    docs
 }
 
 /// The public `/notations` catalog: the bundled letters and filings, plus
@@ -302,7 +395,7 @@ fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
 #[allow(clippy::too_many_lines)] // The literal public inventory stays aligned with the preview catalog above.
 fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
     let introduction = crate::locales::notations_content();
-    webapp::catalog_index::CatalogIndexContent {
+    let mut content = webapp::catalog_index::CatalogIndexContent {
         title: NOTATIONS_INDEX_TITLE.to_string(),
         lede: introduction.meta_description.clone(),
         introduction: Some(introduction),
@@ -432,7 +525,19 @@ fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
         include_testimonials: false,
         brand_key: String::new(),
         kinds: kind_catalog_entries(),
-    }
+    };
+    let business = BUSINESS_NOTATIONS
+        .iter()
+        .map(|(slug, title, _, summary, source)| {
+            let jurisdiction = if *slug == "employee-offer-letter" {
+                "California"
+            } else {
+                "Business · lawyer review"
+            };
+            notation_card(jurisdiction, title, slug, summary, source)
+        });
+    content.materials.splice(0..0, business);
+    content
 }
 
 /// The firm host's public Dioxus SSR pages, as raw routers for
@@ -1273,6 +1378,66 @@ mod notation_catalog_tests {
                         .replace(std::path::MAIN_SEPARATOR, "/"),
                 );
             }
+        }
+    }
+
+    #[test]
+    fn business_notations_have_fillable_previews_and_review_workflows() {
+        assert_eq!(super::BUSINESS_NOTATIONS.len(), 12);
+        let seeded = store::seed::seeded_template_codes().expect("seed catalog");
+        for (slug, _, path, _, source) in super::BUSINESS_NOTATIONS {
+            let code = format!("business__{}", slug.replace('-', "_"));
+            assert!(
+                seeded.contains(&code),
+                "{code} must be available on a matter"
+            );
+            let doc = super::preview_doc(slug, path, source);
+            assert!(
+                !doc.demo_questions.is_empty(),
+                "{slug} has no questionnaire"
+            );
+            assert!(
+                doc.demo_questions.iter().any(|q| q.interactive),
+                "{slug} has no fillable entries"
+            );
+            let metadata: serde_yaml::Value =
+                serde_yaml::from_str(&doc.frontmatter).expect("frontmatter");
+            assert_eq!(
+                metadata["workflow"]["BEGIN"]["_"].as_str(),
+                Some("lawyer_review")
+            );
+            assert_eq!(
+                metadata["workflow"]["lawyer_review"]["approved"].as_str(),
+                Some("END")
+            );
+            let (_, body) = source
+                .strip_prefix("---\n")
+                .expect("frontmatter")
+                .split_once("\n---\n")
+                .expect("body");
+            let mut answers = std::collections::BTreeMap::new();
+            for question in &doc.demo_questions {
+                let value = match question.answer_type.as_str() {
+                    "entity" | "person" => {
+                        r#"{"name":"Sample party","title":"Contact","email":"sample@example.com","street":"1 Example Street","city":"Example","state":"CA","zip":"00000","country":"US"}"#
+                    }
+                    "people" => {
+                        r#"[{"name":"Sample party","title":"Contact","email":"sample@example.com","street":"1 Example Street","city":"Example","state":"CA","zip":"00000","country":"US"}]"#
+                    }
+                    "custom_datetime" => "2026-09-24",
+                    _ => "Sample answer",
+                };
+                answers.insert(question.code.clone(), value.to_string());
+                answers.insert(
+                    format!("{}.name", question.code),
+                    "Sample party".to_string(),
+                );
+            }
+            let filled = views::notation::fill(body, &answers);
+            assert!(
+                !filled.contains("{{"),
+                "{slug} leaves an unbound entry: {filled}"
+            );
         }
     }
 

@@ -158,16 +158,17 @@ Jakarta Sans is used throughout the page and footer. The cloak crossing an inter
 pauses motion and reduced-motion preferences disable animation. The Solana section carries the approved request-record
 and litigation copy. The page uses the same footer treatment as Neon and Vesta.
 
-The Neon home page uses its `service` block to introduce legal practice, engineering, and teaching experience alongside
-the presentation video. Claims link to the published workshops and presentation. Its `company` block presents the $5,000
-flat-fee setup, $50-a-day counsel with five-business-day contract turnaround, and $500 express review with one-day
-turnaround. Each contract includes 50 pages; additional pages cost $5 each. A page is US letter size in Times New Roman
-larger than 10 pt. The separate $10,000 trust retainer remains disclosed alongside those terms. Litigation, employee
-support, and a confidentiality-led Navigator section follow, with consultation booking as the next step. Its `practices`
-list is empty: Neon publishes one offer on `/`, and `/business`, `/services`, and `/disputes` return 404 without
-redirects. Other brands omit that block and retain their own home layout. The package conveyor illustrates a workflow;
-it does not report live client activity. Its checkbox pauses the page's motion, and reduced-motion preferences disable
-the animations.
+The Neon home page presents a $5,000 one-time contract fee, a $50 daily minimum for ongoing questions over Slack, and a
+separate $500 expedited review per contract. That review gives the client a practical next step within one business
+days. Existing trust-deposit and page-limit disclosures remain in its catalog. Its `company` block also holds the
+service directory, source-available Rust explanation, independent-funding and community copy, and notation callout. GORP
+and cyan remain the identity; the layout uses static illustrations and generous spacing. An interactive trust-balance
+chart shows the earned contract fee, daily counsel, and review fees against the deposit. Its brief allocation animation
+respects reduced-motion preferences. The presentation video remains user-controlled. The business template inventory and
+drafting choices are documented in [business notations](business-notations.md).
+
+Neon publishes one offer on `/`; `/business`, `/services`, and `/disputes` return 404. Other brands retain their own
+home layouts. Litigation and sibling-practice scope remain separately disclosed.
 
 ## A copy-only pull request
 

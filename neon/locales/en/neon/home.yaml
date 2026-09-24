@@ -1,54 +1,53 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Counsel for technology founders. $5,000 flat-fee setup. $50 a day with five-business-day
-  contract turnaround. $500 express review in one day. Separate $10,000 retainer.
+  Business counsel, built for the way you work. $5,000 once for your contracts as you need them,
+  $50 a day for ongoing counsel, and $500 per review. Source-available software.
 heading: Keep building.
-lead: Counsel for what you’re building.
+lead: Attorneys for the Ambitious.
 contact_label: Book a consultation
 service:
-  heading: Experience that moves you forward.
+  heading: Lawyers who understand what you’re building.
   body:
-    - - text: We help technology founders make the next decision. Contracts, hiring, equity, and the disputes that need a firm hand.
-    - - text: Our experience spans law and engineering, including a 30-petabyte data warehouse for Apple Finance and teaching developers worldwide.
-    - - text: "See how we work in our "
-      - text: workshops
-        href: /presentations
-      - text: " or watch "
-      - text: Rust in Peace
-        href: /presentations/rust-in-peace
-      - text: "."
+    - - text: We draft, review, and negotiate the agreements behind your business, from the first NDA to an exit. Contracts, hiring, equity, and the disputes that need a firm hand.
+    - - text: "Our experience spans law and engineering: winning constitutional-rights appeals, securing hard-to-get cannabis licenses, managing a 30-petabyte data warehouse for Apple Finance, and teaching developers worldwide."
 practices_heading: ""
 practices: []
 company:
   booking_href: https://calendar.notion.so/meet/shicholas/or15n4yy7
   pricing_link: See pricing
   retainer_note: "A $10,000 retainer is held in trust when you sign up. We draw after we perform the work. Unearned funds return when the engagement ends. The engagement letter sets scope, rates, and refunds."
-  flow_caption: Notation workflow
-  flow_steps: [Scope, Draft, Review, Sign]
-  packages: [MSA, Employment, Cap Table]
+  retainer_amount: 10000
+  simulator_heading: Your retainer at work.
+  simulator_body: See how earned fees move out of trust as we do the work.
+  simulator_days_label: Days of ongoing counsel
+  simulator_reviews_label: Completed reviews
+  simulator_contract_label: One-time contract fee, once earned
+  simulator_plan_label: Daily counsel, once provided
+  simulator_review_label: Completed review fees
+  simulator_total_label: Illustrative trust balance
+  simulator_note: This example assumes the $5,000 contract fee has been earned under your engagement letter. The deposit remains your money until fees are earned. Additional work and expenses are excluded. Unearned funds return to you when the engagement ends.
   pause_label: Pause motion
-  pricing_heading: A clear start. A steady hand.
+  packages: [Services, Employment, Privacy]
+  pricing_heading: Good counsel. Clear numbers.
   video_label: Neon Law presentation
-  membership_label: Ongoing counsel
+  membership_label: Counsel on call.
   membership_price: "$50"
   membership_unit: / day
-  membership_body: Contract drafting and review. Five-business-day turnaround.
+  membership_body: A daily minimum that keeps us on the line. Ask questions in Slack. Pay for the days we’re engaged and the work you approve.
   membership_features:
-    - Counsel for day-to-day decisions
-    - Your contract template library
-    - A shared Slack channel
-    - Registered-agent notice where we accept that role
-  express_heading: When a day matters.
+    - Day-to-day questions over Slack
+    - Standard contract reviews returned within five business days
+  express_heading: Expedited reviews.
   express_price: "$500"
-  express_unit: / express review
-  express_body: Contract review with a one-day turnaround.
+  express_unit: / contract
+  express_body: A lawyer reviews your contract, explains the risks, and gives you a practical next step within one business days.
   page_note: "Each contract includes up to 50 pages. Each additional page is $5. A page is US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt."
-  drafting_heading: Start with a solid foundation.
-  drafting_body: Your base contracts, prepared for your business.
+  drafting_heading: Your contracts. One fee.
+  drafting_body: Pay once. We prepare all your contracts as you need them within the agreed engagement.
   drafting_packages:
-    - [One-time setup, "$5,000", "Flat fee. Master services, employment, and equity agreements."]
+    - [Contract foundation, "$5,000", "One time. Contracts as you need them. Scope agreed at the start."]
   closing_heading: Keep building.
-  closing_body: "We’re with you."
+  closing_body: "We'll handle the paperwork."
   litigation_heading: Protect what you build.
   litigation_link: Discuss your case
   litigation_price: "$5,000+"
@@ -59,8 +58,29 @@ company:
   people_body: Immigration and estate planning for your employees, through our sibling practices.
   immigration_label: Abhaya / Immigration
   estate_label: Vesta / Estate planning
-  navigator_heading: Your business. In confidence.
-  navigator_body: We treat your legal matters as confidential. Navigator brings your documents, decisions, and legal team together, from the first draft to the final signature.
+  navigator_heading: Built in Rust. Open to inspection.
+  navigator_body: Navigator is our source-available legal software. Rust helps prevent memory-safety errors. Typed questions, automated checks, and lawyer review carry your work from draft to signature. We build production engineering systems to accurately and swiftly solve your matters in confidence.
   navigator_link: Explore Navigator
   source_label: Read the source
   source_note: Available under BUSL-1.1. Evaluation, development, testing, and demonstration are permitted where no one relies on the work. Commercial licenses available.
+  principles:
+    - [Counsel within reach., "A daily connection to your lawyer. Bring the question while it’s still a question."]
+    - [Care in every detail., "Clear writing. Repeatable checks. A lawyer responsible for the work."]
+    - [Room to give back., "Independent ownership lets us keep costs low and make room for pro bono work."]
+  services_heading: Computable Contracts that Scale
+  services_note: Notations turn essential agreements into clear, fillable documents you can use, review, and update as your company grows.
+  services_link: Explore the notations
+  services:
+    - [Technology transactions, "NDAs, master services agreements, statements of work, SaaS subscriptions, licensing, intellectual property, and partnerships."]
+    - [Employment, "Offer letters, advisor and consulting agreements, contractors, and equity incentives."]
+    - [Privacy and data, "Privacy policies, cookie notices, data processing agreements, business associate agreements, terms of use, and AI governance."]
+    - [Financial regulation, "Payment and processor terms, fintech data and privacy, vendor contracts, and commercial platform agreements."]
+    - [Blockchain and digital assets, "Token purchase, liquid staking, master loan, custody, and wallet services agreements."]
+    - [Company formation and financing, "Incorporation, governance, SAFEs, side letters, financings, acquisitions, and exits. Due diligence from the first question to closing."]
+    - [Tax, "Entity selection, QSBS planning, executive compensation, and financing."]
+    - [Government contracts, "Prime contracts, subcontracts, task orders, teaming, joint ventures, mentor-protégé agreements, OTAs, SBIR awards, and technical data rights."]
+  community_heading: Coast to Coast Independent Attorneys.
+  community_body: "We're active in access to justice and technology communities and are proud members of the Justice Tech Association and Rust NYC. We build our own tools and fund our own firm. No VC vig, instead independence that helps us keep prices affordable and devote more time for pro bono."
+  community_links:
+    - [Rust in Peace, /presentations/rust-in-peace]
+    - [Our workshops, /presentations]

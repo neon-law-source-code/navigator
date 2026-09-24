@@ -3,12 +3,12 @@ meta_description: >-
   Neon Law Navigator's computable legal format. Markdown and Frontmatter connect
   document drafting, questionnaires, attorney review, and finished documents.
 title: Notations
-tagline: Executable Legal Writing.
+tagline: Clear words. Working documents.
 hero_lead_runs:
-  - text: "Neon Law Notations are a way to write legal agreements in markdown, and specify data and workflows in frontmatter. Our "
+  - text: "Start with a contract, an offer letter, or a privacy notice. Our business library pairs clear legal writing with fillable questions and a lawyer’s review. Twelve new business templates join our letters and government forms. "
   - text: Navigator
     href: /navigator
-  - text: " CLI helps authors adhere to rules, ground with our ontology, and deliver excellent legal product."
+  - text: " connects each answer to the document it belongs in."
 hero_cta:
   label: Explore the templates
   href: '#templates'

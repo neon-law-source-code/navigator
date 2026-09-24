@@ -949,8 +949,12 @@ mod tests {
         assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$10,000"));
         assert_eq!(
             company["drafting_packages"][1][0].as_str(),
-            Some("All your contracts")
+            Some("One-time setup")
         );
+        assert!(company["drafting_packages"][1][2]
+            .as_str()
+            .unwrap()
+            .contains("All your base agreements"));
         assert_eq!(company["drafting_packages"][1][1].as_str(), Some("$5,000"));
         assert_eq!(
             company["drafting_packages"]

@@ -1,7 +1,7 @@
 head_title: "{site_name} | Home"
 meta_description: >-
   We help technology founders handle contracts, hiring, and growth.
-  Start with a $10,000 retainer. $5,000 covers the initial contracts.
+  Start with a $10,000 retainer. A $5,000 one-time setup fee gets your base agreements done.
   $50 a day keeps Neon Law as your counsel and registered agent, with a response within five business days.
 heading: Keep building.
 lead: Emerging Technologies Counsel
@@ -28,7 +28,7 @@ company:
   flow_steps: [Scope, Draft, Review, Sign]
   packages: [MSA, Employment, Cap Table]
   pause_label: Pause motion
-  pricing_heading: $10,000 retainer. $5,000 for all your contracts.
+  pricing_heading: $10,000 retainer. $5,000 one-time setup for your base agreements.
   video_label: Neon Law presentation
   membership_label: Counsel and registered agent
   membership_price: "$50"
@@ -55,10 +55,10 @@ company:
     - [Medium, "$3,000"]
     - [Large, "$5,000"]
   drafting_heading: Starting amounts
-  drafting_body: The retainer is held in trust. The contract fee covers the first agreements.
+  drafting_body: The retainer is held in trust. The one-time setup fee gets your base agreements done.
   drafting_packages:
     - [Retainer, "$10,000", "Held in trust. We draw after we perform the work and return what is unearned."]
-    - [All your contracts, "$5,000", "Master services agreement, employment agreements, and equity agreements."]
+    - [One-time setup, "$5,000", "All your base agreements: master services agreement, employment agreements, and equity agreements."]
   closing_heading: Keep building.
   closing_body: "We handle the legal work."
   litigation_heading: Protect what you build.

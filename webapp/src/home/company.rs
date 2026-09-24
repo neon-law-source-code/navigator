@@ -1,4 +1,4 @@
-//! Company counsel: membership, notation packages, and an illustrative work stream.
+//! Company counsel: membership, one-time setup, and an illustrative work stream.
 
 use super::HomeContent;
 use crate::components::is_external_href;

@@ -298,7 +298,7 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         page(
             mark,
             "/",
-            "Counsel for emerging technology companies. Membership at $50 a day, fixed notation packages, and litigation from $5,000 a month per active case.",
+            "Counsel for emerging technology companies. Membership at $50 a day, a $5,000 one-time setup fee for base agreements, and litigation from $5,000 a month per active case.",
         ),
         page(
             "Neon Law Navigator",

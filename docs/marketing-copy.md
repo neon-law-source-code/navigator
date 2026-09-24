@@ -163,7 +163,7 @@ and litigation copy. The page uses the same footer treatment as Neon and Vesta.
 
 The Neon home page uses its `service` block to introduce legal practice, engineering, and teaching experience alongside
 the presentation video. Claims link to the published workshops and presentation. Its `company` block presents the
-$10,000 retainer and the $5,000 initial-contract fee as the two starting amounts, the $50-a-day counsel and
+$10,000 retainer and the $5,000 one-time setup fee for base agreements as the two starting amounts, the $50-a-day counsel and
 registered-agent plan with a five-business-day response, an interactive 10- or 30-day fee estimate that keeps the
 same-day review size graph, client Slack access, litigation, employee support, and Navigator, with consultation booking
 as the next step. Its `practices` list is empty: Neon publishes one offer on `/`, and `/business`, `/services`, and

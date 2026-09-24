@@ -957,9 +957,7 @@ mod tests {
             .contains("Master services, employment, and equity agreements"));
         assert_eq!(company["drafting_packages"][1][1].as_str(), Some("$5,000"));
         assert_eq!(
-            company["drafting_packages"]
-                .as_sequence()
-                .map(|rows| rows.len()),
+            company["drafting_packages"].as_sequence().map(Vec::len),
             Some(2)
         );
         assert!(company["simulator_note"]

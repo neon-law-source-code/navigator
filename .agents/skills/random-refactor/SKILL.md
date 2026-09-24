@@ -73,9 +73,8 @@ Then take exactly one of these actions:
 
 - **Zero findings, or findings that need an author or council decision:** stop. Hand the report back.
 - **Clear, small, evidence-backed findings:** smallest present-tense change, covering test first, one file. Run
-  `cargo fmt`, the focused test, and `cargo run -p cli --quiet -- project gate`. Use `rtk cargo test` and `rtk cargo
-  clippy` for agent-facing focused output when available; RTK compacts output but does not speed compilation. For a Rust
-  behavior change, also clippy with warnings denied and the crate's tests.
+  `cargo fmt`, the focused test, and `cargo run -p cli --quiet -- project gate`; use `rtk cargo test`/`rtk cargo clippy`
+  for compact output; RTK does not speed compilation. For Rust changes, clippy with warnings denied and tests.
 - **Teaching-surface drift only:** fix the doc, comment, or test. Do not rewrite workshop spoken words.
 
 A behavior-preserving refactor is still a refactor: keep the covering test green, and do not add chronology.

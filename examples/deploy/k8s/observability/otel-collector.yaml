@@ -471,6 +471,8 @@ spec:
     metadata:
       labels:
         app: otel-collector
+      annotations:
+        checksum/otel-collector-config: YOUR_CONFIG_CHECKSUM
     spec:
       serviceAccountName: otel-collector
       containers:

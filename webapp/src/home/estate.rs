@@ -22,8 +22,6 @@ pub struct EstateContent {
     pub fee_note: String,
     pub video_label: String,
     pub video_src: String,
-    pub transcript_label: String,
-    pub video_transcript: String,
     pub process_label: String,
     pub process_heading: String,
     pub steps: Vec<[String; 2]>,
@@ -78,10 +76,6 @@ pub(super) fn EstateHome(content: HomeContent, estate: EstateContent) -> Element
                     src: "{estate.video_src}",
                     "aria-label": "{estate.video_label}",
                     a { href: "{estate.video_src}", "{estate.video_label}" }
-                }
-                details {
-                    summary { "{estate.transcript_label}" }
-                    p { "{estate.video_transcript}" }
                 }
             }
             section { id: "your-plan", class: "vesta-process", "aria-labelledby": "vesta-process-title",

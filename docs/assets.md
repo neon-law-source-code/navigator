@@ -337,11 +337,10 @@ If you are _curating_ the gallery (adding or replacing a responsive photo), use 
 
 ## Vesta explainer
 
-Vesta uses EB Garamond throughout. Its captioned explainer lives at `server/public/img/vesta-home/vesta-explainer.mp4`
-locally and resolves through the public asset origin in a deployment. The video script and accessible transcript live in
-`neon/locales/en/vesta/home.yaml`. The clip describes the lifetime plan and identifies blockchain recording as coming
-soon. Both source-checkout and embedded deployment verification include its object key, so a missing video blocks a new
-release instead of leaving a broken player.
+Vesta uses EB Garamond throughout. Its explainer lives at `server/public/img/vesta-home/vesta-explainer.mp4` locally and
+resolves through the public asset origin in a deployment. The page labels the clip from
+`neon/locales/en/vesta/home.yaml`. Both source-checkout and embedded deployment verification include its object key, so
+a missing video blocks a new release instead of leaving a broken player.
 
 Publish the finished clip to staging before the next rollout:
 

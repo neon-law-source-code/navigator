@@ -13,8 +13,6 @@ pub struct EstateCopy {
     pub fee_note: String,
     pub video_label: String,
     pub video_src: String,
-    pub transcript_label: String,
-    pub video_transcript: String,
     pub process_label: String,
     pub process_heading: String,
     pub steps: Vec<[String; 2]>,

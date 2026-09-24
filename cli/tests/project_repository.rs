@@ -729,20 +729,19 @@ fn the_gate_refuses_a_with_block_on_the_ci_caller() {
         .stderr(str::contains("must not declare a `with:` block"));
 }
 
-/// The retired `gate.yml`/`publish.yml` filenames are still read, but a
-/// repository carrying either is warned to rename it before the release that
-/// refuses the retired name outright.
+/// After 26.9.23, a retired `gate.yml` is refused outright — the door
+/// `docs/gate.md` said this release would close.
 #[test]
-fn the_gate_warns_on_a_retired_workflow_filename() {
+fn the_gate_refuses_a_retired_workflow_filename() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project");
     let ci = dir.path().join(".github/workflows/ci.yml");
     fs::rename(&ci, dir.path().join(".github/workflows/gate.yml")).unwrap();
 
     gate(dir.path())
-        .success()
-        .stdout(str::contains("gate.yml"))
-        .stdout(str::contains("the release after that refuses it"));
+        .failure()
+        .stderr(str::contains("gate.yml"))
+        .stderr(str::contains("this release refuses it"));
 }
 
 /// A `.yaml` spelling of either workflow reports the extension it actually

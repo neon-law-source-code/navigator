@@ -224,9 +224,11 @@ async fn project_gate_check_ci_skips_the_offline_gate_and_the_origin_pass() {
         .await;
     Mock::given(method("POST"))
         .and(path("/auth/ci/document-token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            serde_json::json!({ "token": "test-token", "project_code": "acme" }),
-        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({ "token": "test-token", "project_code": "acme" }),
+            ),
+        )
         .expect(1)
         .mount(&server)
         .await;

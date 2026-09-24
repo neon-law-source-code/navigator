@@ -320,7 +320,10 @@ async fn reconcile_slug(
         .revisions
         .iter()
         .find(|revision| revision.operative)
-        .map_or_else(|| slug.to_string(), |revision| local_key(slug, &revision.filename));
+        .map_or_else(
+            || slug.to_string(),
+            |revision| local_key(slug, &revision.filename),
+        );
     let desired =
         match desired_pointer(local_pointer(locals.get(&key)), &live.kind, &live.revisions) {
             Ok(pointer) => pointer,

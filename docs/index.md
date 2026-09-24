@@ -48,6 +48,8 @@ cannot decay the way the old seven-line stub did.
 
 - [`notation.md`](notation.md) — the notation vocabulary: templates, questionnaires, workflows.
 - [`notation-authoring.md`](notation-authoring.md) — authoring a notation template's body and structure.
+- [`business-notations.md`](business-notations.md) — the twelve business agreement Notations adapted from General
+  Legal's CC0 template library, with source SHA-256 values.
 - [`frontmatter.md`](frontmatter.md) — the frontmatter cover sheet on every file, by document kind.
 - [`gate.md`](gate.md) — the canonical reference for `navigator project gate` and `navigator validate`: the shared
   passes, flags, and every rule code.

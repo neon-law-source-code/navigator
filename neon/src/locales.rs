@@ -1189,13 +1189,20 @@ mod tests {
         assert!(content.practices.is_empty());
     }
 
-    /// The firm's own site markets to emerging technology companies alone.
+    /// The firm's own site markets to businesses alone, never individuals.
     ///
     /// This is the "Done when" of retiring `/personal`, and it is asserted on
     /// the rendered copy rather than on the routing table, because the page
     /// can be unreachable while the words that sold it survive in the hero,
     /// the plan chooser, or a link — which is exactly what happened on
     /// `DeleteYourData`, whose own pages went on offering the retired plan.
+    ///
+    /// PR #804 broadened the hero from "technology founders" to the wider
+    /// business-agreement catalog (employment, privacy, blockchain, tax,
+    /// government contracts), so the audience check widened from the literal
+    /// word "technology" to "business" — the catalog's `services` list still
+    /// opens with `Technology transactions`, it is just no longer the only
+    /// business the hero names.
     #[test]
     fn the_home_page_no_longer_markets_to_individuals() {
         let content = home(&views::brand::DEFAULT_BRANDING);
@@ -1216,7 +1223,7 @@ mod tests {
             );
         }
         assert!(
-            text.to_lowercase().contains("technolog"),
+            text.to_lowercase().contains("business"),
             "and the audience is named: {text}"
         );
     }

@@ -55,6 +55,7 @@ enum GitHubOidcInner {
         issuer: String,
         jwks_url: String,
         cache: Arc<AsyncMutex<Option<(Instant, JwksDocument)>>>,
+        last_kid_refetch: Arc<AsyncMutex<Option<Instant>>>,
     },
 }
 
@@ -73,6 +74,7 @@ pub enum GitHubOidcError {
 const GITHUB_ACTIONS_ISSUER: &str = "https://token.actions.githubusercontent.com";
 const GITHUB_ACTIONS_JWKS: &str = "https://token.actions.githubusercontent.com/.well-known/jwks";
 const JWKS_TTL: Duration = Duration::from_secs(3600);
+const JWKS_REFETCH_FLOOR: Duration = Duration::from_mins(5);
 
 impl GitHubOidc {
     fn with_inner(inner: GitHubOidcInner) -> Self {
@@ -96,6 +98,7 @@ impl GitHubOidc {
             issuer: issuer.into(),
             jwks_url: jwks_url.into(),
             cache: Arc::new(AsyncMutex::new(None)),
+            last_kid_refetch: Arc::new(AsyncMutex::new(None)),
         })
     }
 
@@ -127,7 +130,18 @@ impl GitHubOidc {
                 issuer,
                 jwks_url,
                 cache,
-            } => verify_jwks(token, expected_aud, issuer, jwks_url, cache).await,
+                last_kid_refetch,
+            } => {
+                verify_jwks(
+                    token,
+                    expected_aud,
+                    issuer,
+                    jwks_url,
+                    cache,
+                    last_kid_refetch,
+                )
+                .await
+            }
         }
     }
 
@@ -160,6 +174,7 @@ async fn verify_jwks(
     issuer: &str,
     jwks_url: &str,
     cache: &AsyncMutex<Option<(Instant, JwksDocument)>>,
+    last_kid_refetch: &AsyncMutex<Option<Instant>>,
 ) -> Result<GitHubActionsClaims, GitHubOidcError> {
     let header =
         decode_header(token).map_err(|error| GitHubOidcError::Invalid(error.to_string()))?;
@@ -171,7 +186,15 @@ async fn verify_jwks(
     if let Ok(claims) = claims {
         Ok(claims)
     } else {
-        let doc = load_jwks(jwks_url, cache, true).await?;
+        let mut last_refetch = last_kid_refetch.lock().await;
+        let should_refetch = last_refetch
+            .as_ref()
+            .is_none_or(|last| last.elapsed() >= JWKS_REFETCH_FLOOR);
+        if should_refetch {
+            *last_refetch = Some(Instant::now());
+            let doc = load_jwks(jwks_url, cache, true).await?;
+            return decode_with_jwks(token, expected_aud, issuer, &kid, &doc);
+        }
         decode_with_jwks(token, expected_aud, issuer, &kid, &doc)
     }
 }
@@ -464,6 +487,44 @@ mod tests {
             .await
             .expect("refetch finds the kid");
         assert_eq!(got.jti, "jti-1");
+    }
+
+    #[tokio::test]
+    async fn jwks_verifier_bounds_repeated_unknown_kid_refetches() {
+        let server = MockServer::start().await;
+        let issuer = "https://token.actions.test";
+        let audience = "https://staging.neonlaw.com";
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [{
+                    "kid": "stale",
+                    "kty": "RSA",
+                    "n": test_oidc_jwks_rsa().n,
+                    "e": "AQAB"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let claims = signed_claims(issuer, audience);
+        let token = sign_rs256_claims("unknown-kid", &claims);
+        let oidc = GitHubOidc::jwks(issuer, format!("{}/.well-known/jwks", server.uri()));
+        for _ in 0..3 {
+            assert!(oidc.verify(&token, audience).await.is_err());
+        }
+
+        let fetches = server
+            .received_requests()
+            .await
+            .expect("request recording is on by default")
+            .iter()
+            .filter(|request| request.url.path() == "/.well-known/jwks")
+            .count();
+        assert_eq!(
+            fetches, 2,
+            "unknown kids must not force an unbounded refetch"
+        );
     }
 
     #[tokio::test]

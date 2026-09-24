@@ -73,7 +73,7 @@ async fn redrive_with(
     let receipt = store::email_receipts::find_by_id(surreal, receipt_id)
         .await
         .context("load the receipt")?
-        .with_context(|| format!("receipt {receipt_id}: not found"))?;
+        .context("receipt not found")?;
 
     refuse_if_confirmed(surreal, receipt_id).await?;
 
@@ -112,10 +112,7 @@ async fn refuse_if_confirmed(surreal: &store::surreal::SurrealDb, receipt_id: Uu
         return Ok(());
     };
     if delivery.state == store::email_deliveries::CONFIRMED {
-        bail!(
-            "receipt {receipt_id}: refused — delivery_state is confirmed; redriving would risk \
-             a second Slack post"
-        );
+        bail!("refused — delivery_state is confirmed; redriving would risk a second Slack post");
     }
     Ok(())
 }
@@ -189,7 +186,7 @@ async fn delete_invocation(admin_url: &str, admin_token: &str, invocation_id: &s
         .context("purge the retained invocation")?;
     if !response.status().is_success() {
         let status = response.status();
-        bail!("purge invocation {invocation_id} failed with status {status}");
+        bail!("purge invocation failed with status {status}");
     }
     Ok(())
 }
@@ -354,13 +351,37 @@ mod tests {
         let error = redrive_with(&db, &admin.uri(), "admin-token", None, &config, receipt_id)
             .await
             .expect_err("a confirmed delivery refuses the redrive");
-        assert!(error.to_string().contains("confirmed"));
+        let message = error.to_string();
+        assert!(message.contains("confirmed"));
+        assert!(
+            !message.contains(&receipt_id.to_string()),
+            "CodeQL cleartext-logging: errors must not carry a receipt id: {message}"
+        );
 
         let receipt = store::email_receipts::find_by_id(&db, receipt_id)
             .await
             .expect("receipt still readable")
             .expect("receipt still exists");
         assert_eq!(receipt.archive_key, "inbound/example.eml");
+    }
+
+    #[tokio::test]
+    async fn redrive_of_a_missing_receipt_names_the_gap_without_the_id() {
+        let db = store::surreal::test_support::mem().await;
+        let receipt_id = Uuid::now_v7();
+        let admin = MockServer::start().await;
+        let ingress = MockServer::start().await;
+        let config = test_config(&ingress.uri());
+
+        let error = redrive_with(&db, &admin.uri(), "admin-token", None, &config, receipt_id)
+            .await
+            .expect_err("a missing receipt refuses the redrive");
+        let message = error.to_string();
+        assert!(message.contains("receipt not found"));
+        assert!(
+            !message.contains(&receipt_id.to_string()),
+            "CodeQL cleartext-logging: errors must not carry a receipt id: {message}"
+        );
     }
 
     #[tokio::test]

@@ -417,7 +417,10 @@ mod tests {
             .await
             .expect("receipt readable")
             .expect("receipt exists");
-        assert_eq!(before, after, "the receipt, letter, and archive it names are untouched");
+        assert_eq!(
+            before, after,
+            "the receipt, letter, and archive it names are untouched"
+        );
     }
 
     #[tokio::test]

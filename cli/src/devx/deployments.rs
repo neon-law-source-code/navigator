@@ -959,7 +959,10 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 /// `expected` is the freshly decrypted SOPS value; `actual` is what the same
@@ -1160,11 +1163,19 @@ mod tests {
     #[test]
     fn classify_reports_match_differs_and_missing() {
         assert_eq!(
-            classify(b"value", Some(b"value"), CheckStatus::MissingInSecretManager),
+            classify(
+                b"value",
+                Some(b"value"),
+                CheckStatus::MissingInSecretManager
+            ),
             CheckStatus::Match
         );
         assert_eq!(
-            classify(b"value", Some(b"other"), CheckStatus::MissingInSecretManager),
+            classify(
+                b"value",
+                Some(b"other"),
+                CheckStatus::MissingInSecretManager
+            ),
             CheckStatus::Differs
         );
         assert_eq!(
@@ -1178,7 +1189,11 @@ mod tests {
         // A length mismatch is `differs`, not a panic or an early-exit that
         // would skip comparing the rest.
         assert_eq!(
-            classify(b"value", Some(b"a-longer-value"), CheckStatus::MissingInK8sSecret),
+            classify(
+                b"value",
+                Some(b"a-longer-value"),
+                CheckStatus::MissingInK8sSecret
+            ),
             CheckStatus::Differs
         );
     }
@@ -1250,14 +1265,9 @@ mod tests {
         k8s_values.insert("DRIFTED".to_string(), Some(b"fresh-value".to_vec()));
         // ABSENT deliberately has no entry: missing from the K8s Secret too.
 
-        let statuses = check_payloads(
-            &gcp_client(&server),
-            "neon-law-stg",
-            &payloads,
-            &k8s_values,
-        )
-        .await
-        .expect("every object resolves to a status");
+        let statuses = check_payloads(&gcp_client(&server), "neon-law-stg", &payloads, &k8s_values)
+            .await
+            .expect("every object resolves to a status");
 
         assert_eq!(
             statuses.get("MATCHES"),

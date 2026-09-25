@@ -899,6 +899,277 @@ pub async fn set_visibility(
     Ok(Some(true))
 }
 
+/// Why [`assign_slug`] wrote nothing.
+#[derive(Debug, thiserror::Error)]
+pub enum AssignSlugError {
+    /// The asset is missing or belongs to another Project. Callers map this
+    /// to the same not-found response as an out-of-scope matter.
+    #[error("asset is not on this project")]
+    NotOnProject,
+    /// A slug is the chain identity. A row that already has one is not renamed
+    /// here, and two chains are never merged.
+    #[error("the row already has a slug")]
+    AlreadySlugged,
+    /// `slug` already names at least one revision on this Project.
+    #[error("slug `{0}` already names a document on this project")]
+    ChainExists(String),
+    /// Slug validation needs the filename stored on the row.
+    #[error("the row has no filename")]
+    MissingFilename,
+    #[error(transparent)]
+    InvalidSlug(#[from] crate::documents::DocumentSlugError),
+    /// `kind` is not a [`rules::kind::Kind`] valid for [`rules::kind::Lane::Asset`].
+    #[error("`{0}` is not a document kind that can be filed on a matter")]
+    InvalidKind(String),
+    #[error(transparent)]
+    Asset(#[from] AssetError),
+}
+
+/// The slug, and optional kind, to set on a row that has neither a slug nor
+/// a revision chain.
+pub struct AssignSlug<'a> {
+    pub slug: &'a str,
+    pub kind: Option<&'a str>,
+    /// Validate and report the row that would be written. The stored row is
+    /// left unchanged.
+    pub dry_run: bool,
+}
+
+/// Set `slug` on one asset that belongs to `project_id` and whose slug is
+/// null. `assignment.kind`, when set, replaces `kind` in the same write.
+/// `sha256_hex`, `storage_key`, and `byte_size` stay as stored.
+///
+/// A row that already has a slug, and a slug that already has any revision
+/// on this Project, are both refused before a write. The second refusal is
+/// what keeps this from merging two chains.
+///
+/// # Errors
+/// [`AssignSlugError`] when the row is out of the Project, already slugged,
+/// the slug collides with a chain, or `slug` / `kind` fail validation.
+pub async fn assign_slug(
+    db: &SurrealDb,
+    project_id: Uuid,
+    asset_id: Uuid,
+    assignment: AssignSlug<'_>,
+) -> Result<Asset, AssignSlugError> {
+    let Some(asset) = find_by_id(db, asset_id)
+        .await?
+        .filter(|asset| asset.project_id == Some(project_id))
+    else {
+        return Err(AssignSlugError::NotOnProject);
+    };
+    if asset.slug.is_some() {
+        return Err(AssignSlugError::AlreadySlugged);
+    }
+    let filename = asset
+        .filename
+        .as_deref()
+        .filter(|filename| !filename.is_empty())
+        .ok_or(AssignSlugError::MissingFilename)?;
+    let slug = assignment.slug.trim();
+    crate::documents::validate_document_slug(filename, slug)?;
+    let kind = match assignment
+        .kind
+        .map(str::trim)
+        .filter(|kind| !kind.is_empty())
+    {
+        Some(kind) => {
+            if !rules::kind::Kind::parse(kind)
+                .is_some_and(|parsed| parsed.valid_for(rules::kind::Lane::Asset))
+            {
+                return Err(AssignSlugError::InvalidKind(kind.to_string()));
+            }
+            Some(kind.to_string())
+        }
+        None => None,
+    };
+    if !revisions(db, project_id, slug).await?.is_empty() {
+        return Err(AssignSlugError::ChainExists(slug.to_string()));
+    }
+    if assignment.dry_run {
+        let mut preview = asset;
+        preview.slug = Some(slug.to_string());
+        if let Some(kind) = kind {
+            preview.kind = Some(kind);
+        }
+        return Ok(preview);
+    }
+    let response = match &kind {
+        Some(kind) => writing(|| {
+            db.query("UPDATE $id SET slug = $slug, kind = $kind, updated_at = time::now()")
+                .bind(("id", record_id(TABLE, asset_id)))
+                .bind(("slug", slug.to_string()))
+                .bind(("kind", kind.clone()))
+        })
+        .await
+        .map_err(AssetError::from)?,
+        None => writing(|| {
+            db.query("UPDATE $id SET slug = $slug, updated_at = time::now()")
+                .bind(("id", record_id(TABLE, asset_id)))
+                .bind(("slug", slug.to_string()))
+        })
+        .await
+        .map_err(AssetError::from)?,
+    };
+    if one(response)?.is_none() {
+        return Err(AssetError::WriteReturnedNothing.into());
+    }
+    let written = find_by_id(db, asset_id)
+        .await?
+        .ok_or(AssetError::WriteReturnedNothing)?;
+    if written.sha256_hex != asset.sha256_hex
+        || written.storage_key != asset.storage_key
+        || written.byte_size != asset.byte_size
+        || written.id != asset.id
+    {
+        return Err(AssetError::WriteReturnedNothing.into());
+    }
+    Ok(written)
+}
+
+/// Why [`repair_missing_object`] changed nothing.
+#[derive(Debug, thiserror::Error)]
+pub enum RepairStorageError {
+    #[error("asset is not on this project")]
+    NotOnProject,
+    /// The object is present and its digest does not match the row. This
+    /// repair only restores a missing object.
+    #[error("the stored object does not match the recorded sha256")]
+    ObjectCorrupt,
+    /// No other asset on this Project has the same sha256 and a readable object.
+    #[error("no sibling in this project holds the content")]
+    NoSibling,
+    /// The bytes copied from the sibling do not hash to the row's sha256.
+    #[error("repaired bytes do not match the recorded sha256")]
+    DigestMismatch,
+    #[error(transparent)]
+    Asset(#[from] AssetError),
+    #[error(transparent)]
+    Project(#[from] crate::projects::ProjectStoreError),
+}
+
+/// What [`repair_missing_object`] did, or would do when `dry_run` is set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepairedObject {
+    pub storage_key: String,
+    /// Bytes were copied onto the content-addressed key. False when the
+    /// repair only re-points the row at a key that already holds them.
+    pub copied: bool,
+    pub dry_run: bool,
+}
+
+/// Restore a missing storage object from another asset on the same Project
+/// with the same `sha256_hex`.
+///
+/// The restored key is the content-addressed documents key
+/// (`projects/<code>/documents/<sha256>`). When the row already names that
+/// key, the sibling's bytes are copied onto it. When it names a different
+/// key, the row is re-pointed at the content-addressed key after that object
+/// exists. `sha256_hex` and `byte_size` stay as stored. A Project with no
+/// sibling whose object exists is refused and left unchanged.
+///
+/// # Errors
+/// [`RepairStorageError`] when the asset is out of the Project, the present
+/// object does not match the recorded digest, or no sibling holds the bytes.
+pub async fn repair_missing_object(
+    db: &SurrealDb,
+    storage: &dyn StorageService,
+    project_id: Uuid,
+    asset_id: Uuid,
+    dry_run: bool,
+) -> Result<RepairedObject, RepairStorageError> {
+    let Some(asset) = find_by_id(db, asset_id)
+        .await?
+        .filter(|asset| asset.project_id == Some(project_id))
+    else {
+        return Err(RepairStorageError::NotOnProject);
+    };
+    let project = crate::projects::find_by_id(db, project_id).await?.ok_or(
+        crate::projects::ProjectStoreError::NoSuchProject(project_id),
+    )?;
+    let canonical = format!(
+        "{}/{}",
+        cloud::workspace::documents_prefix(&project.code),
+        asset.sha256_hex
+    );
+    if object_head(storage, &asset.storage_key).await?.is_some() {
+        let digest = object_sha256(storage, &asset.storage_key).await?;
+        if digest.as_deref() != Some(asset.sha256_hex.as_str()) {
+            return Err(RepairStorageError::ObjectCorrupt);
+        }
+        return Ok(RepairedObject {
+            storage_key: asset.storage_key,
+            copied: false,
+            dry_run,
+        });
+    }
+
+    let siblings = for_project(db, project_id).await?;
+    let mut source: Option<Vec<u8>> = None;
+    for sibling in siblings
+        .into_iter()
+        .filter(|sibling| sibling.id != asset.id && sibling.sha256_hex == asset.sha256_hex)
+    {
+        let keys = [Some(sibling.storage_key), sibling.secondary_storage_key];
+        for key in keys.into_iter().flatten() {
+            if object_head(storage, &key).await?.is_none() {
+                continue;
+            }
+            let object = storage.get(&key).await.map_err(AssetError::from)?;
+            if sha256_hex(&object.bytes) == asset.sha256_hex {
+                source = Some(object.bytes);
+                break;
+            }
+        }
+        if source.is_some() {
+            break;
+        }
+    }
+    let Some(bytes) = source else {
+        return Err(RepairStorageError::NoSibling);
+    };
+    if sha256_hex(&bytes) != asset.sha256_hex {
+        return Err(RepairStorageError::DigestMismatch);
+    }
+
+    let copied = object_head(storage, &canonical).await?.is_none();
+    let repoint = asset.storage_key != canonical;
+    if dry_run {
+        return Ok(RepairedObject {
+            storage_key: canonical,
+            copied,
+            dry_run: true,
+        });
+    }
+    if copied {
+        storage
+            .put(&canonical, &bytes, &asset.content_type)
+            .await
+            .map_err(AssetError::from)?;
+    }
+    if repoint {
+        let response = writing(|| {
+            db.query("UPDATE $id SET storage_key = $storage_key, updated_at = time::now()")
+                .bind(("id", record_id(TABLE, asset_id)))
+                .bind(("storage_key", canonical.clone()))
+        })
+        .await
+        .map_err(AssetError::from)?;
+        if one(response)?.is_none() {
+            return Err(AssetError::WriteReturnedNothing.into());
+        }
+    }
+    let verified = object_sha256(storage, &canonical).await?;
+    if verified.as_deref() != Some(asset.sha256_hex.as_str()) {
+        return Err(RepairStorageError::DigestMismatch);
+    }
+    Ok(RepairedObject {
+        storage_key: canonical,
+        copied,
+        dry_run: false,
+    })
+}
+
 /// Why a [`file_revision`] call wrote nothing.
 #[derive(Debug, thiserror::Error)]
 pub enum RevisionError {
@@ -1355,5 +1626,269 @@ mod tests {
             executed.asset_id,
             "the client stays anchored to the executed revision"
         );
+    }
+
+    async fn ingest_named(
+        db: &SurrealDb,
+        storage: &Arc<dyn StorageService>,
+        project: uuid::Uuid,
+        filename: &str,
+        kind: &str,
+        slug: Option<&str>,
+        bytes: &[u8],
+    ) -> Asset {
+        let ingested = crate::documents::ingest_bytes_as(
+            db,
+            storage,
+            &crate::documents::IngestArgs {
+                project_id: project,
+                source: "upload",
+                filename,
+                kind,
+                content_type: "text/plain",
+                description: None,
+                secondary_storage_key: None,
+                visibility: crate::documents::visibility::INTERNAL,
+            },
+            &crate::documents::DocumentIdentity {
+                slug,
+                published_at: None,
+                metadata: None,
+            },
+            bytes,
+        )
+        .await
+        .unwrap();
+        find_by_id(db, ingested.asset_id).await.unwrap().unwrap()
+    }
+
+    #[tokio::test]
+    async fn assign_slug_sets_slug_and_kind_without_touching_bytes() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let before = ingest_named(
+            &db,
+            &storage,
+            project,
+            "note.txt",
+            "unclassified",
+            None,
+            b"slugless bytes",
+        )
+        .await;
+
+        let after = super::assign_slug(
+            &db,
+            project,
+            before.id,
+            super::AssignSlug {
+                slug: "notes/note.txt",
+                kind: Some("exhibit"),
+                dry_run: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(after.slug.as_deref(), Some("notes/note.txt"));
+        assert_eq!(after.kind.as_deref(), Some("exhibit"));
+        assert_eq!(after.sha256_hex, before.sha256_hex);
+        assert_eq!(after.storage_key, before.storage_key);
+        assert_eq!(after.byte_size, before.byte_size);
+        assert_eq!(after.id, before.id);
+    }
+
+    #[tokio::test]
+    async fn assign_slug_refuses_a_row_that_already_has_a_slug() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let row = ingest_named(
+            &db,
+            &storage,
+            project,
+            "note.txt",
+            "unclassified",
+            Some("notes/note.txt"),
+            b"already slugged",
+        )
+        .await;
+
+        let err = super::assign_slug(
+            &db,
+            project,
+            row.id,
+            super::AssignSlug {
+                slug: "other/note.txt",
+                kind: None,
+                dry_run: false,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, super::AssignSlugError::AlreadySlugged));
+        let stored = find_by_id(&db, row.id).await.unwrap().unwrap();
+        assert_eq!(stored.slug.as_deref(), Some("notes/note.txt"));
+    }
+
+    #[tokio::test]
+    async fn assign_slug_refuses_a_slug_that_already_has_a_chain() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        ingest_named(
+            &db,
+            &storage,
+            project,
+            "note.txt",
+            "unclassified",
+            Some("notes/note.txt"),
+            b"chain head",
+        )
+        .await;
+        let slugless = ingest_named(
+            &db,
+            &storage,
+            project,
+            "note.txt",
+            "unclassified",
+            None,
+            b"a different document",
+        )
+        .await;
+
+        let err = super::assign_slug(
+            &db,
+            project,
+            slugless.id,
+            super::AssignSlug {
+                slug: "notes/note.txt",
+                kind: Some("memo"),
+                dry_run: false,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, super::AssignSlugError::ChainExists(_)));
+        let stored = find_by_id(&db, slugless.id).await.unwrap().unwrap();
+        assert!(stored.slug.is_none());
+        assert_eq!(stored.kind.as_deref(), Some("unclassified"));
+    }
+
+    #[tokio::test]
+    async fn assign_slug_refuses_a_kind_outside_the_asset_lane() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let row = ingest_named(
+            &db,
+            &storage,
+            project,
+            "note.txt",
+            "unclassified",
+            None,
+            b"kind check",
+        )
+        .await;
+
+        let err = super::assign_slug(
+            &db,
+            project,
+            row.id,
+            super::AssignSlug {
+                slug: "notes/note.txt",
+                kind: Some("review_queue_workbench"),
+                dry_run: false,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, super::AssignSlugError::InvalidKind(_)));
+        let stored = find_by_id(&db, row.id).await.unwrap().unwrap();
+        assert!(stored.slug.is_none());
+        assert_eq!(stored.kind.as_deref(), Some("unclassified"));
+    }
+
+    #[tokio::test]
+    async fn repair_copies_a_sibling_object_onto_the_missing_key() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let bytes = b"shared document bytes";
+        let broken = ingest_named(
+            &db,
+            &storage,
+            project,
+            "note.txt",
+            "unclassified",
+            None,
+            bytes,
+        )
+        .await;
+        let holder = ingest_named(
+            &db,
+            &storage,
+            project,
+            "copy.txt",
+            "unclassified",
+            Some("copies/copy.txt"),
+            bytes,
+        )
+        .await;
+        let sibling_key = format!("{}-held", broken.storage_key);
+        storage
+            .put(&sibling_key, bytes, "text/plain")
+            .await
+            .unwrap();
+        super::writing(|| {
+            db.query("UPDATE $id SET storage_key = $storage_key")
+                .bind(("id", crate::surreal::record_id(super::TABLE, holder.id)))
+                .bind(("storage_key", sibling_key.clone()))
+        })
+        .await
+        .unwrap();
+        storage.delete(&broken.storage_key).await.unwrap();
+
+        let repaired =
+            super::repair_missing_object(&db, storage.as_ref(), project, broken.id, false)
+                .await
+                .unwrap();
+        assert!(repaired.copied);
+        assert_eq!(repaired.storage_key, broken.storage_key);
+        let stored = find_by_id(&db, broken.id).await.unwrap().unwrap();
+        assert_eq!(stored.storage_key, broken.storage_key);
+        assert_eq!(stored.sha256_hex, broken.sha256_hex);
+        assert_eq!(
+            super::object_sha256(storage.as_ref(), &stored.storage_key)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some(stored.sha256_hex.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn repair_refuses_when_no_sibling_holds_the_content() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let row = ingest_named(
+            &db,
+            &storage,
+            project,
+            "note.txt",
+            "unclassified",
+            None,
+            b"only copy",
+        )
+        .await;
+        storage.delete(&row.storage_key).await.unwrap();
+
+        let err = super::repair_missing_object(&db, storage.as_ref(), project, row.id, false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, super::RepairStorageError::NoSibling));
+        let stored = find_by_id(&db, row.id).await.unwrap().unwrap();
+        assert_eq!(stored.storage_key, row.storage_key);
+        assert_eq!(stored.sha256_hex, row.sha256_hex);
+        assert!(super::object_head(storage.as_ref(), &row.storage_key)
+            .await
+            .unwrap()
+            .is_none());
     }
 }

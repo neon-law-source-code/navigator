@@ -600,7 +600,9 @@ enum ProjectsCmd {
         /// pointer, and writes a missing `documents/.gitignore`. A missing or
         /// corrupt object, or a live row with no slug, needs a person. Under
         /// `--ci` any of those fixes fails the job and names the fix.
-        /// Uploading or removing a document is `navigator site sync`.
+        /// A live row with no slug is `navigator site document slug`. A missing
+        /// storage object is `navigator site document repair`. Uploading a
+        /// staged file is `navigator site sync`.
         #[arg(long)]
         check: bool,
         /// Re-hash every stored object while `--check` is running.
@@ -2084,6 +2086,49 @@ enum DocumentAction {
         #[arg(long)]
         slug: Option<String>,
     },
+    /// Set `slug` on a live row that has none
+    /// (`PATCH /app/api/projects/{id}/documents/{asset_id}`).
+    ///
+    /// Optionally sets `kind` in the same write. Refuses a row that already
+    /// has a slug, and a slug that already names a revision chain. After it
+    /// succeeds, `navigator project gate --check` can write the pointer.
+    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
+    Slug {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code (human-facing). Resolved against the matters this login can see.
+        #[arg(long)]
+        project: String,
+        /// Asset id of the slugless row.
+        asset_id: uuid::Uuid,
+        /// Document identity. Must carry the stored filename's extension.
+        #[arg(long)]
+        slug: String,
+        /// Asset-lane kind. Omit to leave the stored kind unchanged.
+        #[arg(long, value_parser = parse_asset_kind)]
+        kind: Option<String>,
+        /// Validate and print the result. The row is left unchanged.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Restore a missing storage object from a same-hash sibling in the matter
+    /// (`POST /app/api/projects/{id}/documents/{asset_id}/storage`).
+    ///
+    /// Admin only. Copies the sibling's bytes onto the content-addressed key,
+    /// or re-points the row at that key, then the server verifies the sha256.
+    /// No sibling changes nothing.
+    Repair {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code (human-facing). Resolved against the matters this login can see.
+        #[arg(long)]
+        project: String,
+        /// Asset id whose storage object is missing.
+        asset_id: uuid::Uuid,
+        /// Report the repair. Storage and the row are left unchanged.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// The revision chain, newest first, marking the operative row.
     Log {
         /// Path below `documents/`, such as `documents/pleadings/motion.pdf.yaml`.
@@ -2754,6 +2799,30 @@ async fn run_document(action: DocumentAction) -> ExitCode {
             )
             .await
         }
+        DocumentAction::Slug {
+            host,
+            project,
+            asset_id,
+            slug,
+            kind,
+            dry_run,
+        } => {
+            remote::document_slug(
+                host.host.as_deref(),
+                &project,
+                asset_id,
+                &slug,
+                kind.as_deref(),
+                dry_run,
+            )
+            .await
+        }
+        DocumentAction::Repair {
+            host,
+            project,
+            asset_id,
+            dry_run,
+        } => remote::document_repair(host.host.as_deref(), &project, asset_id, dry_run).await,
         DocumentAction::Log { pointer } => document_read::log(&pointer).await,
         DocumentAction::Get {
             pointer,

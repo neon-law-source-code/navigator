@@ -114,10 +114,13 @@ allow if {
     is_lawyer(input.session)
 }
 
-# Reconcile one committed pointer's visibility against its asset. The handler
-# repeats the lawyer-tier matter-scope check and collapses an out-of-scope asset
-# to 404. Six segments distinguishes this exact asset command from collection
-# upload and all other Project subpaths.
+# Reconcile one committed pointer's visibility, or set a slug on a slugless
+# asset. The handler repeats the lawyer-tier matter-scope check and collapses
+# an out-of-scope asset to 404. Six segments distinguishes this exact asset
+# command from collection upload and all other Project subpaths. Restoring a
+# missing storage object is POST .../documents/{asset_id}/storage (seven
+# segments) and is not this rule: only the Owner/Admin bypass admits it, and
+# the handler requires admin.
 allow if {
     input.path[0] == "app"
     input.path[1] == "api"

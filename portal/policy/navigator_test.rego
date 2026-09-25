@@ -1191,6 +1191,24 @@ test_anonymous_denied_reconcile_document_visibility if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": null}
 }
 
+# ---------- POST /app/api/projects/{id}/documents/{asset_id}/storage (admin bypass only) ----------
+
+test_admin_can_repair_document_storage if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1", "storage"], "method": "POST", "session": admin_session}
+}
+
+test_lawyer_denied_repair_document_storage if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1", "storage"], "method": "POST", "session": lawyer_session}
+}
+
+test_client_denied_repair_document_storage if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1", "storage"], "method": "POST", "session": client_session}
+}
+
+test_anonymous_denied_repair_document_storage if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1", "storage"], "method": "POST", "session": null}
+}
+
 # ---------- POST /app/api/projects/{id}/mail/file (lawyer tier only) ----------
 
 test_lawyer_can_file_mail_attachments if {

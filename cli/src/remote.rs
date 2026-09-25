@@ -13,6 +13,8 @@
 //! | `project setup` | `GET /app/api/projects` plus the authenticated surface, Slack, and Notion setup doors |
 //! | `project sync` | `GET /app/api/projects/{id}/documents` plus each current revision's download door |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
+//! | `document slug` | `PATCH /app/api/projects/{id}/documents/{asset_id}` |
+//! | `document repair` | `POST /app/api/projects/{id}/documents/{asset_id}/storage` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
 //! | `notation preview` | `POST /app/projects/{project_code}/notations/draft` |
 //! | `navigator site import` | `POST /app/api/seed` (optional `POST /auth/ci/seed-token`) |
@@ -722,6 +724,71 @@ impl DocumentClient {
         Ok(())
     }
 
+    /// Set `slug` on a row that has none. `kind`, when set, is written in the
+    /// same request. `dry_run` asks the server to validate and change nothing.
+    pub(crate) async fn assign_slug(
+        &self,
+        asset_id: Uuid,
+        slug: &str,
+        kind: Option<&str>,
+        dry_run: bool,
+    ) -> Result<serde_json::Value> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents/{asset_id}",
+            self.base, self.project_id
+        );
+        let mut body = serde_json::json!({ "slug": slug, "dry_run": dry_run });
+        if let Some(kind) = kind {
+            body["kind"] = serde_json::Value::String(kind.to_string());
+        }
+        let response = self
+            .client
+            .patch(&url)
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await
+            .with_context(|| format!("PATCH {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "document slug failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse document slug response")
+    }
+
+    /// Restore a missing storage object from a same-hash sibling.
+    pub(crate) async fn repair_storage(
+        &self,
+        asset_id: Uuid,
+        dry_run: bool,
+    ) -> Result<serde_json::Value> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents/{asset_id}/storage",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.token)
+            .json(&serde_json::json!({ "dry_run": dry_run }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "document repair failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse document repair response")
+    }
+
     /// File one inbound message's attachments into the matter
     /// (`POST /app/api/projects/{id}/mail/file`, #517). Entirely
     /// server-side: only this JSON response travels back, never the
@@ -833,6 +900,42 @@ pub async fn document_upload(
             .upload(file, kind, visibility, description, content_type, slug)
             .await?;
         print!("{}", pointer.to_yaml()?);
+        Ok(())
+    })
+    .await
+}
+
+/// `navigator site document slug <asset_id> --project <code> --slug …`
+/// — set a slug on a live row that has none.
+pub async fn document_slug(
+    host: Option<&str>,
+    project_code: &str,
+    asset_id: Uuid,
+    slug: &str,
+    kind: Option<&str>,
+    dry_run: bool,
+) -> ExitCode {
+    run(async {
+        let client = DocumentClient::connect(host, project_code).await?;
+        let body = client.assign_slug(asset_id, slug, kind, dry_run).await?;
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        Ok(())
+    })
+    .await
+}
+
+/// `navigator site document repair <asset_id> --project <code>`
+/// — restore a missing storage object from a same-hash sibling. Admin only.
+pub async fn document_repair(
+    host: Option<&str>,
+    project_code: &str,
+    asset_id: Uuid,
+    dry_run: bool,
+) -> ExitCode {
+    run(async {
+        let client = DocumentClient::connect(host, project_code).await?;
+        let body = client.repair_storage(asset_id, dry_run).await?;
+        println!("{}", serde_json::to_string_pretty(&body)?);
         Ok(())
     })
     .await
@@ -2921,13 +3024,14 @@ mod tests {
 
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
-        clause_list, create_notation_draft, document_upload, ensure_no_unused_selections,
-        fetch_status, mail_file, matter_close, notation_answers, notation_approve, notation_create,
-        notation_document, notation_list, notation_request_changes, notation_status,
-        notation_update, notion_ensure, notion_reconcile, parse_scripted_selection,
-        picker_selection_fields, projects_create, retainer_approve, retainer_send,
-        scripted_picker_selection_fields, seed, seed_directory, select_candidate, slack_ensure,
-        CoverageSummary, DocumentClient, SeedCredential, StepQuestion, StepResponse,
+        clause_list, create_notation_draft, document_repair, document_slug, document_upload,
+        ensure_no_unused_selections, fetch_status, mail_file, matter_close, notation_answers,
+        notation_approve, notation_create, notation_document, notation_list,
+        notation_request_changes, notation_status, notation_update, notion_ensure,
+        notion_reconcile, parse_scripted_selection, picker_selection_fields, projects_create,
+        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
+        select_candidate, slack_ensure, CoverageSummary, DocumentClient, SeedCredential,
+        StepQuestion, StepResponse,
     };
     use super::{
         exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, server_error,
@@ -3630,6 +3734,91 @@ mod tests {
                 None,
             )
             .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_slug_patches_the_asset_and_dry_run_sends_dry_run() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let asset_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(format!(
+                "/app/api/projects/{project_id}/documents/{asset_id}"
+            )))
+            .and(body_json(serde_json::json!({
+                "slug": "notes/note.txt",
+                "kind": "exhibit",
+                "dry_run": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "asset_id": asset_id,
+                "slug": "notes/note.txt",
+                "kind": "exhibit",
+                "dry_run": true,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            document_slug(
+                Some(server_uri.as_str()),
+                "acme",
+                asset_id,
+                "notes/note.txt",
+                Some("exhibit"),
+                true,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_repair_posts_storage_with_dry_run() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let asset_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/app/api/projects/{project_id}/documents/{asset_id}/storage"
+            )))
+            .and(body_json(serde_json::json!({ "dry_run": false })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "storage_key": "projects/acme/documents/abc",
+                "copied": true,
+                "dry_run": false,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            document_repair(Some(server_uri.as_str()), "acme", asset_id, false).await,
             ExitCode::SUCCESS
         );
     }

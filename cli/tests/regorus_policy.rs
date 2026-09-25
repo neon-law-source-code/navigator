@@ -288,9 +288,14 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   /app/api/projects/{id}/documents/integrity): Lawyer and Admin admitted;
     //   Client, Clerk, and anonymous denied.
     // 473 + 5 = 478.
+    //
+    // + 4 for restoring a missing document object (POST
+    //   /app/api/projects/{id}/documents/{asset_id}/storage): Admin admitted
+    //   through the route bypass; Lawyer, Client, and anonymous denied.
+    // 478 + 4 = 482.
     assert_eq!(
         test_names.len(),
-        478,
+        482,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

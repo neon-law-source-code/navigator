@@ -2317,22 +2317,55 @@ pub fn document_with_base(base: &str) -> Value {
         },
         "/app/api/projects/{id}/documents/{asset_id}": {
           "patch": {
-            "summary": "Reconcile a document's visibility",
-            "description": "Sets the visibility declared by a committed Project pointer. Authorization: lawyer or admin, and both the matter and asset are scoped (out-of-scope → 404). The API audit records the actor and operation.",
+            "summary": "Reconcile visibility, or set a slug on a slugless row",
+            "description": "Send `visibility` to reconcile the visibility a committed Project pointer declares, or send `slug` (and optionally `kind`) to set those fields on a row whose slug is null. A row that already has a slug, or a slug that already names a revision chain on the matter, is `409`. `sha256`, `storage_key`, and byte size stay unchanged. `dry_run` validates and reports the slug write without changing the row. Authorization: lawyer or admin, and both the matter and asset are scoped (out-of-scope → 404). The API audit records the actor and operation.",
             "parameters": [
               { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
               { "name": "asset_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
             ],
             "requestBody": { "required": true, "content": { "application/json": { "schema": {
-              "type": "object", "required": ["visibility"], "properties": { "visibility": { "type": "string", "enum": ["client", "internal"] } }
+              "type": "object", "properties": {
+                "visibility": { "type": "string", "enum": ["client", "internal"] },
+                "slug": { "type": "string", "description": "Document identity. Must carry the stored filename's extension. Accepted only while the row's slug is null." },
+                "kind": { "type": "string", "description": "Asset-lane kind, applied only together with `slug`.", "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "closed_repository", "invoice", "unclassified"] },
+                "dry_run": { "type": "boolean", "description": "When setting `slug`, validate and report without writing." }
+              }
             } } } },
             "responses": {
-              "200": { "description": "Visibility reconciled" },
-              "400": { "description": "Invalid visibility", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "200": { "description": "Visibility reconciled, or the slug was set (or would be set, when `dry_run`)" },
+              "400": { "description": "Invalid visibility, slug, or kind, or both `visibility` and `slug` were sent", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "404": { "description": "No such matter or asset, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "500": { "description": "Visibility could not be reconciled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+              "409": { "description": "The row already has a slug (`slug_present`), or the slug already names a chain (`slug_taken`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "500": { "description": "The document could not be updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          }
+        },
+        "/app/api/projects/{id}/documents/{asset_id}/storage": {
+          "post": {
+            "summary": "Restore a missing storage object from a same-hash sibling",
+            "description": "When the asset's storage object is missing and another asset in the same matter has the same sha256 and a readable object, copy those bytes onto the content-addressed key or re-point the row at that key, then verify the sha256. No sibling leaves the row unchanged and returns `409 no_sibling`. `dry_run` reports the key without writing. Authorization: admin, and the matter is scoped (out-of-scope → 404). The API audit records the actor and operation.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+              { "name": "asset_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "requestBody": { "required": true, "content": { "application/json": { "schema": {
+              "type": "object", "properties": { "dry_run": { "type": "boolean" } }
+            } } } },
+            "responses": {
+              "200": { "description": "The object is present, or the repair was applied (or would be, when `dry_run`)", "content": { "application/json": { "schema": {
+                "type": "object", "required": ["storage_key", "copied", "dry_run"], "properties": {
+                  "storage_key": { "type": "string" },
+                  "copied": { "type": "boolean" },
+                  "dry_run": { "type": "boolean" }
+                }
+              } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "403": { "description": "Authenticated caller is not admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter or asset, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "409": { "description": "No sibling holds the bytes (`no_sibling`), the present object does not match (`object_corrupt`), or the copy failed verification (`digest_mismatch`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "500": { "description": "The object could not be repaired", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           }
         },

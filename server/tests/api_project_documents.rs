@@ -26,10 +26,12 @@ const KEY: &str = "api-project-documents-test-key";
 struct Fixture {
     app: axum::Router,
     surreal: store::surreal::SurrealDb,
+    storage: Arc<dyn cloud::StorageService>,
     project_id: Uuid,
     lawyer: String,
     outsider: String,
     client: String,
+    admin: String,
 }
 
 fn bearer(person_id: Uuid, role: Role) -> String {
@@ -80,18 +82,29 @@ async fn build_fixture() -> Fixture {
     )
     .await
     .unwrap();
+    let admin = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role("Admin", "admin@example.com", Role::Admin),
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, admin.id, "admin")
+        .await
+        .unwrap();
     let state = AppState {
         sessions: SessionStore::new(KEY),
-        storage,
+        storage: storage.clone(),
         ..portal::test_support::app_state(surreal.clone()).await
     };
     Fixture {
         app: server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR)),
         surreal,
+        storage,
         project_id: project.id,
         lawyer: bearer(lawyer.id, Role::Lawyer),
         outsider: bearer(outsider.id, Role::Lawyer),
         client: bearer(client.id, Role::Client),
+        admin: bearer(admin.id, Role::Admin),
     }
 }
 
@@ -110,6 +123,57 @@ async fn upload(
     fx.app
         .clone()
         .oneshot(req.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+async fn patch_document(
+    fx: &Fixture,
+    auth: Option<&str>,
+    asset_id: Uuid,
+    body: serde_json::Value,
+) -> axum::http::Response<Body> {
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri(format!(
+            "/app/api/projects/{}/documents/{asset_id}",
+            fx.project_id
+        ))
+        .header("content-type", "application/json");
+    if let Some(auth) = auth {
+        req = req.header("authorization", auth);
+    }
+    fx.app
+        .clone()
+        .oneshot(req.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+async fn repair_storage(
+    fx: &Fixture,
+    auth: Option<&str>,
+    asset_id: Uuid,
+    dry_run: bool,
+) -> axum::http::Response<Body> {
+    let mut req = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/app/api/projects/{}/documents/{asset_id}/storage",
+            fx.project_id
+        ))
+        .header("content-type", "application/json");
+    if let Some(auth) = auth {
+        req = req.header("authorization", auth);
+    }
+    fx.app
+        .clone()
+        .oneshot(
+            req.body(Body::from(
+                serde_json::json!({ "dry_run": dry_run }).to_string(),
+            ))
+            .unwrap(),
+        )
         .await
         .unwrap()
 }
@@ -475,6 +539,118 @@ async fn every_accepted_kind_still_files_a_document() {
             kind.as_str()
         );
     }
+}
+
+async fn slugless_asset(fx: &Fixture, bytes: &[u8]) -> store::assets::Asset {
+    let ingested = store::documents::ingest_bytes(
+        &fx.surreal,
+        &fx.storage,
+        &store::documents::IngestArgs {
+            project_id: fx.project_id,
+            source: store::documents::source::UPLOAD,
+            filename: "note.txt",
+            kind: "unclassified",
+            content_type: "text/plain",
+            description: None,
+            visibility: store::documents::visibility::INTERNAL,
+            secondary_storage_key: None,
+        },
+        bytes,
+    )
+    .await
+    .unwrap();
+    store::assets::find_by_id(&fx.surreal, ingested.asset_id)
+        .await
+        .unwrap()
+        .unwrap()
+}
+
+/// A lawyer sets a slug on a slugless row. A client is forbidden, a lawyer
+/// outside the matter is not found, and a second slug is a conflict.
+#[tokio::test]
+async fn assigning_a_slug_is_lawyer_scoped_and_refuses_a_second_slug() {
+    let fx = build_fixture().await;
+    let asset = slugless_asset(&fx, b"slugless document").await;
+    assert!(asset.slug.is_none());
+
+    assert_eq!(
+        patch_document(
+            &fx,
+            Some(&fx.client),
+            asset.id,
+            serde_json::json!({ "slug": "notes/note.txt" }),
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        patch_document(
+            &fx,
+            Some(&fx.outsider),
+            asset.id,
+            serde_json::json!({ "slug": "notes/note.txt" }),
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+
+    let set = patch_document(
+        &fx,
+        Some(&fx.lawyer),
+        asset.id,
+        serde_json::json!({ "slug": "notes/note.txt", "kind": "exhibit" }),
+    )
+    .await;
+    assert_eq!(set.status(), StatusCode::OK);
+    let stored = store::assets::find_by_id(&fx.surreal, asset.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.slug.as_deref(), Some("notes/note.txt"));
+    assert_eq!(stored.kind.as_deref(), Some("exhibit"));
+    assert_eq!(stored.sha256_hex, asset.sha256_hex);
+    assert_eq!(stored.storage_key, asset.storage_key);
+
+    let again = patch_document(
+        &fx,
+        Some(&fx.lawyer),
+        asset.id,
+        serde_json::json!({ "slug": "other/note.txt" }),
+    )
+    .await;
+    assert_eq!(again.status(), StatusCode::CONFLICT);
+    let body: serde_json::Value =
+        serde_json::from_slice(&again.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["error"], "slug_present");
+}
+
+/// Storage repair is admin-only. A lawyer is forbidden. With no sibling the
+/// row is unchanged.
+#[tokio::test]
+async fn repairing_storage_is_admin_only_and_refuses_without_a_sibling() {
+    let fx = build_fixture().await;
+    let asset = slugless_asset(&fx, b"only copy").await;
+    fx.storage.delete(&asset.storage_key).await.unwrap();
+
+    assert_eq!(
+        repair_storage(&fx, Some(&fx.lawyer), asset.id, false)
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let refused = repair_storage(&fx, Some(&fx.admin), asset.id, false).await;
+    assert_eq!(refused.status(), StatusCode::CONFLICT);
+    let body: serde_json::Value =
+        serde_json::from_slice(&refused.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["error"], "no_sibling");
+    let stored = store::assets::find_by_id(&fx.surreal, asset.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.storage_key, asset.storage_key);
+    assert!(fx.storage.head(&asset.storage_key).await.unwrap().is_none());
 }
 
 /// Minimal base64 encoder for the fixture bytes — the test needs distinct

@@ -190,10 +190,11 @@ storage failure and run `pull` again; a completed pull hydrates every missing or
 the host and Project code from `navigator.yaml`. Every committed pointer must match the operative revision, and every
 live document the lens can see must have a pointer. A drifted pointer is rewritten. A live document with no pointer gets
 `documents/<slug>.yaml`. A missing `documents/.gitignore` is written. The command never writes to the live site. A
-missing or corrupt storage object, and a live row with no slug, are errors a person has to fix. `--deep` re-hashes each
-object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix. Uploading, filing a new
-revision, or removing a document is `navigator site sync`. Plain `navigator project gate`, without `--check`, makes no
-document request.
+missing storage object needs a person: `navigator site document repair` restores it from a same-hash sibling in the
+matter. A live row with no slug needs a person: `navigator site document slug` sets the slug and, when passed, the kind.
+`--deep` re-hashes each object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix.
+Uploading a staged file, or filing a new revision, is `navigator site sync`. Plain `navigator project gate`, without
+`--check`, makes no document request.
 
 **`navigator project sync` reconciles the complete live Project into the checkout.** Run it with no positional arguments
 from the repository root. It reads the Project code and host from `navigator.yaml`, asks the live site for every
@@ -224,15 +225,18 @@ instead of writing it, since the checkout is about to be discarded; that is the 
 `--check` mode exists so that an operator who has just uploaded a document can confirm the asset exists remotely without
 reading a CI job (LAW-12).
 
-**Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
-Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
-anywhere offers a control that changes a document's key (`slug`, the chain identity a revision belongs to). Both stay
-committed-pointer edits, replayed by `navigator site sync` through the same authorized API that already audits the actor
-and operation. The alternative — a button on the Project page — was considered and rejected: sharing a privileged
-document with a client is the exact failure this design is shaped to prevent, and a one-click, one-confirm control
-removes the second reader a pull request review gives it. A key edit is not a rename in any case — it moves a revision
-between documents, splitting one chain or merging two — so it is a re-filing, not a field a form should offer. Decided
-2026-09-06.
+**Visibility stays a reviewed pointer edit.** A lawyer Project page renders a document's visibility (a plain-word
+column) but offers no control that changes it. The committed pointer is replayed by `navigator site sync` through the
+same authorized API that already audits the actor and operation. A button on the Project page was considered and
+rejected: sharing a privileged document with a client is the exact failure this design is shaped to prevent, and a
+one-click, one-confirm control removes the second reader a pull request review gives it.
+
+**A slugless row receives its slug in place.** `navigator site document slug` sets `slug`, and optionally `kind`, on a
+row whose slug is null. The server refuses a row that already has a slug, and a slug that already names a revision
+chain, so the write never merges two documents. `sha256`, the storage key, and the bytes stay unchanged. Renaming a slug
+that already exists is a re-filing, not this command. A missing storage object is `navigator site document repair`,
+which copies bytes from a same-hash sibling in the matter onto the content-addressed key, or re-points the row at that
+key, then verifies the sha256. It does not expunge the document.
 
 **The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
 [`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to

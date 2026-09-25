@@ -411,7 +411,12 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         (
             "PATCH",
             "/app/api/projects/{id}/documents/{asset_id}",
-            patch(update_document_visibility_door),
+            patch(update_document_door),
+        ),
+        (
+            "POST",
+            "/app/api/projects/{id}/documents/{asset_id}/storage",
+            post(repair_document_storage_door),
         ),
         (
             "POST",
@@ -3757,18 +3762,98 @@ async fn document_integrity_door(
 }
 
 #[derive(Deserialize)]
-struct UpdateDocumentVisibilityRequest {
-    visibility: String,
+struct UpdateDocumentRequest {
+    #[serde(default)]
+    visibility: Option<String>,
+    /// Set on a row whose slug is null. Refused when the row already has a
+    /// slug or the slug already names a revision chain on this matter.
+    #[serde(default)]
+    slug: Option<String>,
+    /// Replaces `kind` only together with `slug`, and only while the row has
+    /// no slug.
+    #[serde(default)]
+    kind: Option<String>,
+    /// Validate and report the write. The row is left unchanged.
+    #[serde(default)]
+    dry_run: bool,
 }
 
-/// Reconcile a committed pointer's desired visibility with its current asset.
-/// The standard API audit middleware records the actor, scoped path, method,
-/// status, and request id for every attempt.
-async fn update_document_visibility_door(
+#[derive(Deserialize, Default)]
+struct RepairDocumentStorageRequest {
+    #[serde(default)]
+    dry_run: bool,
+}
+
+fn conflict(error: &str, message: &str) -> Response {
+    (
+        StatusCode::CONFLICT,
+        Json(serde_json::json!({ "error": error, "message": message })),
+    )
+        .into_response()
+}
+
+fn assign_slug_response(error: store::assets::AssignSlugError) -> Result<Response, ApiError> {
+    match error {
+        store::assets::AssignSlugError::NotOnProject => Err(ApiError::NotFound),
+        store::assets::AssignSlugError::AlreadySlugged => Ok(conflict(
+            "slug_present",
+            "This document already has a slug.",
+        )),
+        store::assets::AssignSlugError::ChainExists(slug) => Ok(conflict(
+            "slug_taken",
+            &format!("`{slug}` already names a document on this matter."),
+        )),
+        store::assets::AssignSlugError::MissingFilename => Ok(bad_request(
+            "filename_required",
+            "The document has no filename to check the slug against.",
+        )),
+        store::assets::AssignSlugError::InvalidSlug(error) => {
+            Ok(bad_request("invalid_slug", &error.to_string()))
+        }
+        store::assets::AssignSlugError::InvalidKind(kind) => Ok(bad_request(
+            "invalid_kind",
+            &format!(
+                "`{kind}` is not a document kind. Accepted values are: {}.",
+                accepted_asset_kinds().join(", ")
+            ),
+        )),
+        store::assets::AssignSlugError::Asset(error) => Err(ApiError::Asset(error)),
+    }
+}
+
+fn repair_storage_response(error: store::assets::RepairStorageError) -> Result<Response, ApiError> {
+    match error {
+        store::assets::RepairStorageError::NotOnProject => Err(ApiError::NotFound),
+        store::assets::RepairStorageError::ObjectCorrupt => Ok(conflict(
+            "object_corrupt",
+            "The stored object is present and does not match the recorded sha256.",
+        )),
+        store::assets::RepairStorageError::NoSibling => Ok(conflict(
+            "no_sibling",
+            "No other document in this matter holds these bytes.",
+        )),
+        store::assets::RepairStorageError::DigestMismatch => Ok(conflict(
+            "digest_mismatch",
+            "The repaired bytes do not match the recorded sha256.",
+        )),
+        store::assets::RepairStorageError::Asset(error) => Err(ApiError::Asset(error)),
+        store::assets::RepairStorageError::Project(error) => {
+            tracing::error!(error = %error, "api document storage repair: project lookup failed");
+            Err(ApiError::Db("the document could not be repaired".into()))
+        }
+    }
+}
+
+/// Reconcile a committed pointer's visibility, or set `slug` (and optionally
+/// `kind`) on a row that has no slug. The standard API audit middleware
+/// records the actor, scoped path, method, status, and request id for every
+/// attempt. Lawyer or admin, and both the matter and asset are scoped
+/// (out-of-scope → 404).
+async fn update_document_door(
     State(state): State<ApiState>,
     lawyer: LawyerSession,
     Path((project_id, asset_id)): Path<(Uuid, Uuid)>,
-    JsonOrForm(input): JsonOrForm<UpdateDocumentVisibilityRequest>,
+    JsonOrForm(input): JsonOrForm<UpdateDocumentRequest>,
 ) -> Result<Response, ApiError> {
     let in_scope = store::access::can_see_project_as_lawyer(
         &state.surreal,
@@ -3781,24 +3866,99 @@ async fn update_document_visibility_door(
     if !in_scope {
         return Err(ApiError::NotFound);
     }
-    let visibility = input.visibility.trim();
-    if !matches!(
-        visibility,
-        store::documents::visibility::INTERNAL | store::documents::visibility::CLIENT
-    ) {
-        return Ok(bad_request(
-            "invalid_visibility",
-            "visibility must be `internal` or `client`.",
-        ));
-    }
-    let Some(changed) =
-        store::assets::set_visibility(&state.surreal, project_id, asset_id, visibility)
+    match (input.visibility.as_deref(), input.slug.as_deref()) {
+        (Some(visibility), None) => {
+            let visibility = visibility.trim();
+            if !matches!(
+                visibility,
+                store::documents::visibility::INTERNAL | store::documents::visibility::CLIENT
+            ) {
+                return Ok(bad_request(
+                    "invalid_visibility",
+                    "visibility must be `internal` or `client`.",
+                ));
+            }
+            let Some(changed) =
+                store::assets::set_visibility(&state.surreal, project_id, asset_id, visibility)
+                    .await
+                    .map_err(ApiError::Asset)?
+            else {
+                return Err(ApiError::NotFound);
+            };
+            Ok(Json(serde_json::json!({ "changed": changed })).into_response())
+        }
+        (None, Some(slug)) => {
+            match store::assets::assign_slug(
+                &state.surreal,
+                project_id,
+                asset_id,
+                store::assets::AssignSlug {
+                    slug,
+                    kind: input.kind.as_deref(),
+                    dry_run: input.dry_run,
+                },
+            )
             .await
-            .map_err(ApiError::Asset)?
-    else {
+            {
+                Ok(asset) => Ok(Json(serde_json::json!({
+                    "asset_id": asset.id,
+                    "slug": asset.slug,
+                    "kind": asset.kind,
+                    "dry_run": input.dry_run,
+                }))
+                .into_response()),
+                Err(error) => assign_slug_response(error),
+            }
+        }
+        (Some(_), Some(_)) => Ok(bad_request(
+            "invalid_request",
+            "Send `visibility` or `slug`, not both.",
+        )),
+        (None, None) => Ok(bad_request(
+            "invalid_request",
+            "Send `visibility` or `slug`.",
+        )),
+    }
+}
+
+/// Copy a missing storage object from a same-hash sibling in the matter, or
+/// re-point the row at the content-addressed key that already holds it.
+/// Admin only. The API audit records the actor and operation. Out of scope
+/// is 404. No sibling leaves the row unchanged.
+async fn repair_document_storage_door(
+    State(state): State<ApiState>,
+    admin: AdminSession,
+    Path((project_id, asset_id)): Path<(Uuid, Uuid)>,
+    JsonOrForm(input): JsonOrForm<RepairDocumentStorageRequest>,
+) -> Result<Response, ApiError> {
+    let in_scope = store::access::can_see_project_as_lawyer(
+        &state.surreal,
+        admin.0.person_id,
+        admin.0.role,
+        project_id,
+    )
+    .await
+    .unwrap_or(false);
+    if !in_scope {
         return Err(ApiError::NotFound);
-    };
-    Ok(Json(serde_json::json!({ "changed": changed })).into_response())
+    }
+    match store::assets::repair_missing_object(
+        &state.surreal,
+        state.storage.as_ref(),
+        project_id,
+        asset_id,
+        input.dry_run,
+    )
+    .await
+    {
+        Ok(repaired) => Ok(Json(serde_json::json!({
+            "storage_key": repaired.storage_key,
+            "copied": repaired.copied,
+            "dry_run": repaired.dry_run,
+        }))
+        .into_response()),
+        Err(error) => repair_storage_response(error),
+    }
 }
 
 /// Map a contract-review action outcome onto an API response: `204` on success,

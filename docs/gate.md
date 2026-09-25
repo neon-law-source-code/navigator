@@ -19,7 +19,9 @@ over the files it never read. Run it from the root.
 
 `--check` compares committed document pointers with the live record. The host and Project code come from
 `navigator.yaml`. It rewrites a drifted pointer, writes a missing pointer, and writes a missing `documents/.gitignore`.
-It never writes to the live site. A missing or corrupt object, or a live row with no slug, needs a person. `--deep`
+It never writes to the live site. A missing or corrupt object needs a person: `navigator site document repair`
+restores a missing object from a same-hash sibling in the matter. A live row with no slug needs a person:
+`navigator site document slug` sets the slug and, when passed, the kind. `--deep`
 re-hashes each object. Under `--ci` any fix this would make fails the job and the output names the fix. Without
 `--check`, `project gate` makes no document request.
 

@@ -39,6 +39,7 @@ pub const KNOWN_PAGES: &[&str] = &[
     "gateway-accidents",
     "gateway-delete-your-data",
     "gateway-delete-your-debt",
+    "gateway-divorce",
     "gateway-estate-planning",
     "gateway-immigration",
     "home",
@@ -501,6 +502,7 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         | "gateway-accidents"
         | "gateway-delete-your-data"
         | "gateway-delete-your-debt"
+        | "gateway-divorce"
         | "gateway-estate-planning"
         | "gateway-immigration" => Some(LocalePageKind::Marketing),
         shared::SHARED_CATALOG_STEM => Some(LocalePageKind::Shared),

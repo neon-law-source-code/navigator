@@ -70,6 +70,9 @@ pub const PUBLIC_PATHS: &[&str] = &[
     // The Neon-hosted gateway to the Misericordia Injury Law practice. Same
     // Neon-only shape as `/delete-your-debt` above.
     "/accidents",
+    // The Neon-hosted gateway to the Daybridge Divorce Law practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/divorce",
     "/notations",
     "/notations/{slug}",
     "/contact",
@@ -148,6 +151,7 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
                 "/immigration",
                 "/estate-planning",
                 "/accidents",
+                "/divorce",
                 "/notations",
                 "/contact",
                 "/team",
@@ -363,6 +367,15 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
              premises, and wrongful-death claims: a free first conversation and a \
              contingency fee. No recovery amount, speed, or unqualified no-fee result \
              is promised.",
+        ),
+        page(
+            "Divorce",
+            "/divorce",
+            "Neon's gateway page naming Daybridge Divorce Law, a Shook Law PLLC \
+             practice, as the destination for divorce planning, agreements, motions, \
+             and court papers: $10 for each day the firm is retained, with case costs \
+             paid separately. No cooperative, quick, inexpensive, or favorable \
+             divorce is promised.",
         ),
         page(
             "Neon Law Navigator",

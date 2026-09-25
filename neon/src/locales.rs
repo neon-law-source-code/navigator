@@ -53,6 +53,9 @@ const NEON_GATEWAY_ESTATE_PLANNING_YAML: &str =
 /// `/accidents` — Neon's own gateway to the Misericordia Injury Law
 /// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
 const NEON_GATEWAY_ACCIDENTS_YAML: &str = include_str!("../locales/en/neon/gateway-accidents.yaml");
+/// `/divorce` — Neon's own gateway to the Daybridge Divorce Law practice.
+/// Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_DIVORCE_YAML: &str = include_str!("../locales/en/neon/gateway-divorce.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
@@ -120,6 +123,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "gateway-immigration") => Some(NEON_GATEWAY_IMMIGRATION_YAML),
         (BrandKey::Neon, "gateway-estate-planning") => Some(NEON_GATEWAY_ESTATE_PLANNING_YAML),
         (BrandKey::Neon, "gateway-accidents") => Some(NEON_GATEWAY_ACCIDENTS_YAML),
+        (BrandKey::Neon, "gateway-divorce") => Some(NEON_GATEWAY_DIVORCE_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
             Some(NEON_SERVICES_CATALOG_YAML)
         }
@@ -1059,6 +1063,22 @@ pub fn accidents_gateway(
     content
 }
 
+/// `/divorce` — Neon's own gateway page naming Daybridge Divorce Law as the
+/// destination for divorce representation. See [`delete_your_debt_gateway`],
+/// whose CTA-resolution shape this mirrors.
+pub fn divorce_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(load_page(branding, "gateway-divorce"), None, branding);
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Daybridge, deployment_host) {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
 /// The public notation format explanation, loaded from the English catalog.
 pub(crate) fn notations_content() -> PageContent {
     let branding = &views::brand::DEFAULT_BRANDING;
@@ -1883,6 +1903,75 @@ mod tests {
         }
         assert!(
             text.contains("we do not promise a recovery amount"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/divorce` gateway's CTA resolves per deployment, names Daybridge
+    /// Divorce Law, preserves the exact $10-a-day/case-costs-separate
+    /// framing, and never promises a cooperative, quick, inexpensive, or
+    /// favorable divorce.
+    #[test]
+    fn divorce_gateway_preserves_pricing_and_promises_no_outcome() {
+        let production = divorce_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.daybridgedivorce.com"
+        );
+        let staging = divorce_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.daybridgedivorce.com"
+        );
+
+        let content = divorce_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Daybridge Divorce Law"
+        );
+        let text = content.hero_lead.to_lowercase();
+        assert!(text.contains("daybridge divorce law"), "{text}");
+        assert!(text.contains("$10 for each day"), "{text}");
+        assert!(
+            text.contains("case costs are paid separately")
+                || text.contains("costs are paid separately"),
+            "{text}"
+        );
+        // "cooperative"/"quick"/"inexpensive"/"favorable divorce" may appear
+        // only inside the denial sentence — the same disclaim-not-promise
+        // shape `delete_your_debt_only_names_settlement_to_disclaim_it`
+        // checks.
+        for sentence in text.split('.') {
+            let claims_outcome = [
+                "cooperative divorce",
+                "quick divorce",
+                "inexpensive divorce",
+                "favorable divorce",
+            ]
+            .iter()
+            .any(|phrase| sentence.contains(phrase));
+            if claims_outcome {
+                assert!(
+                    sentence.contains("do not promise"),
+                    "outcome promise outside a denial: {sentence:?}"
+                );
+            }
+        }
+        assert!(!text.contains("we guarantee"), "{text}");
+        assert!(
+            text.contains("we do not promise a cooperative, quick, inexpensive, or"),
             "and says so plainly: {text}"
         );
     }

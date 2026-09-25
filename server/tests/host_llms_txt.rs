@@ -143,6 +143,7 @@ async fn the_index_advertises_the_firms_pages() {
         "/immigration",
         "/estate-planning",
         "/accidents",
+        "/divorce",
         "/notations",
         "/contact",
         "/blog",
@@ -271,6 +272,30 @@ async fn only_neon_advertises_the_accidents_gateway() {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert!(
             !body.contains("/accidents"),
+            "{host} must not advertise Neon's gateway: {body}"
+        );
+    }
+}
+
+/// Same as above, for the `/divorce` gateway.
+#[tokio::test]
+async fn only_neon_advertises_the_divorce_gateway() {
+    let app = app().await;
+    let advertised = advertised_paths(&document(&app).await);
+    assert!(
+        advertised.iter().any(|path| path == "/divorce"),
+        "Neon's own llms.txt must advertise its gateway: {advertised:?}"
+    );
+
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.daybridgedivorce.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/llms.txt", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/divorce"),
             "{host} must not advertise Neon's gateway: {body}"
         );
     }

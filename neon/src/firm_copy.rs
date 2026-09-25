@@ -66,6 +66,15 @@ pub fn accidents_gateway(
     locales::accidents_gateway(branding, deployment_host)
 }
 
+/// `/divorce` — Neon's own gateway to the Daybridge Divorce Law practice.
+/// See `locales/en/neon/gateway-divorce.yaml`.
+pub fn divorce_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::divorce_gateway(branding, deployment_host)
+}
+
 /// The regulated claims on the firm's public pages.
 ///
 /// `/navigator` and `/services` are the firm's, so the copy and the guards that

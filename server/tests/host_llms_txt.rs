@@ -138,6 +138,7 @@ async fn the_index_advertises_the_firms_pages() {
     for firm_page in [
         "/",
         "/navigator",
+        "/delete-your-debt",
         "/notations",
         "/contact",
         "/blog",
@@ -146,6 +147,31 @@ async fn the_index_advertises_the_firms_pages() {
         assert!(
             advertised.iter().any(|path| path == firm_page),
             "the firm page {firm_page} must be advertised: {advertised:?}"
+        );
+    }
+}
+
+/// The Neon-only gateway is Neon's alone: it appears in Neon's own index and
+/// resolves anonymously, and it never appears in a house brand's index.
+#[tokio::test]
+async fn only_neon_advertises_the_delete_your_debt_gateway() {
+    let app = app().await;
+    let advertised = advertised_paths(&document(&app).await);
+    assert!(
+        advertised.iter().any(|path| path == "/delete-your-debt"),
+        "Neon's own llms.txt must advertise its gateway: {advertised:?}"
+    );
+
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.deleteyourdebt.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/llms.txt", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/delete-your-debt"),
+            "{host} must not advertise Neon's gateway: {body}"
         );
     }
 }

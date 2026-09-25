@@ -28,8 +28,15 @@ pub use estate::EstateCopy;
 pub const DEFAULT_LOCALE: &str = "en";
 
 /// Page stems the English catalog may hold.
+///
+/// `gateway-delete-your-debt` is the first of a family: a Neon-only practice
+/// gateway, published solely under `neon/locales/en/neon/` and never shipped
+/// by another `BrandKey` (see [`crate::brand::BrandKey::catalog_pages`]). Each
+/// gateway page still deserializes as [`MarketingPageCopy`] like `navigator`
+/// and `services` do; only the stem is new.
 pub const KNOWN_PAGES: &[&str] = &[
     "fractional-gc",
+    "gateway-delete-your-debt",
     "home",
     "litigation",
     "navigator",
@@ -484,7 +491,9 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "home" => Some(LocalePageKind::Home),
         "litigation" => Some(LocalePageKind::Litigation),
         "fractional-gc" => Some(LocalePageKind::Transactional),
-        "navigator" | "notations" | "services" => Some(LocalePageKind::Marketing),
+        "navigator" | "notations" | "services" | "gateway-delete-your-debt" => {
+            Some(LocalePageKind::Marketing)
+        }
         shared::SHARED_CATALOG_STEM => Some(LocalePageKind::Shared),
         services::SERVICES_CATALOG_STEM => Some(LocalePageKind::ServicesCatalog),
         _ => None,
@@ -733,6 +742,61 @@ bands:
 "#,
         )
         .expect("navigator catalog");
+    }
+
+    /// A Neon-only practice gateway deserializes as a `MarketingPageCopy` like
+    /// `navigator` and `services` do; only the stem is new.
+    #[test]
+    fn gateway_catalog_deserializes() {
+        parse_locale_file(
+            "gateway-delete-your-debt",
+            r#"
+head_title: "Debt-collection defense | {site_name}"
+meta_description: Debt-collection defense is offered through DeleteYourDebt.com.
+title: Debt-collection defense
+tagline: Defend yourself against debt collectors.
+hero_mark: scales
+hero_lead: >-
+  Collection-lawsuit defense is offered through DeleteYourDebt.com, a Shook
+  Law PLLC practice. It does not settle debts or negotiate balances.
+hero_cta:
+  href: "https://www.deleteyourdebt.com/"
+  label: Visit DeleteYourDebt.com
+skin: practice
+"#,
+        )
+        .expect("gateway catalog");
+        assert_eq!(
+            locale_page_kind("gateway-delete-your-debt"),
+            Some(LocalePageKind::Marketing)
+        );
+    }
+
+    /// A gateway catalog is still a `MarketingPageCopy`: a missing required
+    /// field fails the same way it would on `navigator` or `services`, and a
+    /// `hero_cta` with no `label` fails too — the CTA's label is what names
+    /// the destination, so it cannot be silently absent.
+    #[test]
+    fn gateway_catalog_rejects_missing_or_invalid_fields() {
+        let err = parse_locale_file(
+            "gateway-delete-your-debt",
+            "meta_description: d\ntitle: t\n",
+        )
+        .expect_err("missing head_title");
+        assert!(err.contains("gateway-delete-your-debt"), "{err}");
+
+        let err = parse_locale_file(
+            "gateway-delete-your-debt",
+            r#"
+head_title: "Debt-collection defense | {site_name}"
+meta_description: d
+title: t
+hero_cta:
+  href: "https://www.deleteyourdebt.com/"
+"#,
+        )
+        .expect_err("hero_cta with no label");
+        assert!(err.contains("label"), "{err}");
     }
 
     /// The services catalog reaches its own validator through the same

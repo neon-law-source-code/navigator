@@ -182,6 +182,7 @@ async fn the_sitemap_advertises_the_firms_pages() {
     for firm_page in [
         "/",
         "/navigator",
+        "/delete-your-debt",
         "/notations",
         "/contact",
         "/blog",
@@ -190,6 +191,25 @@ async fn the_sitemap_advertises_the_firms_pages() {
         assert!(
             advertised.iter().any(|path| path == firm_page),
             "the firm page {firm_page} must be advertised: {advertised:?}"
+        );
+    }
+}
+
+/// The Neon-only gateway is Neon's alone: it advertises on Neon's own
+/// sitemap and 404s on every other brand's, whose sitemap must not name it.
+#[tokio::test]
+async fn only_neon_advertises_the_delete_your_debt_gateway() {
+    let app = app().await;
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.deleteyourdebt.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/delete-your-debt<"),
+            "{host} must not advertise Neon's gateway: {body}"
         );
     }
 }

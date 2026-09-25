@@ -721,6 +721,19 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         ),
         services_copy,
     ));
+    // `/delete-your-debt` — Neon's own gateway to the DeleteYourDebt.com
+    // practice. Neon-only, like `/navigator`: no `with_branded` injection,
+    // because `views::brand::BrandKey::publishes_firm_path`'s Neon arm
+    // already admits this path (it is not one of the three retired-page
+    // exclusions) while every other brand's arm is its own finite allow-list
+    // that does not name it, so `reject_unpublished_firm_path` 404s it on
+    // every other host without any further gating here.
+    routers.push(dioxus_app::marketing_page_router(
+        "/delete-your-debt",
+        firm_copy::delete_your_debt_gateway(branding, deployment_host),
+        state.sessions.clone(),
+        portal::secure_cookies(state),
+    ));
     // The talks catalog, and the five read routes each talk publishes: the
     // hub, its light table, the classroom step face, the projector face a
     // presenter opens on a second screen, and the certificate confirmation.

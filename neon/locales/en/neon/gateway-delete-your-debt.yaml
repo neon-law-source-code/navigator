@@ -1,0 +1,26 @@
+head_title: "Debt-collection defense | {site_name}"
+meta_description: >-
+  Debt-collection defense is offered through DeleteYourDebt.com, a Shook Law
+  PLLC practice defending collection lawsuits, FDCPA claims, validation
+  demands, and credit-report disputes. It does not settle debts or negotiate
+  balances.
+title: Debt-collection defense
+tagline: Defend yourself against debt collectors.
+hero_mark: scales
+hero_lead: >-
+  Collection-lawsuit defense, FDCPA claims, validation demands, and
+  credit-report disputes are offered through DeleteYourDebt.com, a Shook Law
+  PLLC practice. It does not settle debts or negotiate balances.
+hero_cta:
+  href: "https://www.deleteyourdebt.com/"
+  label: Visit DeleteYourDebt.com
+skin: practice
+bands:
+  - kind: statement
+    heading: A Shook Law PLLC practice
+    body:
+      - - text: >-
+              DeleteYourDebt.com is a practice of Shook Law PLLC, the law
+              firm behind {site_name}. A licensed attorney handles the work
+              there. The name describes what the practice defends against,
+              not a promise about your case or your debt.

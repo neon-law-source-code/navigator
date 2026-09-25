@@ -22,6 +22,7 @@ Neon Law (`neon/`):
 | `neon/locales/en/neon/navigator.yaml` | `/navigator` |
 | `neon/locales/en/neon/notations.yaml` | `/notations` format introduction |
 | `neon/locales/en/neon/services.yaml` | `/services` |
+| `neon/locales/en/neon/gateway-delete-your-debt.yaml` | `/delete-your-debt` — Neon-only gateway to DeleteYourDebt.com |
 
 The shared catalog sits beside the brand directories rather than inside one, because it is shared across brands and
 across repositories:

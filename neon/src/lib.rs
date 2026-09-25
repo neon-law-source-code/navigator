@@ -54,6 +54,10 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/disputes",
     "/business",
     "/navigator",
+    // The Neon-hosted gateway to the DeleteYourDebt.com practice. Neon-only —
+    // 404s on every other registered brand host; see
+    // `views::brand::BrandKey::publishes_firm_path`.
+    "/delete-your-debt",
     "/notations",
     "/notations/{slug}",
     "/contact",
@@ -127,6 +131,7 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
                 "/navigator",
+                "/delete-your-debt",
                 "/notations",
                 "/contact",
                 "/team",
@@ -299,6 +304,14 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             mark,
             "/",
             "Counsel for technology companies. $5,000 flat-fee setup. $50 a day with five-business-day contract turnaround. $500 express review in one day. Contracts include 50 pages; each additional page is $5. Separate $10,000 retainer.",
+        ),
+        page(
+            "Debt-collection defense",
+            "/delete-your-debt",
+            "Neon's gateway page naming DeleteYourDebt.com, a Shook Law PLLC practice, as \
+             the destination for collection-lawsuit defense, FDCPA claims, validation \
+             demands, and credit-report disputes. It does not settle debts or negotiate \
+             balances.",
         ),
         page(
             "Neon Law Navigator",

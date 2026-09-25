@@ -754,6 +754,14 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         state.sessions.clone(),
         portal::secure_cookies(state),
     ));
+    // `/estate-planning` — Neon's own gateway to the Vesta Estate Planning
+    // practice. Same admission shape as `/delete-your-debt` above.
+    routers.push(dioxus_app::marketing_page_router(
+        "/estate-planning",
+        firm_copy::estate_planning_gateway(branding, deployment_host),
+        state.sessions.clone(),
+        portal::secure_cookies(state),
+    ));
     // The talks catalog, and the five read routes each talk publishes: the
     // hub, its light table, the classroom step face, the projector face a
     // presenter opens on a second screen, and the certificate confirmation.

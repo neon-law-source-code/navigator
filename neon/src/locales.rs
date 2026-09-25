@@ -46,6 +46,10 @@ const NEON_GATEWAY_DELETE_YOUR_DATA_YAML: &str =
 /// Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
 const NEON_GATEWAY_IMMIGRATION_YAML: &str =
     include_str!("../locales/en/neon/gateway-immigration.yaml");
+/// `/estate-planning` — Neon's own gateway to the Vesta Estate Planning
+/// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_ESTATE_PLANNING_YAML: &str =
+    include_str!("../locales/en/neon/gateway-estate-planning.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
@@ -111,6 +115,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "gateway-delete-your-debt") => Some(NEON_GATEWAY_DELETE_YOUR_DEBT_YAML),
         (BrandKey::Neon, "gateway-delete-your-data") => Some(NEON_GATEWAY_DELETE_YOUR_DATA_YAML),
         (BrandKey::Neon, "gateway-immigration") => Some(NEON_GATEWAY_IMMIGRATION_YAML),
+        (BrandKey::Neon, "gateway-estate-planning") => Some(NEON_GATEWAY_ESTATE_PLANNING_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
             Some(NEON_SERVICES_CATALOG_YAML)
         }
@@ -1013,6 +1018,26 @@ pub fn immigration_gateway(
     content
 }
 
+/// `/estate-planning` — Neon's own gateway page naming Vesta Estate Planning
+/// as the destination for estate-planning work. See
+/// [`delete_your_debt_gateway`], whose CTA-resolution shape this mirrors.
+pub fn estate_planning_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(
+        load_page(branding, "gateway-estate-planning"),
+        None,
+        branding,
+    );
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Vesta, deployment_host) {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
 /// The public notation format explanation, loaded from the English catalog.
 pub(crate) fn notations_content() -> PageContent {
     let branding = &views::brand::DEFAULT_BRANDING;
@@ -1714,6 +1739,62 @@ mod tests {
         }
         assert!(
             text.contains("cannot promise"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/estate-planning` gateway's CTA resolves per deployment, names
+    /// Vesta Estate Planning, preserves the exact $5,000-once/unlimited-edits
+    /// framing, and never promises a tax, probate, or asset-protection
+    /// outcome.
+    #[test]
+    fn estate_planning_gateway_preserves_pricing_and_promises_no_outcome() {
+        let production =
+            estate_planning_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.vestaestateplanning.com"
+        );
+        let staging =
+            estate_planning_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.vestaestateplanning.com"
+        );
+
+        let content = estate_planning_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Vesta Estate Planning"
+        );
+        let text = content.hero_lead.to_lowercase();
+        assert!(text.contains("vesta estate planning"), "{text}");
+        assert!(text.contains("$5,000 once"), "{text}");
+        assert!(text.contains("unlimited edits for life"), "{text}");
+        assert!(
+            text.contains("court and recording fees are separate"),
+            "{text}"
+        );
+        for promise in ["tax result", "avoid probate", "asset protection is"] {
+            assert!(
+                !text.contains(promise),
+                "estate gateway promises {promise:?}"
+            );
+        }
+        assert!(
+            text.contains("do not promise a particular tax, probate, or"),
             "and says so plainly: {text}"
         );
     }

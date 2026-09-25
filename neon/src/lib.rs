@@ -64,6 +64,9 @@ pub const PUBLIC_PATHS: &[&str] = &[
     // The Neon-hosted gateway to the Abhaya Immigration practice. Same
     // Neon-only shape as `/delete-your-debt` above.
     "/immigration",
+    // The Neon-hosted gateway to the Vesta Estate Planning practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/estate-planning",
     "/notations",
     "/notations/{slug}",
     "/contact",
@@ -140,6 +143,7 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
                 "/delete-your-debt",
                 "/delete-your-data",
                 "/immigration",
+                "/estate-planning",
                 "/notations",
                 "/contact",
                 "/team",
@@ -337,6 +341,15 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
              the destination for family petitions, employment visas, green cards, \
              naturalization, and consular processing. Government filing fees are \
              separate, and no approval or timeline is promised.",
+        ),
+        page(
+            "Estate planning",
+            "/estate-planning",
+            "Neon's gateway page naming Vesta Estate Planning, a Shook Law PLLC practice, \
+             as the destination for wills, trusts, powers of attorney, health-care \
+             directives, and lifetime plan updates: $5,000 once, with unlimited edits \
+             for life, and court and recording fees separate. No tax, probate, or \
+             asset-protection outcome is promised.",
         ),
         page(
             "Neon Law Navigator",

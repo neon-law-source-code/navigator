@@ -48,6 +48,15 @@ pub fn immigration_gateway(
     locales::immigration_gateway(branding, deployment_host)
 }
 
+/// `/estate-planning` — Neon's own gateway to the Vesta Estate Planning
+/// practice. See `locales/en/neon/gateway-estate-planning.yaml`.
+pub fn estate_planning_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::estate_planning_gateway(branding, deployment_host)
+}
+
 /// The regulated claims on the firm's public pages.
 ///
 /// `/navigator` and `/services` are the firm's, so the copy and the guards that

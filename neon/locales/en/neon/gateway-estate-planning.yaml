@@ -1,0 +1,29 @@
+head_title: "Estate planning | {site_name}"
+meta_description: >-
+  Estate planning is offered through Vesta Estate Planning, a Shook Law PLLC
+  practice: a lifetime estate plan for $5,000 once, with unlimited edits for
+  life. Court and recording fees are separate. No tax, probate, or
+  asset-protection outcome is promised.
+title: Estate planning
+tagline: A plan you can keep current.
+hero_mark: gavel
+hero_lead: >-
+  Wills, trusts, powers of attorney, health-care directives, and lifetime
+  plan updates are offered through Vesta Estate Planning, a Shook Law PLLC
+  practice, for $5,000 once, with unlimited edits for life. A licensed
+  attorney prepares and reviews the plan. Court and recording fees are
+  separate. We do not promise a particular tax, probate, or
+  asset-protection result.
+hero_cta:
+  href: "https://www.vestaestateplanning.com/"
+  label: Visit Vesta Estate Planning
+skin: practice
+bands:
+  - kind: statement
+    heading: A Shook Law PLLC practice
+    body:
+      - - text: >-
+              Vesta Estate Planning is a practice of Shook Law PLLC, the law
+              firm behind {site_name}. A licensed attorney handles the work
+              there. The $5,000 price and unlimited-edits terms are Vesta's
+              own; court and recording costs are paid separately.

@@ -1565,6 +1565,42 @@ enum EmailSummaryCmd {
         #[arg(long)]
         receipt: uuid::Uuid,
     },
+    /// List every delivery currently quarantined in `UNKNOWN`, the state
+    /// `deliver_summary` records when Slack's response is lost, times out,
+    /// or comes back a retryable HTTP status — an operator can't reconcile
+    /// what they can't see. Reads `NAVIGATOR_SURREAL_*` only; changes
+    /// nothing.
+    Quarantined,
+    /// Record that a quarantined delivery's Slack post actually succeeded,
+    /// moving it to `confirmed` so replay stops treating it as in doubt.
+    /// Use only after confirming the post landed in Slack out of band (for
+    /// example, by looking at the channel).
+    ReconcileConfirmed {
+        /// The quarantined receipt to reconcile.
+        #[arg(long)]
+        receipt: uuid::Uuid,
+        /// The operator recording this decision, stored as `reconciled_by`.
+        #[arg(long)]
+        actor: String,
+        /// The Slack channel the confirmed post landed in.
+        #[arg(long)]
+        channel: String,
+        /// The confirmed post's Slack message timestamp.
+        #[arg(long)]
+        timestamp: String,
+    },
+    /// Record operator authorization to resend a quarantined delivery,
+    /// moving it back to `not_attempted` so the next `deliver_summary` call
+    /// is admitted again. Use only after confirming the original post never
+    /// reached Slack, since this permits a second post attempt.
+    AuthorizeResend {
+        /// The quarantined receipt to authorize a resend for.
+        #[arg(long)]
+        receipt: uuid::Uuid,
+        /// The operator recording this decision, stored as `reconciled_by`.
+        #[arg(long)]
+        actor: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2847,13 +2883,25 @@ fn document_pointer_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError
                         .extension()
                         .and_then(std::ffi::OsStr::to_str)
                         .is_some_and(|extension| !extension.is_empty());
-                    if has_document_extension {
-                        Ok(pointer)
-                    } else {
+                    if !has_document_extension {
                         anyhow::bail!(
                             "pointer filename must retain the document extension before its `.yaml` pointer suffix"
                         )
                     }
+                    // ENG-859: the folder-keyed pointer-key rules
+                    // (`onboarding`/`offboarding`/`invoices`) need the
+                    // source document's path relative to `documents/`,
+                    // which `without_yml` names once its own `.yaml`/`.yml`
+                    // suffix is stripped.
+                    if let Ok(source_relative) =
+                        without_yml.strip_prefix(dir.join("documents"))
+                    {
+                        crate::document_sync::validate_folder_pointer_keys(
+                            source_relative,
+                            &pointer,
+                        )?;
+                    }
+                    Ok(pointer)
                 });
             if let Err(error) = validation {
                 print_violation(

@@ -402,6 +402,30 @@ async fn update_delivery(
     Ok(updated)
 }
 
+/// List every delivery currently sitting in `state`, most-recently-updated
+/// first. The operator recovery path for `UNKNOWN`: there is no
+/// notification when a delivery is quarantined, so an operator has to ask
+/// what needs reconciling before `reconcile_confirmed` or `authorize_resend`
+/// is actionable.
+pub async fn list_by_state(
+    db: &SurrealDb,
+    state: &str,
+) -> Result<Vec<EmailDelivery>, EmailDeliveryError> {
+    let mut response = db
+        .query(format!(
+            "SELECT {DELIVERY_SELECT} FROM {DELIVERY_TABLE} \
+             WHERE state = $state ORDER BY updated_at DESC"
+        ))
+        .bind(("state", state.to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<DeliveryRow> = response.take(0)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(DeliveryRow::into_delivery)
+        .collect())
+}
+
 pub async fn attempts(
     db: &SurrealDb,
     receipt_id: Uuid,
@@ -515,6 +539,54 @@ mod tests {
             .await
             .expect("resend admission");
         assert!(resumed.attempt_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn list_by_state_finds_only_quarantined_deliveries() {
+        let (db, receipt_id) = setup().await;
+        ensure(&db, receipt_id, "C123")
+            .await
+            .expect("delivery setup");
+        admit_attempt(&db, receipt_id, "corr-a")
+            .await
+            .expect("admission");
+        mark_unknown(&db, receipt_id, "response lost after dispatch")
+            .await
+            .expect("unknown");
+
+        let second_receipt = Uuid::now_v7();
+        let confirmed_receipt_id = crate::email_receipts::ensure(
+            &db,
+            &crate::email_receipts::NewEmailReceipt {
+                receiving_mailbox: "support@example.com",
+                deployment: "staging",
+                raw_digest: &format!("{second_receipt}"),
+                source_message_id: None,
+                archive_key: "inbound/other.eml",
+                letter_id: Uuid::now_v7(),
+            },
+        )
+        .await
+        .expect("second receipt setup")
+        .receipt
+        .id;
+        ensure(&db, confirmed_receipt_id, "C456")
+            .await
+            .expect("confirmed delivery setup");
+        admit_attempt(&db, confirmed_receipt_id, "corr-b")
+            .await
+            .expect("confirmed admission");
+        mark_confirmed(&db, confirmed_receipt_id, "C456", "1700000000.000002")
+            .await
+            .expect("confirmed");
+
+        let unknown = list_by_state(&db, UNKNOWN).await.expect("list unknown");
+        assert_eq!(unknown.len(), 1);
+        assert_eq!(unknown[0].receipt_id, receipt_id);
+
+        let confirmed = list_by_state(&db, CONFIRMED).await.expect("list confirmed");
+        assert_eq!(confirmed.len(), 1);
+        assert_eq!(confirmed[0].receipt_id, confirmed_receipt_id);
     }
 
     #[tokio::test]

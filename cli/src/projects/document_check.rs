@@ -429,14 +429,23 @@ fn desired_pointer(
                 })?,
         )
     };
-    let (authority_id, canonical_url, checked_on) = match local {
-        Some(pointer) if pointer.current_version.asset_id == operative.asset_id => (
-            pointer.authority_id,
-            pointer.current_version.canonical_url.clone(),
-            pointer.current_version.checked_on.clone(),
-        ),
-        _ => (None, None, None),
-    };
+    // ENG-859: `docusign_envelope_id` and `xero_invoice_id` are, like
+    // `authority_id`, facts this offline reconciliation never resolves for
+    // itself — it only carries a local value forward when the operative
+    // revision it names is unchanged. Live resolution against DocuSign/Xero
+    // (confirming the id it names still exists) is `project gate --check`'s
+    // separate live-check pass (ENG-863), not this function.
+    let (authority_id, canonical_url, checked_on, docusign_envelope_id, xero_invoice_id) =
+        match local {
+            Some(pointer) if pointer.current_version.asset_id == operative.asset_id => (
+                pointer.authority_id,
+                pointer.current_version.canonical_url.clone(),
+                pointer.current_version.checked_on.clone(),
+                pointer.docusign_envelope_id,
+                pointer.xero_invoice_id,
+            ),
+            _ => (None, None, None, None, None),
+        };
     let pointer = DocumentPointer {
         kind: kind.to_string(),
         visibility: operative.visibility.clone(),
@@ -451,6 +460,8 @@ fn desired_pointer(
         },
         previous_version,
         authority_id,
+        docusign_envelope_id,
+        xero_invoice_id,
     };
     pointer.validate().map_err(|error| error.to_string())?;
     Ok(pointer)

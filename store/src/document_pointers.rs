@@ -24,6 +24,20 @@ pub struct DocumentPointer {
     /// Project document with no Authority of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authority_id: Option<Uuid>,
+    /// The `DocuSign` envelope this signed document came from (ENG-859).
+    /// Required by `project gate` on a `documents/onboarding/**` or
+    /// `documents/offboarding/**` pointer named `<name>_signed.pdf`; absent
+    /// on every other pointer. Validated here only as a well-formed UUID —
+    /// `project gate --check` (ENG-863) is the seam that resolves it against
+    /// `DocuSign` and confirms the envelope is complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docusign_envelope_id: Option<Uuid>,
+    /// The Xero invoice this pointer's bytes were downloaded from (ENG-859).
+    /// Required by `project gate` on every `documents/invoices/**` pointer.
+    /// Validated here only as a well-formed UUID — `project gate --check`
+    /// (ENG-863) resolves it against the Firm's Xero org.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xero_invoice_id: Option<Uuid>,
 }
 
 /// The immutable facts copied from the current `assets` row.
@@ -141,6 +155,8 @@ mod tests {
             },
             previous_version: None,
             authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
         }
     }
 
@@ -215,5 +231,47 @@ mod tests {
         assert!(!yaml.contains("authority_id"));
         assert!(!yaml.contains("canonical_url"));
         assert!(!yaml.contains("checked_on"));
+    }
+
+    /// `docusign_envelope_id` and `xero_invoice_id` (ENG-859) are additive
+    /// and optional like `authority_id`: absent by default, round-trip when
+    /// set, and `deny_unknown_fields` still catches a typo of either key.
+    #[test]
+    fn docusign_and_xero_ids_are_optional_and_round_trip() {
+        let mut plain = pointer();
+        let plain_yaml = plain.to_yaml().unwrap();
+        assert!(!plain_yaml.contains("docusign_envelope_id"));
+        assert!(!plain_yaml.contains("xero_invoice_id"));
+        assert!(DocumentPointer::from_yaml(&plain_yaml)
+            .unwrap()
+            .validate()
+            .is_ok());
+
+        plain.kind = "onboarding".into();
+        plain.docusign_envelope_id = Some(Uuid::now_v7());
+        plain.xero_invoice_id = Some(Uuid::now_v7());
+        assert!(plain.validate().is_ok());
+        let yaml = plain.to_yaml().unwrap();
+        assert!(yaml.contains("docusign_envelope_id"));
+        assert!(yaml.contains("xero_invoice_id"));
+        assert_eq!(DocumentPointer::from_yaml(&yaml).unwrap(), plain);
+    }
+
+    #[test]
+    fn an_unknown_pointer_key_is_rejected() {
+        let yaml = "kind: invoice\n\
+                     visibility: internal\n\
+                     current_version:\n  \
+                       version: 1\n  \
+                       asset_id: 018f3b1a-0000-7000-8000-000000000000\n  \
+                       created_at: 2026-09-05T12:00:00Z\n  \
+                       sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  \
+                       size_bytes: 42\n\
+                     xero_invoic_id: 018f3b1a-0000-7000-8000-000000000000\n";
+        let error = DocumentPointer::from_yaml(yaml).unwrap_err();
+        assert!(
+            error.to_string().contains("unknown field"),
+            "a typo'd key must fail to parse, not silently vanish: {error}"
+        );
     }
 }

@@ -3360,6 +3360,10 @@ async fn document_pointer(
         // constructs its own pointer client-side rather than reaching this
         // door at all (see `cli::document_sync`).
         authority_id: None,
+        // ENG-859: this door never fills either external-id key itself —
+        // that's ENG-857's `project sync` job, once it exists.
+        docusign_envelope_id: None,
+        xero_invoice_id: None,
     })
 }
 

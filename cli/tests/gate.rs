@@ -734,6 +734,84 @@ fn gate_accepts_a_complete_document_pointer_and_rejects_chain_mismatches() {
         .stdout(str::contains("unknown"));
 }
 
+/// ENG-859: `onboarding/`/`offboarding/` require a matching `_signed.pdf`
+/// name and `docusign_envelope_id` together, and every `invoices/` pointer
+/// requires `xero_invoice_id`.
+#[test]
+fn gate_enforces_the_onboarding_offboarding_and_invoice_pointer_keys() {
+    let dir = TempDir::new().unwrap();
+    write_project_shell(dir.path(), "acme");
+    let common = "current_version:\n  version: 1\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T12:00:00Z\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  size_bytes: 42\n";
+
+    // A `_signed.pdf` onboarding pointer with no envelope id is rejected.
+    write(
+        dir.path(),
+        "documents/onboarding/retainer_signed.pdf.yaml",
+        &format!("kind: onboarding\nvisibility: internal\n{common}"),
+    );
+    gate(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y003"))
+        .stdout(str::contains("docusign_envelope_id"));
+
+    // Adding a well-formed envelope id makes the same pointer pass.
+    write(
+        dir.path(),
+        "documents/onboarding/retainer_signed.pdf.yaml",
+        &format!(
+            "kind: onboarding\nvisibility: internal\n{common}docusign_envelope_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d41\n"
+        ),
+    );
+    gate(dir.path()).assert().success();
+
+    // An onboarding pointer named without the `_signed.pdf` suffix but
+    // carrying an envelope id is also rejected.
+    std::fs::remove_file(
+        dir.path()
+            .join("documents/onboarding/retainer_signed.pdf.yaml"),
+    )
+    .unwrap();
+    write(
+        dir.path(),
+        "documents/onboarding/retainer.pdf.yaml",
+        &format!(
+            "kind: onboarding\nvisibility: internal\n{common}docusign_envelope_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d41\n"
+        ),
+    );
+    gate(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y003"))
+        .stdout(str::contains("_signed.pdf"));
+
+    // An invoice pointer with no xero_invoice_id is rejected.
+    std::fs::remove_file(dir.path().join("documents/onboarding/retainer.pdf.yaml")).unwrap();
+    write(
+        dir.path(),
+        "documents/invoices/INV-1.pdf.yaml",
+        &format!("kind: invoice\nvisibility: internal\n{common}"),
+    );
+    gate(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y003"))
+        .stdout(str::contains("xero_invoice_id"));
+
+    // Adding the invoice id makes it pass.
+    write(
+        dir.path(),
+        "documents/invoices/INV-1.pdf.yaml",
+        &format!(
+            "kind: invoice\nvisibility: internal\n{common}xero_invoice_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d42\n"
+        ),
+    );
+    gate(dir.path()).assert().success();
+}
+
 #[test]
 fn gate_checks_seed_documents_before_any_deployment_write() {
     let dir = TempDir::new().unwrap();

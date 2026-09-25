@@ -375,9 +375,9 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             "/divorce",
             "Neon's gateway page naming Daybridge Divorce Law, a Shook Law PLLC \
              practice, as the destination for divorce planning, agreements, motions, \
-             and court papers: $10 for each day the firm is retained, with case costs \
-             paid separately. No cooperative, quick, inexpensive, or favorable \
-             divorce is promised.",
+             and court papers: a one-time $500 setup fee, then $10 a day while \
+             retained, $50 per court appearance, and $5,000 per trial day, with \
+             legal costs paid separately. No result or timeline is promised.",
         ),
         page(
             "Neon Law Navigator",

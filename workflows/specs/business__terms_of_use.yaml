@@ -8,7 +8,7 @@ origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates
 prompts:
   business_services: "Identify the website, app, and covered services."
   company: "What is the company’s full legal name and entity type?"
-  effective_date: "What is the effective date?"
+  effective_date: "What is the {{for_label}}?"
   contacts: "Who are the primary and alternate contacts? Include name, title, email, and postal address."
   business_acceptance: "Describe the actual notice and assent mechanism, including how changes are accepted."
   business_eligibility: "State the audience, age limits, and organizational authority requirements."

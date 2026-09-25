@@ -16,7 +16,7 @@ questionnaire:
   END: {}
 prompts:
   tax_year: What tax year does this return cover?
-  gross_revenue: What is the gross revenue?
+  gross_revenue: "What is the {{for_label}}?"
 workflow:
   BEGIN:
     _: member_signatures

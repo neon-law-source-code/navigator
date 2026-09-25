@@ -104,7 +104,15 @@ fn question_for_state(
         .map_or((state, state), |(prefix, role)| (prefix, role));
     let custom = prompts.get(role);
     let readable_role = role.replace('_', " ");
-    let prompt = custom.map_or_else(|| default_prompt(answer_type, &readable_role), Clone::clone);
+    let prompt = custom.map_or_else(
+        || default_prompt(answer_type, &readable_role),
+        |prompt| {
+            prompt
+                .replace("{{for_label}}", &readable_role)
+                .replace("{{label}}", &readable_role)
+                .replace("{label}", &readable_role)
+        },
+    );
     let choices = options.get(role).map_or_else(Vec::new, |options| {
         options
             .iter()

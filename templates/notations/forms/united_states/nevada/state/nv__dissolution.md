@@ -15,7 +15,7 @@ questionnaire:
     _: END
   END: {}
 prompts:
-  dissolution_reason: What is the dissolution reason?
+  dissolution_reason: "What is the {{for_label}}?"
   final_debts_settled: Have all final debts been settled?
 workflow:
   BEGIN:

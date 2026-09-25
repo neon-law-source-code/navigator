@@ -9,7 +9,7 @@ origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates
 prompts:
   company: "What is the company’s full legal name and entity type?"
   business_services: "Identify covered websites, apps, audiences, and controller/business role."
-  effective_date: "What is the effective date?"
+  effective_date: "What is the {{for_label}}?"
   contacts: "Who are the primary and alternate contacts? Include name, title, email, and postal address."
   business_data: "Inventory data categories, sensitive data, people, and specific sources."
   business_purposes: "Map each category to its actual purpose and disclose any automated decision-making."

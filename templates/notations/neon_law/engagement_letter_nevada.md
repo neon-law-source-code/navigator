@@ -49,25 +49,24 @@ workflow:
   END: {}
 ---
 
+## Cover sheet
+
+Sample from a notation template. The matter is simulated. No person named here exists. No lawyer is engaged by this
+page. It is not legal advice.
+
+## Caption
+
+Date: {{custom_datetime__engagement_start_date}}
+
+To: {{person__client}}
+
+Re: Engagement for legal services, Cruller v. Prine
+
 # ENGAGEMENT LETTER
-
-__FIXTURE DOCUMENT.__ This is a sample rendered from a notation template in the Navigator sample project. _Cruller v.
-Prine_ is a simulated matter, no person named here exists, no lawyer is engaged by anyone on the strength of this page,
-and nothing in it is legal advice.
-
-__Date:__ {{custom_datetime__engagement_start_date}}
-
-__To:__ {{person__client}}
-
-__Re:__ Engagement to provide legal services — Cruller v. Prine
 
 Dear {{person__client}}:
 
-Thank you for engaging the Firm. This letter sets out the terms on which the Firm will represent you. It is deliberately
-short. It says what we are doing now, who answers for it on each side, how we bill, where your dispute will be heard,
-and how you and the Firm would resolve a disagreement between ourselves if one arose.
-
-If these terms are acceptable, please sign below and return a copy.
+The Firm will represent you on the terms below. Sign and return a copy if you accept.
 
 ## I. Client and scope
 

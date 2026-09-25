@@ -29,16 +29,20 @@ workflow:
   END: {}
 ---
 
+## Cover sheet
+
+Sample from a notation template. The matter is simulated. No person named here exists. This is not legal advice and it
+is not sworn testimony.
+
+## Caption
+
+Cruller v. Prine, Count II
+
+Affiant: Odile Cruller
+
+Concerning: {{person__client}}
+
 # AFFIDAVIT OF PERCIPIENT WITNESS
-
-__FIXTURE DOCUMENT.__ This is a sample rendered from a notation template in the Navigator sample project. _Cruller v.
-Prine_ is a simulated matter, no person described here exists, and nothing in it is legal advice or sworn testimony.
-
-__Matter:__ Cruller v. Prine — Count II
-
-__Affiant:__ Odile Cruller
-
-__Concerning:__ {{person__client}}
 
 ## 1. Basis of knowledge
 
@@ -66,8 +70,8 @@ agreement, and nothing in his manner suggested he believed he was performing one
 
 ## 5. Discovery
 
-On {{custom_datetime__discovery_date}} my father stated for the first time that the doughnut had carried a term
-concerning his soul. He appeared to be learning it rather than recalling it.
+On {{custom_datetime__discovery_date}} my father said for the first time that the doughnut had carried a term about his
+soul. He was learning it, not recalling it.
 
 Odile Cruller
 

@@ -44,6 +44,41 @@ the manifest rather than reporting a successful build of nothing.
 cargo run -p cli -- ops assets build --src ~/photos --only lake-tahoe
 ```
 
+## Authenticated single-asset publish (no bucket credential)
+
+`assets upload` above needs GCS access on the operator's own machine through ADC — the right shape for the operator
+batch-publishing the whole gallery, wrong for a one-off asset from a machine that has never run `gcloud auth
+application-default login`. `navigator site asset upload` is the OAuth-backed sibling: it reads no GCP environment,
+needs no bucket name, and writes nothing except through the deployment's own authenticated site API (`POST
+/app/api/assets`, `portal::assets_api`), following the same `navigator site login` seam `site document upload` and `site
+authorities create` already use (see [`command-boundary`](command-boundary.md)).
+
+`ASSET_NAME` is the local path to read bytes from. When it lives under `server/public/`, its relative path is also the
+exact bucket key the object is stored — and served back — under; pass `--key` for a file that lives elsewhere (a
+generated asset not yet staged under `server/public/`) or when the deployed key should differ from the local path. Log
+in to each deployment first, then publish to as many as needed in one call; each host's result is reported on its own
+line, and the command exits non-zero if any requested host fails:
+
+```bash
+navigator site login --host <staging-host>
+navigator site login --host <production-host>
+navigator site asset upload \
+  --host <staging-host> --host <production-host> \
+  brand/rabbit.svg
+```
+
+The server derives the content type from the key's extension, checks the caller's declared `sha256` against what it
+decodes (catching transit corruption before a byte reaches storage), rejects a key outside `brand/`, `img/`, or `fonts/`
+or anything over the size ceiling, and writes only to the deployment's public assets bucket — it never touches the
+private documents bucket `NAVIGATOR_DOCUMENTS_BUCKET` names. A `.woff2` payload must carry the `wOF2` signature, and
+`fonts/<family>/OFL.txt` is the one accepted `.txt` key, checked for valid UTF-8 under 64 KiB. Uploading the same key
+with the same bytes and content type again is reported `unchanged` rather than rewritten. After any write (or confirming
+none was needed) the server reads the object straight back from the same storage the public route serves, and the CLI
+itself then fetches `<host>/assets/<key>` and compares it byte-for-byte against the local file, so a reported success
+means the asset is already live, not merely accepted — no separate `assets verify` step needed for this one object.
+Authorization is Owner/Admin, the same tier every other site-branding write uses — a public asset is firm-side site
+configuration, not matter-scoped lawyer work.
+
 ## Adding an image to a presentation or workshop slide
 
 A bucket-lane slide image is complete only when the same file has two homes:

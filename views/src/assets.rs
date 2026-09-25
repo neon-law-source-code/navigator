@@ -92,9 +92,9 @@ pub const WIDTHS: [u32; 3] = [400, 800, 1200];
 /// `srcset` support, and the resource the preload scanner fetches).
 pub const FALLBACK_WIDTH: u32 = 1200;
 
-/// Approved CyberInjuryLaw campaign assets, restored through the public asset lane.
+/// Approved `CyberInjuryLaw` campaign assets, restored through the public asset lane.
 pub const CYBER_INJURY_HERO_KEY: &str = "img/cyber-injury-law/cyber-warrior.png";
-/// Flat subway-ad artwork for the CyberInjuryLaw campaign.
+/// Flat subway-ad artwork for the `CyberInjuryLaw` campaign.
 pub const CYBER_INJURY_AD_KEY: &str = "img/cyber-injury-law/canal-st-ad.png";
 
 /// Stable object key for the replaceable firm home presentation.

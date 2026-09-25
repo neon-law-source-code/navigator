@@ -67,6 +67,11 @@ const COMPILED_SITES: &[CompiledSite] = &[
         www: "www.deathanddivorcelaw.com",
         live: true,
     },
+    CompiledSite {
+        key: "cyber-injury-law",
+        www: "www.cyberinjurylaw.com",
+        live: false,
+    },
 ];
 
 /// One brand key as `/app` listings should print it.

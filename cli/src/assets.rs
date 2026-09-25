@@ -152,7 +152,7 @@ pub const LIBRE_FRANKLIN: FontFamily = FontFamily {
     extra_weights: &[],
 };
 
-/// CyberInjuryLaw's condensed display face, including its actual 800 weight.
+/// `CyberInjuryLaw`'s condensed display face, including its actual 800 weight.
 pub const BARLOW_CONDENSED: FontFamily = FontFamily {
     label: "Barlow Condensed",
     dir: "barlow-condensed",
@@ -160,7 +160,7 @@ pub const BARLOW_CONDENSED: FontFamily = FontFamily {
     extra_weights: &["ExtraBold"],
 };
 
-/// CyberInjuryLaw's variable sans-serif body face.
+/// `CyberInjuryLaw`'s variable sans-serif body face.
 pub const DM_SANS: FontFamily = FontFamily {
     label: "DM Sans",
     dir: "dm-sans",

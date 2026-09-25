@@ -47,7 +47,7 @@ pub(super) fn Assessment(copy: CyberInjuryContent, consultation_href: String) ->
             onsubmit: move |event| { event.prevent_default(); let next = answers(&incident(), &timing(), &care()); invalid.set(next.is_none()); result.set(next); },
             div { class: "cyber-form-title", h3 { "YOUR FREE CASE CHECK" } span { "ABOUT 30 SECONDS" } }
             label { r#for: "cyber-incident", "What happened?" }
-            select { id: "cyber-incident", required: true, value: "{incident}", oninput: move |event| { incident.set(event.value()); result.set(None); },
+            select { class: "nav-select", id: "cyber-incident", required: true, value: "{incident}", oninput: move |event| { incident.set(event.value()); result.set(None); },
                 option { value: "", disabled: true, selected: incident().is_empty(), "Select an incident" }
                 option { value: "vehicle", "Car, truck, bicycle, or pedestrian crash" }
                 option { value: "fall", "Slip, trip, or fall" }
@@ -55,7 +55,7 @@ pub(super) fn Assessment(copy: CyberInjuryContent, consultation_href: String) ->
                 option { value: "other", "Another type of injury" }
             }
             label { r#for: "cyber-timing", "When did it happen?" }
-            select { id: "cyber-timing", required: true, value: "{timing}", oninput: move |event| { timing.set(event.value()); result.set(None); },
+            select { class: "nav-select", id: "cyber-timing", required: true, value: "{timing}", oninput: move |event| { timing.set(event.value()); result.set(None); },
                 option { value: "", disabled: true, selected: timing().is_empty(), "Select a time frame" }
                 option { value: "recent", "Within the last 30 days" }
                 option { value: "months", "1–12 months ago" }
@@ -66,12 +66,12 @@ pub(super) fn Assessment(copy: CyberInjuryContent, consultation_href: String) ->
                 legend { "Have you received medical care?" }
                 for (value, label) in [("yes", "Yes"), ("no", "Not yet")] {
                     label { class: "cyber-radio",
-                        input { r#type: "radio", name: "cyber-care", value, required: true, checked: care() == value, onchange: move |_| { care.set(value.to_string()); result.set(None); } }
+                        input { class: "nav-radio__input", r#type: "radio", name: "cyber-care", value, required: true, checked: care() == value, onchange: move |_| { care.set(value.to_string()); result.set(None); } }
                         "{label}"
                     }
                 }
             }
-            button { class: "cyber-button", r#type: "submit", "See my preliminary assessment" span { "aria-hidden": "true", "↗" } }
+            button { class: "nav-btn nav-btn--primary cyber-button", r#type: "submit", "See my preliminary assessment" span { "aria-hidden": "true", "↗" } }
             if invalid() { p { role: "alert", "Please answer all three questions." } }
             p { class: "cyber-fine", "{copy.assessment_note}" }
             div { "aria-live": "polite", "aria-atomic": "true",

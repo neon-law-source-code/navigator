@@ -168,7 +168,7 @@ pub struct HomeContent {
     /// Death & Divorce's black-and-white practice surface.
     #[serde(default)]
     pub death_and_divorce: Option<DeathAndDivorceContent>,
-    /// CyberInjuryLaw campaign.
+    /// `CyberInjuryLaw` campaign.
     #[serde(default)]
     pub cyber_injury: Option<CyberInjuryContent>,
 }

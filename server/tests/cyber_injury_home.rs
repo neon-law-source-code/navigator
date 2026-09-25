@@ -1,4 +1,4 @@
-//! The CyberInjuryLaw preview renders through the shared Dioxus router.
+//! The `CyberInjuryLaw` preview renders through the shared Dioxus router.
 
 use axum::{
     body::{to_bytes, Body},
@@ -46,6 +46,7 @@ async fn cyber_injury_preview_serves_its_copy_assets_and_fonts() {
         "BarlowCondensed-ExtraBold.woff2",
         "DMSans-Regular.woff2",
         "cyber-warrior.png",
+        "canal-st-ad.png",
         "cyber-incident",
         "cyber-timing",
         "Shook Law PLLC",

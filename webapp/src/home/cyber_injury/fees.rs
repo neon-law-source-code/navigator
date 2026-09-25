@@ -1,5 +1,7 @@
 //! Illustrative fees on the same recovery after identical expenses.
 
+use std::fmt::Write as _;
+
 use dioxus::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,8 +41,8 @@ fn money(cents: u32) -> String {
         }
         formatted.push(digit);
     }
-    if cents % 100 != 0 {
-        formatted.push_str(&format!(".{:02}", cents % 100));
+    if !cents.is_multiple_of(100) {
+        let _ = write!(formatted, ".{:02}", cents % 100);
     }
     formatted
 }
@@ -81,12 +83,12 @@ pub(super) fn FeeCalculator(note: String) -> Element {
         div { class: "cyber-calculator",
             p { class: "cyber-eyebrow", "SEE THE DIFFERENCE" }
             label { class: "cyber-amount", r#for: "cyber-recovery", "Illustrative recovery" output { "for": "cyber-recovery", "{gross}" } }
-            input { id: "cyber-recovery", r#type: "range", min: "25000", max: "500000", step: "5000", value: "{recovery}",
+            input { class: "nav-input", id: "cyber-recovery", r#type: "range", min: "25000", max: "500000", step: "5000", value: "{recovery}",
                 oninput: move |event| { if let Ok(value) = event.value().parse::<u32>() { let value = value.clamp(25_000, 500_000); let capped_expenses = expenses().min(value); recovery.set(value); expenses.set(capped_expenses); } },
             }
             div { class: "cyber-range", span { "$25,000" } span { "$500,000" } }
             label { class: "cyber-expenses", r#for: "cyber-expenses", "Case expenses ($)"
-                input { id: "cyber-expenses", r#type: "number", inputmode: "numeric", min: "0", max: "{recovery}", step: "1", value: "{expenses}",
+                input { class: "nav-input", id: "cyber-expenses", r#type: "number", inputmode: "numeric", min: "0", max: "{recovery}", step: "1", value: "{expenses}",
                     oninput: move |event| { expenses.set(event.value().parse::<u32>().unwrap_or_default().min(recovery())); },
                 }
             }

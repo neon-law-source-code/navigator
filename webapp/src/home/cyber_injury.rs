@@ -1,4 +1,4 @@
-//! CyberInjuryLaw's approved campaign, rendered and hydrated by Dioxus.
+//! `CyberInjuryLaw`'s approved campaign, rendered and hydrated by Dioxus.
 
 mod assessment;
 mod content;

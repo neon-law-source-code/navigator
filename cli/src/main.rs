@@ -1835,9 +1835,9 @@ enum FontFamilyArg {
     LibreFranklin,
     /// Death & Divorce's gothic display face.
     PirataOne,
-    /// CyberInjuryLaw display face.
+    /// `CyberInjuryLaw` display face.
     BarlowCondensed,
-    /// CyberInjuryLaw body face.
+    /// `CyberInjuryLaw` body face.
     DmSans,
 }
 

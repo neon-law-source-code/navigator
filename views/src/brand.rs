@@ -1092,11 +1092,11 @@ impl BrandKey {
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
             Self::Neon => crate::locales::KNOWN_PAGES,
-            Self::CyberInjuryLaw => &["home", "services"],
             // Every practice brand publishes the two stems it actually
             // serves; a missing file is a loader-test failure rather than a
             // first-request panic.
-            Self::LawyerShook
+            Self::CyberInjuryLaw
+            | Self::LawyerShook
             | Self::DeleteYourData
             | Self::Vesta
             | Self::Misericordia

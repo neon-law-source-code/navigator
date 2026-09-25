@@ -1,4 +1,4 @@
-//! Approved CyberInjuryLaw campaign copy.
+//! Approved `CyberInjuryLaw` campaign copy.
 
 use serde::{Deserialize, Serialize};
 

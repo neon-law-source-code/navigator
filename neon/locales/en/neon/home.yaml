@@ -40,12 +40,12 @@ company:
   express_heading: Expedited reviews.
   express_price: "$500"
   express_unit: / contract
-  express_body: A lawyer reviews your contract, explains the risks, and gives you a practical next step within one business days.
+  express_body: A lawyer reviews your contract, explains the risks, and gives you a practical next step within one business day.
   page_note: "Each contract includes up to 50 pages. Each additional page is $5. A page is US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt."
   drafting_heading: Your contracts. One fee.
   drafting_body: Pay once. We prepare all your contracts as you need them within the agreed engagement.
   drafting_packages:
-    - [Contract foundation, "$5,000", "One time. Contracts as you need them. Scope agreed at the start."]
+    - ["/ once", "$5,000", "One time. Contracts as you need them. Scope agreed at the start."]
   closing_heading: Keep building.
   closing_body: "We'll handle the paperwork."
   litigation_heading: Protect what you build.

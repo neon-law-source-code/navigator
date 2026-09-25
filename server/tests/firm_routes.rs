@@ -207,7 +207,7 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
     assert!(body.contains("Book a consultation"));
     assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("$5,000"));
-    assert!(body.contains("Contract foundation"));
+    assert!(body.contains("/ once"));
     assert!(body.contains("One time. Contracts as you need them. Scope agreed at the start."));
     assert!(body.contains("img/neon-home/neon-home-presentation.mp4"));
     assert!(body.contains("<video") && body.contains("video/mp4"));
@@ -877,7 +877,7 @@ async fn home_presents_company_counsel_pricing_and_business_library() {
     assert!(!body.contains("company-questions"));
     assert!(!body.contains("A few useful answers."));
     assert!(body.contains("Your contracts. One fee."));
-    assert!(body.contains("Contract foundation"));
+    assert!(body.contains("/ once"));
     assert!(body.contains("One time. Contracts as you need them. Scope agreed at the start."));
     assert!(body.matches("Keep building.").count() >= 2);
     assert!(body.contains(r#"href="/presentations/rust-in-peace""#));
@@ -907,7 +907,7 @@ async fn home_explains_retainer_and_additional_fees() {
         "The engagement letter sets scope, rates, and refunds.",
         "A daily minimum that keeps us on the line.",
         "Expedited reviews.",
-        "gives you a practical next step within one business days.",
+        "gives you a practical next step within one business day.",
         "Each contract includes up to 50 pages. Each additional page is $5.",
         "US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt.",
         "Day-to-day questions over Slack",

@@ -1073,12 +1073,6 @@
   line-height: 1.65;
 }
 
-.company-home .company-eyebrow {
-  font: 500 .7rem/1.5 ui-monospace, monospace;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-
 .company-hero {
   padding: clamp(5rem, 10vw, 9rem) 0 7rem;
   max-width: 62rem;
@@ -1735,7 +1729,6 @@
   margin: 3rem 0 0;
   padding: 3rem 0 0;
   border-top: 1px solid var(--company-line);
-  max-width: 48rem;
 }
 .company-simulator__body {
   margin: -.5rem 0 1.5rem;

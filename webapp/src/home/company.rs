@@ -251,8 +251,7 @@ pub(super) fn CompanyHome(
                     article { class: "company-foundation",
                         h3 { "{company.drafting_heading}" }
                         for package in company.drafting_packages.iter() {
-                            p { class: "company-price", "{package[1]}" }
-                            p { class: "company-eyebrow", "{package[0]}" }
+                            p { class: "company-price", "{package[1]}" span { "{package[0]}" } }
                             p { "{package[2]}" }
                         }
                         p { "{company.drafting_body}" }

@@ -1100,7 +1100,7 @@ mod tests {
         assert_eq!(company["express_price"].as_str(), Some("$500"));
         assert_eq!(
             company["drafting_packages"][0][0].as_str(),
-            Some("Contract foundation")
+            Some("/ once")
         );
         assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$5,000"));
         assert_eq!(

@@ -58,6 +58,9 @@ pub const PUBLIC_PATHS: &[&str] = &[
     // 404s on every other registered brand host; see
     // `views::brand::BrandKey::publishes_firm_path`.
     "/delete-your-debt",
+    // The Neon-hosted gateway to the DeleteYourData.com practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/delete-your-data",
     "/notations",
     "/notations/{slug}",
     "/contact",
@@ -132,6 +135,7 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
                 "/",
                 "/navigator",
                 "/delete-your-debt",
+                "/delete-your-data",
                 "/notations",
                 "/contact",
                 "/team",
@@ -312,6 +316,15 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
              the destination for collection-lawsuit defense, FDCPA claims, validation \
              demands, and credit-report disputes. It does not settle debts or negotiate \
              balances.",
+        ),
+        page(
+            "Privacy and data removal",
+            "/delete-your-data",
+            "Neon's gateway page naming DeleteYourData.com, a Shook Law PLLC practice, as \
+             the destination for data-removal and privacy-protection work: one year of \
+             data removal and privacy protection for $50, with credit monitoring available \
+             as an opt-in. It does not promise every piece of personal information can be \
+             removed.",
         ),
         page(
             "Neon Law Navigator",

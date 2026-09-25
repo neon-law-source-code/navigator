@@ -30,6 +30,15 @@ pub fn delete_your_debt_gateway(
     locales::delete_your_debt_gateway(branding, deployment_host)
 }
 
+/// `/delete-your-data` — Neon's own gateway to the DeleteYourData.com
+/// practice. See `locales/en/neon/gateway-delete-your-data.yaml`.
+pub fn delete_your_data_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::delete_your_data_gateway(branding, deployment_host)
+}
+
 /// The regulated claims on the firm's public pages.
 ///
 /// `/navigator` and `/services` are the firm's, so the copy and the guards that

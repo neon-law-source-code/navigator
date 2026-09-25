@@ -38,6 +38,10 @@ const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml"
 /// [`views::locales::KNOWN_PAGES`].
 const NEON_GATEWAY_DELETE_YOUR_DEBT_YAML: &str =
     include_str!("../locales/en/neon/gateway-delete-your-debt.yaml");
+/// `/delete-your-data` — Neon's own gateway to the DeleteYourData.com
+/// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_DELETE_YOUR_DATA_YAML: &str =
+    include_str!("../locales/en/neon/gateway-delete-your-data.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
@@ -101,6 +105,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::Neon, "gateway-delete-your-debt") => Some(NEON_GATEWAY_DELETE_YOUR_DEBT_YAML),
+        (BrandKey::Neon, "gateway-delete-your-data") => Some(NEON_GATEWAY_DELETE_YOUR_DATA_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
             Some(NEON_SERVICES_CATALOG_YAML)
         }
@@ -965,6 +970,28 @@ pub fn delete_your_debt_gateway(
     content
 }
 
+/// `/delete-your-data` — Neon's own gateway page naming DeleteYourData.com as
+/// the destination for data-removal and privacy-protection work. See
+/// [`delete_your_debt_gateway`], whose CTA-resolution shape this mirrors.
+pub fn delete_your_data_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(
+        load_page(branding, "gateway-delete-your-data"),
+        None,
+        branding,
+    );
+    if let Some(href) =
+        sibling_practice_href(views::brand::BrandKey::DeleteYourData, deployment_host)
+    {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
 /// The public notation format explanation, loaded from the English catalog.
 pub(crate) fn notations_content() -> PageContent {
     let branding = &views::brand::DEFAULT_BRANDING;
@@ -1526,6 +1553,63 @@ mod tests {
         assert_eq!(
             content.hero_cta.as_ref().expect("hero CTA").label,
             "Visit DeleteYourDebt.com"
+        );
+    }
+
+    /// The `/delete-your-data` gateway's CTA resolves per deployment, the
+    /// same way `/delete-your-debt`'s does.
+    #[test]
+    fn delete_your_data_gateway_resolves_the_cta_per_deployment() {
+        let production =
+            delete_your_data_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.deleteyourdata.com"
+        );
+
+        let staging =
+            delete_your_data_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.deleteyourdata.com"
+        );
+    }
+
+    /// The gateway wears the practice skin, names the destination, and never
+    /// claims every trace of a reader's personal information can be removed
+    /// — the one overclaim ENG-898 specifically forbids.
+    #[test]
+    fn delete_your_data_gateway_never_claims_complete_removal() {
+        let content = delete_your_data_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit DeleteYourData.com"
+        );
+        let text = format!("{} {}", content.hero_lead, content.title).to_lowercase();
+        assert!(text.contains("deleteyourdata.com"), "{text}");
+        for overclaim in [
+            "remove all your",
+            "erase everything",
+            "every trace of your personal information can be erased",
+            "guarantee",
+        ] {
+            assert!(!text.contains(overclaim), "overclaims removal: {text}");
+        }
+        assert!(
+            text.contains("does not promise") || text.contains("cannot promise"),
+            "and says so plainly: {text}"
         );
     }
 

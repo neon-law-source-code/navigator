@@ -734,6 +734,18 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         state.sessions.clone(),
         portal::secure_cookies(state),
     ));
+    // `/delete-your-data` — Neon's own gateway to the DeleteYourData.com
+    // practice. Same admission shape as `/delete-your-debt` immediately
+    // above: Neon's `publishes_firm_path` arm admits it by not excluding it,
+    // and every other brand's own finite allow-list does not name it, so
+    // `reject_unpublished_firm_path` 404s it everywhere else with no further
+    // gating here.
+    routers.push(dioxus_app::marketing_page_router(
+        "/delete-your-data",
+        firm_copy::delete_your_data_gateway(branding, deployment_host),
+        state.sessions.clone(),
+        portal::secure_cookies(state),
+    ));
     // The talks catalog, and the five read routes each talk publishes: the
     // hub, its light table, the classroom step face, the projector face a
     // presenter opens on a second screen, and the certificate confirmation.

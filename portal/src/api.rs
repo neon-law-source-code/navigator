@@ -17,7 +17,9 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
 use axum::{Json, Router};
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::people_commands::{PeopleCommandError, UpdateContext};
@@ -480,6 +482,13 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "/app/api/brands/{key}",
             patch(update_brand_presentation),
         ),
+        (
+            "POST",
+            "/app/api/site/assets",
+            post(upload_public_asset_door).layer(DefaultBodyLimit::max(
+                store::documents::MAX_DOCUMENT_UPLOAD_REQUEST_BYTES,
+            )),
+        ),
     ]
 }
 
@@ -886,6 +895,182 @@ async fn update_brand_presentation(
             tracing::error!(error = %error, "api: brand presentation update failed");
             ApiError::Db(error).into_response()
         }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UploadPublicAssetRequest {
+    /// Stable key below the public assets bucket, such as
+    /// `brand/death-and-divorce/mark.svg`.
+    key: String,
+    /// Base64-encoded public asset bytes.
+    content_base64: String,
+    /// The media type the public origin should return.
+    content_type: String,
+    /// Lowercase SHA-256 hex of the decoded bytes.
+    sha256: String,
+}
+
+#[derive(Debug, Serialize)]
+struct UploadPublicAssetResponse {
+    key: String,
+    size_bytes: usize,
+    content_type: String,
+    sha256: String,
+    unchanged: bool,
+}
+
+const MAX_PUBLIC_ASSET_UPLOAD_BYTES: usize = 25 * 1024 * 1024;
+const PUBLIC_ASSET_CACHE_CONTROL: &str = "public, max-age=3600";
+
+/// `POST /app/api/site/assets` — owner/admin-only public asset publication.
+/// The bucket is selected by the deployment's `assets_storage`; the caller
+/// never supplies a bucket name or cloud credential. Repeating the same key
+/// and bytes is a successful no-op, while a changed byte stream replaces the
+/// object at that stable public key.
+async fn upload_public_asset_door(
+    State(state): State<ApiState>,
+    _admin: AdminSession,
+    JsonOrForm(input): JsonOrForm<UploadPublicAssetRequest>,
+) -> Result<Response, ApiError> {
+    let key = input.key.trim().replace('\\', "/");
+    if !public_upload_key_is_safe(&key) {
+        return Ok(bad_request(
+            "invalid_key",
+            "key must be a safe public asset path below brand/, img/, or fonts/.",
+        ));
+    }
+    let Some(expected_content_type) = public_upload_content_type(&key) else {
+        return Ok(bad_request(
+            "unsupported_type",
+            "accepted public extensions are avif, webp, jpg, jpeg, png, svg, mp4, woff2, and fonts/*/OFL.txt.",
+        ));
+    };
+    if input.content_type.trim() != expected_content_type {
+        return Ok(bad_request(
+            "content_type_mismatch",
+            &format!("key `{key}` requires content type `{expected_content_type}`."),
+        ));
+    }
+    let bytes =
+        match base64::engine::general_purpose::STANDARD.decode(input.content_base64.as_bytes()) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return Ok(bad_request(
+                    "invalid_base64",
+                    "content_base64 is not valid base64.",
+                ))
+            }
+        };
+    if bytes.len() > MAX_PUBLIC_ASSET_UPLOAD_BYTES {
+        return Ok(bad_request(
+            "asset_too_large",
+            &format!("public assets are limited to {MAX_PUBLIC_ASSET_UPLOAD_BYTES} bytes."),
+        ));
+    }
+    if expected_content_type == "font/woff2" && !bytes.starts_with(b"wOF2") {
+        return Ok(bad_request(
+            "invalid_font",
+            "WOFF2 assets must begin with the wOF2 signature.",
+        ));
+    }
+    if expected_content_type == "text/plain"
+        && (bytes.len() > 64 * 1024 || std::str::from_utf8(&bytes).is_err())
+    {
+        return Ok(bad_request(
+            "invalid_license",
+            "OFL.txt must be valid UTF-8 text no larger than 64 KiB.",
+        ));
+    }
+    let sha256 = Sha256::digest(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    if input.sha256.trim() != sha256 {
+        return Ok(bad_request(
+            "sha256_mismatch",
+            "sha256 does not match the decoded asset bytes.",
+        ));
+    }
+    let unchanged = match state.assets_storage.get(&key).await {
+        Ok(existing) => existing.bytes == bytes && existing.content_type == expected_content_type,
+        Err(cloud::StorageError::NotFound(_)) => false,
+        Err(error) => {
+            tracing::error!(error = %error, key = %key, "public asset preflight failed");
+            return Err(ApiError::Db(
+                "public asset storage could not be read".to_string(),
+            ));
+        }
+    };
+    if !unchanged {
+        state
+            .assets_storage
+            .put_cached(
+                &key,
+                &bytes,
+                expected_content_type,
+                PUBLIC_ASSET_CACHE_CONTROL,
+            )
+            .await
+            .map_err(|error| {
+                tracing::error!(error = %error, key = %key, "public asset upload failed");
+                ApiError::Db("public asset storage could not be written".to_string())
+            })?;
+    }
+    let body = UploadPublicAssetResponse {
+        key,
+        size_bytes: bytes.len(),
+        content_type: expected_content_type.to_string(),
+        sha256,
+        unchanged,
+    };
+    Ok((
+        if unchanged {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        Json(body),
+    )
+        .into_response())
+}
+
+fn public_upload_key_is_safe(key: &str) -> bool {
+    !key.is_empty()
+        && (key.starts_with("brand/") || key.starts_with("img/") || key.starts_with("fonts/"))
+        && !key.starts_with('/')
+        && !key.contains('\\')
+        && !key.chars().any(char::is_control)
+        && key
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+fn public_upload_content_type(key: &str) -> Option<&'static str> {
+    match std::path::Path::new(key)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("avif") => Some("image/avif"),
+        Some("webp") => Some("image/webp"),
+        Some("jpg" | "jpeg") => Some("image/jpeg"),
+        Some("png") => Some("image/png"),
+        Some("svg") => Some("image/svg+xml"),
+        Some("mp4") => Some("video/mp4"),
+        Some("woff2") => Some("font/woff2"),
+        Some("txt")
+            if key.starts_with("fonts/")
+                && std::path::Path::new(key)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    == Some("OFL.txt") =>
+        {
+            Some("text/plain")
+        }
+        _ => None,
     }
 }
 
@@ -5365,8 +5550,8 @@ mod tests {
     use super::NotationStepResponse;
     use super::{
         api_operation_table, documented_api_operations, list_document_revisions_door,
-        mail_file_door, routes, ApiError, ApiState, AuthedSession, LawyerSession, MailFileRequest,
-        RevisionsQuery,
+        mail_file_door, public_upload_content_type, public_upload_key_is_safe, routes, ApiError,
+        ApiState, AuthedSession, LawyerSession, MailFileRequest, RevisionsQuery,
     };
     use axum::extract::{Path, Query, State};
     use axum::response::IntoResponse;
@@ -5933,5 +6118,36 @@ filename*=UTF-8''signed%20intake.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\
         )
         .unwrap();
         assert!(accepted.request_public);
+    }
+
+    #[test]
+    fn public_asset_upload_accepts_brand_svg_and_rejects_document_lane() {
+        assert!(public_upload_key_is_safe(
+            "brand/death-and-divorce/mark.svg"
+        ));
+        assert_eq!(
+            public_upload_content_type("brand/death-and-divorce/mark.svg"),
+            Some("image/svg+xml")
+        );
+        assert!(!public_upload_key_is_safe(
+            "documents/death-and-divorce.pdf"
+        ));
+        assert!(!public_upload_key_is_safe("img/../documents/secret.png"));
+        assert_eq!(
+            public_upload_content_type("img/death-and-divorce/video-art.png"),
+            Some("image/png")
+        );
+        assert_eq!(
+            public_upload_content_type("fonts/barlow-condensed/BarlowCondensed-Regular.woff2"),
+            Some("font/woff2")
+        );
+        assert_eq!(
+            public_upload_content_type("fonts/barlow-condensed/OFL.txt"),
+            Some("text/plain")
+        );
+        assert_eq!(
+            public_upload_content_type("fonts/barlow-condensed/license.txt"),
+            None
+        );
     }
 }

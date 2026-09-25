@@ -315,6 +315,35 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/site/assets": {
+          "post": {
+            "summary": "Publish a public site asset",
+            "description": "Owner/Admin only. The deployment selects the public assets bucket; the caller supplies a safe brand/, img/, or fonts/ key and base64 bytes. Repeating the same key and bytes is idempotent.",
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPublicAssetRequest" }
+              } }
+            },
+            "responses": {
+              "201": { "description": "Asset uploaded", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPublicAssetResponse" }
+              } } },
+              "200": { "description": "Identical asset already present", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPublicAssetResponse" }
+              } } },
+              "400": { "description": "Invalid key, type, size, base64, or digest", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Owner/Admin required", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/entities": {
           "get": {
             "summary": "List all entities",
@@ -3362,6 +3391,28 @@ pub fn document_with_base(base: &str) -> Value {
                             "description": "The CSS font-family name for an uploaded font. Blank clears it." }
             },
             "example": { "typeface": "uploaded", "primary_color": "#007c91", "font_family": "Custom Sans" }
+          },
+          "UploadPublicAssetRequest": {
+            "type": "object",
+            "required": ["key", "content_base64", "content_type", "sha256"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "type": "string", "description": "Safe key below brand/, img/, or fonts/." },
+              "content_base64": { "type": "string", "format": "byte" },
+              "content_type": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          },
+          "UploadPublicAssetResponse": {
+            "type": "object",
+            "required": ["key", "size_bytes", "content_type", "sha256", "unchanged"],
+            "properties": {
+              "key": { "type": "string" },
+              "size_bytes": { "type": "integer", "format": "int64" },
+              "content_type": { "type": "string" },
+              "sha256": { "type": "string" },
+              "unchanged": { "type": "boolean" }
+            }
           },
           "Brand": {
             "type": "object",

@@ -15,6 +15,7 @@
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `document slug` | `PATCH /app/api/projects/{id}/documents/{asset_id}` |
 //! | `document repair` | `POST /app/api/projects/{id}/documents/{asset_id}/storage` |
+//! | `site asset upload` | `POST /app/api/site/assets`, then `GET /assets/{key}` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
 //! | `notation preview` | `POST /app/projects/{project_code}/notations/draft` |
 //! | `navigator site import` | `POST /app/api/seed` (optional `POST /auth/ci/seed-token`) |
@@ -28,6 +29,7 @@ use anyhow::{anyhow, Context, Result};
 use base64::Engine as _;
 use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::credentials::{self, default_credentials_path, HostCredential};
@@ -903,6 +905,198 @@ pub async fn document_upload(
         Ok(())
     })
     .await
+}
+
+const MAX_PUBLIC_ASSET_UPLOAD_BYTES: usize = 25 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+struct PublicAssetUploadResponse {
+    key: String,
+    size_bytes: usize,
+    content_type: String,
+    sha256: String,
+    unchanged: bool,
+}
+
+/// `navigator site asset upload --host … ASSET_NAME` — publish one public
+/// asset with the bearer from `navigator site login`. The deployment owns the
+/// bucket choice; this client never reads ADC or a gcloud configuration.
+pub async fn asset_upload(hosts: &[String], file: &Path, key: Option<&str>) -> ExitCode {
+    run(async {
+        anyhow::ensure!(!hosts.is_empty(), "at least one --host is required");
+        let bytes =
+            std::fs::read(file).with_context(|| format!("read asset {}", file.display()))?;
+        anyhow::ensure!(
+            bytes.len() <= MAX_PUBLIC_ASSET_UPLOAD_BYTES,
+            "asset {} is {} bytes; the maximum is {} bytes",
+            file.display(),
+            bytes.len(),
+            MAX_PUBLIC_ASSET_UPLOAD_BYTES
+        );
+        let key = asset_key(file, key)?;
+        let content_type = asset_content_type(&key)?;
+        let sha256 = Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let mut failures = 0usize;
+        for host in hosts {
+            match upload_public_asset(host, &key, content_type, &sha256, &encoded, &bytes).await {
+                Ok(result) => println!(
+                    "{}: {} {} ({} bytes, sha256={}, {})",
+                    host,
+                    if result.unchanged {
+                        "unchanged"
+                    } else {
+                        "uploaded"
+                    },
+                    result.key,
+                    result.size_bytes,
+                    result.sha256,
+                    result.content_type
+                ),
+                Err(error) => {
+                    failures += 1;
+                    eprintln!("{}: asset upload failed: {error:#}", host);
+                }
+            }
+        }
+        if failures > 0 {
+            return Err(anyhow!(
+                "{} of {} host upload(s) failed",
+                failures,
+                hosts.len()
+            ));
+        }
+        Ok(())
+    })
+    .await
+}
+
+fn asset_key(file: &Path, explicit: Option<&str>) -> Result<String> {
+    if let Some(key) = explicit.map(str::trim).filter(|key| !key.is_empty()) {
+        return Ok(key.replace('\\', "/"));
+    }
+    let public = Path::new("server/public");
+    let relative = match file.strip_prefix(public) {
+        Ok(relative) => relative.to_path_buf(),
+        Err(_) => {
+            let canonical_file = file
+                .canonicalize()
+                .with_context(|| format!("canonicalize asset {}", file.display()))?;
+            let canonical_public = public.canonicalize().ok();
+            let Some(canonical_public) = canonical_public else {
+                return Err(anyhow!(
+                    "asset {} is outside server/public; pass --key brand/... or img/...",
+                    file.display()
+                ));
+            };
+            canonical_file
+                .strip_prefix(&canonical_public)
+                .map(Path::to_path_buf)
+                .with_context(|| {
+                    format!(
+                        "asset {} is outside server/public; pass --key brand/... or img/...",
+                        file.display()
+                    )
+                })?
+        }
+    };
+    let key = relative
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    anyhow::ensure!(!key.is_empty(), "asset key cannot be empty");
+    Ok(key)
+}
+
+fn asset_content_type(key: &str) -> Result<&'static str> {
+    let extension = Path::new(key)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .ok_or_else(|| anyhow!("asset key `{key}` has no supported extension"))?;
+    match extension.as_str() {
+        "avif" => Ok("image/avif"),
+        "webp" => Ok("image/webp"),
+        "jpg" | "jpeg" => Ok("image/jpeg"),
+        "png" => Ok("image/png"),
+        "svg" => Ok("image/svg+xml"),
+        "mp4" => Ok("video/mp4"),
+        "woff2" => Ok("font/woff2"),
+        "txt" if key.starts_with("fonts/") && Path::new(key).file_name().and_then(|name| name.to_str()) == Some("OFL.txt") => Ok("text/plain"),
+        _ => Err(anyhow!(
+            "asset key `{key}` has unsupported type; accepted public extensions are avif, webp, jpg, jpeg, png, svg, mp4, woff2, and fonts/*/OFL.txt"
+        )),
+    }
+}
+
+async fn upload_public_asset(
+    host: &str,
+    key: &str,
+    content_type: &str,
+    sha256: &str,
+    content_base64: &str,
+    bytes: &[u8],
+) -> Result<PublicAssetUploadResponse> {
+    let (base, token) = resolve(Some(host))?;
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{base}/app/api/site/assets"))
+        .bearer_auth(token.clone())
+        .json(&serde_json::json!({
+            "key": key,
+            "content_base64": content_base64,
+            "content_type": content_type,
+            "sha256": sha256,
+        }))
+        .send()
+        .await
+        .context("POST /app/api/site/assets")?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "POST /app/api/site/assets failed: {status}: {}",
+            first_line(&body)
+        ));
+    }
+    let result: PublicAssetUploadResponse =
+        serde_json::from_str(&body).context("parse POST /app/api/site/assets")?;
+    anyhow::ensure!(
+        result.key == key,
+        "server returned unexpected asset key `{}`",
+        result.key
+    );
+    anyhow::ensure!(
+        result.size_bytes == bytes.len(),
+        "server reported {} bytes for a {} byte asset",
+        result.size_bytes,
+        bytes.len()
+    );
+    anyhow::ensure!(
+        result.sha256 == sha256,
+        "server returned a different sha256 for `{key}`"
+    );
+
+    let verification = client
+        .get(format!("{base}/assets/{key}"))
+        .send()
+        .await
+        .context("GET /assets/{key}")?;
+    let verification_status = verification.status();
+    let downloaded = verification.bytes().await.unwrap_or_default();
+    anyhow::ensure!(
+        verification_status.is_success(),
+        "GET /assets/{key} failed: {verification_status}"
+    );
+    anyhow::ensure!(
+        downloaded.as_ref() == bytes,
+        "GET /assets/{key} returned bytes that do not match the upload"
+    );
+    Ok(result)
 }
 
 /// `navigator site document slug <asset_id> --project <code> --slug …`
@@ -3019,27 +3213,65 @@ fn now_secs() -> i64 {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::path::Path;
     use std::process::ExitCode;
     use std::sync::LazyLock;
 
     use super::{
-        archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
-        clause_list, create_notation_draft, document_repair, document_slug, document_upload,
-        ensure_no_unused_selections, fetch_status, mail_file, matter_close, notation_answers,
-        notation_approve, notation_create, notation_document, notation_list,
-        notation_request_changes, notation_status, notation_update, notion_ensure,
-        notion_reconcile, parse_scripted_selection, picker_selection_fields, projects_create,
-        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
-        select_candidate, slack_ensure, CoverageSummary, DocumentClient, SeedCredential,
-        StepQuestion, StepResponse,
+        archive_repository, asset_content_type, asset_key, asset_upload, candidate_by_name,
+        canonical_choice_value, clause_add, clause_edit, clause_list, create_notation_draft,
+        document_repair, document_slug, document_upload, ensure_no_unused_selections, fetch_status,
+        mail_file, matter_close, notation_answers, notation_approve, notation_create,
+        notation_document, notation_list, notation_request_changes, notation_status,
+        notation_update, notion_ensure, notion_reconcile, parse_scripted_selection,
+        picker_selection_fields, projects_create, retainer_approve, retainer_send,
+        scripted_picker_selection_fields, seed, seed_directory, select_candidate, slack_ensure,
+        CoverageSummary, DocumentClient, SeedCredential, StepQuestion, StepResponse,
     };
     use super::{
         exit_code_for, fetch_step, first_line, json_reason, mint_refusal_annotation, server_error,
     };
     use crate::credentials::{self, Credentials, HostCredential};
+    use base64::Engine as _;
+    use sha2::{Digest, Sha256};
     use uuid::Uuid;
-    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::matchers::{body_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn public_asset_key_and_content_type_preserve_server_public_layout() {
+        let key = asset_key(
+            Path::new("server/public/brand/death-and-divorce/mark.svg"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(key, "brand/death-and-divorce/mark.svg");
+        assert_eq!(asset_content_type(&key).unwrap(), "image/svg+xml");
+        assert_eq!(
+            asset_content_type("fonts/barlow-condensed/BarlowCondensed-Regular.woff2").unwrap(),
+            "font/woff2"
+        );
+        assert_eq!(
+            asset_content_type("fonts/barlow-condensed/OFL.txt").unwrap(),
+            "text/plain"
+        );
+    }
+
+    #[test]
+    fn public_asset_key_requires_explicit_key_outside_public_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("death-and-divorce-art.png");
+        std::fs::write(&file, b"art").unwrap();
+        let error = asset_key(&file, None).unwrap_err();
+        assert!(error.to_string().contains("outside server/public"));
+        assert_eq!(
+            asset_content_type(
+                &asset_key(&file, Some("img/death-and-divorce/video-art.png"),).unwrap()
+            )
+            .unwrap(),
+            "image/png"
+        );
+    }
 
     static CREDENTIALS_ENV_LOCK: LazyLock<tokio::sync::Mutex<()>> =
         LazyLock::new(|| tokio::sync::Mutex::new(()));
@@ -3078,6 +3310,55 @@ mod tests {
                 previous,
             }
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn asset_upload_sends_the_stored_bearer_and_verifies_public_bytes() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("mark.svg");
+        let bytes = b"<svg/>";
+        std::fs::write(&file, bytes).unwrap();
+        let digest = Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        Mock::given(method("POST"))
+            .and(path("/app/api/site/assets"))
+            .and(header("authorization", "Bearer test-token"))
+            .and(body_json(serde_json::json!({
+                "key": "brand/death-and-divorce/mark.svg",
+                "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+                "content_type": "image/svg+xml",
+                "sha256": digest,
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "key": "brand/death-and-divorce/mark.svg",
+                "size_bytes": bytes.len(),
+                "content_type": "image/svg+xml",
+                "sha256": digest,
+                "unchanged": false,
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/assets/brand/death-and-divorce/mark.svg"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes))
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            asset_upload(
+                std::slice::from_ref(&server_uri),
+                &file,
+                Some("brand/death-and-divorce/mark.svg"),
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

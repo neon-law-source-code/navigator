@@ -10,8 +10,9 @@ megabytes of binaries) without making the local test harness depend on a runtime
 ## The four commands
 
 Vesta's mark is the [public-domain Vesta symbol](https://commons.wikimedia.org/wiki/File:4_Vesta_(1).svg), vectorized by
-Carnby after Urhixidur. `server/public/brand/vesta.svg` adds a scalable view box and the brand's bronze fill. This small
-SVG ships with the other tracked brand marks and needs no bucket upload.
+Carnby after Urhixidur. `server/public/brand/vesta.svg` adds a scalable view box and the brand's bronze fill. Tracked
+brand SVGs can now be published with the authenticated single-asset command below; the older `ops assets upload` lane
+still handles the bulk image tree.
 
 The `navigator ops assets` subcommands form a build → publish → restore → verify loop. For responsive photos, the
 `views::assets::GALLERY` manifest and the width set (`WIDTHS = [400, 800, 1200]`) are the single source of truth shared
@@ -28,6 +29,34 @@ its final `server/public/img/<slug>/<name>` path, then use `assets upload` to pu
 | `assets fetch-referenced` | origin → `server/public/` | Hydrate content `img/…` refs over public HTTPS (no ADC). |
 | `assets stub-referenced` | refs → output root | Write tiny placeholders for content `img/…` paths. |
 | `assets verify` | published refs → chosen origin | Fetch every published image and font; fail if any are missing. |
+
+### Publish one asset through the logged-in site
+
+For one logo, illustration, or video poster, use the site API instead of a bucket credential. The command resolves the
+bearer saved by `navigator site login`, lets each deployment choose its own assets bucket, and reads the object back
+through `/assets/{key}` before reporting success. A path below `server/public` becomes its key; `--key` is required for
+an asset stored elsewhere. The key must stay under `brand/`, `img/`, or `fonts/`.
+
+```bash
+navigator site login --host <staging-host>
+navigator site login --host <production-host>
+navigator site asset upload \
+  --host <staging-host> \
+  --host <production-host> \
+  --key brand/death-and-divorce/mark.svg \
+  ~/Downloads/death-and-divorce-mark.svg
+navigator site asset upload \
+  --host <staging-host> \
+  --host <production-host> \
+  --key img/death-and-divorce/video-art.png \
+  ~/Downloads/death-and-divorce-video-art.png
+```
+
+The command prints the key, byte count, content type, SHA-256, and whether each host was unchanged. It returns a
+non-zero exit status if any requested host fails. It accepts SVG, AVIF, WebP, JPEG, PNG, MP4, WOFF2, and the narrowly
+scoped `fonts/*/OFL.txt` license notices; documents-lane keys, traversal, mismatched media types, invalid WOFF2
+signatures, and assets over 25 MiB are refused. The existing ADC-backed `ops assets upload` command remains the batch
+publication path.
 
 `build` and `upload` are the publish path for responsive photos, run by whoever curates the gallery. For a finished PNG
 hero, only `upload` is needed. `pull` is the restore path every developer runs. `verify` is the post-roll guardrail.

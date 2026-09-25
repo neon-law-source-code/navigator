@@ -854,6 +854,11 @@ enum SiteCmd {
         #[command(subcommand)]
         action: DocumentAction,
     },
+    /// Publish a public site asset through the authenticated deployment API.
+    Asset {
+        #[command(subcommand)]
+        action: AssetAction,
+    },
     /// File a global Authority — the citation apparatus' shared legal
     /// reference data (#890) — with an archived artifact. Unlike `document`,
     /// an Authority carries no `--project`.
@@ -2159,6 +2164,27 @@ enum DocumentAction {
 }
 
 #[derive(Subcommand)]
+enum AssetAction {
+    /// Upload one public image, SVG, or video asset to one or more hosts.
+    ///
+    /// `ASSET_NAME` is the local file. When it lives below `server/public`,
+    /// its relative path becomes the public `/assets/{key}` key. Use
+    /// `--key` for a file outside that tree or when the deployed key should
+    /// differ from its local path.
+    Upload {
+        /// Repeatable deployment host, for example `staging.neonlaw.com`.
+        #[arg(long = "host", required = true)]
+        hosts: Vec<String>,
+        /// Local asset bytes to publish.
+        asset_name: PathBuf,
+        /// Explicit public asset key. Defaults to the path relative to
+        /// `server/public`.
+        #[arg(long)]
+        key: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum MailAction {
     /// File one inbound message's attachments into a matter, without the
     /// bytes ever touching this checkout.
@@ -2416,6 +2442,13 @@ fn main() -> ExitCode {
             SiteCmd::Whoami { host } => login::run_whoami(host.as_deref()),
             SiteCmd::Mcp { host } => runtime().block_on(mcp_bridge::run(host.as_deref())),
             SiteCmd::Document { action } => runtime().block_on(run_document(action)),
+            SiteCmd::Asset { action } => match action {
+                AssetAction::Upload {
+                    hosts,
+                    asset_name,
+                    key,
+                } => runtime().block_on(remote::asset_upload(&hosts, &asset_name, key.as_deref())),
+            },
             SiteCmd::Mail { action } => match action {
                 MailAction::File {
                     host,

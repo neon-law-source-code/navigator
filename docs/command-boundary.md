@@ -42,6 +42,14 @@ own persistence logic.
   whose slug is null. `navigator site document repair` posts to `POST
   /app/api/projects/{id}/documents/{asset_id}/storage`, an admin door that restores a missing object from a same-hash
   sibling in the matter.
+- **Public asset upload.** `navigator site asset upload --host <staging-host> --host <production-host> [--key
+  <public-key>] <asset>` reads one public-safe image, SVG, or video locally and sends it with the bearer from
+  `navigator site login` to `POST /app/api/site/assets`. The deployment chooses its own public assets bucket and the
+  server writes through `cloud::StorageService`; the CLI never reads ADC, a bucket name, or gcloud credentials. The
+  owner/admin route validates the `brand/`, `img/`, and `fonts/` key lane, extension, size, and SHA-256, then the CLI
+  verifies the same bytes through `GET /assets/{key}`. Repeatable `--host` values are reported independently and any
+  failed host makes the command non-zero. Use the existing `navigator ops assets upload` command for ADC-backed batch
+  publication of the complete image tree.
 - **MCP.** A tool in `mcp/src/tools/` translates its arguments into a shared command. The `mcp` crate cannot depend on
   `portal`, so it converges at the `store` / `workflows` layer — e.g. `link_person_project` calls
   `store::participation::add_participant` / `update_participant`, the same commands the participation `/app/api` door

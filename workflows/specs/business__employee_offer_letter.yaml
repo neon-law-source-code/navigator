@@ -13,7 +13,7 @@ prompts:
   business_role: "State title, actual duties, manager, California work location, and start date."
   business_classification: >-
     Identify the exemption and confirm current salary and duties requirements, including any occupation- specific rules.
-  annual_salary: "What is the annual salary?"
+  annual_salary: "What is the {{for_label}}?"
   business_salary_basis: "What is the salary basis?"
   business_paydays: "On which days is the employee paid?"
   business_payroll_frequency: "What is the payroll frequency?"

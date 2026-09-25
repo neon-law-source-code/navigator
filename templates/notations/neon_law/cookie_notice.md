@@ -9,7 +9,7 @@ origin_url: https://github.com/General-Legal/legal-templates/tree/main/templates
 prompts:
   company: "What is the company’s full legal name and entity type?"
   business_services: "Which website and apps does this notice cover?"
-  effective_date: "What is the effective date?"
+  effective_date: "What is the {{for_label}}?"
   business_privacy_policy: "Give the published privacy policy URL."
   business_inventory: >-
     List every cookie or tracker with provider, purpose, necessary/optional category, lifetime, and data recipients;

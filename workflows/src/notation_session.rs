@@ -1043,11 +1043,11 @@ async fn load_question(
     let row = store::questions::find_by_code(surreal, code)
         .await?
         .ok_or_else(|| NotationSessionError::QuestionNotSeeded(state.0.clone()))?;
-    let prompt = if let Some(prompt) = prompt_override_for_state(prompts, state.as_str()) {
-        prompt.to_string()
-    } else {
-        localize_prompt_for_state(&row.prompt, state.as_str())
-    };
+    // A template prompt may name the question by interpolation (`What is the
+    // {{for_label}}?`) instead of restating the role. The bank prompt already
+    // does; an override gets the same substitution.
+    let raw = prompt_override_for_state(prompts, state.as_str()).unwrap_or(row.prompt.as_str());
+    let prompt = localize_prompt_for_state(raw, state.as_str());
     Ok(QuestionDescriptor {
         id: row.id,
         code: state.0.clone(),
@@ -1348,11 +1348,19 @@ pub fn localize_prompt_for_state(prompt: &str, state: &str) -> String {
 mod tests {
     use super::{
         answer_step, answer_value_for_state, answered_client_states, current_step,
-        is_author_facing_help, ordered_question_codes, questionnaire_chain_for_notation,
-        questionnaire_definition_for, record_reask_answer, start_notation, AnswerAuthor, NextStep,
-        NotationSessionError, QuestionDescriptor, QuestionnaireDefinition, StateName,
-        AUTHOR_FACING_HELP_CODES,
+        is_author_facing_help, localize_prompt_for_state, ordered_question_codes,
+        questionnaire_chain_for_notation, questionnaire_definition_for, record_reask_answer,
+        start_notation, AnswerAuthor, NextStep, NotationSessionError, QuestionDescriptor,
+        QuestionnaireDefinition, StateName, AUTHOR_FACING_HELP_CODES,
     };
+
+    #[test]
+    fn a_what_is_prompt_interpolates_the_question_label() {
+        assert_eq!(
+            localize_prompt_for_state("What is the {{for_label}}?", "custom_usd__annual_salary"),
+            "What is the annual salary?"
+        );
+    }
 
     #[test]
     fn author_facing_help_allowlist_matches_the_seed() {

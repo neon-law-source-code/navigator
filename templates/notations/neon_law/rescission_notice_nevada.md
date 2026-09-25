@@ -32,58 +32,53 @@ workflow:
   END: {}
 ---
 
+## Cover sheet
+
+Sample from a notation template. The matter is simulated. This notice is addressed to no one. It is not legal advice.
+
+## Caption
+
+To: Wendell Prine
+
+From: {{person__client}}
+
+Date: {{custom_datetime__notice_date}}
+
+Cruller v. Prine, Count II
+
 # NOTICE OF RESCISSION
-
-__FIXTURE DOCUMENT.__ This is a sample rendered from a notation template in the Navigator sample project. _Cruller v.
-Prine_ is a simulated matter, this notice is addressed to no one, and nothing in it is legal advice.
-
-__To:__ Wendell Prine
-
-__From:__ {{person__client}}
-
-__Date:__ {{custom_datetime__notice_date}}
-
-__Matter:__ Cruller v. Prine — Count II
 
 ## 1. The instrument
 
-On {{custom_datetime__offer_date}} you offered the undersigned one glazed doughnut over the hedge dividing the parties'
-properties. You described the doughnut only as "neat." You did not state, and the undersigned did not know, that the
-doughnut was said to carry a term conveying the undersigned's soul.
+On {{custom_datetime__offer_date}} you offered the undersigned one glazed doughnut over the hedge. You called it "neat."
+You did not say, and the undersigned did not know, that it was said to carry a term conveying the undersigned's soul.
 
-The undersigned took a partial bite on that date and set the remainder aside. The remainder was consumed on
+The undersigned took a partial bite that day and set the remainder aside. The remainder was eaten on
 {{custom_datetime__completion_date}}.
 
 ## 2. Grounds for rescission
 
-The purported agreement is voidable, and is hereby rescinded, on each of the following independent grounds.
+The purported agreement is voidable, and is rescinded, on each independent ground below.
 
-* __Fraudulent concealment of a material term.__ Assent runs only to terms the
-  offeree had a reasonable opportunity to read. A term placed inside the instrument, where it cannot be reached without
-  destroying the thing being accepted, is not such a term. Describing the instrument as merely "neat" converted that
-  silence into an affirmative misrepresentation.
-
-* __No meeting of the minds.__ The undersigned never assented to the conveyance
-  of anything, having never been told that a conveyance was proposed.
-
-* __Unconscionability.__ The consideration received was one doughnut.
+- Fraudulent concealment. Assent runs only to terms the offeree could read. A term inside the instrument, reachable
+  only by destroying it, is not such a term. Calling it "neat" made that silence a misrepresentation.
+- No meeting of the minds. The undersigned never agreed to a conveyance, and was never told one was proposed.
+- Unconscionability. The consideration was one doughnut.
 
 ## 3. No affirmance
 
-Consumption of the remainder on {{custom_datetime__completion_date}} was not an affirmance of the purported agreement.
-Knowledge of the material facts constituting the fraud is an essential requirement of waiver or election, and the
-undersigned first learned of the term on {{custom_datetime__discovery_date}} — after the instrument had been consumed in
-full.
+Eating the remainder on {{custom_datetime__completion_date}} did not affirm the agreement. Waiver requires knowledge of
+the facts constituting the fraud. The undersigned first learned of the term on {{custom_datetime__discovery_date}},
+after the instrument was gone.
 
 ## 4. Timeliness
 
-An action for relief on the ground of fraud accrues upon the discovery by the aggrieved party of the facts constituting
-the fraud. This notice is served promptly after that discovery.
+A claim for fraud accrues when the aggrieved party discovers the facts. This notice follows that discovery.
 
 ## 5. Demand
 
-Demand is made that you confirm in writing, within fourteen days, that you assert no interest of any kind in the soul of
-the undersigned. Tender of restitution for the doughnut is available on request.
+Within fourteen days, confirm in writing that you assert no interest in the soul of the undersigned. Restitution for the
+doughnut is available on request.
 
 {{person__client}}
 

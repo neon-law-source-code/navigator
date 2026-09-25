@@ -85,7 +85,7 @@ pub fn resolve_prompt(frontmatter_yaml: &str, state: &str) -> Option<ResolvedPro
         if let Some(cq) = parsed.prompts.get(role) {
             if !cq.trim().is_empty() {
                 return Some(ResolvedPrompt {
-                    prompt: cq.clone(),
+                    prompt: substitute_label(cq, role),
                     provenance: PromptProvenance::Custom,
                 });
             }
@@ -101,7 +101,7 @@ pub fn resolve_prompt(frontmatter_yaml: &str, state: &str) -> Option<ResolvedPro
     for key in override_keys_for_state(ty, role) {
         if let Some(prompt) = parsed.prompts.get(&key) {
             return Some(ResolvedPrompt {
-                prompt: prompt.clone(),
+                prompt: substitute_label(prompt, role),
                 provenance: PromptProvenance::Overridden,
             });
         }

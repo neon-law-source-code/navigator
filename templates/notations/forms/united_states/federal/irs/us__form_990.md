@@ -16,7 +16,7 @@ questionnaire:
   END: {}
 prompts:
   tax_year: What tax year does this return cover?
-  revenue_strategy: What is the revenue strategy?
+  revenue_strategy: "What is the {{for_label}}?"
 workflow:
   BEGIN:
     _: board_signatures

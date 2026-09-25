@@ -23,52 +23,50 @@ workflow:
   END: {}
 ---
 
-# SUMMONS
+## Cover sheet
 
-__FIXTURE DOCUMENT.__ This is a sample rendered from a notation template in the Navigator sample project. _Cruller v.
-Prine_ is a simulated matter, this summons is directed at no one, and nothing in it is legal advice or a genuine court
-filing.
+Sample from a notation template. The matter is simulated. This summons is directed at no one. It is not legal advice and
+it is not a filing.
 
-__Eighth Judicial District Court, Clark County, Nevada__
+## Caption
 
-__Case No.:__ A-26-874219-C __Dept. No.:__ XVII
+Eighth Judicial District Court, Clark County, Nevada
 
-__{{person__client}}, an individual,__ Plaintiff, vs. __Wendell Prine, an individual; and DOES I through X, inclusive,__
+Cruller v. Prine
+
+Case No. A-26-874219-C. Dept. No. XVII.
+
+{{person__client}}, an individual, Plaintiff, v. Wendell Prine, an individual, and DOES I through X, inclusive,
 Defendants.
 
-__Date issued:__ {{custom_datetime__issuance_date}}
+Date issued: {{custom_datetime__issuance_date}}
+
+# SUMMONS
 
 ## SUMMONS — CIVIL
 
 ### To the defendant named above
 
-A civil complaint has been filed by the plaintiff against you in this Court. A copy of the complaint accompanies this
-summons.
+The plaintiff has filed a civil complaint against you. A copy accompanies this summons.
 
 ## 1. You must respond in writing
 
-If you intend to defend this lawsuit, within twenty days after this summons is served on you, exclusive of the day of
-service, you must do both of the following:
+To defend, do both of the following within twenty days after service, excluding the day of service:
 
-- File with the Clerk of this Court a written response to the complaint, in accordance with the rules of the Court,
-  together with the appropriate filing fee.
-- Serve a copy of your written response upon the plaintiff's attorney, whose name and address are stated at the foot
-  of this summons.
+- File a written response with the Clerk of this Court, under the Court's rules, with the filing fee.
+- Serve a copy on the plaintiff's attorney, named at the foot of this summons.
 
-If you were served outside the State of Nevada, the time within which you must file and serve your written response is
-thirty days after service, rather than twenty.
+Service outside Nevada extends that time to thirty days.
 
 ## 2. What happens if you do not respond
 
-Unless you respond, your default will be entered on the plaintiff's application, and this Court may then enter judgment
-against you for the relief demanded in the complaint, which could result in a money judgment or an order affecting your
-property, without any further notice to you.
+If you do not respond, the plaintiff may take your default. The Court may then enter judgment for the relief demanded in
+the complaint, including a money judgment or an order affecting your property, without further notice to you.
 
 ## 3. Where to get help
 
-If you cannot afford an attorney, you may be eligible for free legal services from a legal services program. A list of
-these programs is available at the Clerk's office named above. Contact information for the State Bar of Nevada is also
-available at the Clerk's office.
+If you cannot afford an attorney, you may qualify for free legal services. The Clerk's office named above has a list of
+those programs and contact information for the State Bar of Nevada.
 
 ## 4. Issuance
 
@@ -76,5 +74,5 @@ Clerk of the Court
 
 By: ______________________________, Deputy Clerk
 
-Issued at the request of: Neon Law, 2400 Confection Way, Suite 400, Las Vegas, Nevada 89101, Attorneys for Plaintiff
+Issued at the request of Neon Law, 2400 Confection Way, Suite 400, Las Vegas, Nevada 89101, Attorneys for Plaintiff
 {{person__client}}.

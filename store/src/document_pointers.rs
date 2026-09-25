@@ -24,12 +24,12 @@ pub struct DocumentPointer {
     /// Project document with no Authority of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authority_id: Option<Uuid>,
-    /// The DocuSign envelope this signed document came from (ENG-859).
+    /// The `DocuSign` envelope this signed document came from (ENG-859).
     /// Required by `project gate` on a `documents/onboarding/**` or
     /// `documents/offboarding/**` pointer named `<name>_signed.pdf`; absent
     /// on every other pointer. Validated here only as a well-formed UUID —
     /// `project gate --check` (ENG-863) is the seam that resolves it against
-    /// DocuSign and confirms the envelope is complete.
+    /// `DocuSign` and confirms the envelope is complete.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docusign_envelope_id: Option<Uuid>,
     /// The Xero invoice this pointer's bytes were downloaded from (ENG-859).

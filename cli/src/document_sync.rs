@@ -205,7 +205,7 @@ fn is_signed_pdf_filename(filename: &str) -> bool {
 ///
 /// Only checks the id's *shape* (already enforced by `DocumentPointer`'s own
 /// `Uuid` field type via `from_yaml`); resolving the id against a live
-/// DocuSign envelope or Xero invoice is `project gate --check`'s separate
+/// `DocuSign` envelope or Xero invoice is `project gate --check`'s separate
 /// live-check pass (ENG-863), not this offline rule.
 pub(crate) fn validate_folder_pointer_keys(
     relative: &Path,

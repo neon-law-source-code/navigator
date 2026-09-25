@@ -15,6 +15,12 @@
 //!    that — so uploading `portal/dist` would publish
 //!    `<code>/portal/dist/assets/...`, a path Navigator does not serve. The
 //!    action uploads the directory's *entries* instead.
+//! 3. **Pruning must delete by exact key, never by listing.** A later step
+//!    deletes what a previous publish's manifest names that this build no
+//!    longer carries, and refuses outright rather than partially prune when
+//!    that is more than half of what the previous publish held. `rsync
+//!    --delete-unmatched-destination-objects` is the obvious way to write
+//!    this and is refused for the same two reasons `rsync` is refused above.
 //!
 //! Unlike `project_gate.rs`, which asserts presence in source because executing
 //! that gate would need a runner, the upload step here *is* executed: it is a
@@ -162,6 +168,199 @@ fn read_argv(log: &Path) -> Vec<String> {
         .lines()
         .map(str::to_string)
         .collect()
+}
+
+/// Run the "prune objects this build no longer carries" step with `gcloud`
+/// stubbed, and return every invocation (argv, space-split) in call order
+/// alongside the step's own result.
+///
+/// `existing_manifest`, when given, is what `gcloud storage cat` prints back
+/// for the manifest key — simulating what a previous publish left. `None`
+/// simulates a Project's first publish: the stub exits non-zero for `cat`,
+/// the same shape a missing object produces against real `gcloud`. Unlike
+/// [`run_step_with_gcloud_stub`], every call is recorded, not only the last —
+/// this step calls `gcloud` several times (`cat`, zero or more `rm`, then
+/// `cp`) and a test needs to see all of them in order.
+fn run_prune_step(
+    dist: &[&str],
+    existing_manifest: Option<&str>,
+) -> (Vec<Vec<String>>, Result<(), String>) {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let root = tmp.path();
+
+    for relative in dist {
+        let file = root.join("portal/dist").join(relative);
+        fs::create_dir_all(file.parent().expect("file has a parent")).expect("create dist dirs");
+        fs::write(&file, b"x").expect("write dist file");
+    }
+
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).expect("create stub bin");
+    let calls_log = root.join("calls.txt");
+    fs::write(&calls_log, "").expect("create calls log");
+
+    let manifest_fixture = root.join("manifest-fixture.txt");
+    fs::write(&manifest_fixture, existing_manifest.unwrap_or_default()).expect("write fixture");
+
+    let stub = bin.join("gcloud");
+    let stub_script = format!(
+        "#!/usr/bin/env bash\n\
+         printf '%s\\n' \"$*\" >> {calls}\n\
+         if [ \"$1\" = storage ] && [ \"$2\" = cat ]; then\n\
+         \x20\x20\x20\x20if [ {present} = true ]; then\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20cat {manifest}\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20exit 0\n\
+         \x20\x20\x20\x20else\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20exit 1\n\
+         \x20\x20\x20\x20fi\n\
+         fi\n\
+         exit 0\n",
+        calls = calls_log.display(),
+        present = existing_manifest.is_some(),
+        manifest = manifest_fixture.display(),
+    );
+    fs::write(&stub, stub_script).expect("write gcloud stub");
+    fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).expect("chmod stub");
+
+    let script_path = root.join("step.sh");
+    fs::write(&script_path, step_script("prune objects")).expect("write step script");
+
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .arg(&script_path)
+        .current_dir(root)
+        .env("PATH", path)
+        .env("BUCKET", "a-deployment-applications")
+        .env("CODE", "acme")
+        .env("PREFIX", "acme/portal")
+        .env("DIST_DIR", "portal/dist")
+        .output()
+        .expect("run the step under bash");
+
+    let calls: Vec<Vec<String>> = fs::read_to_string(&calls_log)
+        .unwrap_or_default()
+        .lines()
+        .map(|line| line.split_whitespace().map(str::to_string).collect())
+        .collect();
+
+    let result = if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stdout).to_string()
+            + &String::from_utf8_lossy(&output.stderr))
+    };
+    (calls, result)
+}
+
+/// A Project's first publish has no manifest to prune against: `cat` is
+/// attempted and refused (simulating a missing object), nothing is deleted,
+/// and the new manifest is still written so the *next* publish has something
+/// to diff against.
+#[test]
+fn a_first_publish_has_no_manifest_and_prunes_nothing() {
+    let (calls, result) = run_prune_step(&["index.html", "assets/a.js"], None);
+    result.expect("a first publish must succeed");
+
+    assert!(
+        calls
+            .iter()
+            .any(|call| call.first().map(String::as_str) == Some("storage")
+                && call.get(1).map(String::as_str) == Some("cat")),
+        "the step must look for a previous manifest: {calls:?}"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call.get(1).map(String::as_str) == Some("rm")),
+        "nothing may be deleted with no previous manifest to diff against: {calls:?}"
+    );
+    let cp_calls: Vec<&Vec<String>> = calls
+        .iter()
+        .filter(|call| call.get(1).map(String::as_str) == Some("cp"))
+        .collect();
+    assert_eq!(
+        cp_calls.len(),
+        1,
+        "the new manifest must still be written, once: {calls:?}"
+    );
+}
+
+/// A later publish deletes exactly the key the new build no longer carries,
+/// under this Project's own prefix, and leaves everything the build still
+/// has alone.
+#[test]
+fn a_later_publish_prunes_exactly_what_the_build_dropped() {
+    let (calls, result) = run_prune_step(
+        &["index.html", "assets/a.js"],
+        Some("index.html\nassets/a.js\npdf/old.pdf\n"),
+    );
+    result.expect("pruning one of three objects must succeed");
+
+    let deletes: Vec<&String> = calls
+        .iter()
+        .filter(|call| call.get(1).map(String::as_str) == Some("rm"))
+        .filter_map(|call| call.last())
+        .collect();
+    assert_eq!(
+        deletes,
+        vec!["gs://a-deployment-applications/acme/portal/pdf/old.pdf"],
+        "only the dropped key is deleted, and only under this Project's own prefix: {calls:?}"
+    );
+}
+
+/// A build that would prune more than half the previous publish's objects is
+/// refused outright, and nothing is deleted.
+#[test]
+fn a_build_that_drops_too_much_is_refused_and_deletes_nothing() {
+    let (calls, result) = run_prune_step(
+        &["index.html"],
+        Some("index.html\nassets/a.js\nassets/b.js\n"),
+    );
+    let error = result.expect_err("pruning two of three prior objects must be refused");
+    assert!(error.contains("50%"), "{error}");
+
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call.get(1).map(String::as_str) == Some("rm")),
+        "a refused prune must delete nothing: {calls:?}"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call.get(1).map(String::as_str) == Some("cp")),
+        "a refused prune must not advance the manifest either, so the next \
+         publish sees the same previous manifest and is refused again: {calls:?}"
+    );
+}
+
+/// The prune step's threshold names the Rust constant it must stay in sync
+/// with, the same convention [`the_action_explains_the_retention_coupling`]
+/// uses for the retention constant.
+#[test]
+fn the_prune_threshold_names_the_rust_constant_it_mirrors() {
+    let source = action_source();
+    assert!(
+        source.contains("MAX_PRUNE_PERCENT"),
+        "the action must name the constant its threshold is copied from",
+    );
+    assert!(
+        source.contains("max_prune_percent=50"),
+        "the hardcoded threshold must match store::sample_project::MAX_PRUNE_PERCENT",
+    );
+}
+
+/// Deletion runs strictly after both upload passes, never interleaved with
+/// them — so nothing removed here could still be named by the `index.html`
+/// those two steps already published.
+#[test]
+fn pruning_runs_after_both_upload_passes() {
+    assert!(step_index("publish assets") < step_index("prune objects"));
+    assert!(step_index("publish index.html") < step_index("prune objects"));
 }
 
 /// Run the "derive the coordinate and verify the built mount" step in a
@@ -431,7 +630,12 @@ fn no_echoed_line_prints_the_bucket() {
 /// still fails the step.
 #[test]
 fn every_gcloud_call_is_quiet() {
-    for prefix in ["publish assets", "publish index.html", "stamp index.html"] {
+    for prefix in [
+        "publish assets",
+        "publish index.html",
+        "stamp index.html",
+        "prune objects",
+    ] {
         let all = steps();
         let step = &all[step_index(prefix)];
         let verbosity = step

@@ -7,8 +7,10 @@
 //!
 //! The second is that a participant with a published bundle actually streams it:
 //! the bare mount redirects to the trailing slash, the entrypoint is served
-//! `no-store`, a content-hashed asset is served immutable, and an unmatched deep
-//! link falls back to `index.html` so a client-side route survives a refresh.
+//! `no-store`, a content-hashed asset is served immutable, a fixed-name file
+//! gets its own content type and a revalidating cache policy instead, and an
+//! unmatched deep link falls back to `index.html` so a client-side route
+//! survives a refresh.
 //!
 //! The third is that every refusal is the same non-disclosing 404. A 403 would
 //! confirm to a nonparticipant that a Project with this code exists, so "no such
@@ -93,14 +95,14 @@ async fn fixture() -> Fixture {
         "index.html",
         "text/html; charset=utf-8",
         b"<!doctype html><html><head><title>Libra portal</title></head><body>\
-          <div id=\"root\"></div><script type=module src=\"./assets/app.js\"></script>\
+          <div id=\"root\"></div><script type=module src=\"./assets/app-4f9c2e1b.js\"></script>\
           </body></html>",
     )
     .await;
     portal::test_support::publish_portal_object(
         &applications,
         &project.code,
-        "assets/app.js",
+        "assets/app-4f9c2e1b.js",
         "text/javascript; charset=utf-8",
         b"console.log('libra');",
     )
@@ -114,6 +116,19 @@ async fn fixture() -> Fixture {
         "guide/index.html",
         "text/html; charset=utf-8",
         b"<!doctype html><title>Libra guide</title>",
+    )
+    .await;
+    // A fixed-name file outside `assets/`, the shape a Vite plugin emits for
+    // something like `pdf/<code>.pdf`. Stored with the wrong content type on
+    // purpose — the gateway must re-derive `application/pdf` from the
+    // extension regardless of what was written, and this name carries no
+    // hash, so it must not cache for a year either.
+    portal::test_support::publish_portal_object(
+        &applications,
+        &project.code,
+        "pdf/libra-formation.pdf",
+        "application/octet-stream",
+        b"%PDF-1.4 fixture",
     )
     .await;
 
@@ -234,7 +249,7 @@ async fn a_participant_streams_the_published_bundle() {
 
     let asset = send(
         &f.app,
-        &format!("{root}assets/app.js"),
+        &format!("{root}assets/app-4f9c2e1b.js"),
         &f.participant_cookie,
     )
     .await;
@@ -264,6 +279,38 @@ async fn a_participant_streams_the_published_bundle() {
     assert!(body_string(deep).await.contains("Libra portal"));
 }
 
+/// A fixed-name file outside `assets/` — the shape a Vite plugin emits for
+/// something like `pdf/<code>.pdf` — is served with its own content type,
+/// derived from the extension rather than trusted from storage, and with a
+/// revalidating cache policy rather than a year of immutable caching, since
+/// its bytes can change on the very next publish without its name changing
+/// at all.
+#[tokio::test]
+async fn a_fixed_name_pdf_gets_its_own_type_and_a_revalidating_cache_policy() {
+    let f = fixture().await;
+    let root = format!("/app/projects/{}/portal/", f.project_code);
+
+    let pdf = send(
+        &f.app,
+        &format!("{root}pdf/libra-formation.pdf"),
+        &f.participant_cookie,
+    )
+    .await;
+    assert_eq!(pdf.status(), StatusCode::OK);
+    assert_eq!(
+        header_value(&pdf, header::CONTENT_TYPE),
+        "application/pdf",
+        "a browser must render this inline rather than download it"
+    );
+    assert_eq!(
+        header_value(&pdf, header::CACHE_CONTROL),
+        "private, no-cache",
+        "a fixed name is not proof against a redeploy changing its bytes, \
+         so it must not cache as immutable"
+    );
+    assert_eq!(body_string(pdf).await, "%PDF-1.4 fixture");
+}
+
 /// The entrypoint carries a way back to the matter.
 ///
 /// A participant embedded in a Project's own bundle has no Navigator chrome
@@ -289,7 +336,7 @@ async fn the_entrypoint_carries_a_link_back_to_the_matter() {
 
     let asset = send(
         &f.app,
-        &format!("{root}assets/app.js"),
+        &format!("{root}assets/app-4f9c2e1b.js"),
         &f.participant_cookie,
     )
     .await;

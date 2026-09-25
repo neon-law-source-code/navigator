@@ -18,7 +18,24 @@
 //! `index.html` publishes **last**. Until it lands, the previous `index.html`
 //! is still live and still references the previous hashed assets, so a reader
 //! mid-publish sees a whole old bundle rather than a new document pointing at
-//! assets that do not exist yet. Nothing is ever deleted for the same reason.
+//! assets that do not exist yet. Nothing this publish's own plan writes is
+//! ever deleted for the same reason — [`prune_plan`] only ever considers a
+//! key for deletion once it is confirmed absent from the *current* plan, so
+//! there is no window where a live reference points at something removed.
+//!
+//! ## Pruning what a later build drops
+//!
+//! A publish never lists the bucket — see
+//! `cli::devx::gcp::app_publisher::PUBLISHER_PERMISSIONS` for why
+//! `storage.objects.list` is not something a Project's own publisher may ever
+//! hold — so it cannot discover stale objects by looking. Instead, each
+//! publish writes a small manifest object ([`manifest_key`]) naming every key
+//! *this* publish wrote, and reads back the manifest the *previous* publish
+//! left to compute what it no longer needs. [`prune_plan`] is that
+//! computation, and it refuses to prune more than [`MAX_PRUNE_PERCENT`] of
+//! the previous publish's own objects in one pass: a build that looks like it
+//! dropped half its own bundle is more likely broken than intentional, and
+//! deleting on top of it would turn a build fluke into data loss.
 
 use std::path::{Path, PathBuf};
 
@@ -53,10 +70,20 @@ pub const ENTRY_DOCUMENT: &str = "index.html";
 /// assets, so a cached copy pins a reader to a bundle that may be gone.
 pub const ENTRY_CACHE_CONTROL: &str = "no-store";
 
-/// Hashed assets are immutable by construction — the hash changes when the
-/// bytes do — and `private` because this bucket is participation-gated and
-/// must not land in a shared cache.
+/// A Vite-hashed asset is immutable by construction — the hash changes when
+/// the bytes do — and `private` because this bucket is participation-gated
+/// and must not land in a shared cache. Applied only to a name
+/// [`is_content_hashed`] recognizes; see [`REVALIDATE_CACHE_CONTROL`] for
+/// everything else.
 pub const ASSET_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
+
+/// A fixed-name file — anything not shaped like a Vite-hashed asset — is not
+/// safe to cache for a year: its bytes can change on the very next publish
+/// without its name changing at all. `no-cache` still permits a
+/// private cache to store the response, but forbids using it again without
+/// revalidating first, so a redeploy that changes the bytes at this same
+/// name is visible on the next request rather than after a year.
+pub const REVALIDATE_CACHE_CONTROL: &str = "private, no-cache";
 
 /// Why a manifest could not be turned into a publish prefix.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -133,6 +160,131 @@ pub fn portal_prefix(project_code: &str) -> String {
     format!("{project_code}/{PORTAL_APPLICATION}")
 }
 
+/// The manifest object naming every key a Project's most recent successful
+/// publish wrote, one bundle-relative path per line.
+///
+/// Deliberately a sibling of [`portal_prefix`], not a key under it: the
+/// gateway only ever reads under `<code>/portal/`, so a manifest kept outside
+/// that prefix is never reachable through the participant-facing route no
+/// matter what a caller requests.
+#[must_use]
+pub fn manifest_key(project_code: &str) -> String {
+    format!("{project_code}/.publish-manifest")
+}
+
+/// The content type [`manifest_key`] is written with.
+pub const MANIFEST_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+
+/// Serialize a publish plan's own key set into manifest bytes: one
+/// bundle-relative path per line, sorted, matching what [`parse_manifest`]
+/// reads back. The entry document is included like any other key — nothing
+/// downstream needs to treat it differently once it is just a name in a set.
+#[must_use]
+pub fn render_manifest(plan: &[PortalObject], project_code: &str) -> Vec<u8> {
+    let prefix = format!("{}/", portal_prefix(project_code));
+    let mut keys: Vec<&str> = plan
+        .iter()
+        .map(|object| {
+            object
+                .key
+                .strip_prefix(prefix.as_str())
+                .unwrap_or(&object.key)
+        })
+        .collect();
+    keys.sort_unstable();
+    let mut rendered = keys.join("\n");
+    rendered.push('\n');
+    rendered.into_bytes()
+}
+
+/// Parse manifest bytes back into the bundle-relative keys they name. Blank
+/// lines are skipped, so a trailing newline — or an empty object — round-trips
+/// without producing a spurious empty key.
+#[must_use]
+pub fn parse_manifest(bytes: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// The largest fraction, in whole percent, of a previous publish's objects
+/// that one publish may prune before [`prune_plan`] refuses instead of acting.
+///
+/// A build that looks like it dropped half of what the last one published is
+/// more likely broken than intentional — a flaky checkout, a build-tool cache
+/// gone bad, an `assets/` directory that silently failed to copy. Deleting on
+/// top of a build like that would turn the flake into data loss instead of
+/// merely a failed publish. The operator sees the refusal, fixes the build,
+/// and republishes; nothing already live is touched in the meantime.
+pub const MAX_PRUNE_PERCENT: usize = 50;
+
+/// What one publish should do about the objects a previous publish left
+/// behind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrunePlan {
+    /// No previous manifest — either this Project's first publish, or one
+    /// from before pruning existed. Nothing is known to be stale, so nothing
+    /// is deleted; the manifest this publish writes gives the *next* publish
+    /// something to diff against.
+    NoPriorManifest,
+    /// The bundle-relative keys to delete, computed against the previous
+    /// manifest. Every one of them is confirmed absent from the plan just
+    /// published, so deleting them cannot remove anything the just-published
+    /// `index.html` — uploaded before this is ever computed — could name.
+    Prune(Vec<String>),
+    /// Pruning was refused. `stale` names what would have been deleted and
+    /// `previous` is how many objects the prior publish held; together they
+    /// are why `stale.len() * 100 > previous * MAX_PRUNE_PERCENT`. The caller
+    /// must fail the publish rather than silently skip the prune, so the
+    /// operator sees it.
+    Refused { stale: Vec<String>, previous: usize },
+}
+
+/// Decide what to prune: every bundle-relative key `previous_manifest` named
+/// that `plan` — the bundle this publish just wrote — does not carry, unless
+/// that is more than [`MAX_PRUNE_PERCENT`] of the previous publish, in which
+/// case nothing is deleted and the caller must refuse the publish instead of
+/// carrying out a partial, silently-bounded prune.
+#[must_use]
+pub fn prune_plan(
+    previous_manifest: Option<&[String]>,
+    plan: &[PortalObject],
+    project_code: &str,
+) -> PrunePlan {
+    let Some(previous) = previous_manifest else {
+        return PrunePlan::NoPriorManifest;
+    };
+    if previous.is_empty() {
+        return PrunePlan::NoPriorManifest;
+    }
+    let prefix = format!("{}/", portal_prefix(project_code));
+    let current: std::collections::HashSet<&str> = plan
+        .iter()
+        .map(|object| {
+            object
+                .key
+                .strip_prefix(prefix.as_str())
+                .unwrap_or(&object.key)
+        })
+        .collect();
+    let mut stale: Vec<String> = previous
+        .iter()
+        .filter(|key| !current.contains(key.as_str()))
+        .cloned()
+        .collect();
+    stale.sort_unstable();
+    if stale.len() * 100 > previous.len() * MAX_PRUNE_PERCENT {
+        return PrunePlan::Refused {
+            stale,
+            previous: previous.len(),
+        };
+    }
+    PrunePlan::Prune(stale)
+}
+
 /// One object to publish, fully resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortalObject {
@@ -168,6 +320,10 @@ pub fn content_type_for(path: &Path) -> &'static str {
         Some("woff2") => "font/woff2",
         Some("woff") => "font/woff",
         Some("txt") => "text/plain; charset=utf-8",
+        // Uploaded so the object's own stored type is correct too, even
+        // though the gateway (`portal::project_portal::content_type_for`)
+        // re-derives it from the extension at serve time regardless.
+        Some("pdf") => "application/pdf",
         _ => "application/octet-stream",
     }
 }
@@ -176,6 +332,28 @@ pub fn content_type_for(path: &Path) -> &'static str {
 /// not a nested one. A nested `index.html` is an ordinary asset.
 fn is_entry_document(relative: &Path) -> bool {
     relative == Path::new(ENTRY_DOCUMENT)
+}
+
+/// Whether `relative` (bundle-relative, `/`-joined) is one of Vite's own
+/// content-hashed build outputs — `assets/<name>-<hash>.<ext>`.
+///
+/// Vite only ever hashes what it writes under `assets/`, appending
+/// `-<hash>` to the filename before the extension. A build's own file placed
+/// outside `assets/` — a fixed-name `pdf/<code>.pdf` a Vite plugin emits, say
+/// — carries no such guarantee: the same name is reused on every publish, so
+/// only a name shaped like the hashed convention may cache as
+/// [`ASSET_CACHE_CONTROL`]. `portal::project_portal::bundle_response` applies
+/// this identical rule when the gateway serves these bytes back — the two
+/// call sites share this one function rather than keeping their own copies
+/// in sync by hand.
+#[must_use]
+pub fn is_content_hashed(relative: &str) -> bool {
+    let Some(filename) = relative.strip_prefix("assets/") else {
+        return false;
+    };
+    let stem = filename.rsplit_once('.').map_or(filename, |(stem, _)| stem);
+    stem.rsplit_once('-')
+        .is_some_and(|(_, hash)| !hash.is_empty())
 }
 
 /// Build the ordered publish plan for a built `dist/` directory.
@@ -216,8 +394,10 @@ pub fn publish_plan(dist: &Path, project_code: &str) -> std::io::Result<Vec<Port
             content_type: content_type_for(&relative),
             cache_control: if entry {
                 ENTRY_CACHE_CONTROL
-            } else {
+            } else if is_content_hashed(&joined) {
                 ASSET_CACHE_CONTROL
+            } else {
+                REVALIDATE_CACHE_CONTROL
             },
         });
     }
@@ -400,13 +580,71 @@ mod tests {
             .expect("the nested document");
 
         assert_eq!(
-            nested.cache_control, ASSET_CACHE_CONTROL,
-            "only the root document is the bundle's pointer"
+            nested.cache_control, REVALIDATE_CACHE_CONTROL,
+            "only the root document is the bundle's pointer, but a nested \
+             index.html is a fixed name outside assets/ too, not a hashed \
+             one, so it gets a revalidating policy rather than a year of \
+             immutable caching"
         );
         assert_eq!(
             plan.last().expect("a last object").key,
             "sample-litigation/portal/index.html"
         );
+    }
+
+    /// Only a name shaped like Vite's own hashed convention may cache for a
+    /// year. A fixed name — whether or not it happens to sit under `assets/`
+    /// — must revalidate, or a redeploy that changes its bytes without
+    /// changing its name stays invisible for a year.
+    #[test]
+    fn only_a_hashed_asset_name_is_cached_as_immutable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(root, "index.html", b"x");
+        write(root, "assets/app-4f9c2e1b.js", b"x");
+        write(root, "assets/app.js", b"x");
+        write(root, "pdf/acme.pdf", b"x");
+
+        let plan = publish_plan(root, "sample-litigation").expect("plan");
+        let find = |key: &str| {
+            plan.iter()
+                .find(|o| o.key == key)
+                .unwrap_or_else(|| panic!("{key} in the plan"))
+        };
+
+        assert_eq!(
+            find("sample-litigation/portal/assets/app-4f9c2e1b.js").cache_control,
+            ASSET_CACHE_CONTROL,
+            "a Vite-hashed asset name is immutable by construction"
+        );
+        assert_eq!(
+            find("sample-litigation/portal/assets/app.js").cache_control,
+            REVALIDATE_CACHE_CONTROL,
+            "a fixed name under assets/ with no hash suffix is not safe to \
+             pin for a year"
+        );
+        assert_eq!(
+            find("sample-litigation/portal/pdf/acme.pdf").cache_control,
+            REVALIDATE_CACHE_CONTROL,
+            "a fixed-name file outside assets/ must revalidate so a redeploy \
+             that replaces it is visible"
+        );
+    }
+
+    #[test]
+    fn hash_detection_follows_vites_own_assets_convention() {
+        assert!(is_content_hashed("assets/app-4f9c2e1b.js"));
+        assert!(is_content_hashed("assets/app-abc123.css"));
+        assert!(is_content_hashed("assets/fonts/gorp-abc123.woff2"));
+        assert!(
+            !is_content_hashed("assets/app.js"),
+            "no hyphen before the extension is not a hash suffix"
+        );
+        assert!(
+            !is_content_hashed("pdf/acme.pdf"),
+            "outside assets/, Vite gives no hashing guarantee at all"
+        );
+        assert!(!is_content_hashed("index.html"));
     }
 
     #[test]
@@ -421,6 +659,11 @@ mod tests {
         );
         assert_eq!(content_type_for(Path::new("a.woff2")), "font/woff2");
         assert_eq!(content_type_for(Path::new("a.svg")), "image/svg+xml");
+        assert_eq!(
+            content_type_for(Path::new("engagement.pdf")),
+            "application/pdf",
+            "a PDF must not fall back to application/octet-stream"
+        );
         assert_eq!(
             content_type_for(Path::new("noextension")),
             "application/octet-stream",
@@ -591,5 +834,113 @@ mod tests {
             "sample-litigation/portal"
         );
         assert_eq!(portal_prefix("henderson"), "henderson/portal");
+    }
+
+    #[test]
+    fn the_manifest_key_sits_outside_the_served_portal_prefix() {
+        let key = manifest_key("sample-litigation");
+        assert_eq!(key, "sample-litigation/.publish-manifest");
+        assert!(
+            !key.starts_with(&portal_prefix("sample-litigation")),
+            "a manifest reachable under the served prefix could be requested \
+             through the participant-facing gateway: {key}"
+        );
+    }
+
+    #[test]
+    fn a_rendered_manifest_round_trips_through_parse() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(root, "index.html", b"x");
+        write(root, "assets/app-abc123.js", b"x");
+        write(root, "favicon.svg", b"x");
+
+        let plan = publish_plan(root, "sample-litigation").expect("plan");
+        let rendered = render_manifest(&plan, "sample-litigation");
+        let parsed = parse_manifest(&rendered);
+
+        let mut expected = vec![
+            "index.html".to_string(),
+            "assets/app-abc123.js".to_string(),
+            "favicon.svg".to_string(),
+        ];
+        expected.sort_unstable();
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parsing_skips_blank_lines_so_a_trailing_newline_round_trips() {
+        assert_eq!(
+            parse_manifest(b"a\n\nb\n\n"),
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(parse_manifest(b""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_first_publish_has_no_prior_manifest_to_prune_against() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(root, "index.html", b"x");
+        let plan = publish_plan(root, "sample-litigation").expect("plan");
+
+        assert_eq!(
+            prune_plan(None, &plan, "sample-litigation"),
+            PrunePlan::NoPriorManifest
+        );
+        assert_eq!(
+            prune_plan(Some(&[]), &plan, "sample-litigation"),
+            PrunePlan::NoPriorManifest,
+            "an empty previous manifest is the same as none — no key was \
+             ever confirmed live"
+        );
+    }
+
+    #[test]
+    fn a_key_the_new_build_dropped_is_pruned() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(root, "index.html", b"x");
+        write(root, "assets/app-new.js", b"x");
+        let plan = publish_plan(root, "sample-litigation").expect("plan");
+
+        let previous = vec![
+            "index.html".to_string(),
+            "assets/app-new.js".to_string(),
+            "pdf/renamed-away.pdf".to_string(),
+        ];
+
+        assert_eq!(
+            prune_plan(Some(&previous), &plan, "sample-litigation"),
+            PrunePlan::Prune(vec!["pdf/renamed-away.pdf".to_string()]),
+            "only the key the new build no longer carries is pruned"
+        );
+    }
+
+    #[test]
+    fn a_build_that_drops_more_than_half_the_previous_objects_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(root, "index.html", b"x");
+        let plan = publish_plan(root, "sample-litigation").expect("plan");
+
+        // Three objects lived before; this build carries only index.html, so
+        // two of three (67%) would be pruned — over MAX_PRUNE_PERCENT.
+        let previous = vec![
+            "index.html".to_string(),
+            "assets/a.js".to_string(),
+            "assets/b.js".to_string(),
+        ];
+
+        match prune_plan(Some(&previous), &plan, "sample-litigation") {
+            PrunePlan::Refused { stale, previous } => {
+                assert_eq!(previous, 3);
+                assert_eq!(
+                    stale,
+                    vec!["assets/a.js".to_string(), "assets/b.js".to_string()]
+                );
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
     }
 }

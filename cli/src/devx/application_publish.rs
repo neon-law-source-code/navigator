@@ -16,21 +16,29 @@
 //! put up for the first time from a machine rather than a runner — this is
 //! the command that does it.
 //!
-//! ## Three properties carried, not reimplemented
+//! ## Four properties carried, not reimplemented
 //!
 //! * **Order.** `publish_plan` sorts the entry document last, so no
 //!   `index.html` naming a new hashed asset is readable before that asset
 //!   exists. The upload walks the plan as given and never reorders or
 //!   parallelizes across it.
-//! * **Never delete.** A superseded hashed asset is left unreachable rather
-//!   than removed. One Project's publish must never prune another's objects
-//!   out of the shared, flat namespace, and a revert is a forward publish.
-//!   Nothing here calls `delete`, and the covering test asserts it.
 //! * **Every object, every time.** The plan enumerates from disk and each
 //!   object is written unconditionally. That is what keeps the applications
 //!   bucket's object-age Delete rule safe: a live asset's `updateTime` is
 //!   refreshed on every publish, so the rule can only ever reach an orphan.
 //!   Do not add a skip-unchanged optimization here.
+//! * **Prune only what this publish's own plan already superseded.**
+//!   [`store::sample_project::prune_plan`] computes what to delete from a
+//!   manifest object this same code wrote on its own previous publish, never
+//!   from a bucket listing — one Project's publish still never touches
+//!   another's objects, because the manifest is scoped to this Project's own
+//!   prefix and nothing here ever calls `list`. Deletion only ever runs after
+//!   every object the new plan names is already uploaded, so nothing live is
+//!   ever removed while something still points at it.
+//! * **A single bad build cannot empty a bucket prefix.** A build that would
+//!   prune more than `store::sample_project::MAX_PRUNE_PERCENT` of the
+//!   previous publish's objects is refused outright rather than partially
+//!   pruned — see [`prune_stale`].
 //!
 //! ## The bucket is named every time
 //!
@@ -51,7 +59,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use cloud::{GcsStorage, GcsStorageConfig, StorageService};
+use cloud::{GcsStorage, GcsStorageConfig, StorageError, StorageService};
 use store::sample_project::{project_code_for, publish_plan, PortalObject, ENTRY_DOCUMENT};
 
 use super::sample_project::{build_from_repository, repo_basename, resolve_repo};
@@ -153,6 +161,68 @@ async fn upload_plan(storage: &dyn StorageService, plan: &[PortalObject]) -> Res
     Ok(plan.len())
 }
 
+/// Delete what the previous publish left behind that this one's plan no
+/// longer carries, then record this plan's own key set so the *next* publish
+/// has something to diff against.
+///
+/// Reads the manifest object the previous publish wrote — absent on a
+/// Project's first publish, or one from before pruning existed — and hands it
+/// to [`store::sample_project::prune_plan`] alongside `plan`. A build that
+/// would prune more than `store::sample_project::MAX_PRUNE_PERCENT` of the
+/// previous publish's objects is refused outright rather than partially
+/// pruned: see the module doc. The caller uploads `plan` in full before
+/// calling this, so every key deleted here is already confirmed absent from
+/// the bundle `index.html` was just published pointing at.
+async fn prune_stale(
+    storage: &dyn StorageService,
+    code: &str,
+    plan: &[PortalObject],
+) -> Result<usize> {
+    let manifest_key = store::sample_project::manifest_key(code);
+    let previous = match storage.get(&manifest_key).await {
+        Ok(object) => Some(store::sample_project::parse_manifest(&object.bytes)),
+        Err(StorageError::NotFound(_)) => None,
+        Err(error) => return Err(error).with_context(|| format!("reading {manifest_key}")),
+    };
+
+    let prefix = format!("{}/", store::sample_project::portal_prefix(code));
+    let pruned = match store::sample_project::prune_plan(previous.as_deref(), plan, code) {
+        store::sample_project::PrunePlan::NoPriorManifest => 0,
+        store::sample_project::PrunePlan::Refused { stale, previous } => {
+            bail!(
+                "publish would prune {} of {previous} previously published object(s) for \
+                 Project `{code}` — more than {}%, which looks like a broken build rather \
+                 than an intentional removal. Nothing was deleted; fix the build and \
+                 republish, or prune the bucket by hand if this really is intentional. \
+                 Would-be-pruned: {stale:?}",
+                stale.len(),
+                store::sample_project::MAX_PRUNE_PERCENT,
+            );
+        }
+        store::sample_project::PrunePlan::Prune(stale) => {
+            for key in &stale {
+                storage
+                    .delete(&format!("{prefix}{key}"))
+                    .await
+                    .with_context(|| format!("pruning {prefix}{key}"))?;
+            }
+            stale.len()
+        }
+    };
+
+    let manifest_bytes = store::sample_project::render_manifest(plan, code);
+    storage
+        .put(
+            &manifest_key,
+            &manifest_bytes,
+            store::sample_project::MANIFEST_CONTENT_TYPE,
+        )
+        .await
+        .with_context(|| format!("writing {manifest_key}"))?;
+
+    Ok(pruned)
+}
+
 /// The plan for one built bundle, refused before any object is written when
 /// the bundle names a Project other than `expected`.
 fn plan_for(manifest: &str, expected: &str, dist: &Path, repo: &str) -> Result<Vec<PortalObject>> {
@@ -223,10 +293,19 @@ pub(super) fn run(
             Some(storage) => {
                 let count = runtime.block_on(upload_plan(storage, &plan))?;
                 published += count;
+                // Pruning reads and deletes only after every object `plan`
+                // names is already uploaded, so nothing removed here could
+                // have been named by the `index.html` just published.
+                let pruned = runtime.block_on(prune_stale(storage, expected, &plan))?;
                 println!(
                     "navigator: published {count} object(s) for Project `{expected}` to \
-                     gs://{bucket}/{}/ — {ENTRY_DOCUMENT} last",
-                    store::sample_project::portal_prefix(expected)
+                     gs://{bucket}/{}/ — {ENTRY_DOCUMENT} last{}",
+                    store::sample_project::portal_prefix(expected),
+                    if pruned > 0 {
+                        format!(", pruned {pruned} stale object(s)")
+                    } else {
+                        String::new()
+                    }
                 );
             }
         }
@@ -260,22 +339,35 @@ mod tests {
     /// called.
     /// One recorded `put_cached`: key, bytes, content type, cache directive.
     type Put = (String, Vec<u8>, String, String);
+    /// One recorded plain `put`: key, bytes, content type — the manifest
+    /// write, which carries no cache directive of its own.
+    type PlainPut = (String, Vec<u8>, String);
 
     #[derive(Default)]
     struct Recording {
         puts: Mutex<Vec<Put>>,
-        deletes: Mutex<usize>,
+        plain_puts: Mutex<Vec<PlainPut>>,
+        deletes: Mutex<Vec<String>>,
+        /// Objects already "in the bucket" before the call under test — the
+        /// manifest a previous publish left, for a test that exercises
+        /// pruning against it.
+        preexisting: Mutex<std::collections::HashMap<String, Vec<u8>>>,
     }
 
     #[async_trait::async_trait]
     impl StorageService for Recording {
         async fn put(
             &self,
-            _key: &str,
-            _bytes: &[u8],
-            _content_type: &str,
+            key: &str,
+            bytes: &[u8],
+            content_type: &str,
         ) -> Result<(), StorageError> {
-            panic!("the publish must carry cache-control, so it calls put_cached, never put");
+            self.plain_puts.lock().expect("lock").push((
+                key.to_string(),
+                bytes.to_vec(),
+                content_type.to_string(),
+            ));
+            Ok(())
         }
 
         async fn put_cached(
@@ -295,11 +387,18 @@ mod tests {
         }
 
         async fn get(&self, key: &str) -> Result<StoredObject, StorageError> {
-            Err(StorageError::NotFound(key.to_string()))
+            match self.preexisting.lock().expect("lock").get(key) {
+                Some(bytes) => Ok(StoredObject {
+                    key: key.to_string(),
+                    bytes: bytes.clone(),
+                    content_type: store::sample_project::MANIFEST_CONTENT_TYPE.to_string(),
+                }),
+                None => Err(StorageError::NotFound(key.to_string())),
+            }
         }
 
-        async fn delete(&self, _key: &str) -> Result<(), StorageError> {
-            *self.deletes.lock().expect("lock") += 1;
+        async fn delete(&self, key: &str) -> Result<(), StorageError> {
+            self.deletes.lock().expect("lock").push(key.to_string());
             Ok(())
         }
 
@@ -469,10 +568,122 @@ mod tests {
         assert_eq!(content_type, "text/javascript; charset=utf-8");
         assert_eq!(cache_control, store::sample_project::ASSET_CACHE_CONTROL);
 
+        assert!(
+            storage.deletes.lock().expect("lock").is_empty(),
+            "upload_plan itself never deletes — pruning is prune_stale's own, later, separate step"
+        );
+        assert!(
+            storage.plain_puts.lock().expect("lock").is_empty(),
+            "every portal object must carry a cache directive, so upload_plan calls \
+             put_cached exclusively, never the plain put the manifest write uses"
+        );
+    }
+
+    #[test]
+    fn a_first_publish_has_nothing_to_prune_and_writes_its_own_manifest() {
+        let dist = sample_dist();
+        let plan = publish_plan(dist.path(), "sample-litigation").expect("plan");
+        let storage = Recording::default();
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        let pruned = runtime
+            .block_on(prune_stale(&storage, "sample-litigation", &plan))
+            .expect("prune");
+
+        assert_eq!(pruned, 0);
+        assert!(storage.deletes.lock().expect("lock").is_empty());
+
+        let manifest_key = store::sample_project::manifest_key("sample-litigation");
+        let (key, bytes, content_type) = storage
+            .plain_puts
+            .lock()
+            .expect("lock")
+            .iter()
+            .find(|(key, ..)| key == &manifest_key)
+            .cloned()
+            .expect("the manifest is written even on a first publish");
+        assert_eq!(key, manifest_key);
+        assert_eq!(content_type, store::sample_project::MANIFEST_CONTENT_TYPE);
+        let parsed = store::sample_project::parse_manifest(&bytes);
+        assert_eq!(parsed.len(), plan.len());
+    }
+
+    #[test]
+    fn a_later_publish_prunes_only_what_the_new_build_dropped() {
+        let dist = sample_dist();
+        let plan = publish_plan(dist.path(), "sample-litigation").expect("plan");
+        let storage = Recording::default();
+
+        // The previous publish's manifest names one extra key the new build
+        // no longer carries — a renamed or removed fixed-name file.
+        let mut previous_keys: Vec<String> = plan
+            .iter()
+            .map(|o| {
+                o.key
+                    .strip_prefix("sample-litigation/portal/")
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        previous_keys.push("pdf/renamed-away.pdf".to_string());
+        let manifest_key = store::sample_project::manifest_key("sample-litigation");
+        storage
+            .preexisting
+            .lock()
+            .expect("lock")
+            .insert(manifest_key.clone(), previous_keys.join("\n").into_bytes());
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        let pruned = runtime
+            .block_on(prune_stale(&storage, "sample-litigation", &plan))
+            .expect("prune");
+
+        assert_eq!(pruned, 1);
         assert_eq!(
             *storage.deletes.lock().expect("lock"),
-            0,
-            "a publish never deletes: superseded assets are left unreachable, not removed"
+            vec!["sample-litigation/portal/pdf/renamed-away.pdf".to_string()],
+            "only the key the new build dropped is deleted, under this Project's own prefix"
+        );
+    }
+
+    #[test]
+    fn a_publish_that_would_prune_too_much_is_refused_and_deletes_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "index.html", b"x");
+        let plan = publish_plan(dir.path(), "sample-litigation").expect("plan");
+        let storage = Recording::default();
+
+        // Three objects lived before; this build carries only index.html.
+        let manifest_key = store::sample_project::manifest_key("sample-litigation");
+        storage.preexisting.lock().expect("lock").insert(
+            manifest_key,
+            b"index.html\nassets/a.js\nassets/b.js\n".to_vec(),
+        );
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        let error = runtime
+            .block_on(prune_stale(&storage, "sample-litigation", &plan))
+            .expect_err("pruning two of three prior objects must be refused");
+
+        assert!(
+            format!("{error:#}").contains("sample-litigation"),
+            "{error:#}"
+        );
+        assert!(
+            storage.deletes.lock().expect("lock").is_empty(),
+            "a refused prune must delete nothing, not a partial, silently-bounded set"
+        );
+        assert!(
+            storage.plain_puts.lock().expect("lock").is_empty(),
+            "a refused prune must not advance the manifest either — the next \
+             publish should see the same previous manifest and refuse again \
+             until a human intervenes"
         );
     }
 

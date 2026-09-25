@@ -37,3 +37,18 @@ fn lanes_refuse_open_pull_request_overlap() {
         "lanes must stay off paths an open pull request already changes, got:\n{body}"
     );
 }
+
+#[test]
+fn prompts_cite_open_pull_requests_they_avoided() {
+    let body = skill();
+    assert!(
+        body.contains("The open pull requests reviewed, and a statement that this prompt's files do not overlap them."),
+        "prompts must cite the open pull requests they stayed clear of, got:\n{body}"
+    );
+    assert!(
+        body.contains(
+            "If every ready issue collides, report that and do not emit a duplicate prompt."
+        ),
+        "a full collision must be reported instead of a duplicate prompt, got:\n{body}"
+    );
+}

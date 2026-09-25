@@ -26,6 +26,8 @@ Follow [workflows](../../../docs/agent-workflows.md) and [safety](../../../docs/
 End with 1–4 copyable prompts for ready work, each containing:
 
 - Issue identifiers, ordered scope, files, acceptance criteria, and tests.
+- The open pull requests reviewed, and a statement that this prompt's files do not overlap them.
+  If every ready issue collides, report that and do not emit a duplicate prompt.
 - New Worktree using [implement-issue](../implement-issue/SKILL.md).
 - One commit per issue, including its tests.
 - Open one PR using [create-pr](../create-pr/SKILL.md). Fix failures until required local tests and

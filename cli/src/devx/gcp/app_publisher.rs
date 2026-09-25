@@ -9,10 +9,12 @@
 //!    [`publisher_account_id`] for why the id carries the Project code verbatim
 //!    and what it refuses rather than shortening.
 //! 2. A custom role holding exactly `storage.objects.create`,
-//!    `storage.objects.update` and `storage.objects.get`, bound on the
-//!    applications bucket under an IAM **condition** that confines it to this
-//!    Project's own `<code>/portal` prefix. Create *and update*, never delete,
-//!    and never another Project's objects.
+//!    `storage.objects.update`, `storage.objects.get` and
+//!    `storage.objects.delete`, bound on the applications bucket under an IAM
+//!    **condition** that confines it to this Project's own `<code>/portal`
+//!    prefix. Create, update, and delete — for pruning what a later build no
+//!    longer carries — but never another Project's objects, and never `list`;
+//!    see [`PUBLISHER_PERMISSIONS`] for why `list` stays out even now.
 //! 3. A GitHub OIDC Workload Identity provider pinned to the applications
 //!    organization on `main`, issued by
 //!    [`GITHUB_OIDC_ISSUER`](super::artifact_registry::GITHUB_OIDC_ISSUER).
@@ -23,14 +25,18 @@
 //! ## Why not `roles/storage.objectCreator`, which this used to grant
 //!
 //! `objectCreator` is create-only, and the module used to defend that as
-//! "create, never delete". The never-delete half is still right and still
-//! enforced. The create-*only* half became wrong: the publish `cp`s every object
-//! on every run — unconditionally, so that no live asset's age runs out under
-//! the bucket's Delete rule — and it stamps `index.html` with custom metadata
-//! afterwards. Overwriting an existing object and writing its metadata are
-//! `storage.objects.create` and `storage.objects.update`, and a create-only role
-//! refuses the second and every republish. A publisher provisioned with
-//! `objectCreator` succeeds exactly once and then fails on a permission denial.
+//! "create, never delete". The create-*only* half was always wrong: the
+//! publish `cp`s every object on every run — unconditionally, so that no live
+//! asset's age runs out under the bucket's Delete rule — and it stamps
+//! `index.html` with custom metadata afterwards. Overwriting an existing
+//! object and writing its metadata are `storage.objects.create` and
+//! `storage.objects.update`, and a create-only role refuses the second and
+//! every republish. A publisher provisioned with `objectCreator` succeeds
+//! exactly once and then fails on a permission denial. The never-delete half
+//! held until pruning what a later build drops became its own fix — see
+//! [`PUBLISHER_PERMISSIONS`] — at which point `objectAdmin`'s unconditioned
+//! delete was still the wrong shape: this custom role's `delete` is confined
+//! by the same prefix condition as the rest of it.
 //!
 //! ## Why a condition, and why the role is custom rather than predefined
 //!
@@ -41,13 +47,16 @@
 //! privileged client-facing artifact that Navigator serves same-origin. The
 //! condition is what makes the derived prefix an enforced one.
 //!
-//! No predefined role is create-and-update without delete: `objectCreator` is
-//! create-only, `objectUser` and `objectAdmin` both carry delete. So the role is
-//! custom and holds three permissions. It deliberately does **not** hold
+//! No predefined role is exactly this shape: `objectCreator` is create-only,
+//! and `objectUser`/`objectAdmin` both carry `storage.objects.list` alongside
+//! delete, which is the one permission this role must never hold. So the role
+//! is custom and holds four permissions. It deliberately does **not** hold
 //! `storage.objects.list`: listing is evaluated against the *bucket*, so no
 //! object-name condition can scope it, and a grant of it would leak every other
-//! Project's object names. The publish does not need it — it uses `cp`, which
-//! never lists.
+//! Project's object names. The publish does not need it — pruning reads a
+//! manifest object this Project's own previous publish wrote (see
+//! `store::sample_project::prune_plan`), never a bucket listing, and
+//! uploading itself uses `cp`, which never lists.
 //!
 //! A condition lives on a binding, and a binding names one role and one member
 //! set, so **a publisher account carries exactly one prefix**. One publisher
@@ -145,14 +154,19 @@ pub const PUBLISHER_ROLE_ID: &str = "navigatorApplicationsPublisher";
 ///
 /// `create` overwrites an object (a GCS overwrite is a new generation, not a
 /// delete), `update` writes the custom metadata the publish stamps onto
-/// `index.html`, and `get` covers the destination probe gcloud performs before
-/// writing. `storage.objects.delete` is absent because the publish never
-/// deletes, and `storage.objects.list` is absent because listing is evaluated
-/// against the bucket and no object-name condition can scope it.
+/// `index.html`, `get` covers the destination probe gcloud performs before
+/// writing, and `delete` is what a publish uses to prune a key a later build
+/// no longer carries — see `store::sample_project::prune_plan` — confined by
+/// the same prefix condition as the rest of this role, so it can still never
+/// reach another Project's objects. `storage.objects.list` is absent because
+/// listing is evaluated against the bucket and no object-name condition can
+/// scope it; a publish decides what to prune from a manifest object it wrote
+/// itself, never from a bucket listing, so it never needs `list`.
 pub const PUBLISHER_PERMISSIONS: &[&str] = &[
     "storage.objects.create",
     "storage.objects.get",
     "storage.objects.update",
+    "storage.objects.delete",
 ];
 
 /// Roles a publisher may hold from an earlier provisioning round, which `ensure`
@@ -488,13 +502,24 @@ async fn ensure_publisher_account(
 /// would be the same class of surprise as the hand-patch this change exists to
 /// reconcile. A role whose permissions have drifted is a reconcile decision, not
 /// a create-path side effect.
+///
+/// This is why a deployment already provisioned before `storage.objects.delete`
+/// joined [`PUBLISHER_PERMISSIONS`] does not pick it up on its own: `roles.create`
+/// answers 409 for an id that already exists, whatever its current permissions
+/// are, and this function stops there — re-running `devx gcp setup` against
+/// that deployment does **not** converge it, by design. An operator has to
+/// widen that one already-provisioned role by hand, e.g.
+/// `gcloud iam roles update navigatorApplicationsPublisher --project <ID>
+/// --add-permissions storage.objects.delete`, once per deployment that
+/// predates this change — a live-cloud step this code change cannot perform
+/// on its own.
 async fn ensure_publisher_role(client: &GcpClient, project_id: &str) -> SetupResult<()> {
     let path = format!("/v1/projects/{project_id}/roles?roleId={PUBLISHER_ROLE_ID}");
     let body = json!({
         "role": {
             "title": "Navigator applications publisher",
-            "description": "Create and update objects under one Project's portal prefix; \
-                            never delete, never list.",
+            "description": "Create, update, and prune objects under one Project's portal \
+                            prefix; never list, never another Project's objects.",
             "includedPermissions": PUBLISHER_PERMISSIONS,
             "stage": "GA",
         },
@@ -1339,21 +1364,23 @@ mod tests {
         assert!(!expression.contains("sample-estate"));
     }
 
-    /// The custom role holds create and update, and neither delete nor list.
+    /// The custom role holds create, update, and delete — for pruning what a
+    /// later build drops — but never list.
     #[test]
-    fn the_custom_role_is_create_and_update_only() {
+    fn the_custom_role_holds_delete_for_pruning_but_never_list() {
         assert!(PUBLISHER_PERMISSIONS.contains(&"storage.objects.create"));
         assert!(PUBLISHER_PERMISSIONS.contains(&"storage.objects.update"));
         assert!(
-            !PUBLISHER_PERMISSIONS.contains(&"storage.objects.delete"),
-            "the publish never deletes; granting delete would remove the one \
-             property the never-delete upload order relies on",
+            PUBLISHER_PERMISSIONS.contains(&"storage.objects.delete"),
+            "a publish prunes a key a later build no longer carries, confined \
+             by the same prefix condition as every other permission here",
         );
         assert!(
             !PUBLISHER_PERMISSIONS.contains(&"storage.objects.list"),
             "listing is evaluated against the bucket, so no object-name \
              condition can scope it, and it would leak every other Project's \
-             object names",
+             object names — pruning reads a manifest object this Project's \
+             own previous publish wrote instead",
         );
         assert_eq!(
             publisher_role_name("proj"),

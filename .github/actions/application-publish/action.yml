@@ -1,8 +1,8 @@
 name: navigator application publish
 description: >-
   Publish a Project portal's built bundle to its deployment's private
-  applications bucket, hashed assets first and index.html last, deleting
-  nothing.
+  applications bucket, hashed assets first and index.html last, then prune
+  what this build no longer carries.
 
 # The publish half of a Project repository's CI, downstream of the one gate.
 #
@@ -96,9 +96,13 @@ description: >-
 #
 # There is no rollback job. A bad bundle is rolled back by reverting the change
 # on the Project repository's `main` and letting the caller workflow republish
-# the reverted tree — the same two-pass upload lands the previous bytes. Because
-# this action never deletes, a revert is always a forward publish, never a
-# recovery of something removed.
+# the reverted tree — the same two-pass upload lands the previous bytes, and a
+# revert publish is still a forward publish in the sense that matters: nothing
+# is ever removed while something still points at it. The prune step below
+# (see "## Pruning what this build no longer carries") only ever deletes a key
+# once it is confirmed absent from the build *just* republished, so reverting
+# also cleans up whatever the bad publish had added that the reverted tree
+# never had.
 
 inputs:
   applications_bucket:
@@ -297,15 +301,19 @@ runs:
 
     # Upload order is load-bearing, and the applications bucket adds a second
     # rule the marketing sites do not have: it is private, shared across every
-    # Project, and served object-by-object by Navigator, so a publish NEVER
-    # deletes. `cp` cannot delete, so a stale hashed asset is left unreachable
-    # rather than removed, and one Project's publish can never prune another's
-    # objects out of the flat namespace.
+    # Project, and served object-by-object by Navigator. Uploading with `cp`
+    # cannot itself delete, so a stale hashed asset is left unreachable rather
+    # than removed by *this* step — pruning is the dedicated step below, which
+    # deletes only by exact key from a manifest this Project's own previous
+    # publish wrote, never from a bucket listing. One Project's publish still
+    # can never touch another's objects out of the flat namespace.
     #
     # ## Why `cp` and not `rsync`
     #
     # Two independent reasons, and both are load-bearing. Do not "optimize" this
-    # back to `gcloud storage rsync` for speed.
+    # back to `gcloud storage rsync` for speed, including for the pruning step
+    # below — `rsync --delete-unmatched-destination-objects` looks like the
+    # obvious way to write it and is refused for the same two reasons.
     #
     # 1. **Retention.** The bucket carries an object-age Delete rule —
     #    `cli/src/devx/gcp/buckets.rs`, `APPLICATIONS_RETENTION_DAYS`. An upload
@@ -319,7 +327,8 @@ runs:
     #    the *bucket*, never an object, so no prefix condition can scope it. It
     #    would hand every Project's CI the ability to enumerate every other
     #    Project's object names in this shared bucket. `cp` never lists, so the
-    #    publisher needs only prefix-conditioned create/update.
+    #    publisher needs only prefix-conditioned create/update/delete — see
+    #    `cli/src/devx/gcp/app_publisher.rs`, `PUBLISHER_PERMISSIONS`.
     #
     # Pass 1 — everything except index.html, so that by the time any HTML naming
     # a new hashed filename is readable, that file already exists.
@@ -407,3 +416,97 @@ runs:
         gcloud storage objects update --no-user-output-enabled "gs://${BUCKET}/${PREFIX}/index.html" \
             --custom-metadata="commit=${COMMIT},build-time=${build_time},repository=${REPO_FULL},ref=${REF},run-id=${RUN_ID},run-attempt=${RUN_ATTEMPT}"
         echo "stamped <bucket>/${PREFIX}/index.html · commit ${COMMIT} · ${build_time}"
+
+    # ## Pruning what this build no longer carries
+    #
+    # Deletion only ever runs after both upload passes above, so every key
+    # this deletes is already confirmed absent from the bundle the entry
+    # document just published points at — there is no window where
+    # index.html could still name something removed here.
+    #
+    # No `list` is ever called — see "Why `cp` and not `rsync`" above.
+    # Instead, this Project's own previous publish left a manifest object
+    # naming every key it wrote, and this step diffs the just-built
+    # DIST_DIR against it: a key the manifest names that DIST_DIR no longer
+    # carries is stale, and everything else is left alone. The manifest sits
+    # beside `<code>/portal/`, not inside it, so it is never reachable
+    # through the participant-facing gateway, which only ever reads under
+    # `<code>/portal/`.
+    #
+    # `store::sample_project::prune_plan` (`store/src/sample_project.rs`) is
+    # the identical rule the Rust operator publish
+    # (`navigator ops application publish`,
+    # `cli/src/devx/application_publish.rs`) applies against the same kind of
+    # manifest; this step is a bash port of it, not an independent design —
+    # keep the two in sync, including MAX_PRUNE_PERCENT below.
+    #
+    # A build that would prune more than
+    # `store::sample_project::MAX_PRUNE_PERCENT` (50) of the previous
+    # publish's own objects is refused outright: a build that looks like it
+    # dropped half of what the last one published is more likely broken than
+    # intentional — a flaky checkout, a build-tool cache gone bad, an
+    # `assets/` directory that silently failed to copy — and deleting on top
+    # of it would turn a build fluke into data loss. Nothing is deleted and
+    # the manifest is left exactly as it was, so the next publish sees the
+    # same previous manifest and is refused again until a human fixes the
+    # build.
+    - name: prune objects this build no longer carries
+      shell: bash
+      env:
+        BUCKET: ${{ inputs.applications_bucket }}
+        CODE: ${{ steps.coord.outputs.code }}
+        PREFIX: ${{ steps.coord.outputs.prefix }}
+        DIST_DIR: ${{ inputs.dist_dir }}
+        CLOUDSDK_CORE_VERBOSITY: error
+      run: |
+        set -euo pipefail
+
+        # MAX_PRUNE_PERCENT in store::sample_project — keep the two in sync.
+        max_prune_percent=50
+
+        manifest_key="gs://${BUCKET}/${CODE}/.publish-manifest"
+
+        new_manifest="$(mktemp)"
+        (cd "${DIST_DIR}" && find . -type f | sed 's|^\./||') | LC_ALL=C sort > "${new_manifest}"
+
+        # Any failure here — a genuinely missing manifest (first publish) or
+        # anything else `gcloud` might refuse for — is treated the same way:
+        # an empty previous manifest, which prunes nothing this round. Failing
+        # toward "prune nothing" is the safe direction; failing toward
+        # "prune everything" is not.
+        previous_manifest="$(mktemp)"
+        if gcloud storage cat --no-user-output-enabled "${manifest_key}" > "${previous_manifest}" 2>/dev/null; then
+            LC_ALL=C sort -o "${previous_manifest}" "${previous_manifest}"
+        else
+            : > "${previous_manifest}"
+        fi
+
+        stale="$(comm -23 "${previous_manifest}" "${new_manifest}")"
+        stale_count=0
+        if [ -n "${stale}" ]; then
+            stale_count="$(printf '%s\n' "${stale}" | grep -c .)"
+        fi
+        previous_count="$(grep -c . "${previous_manifest}" || true)"
+
+        if [ "${previous_count}" -gt 0 ] \
+            && [ "$(( stale_count * 100 ))" -gt "$(( previous_count * max_prune_percent ))" ]; then
+            message="this build would prune ${stale_count} of ${previous_count} previously published"
+            message="${message} object(s) under ${PREFIX} — more than ${max_prune_percent}%, which"
+            message="${message} looks like a broken build rather than an intentional removal."
+            message="${message} Nothing was deleted; fix the build and republish, or prune the"
+            message="${message} bucket by hand if this really is intentional."
+            echo "::error::${message}"
+            exit 1
+        fi
+
+        if [ "${stale_count}" -gt 0 ]; then
+            while IFS= read -r key; do
+                [ -n "${key}" ] || continue
+                gcloud storage rm --no-user-output-enabled "gs://${BUCKET}/${PREFIX}/${key}"
+            done <<< "${stale}"
+            echo "pruned ${stale_count} object(s) no longer in ${DIST_DIR}"
+        else
+            echo "nothing to prune"
+        fi
+
+        gcloud storage cp --no-user-output-enabled "${new_manifest}" "${manifest_key}"

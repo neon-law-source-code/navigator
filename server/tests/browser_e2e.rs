@@ -1714,6 +1714,97 @@ async fn public_marketing_pages_have_no_horizontal_overflow_on_mobile() {
     c.close().await.unwrap();
 }
 
+/// The shared `QuestionStage` chrome (ENG-503) at every width the ENG-853
+/// acceptance criteria name — 320, 375, 768, and 1280px. Both walkers
+/// (`webapp::client_intake` and `webapp::walker_step`, plus the portal's
+/// `retainer_walk`) render through this one component, so proving it on the
+/// client intake walker covers all of them.
+#[tokio::test]
+async fn notation_questionnaire_has_no_horizontal_overflow_at_any_checked_width() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    let surreal = store::surreal::connect_from_env()
+        .await
+        .expect("connect to the port-forwarded SurrealDB");
+    let client = store::persons::find_by_email_ci(&surreal, "client@neonlaw.com")
+        .await
+        .expect("look up the browser-harness client person")
+        .expect("the browser harness requires the seeded client");
+    let template = store::templates::resolve(&surreal, None, "onboarding__letter")
+        .await
+        .expect("look up the shipped onboarding template")
+        .expect("the browser harness requires the shipped onboarding template");
+    let unique = Uuid::now_v7();
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("overflow-check-{unique}"),
+            name: format!("Overflow Check {unique}"),
+            status: "open".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("seed the synthetic overflow-check matter");
+    store::projects::add_participation(&surreal, project.id, client.id, "client")
+        .await
+        .expect("scope the seeded client onto the synthetic matter");
+    store::notations::create(
+        &surreal,
+        &store::notations::NewNotation::new(
+            template.id,
+            client.id,
+            project.id,
+            workflows::StateName::BEGIN,
+        ),
+    )
+    .await
+    .expect("seed the pending client intake");
+
+    login_as_client(&c).await;
+    c.goto(&format!("{}/app/projects/{}", base_url(), project.code))
+        .await
+        .expect("open the synthetic matter page");
+    wait_for_text(&c, "Continue intake", Duration::from_secs(20)).await;
+    let link = c
+        .find(Locator::Css("a[href*='/intake/']"))
+        .await
+        .expect("the matter page renders the intake continuation");
+    let href = link
+        .attr("href")
+        .await
+        .unwrap()
+        .expect("intake continuation link carries an href");
+    c.goto(&format!("{}{href}", base_url()))
+        .await
+        .expect("open the questionnaire's first question");
+    wait_for_text(&c, "Step 1 of", Duration::from_secs(20)).await;
+
+    for (width, height) in [(320, 780), (375, 812), (768, 1024), (1280, 900)] {
+        c.set_window_size(width, height).await.unwrap();
+        let widths = c
+            .execute(
+                "return [document.documentElement.scrollWidth, \
+                 document.documentElement.clientWidth];",
+                vec![],
+            )
+            .await
+            .unwrap();
+        let widths = widths.as_array().expect("[scrollWidth, clientWidth]");
+        let scroll_width = widths[0].as_u64().unwrap();
+        let client_width = widths[1].as_u64().unwrap();
+        assert!(
+            scroll_width <= client_width,
+            "notation questionnaire scrolls horizontally at {width}px: \
+             scrollWidth={scroll_width} clientWidth={client_width}",
+        );
+    }
+
+    c.close().await.unwrap();
+}
+
 /// A second 1x1 PNG (red RGB) used by the fetch-POST path so a later
 /// profile-form upload of [`SYNTHETIC_PNG`] is a visible overwrite.
 const SYNTHETIC_PNG_RED: [u8; 69] = [

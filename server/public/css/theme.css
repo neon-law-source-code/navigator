@@ -2002,6 +2002,14 @@ a.nav-pagination__link:hover {
   display: block;
   margin-bottom: 0.25rem;
   font-weight: 500;
+  /* A label used as a flex item (`.nav-field--check`, `.nav-radio`) defaults
+     to `min-width: auto`, which floors it at its longest unbreakable run —
+     an email or URL question option pushes the row, and the page, wider
+     than the viewport (ENG-853). `min-width: 0` lets it shrink;
+     `overflow-wrap` then breaks that run instead of letting it paint past
+     the edge. A no-op outside a flex/grid context. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nav-required {
@@ -2091,6 +2099,9 @@ a.nav-pagination__link:hover {
   margin: 0.25rem 0 0;
   font-size: 0.875rem;
   color: var(--nav-color-text-muted);
+  /* Long unbroken help text (an example email or URL) wraps instead of
+     widening the field, and the page (ENG-853). */
+  overflow-wrap: anywhere;
 }
 
 /* Radio group — one fieldset over mutually exclusive choices. The border is the
@@ -2140,6 +2151,7 @@ a.nav-pagination__link:hover {
   margin-top: 0.25rem;
   font-size: 0.875rem;
   color: var(--nav-color-danger);
+  overflow-wrap: anywhere;
 }
 
 /* The invalid state is carried on the control's border as well as the message,
@@ -4038,20 +4050,28 @@ a.nav-link:hover {
 .nav-hero__title {
   margin: 0;
   max-width: 20ch;
+  min-width: 0;
   font-size: clamp(2rem, 1.5rem + 2.5vw, 3.5rem);
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.015em;
   text-wrap: balance;
+  /* `.nav-hero` is an implicit-column grid, so a title with no natural break
+     (an unbroken email or URL used as a question prompt) is a grid item
+     that defaults to `min-width: auto` — it would rather overflow than
+     shrink. `min-width: 0` plus this lets it wrap instead (ENG-853). */
+  overflow-wrap: anywhere;
 }
 
 .nav-hero__lede {
   margin: 0;
   max-width: 44ch;
+  min-width: 0;
   color: var(--nav-color-text-muted);
   font-size: clamp(1.0625rem, 1rem + 0.4vw, 1.25rem);
   line-height: 1.55;
   text-wrap: pretty;
+  overflow-wrap: anywhere;
 }
 
 .nav-hero__actions {
@@ -4080,6 +4100,7 @@ a.nav-link:hover {
   margin-bottom: var(--nav-space-4);
   font-size: 1.125rem;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .nav-choice-group__options {
@@ -4165,12 +4186,14 @@ a.nav-link:hover {
   font-size: 1.0625rem;
   font-weight: 700;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .nav-choice__description {
   color: var(--nav-color-text-muted);
   font-size: 0.9375rem;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .nav-choice-group.nav-field--invalid .nav-choice {
@@ -4331,10 +4354,12 @@ a.nav-steps__step:focus-visible {
 
 .nav-stepper__title {
   margin: 0;
+  min-width: 0;
   font-size: clamp(1.5rem, 1.25rem + 1vw, 2rem);
   font-weight: 700;
   line-height: 1.2;
   text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 
 /* Focus lands here when the step changes. Not a control, so no ring. */
@@ -4345,9 +4370,11 @@ a.nav-steps__step:focus-visible {
 .nav-stepper__description {
   margin: 0;
   max-width: 60ch;
+  min-width: 0;
   color: var(--nav-color-text-muted);
   font-size: 1.0625rem;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .nav-stepper__body {

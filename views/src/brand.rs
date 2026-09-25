@@ -628,7 +628,7 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     // is the single source of that statement) and by `llms_txt`, which reuses
     // that same function rather than reading these two fields. Kept accurate
     // anyway, since a `Branding` value should not carry a stale claim.
-    mission_description: "Lawyer Shook is the holding page for Shook Law PLLC's LAWYER SHOOK mark, not an active practice. Unless you have an active retainer with Shook Law PLLC, they are not your attorney.",
+    mission_description: "Lawyer Shook is the holding page for Shook Law PLLC's LAWYER SHOOK mark, not an active practice. Shook Law PLLC is an American law firm. We build brands that put the customer not the lawyer first.",
     service_description: "Lawyer Shook publishes no services or fee schedule here; it is a holding page for Shook Law PLLC only.",
     portal_only: false,
     brand_key: BrandKey::LawyerShook,

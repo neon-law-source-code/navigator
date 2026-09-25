@@ -245,10 +245,7 @@
   text-wrap: balance;
 }
 
-/* Two by two on any screen with room for them, stacked on a phone. Two
-   explicit columns rather than `auto-fit` or four abreast: four tracks crowd
-   the sentence in each box, and a 3-and-1 split reads as though the last
-   practice were an afterthought. */
+/* Two by two on a tablet, three across on desktop, stacked on a phone. */
 .home-practices__grid {
   display: grid;
   gap: 1.5rem;
@@ -257,6 +254,12 @@
 @media (min-width: 48rem) {
   .home-practices__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 60rem) {
+  .home-practices__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

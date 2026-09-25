@@ -17833,6 +17833,79 @@ async fn admin_person_avatar_upload_writes_the_public_assets_bucket_and_redirect
     );
 }
 
+/// ENG-909: `navigator site asset upload`'s server door,
+/// `POST /app/api/assets`, is meant to be reachable with nothing but a
+/// `navigator site login` bearer — never GCP ADC or a bucket name. A
+/// successful upload must be immediately servable at the exact key through
+/// the ordinary public `/assets/{key}` route, with no separate publish step.
+#[tokio::test]
+async fn api_assets_upload_is_reachable_through_the_public_assets_route() {
+    let (state, _surreal) = state_with_engines().await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let bytes = b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>";
+    // A unique key per run: `assets_storage`'s default test root is a fixed,
+    // persistent directory, so a literal key would collide with a prior
+    // run's object and turn this into an `unchanged` no-op instead of the
+    // fresh write this test means to exercise.
+    let key = format!("brand/eng-909-rabbit-{}.svg", uuid::Uuid::now_v7());
+    let req = serde_json::json!({
+        "key": key,
+        "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        "content_type": "image/svg+xml",
+        "sha256": sha256_hex(bytes),
+    });
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/api/assets")
+                .header("content-type", "application/json")
+                .header(
+                    header::AUTHORIZATION,
+                    bearer_header_for_role(store::persons::Role::Admin),
+                )
+                .body(Body::from(req.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED, "{:?}", resp.status());
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["key"], key);
+    assert_eq!(body["content_type"], "image/svg+xml");
+    assert_eq!(body["bytes"], bytes.len());
+    assert_eq!(body["unchanged"], false);
+    assert!(body["sha256"].is_string());
+
+    let served = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/assets/{key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(served.status(), StatusCode::OK);
+    assert_eq!(
+        served
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok()),
+        Some("image/svg+xml"),
+    );
+    let served_bytes = axum::body::to_bytes(served.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(served_bytes.as_ref(), bytes);
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    store::assets::sha256_hex(bytes)
+}
+
 /// The URL a public avatar upload records has to be one the deployment
 /// actually serves. `NAVIGATOR_ASSET_BASE_URL` is unset in the local loop, in
 /// KIND, and on staging, so an uploaded avatar's stored URL must resolve to

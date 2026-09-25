@@ -77,6 +77,7 @@ pub mod admin_csv;
 pub mod agent_router;
 pub mod api;
 pub mod api_audit;
+pub(crate) mod assets_api;
 pub mod attachment_scanner;
 pub mod audit_fields;
 pub mod auth;
@@ -701,7 +702,7 @@ fn public_ingress_routes() -> Router<AppState> {
         .route("/docusign/consent-callback", get(docusign_consent_callback))
 }
 
-fn public_asset_key_is_safe(key: &str) -> bool {
+pub(crate) fn public_asset_key_is_safe(key: &str) -> bool {
     !key.is_empty()
         && !key.starts_with('/')
         && !key.contains('\\')

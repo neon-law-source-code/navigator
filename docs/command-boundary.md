@@ -42,6 +42,15 @@ own persistence logic.
   whose slug is null. `navigator site document repair` posts to `POST
   /app/api/projects/{id}/documents/{asset_id}/storage`, an admin door that restores a missing object from a same-hash
   sibling in the matter.
+- **Public asset upload (ENG-909).** `navigator site asset upload --host <h1> [--host <h2> ...] ASSET_NAME` reads one
+  local public-safe asset and sends it with the stored bearer to `POST /app/api/assets` (`portal::assets_api`), once per
+  named host. Unlike document upload there is no `--project`: a public asset (a brand mark, a hero image, a font file)
+  is deployment-wide. The CLI reads no GCP environment and takes no bucket name — the server resolves the bearer, checks
+  the Owner/Admin tier (the same gate `PATCH /app/api/brands/{key}` uses), validates the key against `brand/`, `img/`,
+  and `fonts/`, cross-checks the declared content type and `sha256` against the decoded bytes, and writes through
+  `cloud::StorageService` to the deployment's own public assets bucket, never the documents bucket. This is the
+  OAuth-backed sibling of the ADC-backed `navigator ops assets upload` batch command (see [`assets`](assets.md)), which
+  still targets real GCS directly with an operator's own bucket credentials for bulk gallery publication.
 - **MCP.** A tool in `mcp/src/tools/` translates its arguments into a shared command. The `mcp` crate cannot depend on
   `portal`, so it converges at the `store` / `workflows` layer — e.g. `link_person_project` calls
   `store::participation::add_participant` / `update_participant`, the same commands the participation `/app/api` door

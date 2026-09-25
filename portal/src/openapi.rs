@@ -494,6 +494,62 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/assets": {
+          "post": {
+            "summary": "Publish one public-safe asset to the deployment's public assets bucket",
+            "description": "The authenticated sibling of the ADC-backed `navigator ops assets upload` batch command (ENG-909): a single brand mark, hero image, or web font goes out with nothing but a `navigator site login` bearer, no bucket name or GCP credential. `key` is the exact bucket key, reachable immediately afterwards at `GET /assets/{key}`, and must fall below `brand/`, `img/`, or `fonts/` — the three bucket-served lanes `docs/assets.md` documents. No `project_id` — like `/app/api/authorities`, a public asset is deployment-wide, not matter-scoped. The handler writes only to the public assets bucket; it never touches the private documents bucket. `content_type` must match what `key`'s extension requires, and `sha256` must match the decoded bytes — both checked before a single byte reaches storage, catching transit corruption a post-write read-back alone could not. Writing the same key with the same bytes and content type again is a no-op (`unchanged: true`, `200`); a new or changed key writes through `cloud::StorageService` and answers `201`. Either way the handler then reads the object back from the same storage the public route serves, so the returned `sha256` and `bytes` certify what a browser will actually receive. Authorization: Owner/Admin only, the same gate `PATCH /app/api/brands/{key}` uses — a public asset is site-branding configuration, not matter-scoped lawyer work.",
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["key", "content_base64", "content_type", "sha256"],
+                  "properties": {
+                    "key": { "type": "string", "description": "The bucket key, e.g. `img/vesta-home/logo.svg` or `brand/rabbit.svg`. Must fall below brand/, img/, or fonts/, with no leading `/` and no `.` or `..` path segment." },
+                    "content_base64": { "type": "string", "format": "byte", "description": "The asset's bytes, base64-encoded." },
+                    "content_type": { "type": "string", "description": "Must equal the type key's extension requires (an image type, video/mp4, a web-font format, or text/plain for a fonts/*/OFL.txt license notice)." },
+                    "sha256": { "type": "string", "description": "Lowercase hex SHA-256 of the decoded bytes; checked against the server's own digest." }
+                  }
+                }
+              } }
+            },
+            "responses": {
+              "200": { "description": "The key already held these exact bytes and content type; the write was skipped (`unchanged: true`)", "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": { "type": "string" },
+                    "bytes": { "type": "integer" },
+                    "content_type": { "type": "string" },
+                    "sha256": { "type": "string" },
+                    "unchanged": { "type": "boolean" }
+                  }
+                }
+              } } },
+              "201": { "description": "The asset was written (or overwritten) and read back", "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": { "type": "string" },
+                    "bytes": { "type": "integer" },
+                    "content_type": { "type": "string" },
+                    "sha256": { "type": "string" },
+                    "unchanged": { "type": "boolean" }
+                  }
+                }
+              } } },
+              "400": { "description": "key is outside brand/img/fonts, absolute, or traverses a segment (`invalid_key`), key's extension is not published by this door (`unsupported_content_type`), content_type does not match what the extension requires (`content_type_mismatch`), content_base64 is missing, not valid base64, or decodes to zero bytes (`content_unreadable`), the asset exceeds the size limit (`asset_too_large`), a font/woff2 payload is missing its signature (`invalid_font`), a fonts/*/OFL.txt payload is not valid UTF-8 or exceeds 64 KiB (`invalid_license`), or sha256 does not match the decoded bytes (`sha256_mismatch`)", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not Owner/Admin", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/entities/{id}": {
           "get": {
             "summary": "Get one entity by id",

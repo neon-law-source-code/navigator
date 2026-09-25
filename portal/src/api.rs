@@ -173,6 +173,18 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
                 store::documents::MAX_DOCUMENT_UPLOAD_REQUEST_BYTES,
             )),
         ),
+        // The public-assets publish door (ENG-909): `navigator site asset
+        // upload`'s authenticated sibling to the ADC-backed
+        // `navigator ops assets upload` batch command. No `project_id`, like
+        // `authorities` above — a public brand asset is deployment-wide, not
+        // matter-scoped.
+        (
+            "POST",
+            "/app/api/assets",
+            post(crate::assets_api::upload_asset_door).layer(DefaultBodyLimit::max(
+                crate::assets_api::MAX_ASSET_UPLOAD_REQUEST_BYTES,
+            )),
+        ),
         ("GET", "/app/api/entities/{id}", get(get_entity)),
         ("PATCH", "/app/api/entities/{id}", patch(update_entity)),
         ("DELETE", "/app/api/entities/{id}", delete(delete_entity)),

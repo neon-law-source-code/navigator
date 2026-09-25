@@ -12,8 +12,10 @@ fn repo_root() -> PathBuf {
 }
 
 fn skill() -> String {
-    fs::read_to_string(repo_root().join(".agents/skills/triage-projects/SKILL.md"))
-        .expect("read triage-projects SKILL.md")
+    let raw = fs::read_to_string(repo_root().join(".agents/skills/triage-projects/SKILL.md"))
+        .expect("read triage-projects SKILL.md");
+    // The project gate wraps prose. Match the instruction, not the line break.
+    raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[test]

@@ -74,9 +74,9 @@ async fn daybridge_home_publishes_the_reviewed_daily_fee_offer() {
             "Daybridge Divorce Law",
             "A way through divorce.",
             "$10",
-            "/ day",
+            "$500",
             "five business days",
-            "case costs",
+            "legal costs",
             "/public/brand/daybridge/logo.svg",
             "/public/css/daybridge.css",
             "Attorney advertisement",
@@ -119,8 +119,8 @@ async fn daybridge_services_explain_scope_timing_and_costs() {
             "Agreements and proposed resolutions",
             "Motions and court papers",
             "after we receive the information and documents we need",
-            "Court filing fees",
-            "No promised outcome",
+            "filing fees",
+            "not a particular result",
         ] {
             assert!(html.contains(expected), "{host} missing {expected:?}");
         }
@@ -163,7 +163,7 @@ async fn daybridge_llms_txt_indexes_its_own_pages() {
             "{host} llms.txt must name Daybridge as its own site: {body}"
         );
         assert!(
-            body.contains("$10 for each day"),
+            body.contains("$10 a day while retained"),
             "{host} llms.txt summary must explain the daily-fee offer: {body}"
         );
         assert!(

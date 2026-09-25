@@ -1,8 +1,9 @@
-head_title: "{site_name} | Divorce counsel for $10 a day"
+head_title: "{site_name} | $500 setup, then $10 a day"
 meta_description: >-
-  Daybridge Divorce Law is operated by Shook Law PLLC. Divorce counsel is $10
-  a day while the firm is retained. Court filing fees, service fees, and
-  other case costs are separate. Attorney advertisement.
+  Daybridge Divorce Law is operated by Shook Law PLLC. The fee is a one-time
+  $500 setup fee, then $10 a day while retained. Court appearances are $50
+  each; trial days are $5,000 per day. You pay legal costs, including
+  discovery and tokens, separately. Attorney advertisement.
 heading: A way through divorce.
 lead: >-
   Clear next steps, prompt answers, and motion drafts prepared on a defined
@@ -12,16 +13,14 @@ practices_heading: ""
 practices: []
 daybridge:
   eyebrow: Daybridge Divorce Law
-  fee_label: Attorney fee
-  fee_price: "$10"
-  fee_unit: / day
+  fee_label: Legal fees
+  fee_price: "$500"
+  fee_unit: one-time setup fee
   fee_body: >-
-    The attorney fee is $10 for each day we are retained. Finish sooner and
-    you pay less in attorney fees.
+    Then $10 per day while we are retained.
   fee_note: >-
-    Court filing fees, service fees, and other case costs are separate. Your
-    written retainer defines when billing starts and stops and what work is
-    included.
+    Your written retainer defines the work and when daily billing starts and
+    stops.
   response_heading: Answers as soon as possible
   response_body: >-
     Send your question through the channel in your retainer. We respond as
@@ -31,11 +30,11 @@ daybridge:
     When motion practice is within our agreed scope, we prepare a first draft
     within five business days after receiving the information and documents
     we need, unless we agree to a different schedule in writing.
-  costs_heading: You pay case costs separately
+  costs_heading: Other fees and costs
   costs_body: >-
-    Filing, service, transcript, expert, and similar third-party charges are
-    not part of the $10 daily attorney fee. We explain anticipated costs before
-    incurring them when practicable.
+    Court appearances are $50 each; trial is $5,000 per day. You pay legal
+    costs, including discovery and tokens, separately. We explain anticipated
+    costs before incurring them when practicable.
   process_label: The way forward
   process_heading: One useful step at a time.
   steps:
@@ -46,7 +45,7 @@ daybridge:
     - - Agree on the work
       - >-
         Your written retainer identifies the work, when the daily fee begins,
-        and which costs you pay separately.
+        and which legal costs you pay separately.
     - - Move toward the other side
       - >-
         We answer questions, prepare the agreed work, and keep the next step

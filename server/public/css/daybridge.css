@@ -1,4 +1,4 @@
-/* Daybridge stays calm and direct: one fee, three commitments, one path forward. */
+/* Daybridge stays calm and direct: clear fees, three commitments, one path forward. */
 .daybridge-home {
   --daybridge-rule: var(--nav-color-border);
   --daybridge-ink: var(--nav-color-text);
@@ -98,14 +98,7 @@
 .daybridge-promises article { padding: 2.5rem clamp(1.25rem, 3vw, 2.5rem); }
 .daybridge-promises article + article { border-left: 1px solid var(--daybridge-rule); }
 
-.daybridge-promises__number {
-  color: var(--nav-color-primary);
-  font-size: .75rem;
-  font-weight: 750;
-  letter-spacing: .12em;
-}
-
-.daybridge-promises h2 { margin: 1rem 0; font-size: clamp(1.7rem, 3vw, 2.35rem); line-height: 1.05; }
+.daybridge-promises h2 { margin: 0 0 1rem; font-size: clamp(1.7rem, 3vw, 2.35rem); line-height: 1.05; }
 .daybridge-promises p { margin: 0; color: var(--nav-color-text-muted); }
 
 .daybridge-process { padding: clamp(4rem, 8vw, 7rem) 0; }

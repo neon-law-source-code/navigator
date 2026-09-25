@@ -23,4 +23,5 @@ pub mod manifest;
 pub mod origin;
 pub mod repository;
 pub mod setup;
+pub mod skill;
 pub mod surfaces;

@@ -660,6 +660,28 @@ enum ProjectsCmd {
         #[command(flatten)]
         host: HostOpt,
     },
+    /// The Project Skill catalog — jurisdiction/practice-area playbooks
+    /// compiled into this binary from `skills/` — and the pins a Project
+    /// records against it in its own `navigator.yaml`.
+    Skill {
+        #[command(subcommand)]
+        action: ProjectSkillCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProjectSkillCmd {
+    /// List every catalog entry's jurisdiction, practice area, and name.
+    List,
+    /// Print one catalog entry's full body.
+    ///
+    /// `jurisdiction` matches case-insensitively (`show nv estates` and
+    /// `show NV estates` resolve the same entry). An unrecognized pair
+    /// exits non-zero, naming the closest valid catalog entries.
+    Show {
+        jurisdiction: String,
+        practice_area: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2567,6 +2589,21 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             json,
             host,
         } => projects::setup::run(host.host.as_deref(), project_code.as_deref(), all, json).await,
+        ProjectsCmd::Skill { action } => run_project_skill(action),
+    }
+}
+
+/// `navigator project skill ...` — dispatches to `cli/src/projects/skill.rs`.
+/// `list` and `show` read only the compiled-in catalog, so both run from the
+/// current directory — the same current-directory convention `navigator
+/// project gate` uses.
+fn run_project_skill(action: ProjectSkillCmd) -> ExitCode {
+    match action {
+        ProjectSkillCmd::List => projects::skill::run_list(),
+        ProjectSkillCmd::Show {
+            jurisdiction,
+            practice_area,
+        } => projects::skill::run_show(&jurisdiction, &practice_area),
     }
 }
 

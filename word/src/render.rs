@@ -180,7 +180,18 @@ fn paragraphs(markdown: &str) -> Vec<Paragraph> {
                     .text
                     .push_str(&text);
             }
-            Event::SoftBreak | Event::HardBreak => {
+            // A soft break is a plain source-line wrap (S102 packs prose to
+            // 120 columns, so most paragraphs carry several); CommonMark
+            // renders it as a space, not a line break. Only a real hard
+            // break — a trailing `\` or two trailing spaces, and not at the
+            // end of the block — becomes a `<w:br/>` in `document_xml`.
+            Event::SoftBreak => {
+                current
+                    .get_or_insert_with(Paragraph::default)
+                    .text
+                    .push(' ');
+            }
+            Event::HardBreak => {
                 current
                     .get_or_insert_with(Paragraph::default)
                     .text
@@ -197,6 +208,7 @@ fn paragraphs(markdown: &str) -> Vec<Paragraph> {
                     if quote_depth > 0 {
                         paragraph.text.insert_str(0, "    ");
                     }
+                    strip_trailing_escaped_break(&mut paragraph.text);
                     if !paragraph.text.is_empty() {
                         result.push(paragraph);
                     }
@@ -211,6 +223,18 @@ fn paragraphs(markdown: &str) -> Vec<Paragraph> {
         result.push(paragraph);
     }
     result
+}
+
+/// A trailing `\` written as `CommonMark` hard-break syntax loses that meaning
+/// when it lands on a block's last line — pulldown-cmark then passes it
+/// through as an ordinary character instead of emitting `Event::HardBreak`.
+/// Templates wrap every line (S102 packs prose to 120 columns), so the habit
+/// of ending a source line with `\` survives onto a paragraph's final line
+/// too; drop it rather than print a stray backslash nobody meant to keep.
+fn strip_trailing_escaped_break(text: &mut String) {
+    if text.ends_with('\\') && !text.ends_with("\\\\") {
+        text.pop();
+    }
 }
 
 fn heading_style(level: HeadingLevel) -> &'static str {
@@ -334,7 +358,7 @@ const STYLES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes
 mod tests {
     use std::io::Read;
 
-    use super::{render_notation, RenderLetterhead, RenderOptions};
+    use super::{paragraphs, render_notation, RenderLetterhead, RenderOptions};
 
     fn render() -> Vec<u8> {
         render_notation(
@@ -378,5 +402,58 @@ mod tests {
             .read_to_string(&mut footer)
             .unwrap();
         assert!(footer.contains(" PAGE ") && footer.contains(" NUMPAGES "));
+    }
+
+    #[test]
+    fn soft_wraps_join_as_spaces_not_hard_breaks() {
+        let result = paragraphs(
+            "If the account was opened in someone\nelse's name, tell us before\nwe pursue anything.",
+        );
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result[0].text,
+            "If the account was opened in someone else's name, tell us before we pursue anything."
+        );
+    }
+
+    #[test]
+    fn a_real_hard_break_still_becomes_a_break() {
+        let result = paragraphs("First line.  \nSecond line.");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text, "First line.\nSecond line.");
+    }
+
+    #[test]
+    fn a_trailing_backslash_on_the_last_line_is_dropped() {
+        let result = paragraphs("Date: {{client.date}} \\");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text, "Date: {{client.date}} ");
+    }
+
+    #[test]
+    fn a_mid_paragraph_trailing_backslash_still_breaks() {
+        let result = paragraphs("Date: {{client.date}} \\\nSigned,");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text, "Date: {{client.date}} \nSigned,");
+    }
+
+    #[test]
+    fn rendering_a_wrapped_paragraph_has_no_br_and_one_text_run() {
+        let bytes = render_notation(
+            "Please confirm the account was opened in someone\nelse's name before\nwe file anything.",
+            None,
+            &RenderOptions::default(),
+        )
+        .unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut document = String::new();
+        archive
+            .by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(!document.contains("w:br"));
+        assert_eq!(document.matches("<w:t ").count(), 1);
+        assert!(document.contains("someone else&apos;s name before we file anything."));
     }
 }

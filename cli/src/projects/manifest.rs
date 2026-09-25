@@ -903,13 +903,22 @@ pub fn pin_skill(
         let Some(entry) = item.as_mapping_mut() else {
             continue;
         };
-        let entry_jurisdiction = entry.get("jurisdiction").and_then(scalar_string).unwrap_or_default();
-        let entry_practice_area = entry.get("practice_area").and_then(scalar_string).unwrap_or_default();
+        let entry_jurisdiction = entry
+            .get("jurisdiction")
+            .and_then(scalar_string)
+            .unwrap_or_default();
+        let entry_practice_area = entry
+            .get("practice_area")
+            .and_then(scalar_string)
+            .unwrap_or_default();
         if entry_jurisdiction.eq_ignore_ascii_case(jurisdiction)
             && entry_practice_area.eq_ignore_ascii_case(practice_area)
         {
             found = true;
-            let current_version = entry.get("version").and_then(scalar_string).unwrap_or_default();
+            let current_version = entry
+                .get("version")
+                .and_then(scalar_string)
+                .unwrap_or_default();
             if current_version != version {
                 entry.insert(
                     serde_yaml::Value::String("version".to_string()),
@@ -944,8 +953,8 @@ pub fn pin_skill(
         serde_yaml::Value::String("skills".to_string()),
         serde_yaml::Value::Sequence(skills),
     );
-    let serialized =
-        serde_yaml::to_string(&document).map_err(|error| format!("serialize navigator.yaml: {error}"))?;
+    let serialized = serde_yaml::to_string(&document)
+        .map_err(|error| format!("serialize navigator.yaml: {error}"))?;
     Ok((serialized, true))
 }
 
@@ -1318,7 +1327,9 @@ mod tests {
             "    version: \"1\"\n",
         );
         assert!(
-            lint_contents(Path::new(FILE), yaml).iter().all(|f| f.warning),
+            lint_contents(Path::new(FILE), yaml)
+                .iter()
+                .all(|f| f.warning),
             "{:?}",
             lint_contents(Path::new(FILE), yaml)
         );
@@ -1382,7 +1393,11 @@ mod tests {
         let (updated, changed) = pin_skill(&once, "NV", "estates", "2").expect("re-pin");
         assert!(changed);
         let parsed = parse(&updated).expect("parses");
-        assert_eq!(parsed.skills.len(), 1, "a version bump updates in place, not a duplicate");
+        assert_eq!(
+            parsed.skills.len(),
+            1,
+            "a version bump updates in place, not a duplicate"
+        );
         assert_eq!(parsed.skills[0].version, "2");
     }
 }

@@ -186,7 +186,9 @@ pub use m058::M058BlanksAroundTables;
 pub use m059::M059DescriptiveLinkText;
 pub use m060::M060TableColumnStyle;
 pub use m061::M061WebPortableLink;
-pub use project_skill::{catalog_violations as project_skill_catalog_violations, ProjectSkill, ProjectSkillError};
+pub use project_skill::{
+    catalog_violations as project_skill_catalog_violations, ProjectSkill, ProjectSkillError,
+};
 pub use questionnaire_hover::{
     hover_markdown as questionnaire_prompt_hover, resolve_prompt, PromptProvenance, ResolvedPrompt,
 };

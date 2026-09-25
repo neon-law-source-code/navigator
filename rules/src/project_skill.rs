@@ -117,9 +117,11 @@ pub fn parse(contents: &str) -> Result<ProjectSkill, ProjectSkillError> {
     let Some((fm, body)) = frontmatter::split(contents) else {
         return Err(ProjectSkillError::MissingFrontmatter);
     };
-    let document: serde_yaml::Value =
-        serde_yaml::from_str(fm).map_err(|error| ProjectSkillError::InvalidYaml(error.to_string()))?;
-    let mapping = document.as_mapping().ok_or(ProjectSkillError::NotAMapping)?;
+    let document: serde_yaml::Value = serde_yaml::from_str(fm)
+        .map_err(|error| ProjectSkillError::InvalidYaml(error.to_string()))?;
+    let mapping = document
+        .as_mapping()
+        .ok_or(ProjectSkillError::NotAMapping)?;
 
     let scalar = |key: &'static str| -> Result<String, ProjectSkillError> {
         match mapping.get(key) {
@@ -188,13 +190,17 @@ pub fn catalog_violations(dir: &Path, filter: &dyn FileFilter) -> io::Result<Vec
     }
 
     let mut entries: Vec<(PathBuf, String)> = Vec::new();
-    for entry in WalkDir::new(&root).follow_links(false).into_iter().filter_entry(|e| {
-        if e.file_type().is_dir() && e.depth() > 0 {
-            filter.include_dir(e.path())
-        } else {
-            true
-        }
-    }) {
+    for entry in WalkDir::new(&root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.file_type().is_dir() && e.depth() > 0 {
+                filter.include_dir(e.path())
+            } else {
+                true
+            }
+        })
+    {
         let entry = entry.map_err(io::Error::other)?;
         if !entry.file_type().is_file() {
             continue;
@@ -270,7 +276,10 @@ mod tests {
         assert_eq!(skill.practice_area, "probate");
         assert_eq!(
             skill.notations,
-            vec!["onboarding__letter".to_string(), "offboarding__letter".to_string()]
+            vec![
+                "onboarding__letter".to_string(),
+                "offboarding__letter".to_string()
+            ]
         );
     }
 
@@ -283,7 +292,10 @@ mod tests {
     #[test]
     fn missing_practice_area_fails_validation() {
         let body = "---\njurisdiction: NV\nname: N\nversion: \"1\"\n---\nbody\n";
-        assert_eq!(parse(body), Err(ProjectSkillError::Missing("practice_area")));
+        assert_eq!(
+            parse(body),
+            Err(ProjectSkillError::Missing("practice_area"))
+        );
     }
 
     #[test]
@@ -308,25 +320,33 @@ mod tests {
 
     #[test]
     fn empty_name_fails_validation() {
-        let body = "---\njurisdiction: NV\npractice_area: estates\nname:\nversion: \"1\"\n---\nbody\n";
+        let body =
+            "---\njurisdiction: NV\npractice_area: estates\nname:\nversion: \"1\"\n---\nbody\n";
         assert_eq!(parse(body), Err(ProjectSkillError::Empty("name")));
     }
 
     #[test]
     fn missing_frontmatter_fails_validation() {
-        assert_eq!(parse("no frontmatter here\n"), Err(ProjectSkillError::MissingFrontmatter));
+        assert_eq!(
+            parse("no frontmatter here\n"),
+            Err(ProjectSkillError::MissingFrontmatter)
+        );
     }
 
     #[test]
     fn notations_may_be_absent() {
-        let body = "---\njurisdiction: NV\npractice_area: estates\nname: N\nversion: \"1\"\n---\nbody\n";
+        let body =
+            "---\njurisdiction: NV\npractice_area: estates\nname: N\nversion: \"1\"\n---\nbody\n";
         assert_eq!(parse(body).unwrap().notations, Vec::<String>::new());
     }
 
     #[test]
     fn a_non_string_notations_entry_fails_validation() {
         let body = "---\njurisdiction: NV\npractice_area: estates\nname: N\nversion: \"1\"\nnotations:\n  - 1\n---\nbody\n";
-        assert_eq!(parse(body), Err(ProjectSkillError::NotASequence("notations")));
+        assert_eq!(
+            parse(body),
+            Err(ProjectSkillError::NotASequence("notations"))
+        );
     }
 
     #[test]

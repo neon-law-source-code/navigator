@@ -52,14 +52,16 @@ pub fn catalog() -> Vec<CatalogEntry> {
         .filter(|file| file.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
         .filter_map(|file| {
             let contents = file.contents_utf8()?;
-            rules::project_skill::parse(contents).ok().map(|skill| CatalogEntry {
-                jurisdiction: skill.jurisdiction,
-                practice_area: skill.practice_area,
-                name: skill.name,
-                version: skill.version,
-                notations: skill.notations,
-                body: skill.body,
-            })
+            rules::project_skill::parse(contents)
+                .ok()
+                .map(|skill| CatalogEntry {
+                    jurisdiction: skill.jurisdiction,
+                    practice_area: skill.practice_area,
+                    name: skill.name,
+                    version: skill.version,
+                    notations: skill.notations,
+                    body: skill.body,
+                })
         })
         .collect();
     entries.sort_by(|a, b| {
@@ -98,8 +100,16 @@ pub fn find<'a>(
 /// catalog entries closest to it by edit distance, so a typo is correctable
 /// without dumping the whole catalog.
 #[must_use]
-pub fn unresolved_message(entries: &[CatalogEntry], jurisdiction: &str, practice_area: &str) -> String {
-    let asked = format!("{}/{}", jurisdiction.to_uppercase(), practice_area.to_lowercase());
+pub fn unresolved_message(
+    entries: &[CatalogEntry],
+    jurisdiction: &str,
+    practice_area: &str,
+) -> String {
+    let asked = format!(
+        "{}/{}",
+        jurisdiction.to_uppercase(),
+        practice_area.to_lowercase()
+    );
     let mut ranked: Vec<(usize, String)> = entries
         .iter()
         .map(|entry| {
@@ -147,7 +157,10 @@ fn levenshtein(a: &str, b: &str) -> usize {
 pub fn run_list() -> ExitCode {
     let entries = catalog();
     for entry in &entries {
-        println!("{}\t{}\t{}", entry.jurisdiction, entry.practice_area, entry.name);
+        println!(
+            "{}\t{}\t{}",
+            entry.jurisdiction, entry.practice_area, entry.name
+        );
     }
     ExitCode::SUCCESS
 }
@@ -194,14 +207,18 @@ pub fn run_use(dir: &Path, jurisdiction: &str, practice_area: &str) -> ExitCode 
             return ExitCode::from(2);
         }
     };
-    let (updated, changed) =
-        match manifest::pin_skill(&contents, &entry.jurisdiction, &entry.practice_area, &entry.version) {
-            Ok(result) => result,
-            Err(error) => {
-                eprintln!("navigator: {error}");
-                return ExitCode::from(2);
-            }
-        };
+    let (updated, changed) = match manifest::pin_skill(
+        &contents,
+        &entry.jurisdiction,
+        &entry.practice_area,
+        &entry.version,
+    ) {
+        Ok(result) => result,
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            return ExitCode::from(2);
+        }
+    };
     if changed {
         if let Err(error) = std::fs::write(&manifest_path, &updated) {
             eprintln!("navigator: write {}: {error}", manifest_path.display());
@@ -261,7 +278,8 @@ fn scaffold_notation(dir: &Path, code: &str) -> Result<(), String> {
         .map(|(_, bytes)| bytes)
         .ok_or_else(|| format!("bundled Notation `{code}` not found in this binary's catalog"))?;
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| format!("create {}: {error}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create {}: {error}", parent.display()))?;
     }
     std::fs::write(&target, body).map_err(|error| format!("write {}: {error}", target.display()))
 }
@@ -273,7 +291,11 @@ pub fn run_status(dir: &Path) -> ExitCode {
     match resolve_pins(dir) {
         Ok(resolutions) => {
             for resolution in &resolutions {
-                let state = if resolution.resolved { "resolvable" } else { "unresolvable" };
+                let state = if resolution.resolved {
+                    "resolvable"
+                } else {
+                    "unresolvable"
+                };
                 println!(
                     "{}\t{}\t{}\t{state}",
                     resolution.jurisdiction, resolution.practice_area, resolution.pinned_version
@@ -394,8 +416,14 @@ mod tests {
     fn a_second_use_of_the_same_pin_does_not_duplicate_it() {
         let dir = tempfile::tempdir().unwrap();
         scaffold(dir.path(), "host: staging.neonlaw.com\nproject: acme\n");
-        assert_eq!(run_use(dir.path(), "nv", "estates"), std::process::ExitCode::SUCCESS);
-        assert_eq!(run_use(dir.path(), "NV", "estates"), std::process::ExitCode::SUCCESS);
+        assert_eq!(
+            run_use(dir.path(), "nv", "estates"),
+            std::process::ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run_use(dir.path(), "NV", "estates"),
+            std::process::ExitCode::SUCCESS
+        );
         let resolutions = resolve_pins(dir.path()).unwrap();
         assert_eq!(resolutions.len(), 1, "{resolutions:?}");
     }
@@ -481,8 +509,14 @@ mod tests {
         // resolution function.
         let resolvable = tempfile::tempdir().unwrap();
         scaffold(resolvable.path(), TWO_PIN_FIXTURE);
-        assert_eq!(run_status(resolvable.path()), std::process::ExitCode::SUCCESS);
-        assert!(resolve_pins(resolvable.path()).unwrap().iter().all(|r| r.resolved));
+        assert_eq!(
+            run_status(resolvable.path()),
+            std::process::ExitCode::SUCCESS
+        );
+        assert!(resolve_pins(resolvable.path())
+            .unwrap()
+            .iter()
+            .all(|r| r.resolved));
 
         let stale = tempfile::tempdir().unwrap();
         scaffold(stale.path(), STALE_PIN_FIXTURE);

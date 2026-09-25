@@ -168,6 +168,10 @@ pub fn content_type_for(path: &Path) -> &'static str {
         Some("woff2") => "font/woff2",
         Some("woff") => "font/woff",
         Some("txt") => "text/plain; charset=utf-8",
+        // Uploaded so the object's own stored type is correct too, even
+        // though the gateway (`portal::project_portal::content_type_for`)
+        // re-derives it from the extension at serve time regardless.
+        Some("pdf") => "application/pdf",
         _ => "application/octet-stream",
     }
 }
@@ -421,6 +425,11 @@ mod tests {
         );
         assert_eq!(content_type_for(Path::new("a.woff2")), "font/woff2");
         assert_eq!(content_type_for(Path::new("a.svg")), "image/svg+xml");
+        assert_eq!(
+            content_type_for(Path::new("engagement.pdf")),
+            "application/pdf",
+            "a PDF must not fall back to application/octet-stream"
+        );
         assert_eq!(
             content_type_for(Path::new("noextension")),
             "application/octet-stream",

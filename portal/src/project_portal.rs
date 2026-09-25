@@ -521,6 +521,10 @@ fn content_type_for(path: &str) -> &'static str {
         "wasm" => "application/wasm",
         "webmanifest" => "application/manifest+json",
         "txt" => "text/plain; charset=utf-8",
+        // Without this, a browser downloads the PDF instead of rendering it
+        // inline — `x-content-type-options: nosniff` below refuses to guess
+        // around the wrong type, so a portal's "view" link cannot work.
+        "pdf" => "application/pdf",
         _ => "application/octet-stream",
     }
 }
@@ -774,5 +778,14 @@ mod tests {
         assert_eq!(content_type_for("logo.svg"), "image/svg+xml");
         assert_eq!(content_type_for("font.woff2"), "font/woff2");
         assert_eq!(content_type_for("noextension"), "application/octet-stream");
+    }
+
+    /// A PDF must arrive as `application/pdf`, not `application/octet-stream`
+    /// — the fallback forces a download instead of letting the browser render
+    /// it inline, so a portal's "view" link cannot work.
+    #[test]
+    fn a_pdf_is_served_with_its_own_content_type() {
+        assert_eq!(content_type_for("documents/engagement.pdf"), "application/pdf");
+        assert_eq!(content_type_for("pdf/acme.pdf"), "application/pdf");
     }
 }

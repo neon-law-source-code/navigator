@@ -9741,8 +9741,12 @@ async fn canonical_host_passes_through_when_disabled() {
 
 /// Whether `body` declares `brand` as its `og:site_name`. HTML attributes may
 /// arrive in either order, matching `features/tests/brand_routing.rs`'s own
-/// matcher for the same tag.
+/// matcher for the same tag. Dioxus renders an attribute's `&` as `&#38;`
+/// (Death & Divorce is the one live brand name that carries one), so the
+/// comparison escapes `brand` the same deterministic way rather than
+/// speculatively matching more than one entity spelling.
 fn page_declares_og_site_name(body: &str, brand: &str) -> bool {
+    let brand = brand.replace('&', "&#38;");
     body.contains(&format!("og:site_name\" content=\"{brand}\""))
         || body.contains(&format!("content=\"{brand}\" property=\"og:site_name\""))
 }
@@ -9821,6 +9825,13 @@ const LIVE_HOME_CONTRACTS: &[(views::brand::BrandKey, LiveHomeContract)] = &[
         LiveHomeContract::Authored {
             title: "<title>Daybridge Divorce Law | Home</title>",
             copy: "A way through divorce.",
+        },
+    ),
+    (
+        views::brand::BrandKey::DeathAndDivorce,
+        LiveHomeContract::Authored {
+            title: "<title>Death & Divorce</title>",
+            copy: "For endings, transitions, and the beyond.",
         },
     ),
 ];

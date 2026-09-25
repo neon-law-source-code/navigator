@@ -552,13 +552,16 @@ static SUMMONS_HEAD: std::sync::LazyLock<String> =
 static DAYBRIDGE_HEAD: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| bucket_font_head("Source Serif 4", "source-serif-4/SourceSerif4"));
 
+static DEATH_AND_DIVORCE_HEAD: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| bucket_font_head("Pirata One", "pirata-one/PirataOne"));
+
 /// Lawyer Shook is the portfolio directory, so its cards need every sibling
 /// brand's face in addition to the page's own Tinos. Keep this list explicit:
 /// a card may name only a compiled brand face, and loading a brand's token
 /// sheet here would also overwrite the holding page's palette.
 static LAWYER_SHOOK_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
     format!(
-        "{}{}{}{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}{}{}{}",
         *TINOS_HEAD,
         *GORP_HEAD,
         *PLUS_JAKARTA_SANS_HEAD,
@@ -568,6 +571,7 @@ static LAWYER_SHOOK_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new
         *ABHAYA_HEAD,
         *DELETE_YOUR_DEBT_HEAD,
         *SUMMONS_HEAD,
+        *DEATH_AND_DIVORCE_HEAD,
     )
 });
 
@@ -592,6 +596,7 @@ pub fn font_head(key: views::brand::BrandKey) -> &'static str {
         views::brand::BrandKey::DeleteYourDebt => &DELETE_YOUR_DEBT_HEAD,
         views::brand::BrandKey::Summons => &SUMMONS_HEAD,
         views::brand::BrandKey::Daybridge => &DAYBRIDGE_HEAD,
+        views::brand::BrandKey::DeathAndDivorce => &DEATH_AND_DIVORCE_HEAD,
     }
 }
 
@@ -910,6 +915,9 @@ fn title_for_path_with_firm(path: &str, firm_name: &str) -> String {
         .filter(|segment| !segment.is_empty());
 
     let Some(first) = segments.next() else {
+        if firm_name == "Death & Divorce" {
+            return firm_name.to_string();
+        }
         return format!("{firm_name} | Home");
     };
 
@@ -5125,6 +5133,10 @@ mod tests {
                 "{path}"
             );
         }
+        assert_eq!(
+            title_for_path_with_firm("/", "Death & Divorce"),
+            "Death & Divorce"
+        );
     }
 
     #[test]

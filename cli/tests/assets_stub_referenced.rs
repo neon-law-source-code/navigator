@@ -15,7 +15,7 @@ fn expected_gallery_placeholders() -> usize {
 /// because `cli` ships no library target an integration test could read the
 /// table from; the in-crate `published_asset_refs_names_both_faces_of_every_font_family`
 /// holds the table itself to this same number.
-const EXPECTED_FONT_PLACEHOLDERS: usize = 16;
+const EXPECTED_FONT_PLACEHOLDERS: usize = 18;
 
 /// Every stubbed face under `out`, so the assertion follows the table instead
 /// of naming families a second time.

@@ -24,6 +24,7 @@ pub const PLAUSIBLE_ORIGIN: &str = "https://plausible.io";
 
 /// The first-party stub that queues calls until the vendor script arrives.
 pub const PLAUSIBLE_LOADER_HREF: &str = "/public/js/plausible.js";
+const UNCONFIGURED_DEATH_AND_DIVORCE_ID: &str = "pa-unconfigured-death-and-divorce";
 
 /// The Plausible script id (the `pa-…` stem of the snippet's script URL) for
 /// `key`'s public site.
@@ -41,6 +42,7 @@ pub const fn script_id(key: BrandKey) -> &'static str {
         BrandKey::DeleteYourDebt => "pa-S3SbSActjysFwN64GUe6D",
         BrandKey::Daybridge => "pa-j2JWmqoBTNJPRb64xIZ2o",
         BrandKey::Summons => "pa-WUB2cKHxULoouY7ALHjwH",
+        BrandKey::DeathAndDivorce => UNCONFIGURED_DEATH_AND_DIVORCE_ID,
     }
 }
 
@@ -84,6 +86,9 @@ impl PlausibleSite {
     /// an inline block after an `async` tag.
     #[must_use]
     pub fn script_tags(&self) -> String {
+        if self.script_id == UNCONFIGURED_DEATH_AND_DIVORCE_ID {
+            return String::new();
+        }
         format!(
             "<script src=\"{PLAUSIBLE_LOADER_HREF}\" defer></script>\
              <script src=\"{PLAUSIBLE_ORIGIN}/js/{id}.js\" defer></script>",

@@ -15,6 +15,8 @@ mod company;
 pub use company::CompanyContent;
 mod daybridge;
 pub use daybridge::DaybridgeContent;
+mod death_and_divorce;
+pub use death_and_divorce::DeathAndDivorceContent;
 mod estate;
 pub use estate::EstateContent;
 mod privacy;
@@ -161,6 +163,9 @@ pub struct HomeContent {
     /// The Daybridge daily-fee divorce offer.
     #[serde(default)]
     pub daybridge: Option<DaybridgeContent>,
+    /// Death & Divorce's black-and-white practice surface.
+    #[serde(default)]
+    pub death_and_divorce: Option<DeathAndDivorceContent>,
 }
 
 /// The firm's notice and sign-in. When [`HomeContent::bare`] is set, this
@@ -377,6 +382,9 @@ pub fn HomePage(
         if content.daybridge.is_some() {
             document::Stylesheet { href: "/public/css/daybridge.css" }
         }
+        if content.death_and_divorce.is_some() {
+            document::Stylesheet { href: "/public/css/death-and-divorce.css" }
+        }
         PublicShell { header, footer,
             if let Some(company) = content.company.as_ref() {
                 company::CompanyHome {
@@ -405,6 +413,16 @@ pub fn HomePage(
                 }
             } else if let Some(daybridge) = content.daybridge.as_ref() {
                 daybridge::DaybridgeHome { content: content.clone(), daybridge: daybridge.clone() }
+                TestimonialSection {
+                    heading: "Testimonials".to_string(),
+                    lead: String::new(),
+                    cards: testimonials,
+                }
+            } else if let Some(death_and_divorce) = content.death_and_divorce.as_ref() {
+                death_and_divorce::DeathAndDivorceHome {
+                    content: content.clone(),
+                    death_and_divorce: death_and_divorce.clone(),
+                }
                 TestimonialSection {
                     heading: "Testimonials".to_string(),
                     lead: String::new(),
@@ -779,6 +797,7 @@ mod tests {
                         company: None,
                         bare: None,
                         estate: None,
+                        death_and_divorce: None,
                     },
                 }
             }

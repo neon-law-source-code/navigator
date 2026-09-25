@@ -1,0 +1,81 @@
+head_title: "Death & Divorce services"
+meta_description: >-
+  Divorce, estate planning, and probate from Death & Divorce, a practice of
+  Shook Law PLLC. Scope and fees are set out in writing before work begins.
+title: Death & Divorce services
+hero_mark: scales
+tagline: For endings, transitions, and the beyond.
+hero_lines:
+  - text: A steadier way through
+    accent_words: 2
+  - text: what comes after
+    accent_words: 0
+hero_lead: >-
+  We help with divorce, estate planning, and probate. Shook Law PLLC is the
+  law firm you would retain.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Start a conversation
+skin: practice
+bands:
+  - kind: cards
+    anchor: work
+    overline: The work
+    heading: Three kinds of transition
+    description: >-
+      The written retainer identifies the work we agree to do. Scope and fees
+      are explained before work begins.
+    items:
+      - title: Divorce
+        body:
+          - - text: >-
+                Counsel for the decisions, agreements, and court papers that
+                help a family move through a separation.
+      - title: Estate planning
+        body:
+          - - text: >-
+                Wills, trusts, and related planning for property, care, and the
+                people you want to protect.
+      - title: Probate
+        body:
+          - - text: >-
+                Guidance through the court and administrative work of settling
+                an estate after someone dies.
+  - kind: cards
+    anchor: approach
+    overline: Our approach
+    heading: Clear about the hard parts
+    description: >-
+      We make room for the human weight of these moments while keeping the
+      next practical step visible.
+    items:
+      - title: Listen first
+        body:
+          - - text: We begin with what is happening and what needs attention now.
+      - title: Write it down
+        body:
+          - - text: Scope, timing, and fees are set out in writing before work begins.
+      - title: Stay with the work
+        body:
+          - - text: We keep communication clear as the matter moves toward completion.
+  - kind: cards
+    anchor: beyond
+    overline: What comes after
+    heading: A plan for the next chapter
+    description: >-
+      The work may be about an ending, but the reason to do it is what comes
+      next for you and the people you love.
+    items:
+      - title: Decisions with care
+        body:
+          - - text: We explain the choices in front of you without pretending they are simple.
+      - title: A durable record
+        body:
+          - - text: We prepare documents that make the agreed decisions easier to carry forward.
+  - kind: cta
+    heading: Tell us what is happening
+    body: >-
+      These are sad moments. Start with the decision, deadline, or loss that
+      brought you here, and we will help you find the next step.
+    email: "{firm_email}"
+    email_subject: Death & Divorce

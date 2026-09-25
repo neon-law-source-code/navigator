@@ -894,7 +894,8 @@ fn resolve_firm_contact_content(
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
         | BrandKey::Summons
-        | BrandKey::Daybridge => format!(
+        | BrandKey::Daybridge
+        | BrandKey::DeathAndDivorce => format!(
             "Reach {firm_name}, a practice of Shook Law PLLC, about legal services. \
              Attorney advertisement. Nothing here is legal advice without a signed retainer for \
              an active project."
@@ -941,7 +942,8 @@ pub(crate) fn resolve_firm_home_content(
         | BrandKey::Misericordia
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
-        | BrandKey::Daybridge => locales::home_for_host(branding, deployment_host),
+        | BrandKey::Daybridge
+        | BrandKey::DeathAndDivorce => locales::home_for_host(branding, deployment_host),
     }
 }
 
@@ -1066,6 +1068,7 @@ mod coming_soon_page_tests {
                     || content.privacy.is_some()
                     || content.company.is_some()
                     || content.daybridge.is_some()
+                    || content.death_and_divorce.is_some()
                     || !content.practices.is_empty());
             let holding_design = content
                 .bare
@@ -1196,6 +1199,7 @@ mod lawyer_shook_holding_page_tests {
                 "Abhaya Immigration",
                 "Summons Defense",
                 "Daybridge Divorce Law",
+                "Death & Divorce",
             ]
         );
         assert!(content

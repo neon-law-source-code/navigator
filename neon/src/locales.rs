@@ -74,6 +74,10 @@ const SUMMONS_HOME_YAML: &str = include_str!("../locales/en/summons/home.yaml");
 const SUMMONS_SERVICES_YAML: &str = include_str!("../locales/en/summons/services.yaml");
 const DAYBRIDGE_HOME_YAML: &str = include_str!("../locales/en/daybridge/home.yaml");
 const DAYBRIDGE_SERVICES_YAML: &str = include_str!("../locales/en/daybridge/services.yaml");
+// Death & Divorce keeps its home title to the brand name alone.
+const DEATH_AND_DIVORCE_HOME_YAML: &str = include_str!("../locales/en/death-and-divorce/home.yaml");
+const DEATH_AND_DIVORCE_SERVICES_YAML: &str =
+    include_str!("../locales/en/death-and-divorce/services.yaml");
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
 const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shook/services.yaml");
@@ -113,6 +117,8 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Summons, "services") => Some(SUMMONS_SERVICES_YAML),
         (BrandKey::Daybridge, "home") => Some(DAYBRIDGE_HOME_YAML),
         (BrandKey::Daybridge, "services") => Some(DAYBRIDGE_SERVICES_YAML),
+        (BrandKey::DeathAndDivorce, "home") => Some(DEATH_AND_DIVORCE_HOME_YAML),
+        (BrandKey::DeathAndDivorce, "services") => Some(DEATH_AND_DIVORCE_SERVICES_YAML),
         (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
         (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
         (BrandKey::Neon, "notations") => Some(NEON_NOTATIONS_YAML),
@@ -751,6 +757,24 @@ fn daybridge_content(copy: views::locales::DaybridgeCopy) -> webapp::home::Daybr
     }
 }
 
+fn death_and_divorce_content(
+    copy: views::locales::DeathAndDivorceCopy,
+) -> webapp::home::DeathAndDivorceContent {
+    webapp::home::DeathAndDivorceContent {
+        eyebrow: copy.eyebrow,
+        statement_heading: copy.statement_heading,
+        statement_body: copy.statement_body,
+        practices: copy.practices,
+        video_label: copy.video_label,
+        video_body: copy.video_body,
+        process_label: copy.process_label,
+        process_heading: copy.process_heading,
+        steps: copy.steps,
+        closing_heading: copy.closing_heading,
+        closing_body: copy.closing_body,
+    }
+}
+
 fn practice_link(copy: PracticeLinkCopy) -> webapp::home::PracticeLink {
     webapp::home::PracticeLink {
         mark: practice_mark(copy.mark),
@@ -880,6 +904,7 @@ pub fn home_for_host(
         estate: copy.estate.map(estate_content),
         privacy: copy.privacy.map(privacy_content),
         daybridge: copy.daybridge.map(daybridge_content),
+        death_and_divorce: copy.death_and_divorce.map(death_and_divorce_content),
     }
 }
 

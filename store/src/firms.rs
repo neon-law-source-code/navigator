@@ -45,6 +45,7 @@ pub const CLOSED_BRAND_KEYS: &[&str] = &[
     "lawyer-shook",
     "summons",
     "daybridge",
+    "death-and-divorce",
 ];
 
 /// Whether a `brand` row exists carrying this key — the live check

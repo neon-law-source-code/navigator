@@ -81,7 +81,7 @@ pub const TYPEFACES: &[Typeface] = &[
         stack: "ui-sans-serif, system-ui, sans-serif",
         operator_licence_required: false,
     },
-    // The six practice-brand faces. All OFL-1.1, so none sets
+    // The seven practice-brand faces. All OFL-1.1, so none sets
     // `operator_licence_required`: a fork may redistribute them, unlike GORP.
     // Their bytes ride the same bucket lane as every other web font here, so
     // a fresh clone carries none of them and no request ever leaves for a
@@ -103,6 +103,12 @@ pub const TYPEFACES: &[Typeface] = &[
         id: "source-serif-4",
         label: "Source Serif 4",
         stack: "\"Source Serif 4\", Georgia, \"Times New Roman\", serif",
+        operator_licence_required: false,
+    },
+    Typeface {
+        id: "pirata-one",
+        label: "Pirata One",
+        stack: "\"Pirata One\", Georgia, serif",
         operator_licence_required: false,
     },
     // Devanagari and Latin in one family, so an Abhaya page translated into
@@ -128,7 +134,7 @@ pub const TYPEFACES: &[Typeface] = &[
     },
 ];
 
-/// Primaries and accents taken from the nine compiled house-brand token
+/// Primaries and accents taken from the ten compiled house-brand token
 /// sheets, named so a select can refuse free text.
 pub const PALETTE: &[Palette] = &[
     Palette {
@@ -239,7 +245,7 @@ pub const PALETTE: &[Palette] = &[
             border: Some("#8f842d"),
         },
     },
-    // --- The six practice brands -------------------------------------
+    // --- The seven practice brands -----------------------------------
     // Every primary below is a light-mode colour that clears WCAG AA on
     // white; each also carries a dark-mode primary raised to clear 7:1 on
     // the dark canvas, because the specified colours fail AA outright
@@ -473,6 +479,44 @@ pub const PALETTE: &[Palette] = &[
             border: None,
         },
     },
+    // Terracotta against paper and charcoal: a restrained sunset accent for
+    // Death & Divorce's black-and-white surface.
+    Palette {
+        id: "death-and-divorce",
+        label: "Death & Divorce terracotta",
+        light: PaletteScheme {
+            primary: "#B45535",
+            primary_hover: "#963F27",
+            primary_active: "#78321F",
+            on_primary: "#FFFFFF",
+            on_brand: "#FFFFFF",
+            link: "#8A321E",
+            link_hover: "#652313",
+            surface_subtle: "#f5f1ee",
+            bg: Some("#ffffff"),
+            surface: Some("#ffffff"),
+            surface_raised: Some("#faf8f6"),
+            text: Some("#111111"),
+            text_muted: Some("#5a5552"),
+            border: Some("#d9d2cd"),
+        },
+        dark: PaletteScheme {
+            primary: "#F0A080",
+            primary_hover: "#F6B49A",
+            primary_active: "#F9C8B3",
+            on_primary: "#111111",
+            on_brand: "#111111",
+            link: "#F0A080",
+            link_hover: "#F6B49A",
+            surface_subtle: "#211a17",
+            bg: Some("#111111"),
+            surface: Some("#181412"),
+            surface_raised: Some("#211a17"),
+            text: Some("#f8f6f4"),
+            text_muted: Some("#c9c1bd"),
+            border: Some("#493a34"),
+        },
+    },
 ];
 
 /// Look up a typeface by the id stored on a brand row.
@@ -511,6 +555,9 @@ impl BrandKey {
             Self::Daybridge => {
                 typeface_by_id("source-serif-4").expect("source-serif-4 is catalogued")
             }
+            Self::DeathAndDivorce => {
+                typeface_by_id("pirata-one").expect("pirata-one is catalogued")
+            }
         }
     }
 
@@ -541,7 +588,8 @@ impl BrandKey {
             | Self::Abhaya
             | Self::DeleteYourDebt
             | Self::Summons
-            | Self::Daybridge => None,
+            | Self::Daybridge
+            | Self::DeathAndDivorce => None,
         }
     }
 
@@ -564,6 +612,9 @@ impl BrandKey {
             }
             Self::Summons => palette_by_id("oath").expect("oath is catalogued"),
             Self::Daybridge => palette_by_id("daybridge").expect("daybridge is catalogued"),
+            Self::DeathAndDivorce => {
+                palette_by_id("death-and-divorce").expect("death-and-divorce is catalogued")
+            }
         }
     }
 }
@@ -936,6 +987,7 @@ mod tests {
                 "eb-garamond",
                 "source-sans-3",
                 "source-serif-4",
+                "pirata-one",
                 "mukta",
                 "public-sans",
                 "libre-franklin"

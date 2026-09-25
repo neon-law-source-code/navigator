@@ -695,6 +695,13 @@ enum ProjectSkillCmd {
         jurisdiction: String,
         practice_area: String,
     },
+    /// List the Project Skills pinned on the current Project, and whether
+    /// each still resolves in the compiled-in catalog.
+    ///
+    /// Reuses the same resolution `navigator project gate --check` runs
+    /// (ENG-879), so the two report the same verdict for the same
+    /// `navigator.yaml`. Run from the Project repository root.
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -2607,10 +2614,10 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
 }
 
 /// `navigator project skill ...` — dispatches to `cli/src/projects/skill.rs`.
-/// `list` and `show` read only the compiled-in catalog; `use` additionally
-/// reads and writes `./navigator.yaml`, so all three run from the current
-/// directory rather than taking a `--dir` flag — the same current-directory
-/// convention `navigator project gate` uses.
+/// `list` and `show` read only the compiled-in catalog; `use` and `status`
+/// additionally read (and `use` writes) `./navigator.yaml`, so all four run
+/// from the current directory rather than taking a `--dir` flag — the same
+/// current-directory convention `navigator project gate` uses.
 fn run_project_skill(action: ProjectSkillCmd) -> ExitCode {
     match action {
         ProjectSkillCmd::List => projects::skill::run_list(),
@@ -2622,6 +2629,7 @@ fn run_project_skill(action: ProjectSkillCmd) -> ExitCode {
             jurisdiction,
             practice_area,
         } => projects::skill::run_use(Path::new("."), &jurisdiction, &practice_area),
+        ProjectSkillCmd::Status => projects::skill::run_status(Path::new(".")),
     }
 }
 

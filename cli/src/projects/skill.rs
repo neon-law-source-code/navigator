@@ -266,6 +266,28 @@ fn scaffold_notation(dir: &Path, code: &str) -> Result<(), String> {
     std::fs::write(&target, body).map_err(|error| format!("write {}: {error}", target.display()))
 }
 
+/// `navigator project skill status` — every Project Skill this Project's
+/// `navigator.yaml` pins, and whether it still resolves.
+#[must_use]
+pub fn run_status(dir: &Path) -> ExitCode {
+    match resolve_pins(dir) {
+        Ok(resolutions) => {
+            for resolution in &resolutions {
+                let state = if resolution.resolved { "resolvable" } else { "unresolvable" };
+                println!(
+                    "{}\t{}\t{}\t{state}",
+                    resolution.jurisdiction, resolution.practice_area, resolution.pinned_version
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
 /// One pinned Project Skill, resolved against the compiled-in catalog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinResolution {
@@ -317,7 +339,7 @@ pub fn resolve_pins(dir: &Path) -> Result<Vec<PinResolution>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{catalog, find, resolve_pins, run_use, unresolved_message};
+    use super::{catalog, find, resolve_pins, run_status, run_use, unresolved_message};
 
     #[test]
     fn the_catalog_carries_both_seeded_entries() {
@@ -426,5 +448,45 @@ mod tests {
         assert!(!resolutions[0].resolved);
         assert_eq!(resolutions[0].pinned_version, "999");
         assert_eq!(resolutions[0].catalog_version.as_deref(), Some("1"));
+    }
+
+    const TWO_PIN_FIXTURE: &str = concat!(
+        "host: staging.neonlaw.com\nproject: acme\nskills:\n",
+        "  - jurisdiction: NV\n    practice_area: estates\n    version: \"1\"\n",
+        "  - jurisdiction: TX\n    practice_area: probate\n    version: \"1\"\n",
+    );
+
+    const STALE_PIN_FIXTURE: &str = concat!(
+        "host: staging.neonlaw.com\nproject: acme\nskills:\n",
+        "  - jurisdiction: NV\n    practice_area: estates\n    version: \"999\"\n",
+    );
+
+    #[test]
+    fn a_fixture_with_two_pins_reports_both_resolvable() {
+        let dir = tempfile::tempdir().unwrap();
+        scaffold(dir.path(), TWO_PIN_FIXTURE);
+        let resolutions = resolve_pins(dir.path()).unwrap();
+        assert_eq!(resolutions.len(), 2, "{resolutions:?}");
+        assert!(resolutions.iter().all(|r| r.resolved), "{resolutions:?}");
+    }
+
+    #[test]
+    fn status_and_gate_check_agree_on_the_same_fixture() {
+        // `navigator project skill status` (`run_status`, this test) and
+        // `navigator project gate --check` (`crate::append_skill_pin_findings`
+        // in `cli/src/main.rs`) both read their verdict from
+        // `resolve_pins` — this is the shared-fixture proof ENG-880 asks for:
+        // a two-pin fixture reports both resolvable, and a stale pin reports
+        // unresolved, the same way on both surfaces because there is only one
+        // resolution function.
+        let resolvable = tempfile::tempdir().unwrap();
+        scaffold(resolvable.path(), TWO_PIN_FIXTURE);
+        assert_eq!(run_status(resolvable.path()), std::process::ExitCode::SUCCESS);
+        assert!(resolve_pins(resolvable.path()).unwrap().iter().all(|r| r.resolved));
+
+        let stale = tempfile::tempdir().unwrap();
+        scaffold(stale.path(), STALE_PIN_FIXTURE);
+        assert_eq!(run_status(stale.path()), std::process::ExitCode::SUCCESS);
+        assert!(!resolve_pins(stale.path()).unwrap()[0].resolved);
     }
 }

@@ -129,7 +129,7 @@ pub struct HomeCopy {
     /// Annual data removal and privacy protection.
     #[serde(default)]
     pub privacy: Option<PrivacyCopy>,
-    /// Divorce counsel with a daily attorney fee and separately paid costs.
+    /// Divorce fees and separately paid legal costs.
     #[serde(default)]
     pub daybridge: Option<DaybridgeCopy>,
     /// Divorce, estate planning, and probate for the Death & Divorce brand.

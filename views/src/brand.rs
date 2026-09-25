@@ -838,7 +838,7 @@ pub static DAYBRIDGE_BRANDING: Branding = Branding {
     firm: SiteBrand {
         site_name: "Daybridge Divorce Law",
         home_href: "/",
-    tagline: "Divorce counsel for $10 a day while retained, with case costs paid separately.",
+        tagline: "Divorce counsel: $500 setup, then $10 a day, plus appearance, trial, and legal costs.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
         logo_href: "/public/brand/daybridge/logo.svg",
         social_image: "",
@@ -872,8 +872,8 @@ pub static DAYBRIDGE_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "daybridgedivorce.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Daybridge Divorce Law is operated by Shook Law PLLC. The attorney fee is $10 for each day the firm is retained, as defined by the written retainer. Court filing fees, service fees, and other case costs are separate. This is an attorney advertisement, not a promise about a result.",
-    service_description: "Divorce representation from Daybridge Divorce Law, operated by Shook Law PLLC. $10 a day while retained, with case costs paid separately under the written retainer.",
+    mission_description: "Daybridge Divorce Law is operated by Shook Law PLLC. Fees are a one-time $500 setup, then $10 a day while retained, $50 per court appearance, and $5,000 per trial day. You pay legal costs, including discovery and tokens, separately. The written retainer defines scope and billing dates. Attorney advertisement; no result is promised.",
+    service_description: "Divorce representation from Daybridge Divorce Law, operated by Shook Law PLLC. $500 setup, then $10 a day; $50 per court appearance; $5,000 per trial day. You pay legal costs, including discovery and tokens, separately under the written retainer.",
     portal_only: false,
     brand_key: BrandKey::Daybridge,
 };
@@ -1012,7 +1012,7 @@ impl BrandKey {
             Self::Abhaya => "visas, green cards, and citizenship",
             Self::DeleteYourDebt => "defend against debt collectors",
             Self::Summons => "NYC summons defense at OATH hearings",
-            Self::Daybridge => "divorce counsel for $10 a day plus costs",
+            Self::Daybridge => "divorce counsel with setup, daily, appearance, and trial fees",
             Self::DeathAndDivorce => "divorce, estate planning, and probate",
         }
     }

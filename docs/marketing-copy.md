@@ -49,7 +49,7 @@ Daybridge Divorce Law (`daybridge/`):
 
 | File | Page |
 | --- | --- |
-| `neon/locales/en/daybridge/home.yaml` | `/` daily-fee divorce offer |
+| `neon/locales/en/daybridge/home.yaml` | `/` staged-fee divorce offer |
 | `neon/locales/en/daybridge/services.yaml` | `/services` scope, timing, and cost disclosures |
 
 Death & Divorce (`death-and-divorce/`):

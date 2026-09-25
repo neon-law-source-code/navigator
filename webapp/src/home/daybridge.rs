@@ -1,4 +1,4 @@
-//! Daybridge Divorce Law: one daily fee, three service commitments, one short path forward.
+//! Daybridge Divorce Law: clear fees, three service commitments, one short path forward.
 
 use super::HomeContent;
 use crate::components::is_external_href;
@@ -64,17 +64,14 @@ pub(super) fn DaybridgeHome(content: HomeContent, daybridge: DaybridgeContent) -
             }
             section { class: "daybridge-promises", "aria-label": "How Daybridge works",
                 article {
-                    span { class: "daybridge-promises__number", "01" }
                     h2 { "{daybridge.response_heading}" }
                     p { "{daybridge.response_body}" }
                 }
                 article {
-                    span { class: "daybridge-promises__number", "02" }
                     h2 { "{daybridge.motions_heading}" }
                     p { "{daybridge.motions_body}" }
                 }
                 article {
-                    span { class: "daybridge-promises__number", "03" }
                     h2 { "{daybridge.costs_heading}" }
                     p { "{daybridge.costs_body}" }
                 }

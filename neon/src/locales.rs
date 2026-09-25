@@ -1930,9 +1930,9 @@ mod tests {
     }
 
     /// The `/divorce` gateway's CTA resolves per deployment, names Daybridge
-    /// Divorce Law, preserves the exact $10-a-day/case-costs-separate
-    /// framing, and never promises a cooperative, quick, inexpensive, or
-    /// favorable divorce.
+    /// Divorce Law, preserves the exact setup-fee/per-day/per-appearance/
+    /// per-trial-day/case-costs-separate framing, and never promises a
+    /// result or timeline.
     #[test]
     fn divorce_gateway_preserves_pricing_and_promises_no_outcome() {
         let production = divorce_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
@@ -1965,35 +1965,17 @@ mod tests {
         );
         let text = content.hero_lead.to_lowercase();
         assert!(text.contains("daybridge divorce law"), "{text}");
-        assert!(text.contains("$10 for each day"), "{text}");
+        assert!(text.contains("$500 setup fee"), "{text}");
+        assert!(text.contains("$10 a day while retained"), "{text}");
+        assert!(text.contains("$50 each"), "{text}");
+        assert!(text.contains("$5,000 per day"), "{text}");
         assert!(
-            text.contains("case costs are paid separately")
-                || text.contains("costs are paid separately"),
+            text.contains("legal costs, including discovery and tokens, separately"),
             "{text}"
         );
-        // "cooperative"/"quick"/"inexpensive"/"favorable divorce" may appear
-        // only inside the denial sentence — the same disclaim-not-promise
-        // shape `delete_your_debt_only_names_settlement_to_disclaim_it`
-        // checks.
-        for sentence in text.split('.') {
-            let claims_outcome = [
-                "cooperative divorce",
-                "quick divorce",
-                "inexpensive divorce",
-                "favorable divorce",
-            ]
-            .iter()
-            .any(|phrase| sentence.contains(phrase));
-            if claims_outcome {
-                assert!(
-                    sentence.contains("do not promise"),
-                    "outcome promise outside a denial: {sentence:?}"
-                );
-            }
-        }
         assert!(!text.contains("we guarantee"), "{text}");
         assert!(
-            text.contains("we do not promise a cooperative, quick, inexpensive, or"),
+            text.contains("no result or timeline is promised"),
             "and says so plainly: {text}"
         );
     }

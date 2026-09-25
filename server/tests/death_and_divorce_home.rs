@@ -49,6 +49,8 @@ async fn death_and_divorce_home_carries_the_brand_direction() {
             "/public/css/brand-death-and-divorce-tokens.css",
             "/public/css/death-and-divorce.css",
             "/public/brand/death-and-divorce/mark.svg",
+            r#"rel="icon""#,
+            r#"href="/public/brand/death-and-divorce/mark.svg""#,
             "Pirata One",
             "Attorney advertisement",
         ] {

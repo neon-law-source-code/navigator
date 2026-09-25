@@ -30,6 +30,51 @@ pub fn delete_your_debt_gateway(
     locales::delete_your_debt_gateway(branding, deployment_host)
 }
 
+/// `/delete-your-data` — Neon's own gateway to the DeleteYourData.com
+/// practice. See `locales/en/neon/gateway-delete-your-data.yaml`.
+pub fn delete_your_data_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::delete_your_data_gateway(branding, deployment_host)
+}
+
+/// `/immigration` — Neon's own gateway to the Abhaya Immigration practice.
+/// See `locales/en/neon/gateway-immigration.yaml`.
+pub fn immigration_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::immigration_gateway(branding, deployment_host)
+}
+
+/// `/estate-planning` — Neon's own gateway to the Vesta Estate Planning
+/// practice. See `locales/en/neon/gateway-estate-planning.yaml`.
+pub fn estate_planning_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::estate_planning_gateway(branding, deployment_host)
+}
+
+/// `/accidents` — Neon's own gateway to the Misericordia Injury Law
+/// practice. See `locales/en/neon/gateway-accidents.yaml`.
+pub fn accidents_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::accidents_gateway(branding, deployment_host)
+}
+
+/// `/divorce` — Neon's own gateway to the Daybridge Divorce Law practice.
+/// See `locales/en/neon/gateway-divorce.yaml`.
+pub fn divorce_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::divorce_gateway(branding, deployment_host)
+}
+
 /// The regulated claims on the firm's public pages.
 ///
 /// `/navigator` and `/services` are the firm's, so the copy and the guards that

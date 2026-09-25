@@ -1,0 +1,29 @@
+head_title: "Privacy and data removal | {site_name}"
+meta_description: >-
+  Privacy and data removal is offered through DeleteYourData.com, a Shook Law
+  PLLC practice: one year of data removal and privacy protection for $50,
+  with credit monitoring available as an opt-in. It cannot promise every
+  piece of your personal information will be removed.
+title: Privacy and data removal
+tagline: Make your personal information harder to find.
+hero_mark: gavel
+hero_lead: >-
+  One year of data removal and privacy protection is offered through
+  DeleteYourData.com, a Shook Law PLLC practice, for $50. A licensed attorney
+  reviews the work. Credit monitoring is available, but only if you opt in.
+  It reduces what is publicly findable about you; it does not promise that
+  every piece of your personal information can be removed.
+hero_cta:
+  href: "https://www.deleteyourdata.com/"
+  label: Visit DeleteYourData.com
+skin: practice
+bands:
+  - kind: statement
+    heading: A Shook Law PLLC practice
+    body:
+      - - text: >-
+              DeleteYourData.com is a practice of Shook Law PLLC, the law
+              firm behind {site_name}. A licensed attorney handles the work
+              there. The name describes what the practice offers, not a
+              promise that every trace of your personal information can be
+              erased.

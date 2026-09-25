@@ -38,6 +38,24 @@ const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml"
 /// [`views::locales::KNOWN_PAGES`].
 const NEON_GATEWAY_DELETE_YOUR_DEBT_YAML: &str =
     include_str!("../locales/en/neon/gateway-delete-your-debt.yaml");
+/// `/delete-your-data` — Neon's own gateway to the DeleteYourData.com
+/// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_DELETE_YOUR_DATA_YAML: &str =
+    include_str!("../locales/en/neon/gateway-delete-your-data.yaml");
+/// `/immigration` — Neon's own gateway to the Abhaya Immigration practice.
+/// Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_IMMIGRATION_YAML: &str =
+    include_str!("../locales/en/neon/gateway-immigration.yaml");
+/// `/estate-planning` — Neon's own gateway to the Vesta Estate Planning
+/// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_ESTATE_PLANNING_YAML: &str =
+    include_str!("../locales/en/neon/gateway-estate-planning.yaml");
+/// `/accidents` — Neon's own gateway to the Misericordia Injury Law
+/// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_ACCIDENTS_YAML: &str = include_str!("../locales/en/neon/gateway-accidents.yaml");
+/// `/divorce` — Neon's own gateway to the Daybridge Divorce Law practice.
+/// Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_DIVORCE_YAML: &str = include_str!("../locales/en/neon/gateway-divorce.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
@@ -101,6 +119,11 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::Neon, "gateway-delete-your-debt") => Some(NEON_GATEWAY_DELETE_YOUR_DEBT_YAML),
+        (BrandKey::Neon, "gateway-delete-your-data") => Some(NEON_GATEWAY_DELETE_YOUR_DATA_YAML),
+        (BrandKey::Neon, "gateway-immigration") => Some(NEON_GATEWAY_IMMIGRATION_YAML),
+        (BrandKey::Neon, "gateway-estate-planning") => Some(NEON_GATEWAY_ESTATE_PLANNING_YAML),
+        (BrandKey::Neon, "gateway-accidents") => Some(NEON_GATEWAY_ACCIDENTS_YAML),
+        (BrandKey::Neon, "gateway-divorce") => Some(NEON_GATEWAY_DIVORCE_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
             Some(NEON_SERVICES_CATALOG_YAML)
         }
@@ -965,6 +988,97 @@ pub fn delete_your_debt_gateway(
     content
 }
 
+/// `/delete-your-data` — Neon's own gateway page naming DeleteYourData.com as
+/// the destination for data-removal and privacy-protection work. See
+/// [`delete_your_debt_gateway`], whose CTA-resolution shape this mirrors.
+pub fn delete_your_data_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(
+        load_page(branding, "gateway-delete-your-data"),
+        None,
+        branding,
+    );
+    if let Some(href) =
+        sibling_practice_href(views::brand::BrandKey::DeleteYourData, deployment_host)
+    {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
+/// `/immigration` — Neon's own gateway page naming Abhaya Immigration as the
+/// destination for immigration work. See [`delete_your_debt_gateway`], whose
+/// CTA-resolution shape this mirrors.
+pub fn immigration_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(load_page(branding, "gateway-immigration"), None, branding);
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Abhaya, deployment_host) {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
+/// `/estate-planning` — Neon's own gateway page naming Vesta Estate Planning
+/// as the destination for estate-planning work. See
+/// [`delete_your_debt_gateway`], whose CTA-resolution shape this mirrors.
+pub fn estate_planning_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(
+        load_page(branding, "gateway-estate-planning"),
+        None,
+        branding,
+    );
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Vesta, deployment_host) {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
+/// `/accidents` — Neon's own gateway page naming Misericordia Injury Law as
+/// the destination for injury claims. See [`delete_your_debt_gateway`],
+/// whose CTA-resolution shape this mirrors.
+pub fn accidents_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(load_page(branding, "gateway-accidents"), None, branding);
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Misericordia, deployment_host)
+    {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
+/// `/divorce` — Neon's own gateway page naming Daybridge Divorce Law as the
+/// destination for divorce representation. See [`delete_your_debt_gateway`],
+/// whose CTA-resolution shape this mirrors.
+pub fn divorce_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(load_page(branding, "gateway-divorce"), None, branding);
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Daybridge, deployment_host) {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
 /// The public notation format explanation, loaded from the English catalog.
 pub(crate) fn notations_content() -> PageContent {
     let branding = &views::brand::DEFAULT_BRANDING;
@@ -1526,6 +1640,339 @@ mod tests {
         assert_eq!(
             content.hero_cta.as_ref().expect("hero CTA").label,
             "Visit DeleteYourDebt.com"
+        );
+    }
+
+    /// The `/delete-your-data` gateway's CTA resolves per deployment, the
+    /// same way `/delete-your-debt`'s does.
+    #[test]
+    fn delete_your_data_gateway_resolves_the_cta_per_deployment() {
+        let production =
+            delete_your_data_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.deleteyourdata.com"
+        );
+
+        let staging =
+            delete_your_data_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.deleteyourdata.com"
+        );
+    }
+
+    /// The gateway wears the practice skin, names the destination, and never
+    /// claims every trace of a reader's personal information can be removed
+    /// — the one overclaim ENG-898 specifically forbids.
+    #[test]
+    fn delete_your_data_gateway_never_claims_complete_removal() {
+        let content = delete_your_data_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit DeleteYourData.com"
+        );
+        let text = format!("{} {}", content.hero_lead, content.title).to_lowercase();
+        assert!(text.contains("deleteyourdata.com"), "{text}");
+        for overclaim in [
+            "remove all your",
+            "erase everything",
+            "every trace of your personal information can be erased",
+            "guarantee",
+        ] {
+            assert!(!text.contains(overclaim), "overclaims removal: {text}");
+        }
+        assert!(
+            text.contains("does not promise") || text.contains("cannot promise"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/immigration` gateway's CTA resolves per deployment, names
+    /// Abhaya Immigration, never promises USCIS approval or timing, and
+    /// never coins a fused "Neon Law Immigration" trade name.
+    #[test]
+    fn immigration_gateway_never_promises_uscis_outcomes_or_a_fused_trade_name() {
+        let production =
+            immigration_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.abhayaimmigration.com"
+        );
+        let staging =
+            immigration_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.abhayaimmigration.com"
+        );
+
+        let content = immigration_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Abhaya Immigration"
+        );
+        let text = format!(
+            "{} {}",
+            content.hero_lead,
+            content
+                .bands
+                .iter()
+                .filter_map(|band| match band {
+                    RenderedBand::Statement { body, .. } => Some(
+                        body.iter()
+                            .flatten()
+                            .map(|run| run.text.clone())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    ),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+        .to_lowercase();
+        assert!(text.contains("abhaya immigration"), "{text}");
+        // "neon law immigration" may appear only inside the explicit denial
+        // sentence — the same disclaim-not-duplicate shape
+        // `delete_your_debt_only_names_settlement_to_disclaim_it` checks.
+        for sentence in text.split('.') {
+            if sentence.contains("neon law immigration") {
+                assert!(
+                    sentence.contains("not offered as"),
+                    "fused trade name outside a denial: {sentence:?}"
+                );
+            }
+        }
+        for claim in [
+            "guaranteed approval",
+            "fast-track",
+            "expedite your case",
+            "approval is certain",
+        ] {
+            assert!(
+                !text.contains(claim),
+                "immigration gateway implies {claim:?}"
+            );
+        }
+        assert!(
+            text.contains("cannot promise"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/estate-planning` gateway's CTA resolves per deployment, names
+    /// Vesta Estate Planning, preserves the exact $5,000-once/unlimited-edits
+    /// framing, and never promises a tax, probate, or asset-protection
+    /// outcome.
+    #[test]
+    fn estate_planning_gateway_preserves_pricing_and_promises_no_outcome() {
+        let production =
+            estate_planning_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.vestaestateplanning.com"
+        );
+        let staging =
+            estate_planning_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.vestaestateplanning.com"
+        );
+
+        let content = estate_planning_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Vesta Estate Planning"
+        );
+        let text = content.hero_lead.to_lowercase();
+        assert!(text.contains("vesta estate planning"), "{text}");
+        assert!(text.contains("$5,000 once"), "{text}");
+        assert!(text.contains("unlimited edits for life"), "{text}");
+        assert!(
+            text.contains("court and recording fees are separate"),
+            "{text}"
+        );
+        for promise in ["tax result", "avoid probate", "asset protection is"] {
+            assert!(
+                !text.contains(promise),
+                "estate gateway promises {promise:?}"
+            );
+        }
+        assert!(
+            text.contains("do not promise a particular tax, probate, or"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/accidents` gateway's CTA resolves per deployment, names
+    /// Misericordia Injury Law, publishes no dollar figure, and never
+    /// promises a recovery amount, speed, or an unqualified "no fee" result
+    /// — "no fee" appears only alongside its "unless something is
+    /// recovered" qualifier.
+    #[test]
+    fn accidents_gateway_never_promises_a_recovery_or_an_unqualified_no_fee() {
+        let production =
+            accidents_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.misericordialaw.com"
+        );
+        let staging =
+            accidents_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.misericordialaw.com"
+        );
+
+        let content = accidents_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Misericordia Injury Law"
+        );
+        let text = content.hero_lead.to_lowercase();
+        assert!(text.contains("misericordia injury law"), "{text}");
+        assert!(!text.contains('$'), "publishes a dollar figure: {text}");
+        for promise in [
+            "we will recover",
+            "guaranteed recovery",
+            "quickly resolve",
+            "fast settlement",
+        ] {
+            assert!(
+                !text.contains(promise),
+                "accidents gateway promises {promise:?}"
+            );
+        }
+        // "no fee" (or "no attorney's fee") must carry its qualifier in the
+        // same sentence — never an unqualified "no fee" claim.
+        for sentence in text.split('.') {
+            if sentence.contains("no fee") || sentence.contains("no attorney") {
+                assert!(
+                    sentence.contains("unless") || sentence.contains("recovered"),
+                    "unqualified no-fee claim: {sentence:?}"
+                );
+            }
+        }
+        assert!(
+            text.contains("we do not promise a recovery amount"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/divorce` gateway's CTA resolves per deployment, names Daybridge
+    /// Divorce Law, preserves the exact $10-a-day/case-costs-separate
+    /// framing, and never promises a cooperative, quick, inexpensive, or
+    /// favorable divorce.
+    #[test]
+    fn divorce_gateway_preserves_pricing_and_promises_no_outcome() {
+        let production = divorce_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.daybridgedivorce.com"
+        );
+        let staging = divorce_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.daybridgedivorce.com"
+        );
+
+        let content = divorce_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Daybridge Divorce Law"
+        );
+        let text = content.hero_lead.to_lowercase();
+        assert!(text.contains("daybridge divorce law"), "{text}");
+        assert!(text.contains("$10 for each day"), "{text}");
+        assert!(
+            text.contains("case costs are paid separately")
+                || text.contains("costs are paid separately"),
+            "{text}"
+        );
+        // "cooperative"/"quick"/"inexpensive"/"favorable divorce" may appear
+        // only inside the denial sentence — the same disclaim-not-promise
+        // shape `delete_your_debt_only_names_settlement_to_disclaim_it`
+        // checks.
+        for sentence in text.split('.') {
+            let claims_outcome = [
+                "cooperative divorce",
+                "quick divorce",
+                "inexpensive divorce",
+                "favorable divorce",
+            ]
+            .iter()
+            .any(|phrase| sentence.contains(phrase));
+            if claims_outcome {
+                assert!(
+                    sentence.contains("do not promise"),
+                    "outcome promise outside a denial: {sentence:?}"
+                );
+            }
+        }
+        assert!(!text.contains("we guarantee"), "{text}");
+        assert!(
+            text.contains("we do not promise a cooperative, quick, inexpensive, or"),
+            "and says so plainly: {text}"
         );
     }
 

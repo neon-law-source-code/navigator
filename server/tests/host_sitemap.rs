@@ -183,6 +183,11 @@ async fn the_sitemap_advertises_the_firms_pages() {
         "/",
         "/navigator",
         "/delete-your-debt",
+        "/delete-your-data",
+        "/immigration",
+        "/estate-planning",
+        "/accidents",
+        "/divorce",
         "/notations",
         "/contact",
         "/blog",
@@ -209,6 +214,96 @@ async fn only_neon_advertises_the_delete_your_debt_gateway() {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert!(
             !body.contains("/delete-your-debt<"),
+            "{host} must not advertise Neon's gateway: {body}"
+        );
+    }
+}
+
+/// Same as above, for the `/delete-your-data` gateway.
+#[tokio::test]
+async fn only_neon_advertises_the_delete_your_data_gateway() {
+    let app = app().await;
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.deleteyourdebt.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/delete-your-data<"),
+            "{host} must not advertise Neon's gateway: {body}"
+        );
+    }
+}
+
+/// Same as above, for the `/immigration` gateway.
+#[tokio::test]
+async fn only_neon_advertises_the_immigration_gateway() {
+    let app = app().await;
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.abhayaimmigration.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/immigration<"),
+            "{host} must not advertise Neon's gateway: {body}"
+        );
+    }
+}
+
+/// Same as above, for the `/estate-planning` gateway.
+#[tokio::test]
+async fn only_neon_advertises_the_estate_planning_gateway() {
+    let app = app().await;
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.vestaestateplanning.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/estate-planning<"),
+            "{host} must not advertise Neon's gateway: {body}"
+        );
+    }
+}
+
+/// Same as above, for the `/accidents` gateway.
+#[tokio::test]
+async fn only_neon_advertises_the_accidents_gateway() {
+    let app = app().await;
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.misericordialaw.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/accidents<"),
+            "{host} must not advertise Neon's gateway: {body}"
+        );
+    }
+}
+
+/// Same as above, for the `/divorce` gateway.
+#[tokio::test]
+async fn only_neon_advertises_the_divorce_gateway() {
+    let app = app().await;
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.daybridgedivorce.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/divorce<"),
             "{host} must not advertise Neon's gateway: {body}"
         );
     }

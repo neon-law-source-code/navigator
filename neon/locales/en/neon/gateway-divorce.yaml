@@ -1,0 +1,29 @@
+head_title: "Divorce | {site_name}"
+meta_description: >-
+  Divorce representation is offered through Daybridge Divorce Law, a Shook
+  Law PLLC practice: the attorney fee is $10 for each day the firm is
+  retained, with case costs paid separately. No particular outcome or pace
+  is promised.
+title: Divorce
+tagline: A practical way through divorce.
+hero_mark: scales
+hero_lead: >-
+  Divorce planning, agreements, motions, and court papers are offered
+  through Daybridge Divorce Law, a Shook Law PLLC practice. The attorney fee
+  is $10 for each day the firm is retained, as defined by the written
+  retainer; court filing fees, service fees, and other case costs are paid
+  separately. We do not promise a cooperative, quick, inexpensive, or
+  favorable divorce — every case is different.
+hero_cta:
+  href: "https://www.daybridgedivorce.com/"
+  label: Visit Daybridge Divorce Law
+skin: practice
+bands:
+  - kind: statement
+    heading: A Shook Law PLLC practice
+    body:
+      - - text: >-
+              Daybridge Divorce Law is a practice of Shook Law PLLC, the law
+              firm behind {site_name}. A licensed attorney handles the work
+              there. The $10-a-day attorney fee is Daybridge's own; case
+              costs are paid separately under the written retainer.

@@ -36,7 +36,12 @@ pub const DEFAULT_LOCALE: &str = "en";
 /// and `services` do; only the stem is new.
 pub const KNOWN_PAGES: &[&str] = &[
     "fractional-gc",
+    "gateway-accidents",
+    "gateway-delete-your-data",
     "gateway-delete-your-debt",
+    "gateway-divorce",
+    "gateway-estate-planning",
+    "gateway-immigration",
     "home",
     "litigation",
     "navigator",
@@ -491,9 +496,15 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "home" => Some(LocalePageKind::Home),
         "litigation" => Some(LocalePageKind::Litigation),
         "fractional-gc" => Some(LocalePageKind::Transactional),
-        "navigator" | "notations" | "services" | "gateway-delete-your-debt" => {
-            Some(LocalePageKind::Marketing)
-        }
+        "navigator"
+        | "notations"
+        | "services"
+        | "gateway-accidents"
+        | "gateway-delete-your-data"
+        | "gateway-delete-your-debt"
+        | "gateway-divorce"
+        | "gateway-estate-planning"
+        | "gateway-immigration" => Some(LocalePageKind::Marketing),
         shared::SHARED_CATALOG_STEM => Some(LocalePageKind::Shared),
         services::SERVICES_CATALOG_STEM => Some(LocalePageKind::ServicesCatalog),
         _ => None,

@@ -58,6 +58,21 @@ pub const PUBLIC_PATHS: &[&str] = &[
     // 404s on every other registered brand host; see
     // `views::brand::BrandKey::publishes_firm_path`.
     "/delete-your-debt",
+    // The Neon-hosted gateway to the DeleteYourData.com practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/delete-your-data",
+    // The Neon-hosted gateway to the Abhaya Immigration practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/immigration",
+    // The Neon-hosted gateway to the Vesta Estate Planning practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/estate-planning",
+    // The Neon-hosted gateway to the Misericordia Injury Law practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/accidents",
+    // The Neon-hosted gateway to the Daybridge Divorce Law practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/divorce",
     "/notations",
     "/notations/{slug}",
     "/contact",
@@ -132,6 +147,11 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
                 "/",
                 "/navigator",
                 "/delete-your-debt",
+                "/delete-your-data",
+                "/immigration",
+                "/estate-planning",
+                "/accidents",
+                "/divorce",
                 "/notations",
                 "/contact",
                 "/team",
@@ -312,6 +332,50 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
              the destination for collection-lawsuit defense, FDCPA claims, validation \
              demands, and credit-report disputes. It does not settle debts or negotiate \
              balances.",
+        ),
+        page(
+            "Privacy and data removal",
+            "/delete-your-data",
+            "Neon's gateway page naming DeleteYourData.com, a Shook Law PLLC practice, as \
+             the destination for data-removal and privacy-protection work: one year of \
+             data removal and privacy protection for $50, with credit monitoring available \
+             as an opt-in. It does not promise every piece of personal information can be \
+             removed.",
+        ),
+        page(
+            "Immigration",
+            "/immigration",
+            "Neon's gateway page naming Abhaya Immigration, a Shook Law PLLC practice, as \
+             the destination for family petitions, employment visas, green cards, \
+             naturalization, and consular processing. Government filing fees are \
+             separate, and no approval or timeline is promised.",
+        ),
+        page(
+            "Estate planning",
+            "/estate-planning",
+            "Neon's gateway page naming Vesta Estate Planning, a Shook Law PLLC practice, \
+             as the destination for wills, trusts, powers of attorney, health-care \
+             directives, and lifetime plan updates: $5,000 once, with unlimited edits \
+             for life, and court and recording fees separate. No tax, probate, or \
+             asset-protection outcome is promised.",
+        ),
+        page(
+            "Accidents and injury claims",
+            "/accidents",
+            "Neon's gateway page naming Misericordia Injury Law, a Shook Law PLLC \
+             practice, as the destination for car, truck, motorcycle, pedestrian, \
+             premises, and wrongful-death claims: a free first conversation and a \
+             contingency fee. No recovery amount, speed, or unqualified no-fee result \
+             is promised.",
+        ),
+        page(
+            "Divorce",
+            "/divorce",
+            "Neon's gateway page naming Daybridge Divorce Law, a Shook Law PLLC \
+             practice, as the destination for divorce planning, agreements, motions, \
+             and court papers: $10 for each day the firm is retained, with case costs \
+             paid separately. No cooperative, quick, inexpensive, or favorable \
+             divorce is promised.",
         ),
         page(
             "Neon Law Navigator",

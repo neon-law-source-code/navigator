@@ -1,0 +1,30 @@
+head_title: "Accidents and injury claims | {site_name}"
+meta_description: >-
+  Injury claims are offered through Misericordia Injury Law, a Shook Law
+  PLLC practice: car, truck, motorcycle, pedestrian, premises, and wrongful
+  death claims. The first conversation is free, and the fee is a percentage
+  of what is recovered.
+title: Accidents and injury claims
+tagline: Talk to a lawyer after an injury.
+hero_mark: scales
+hero_lead: >-
+  Car, truck, motorcycle, pedestrian, premises, and wrongful death claims are
+  handled through Misericordia Injury Law, a Shook Law PLLC practice. The
+  first conversation is free, and the fee is a percentage of what is
+  recovered, agreed in writing before work begins — there is no attorney's
+  fee unless something is recovered. We do not promise a recovery amount or
+  how quickly a claim resolves.
+hero_cta:
+  href: "https://www.misericordialaw.com/"
+  label: Visit Misericordia Injury Law
+skin: practice
+bands:
+  - kind: statement
+    heading: A Shook Law PLLC practice
+    body:
+      - - text: >-
+              Misericordia Injury Law is a practice of Shook Law PLLC, the
+              law firm behind {site_name}. A licensed attorney handles the
+              work there. No lawyer can promise a result; what a claim is
+              worth depends on the facts, the evidence, and the law that
+              applies.

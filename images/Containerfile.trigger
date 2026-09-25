@@ -86,6 +86,10 @@ COPY examples          examples
 # embeds the review-council skills with include_str! from the canonical
 # `.agents/skills/` catalog, so that tree must be staged too.
 COPY .agents            .agents
+# The Project Skill catalog in cli/src/projects/skill.rs embeds
+# `skills/<jurisdiction>/<practice_area>.md` with include_dir!, so that
+# tree must be staged too (build 36157231129 failed on the missing dir).
+COPY skills             skills
 
 RUN cargo build --release --target x86_64-unknown-linux-musl -p "${CRATE}" --bin "${BIN}" \
     && cp "target/x86_64-unknown-linux-musl/release/${BIN}" /trigger-bin

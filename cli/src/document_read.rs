@@ -615,6 +615,8 @@ mod tests {
             },
             previous_version: None,
             authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
         };
         let live = [revision(1, Uuid::max(), true)];
         let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
@@ -642,6 +644,8 @@ mod tests {
             },
             previous_version: None,
             authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
         };
         let live = [live_revision];
         assert!(check_pointer_drift(Some(&pointer), &live).is_ok());
@@ -664,6 +668,8 @@ mod tests {
             },
             previous_version: None,
             authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
         };
         let live = [live_revision.clone()];
         let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
@@ -689,6 +695,8 @@ mod tests {
             },
             previous_version: None,
             authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
         };
         let live = [live_revision];
         let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
@@ -712,6 +720,8 @@ mod tests {
             },
             previous_version: None,
             authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
         };
         // A newer revision landed (e.g. a browser upload) without a re-sync.
         let live = [revision(2, Uuid::nil(), true), stale];

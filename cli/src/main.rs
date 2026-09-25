@@ -2820,13 +2820,25 @@ fn document_pointer_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError
                         .extension()
                         .and_then(std::ffi::OsStr::to_str)
                         .is_some_and(|extension| !extension.is_empty());
-                    if has_document_extension {
-                        Ok(pointer)
-                    } else {
+                    if !has_document_extension {
                         anyhow::bail!(
                             "pointer filename must retain the document extension before its `.yaml` pointer suffix"
                         )
                     }
+                    // ENG-859: the folder-keyed pointer-key rules
+                    // (`onboarding`/`offboarding`/`invoices`) need the
+                    // source document's path relative to `documents/`,
+                    // which `without_yml` names once its own `.yaml`/`.yml`
+                    // suffix is stripped.
+                    if let Ok(source_relative) =
+                        without_yml.strip_prefix(dir.join("documents"))
+                    {
+                        crate::document_sync::validate_folder_pointer_keys(
+                            source_relative,
+                            &pointer,
+                        )?;
+                    }
+                    Ok(pointer)
                 });
             if let Err(error) = validation {
                 print_violation(

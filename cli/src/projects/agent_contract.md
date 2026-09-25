@@ -14,6 +14,10 @@ any of those fixes fails the job.
 ## Folders
 
 * `documents/` holds project documents. Only their YAML metadata files (`.yaml`) are stored in Git.
+  * `documents/onboarding/` holds the engagement letter that opens the matter; `documents/offboarding/` holds the one
+    that closes it. A signed copy is named `<name>_signed.pdf` and its pointer carries `docusign_envelope_id`.
+  * `documents/invoices/` holds the firm's invoices to the client, named `INV-<digits>.<ext>`; every pointer carries
+    `xero_invoice_id`.
 * `portal/` holds the portal, a static React application.
 * `seeds/` holds seed data that `navigator site import` creates or updates.
 * `templates/` holds notation templates.

@@ -169,6 +169,77 @@ fn validate_invoice_filename(path: &Path) -> Result<()> {
     }
 }
 
+/// The two folders whose signed copy must be named `<name>_signed.pdf` and
+/// carry `docusign_envelope_id` (ENG-859).
+const SIGNED_ENGAGEMENT_FOLDERS: &[&str] = &["onboarding", "offboarding"];
+
+/// Whether `relative` (a path relative to `documents/`) is staged under one
+/// of [`SIGNED_ENGAGEMENT_FOLDERS`].
+fn is_signed_engagement_folder(relative: &Path) -> bool {
+    relative
+        .components()
+        .next()
+        .and_then(|part| part.as_os_str().to_str())
+        .is_some_and(|folder| SIGNED_ENGAGEMENT_FOLDERS.contains(&folder))
+}
+
+/// Whether `filename` carries the signed-copy suffix: `_signed.pdf` with a
+/// non-empty name before it.
+fn is_signed_pdf_filename(filename: &str) -> bool {
+    filename
+        .strip_suffix("_signed.pdf")
+        .is_some_and(|stem| !stem.is_empty())
+}
+
+/// Enforce the `onboarding/`/`offboarding/`/`invoices/` pointer-key rules
+/// (ENG-859). `relative` is the *source* document's path relative to
+/// `documents/` — e.g. `onboarding/retainer_signed.pdf` — never its `.yaml`
+/// pointer path.
+///
+/// `docusign_envelope_id` is the only structural signal a pointer carries
+/// for "this is the signed copy", so the naming rule is enforced as a
+/// biconditional under the two engagement folders: the id implies the
+/// `_signed.pdf` name, and the name implies the id. Under `invoices/`,
+/// `xero_invoice_id` is required unconditionally — every invoice pointer
+/// names its Xero record, there is no unsigned-draft equivalent.
+///
+/// Only checks the id's *shape* (already enforced by `DocumentPointer`'s own
+/// `Uuid` field type via `from_yaml`); resolving the id against a live
+/// DocuSign envelope or Xero invoice is `project gate --check`'s separate
+/// live-check pass (ENG-863), not this offline rule.
+pub(crate) fn validate_folder_pointer_keys(
+    relative: &Path,
+    pointer: &store::document_pointers::DocumentPointer,
+) -> Result<()> {
+    if is_signed_engagement_folder(relative) {
+        let filename = relative
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let is_signed_name = is_signed_pdf_filename(filename);
+        let has_envelope_id = pointer.docusign_envelope_id.is_some();
+        if has_envelope_id && !is_signed_name {
+            return Err(anyhow!(
+                "{} carries docusign_envelope_id but is not named `<name>_signed.pdf`",
+                relative.display()
+            ));
+        }
+        if is_signed_name && !has_envelope_id {
+            return Err(anyhow!(
+                "{} is named `_signed.pdf` but its pointer has no docusign_envelope_id",
+                relative.display()
+            ));
+        }
+    }
+    if is_invoice_capture(relative) && pointer.xero_invoice_id.is_none() {
+        return Err(anyhow!(
+            "{} is under invoices/ but its pointer has no xero_invoice_id",
+            relative.display()
+        ));
+    }
+    Ok(())
+}
+
 /// `slug` without its pointer extension, in either spelling, or `None` when
 /// it names no pointer at all.
 pub(crate) fn strip_pointer_extension(slug: &str) -> Option<&str> {
@@ -515,6 +586,10 @@ async fn sync_authority_capture(
         },
         previous_version,
         authority_id: Some(authority.id),
+        // An Authority capture is never a signed engagement letter or an
+        // invoice — those two keys are always absent here.
+        docusign_envelope_id: None,
+        xero_invoice_id: None,
     };
     pointer
         .validate()
@@ -676,6 +751,10 @@ fn project_sync_plans(
             },
             previous_version: revisions.get(1).map(|revision| revision.id),
             authority_id: None,
+            // ENG-859: `projects sync` does not resolve either external-id
+            // key from a live DocuSign/Xero link yet.
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
         };
         pointer
             .validate()
@@ -1626,6 +1705,11 @@ fn inferred_kind(relative: &Path) -> &'static str {
         Some("exhibits") => "exhibit",
         Some("agreements") => "agreement",
         Some("invoices") => "invoice",
+        // ENG-859: the same folder-infers-kind convention `invoices/`
+        // already had, extended to the letter that opens (`onboarding/`)
+        // and closes (`offboarding/`) a matter.
+        Some("onboarding") => "onboarding",
+        Some("offboarding") => "offboarding",
         // LAW-60: a case-assessment memo or a scan transcript staged under
         // `documents/` had no folder that filed it as anything but
         // `unclassified`.
@@ -1702,13 +1786,54 @@ mod tests {
     use super::{
         authority_capture_folder, authority_class_belongs_in_folder, content_type, inferred_kind,
         is_authority_sidecar_path, is_invoice_capture, is_invoice_filename, is_pointer_path,
-        matches_digest, pull_target, pull_transaction_path, read_manifest,
-        recover_interrupted_pull, strip_pointer_extension, write_pull_transaction_state,
-        PullTransactionPhase, PullTransactionState, PullTransactionTarget,
-        AUTHORITY_SIDECAR_EXTENSION, DOCUMENTS_GITIGNORE, POINTER_EXTENSION,
-        POINTER_READ_EXTENSIONS,
+        is_signed_pdf_filename, matches_digest, pull_target, pull_transaction_path, read_manifest,
+        recover_interrupted_pull, strip_pointer_extension, validate_folder_pointer_keys,
+        write_pull_transaction_state, PullTransactionPhase, PullTransactionState,
+        PullTransactionTarget, AUTHORITY_SIDECAR_EXTENSION, DOCUMENTS_GITIGNORE,
+        POINTER_EXTENSION, POINTER_READ_EXTENSIONS,
     };
     use std::path::Path;
+    use uuid::Uuid;
+
+    fn onboarding_pointer(docusign_envelope_id: Option<Uuid>) -> store::document_pointers::DocumentPointer {
+        store::document_pointers::DocumentPointer {
+            kind: "onboarding".into(),
+            visibility: "internal".into(),
+            current_version: store::document_pointers::PointerVersion {
+                version: 1,
+                asset_id: Uuid::now_v7(),
+                created_at: "2026-09-05T12:00:00Z".into(),
+                sha256: "0".repeat(64),
+                size_bytes: 1,
+                canonical_url: None,
+                checked_on: None,
+            },
+            previous_version: None,
+            authority_id: None,
+            docusign_envelope_id,
+            xero_invoice_id: None,
+        }
+    }
+
+    fn invoice_pointer(xero_invoice_id: Option<Uuid>) -> store::document_pointers::DocumentPointer {
+        store::document_pointers::DocumentPointer {
+            kind: "invoice".into(),
+            visibility: "internal".into(),
+            current_version: store::document_pointers::PointerVersion {
+                version: 1,
+                asset_id: Uuid::now_v7(),
+                created_at: "2026-09-05T12:00:00Z".into(),
+                sha256: "0".repeat(64),
+                size_bytes: 1,
+                canonical_url: None,
+                checked_on: None,
+            },
+            previous_version: None,
+            authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id,
+        }
+    }
 
     #[test]
     fn is_pointer_path_excludes_the_authority_sidecar_extension() {
@@ -1760,6 +1885,16 @@ mod tests {
         assert_eq!(inferred_kind(Path::new("exhibits/photo.png")), "exhibit");
         assert_eq!(inferred_kind(Path::new("agreements/nda.pdf")), "agreement");
         assert_eq!(inferred_kind(Path::new("invoices/INV-1.pdf")), "invoice");
+        // ENG-859: `onboarding/` and `offboarding/` are recognized folders,
+        // the same way `invoices/` already is.
+        assert_eq!(
+            inferred_kind(Path::new("onboarding/retainer_signed.pdf")),
+            "onboarding"
+        );
+        assert_eq!(
+            inferred_kind(Path::new("offboarding/closing_signed.pdf")),
+            "offboarding"
+        );
         // LAW-60: a case-assessment memo or a scan transcript staged under
         // `documents/memos/` or `documents/transcripts/` now files as its
         // own kind rather than falling into `unclassified`.
@@ -1779,6 +1914,62 @@ mod tests {
         assert!(!is_invoice_filename("INV-.pdf"));
         assert!(!is_invoice_filename("INV-1a.pdf"));
         assert!(!is_invoice_filename("INV-1"));
+    }
+
+    #[test]
+    fn signed_pdf_filenames_require_a_non_empty_stem() {
+        assert!(is_signed_pdf_filename("retainer_signed.pdf"));
+        assert!(!is_signed_pdf_filename("retainer.pdf"));
+        assert!(!is_signed_pdf_filename("_signed.pdf"));
+        assert!(!is_signed_pdf_filename("retainer_signed.PDF"));
+    }
+
+    #[test]
+    fn a_signed_onboarding_pointer_needs_a_matching_name_and_envelope_id() {
+        // Matching name, envelope id present: valid.
+        assert!(validate_folder_pointer_keys(
+            Path::new("onboarding/retainer_signed.pdf"),
+            &onboarding_pointer(Some(Uuid::now_v7())),
+        )
+        .is_ok());
+        // `_signed.pdf` name, no envelope id: rejected.
+        assert!(validate_folder_pointer_keys(
+            Path::new("onboarding/retainer_signed.pdf"),
+            &onboarding_pointer(None),
+        )
+        .is_err());
+        // Envelope id present, name does not end `_signed.pdf`: rejected.
+        assert!(validate_folder_pointer_keys(
+            Path::new("onboarding/retainer.pdf"),
+            &onboarding_pointer(Some(Uuid::now_v7())),
+        )
+        .is_err());
+        // An unsigned draft beside the signed copy: no envelope id required.
+        assert!(validate_folder_pointer_keys(
+            Path::new("onboarding/retainer.pdf"),
+            &onboarding_pointer(None),
+        )
+        .is_ok());
+        // The same rule applies to offboarding.
+        assert!(validate_folder_pointer_keys(
+            Path::new("offboarding/closing_signed.pdf"),
+            &onboarding_pointer(None),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn every_invoice_pointer_needs_a_xero_invoice_id() {
+        assert!(validate_folder_pointer_keys(
+            Path::new("invoices/INV-1.pdf"),
+            &invoice_pointer(Some(Uuid::now_v7())),
+        )
+        .is_ok());
+        assert!(validate_folder_pointer_keys(
+            Path::new("invoices/INV-1.pdf"),
+            &invoice_pointer(None),
+        )
+        .is_err());
     }
 
     #[test]

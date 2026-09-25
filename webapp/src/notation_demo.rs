@@ -118,11 +118,8 @@ pub fn QuestionnaireDemo(
                 }
             }
             if !template_html.is_empty() {
-                section { class: "notation-live-template", "aria-label": "Live document preview",
-                    h3 { "Live document" }
-                    div {
-                        dangerous_inner_html: "{render_live_template(&template_html, &questions, &answers.read())}"
-                    }
+                div { class: "notation-live-template",
+                    dangerous_inner_html: "{render_live_template(&template_html, &questions, &answers.read())}"
                 }
             }
         }
@@ -323,6 +320,22 @@ mod tests {
     fn a_notation_with_no_questionnaire_renders_nothing() {
         let out = render(Vec::new());
         assert!(!out.contains("Try answering this"), "{out}");
+    }
+
+    #[test]
+    fn the_filled_template_is_not_titled_live_document() {
+        let questions = vec![interactive("custom_text", "Client name", vec![])];
+        let mut dom = VirtualDom::new_with_props(
+            QuestionnaireDemo,
+            QuestionnaireDemoProps {
+                questions,
+                template_html: "<p>Hello</p>".to_string(),
+            },
+        );
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+        assert!(out.contains("Hello"), "{out}");
+        assert!(!out.contains("Live document"), "{out}");
     }
 
     #[test]

@@ -67,6 +67,9 @@ pub const PUBLIC_PATHS: &[&str] = &[
     // The Neon-hosted gateway to the Vesta Estate Planning practice. Same
     // Neon-only shape as `/delete-your-debt` above.
     "/estate-planning",
+    // The Neon-hosted gateway to the Misericordia Injury Law practice. Same
+    // Neon-only shape as `/delete-your-debt` above.
+    "/accidents",
     "/notations",
     "/notations/{slug}",
     "/contact",
@@ -144,6 +147,7 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
                 "/delete-your-data",
                 "/immigration",
                 "/estate-planning",
+                "/accidents",
                 "/notations",
                 "/contact",
                 "/team",
@@ -350,6 +354,15 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
              directives, and lifetime plan updates: $5,000 once, with unlimited edits \
              for life, and court and recording fees separate. No tax, probate, or \
              asset-protection outcome is promised.",
+        ),
+        page(
+            "Accidents and injury claims",
+            "/accidents",
+            "Neon's gateway page naming Misericordia Injury Law, a Shook Law PLLC \
+             practice, as the destination for car, truck, motorcycle, pedestrian, \
+             premises, and wrongful-death claims: a free first conversation and a \
+             contingency fee. No recovery amount, speed, or unqualified no-fee result \
+             is promised.",
         ),
         page(
             "Neon Law Navigator",

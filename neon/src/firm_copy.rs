@@ -57,6 +57,15 @@ pub fn estate_planning_gateway(
     locales::estate_planning_gateway(branding, deployment_host)
 }
 
+/// `/accidents` — Neon's own gateway to the Misericordia Injury Law
+/// practice. See `locales/en/neon/gateway-accidents.yaml`.
+pub fn accidents_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::accidents_gateway(branding, deployment_host)
+}
+
 /// The regulated claims on the firm's public pages.
 ///
 /// `/navigator` and `/services` are the firm's, so the copy and the guards that

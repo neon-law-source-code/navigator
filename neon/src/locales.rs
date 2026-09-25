@@ -50,6 +50,9 @@ const NEON_GATEWAY_IMMIGRATION_YAML: &str =
 /// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
 const NEON_GATEWAY_ESTATE_PLANNING_YAML: &str =
     include_str!("../locales/en/neon/gateway-estate-planning.yaml");
+/// `/accidents` — Neon's own gateway to the Misericordia Injury Law
+/// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_ACCIDENTS_YAML: &str = include_str!("../locales/en/neon/gateway-accidents.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
@@ -116,6 +119,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "gateway-delete-your-data") => Some(NEON_GATEWAY_DELETE_YOUR_DATA_YAML),
         (BrandKey::Neon, "gateway-immigration") => Some(NEON_GATEWAY_IMMIGRATION_YAML),
         (BrandKey::Neon, "gateway-estate-planning") => Some(NEON_GATEWAY_ESTATE_PLANNING_YAML),
+        (BrandKey::Neon, "gateway-accidents") => Some(NEON_GATEWAY_ACCIDENTS_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
             Some(NEON_SERVICES_CATALOG_YAML)
         }
@@ -1038,6 +1042,23 @@ pub fn estate_planning_gateway(
     content
 }
 
+/// `/accidents` — Neon's own gateway page naming Misericordia Injury Law as
+/// the destination for injury claims. See [`delete_your_debt_gateway`],
+/// whose CTA-resolution shape this mirrors.
+pub fn accidents_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(load_page(branding, "gateway-accidents"), None, branding);
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Misericordia, deployment_host)
+    {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
 /// The public notation format explanation, loaded from the English catalog.
 pub(crate) fn notations_content() -> PageContent {
     let branding = &views::brand::DEFAULT_BRANDING;
@@ -1795,6 +1816,73 @@ mod tests {
         }
         assert!(
             text.contains("do not promise a particular tax, probate, or"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/accidents` gateway's CTA resolves per deployment, names
+    /// Misericordia Injury Law, publishes no dollar figure, and never
+    /// promises a recovery amount, speed, or an unqualified "no fee" result
+    /// — "no fee" appears only alongside its "unless something is
+    /// recovered" qualifier.
+    #[test]
+    fn accidents_gateway_never_promises_a_recovery_or_an_unqualified_no_fee() {
+        let production =
+            accidents_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.misericordialaw.com"
+        );
+        let staging =
+            accidents_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.misericordialaw.com"
+        );
+
+        let content = accidents_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Misericordia Injury Law"
+        );
+        let text = content.hero_lead.to_lowercase();
+        assert!(text.contains("misericordia injury law"), "{text}");
+        assert!(!text.contains('$'), "publishes a dollar figure: {text}");
+        for promise in [
+            "we will recover",
+            "guaranteed recovery",
+            "quickly resolve",
+            "fast settlement",
+        ] {
+            assert!(
+                !text.contains(promise),
+                "accidents gateway promises {promise:?}"
+            );
+        }
+        // "no fee" (or "no attorney's fee") must carry its qualifier in the
+        // same sentence — never an unqualified "no fee" claim.
+        for sentence in text.split('.') {
+            if sentence.contains("no fee") || sentence.contains("no attorney") {
+                assert!(
+                    sentence.contains("unless") || sentence.contains("recovered"),
+                    "unqualified no-fee claim: {sentence:?}"
+                );
+            }
+        }
+        assert!(
+            text.contains("we do not promise a recovery amount"),
             "and says so plainly: {text}"
         );
     }

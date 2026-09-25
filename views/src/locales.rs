@@ -36,6 +36,7 @@ pub const DEFAULT_LOCALE: &str = "en";
 /// and `services` do; only the stem is new.
 pub const KNOWN_PAGES: &[&str] = &[
     "fractional-gc",
+    "gateway-accidents",
     "gateway-delete-your-data",
     "gateway-delete-your-debt",
     "gateway-estate-planning",
@@ -497,6 +498,7 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "navigator"
         | "notations"
         | "services"
+        | "gateway-accidents"
         | "gateway-delete-your-data"
         | "gateway-delete-your-debt"
         | "gateway-estate-planning"

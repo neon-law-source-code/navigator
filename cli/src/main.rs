@@ -1823,6 +1823,8 @@ enum FontFamilyArg {
     PublicSans,
     /// The NYC summons practice's face.
     LibreFranklin,
+    /// Death & Divorce's gothic display face.
+    PirataOne,
 }
 
 impl FontFamilyArg {
@@ -1836,6 +1838,7 @@ impl FontFamilyArg {
             Self::Mukta => &assets::MUKTA,
             Self::PublicSans => &assets::PUBLIC_SANS,
             Self::LibreFranklin => &assets::LIBRE_FRANKLIN,
+            Self::PirataOne => &assets::PIRATA_ONE,
         }
     }
 }

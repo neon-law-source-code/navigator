@@ -105,6 +105,12 @@ pub const TYPEFACES: &[Typeface] = &[
         stack: "\"Source Serif 4\", Georgia, \"Times New Roman\", serif",
         operator_licence_required: false,
     },
+    Typeface {
+        id: "pirata-one",
+        label: "Pirata One",
+        stack: "\"Pirata One\", Georgia, serif",
+        operator_licence_required: false,
+    },
     // Devanagari and Latin in one family, so an Abhaya page translated into
     // Hindi keeps its face instead of dropping to a system fallback.
     Typeface {
@@ -473,6 +479,44 @@ pub const PALETTE: &[Palette] = &[
             border: None,
         },
     },
+    // Terracotta against paper and charcoal: a restrained sunset accent for
+    // Death & Divorce's black-and-white surface.
+    Palette {
+        id: "death-and-divorce",
+        label: "Death & Divorce terracotta",
+        light: PaletteScheme {
+            primary: "#BD5B3A",
+            primary_hover: "#9F4328",
+            primary_active: "#7F321E",
+            on_primary: "#111111",
+            on_brand: "#111111",
+            link: "#8A321E",
+            link_hover: "#652313",
+            surface_subtle: "#f5f1ee",
+            bg: Some("#ffffff"),
+            surface: Some("#ffffff"),
+            surface_raised: Some("#faf8f6"),
+            text: Some("#111111"),
+            text_muted: Some("#5a5552"),
+            border: Some("#d9d2cd"),
+        },
+        dark: PaletteScheme {
+            primary: "#F0A080",
+            primary_hover: "#F6B49A",
+            primary_active: "#F9C8B3",
+            on_primary: "#111111",
+            on_brand: "#111111",
+            link: "#F0A080",
+            link_hover: "#F6B49A",
+            surface_subtle: "#211a17",
+            bg: Some("#111111"),
+            surface: Some("#181412"),
+            surface_raised: Some("#211a17"),
+            text: Some("#f8f6f4"),
+            text_muted: Some("#c9c1bd"),
+            border: Some("#493a34"),
+        },
+    },
 ];
 
 /// Look up a typeface by the id stored on a brand row.
@@ -511,6 +555,9 @@ impl BrandKey {
             Self::Daybridge => {
                 typeface_by_id("source-serif-4").expect("source-serif-4 is catalogued")
             }
+            Self::DeathAndDivorce => {
+                typeface_by_id("pirata-one").expect("pirata-one is catalogued")
+            }
         }
     }
 
@@ -541,7 +588,8 @@ impl BrandKey {
             | Self::Abhaya
             | Self::DeleteYourDebt
             | Self::Summons
-            | Self::Daybridge => None,
+            | Self::Daybridge
+            | Self::DeathAndDivorce => None,
         }
     }
 
@@ -564,6 +612,9 @@ impl BrandKey {
             }
             Self::Summons => palette_by_id("oath").expect("oath is catalogued"),
             Self::Daybridge => palette_by_id("daybridge").expect("daybridge is catalogued"),
+            Self::DeathAndDivorce => {
+                palette_by_id("death-and-divorce").expect("death-and-divorce is catalogued")
+            }
         }
     }
 }

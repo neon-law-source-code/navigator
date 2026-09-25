@@ -2874,6 +2874,12 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
         typeface: "source-serif-4",
         primary_hex: "#255C67",
     },
+    CompiledBrand {
+        key: "death-and-divorce",
+        name: "Death & Divorce",
+        typeface: "pirata-one",
+        primary_hex: "#BD5B3A",
+    },
 ];
 
 /// The published wordmark [`COMPILED_BRANDS`] seeds for `key`, if it names a

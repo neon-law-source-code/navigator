@@ -878,6 +878,43 @@ pub static DAYBRIDGE_BRANDING: Branding = Branding {
     brand_key: BrandKey::Daybridge,
 };
 
+/// The `death-and-divorce` house brand. Page copy lives in
+/// `neon/locales/en/death-and-divorce/`.
+pub static DEATH_AND_DIVORCE_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "Death & Divorce",
+        home_href: "/",
+        tagline: "For endings, transitions, and the beyond.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "/public/brand/death-and-divorce/mark.svg",
+        social_image: "/public/brand/death-and-divorce/mark.svg",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@deathanddivorcelaw.com",
+    support_domain: "deathanddivorcelaw.com",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: FIRM_OFFICES,
+    firm_attorneys: &[],
+    firm_memberships: FIRM_MEMBERSHIPS,
+    firm_social: &[],
+    firm_family: BrandKey::ALL,
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "deathanddivorcelaw.com",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Death & Divorce is a practice of Shook Law PLLC for divorce, estate planning, and probate. We help people move through endings, transitions, and what comes after. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Divorce, estate planning, and probate from Death & Divorce, a practice of Shook Law PLLC. Scope and fees are set out in writing before work begins.",
+    portal_only: false,
+    brand_key: BrandKey::DeathAndDivorce,
+};
+
 /// A closed key naming which house brand a request resolves to. Distinct
 /// from `portal::hosting::Site`, which names the *binary*: a `BrandKey`
 /// names one request's resolved identity, and one running binary can resolve
@@ -898,6 +935,8 @@ pub enum BrandKey {
     Summons,
     /// The daily-fee divorce practice.
     Daybridge,
+    /// Divorce, estate planning, and probate for endings and transitions.
+    DeathAndDivorce,
 }
 
 impl BrandKey {
@@ -912,6 +951,7 @@ impl BrandKey {
         Self::LawyerShook,
         Self::Summons,
         Self::Daybridge,
+        Self::DeathAndDivorce,
     ];
 
     /// The compiled keys whose hosts currently serve a public site. The
@@ -927,6 +967,7 @@ impl BrandKey {
         Self::LawyerShook,
         Self::Summons,
         Self::Daybridge,
+        Self::DeathAndDivorce,
     ];
 
     #[must_use]
@@ -941,6 +982,7 @@ impl BrandKey {
             Self::DeleteYourDebt => "delete-your-debt",
             Self::Summons => "summons",
             Self::Daybridge => "daybridge",
+            Self::DeathAndDivorce => "death-and-divorce",
         }
     }
 
@@ -971,6 +1013,7 @@ impl BrandKey {
             Self::DeleteYourDebt => "defend against debt collectors",
             Self::Summons => "NYC summons defense at OATH hearings",
             Self::Daybridge => "divorce counsel for $10 a day plus costs",
+            Self::DeathAndDivorce => "divorce, estate planning, and probate",
         }
     }
 
@@ -1037,7 +1080,8 @@ impl BrandKey {
             | Self::Abhaya
             | Self::DeleteYourDebt
             | Self::Summons
-            | Self::Daybridge => &["home", "services"],
+            | Self::Daybridge
+            | Self::DeathAndDivorce => &["home", "services"],
         }
     }
 
@@ -1067,7 +1111,9 @@ impl BrandKey {
             }
             // The public holding page keeps the service catalog unpublished.
             Self::Summons => matches!(path, "/" | "/testimonials"),
-            Self::Daybridge => matches!(path, "/" | "/services" | "/contact" | "/testimonials"),
+            Self::Daybridge | Self::DeathAndDivorce => {
+                matches!(path, "/" | "/services" | "/contact" | "/testimonials")
+            }
         }
     }
 
@@ -1096,6 +1142,7 @@ impl BrandKey {
             Self::DeleteYourDebt => "deleteyourdebt.com",
             Self::Summons => "summonsdefense.nyc",
             Self::Daybridge => "daybridgedivorce.com",
+            Self::DeathAndDivorce => "deathanddivorcelaw.com",
         }
     }
 
@@ -1152,6 +1199,10 @@ impl BrandKey {
             Self::DeleteYourDebt => &["www.deleteyourdebt.com", "staging.deleteyourdebt.com"],
             Self::Summons => &["www.summonsdefense.nyc", "staging.summonsdefense.nyc"],
             Self::Daybridge => &["www.daybridgedivorce.com", "staging.daybridgedivorce.com"],
+            Self::DeathAndDivorce => &[
+                "www.deathanddivorcelaw.com",
+                "staging.deathanddivorcelaw.com",
+            ],
         }
     }
 
@@ -1172,6 +1223,7 @@ impl BrandKey {
             Self::DeleteYourDebt => &DELETE_YOUR_DEBT_BRANDING,
             Self::Summons => &SUMMONS_BRANDING,
             Self::Daybridge => &DAYBRIDGE_BRANDING,
+            Self::DeathAndDivorce => &DEATH_AND_DIVORCE_BRANDING,
         }
     }
 
@@ -1200,6 +1252,7 @@ impl BrandKey {
             Self::DeleteYourDebt => Some("NAVIGATOR_LOCAL_DELETE_YOUR_DEBT_PORT"),
             Self::Summons => Some("NAVIGATOR_LOCAL_SUMMONS_PORT"),
             Self::Daybridge => Some("NAVIGATOR_LOCAL_DAYBRIDGE_PORT"),
+            Self::DeathAndDivorce => Some("NAVIGATOR_LOCAL_DEATH_AND_DIVORCE_PORT"),
         }
     }
 }

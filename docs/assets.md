@@ -151,10 +151,10 @@ own family. The generated `brand-{key}-tokens.css` declares the same faces along
 
 ### The practice brands' typefaces
 
-The practice brands wear six more OFL-1.1 families on the same lane. `cli::assets::BUCKET_FONT_FAMILIES` is the one list
-all of it reads: `--family` names an entry, `assets verify` probes every entry's two faces, and the orphan scan spares
-them. A family joins those three at once, so a face cannot ship without joining both the verification and orphan-scan
-contracts.
+The practice brands wear seven more OFL-1.1 families on the same lane. `cli::assets::BUCKET_FONT_FAMILIES` is the one
+list all of it reads: `--family` names an entry, `assets verify` probes every entry's two faces, and the orphan scan
+spares every listed family. A family joins those three at once, so a face cannot ship without joining both the
+verification and orphan-scan contracts.
 
 | `--family` | Family | Brands |
 | --- | --- | --- |
@@ -163,6 +163,7 @@ contracts.
 | `eb-garamond` | EB Garamond | Vesta Estate Planning (headings and body) |
 | `source-sans-3` | Source Sans 3 | Misericordia Injury Law (body) |
 | `source-serif-4` | Source Serif 4 | Misericordia Injury Law (display); Daybridge Divorce Law |
+| `pirata-one` | Pirata One | Death & Divorce |
 | `mukta` | Mukta | Abhaya Immigration |
 | `public-sans` | Public Sans | DeleteYourDebt.com |
 | `libre-franklin` | Libre Franklin | the summons practice |

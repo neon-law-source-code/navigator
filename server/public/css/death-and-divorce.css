@@ -1,0 +1,184 @@
+/* Death & Divorce: paper, ink, and one terracotta sunset note. */
+.death-and-divorce-home {
+  --death-rule: var(--nav-color-border);
+  --death-ink: var(--nav-color-text);
+  --death-muted: var(--nav-color-text-muted);
+  color: var(--death-ink);
+}
+
+.death-and-divorce-home h1,
+.death-and-divorce-home h2,
+.death-and-divorce-home h3 {
+  font-family: var(--nav-font-family);
+  font-weight: 500;
+  letter-spacing: -.035em;
+}
+
+.death-and-divorce-home p { line-height: 1.65; }
+
+.death-and-divorce-eyebrow {
+  margin: 0;
+  color: var(--nav-color-primary);
+  font-family: var(--nav-font-family);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.death-and-divorce-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(15rem, .75fr);
+  align-items: center;
+  gap: clamp(2rem, 8vw, 8rem);
+  padding: clamp(4rem, 10vw, 8rem) 0 clamp(3rem, 8vw, 6rem);
+  border-bottom: 1px solid var(--death-rule);
+}
+
+.death-and-divorce-hero h1 {
+  max-width: 8ch;
+  margin: 1rem 0 1.5rem;
+  font-size: clamp(4rem, 10vw, 8rem);
+  line-height: .86;
+  text-wrap: balance;
+}
+
+.death-and-divorce-hero__lead {
+  max-width: 34rem;
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  color: var(--death-muted);
+}
+
+.death-and-divorce-cta { margin-top: 1.5rem; border-radius: 0; }
+
+.death-and-divorce-hero__mark {
+  display: grid;
+  place-items: center;
+  width: min(100%, 22rem);
+  aspect-ratio: 1;
+  justify-self: end;
+  background: var(--nav-color-text);
+  border-radius: 1.5rem;
+  box-shadow: 1.25rem 1.25rem 0 var(--nav-color-primary);
+}
+
+.death-and-divorce-hero__mark img { width: 62%; height: 62%; }
+
+.death-and-divorce-statement {
+  max-width: 54rem;
+  padding: clamp(4rem, 9vw, 7rem) 0;
+}
+
+.death-and-divorce-statement h2 {
+  max-width: 14ch;
+  margin: 1rem 0 1.25rem;
+  font-size: clamp(2.8rem, 6vw, 5rem);
+  line-height: .98;
+}
+
+.death-and-divorce-statement p:last-child {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--death-muted);
+  font-size: 1.12rem;
+}
+
+.death-and-divorce-practices {
+  padding: clamp(3rem, 7vw, 5rem) 0;
+  border-block: 1px solid var(--death-rule);
+}
+
+.death-and-divorce-practices > h2 {
+  margin: 0 0 2rem;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+}
+
+.death-and-divorce-practices__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.death-and-divorce-practices article {
+  min-height: 15rem;
+  padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 1.5rem 0;
+  border-top: 3px solid var(--nav-color-primary);
+}
+
+.death-and-divorce-practices article + article {
+  padding-left: clamp(1rem, 3vw, 2.5rem);
+  border-left: 1px solid var(--death-rule);
+}
+
+.death-and-divorce-practices h3 { margin: 0 0 1rem; font-size: 2rem; }
+.death-and-divorce-practices p { max-width: 22rem; margin: 0; color: var(--death-muted); }
+
+.death-and-divorce-video {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  gap: clamp(2rem, 7vw, 6rem);
+  align-items: center;
+  padding: clamp(4rem, 9vw, 7rem) 0;
+}
+
+.death-and-divorce-video h2,
+.death-and-divorce-process h2,
+.death-and-divorce-closing h2 {
+  margin: .75rem 0 1rem;
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  line-height: .98;
+}
+
+.death-and-divorce-video__copy p:last-child,
+.death-and-divorce-closing p { max-width: 34rem; margin: 0; color: var(--death-muted); }
+
+.death-and-divorce-video__frame {
+  display: grid;
+  place-items: center;
+  gap: 1rem;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--death-rule);
+  background:
+    linear-gradient(135deg, transparent 49.5%, var(--nav-color-primary) 50%, transparent 50.5%),
+    var(--nav-color-surface-subtle);
+  color: var(--death-muted);
+  text-align: center;
+}
+
+.death-and-divorce-video__play {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid var(--nav-color-primary);
+  border-radius: 50%;
+  color: var(--nav-color-primary);
+}
+
+.death-and-divorce-process { padding: clamp(4rem, 9vw, 7rem) 0; border-top: 1px solid var(--death-rule); }
+.death-and-divorce-process > h2 { max-width: 13ch; }
+.death-and-divorce-process ol { max-width: 48rem; margin: 2.5rem 0 0 auto; padding: 0; list-style: none; }
+.death-and-divorce-process li { padding: 1.5rem 0; border-top: 1px solid var(--death-rule); }
+.death-and-divorce-process h3 { margin: 0 0 .5rem; font-size: 1.6rem; }
+.death-and-divorce-process p { margin: 0; color: var(--death-muted); }
+
+.death-and-divorce-closing {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 3rem;
+  padding: clamp(3rem, 7vw, 5rem) 0;
+  border-top: 1px solid var(--death-rule);
+}
+
+.death-and-divorce-closing .death-and-divorce-cta { flex: none; margin: 0; }
+
+@media (max-width: 760px) {
+  .death-and-divorce-hero,
+  .death-and-divorce-video { grid-template-columns: 1fr; }
+  .death-and-divorce-hero__mark { justify-self: start; width: min(70vw, 18rem); }
+  .death-and-divorce-practices__grid { grid-template-columns: 1fr; }
+  .death-and-divorce-practices article { min-height: 0; padding: 1.5rem 0; }
+  .death-and-divorce-practices article + article { padding-left: 0; border-left: 0; }
+  .death-and-divorce-closing { align-items: flex-start; flex-direction: column; }
+}

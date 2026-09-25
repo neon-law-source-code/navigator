@@ -142,6 +142,13 @@ pub const LIBRE_FRANKLIN: FontFamily = FontFamily {
     stem: "LibreFranklin",
 };
 
+/// Death & Divorce's gothic display face.
+pub const PIRATA_ONE: FontFamily = FontFamily {
+    label: "Pirata One",
+    dir: "pirata-one",
+    stem: "PirataOne",
+};
+
 /// Every family this binary publishes and verifies — the one list both halves
 /// of the font lane read.
 ///
@@ -160,6 +167,7 @@ pub const BUCKET_FONT_FAMILIES: &[&FontFamily] = &[
     &MUKTA,
     &PUBLIC_SANS,
     &LIBRE_FRANKLIN,
+    &PIRATA_ONE,
 ];
 
 /// Slide markdown is embedded in the release binary so `ops ship` can discover
@@ -3399,7 +3407,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
                 probed += 1;
             }
         }
-        assert_eq!(probed, 16, "eight families, a Regular and a Bold each");
+        assert_eq!(probed, 18, "nine families, a Regular and a Bold each");
     }
 
     /// The tracked half of the font lane: faces whose WOFF2 bytes ship in

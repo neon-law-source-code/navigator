@@ -16,9 +16,11 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 mod daybridge;
+mod death_and_divorce;
 mod estate;
 mod privacy;
 pub use daybridge::DaybridgeCopy;
+pub use death_and_divorce::DeathAndDivorceCopy;
 pub use privacy::PrivacyCopy;
 pub mod services;
 pub mod shared;
@@ -130,6 +132,9 @@ pub struct HomeCopy {
     /// Divorce counsel with a daily attorney fee and separately paid costs.
     #[serde(default)]
     pub daybridge: Option<DaybridgeCopy>,
+    /// Divorce, estate planning, and probate for the Death & Divorce brand.
+    #[serde(default)]
+    pub death_and_divorce: Option<DeathAndDivorceCopy>,
 }
 
 /// The home page's provenance section: the flow a request follows, the

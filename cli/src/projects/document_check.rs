@@ -3,9 +3,9 @@
 //! Committed pointers and the live asset rows are checked in both directions.
 //! A drifted pointer, a live document with no pointer, and a missing
 //! `documents/.gitignore` are rewritten in the checkout. The live site is never
-//! written. A missing or corrupt object, and a live row with no slug, stay
-//! errors a person has to fix. Under `--ci` the same fixes are reported and
-//! nothing is written.
+//! written. A missing storage object is `navigator site document repair`. A
+//! live row with no slug is `navigator site document slug`. Under `--ci` the
+//! same fixes are reported and nothing is written.
 //!
 //! External-id checks (an invoice, a completed envelope) are the server's
 //! `integrations` list on `GET /app/api/projects/{id}/documents/integrity`.

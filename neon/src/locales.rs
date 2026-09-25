@@ -1098,10 +1098,7 @@ mod tests {
         let company = &copy["company"];
         assert_eq!(company["membership_price"].as_str(), Some("$50"));
         assert_eq!(company["express_price"].as_str(), Some("$500"));
-        assert_eq!(
-            company["drafting_packages"][0][0].as_str(),
-            Some("Contract foundation")
-        );
+        assert_eq!(company["drafting_packages"][0][0].as_str(), Some("/ once"));
         assert_eq!(company["drafting_packages"][0][1].as_str(), Some("$5,000"));
         assert_eq!(
             company["drafting_packages"].as_sequence().map(Vec::len),

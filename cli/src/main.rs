@@ -660,6 +660,48 @@ enum ProjectsCmd {
         #[command(flatten)]
         host: HostOpt,
     },
+    /// The Project Skill catalog — jurisdiction/practice-area playbooks
+    /// compiled into this binary from `skills/` — and the pins a Project
+    /// records against it in its own `navigator.yaml`.
+    Skill {
+        #[command(subcommand)]
+        action: ProjectSkillCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProjectSkillCmd {
+    /// List every catalog entry's jurisdiction, practice area, and name.
+    List,
+    /// Print one catalog entry's full body.
+    ///
+    /// `jurisdiction` matches case-insensitively (`show nv estates` and
+    /// `show NV estates` resolve the same entry). An unrecognized pair
+    /// exits non-zero, naming the closest valid catalog entries.
+    Show {
+        jurisdiction: String,
+        practice_area: String,
+    },
+    /// Pin a catalog entry's version onto the current Project's
+    /// `navigator.yaml`, and scaffold each Notation it bundles into
+    /// `templates/`.
+    ///
+    /// Reads the compiled-in catalog only — there is no network fetch.
+    /// Idempotent: re-running `use` for a pair already pinned at the same
+    /// version is a no-op, and a new catalog version updates the recorded
+    /// pin in place rather than duplicating it. Run from the Project
+    /// repository root.
+    Use {
+        jurisdiction: String,
+        practice_area: String,
+    },
+    /// List the Project Skills pinned on the current Project, and whether
+    /// each still resolves in the compiled-in catalog.
+    ///
+    /// Reuses the same resolution `navigator project gate --check` runs
+    /// (ENG-879), so the two report the same verdict for the same
+    /// `navigator.yaml`. Run from the Project repository root.
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -2567,6 +2609,27 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             json,
             host,
         } => projects::setup::run(host.host.as_deref(), project_code.as_deref(), all, json).await,
+        ProjectsCmd::Skill { action } => run_project_skill(action),
+    }
+}
+
+/// `navigator project skill ...` — dispatches to `cli/src/projects/skill.rs`.
+/// `list` and `show` read only the compiled-in catalog; `use` and `status`
+/// additionally read (and `use` writes) `./navigator.yaml`, so all four run
+/// from the current directory rather than taking a `--dir` flag — the same
+/// current-directory convention `navigator project gate` uses.
+fn run_project_skill(action: ProjectSkillCmd) -> ExitCode {
+    match action {
+        ProjectSkillCmd::List => projects::skill::run_list(),
+        ProjectSkillCmd::Show {
+            jurisdiction,
+            practice_area,
+        } => projects::skill::run_show(&jurisdiction, &practice_area),
+        ProjectSkillCmd::Use {
+            jurisdiction,
+            practice_area,
+        } => projects::skill::run_use(Path::new("."), &jurisdiction, &practice_area),
+        ProjectSkillCmd::Status => projects::skill::run_status(Path::new(".")),
     }
 }
 
@@ -3445,6 +3508,15 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     }
+    // Cross-file `N126`/`N127`: every `skills/` catalog entry must parse and
+    // declare a unique `(jurisdiction, practice_area)` pair.
+    match rules::project_skill_catalog_violations(dir, &rules::DefaultFileFilter::default()) {
+        Ok(mut found) => violations.append(&mut found),
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            return ExitCode::from(2);
+        }
+    }
 
     let mut gate_errors = report_content_findings(dir, ci, &report, &violations);
 
@@ -3493,6 +3565,7 @@ async fn run_document_check_gate(dir: &std::path::Path, ci: bool, deep: bool) ->
             return crate::remote::exit_code_for(&error);
         }
     }
+    append_skill_pin_findings(dir, &mut gate_errors);
     print_error_recap(&gate_errors);
     if !gate_errors.is_empty() {
         return ExitCode::from(1);
@@ -3501,6 +3574,50 @@ async fn run_document_check_gate(dir: &std::path::Path, ci: bool, deep: bool) ->
         return ExitCode::SUCCESS;
     }
     projects::gate::live_status(dir).await
+}
+
+/// ENG-879: extend `--check` to resolve every `skills:` pin in this
+/// Project's `navigator.yaml` against the compiled-in Project Skill catalog
+/// — an offline question `--check` can answer with no live-status door,
+/// unlike [`projects::gate::live_status`] above. Only a Project repository
+/// carries `navigator.yaml`, and only one that pins at least one Project
+/// Skill has anything to resolve; either absence is silently fine rather
+/// than a finding. Shares [`projects::skill::resolve_pins`] with `navigator
+/// project skill status` (ENG-880), so the two never disagree about the same
+/// fixture.
+fn append_skill_pin_findings(dir: &std::path::Path, gate_errors: &mut Vec<GateError>) {
+    if !is_project_repository(dir) {
+        return;
+    }
+    let manifest_path = dir.join(projects::manifest::FILE);
+    if !manifest_path.is_file() {
+        return;
+    }
+    let resolutions = match projects::skill::resolve_pins(dir) {
+        Ok(resolutions) => resolutions,
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            return;
+        }
+    };
+    let location = manifest_path.display().to_string();
+    for resolution in resolutions.iter().filter(|resolution| !resolution.resolved) {
+        let message = match &resolution.catalog_version {
+            Some(catalog_version) => format!(
+                "Project Skill {}/{} is pinned at version {} but the catalog now carries version {catalog_version}",
+                resolution.jurisdiction, resolution.practice_area, resolution.pinned_version
+            ),
+            None => format!(
+                "Project Skill {}/{} (pinned at version {}) is not in the catalog",
+                resolution.jurisdiction, resolution.practice_area, resolution.pinned_version
+            ),
+        };
+        println!(
+            "{}",
+            diagnostic_line(rules::Severity::Error, &location, None, &message)
+        );
+        gate_errors.push(GateError::new(location.clone(), None, message));
+    }
 }
 
 /// Print the live document check and keep the failures that fail the gate.

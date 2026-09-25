@@ -27,6 +27,9 @@ const MANIFEST_COMMENT_CODE: &str = "Y011";
 const MANIFEST_VERSION_CODE: &str = "Y012";
 const MANIFEST_DEPRECATED_CODE: &str = "Y013";
 const DOCUMENT_GITIGNORE_CODE: &str = "Y014";
+/// `Y015` is the Project-manifest `skills:` entry shape check, in
+/// `cli/src/projects/manifest.rs`.
+const MANIFEST_SKILLS_CODE: &str = "Y015";
 /// `F001` is the formatting pass's code: under `--ci` the gate withholds a fix
 /// it would otherwise have written, and reports the file instead.
 const UNFORMATTED_CODE: &str = "F001";
@@ -47,9 +50,12 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
             codes.insert(rule.code());
         }
     }
-    // N111 and N124 are cross-file checks, not `Rule` impls, so no rule-set above carries them.
+    // N111, N124, N126, and N127 are cross-file checks, not `Rule` impls, so no rule-set above
+    // carries them.
     codes.insert("N111");
     codes.insert("N124");
+    codes.insert("N126");
+    codes.insert("N127");
     codes.insert(SEED_DOCUMENT_CODE);
     codes.insert(LOCALE_DOCUMENT_CODE);
     codes.insert(DOCUMENT_POINTER_CODE);
@@ -64,6 +70,7 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
     codes.insert(MANIFEST_VERSION_CODE);
     codes.insert(MANIFEST_DEPRECATED_CODE);
     codes.insert(DOCUMENT_GITIGNORE_CODE);
+    codes.insert(MANIFEST_SKILLS_CODE);
     codes.insert(UNFORMATTED_CODE);
     codes
 }
@@ -88,6 +95,6 @@ fn every_shipped_code_has_an_entry_in_the_gate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_one_hundred_and_three() {
-    assert_eq!(all_shipped_codes().len(), 103);
+fn the_shipped_code_count_is_one_hundred_and_six() {
+    assert_eq!(all_shipped_codes().len(), 106);
 }

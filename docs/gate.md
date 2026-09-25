@@ -95,12 +95,15 @@ Nine normal validation passes happen in this order:
    the network or bytes. When `documents/` exists, the same Project-repository check holds `documents/.gitignore` to
    four exact lines (rule `Y014`): deny everything, then re-admit subdirectories, the written pointer spelling, and the
    ignore file itself. Local `project gate`rewrites drift;`--ci` reports it.
-7. **A Project-manifest pass** (rules `Y004`–`Y008` and `Y011`–`Y013`) runs when the root carries either manifest
-   spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name` to
-   `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
+7. **A Project-manifest pass** (rules `Y004`–`Y008`, `Y011`–`Y013`, and `Y015`) runs when the root carries either
+   manifest spelling. It accepts the versioned nested Project shape, holds `host` to a hostname shape and `project.name`
+   to `store::projects::is_valid_code`, shape-checks coordination handles, and holds `no_live_row` to a non-empty reason
    string. It refuses unknown keys by naming the set, refuses YAML comment tokens so a reason lives on the pull request
    and in the repository contract rather than a `#` line, and tells a `navigator.yml` file to rename to `navigator.yaml`
-   before the gate reads it. The legacy flat shape remains a warning during migration.
+   before the gate reads it. The legacy flat shape remains a warning during migration. Each `skills:` entry — the
+   Project Skill pins `navigator project skill use` writes — must carry non-empty `jurisdiction`, `practice_area`, and
+   `version` text (`Y015`); whether the pin still resolves against the compiled-in catalog is a separate question
+   `navigator project gate --check` answers, because only the CLI binary carries that catalog.
 8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the root is a Project repository.
    Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a source-only tree
    can still be gated, and is a finding under `--ci`, where the build has already run and nothing to scan means the pass
@@ -163,7 +166,7 @@ Reading it is how to answer "which line do I fix"; the summary counts and the ex
 
 ## Rule codes
 
-Every code below is defined in `rules/src/`, except `Y001`–`Y013` and `F001`, which live in `cli/src/` because the typed
+Every code below is defined in `rules/src/`, except `Y001`–`Y015` and `F001`, which live in `cli/src/` because the typed
 YAML, Project-manifest, origin, and formatting passes run outside the `rules` crate entirely. "Autofix" means the gate
 rewrites the file for that violation without a human decision; every other code needs a person to resolve it.
 
@@ -221,6 +224,8 @@ trailing backslash — is left alone, which is what a signature block is built f
 | `N123` | Error | An outlined kind's body must be a Harvard outline, titled to match its frame. | No |
 | `N124` | Error | A services catalog template reference must name a notation under `templates/notations/`. | No |
 | `N125` | Error | A subsection under a numbered section must be a lettered block quote. | No |
+| `N126` | Error | A `skills/` catalog entry's frontmatter must parse and declare a seeded jurisdiction. | No |
+| `N127` | Error | Project Skill catalog entries must have a unique `(jurisdiction, practice_area)` pair. | No |
 
 ### E-family — events
 
@@ -329,6 +334,7 @@ literally and the columns disappear.
 | `Y012` | Error | A Project manifest `version` must be an exact Navigator release tag. | No |
 | `Y013` | Warning | Flat `host`/`project` shape should be replaced by the versioned nested shape. | No |
 | `Y014` | Error | `documents/.gitignore` must be the canonical four-line deny-all pointer admit. | Locally |
+| `Y015` | Error | A manifest `skills:` entry must carry non-empty `jurisdiction`, `practice_area`, `version`. | No |
 
 `Y010` runs inside the Project-repository check the gate applies when the root is a Project repository. It reads each
 `templates/<code>.md` and compares any `Neon Law` spelled with a corporate suffix (`, Inc.`, `LLC`, `PLLC`, and the

@@ -29,6 +29,8 @@ pub const COMMENT_CODE: &str = "Y011";
 pub const VERSION_CODE: &str = "Y012";
 /// `Y013` — the flat manifest shape is deprecated.
 pub const DEPRECATED_CODE: &str = "Y013";
+/// `Y015` — a `skills:` entry must carry `jurisdiction`, `practice_area`, and `version`.
+pub const SKILLS_CODE: &str = "Y015";
 
 /// Every top-level key `navigator.yaml` may carry.
 ///
@@ -42,6 +44,7 @@ pub const ACCEPTED_KEYS: &[&str] = &[
     "host",
     "no_live_row",
     "project",
+    "skills",
     "version",
 ];
 
@@ -67,6 +70,17 @@ const HANDLE_KEYS: &[&str] = &[
     "xero_customer",
 ];
 
+/// One `skills:` entry — a Project Skill catalog `(jurisdiction,
+/// practice_area)` pinned at a specific `version`, recorded by `navigator
+/// project skill use` and read back by `navigator project skill status` and
+/// `navigator project gate --check`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillPin {
+    pub jurisdiction: String,
+    pub practice_area: String,
+    pub version: String,
+}
+
 /// A Project repository's root manifest.
 ///
 /// Unknown keys are not stored: [`lint`] refuses them before a caller reads
@@ -89,6 +103,7 @@ pub struct Manifest {
     pub allowed_hosts: BTreeMap<String, String>,
     pub allowed_links: BTreeMap<String, String>,
     pub allowed_prefixes: BTreeMap<String, String>,
+    pub skills: Vec<SkillPin>,
 }
 
 /// One manifest finding, with a Y-family rule code.
@@ -464,8 +479,51 @@ pub fn lint_contents(path: &Path, contents: &str) -> Vec<ManifestFinding> {
         }
     }
     findings.extend(lint_rowless(path, mapping));
+    findings.extend(lint_skills(path, mapping));
     if let Ok(manifest) = parse(contents) {
         findings.extend(lint_allowlists(path, &manifest));
+    }
+    findings
+}
+
+/// `Y015` — each `skills:` entry must be a map carrying non-empty
+/// `jurisdiction`, `practice_area`, and `version` text. Whether the pair
+/// still resolves against the compiled-in catalog is a separate question —
+/// `navigator project gate --check` (not this offline lint) answers it,
+/// because only the CLI binary carries the catalog.
+fn lint_skills(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFinding> {
+    let Some(value) = mapping.get("skills") else {
+        return Vec::new();
+    };
+    let Some(items) = value.as_sequence() else {
+        return vec![ManifestFinding::at(
+            path,
+            1,
+            SKILLS_CODE,
+            "`skills:` must be a list of {jurisdiction, practice_area, version} entries",
+        )];
+    };
+    let mut findings = Vec::new();
+    for item in items {
+        let Some(entry) = item.as_mapping() else {
+            findings.push(ManifestFinding::at(
+                path,
+                1,
+                SKILLS_CODE,
+                "each `skills:` entry must be a map of jurisdiction, practice_area, and version",
+            ));
+            continue;
+        };
+        for key in ["jurisdiction", "practice_area", "version"] {
+            if entry.get(key).and_then(scalar_string).is_none() {
+                findings.push(ManifestFinding::at(
+                    path,
+                    1,
+                    SKILLS_CODE,
+                    format!("each `skills:` entry must carry a non-empty `{key}`"),
+                ));
+            }
+        }
     }
     findings
 }
@@ -785,7 +843,119 @@ pub fn parse(contents: &str) -> Result<Manifest, String> {
         allowed_hosts: parse_reason_map(mapping, "allowed_hosts")?,
         allowed_links: parse_reason_map(mapping, "allowed_links")?,
         allowed_prefixes: parse_reason_map(mapping, "allowed_prefixes")?,
+        skills: parse_skills(mapping)?,
     })
+}
+
+fn parse_skills(mapping: &serde_yaml::Mapping) -> Result<Vec<SkillPin>, String> {
+    let Some(value) = mapping.get("skills") else {
+        return Ok(Vec::new());
+    };
+    let items = value
+        .as_sequence()
+        .ok_or_else(|| "navigator.yaml skills must be a list".to_string())?;
+    items
+        .iter()
+        .map(|item| {
+            let entry = item
+                .as_mapping()
+                .ok_or_else(|| "navigator.yaml skills entry must be a map".to_string())?;
+            Ok(SkillPin {
+                jurisdiction: required_text(entry, "jurisdiction")?,
+                practice_area: required_text(entry, "practice_area")?,
+                version: required_text(entry, "version")?,
+            })
+        })
+        .collect()
+}
+
+/// Pin `(jurisdiction, practice_area)` at `version` in a `navigator.yaml`'s
+/// `skills:` list, matching an existing entry case-insensitively. Returns
+/// the rewritten contents and whether anything changed — a caller writes
+/// the file only when it did, so re-pinning the same version is a byte-for-
+/// byte no-op rather than a reformat.
+///
+/// # Errors
+///
+/// A string error if `contents` is not valid YAML, is not a mapping, or
+/// already carries a non-list `skills:` key.
+pub fn pin_skill(
+    contents: &str,
+    jurisdiction: &str,
+    practice_area: &str,
+    version: &str,
+) -> Result<(String, bool), String> {
+    let mut document: serde_yaml::Value = serde_yaml::from_str(contents)
+        .map_err(|error| format!("navigator.yaml is not valid YAML: {error}"))?;
+    let mapping = document
+        .as_mapping_mut()
+        .ok_or_else(|| "navigator.yaml must be a mapping".to_string())?;
+
+    let mut skills: Vec<serde_yaml::Value> = match mapping.get("skills") {
+        Some(serde_yaml::Value::Sequence(items)) => items.clone(),
+        Some(_) => return Err("navigator.yaml `skills` must be a list".to_string()),
+        None => Vec::new(),
+    };
+
+    let mut changed = false;
+    let mut found = false;
+    for item in &mut skills {
+        let Some(entry) = item.as_mapping_mut() else {
+            continue;
+        };
+        let entry_jurisdiction = entry
+            .get("jurisdiction")
+            .and_then(scalar_string)
+            .unwrap_or_default();
+        let entry_practice_area = entry
+            .get("practice_area")
+            .and_then(scalar_string)
+            .unwrap_or_default();
+        if entry_jurisdiction.eq_ignore_ascii_case(jurisdiction)
+            && entry_practice_area.eq_ignore_ascii_case(practice_area)
+        {
+            found = true;
+            let current_version = entry
+                .get("version")
+                .and_then(scalar_string)
+                .unwrap_or_default();
+            if current_version != version {
+                entry.insert(
+                    serde_yaml::Value::String("version".to_string()),
+                    serde_yaml::Value::String(version.to_string()),
+                );
+                changed = true;
+            }
+        }
+    }
+    if !found {
+        let mut entry = serde_yaml::Mapping::new();
+        entry.insert(
+            serde_yaml::Value::String("jurisdiction".to_string()),
+            serde_yaml::Value::String(jurisdiction.to_string()),
+        );
+        entry.insert(
+            serde_yaml::Value::String("practice_area".to_string()),
+            serde_yaml::Value::String(practice_area.to_string()),
+        );
+        entry.insert(
+            serde_yaml::Value::String("version".to_string()),
+            serde_yaml::Value::String(version.to_string()),
+        );
+        skills.push(serde_yaml::Value::Mapping(entry));
+        changed = true;
+    }
+
+    if !changed {
+        return Ok((contents.to_string(), false));
+    }
+    mapping.insert(
+        serde_yaml::Value::String("skills".to_string()),
+        serde_yaml::Value::Sequence(skills),
+    );
+    let serialized = serde_yaml::to_string(&document)
+        .map_err(|error| format!("serialize navigator.yaml: {error}"))?;
+    Ok((serialized, true))
 }
 
 fn parse_text(value: &serde_yaml::Value) -> Result<String, String> {
@@ -891,6 +1061,7 @@ mod tests {
             "host",
             "no_live_row",
             "project",
+            "skills",
             "version",
         ];
         assert_eq!(
@@ -1140,5 +1311,93 @@ mod tests {
             .iter()
             .any(|f| f.code == RENAME_CODE
                 && f.message == "the manifest is navigator.yaml, rename it"));
+    }
+
+    #[test]
+    fn skills_entries_parse_into_pins() {
+        let yaml = concat!(
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+            "skills:\n",
+            "  - jurisdiction: NV\n",
+            "    practice_area: estates\n",
+            "    version: \"1\"\n",
+            "  - jurisdiction: TX\n",
+            "    practice_area: probate\n",
+            "    version: \"1\"\n",
+        );
+        assert!(
+            lint_contents(Path::new(FILE), yaml)
+                .iter()
+                .all(|f| f.warning),
+            "{:?}",
+            lint_contents(Path::new(FILE), yaml)
+        );
+        let parsed = parse(yaml).expect("skills parse");
+        assert_eq!(parsed.skills.len(), 2);
+        assert_eq!(parsed.skills[0].jurisdiction, "NV");
+        assert_eq!(parsed.skills[0].practice_area, "estates");
+        assert_eq!(parsed.skills[0].version, "1");
+    }
+
+    #[test]
+    fn a_skills_entry_missing_a_field_is_flagged() {
+        let yaml = concat!(
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+            "skills:\n",
+            "  - jurisdiction: NV\n",
+            "    version: \"1\"\n",
+        );
+        let findings = lint_contents(Path::new(FILE), yaml);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.code == SKILLS_CODE && f.message.contains("practice_area")),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_non_list_skills_key_is_flagged() {
+        let yaml = "host: staging.neonlaw.com\nproject: acme\nskills: nv/estates\n";
+        let findings = lint_contents(Path::new(FILE), yaml);
+        assert!(findings.iter().any(|f| f.code == SKILLS_CODE));
+    }
+
+    #[test]
+    fn pin_skill_appends_a_new_entry() {
+        let yaml = "host: staging.neonlaw.com\nproject: acme\n";
+        let (updated, changed) = pin_skill(yaml, "NV", "estates", "1").expect("pin");
+        assert!(changed);
+        let parsed = parse(&updated).expect("parses");
+        assert_eq!(parsed.skills.len(), 1);
+        assert_eq!(parsed.skills[0].jurisdiction, "NV");
+        assert_eq!(parsed.skills[0].practice_area, "estates");
+        assert_eq!(parsed.skills[0].version, "1");
+    }
+
+    #[test]
+    fn pin_skill_is_a_no_op_when_already_pinned_at_the_same_version() {
+        let yaml = "host: staging.neonlaw.com\nproject: acme\n";
+        let (once, _) = pin_skill(yaml, "NV", "estates", "1").expect("pin");
+        let (twice, changed) = pin_skill(&once, "nv", "estates", "1").expect("pin again");
+        assert!(!changed, "re-pinning the same version must be a no-op");
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn pin_skill_updates_the_version_on_an_existing_pin() {
+        let yaml = "host: staging.neonlaw.com\nproject: acme\n";
+        let (once, _) = pin_skill(yaml, "NV", "estates", "1").expect("pin");
+        let (updated, changed) = pin_skill(&once, "NV", "estates", "2").expect("re-pin");
+        assert!(changed);
+        let parsed = parse(&updated).expect("parses");
+        assert_eq!(
+            parsed.skills.len(),
+            1,
+            "a version bump updates in place, not a duplicate"
+        );
+        assert_eq!(parsed.skills[0].version, "2");
     }
 }

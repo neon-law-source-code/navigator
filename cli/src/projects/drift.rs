@@ -1154,6 +1154,7 @@ mod tests {
                 "host",
                 "no_live_row",
                 "project",
+                "skills",
                 "version"
             ]
         );

@@ -102,7 +102,7 @@ pub fn find<'a>(
 /// Deliberately does not echo the caller's raw `jurisdiction`/`practice_area`
 /// back into the returned string. Both are eventually written through
 /// `eprintln!` in `run_show`/`run_use`, and the `rust/cleartext-logging`
-/// CodeQL query taints the whole parsed `Command` enum through the unrelated
+/// `CodeQL` query taints the whole parsed `Command` enum through the unrelated
 /// `Commands::Secrets` arm, so any printed value that transitively descends
 /// from a clap-parsed argument is flagged — even though these two are
 /// plain-text operator input, never a secret. Rather than carry that known
@@ -179,19 +179,15 @@ pub fn run_list() -> ExitCode {
 #[must_use]
 pub fn run_show(jurisdiction: &str, practice_area: &str) -> ExitCode {
     let entries = catalog();
-    match find(&entries, jurisdiction, practice_area) {
-        Some(entry) => {
-            println!("{}", entry.body.trim_end());
-            ExitCode::SUCCESS
-        }
-        None => {
-            eprintln!(
-                "navigator: {}",
-                unresolved_message(&entries, jurisdiction, practice_area)
-            );
-            ExitCode::from(1)
-        }
+    if let Some(entry) = find(&entries, jurisdiction, practice_area) {
+        println!("{}", entry.body.trim_end());
+        return ExitCode::SUCCESS;
     }
+    eprintln!(
+        "navigator: {}",
+        unresolved_message(&entries, jurisdiction, practice_area)
+    );
+    ExitCode::from(1)
 }
 
 /// `navigator project skill use <jurisdiction> <practice_area>` — pin the

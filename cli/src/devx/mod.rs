@@ -30,6 +30,7 @@ pub mod deployments;
 mod dns;
 mod doctor;
 mod e2e;
+mod email_summary_delivery;
 mod email_summary_redrive;
 mod flake_hunt;
 mod garage;
@@ -1015,6 +1016,20 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
         crate::Command::Ops(crate::OpsCmd::EmailSummary(crate::EmailSummaryCmd::Redrive {
             receipt,
         })) => email_summary_redrive::run(receipt),
+        crate::Command::Ops(crate::OpsCmd::EmailSummary(crate::EmailSummaryCmd::Quarantined)) => {
+            email_summary_delivery::quarantined()
+        }
+        crate::Command::Ops(crate::OpsCmd::EmailSummary(
+            crate::EmailSummaryCmd::ReconcileConfirmed {
+                receipt,
+                actor,
+                channel,
+                timestamp,
+            },
+        )) => email_summary_delivery::reconcile_confirmed(receipt, actor, channel, timestamp),
+        crate::Command::Ops(crate::OpsCmd::EmailSummary(
+            crate::EmailSummaryCmd::AuthorizeResend { receipt, actor },
+        )) => email_summary_delivery::authorize_resend(receipt, actor),
         crate::Command::Ops(crate::OpsCmd::Dns(DnsCmd::Setup {
             domains,
             gateway_ip,

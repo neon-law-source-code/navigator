@@ -1523,6 +1523,42 @@ enum EmailSummaryCmd {
         #[arg(long)]
         receipt: uuid::Uuid,
     },
+    /// List every delivery currently quarantined in `UNKNOWN`, the state
+    /// `deliver_summary` records when Slack's response is lost, times out,
+    /// or comes back a retryable HTTP status — an operator can't reconcile
+    /// what they can't see. Reads `NAVIGATOR_SURREAL_*` only; changes
+    /// nothing.
+    Quarantined,
+    /// Record that a quarantined delivery's Slack post actually succeeded,
+    /// moving it to `confirmed` so replay stops treating it as in doubt.
+    /// Use only after confirming the post landed in Slack out of band (for
+    /// example, by looking at the channel).
+    ReconcileConfirmed {
+        /// The quarantined receipt to reconcile.
+        #[arg(long)]
+        receipt: uuid::Uuid,
+        /// The operator recording this decision, stored as `reconciled_by`.
+        #[arg(long)]
+        actor: String,
+        /// The Slack channel the confirmed post landed in.
+        #[arg(long)]
+        channel: String,
+        /// The confirmed post's Slack message timestamp.
+        #[arg(long)]
+        timestamp: String,
+    },
+    /// Record operator authorization to resend a quarantined delivery,
+    /// moving it back to `not_attempted` so the next `deliver_summary` call
+    /// is admitted again. Use only after confirming the original post never
+    /// reached Slack, since this permits a second post attempt.
+    AuthorizeResend {
+        /// The quarantined receipt to authorize a resend for.
+        #[arg(long)]
+        receipt: uuid::Uuid,
+        /// The operator recording this decision, stored as `reconciled_by`.
+        #[arg(long)]
+        actor: String,
+    },
 }
 
 #[derive(Subcommand)]

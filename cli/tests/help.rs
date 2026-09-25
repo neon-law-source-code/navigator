@@ -485,6 +485,7 @@ fn site_help_lists_the_live_deployment_members() {
     assert_eq!(
         command_names(&output),
         vec![
+            "asset",
             "authorities",
             "document",
             "import",
@@ -511,6 +512,34 @@ fn site_authorities_help_lists_create_and_update() {
     let output = help(&["site", "authorities", "--help"]);
 
     assert_eq!(command_names(&output), vec!["create", "update", "help"]);
+}
+
+/// ENG-909: `navigator site asset upload` takes one or more `--host` values
+/// and a local `ASSET_NAME` path/key, with no bucket argument at all — the
+/// authenticated sibling of `ops assets upload`.
+#[test]
+fn site_asset_upload_help_accepts_repeated_host_and_no_bucket() {
+    let output = unwrapped(&help(&["site", "asset", "upload", "--help"]));
+    assert!(
+        output.contains("--host <HOSTS>"),
+        "usage must accept --host, got: {output}"
+    );
+    assert!(
+        !output.contains("--bucket"),
+        "the authenticated upload must never take a bucket argument, got: {output}"
+    );
+    assert!(
+        output.contains("<ASSET_NAME>"),
+        "usage must take ASSET_NAME, got: {output}"
+    );
+    assert!(
+        output.contains("--key <KEY>"),
+        "usage must accept an explicit --key for an asset outside server/public, got: {output}"
+    );
+    assert!(
+        !output.contains("--content-type"),
+        "content type is always derived from the key, got: {output}"
+    );
 }
 
 #[test]

@@ -35,6 +35,7 @@ mod release_version;
 mod remote;
 mod sas;
 mod sendgrid_openapi;
+mod site_asset;
 mod surreal_archive;
 
 use cli::import;
@@ -860,6 +861,15 @@ enum SiteCmd {
     Authorities {
         #[command(subcommand)]
         action: AuthoritiesAction,
+    },
+    /// Publish one local public-safe asset (a brand mark, a hero image, a
+    /// font file) to a deployment's public assets bucket
+    /// (`POST /app/api/assets`). Unlike `document`, a public asset carries
+    /// no `--project`: it is deployment-wide, not matter-scoped, and needs
+    /// no bucket name or GCP credential — only a `navigator site login`.
+    Asset {
+        #[command(subcommand)]
+        action: AssetAction,
     },
     /// File an inbound email's attachments on a live site.
     Mail {
@@ -2051,6 +2061,34 @@ enum AuthoritiesAction {
     },
 }
 
+/// `navigator site asset upload` — the OAuth-backed sibling of the
+/// ADC-backed `navigator ops assets upload` batch command (`ops assets`
+/// above): one asset, one or more deployments, no bucket credential.
+#[derive(Subcommand)]
+enum AssetAction {
+    /// Upload one local public-safe asset to one or more logged-in hosts,
+    /// through `POST /app/api/assets`. `ASSET_NAME` is the local path to
+    /// read; when it lives under `server/public/`, its relative path is
+    /// also the bucket key it is stored — and served back — under, e.g.
+    /// `img/vesta-home/logo.svg` or `brand/rabbit.svg`. Content type is
+    /// always derived from the key's extension.
+    Upload {
+        /// Target host. Repeatable — pass `--host` once per deployment
+        /// (e.g. staging and production) to publish to each independently.
+        /// Each host's result is reported on its own line; the command
+        /// exits non-zero if any requested host fails.
+        #[arg(long = "host", required = true)]
+        hosts: Vec<String>,
+        /// Local path to the asset. Under `server/public/`, or paired with
+        /// `--key`.
+        asset_name: PathBuf,
+        /// Explicit bucket key. Required when `ASSET_NAME` lives outside
+        /// `server/public/`; overrides the default relative-path key.
+        #[arg(long)]
+        key: Option<String>,
+    },
+}
+
 /// A matter document is only ever reached through a Project on a site, so
 /// every verb here is either a write against a named `--project` on a
 /// `--host` brand deployment (`upload`), or a read that resolves both from
@@ -2486,6 +2524,13 @@ fn main() -> ExitCode {
                     file.as_deref(),
                     content_type.as_deref(),
                 )),
+            },
+            SiteCmd::Asset { action } => match action {
+                AssetAction::Upload {
+                    hosts,
+                    asset_name,
+                    key,
+                } => runtime().block_on(site_asset::upload(&hosts, &asset_name, key.as_deref())),
             },
         },
         Command::Lsp { dir } => lsp_download::run_download(cli_version(), dir),

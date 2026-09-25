@@ -40,8 +40,9 @@
 //! * The bare mount `301`s to the trailing-slash form, because a Vite base
 //!   joins asset URLs directly onto it.
 //! * A published object is streamed with its extension's content type. A
-//!   content-hashed asset is immutable for a year; an `index.html` is
-//!   `no-store`.
+//!   Vite-hashed asset is immutable for a year; an `index.html` is
+//!   `no-store`; everything else revalidates rather than pin a fixed name for
+//!   a year.
 //! * A path with no published object of its own resolves to its directory
 //!   index, then to that portal's `index.html` — so a multi-page build serves
 //!   its own pages, and a single-bundle build's client-side route and a
@@ -96,13 +97,25 @@ const INDEX: &str = "index.html";
 /// Content-hashed assets never change under their name, so they cache for a
 /// year and are never revalidated. Distinct from the public assets lane's
 /// `STATIC_CACHE_CONTROL`: this bundle is participation-gated, so it is
-/// `private` rather than shared-cacheable.
+/// `private` rather than shared-cacheable. Applied only when
+/// [`is_content_hashed`] recognizes the served name — see [`REVALIDATE`] for
+/// everything else. Shares its literal value with
+/// [`store::sample_project::ASSET_CACHE_CONTROL`], the same string the
+/// publish plan writes onto the object at upload time.
 const IMMUTABLE_CACHE: HeaderValue =
-    HeaderValue::from_static("private, max-age=31536000, immutable");
+    HeaderValue::from_static(store::sample_project::ASSET_CACHE_CONTROL);
 
 /// `index.html` names the live build, so it must never be cached — a stale
 /// copy would keep pointing at hashed assets a later publish has aged out.
 const NO_STORE: HeaderValue = HeaderValue::from_static("no-store");
+
+/// A fixed-name file — one [`is_content_hashed`] does not recognize — is not
+/// safe to cache for a year: a redeploy can change its bytes
+/// without changing its name at all, such as `pdf/<code>.pdf` emitted by a
+/// Vite plugin. `no-cache` still lets a private cache store the response, but
+/// forbids reusing it without revalidating first. Shares its literal value
+/// with [`store::sample_project::REVALIDATE_CACHE_CONTROL`].
+const REVALIDATE: HeaderValue = HeaderValue::from_static(store::sample_project::REVALIDATE_CACHE_CONTROL);
 
 /// A third-party Vite bundle cannot carry Navigator's per-request script
 /// nonce, so the `/app/projects/{code}/portal` scope gets its own policy
@@ -383,7 +396,9 @@ async fn fetch(storage: &Arc<dyn cloud::StorageService>, key: &str) -> Fetched {
 ///
 /// `served` is the bundle-relative path actually read, which decides both the
 /// content type and the cache policy: `index.html` names the live build and is
-/// `no-store`; every content-hashed asset is immutable for a year. An
+/// `no-store`; a Vite-hashed asset (`store::sample_project::is_content_hashed`)
+/// is immutable for a year; everything else revalidates — a fixed
+/// name is not proof against a later publish changing its bytes. An
 /// entrypoint also gets [`portal_banner_html`] spliced into it, so a
 /// participant has a way back to `/app/projects/{project_code}`; every other
 /// object streams unmodified.
@@ -401,8 +416,10 @@ fn bundle_response(served: &str, mut object: cloud::StoredObject, project_code: 
         header::CACHE_CONTROL,
         if is_index(served) {
             NO_STORE
-        } else {
+        } else if store::sample_project::is_content_hashed(served) {
             IMMUTABLE_CACHE
+        } else {
+            REVALIDATE
         },
     );
     headers.insert(header::CONTENT_SECURITY_POLICY, PORTAL_CSP);

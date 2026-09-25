@@ -53,10 +53,20 @@ pub const ENTRY_DOCUMENT: &str = "index.html";
 /// assets, so a cached copy pins a reader to a bundle that may be gone.
 pub const ENTRY_CACHE_CONTROL: &str = "no-store";
 
-/// Hashed assets are immutable by construction — the hash changes when the
-/// bytes do — and `private` because this bucket is participation-gated and
-/// must not land in a shared cache.
+/// A Vite-hashed asset is immutable by construction — the hash changes when
+/// the bytes do — and `private` because this bucket is participation-gated
+/// and must not land in a shared cache. Applied only to a name
+/// [`is_content_hashed`] recognizes; see [`REVALIDATE_CACHE_CONTROL`] for
+/// everything else.
 pub const ASSET_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
+
+/// A fixed-name file — anything not shaped like a Vite-hashed asset — is not
+/// safe to cache for a year: its bytes can change on the very next publish
+/// without its name changing at all. `no-cache` still permits a
+/// private cache to store the response, but forbids using it again without
+/// revalidating first, so a redeploy that changes the bytes at this same
+/// name is visible on the next request rather than after a year.
+pub const REVALIDATE_CACHE_CONTROL: &str = "private, no-cache";
 
 /// Why a manifest could not be turned into a publish prefix.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -182,6 +192,27 @@ fn is_entry_document(relative: &Path) -> bool {
     relative == Path::new(ENTRY_DOCUMENT)
 }
 
+/// Whether `relative` (bundle-relative, `/`-joined) is one of Vite's own
+/// content-hashed build outputs — `assets/<name>-<hash>.<ext>`.
+///
+/// Vite only ever hashes what it writes under `assets/`, appending
+/// `-<hash>` to the filename before the extension. A build's own file placed
+/// outside `assets/` — a fixed-name `pdf/<code>.pdf` a Vite plugin emits, say
+/// — carries no such guarantee: the same name is reused on every publish, so
+/// only a name shaped like the hashed convention may cache as
+/// [`ASSET_CACHE_CONTROL`]. `portal::project_portal::bundle_response` applies
+/// this identical rule when the gateway serves these bytes back — the two
+/// call sites share this one function rather than keeping their own copies
+/// in sync by hand.
+#[must_use]
+pub fn is_content_hashed(relative: &str) -> bool {
+    let Some(filename) = relative.strip_prefix("assets/") else {
+        return false;
+    };
+    let stem = filename.rsplit_once('.').map_or(filename, |(stem, _)| stem);
+    stem.rsplit_once('-').is_some_and(|(_, hash)| !hash.is_empty())
+}
+
 /// Build the ordered publish plan for a built `dist/` directory.
 ///
 /// Every file under `dist` is included, recursively, keyed by its path
@@ -220,8 +251,10 @@ pub fn publish_plan(dist: &Path, project_code: &str) -> std::io::Result<Vec<Port
             content_type: content_type_for(&relative),
             cache_control: if entry {
                 ENTRY_CACHE_CONTROL
-            } else {
+            } else if is_content_hashed(&joined) {
                 ASSET_CACHE_CONTROL
+            } else {
+                REVALIDATE_CACHE_CONTROL
             },
         });
     }
@@ -404,13 +437,71 @@ mod tests {
             .expect("the nested document");
 
         assert_eq!(
-            nested.cache_control, ASSET_CACHE_CONTROL,
-            "only the root document is the bundle's pointer"
+            nested.cache_control, REVALIDATE_CACHE_CONTROL,
+            "only the root document is the bundle's pointer, but a nested \
+             index.html is a fixed name outside assets/ too, not a hashed \
+             one, so it gets a revalidating policy rather than a year of \
+             immutable caching"
         );
         assert_eq!(
             plan.last().expect("a last object").key,
             "sample-litigation/portal/index.html"
         );
+    }
+
+    /// Only a name shaped like Vite's own hashed convention may cache for a
+    /// year. A fixed name — whether or not it happens to sit under `assets/`
+    /// — must revalidate, or a redeploy that changes its bytes without
+    /// changing its name stays invisible for a year.
+    #[test]
+    fn only_a_hashed_asset_name_is_cached_as_immutable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(root, "index.html", b"x");
+        write(root, "assets/app-4f9c2e1b.js", b"x");
+        write(root, "assets/app.js", b"x");
+        write(root, "pdf/acme.pdf", b"x");
+
+        let plan = publish_plan(root, "sample-litigation").expect("plan");
+        let find = |key: &str| {
+            plan.iter()
+                .find(|o| o.key == key)
+                .unwrap_or_else(|| panic!("{key} in the plan"))
+        };
+
+        assert_eq!(
+            find("sample-litigation/portal/assets/app-4f9c2e1b.js").cache_control,
+            ASSET_CACHE_CONTROL,
+            "a Vite-hashed asset name is immutable by construction"
+        );
+        assert_eq!(
+            find("sample-litigation/portal/assets/app.js").cache_control,
+            REVALIDATE_CACHE_CONTROL,
+            "a fixed name under assets/ with no hash suffix is not safe to \
+             pin for a year"
+        );
+        assert_eq!(
+            find("sample-litigation/portal/pdf/acme.pdf").cache_control,
+            REVALIDATE_CACHE_CONTROL,
+            "a fixed-name file outside assets/ must revalidate so a redeploy \
+             that replaces it is visible"
+        );
+    }
+
+    #[test]
+    fn hash_detection_follows_vites_own_assets_convention() {
+        assert!(is_content_hashed("assets/app-4f9c2e1b.js"));
+        assert!(is_content_hashed("assets/app-abc123.css"));
+        assert!(is_content_hashed("assets/fonts/gorp-abc123.woff2"));
+        assert!(
+            !is_content_hashed("assets/app.js"),
+            "no hyphen before the extension is not a hash suffix"
+        );
+        assert!(
+            !is_content_hashed("pdf/acme.pdf"),
+            "outside assets/, Vite gives no hashing guarantee at all"
+        );
+        assert!(!is_content_hashed("index.html"));
     }
 
     #[test]

@@ -173,7 +173,11 @@ async fn upload_plan(storage: &dyn StorageService, plan: &[PortalObject]) -> Res
 /// pruned: see the module doc. The caller uploads `plan` in full before
 /// calling this, so every key deleted here is already confirmed absent from
 /// the bundle `index.html` was just published pointing at.
-async fn prune_stale(storage: &dyn StorageService, code: &str, plan: &[PortalObject]) -> Result<usize> {
+async fn prune_stale(
+    storage: &dyn StorageService,
+    code: &str,
+    plan: &[PortalObject],
+) -> Result<usize> {
     let manifest_key = store::sample_project::manifest_key(code);
     let previous = match storage.get(&manifest_key).await {
         Ok(object) => Some(store::sample_project::parse_manifest(&object.bytes)),
@@ -625,10 +629,11 @@ mod tests {
             .collect();
         previous_keys.push("pdf/renamed-away.pdf".to_string());
         let manifest_key = store::sample_project::manifest_key("sample-litigation");
-        storage.preexisting.lock().expect("lock").insert(
-            manifest_key.clone(),
-            previous_keys.join("\n").into_bytes(),
-        );
+        storage
+            .preexisting
+            .lock()
+            .expect("lock")
+            .insert(manifest_key.clone(), previous_keys.join("\n").into_bytes());
 
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
@@ -666,7 +671,10 @@ mod tests {
             .block_on(prune_stale(&storage, "sample-litigation", &plan))
             .expect_err("pruning two of three prior objects must be refused");
 
-        assert!(format!("{error:#}").contains("sample-litigation"), "{error:#}");
+        assert!(
+            format!("{error:#}").contains("sample-litigation"),
+            "{error:#}"
+        );
         assert!(
             storage.deletes.lock().expect("lock").is_empty(),
             "a refused prune must delete nothing, not a partial, silently-bounded set"

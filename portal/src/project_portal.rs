@@ -115,7 +115,8 @@ const NO_STORE: HeaderValue = HeaderValue::from_static("no-store");
 /// Vite plugin. `no-cache` still lets a private cache store the response, but
 /// forbids reusing it without revalidating first. Shares its literal value
 /// with [`store::sample_project::REVALIDATE_CACHE_CONTROL`].
-const REVALIDATE: HeaderValue = HeaderValue::from_static(store::sample_project::REVALIDATE_CACHE_CONTROL);
+const REVALIDATE: HeaderValue =
+    HeaderValue::from_static(store::sample_project::REVALIDATE_CACHE_CONTROL);
 
 /// A third-party Vite bundle cannot carry Navigator's per-request script
 /// nonce, so the `/app/projects/{code}/portal` scope gets its own policy
@@ -802,7 +803,10 @@ mod tests {
     /// it inline, so a portal's "view" link cannot work.
     #[test]
     fn a_pdf_is_served_with_its_own_content_type() {
-        assert_eq!(content_type_for("documents/engagement.pdf"), "application/pdf");
+        assert_eq!(
+            content_type_for("documents/engagement.pdf"),
+            "application/pdf"
+        );
         assert_eq!(content_type_for("pdf/acme.pdf"), "application/pdf");
     }
 }

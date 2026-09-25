@@ -184,7 +184,12 @@ pub fn render_manifest(plan: &[PortalObject], project_code: &str) -> Vec<u8> {
     let prefix = format!("{}/", portal_prefix(project_code));
     let mut keys: Vec<&str> = plan
         .iter()
-        .map(|object| object.key.strip_prefix(prefix.as_str()).unwrap_or(&object.key))
+        .map(|object| {
+            object
+                .key
+                .strip_prefix(prefix.as_str())
+                .unwrap_or(&object.key)
+        })
         .collect();
     keys.sort_unstable();
     let mut rendered = keys.join("\n");
@@ -258,7 +263,12 @@ pub fn prune_plan(
     let prefix = format!("{}/", portal_prefix(project_code));
     let current: std::collections::HashSet<&str> = plan
         .iter()
-        .map(|object| object.key.strip_prefix(prefix.as_str()).unwrap_or(&object.key))
+        .map(|object| {
+            object
+                .key
+                .strip_prefix(prefix.as_str())
+                .unwrap_or(&object.key)
+        })
         .collect();
     let mut stale: Vec<String> = previous
         .iter()
@@ -342,7 +352,8 @@ pub fn is_content_hashed(relative: &str) -> bool {
         return false;
     };
     let stem = filename.rsplit_once('.').map_or(filename, |(stem, _)| stem);
-    stem.rsplit_once('-').is_some_and(|(_, hash)| !hash.is_empty())
+    stem.rsplit_once('-')
+        .is_some_and(|(_, hash)| !hash.is_empty())
 }
 
 /// Build the ordered publish plan for a built `dist/` directory.

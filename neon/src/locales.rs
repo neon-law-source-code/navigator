@@ -772,7 +772,7 @@ pub fn home_for_host(
         heading: copy.heading,
         lead: copy.lead,
         contact_href: match branding.brand_key {
-            BrandKey::Misericordia => "/contact".to_string(),
+            BrandKey::Misericordia => "tel:+15108002080".to_string(),
             BrandKey::Vesta | BrandKey::DeleteYourData => branding.consultation_url.to_string(),
             _ => format!("mailto:{}", branding.firm_email),
         },
@@ -1221,16 +1221,16 @@ mod tests {
         assert!(content.practices.is_empty());
     }
 
-    /// Misericordia's call-labeled home CTA opens the published contact page,
-    /// while the phone remains reachable from the rendered home content.
+    /// Misericordia's call-labeled home CTA calls the published phone number,
+    /// which remains reachable from the rendered home content.
     #[test]
-    fn misericordia_home_cta_reaches_contact_page_and_keeps_phone_reachable() {
+    fn misericordia_home_cta_calls_and_keeps_phone_reachable() {
         let branding =
             views::brand::BrandKey::Misericordia.resolve_branding(&views::brand::DEFAULT_BRANDING);
         let content = home(branding);
 
         assert_eq!(content.contact_label, "Call for a free consultation");
-        assert_eq!(content.contact_href, "/contact");
+        assert_eq!(content.contact_href, "tel:+15108002080");
         assert!(content.lead.contains("+1 510 800 2080"));
         assert!(content
             .service

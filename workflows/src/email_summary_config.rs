@@ -82,20 +82,11 @@ impl EmailSummaryConfig {
             input_digest,
         )?
         .with_limits(self.max_input_chars, self.max_output_tokens);
-        let claude = EmailSummaryRunConfig::new(
-            SummaryProvider::Claude,
-            &self.claude_model,
-            &self.claude_location,
-            SUMMARY_PROMPT_VERSION,
-            input_digest,
-        )?
-        .with_limits(self.max_input_chars, self.max_output_tokens);
         Ok(EmailSummaryRequest {
             receipt_id,
             project_id: self.project_id.clone(),
             channel_id: self.channel_id.clone(),
             gemini,
-            claude,
         })
     }
 
@@ -321,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    fn request_for_carries_the_given_digest_into_both_providers() {
+    fn request_for_builds_a_gemini_only_request_with_the_given_digest() {
         let config = EmailSummaryConfig::from_lookup(lookup(&enabled()))
             .expect("config parses")
             .expect("config is enabled");
@@ -336,9 +327,11 @@ mod tests {
         assert_eq!(request.project_id, config.project_id);
         assert_eq!(request.channel_id, config.channel_id);
         assert_eq!(request.gemini.input_digest, digest);
-        assert_eq!(request.claude.input_digest, digest);
         assert_eq!(request.gemini.provider, SummaryProvider::Gemini);
-        assert_eq!(request.claude.provider, SummaryProvider::Claude);
+        assert!(serde_json::to_value(&request)
+            .expect("request serializes")
+            .get("claude")
+            .is_none());
     }
 
     #[test]

@@ -14963,7 +14963,7 @@ async fn summary_intake_uses_envelope_and_dedupes_archive_letter_and_receipt() {
 }
 
 /// ENG-889: the intake-written receipt must pass the worker's digest check
-/// and reach both provider adapters. Both sides had green unit tests when
+/// and reach the Gemini adapter. Both sides had green unit tests when
 /// this broke in staging — the worker's own success tests hand-built
 /// `SHA-256(raw)` as the receipt digest, which intake never actually wrote.
 /// This test is the missing link: it takes the real `EmailSummaryRequest`
@@ -15011,7 +15011,6 @@ async fn summary_pipeline_intake_digest_passes_the_workers_check_and_delivers_to
     let vertex = MockServer::start().await;
     let gemini_path =
         "/v1/projects/synthetic-project/locations/global/publishers/google/models/summary-model:generateContent";
-    let claude_path = "/v1/projects/synthetic-project/locations/global/publishers/anthropic/models/summary-model:rawPredict";
     Mock::given(method("POST"))
         .and(path(gemini_path))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -15022,15 +15021,6 @@ async fn summary_pipeline_intake_digest_passes_the_workers_check_and_delivers_to
         .expect(1)
         .mount(&vertex)
         .await;
-    Mock::given(method("POST"))
-        .and(path(claude_path))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "content": [{"type": "text", "text": "{\"summary\":\"Claude summary\",\"requested_actions\":[],\"sender_stated_dates\":[],\"missing_information\":[]}"}]
-        })))
-        .expect(1)
-        .mount(&vertex)
-        .await;
-
     let (public_key, mut headers) = summary_test_key();
     state.summary_intake = Some(portal::inbound_email::SummaryIntakeConfig {
         envelope_recipients: vec!["intake@parse.example.com".into()],
@@ -15041,8 +15031,6 @@ async fn summary_pipeline_intake_digest_passes_the_workers_check_and_delivers_to
         channel_id: "C-SYNTHETIC".into(),
         gemini_model: "summary-model".into(),
         gemini_location: "global".into(),
-        claude_model: "summary-model".into(),
-        claude_location: "global".into(),
         max_input_chars: workflows::DEFAULT_MAX_INPUT_CHARS,
         max_output_tokens: workflows::DEFAULT_MAX_OUTPUT_TOKENS,
     });
@@ -15087,11 +15075,6 @@ async fn summary_pipeline_intake_digest_passes_the_workers_check_and_delivers_to
         ))
         .unwrap()
         .with_base_url(vertex.uri()),
-        claude: cloud::ClaudeVertexAdapter::new(std::sync::Arc::new(
-            cloud::StaticTokenSource::new("test-token"),
-        ))
-        .unwrap()
-        .with_base_url(vertex.uri()),
     };
     let receipt = store::email_receipts::find_by_id(&surreal, request.receipt_id)
         .await
@@ -15108,30 +15091,15 @@ async fn summary_pipeline_intake_digest_passes_the_workers_check_and_delivers_to
     )
     .await
     .unwrap();
-    let claude = workflows_service::email_summary::summarize_provider(
-        state.storage.clone(),
-        Some(providers),
-        workflows::SummaryProvider::Claude,
-        receipt.clone(),
-        request.claude.clone(),
-        request.project_id.clone(),
-    )
-    .await
-    .unwrap();
     assert!(
         matches!(gemini, workflows::ProviderDelivery::Succeeded { .. }),
         "gemini delivery: {gemini:?}"
-    );
-    assert!(
-        matches!(claude, workflows::ProviderDelivery::Succeeded { .. }),
-        "claude delivery: {claude:?}"
     );
 
     let slack = std::sync::Arc::new(workflows::CapturingSlackBot::new());
     let message = workflows::SummaryDeliveryMessage {
         receipt_id: request.receipt_id,
         gemini,
-        claude,
     };
     let delivery = workflows::deliver_summary(
         &surreal,

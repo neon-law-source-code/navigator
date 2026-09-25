@@ -95,10 +95,20 @@ pub fn find<'a>(
     })
 }
 
-/// The message `show` (and, later, `use`) reports when a `(jurisdiction,
-/// practice_area)` pair does not resolve: names what was asked for and the
-/// catalog entries closest to it by edit distance, so a typo is correctable
-/// without dumping the whole catalog.
+/// The message `show`/`use` report when a `(jurisdiction, practice_area)`
+/// pair does not resolve: the catalog entries closest to it by edit
+/// distance, so a typo is correctable without dumping the whole catalog.
+///
+/// Deliberately does not echo the caller's raw `jurisdiction`/`practice_area`
+/// back into the returned string. Both are eventually written through
+/// `eprintln!` in `run_show`/`run_use`, and the `rust/cleartext-logging`
+/// CodeQL query taints the whole parsed `Command` enum through the unrelated
+/// `Commands::Secrets` arm, so any printed value that transitively descends
+/// from a clap-parsed argument is flagged — even though these two are
+/// plain-text operator input, never a secret. Rather than carry that known
+/// false positive, the sink simply never echoes the tainted value: only
+/// catalog-derived text (untainted — it comes from the compiled-in catalog,
+/// not the parsed argument) reaches the message.
 #[must_use]
 pub fn unresolved_message(
     entries: &[CatalogEntry],
@@ -119,14 +129,13 @@ pub fn unresolved_message(
         .collect();
     ranked.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     if ranked.is_empty() {
-        return format!(
-            "no Project Skill for jurisdiction `{jurisdiction}` practice area `{practice_area}`; \
-             the catalog is empty"
-        );
+        return "no Project Skill resolves for that jurisdiction and practice area; \
+                 the catalog is empty"
+            .to_string();
     }
     let closest: Vec<String> = ranked.into_iter().take(3).map(|(_, pair)| pair).collect();
     format!(
-        "no Project Skill for jurisdiction `{jurisdiction}` practice area `{practice_area}`; \
+        "no Project Skill resolves for that jurisdiction and practice area; \
          closest catalog entries: {}",
         closest.join(", ")
     )
@@ -385,12 +394,18 @@ mod tests {
     }
 
     #[test]
-    fn an_unrecognized_jurisdiction_names_the_closest_entries() {
+    fn an_unrecognized_jurisdiction_names_the_closest_entries_without_echoing_the_input() {
+        // "zz"/"wills" are deliberately not the seeded NV/estates or
+        // TX/probate pair, so a coincidental substring match can't hide a
+        // regression either way.
         let entries = catalog();
-        assert!(find(&entries, "zz", "estates").is_none());
-        let message = unresolved_message(&entries, "zz", "estates");
-        assert!(message.contains("zz"), "{message}");
-        assert!(message.contains("estates"), "{message}");
+        assert!(find(&entries, "zz", "wills").is_none());
+        let message = unresolved_message(&entries, "zz", "wills");
+        assert!(
+            !message.contains("zz") && !message.contains("wills"),
+            "the raw argument must not be echoed back (CodeQL rust/cleartext-logging): {message}"
+        );
+        assert!(message.contains("NV/estates"), "{message}");
     }
 
     fn scaffold(dir: &std::path::Path, yaml: &str) {

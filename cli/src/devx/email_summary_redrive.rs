@@ -296,8 +296,6 @@ mod tests {
             channel_id: "C-SYNTHETIC".to_string(),
             gemini_model: "gemini-test".to_string(),
             gemini_location: "us-central1".to_string(),
-            claude_model: "claude-test".to_string(),
-            claude_location: "us-east5".to_string(),
             max_input_chars: 32_000,
             max_output_tokens: 1_024,
         }

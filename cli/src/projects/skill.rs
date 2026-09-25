@@ -266,9 +266,58 @@ fn scaffold_notation(dir: &Path, code: &str) -> Result<(), String> {
     std::fs::write(&target, body).map_err(|error| format!("write {}: {error}", target.display()))
 }
 
+/// One pinned Project Skill, resolved against the compiled-in catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinResolution {
+    pub jurisdiction: String,
+    pub practice_area: String,
+    pub pinned_version: String,
+    /// `true` when the catalog still carries this `(jurisdiction,
+    /// practice_area)` pair at exactly `pinned_version`.
+    pub resolved: bool,
+    /// The version the catalog currently carries for this pair, when the
+    /// pair itself still resolves (even if the version has moved on).
+    pub catalog_version: Option<String>,
+}
+
+/// Resolve every `skills:` pin in `<dir>/navigator.yaml` against the
+/// compiled-in catalog. Shared by `navigator project gate --check` (ENG-879)
+/// and `navigator project skill status` (ENG-880) so the two report the same
+/// verdict for the same fixture rather than reimplementing the check twice.
+///
+/// # Errors
+///
+/// A string error if `navigator.yaml` cannot be read or does not parse.
+pub fn resolve_pins(dir: &Path) -> Result<Vec<PinResolution>, String> {
+    let manifest_path = dir.join(manifest::FILE);
+    let contents = std::fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("read {}: {error}", manifest_path.display()))?;
+    let parsed = manifest::parse(&contents)?;
+    let entries = catalog();
+    Ok(parsed
+        .skills
+        .into_iter()
+        .map(|pin| {
+            let catalog_entry = find(&entries, &pin.jurisdiction, &pin.practice_area);
+            let (resolved, catalog_version) = match catalog_entry {
+                Some(entry) if entry.version == pin.version => (true, Some(entry.version.clone())),
+                Some(entry) => (false, Some(entry.version.clone())),
+                None => (false, None),
+            };
+            PinResolution {
+                jurisdiction: pin.jurisdiction,
+                practice_area: pin.practice_area,
+                pinned_version: pin.version,
+                resolved,
+                catalog_version,
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{catalog, find, run_use, unresolved_message};
+    use super::{catalog, find, resolve_pins, run_use, unresolved_message};
 
     #[test]
     fn the_catalog_carries_both_seeded_entries() {
@@ -325,12 +374,8 @@ mod tests {
         scaffold(dir.path(), "host: staging.neonlaw.com\nproject: acme\n");
         assert_eq!(run_use(dir.path(), "nv", "estates"), std::process::ExitCode::SUCCESS);
         assert_eq!(run_use(dir.path(), "NV", "estates"), std::process::ExitCode::SUCCESS);
-        let manifest_contents = std::fs::read_to_string(dir.path().join("navigator.yaml")).unwrap();
-        assert_eq!(
-            manifest_contents.matches("practice_area: estates").count(),
-            1,
-            "{manifest_contents}"
-        );
+        let resolutions = resolve_pins(dir.path()).unwrap();
+        assert_eq!(resolutions.len(), 1, "{resolutions:?}");
     }
 
     #[test]
@@ -342,5 +387,44 @@ mod tests {
         assert_ne!(code, std::process::ExitCode::SUCCESS);
         let after = std::fs::read_to_string(dir.path().join("navigator.yaml")).unwrap();
         assert_eq!(after, yaml, "a failed use must not modify navigator.yaml");
+    }
+
+    #[test]
+    fn resolve_pins_reports_a_pin_present_at_its_catalog_version() {
+        let dir = tempfile::tempdir().unwrap();
+        scaffold(
+            dir.path(),
+            "host: staging.neonlaw.com\nproject: acme\nskills:\n  - jurisdiction: NV\n    practice_area: estates\n    version: \"1\"\n",
+        );
+        let resolutions = resolve_pins(dir.path()).unwrap();
+        assert_eq!(resolutions.len(), 1);
+        assert!(resolutions[0].resolved, "{resolutions:?}");
+    }
+
+    #[test]
+    fn resolve_pins_reports_an_unknown_code_as_unresolved() {
+        let dir = tempfile::tempdir().unwrap();
+        scaffold(
+            dir.path(),
+            "host: staging.neonlaw.com\nproject: acme\nskills:\n  - jurisdiction: ZZ\n    practice_area: nowhere\n    version: \"1\"\n",
+        );
+        let resolutions = resolve_pins(dir.path()).unwrap();
+        assert_eq!(resolutions.len(), 1);
+        assert!(!resolutions[0].resolved);
+        assert!(resolutions[0].catalog_version.is_none());
+    }
+
+    #[test]
+    fn resolve_pins_reports_a_stale_version_as_unresolved_naming_both() {
+        let dir = tempfile::tempdir().unwrap();
+        scaffold(
+            dir.path(),
+            "host: staging.neonlaw.com\nproject: acme\nskills:\n  - jurisdiction: NV\n    practice_area: estates\n    version: \"999\"\n",
+        );
+        let resolutions = resolve_pins(dir.path()).unwrap();
+        assert_eq!(resolutions.len(), 1);
+        assert!(!resolutions[0].resolved);
+        assert_eq!(resolutions[0].pinned_version, "999");
+        assert_eq!(resolutions[0].catalog_version.as_deref(), Some("1"));
     }
 }

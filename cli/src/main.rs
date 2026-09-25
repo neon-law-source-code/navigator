@@ -3557,6 +3557,7 @@ async fn run_document_check_gate(dir: &std::path::Path, ci: bool, deep: bool) ->
             return crate::remote::exit_code_for(&error);
         }
     }
+    append_skill_pin_findings(dir, &mut gate_errors);
     print_error_recap(&gate_errors);
     if !gate_errors.is_empty() {
         return ExitCode::from(1);
@@ -3565,6 +3566,50 @@ async fn run_document_check_gate(dir: &std::path::Path, ci: bool, deep: bool) ->
         return ExitCode::SUCCESS;
     }
     projects::gate::live_status(dir).await
+}
+
+/// ENG-879: extend `--check` to resolve every `skills:` pin in this
+/// Project's `navigator.yaml` against the compiled-in Project Skill catalog
+/// — an offline question `--check` can answer with no live-status door,
+/// unlike [`projects::gate::live_status`] above. Only a Project repository
+/// carries `navigator.yaml`, and only one that pins at least one Project
+/// Skill has anything to resolve; either absence is silently fine rather
+/// than a finding. Shares [`projects::skill::resolve_pins`] with `navigator
+/// project skill status` (ENG-880), so the two never disagree about the same
+/// fixture.
+fn append_skill_pin_findings(dir: &std::path::Path, gate_errors: &mut Vec<GateError>) {
+    if !is_project_repository(dir) {
+        return;
+    }
+    let manifest_path = dir.join(projects::manifest::FILE);
+    if !manifest_path.is_file() {
+        return;
+    }
+    let resolutions = match projects::skill::resolve_pins(dir) {
+        Ok(resolutions) => resolutions,
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            return;
+        }
+    };
+    let location = manifest_path.display().to_string();
+    for resolution in resolutions.iter().filter(|resolution| !resolution.resolved) {
+        let message = match &resolution.catalog_version {
+            Some(catalog_version) => format!(
+                "Project Skill {}/{} is pinned at version {} but the catalog now carries version {catalog_version}",
+                resolution.jurisdiction, resolution.practice_area, resolution.pinned_version
+            ),
+            None => format!(
+                "Project Skill {}/{} (pinned at version {}) is not in the catalog",
+                resolution.jurisdiction, resolution.practice_area, resolution.pinned_version
+            ),
+        };
+        println!(
+            "{}",
+            diagnostic_line(rules::Severity::Error, &location, None, &message)
+        );
+        gate_errors.push(GateError::new(location.clone(), None, message));
+    }
 }
 
 /// Print the live document check and keep the failures that fail the gate.

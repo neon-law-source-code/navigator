@@ -202,6 +202,8 @@ verification and orphan-scan contracts.
 | `mukta` | Mukta | Abhaya Immigration |
 | `public-sans` | Public Sans | DeleteYourDebt.com |
 | `libre-franklin` | Libre Franklin | the summons practice |
+| `barlow-condensed` | Barlow Condensed | CyberInjuryLaw display (400, 700, 800) |
+| `dm-sans` | DM Sans | CyberInjuryLaw body (variable 100–1000) |
 
 Each value is spelled as the bucket directory it publishes to, and the directory holds `<Stem>-Regular.woff2` and
 `<Stem>-Bold.woff2` — the same `<dir>/<stem>` pair `portal::dioxus_app`'s `bucket_font_head` splits, so the operator
@@ -234,8 +236,38 @@ cargo run -p cli -- ops assets verify --base-url https://staging.neonlaw.com/ass
 ```
 
 `verify` probes the same key set `orphans` treats as reachable — every markdown `](img/…)` reference, every
-`views::assets::GALLERY` variant, and both faces of every `BUCKET_FONT_FAMILIES` entry — and exits `2` naming whatever
+`views::assets::GALLERY` variant, and all faces of every `BUCKET_FONT_FAMILIES` entry — and exits `2` naming whatever
 the origin does not serve.
+
+### CyberInjuryLaw's fonts and campaign
+
+CyberInjuryLaw is a Dioxus house-brand preview. `NAVIGATOR_LOCAL_CYBER_INJURY_LAW_PORT` selects its local port, and the
+brand stays outside `BrandKey::LIVE` until launch. The tracked flexed-muscle SVG lives at
+`server/public/brand/cyber-injury-law.svg`. The header's QR code at `server/public/brand/cyber-consultation-qr.svg`
+encodes `https://www.CyberInjuryLaw.com/consultation`. That route redirects to the brand's configured booking URL, so a
+provider change leaves printed codes valid.
+
+The server and browser hydrate the same `HomePageEntry` root. The server keeps its rendered head during hydration, so
+the campaign controls work under the existing strict CSP. The public asset lane restores campaign PNGs to the ignored
+`server/public/img/cyber-injury-law/` paths.
+
+Barlow Condensed provides Regular (400), Bold (700), and ExtraBold (800). DM Sans supports a variable WOFF2 face from
+100 to 1000, delivered as Regular and Bold files. Both families use SIL OFL 1.1; their upstream notices are tracked
+beside the ignored binaries. Sources:
+
+- [Barlow Condensed](https://github.com/google/fonts/tree/main/ofl/barlowcondensed)
+- [DM Sans](https://github.com/google/fonts/tree/main/ofl/dmsans)
+
+```bash
+cargo run -p cli -- ops assets fonts upload --family barlow-condensed \
+  --dir ~/Downloads/CyberInjuryLaw/fonts/barlow-condensed
+cargo run -p cli -- ops assets fonts upload --family dm-sans \
+  --dir ~/Downloads/CyberInjuryLaw/fonts/dm-sans
+```
+
+Barlow's upload requires all three faces; missing ExtraBold fails before any write. The font CSS declares actual weights
+and uses the same first-party asset origin as other brands. It makes no Google Fonts runtime request. The fee calculator
+and preliminary assessment hydrate through Dioxus; assessment answers stay in the browser.
 
 ### Lawyer Shook's Tinos
 
@@ -250,15 +282,14 @@ cannot reach a browser through either door without a way to publish it.
 
 ## Verify after shipping
 
-A live deployment can serve a 404 hero when the bucket is missing bytes — the rendered-HTML test only checks the `src`
-string, not that the object exists. `assets verify` closes that gap: it walks image refs under `server/content`, every
-responsive gallery variant and both faces of all eight bucket-served webfont families, then fetches each one from the
-public origin (auth-free `HEAD` against `NAVIGATOR_ASSET_BASE_URL`, exactly as a browser would). It exits non-zero
-listing whatever the origin does not serve. `ops ship` invokes the same verifier after a full or image-only roll. From a
-deploy-only tree — a `--deployments-dir` checkout that carries `deployments/` and no `server/content` — it probes the
-same origin for the references the binary embeds instead: the workshop markdown, every gallery variant, and every font
-family. It says so on stderr, because the blog's references are the one set that lane cannot see; run `assets verify`
-from a source checkout to cover them.
+A live deployment can serve a 404 hero when the bucket is missing bytes. The rendered-HTML test checks only the `src`
+string; `assets verify` checks every image under `server/content`, responsive gallery variant, and registered webfont
+face. It fetches each from the public origin with an auth-free `HEAD` against `NAVIGATOR_ASSET_BASE_URL`, exactly as a
+browser would, and reports missing objects. `ops ship` runs the same verifier after a full or image-only roll. A
+deploy-only checkout has `deployments/` and omits `server/content`; it checks workshop markdown and gallery variants and
+font faces embedded in the binary. It names this scope on stderr because it cannot see blog references.
+
+Run `assets verify` from a source checkout to cover them.
 
 ```bash
 NAVIGATOR_ASSET_BASE_URL=https://staging.neonlaw.com/assets cargo run -p cli -- ops assets verify

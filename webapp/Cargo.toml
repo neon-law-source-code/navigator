@@ -123,6 +123,7 @@ word = { workspace = true, optional = true }
 # server build already has an OS source and must not gain a browser one.
 # `wasm-bindgen` and `js-sys` are already in the client bundle via `dioxus/web`.
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+web-sys = { workspace = true }
 uuid = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
@@ -157,7 +158,7 @@ serde_yaml = { workspace = true }
 [features]
 default = []
 # Selected by `dx` for the wasm client build; pulls the browser renderer.
-web = ["dioxus/web"]
+web = ["dioxus/web", "dep:dioxus-fullstack-core"]
 # Selected transitively by `web`; pulls the server-side renderer so
 # `dioxus-server`'s `render_handler` can SSR `App`, plus the `store` query
 # layer the server functions run against and the request-extraction helper.

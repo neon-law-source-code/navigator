@@ -132,11 +132,61 @@ pub const TYPEFACES: &[Typeface] = &[
         stack: "\"Libre Franklin\", ui-sans-serif, system-ui, sans-serif",
         operator_licence_required: false,
     },
+    Typeface {
+        id: "barlow-condensed",
+        label: "Barlow Condensed",
+        stack: "\"Barlow Condensed\", Impact, sans-serif",
+        operator_licence_required: false,
+    },
+    Typeface {
+        id: "dm-sans",
+        label: "DM Sans",
+        stack: "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        operator_licence_required: false,
+    },
 ];
 
-/// Primaries and accents taken from the ten compiled house-brand token
+const CYBER_SCHEME: PaletteScheme = PaletteScheme {
+    primary: "#c3ff35",
+    primary_hover: "#d6ff77",
+    primary_active: "#a6e021",
+    on_primary: "#10110f",
+    on_brand: "#10110f",
+    link: "#c3ff35",
+    link_hover: "#d6ff77",
+    surface_subtle: "#22251b",
+    bg: Some("#10110f"),
+    surface: Some("#161a12"),
+    surface_raised: Some("#22251b"),
+    text: Some("#f0f1e9"),
+    text_muted: Some("#bfc4b5"),
+    border: Some("#535a48"),
+};
+
+/// Primaries and accents taken from the eleven compiled house-brand token
 /// sheets, named so a select can refuse free text.
 pub const PALETTE: &[Palette] = &[
+    Palette {
+        id: "cyber-injury-law",
+        label: "CyberInjuryLaw electric lime",
+        light: PaletteScheme {
+            primary: "#446300",
+            primary_hover: "#344d00",
+            primary_active: "#263800",
+            on_primary: "#ffffff",
+            on_brand: "#ffffff",
+            link: "#446300",
+            link_hover: "#344d00",
+            surface_subtle: "#e7efcf",
+            bg: Some("#f0f1e9"),
+            surface: Some("#ffffff"),
+            surface_raised: Some("#ffffff"),
+            text: Some("#10110f"),
+            text_muted: Some("#52564b"),
+            border: Some("#bdc3b0"),
+        },
+        dark: CYBER_SCHEME,
+    },
     Palette {
         id: "neon-teal",
         label: "Neon teal",
@@ -536,6 +586,9 @@ impl BrandKey {
     #[must_use]
     pub fn default_typeface(self) -> &'static Typeface {
         match self {
+            Self::CyberInjuryLaw => {
+                typeface_by_id("dm-sans").expect("invariant: dm-sans is catalogued above")
+            }
             Self::Neon => typeface_by_id("gorp-serif").expect("gorp-serif is catalogued"),
             Self::DeleteYourData => {
                 typeface_by_id("plus-jakarta-sans").expect("plus-jakarta-sans is catalogued")
@@ -573,6 +626,10 @@ impl BrandKey {
     #[must_use]
     pub fn display_typeface(self) -> Option<&'static Typeface> {
         match self {
+            Self::CyberInjuryLaw => Some(
+                typeface_by_id("barlow-condensed")
+                    .expect("invariant: barlow-condensed is catalogued above"),
+            ),
             // Misericordia pairs serif headings with a sans body.
             Self::Misericordia => {
                 Some(typeface_by_id("source-serif-4").expect("source-serif-4 is catalogued"))
@@ -597,6 +654,8 @@ impl BrandKey {
     #[must_use]
     pub fn default_palette(self) -> &'static Palette {
         match self {
+            Self::CyberInjuryLaw => palette_by_id("cyber-injury-law")
+                .expect("invariant: cyber palette is catalogued above"),
             Self::Neon => palette_by_id("neon-teal").expect("neon-teal is catalogued"),
             Self::DeleteYourData => {
                 palette_by_id("delete-your-data").expect("delete-your-data is catalogued")
@@ -717,6 +776,28 @@ fn webfont_css(face: &Typeface) -> Option<String> {
             "Source Serif 4",
             "source-serif-4",
             "SourceSerif4",
+        )),
+        "barlow-condensed" => Some(format!(
+            "{}\n{}",
+            bucket_face("Barlow Condensed", "barlow-condensed", "BarlowCondensed"),
+            crate::assets::weighted_font_face_css(
+                "Barlow Condensed",
+                &crate::assets::asset_url("fonts/barlow-condensed/BarlowCondensed-ExtraBold.woff2"),
+                "800"
+            ),
+        )),
+        "dm-sans" => Some(format!(
+            "{}\n{}",
+            crate::assets::weighted_font_face_css(
+                "DM Sans",
+                &crate::assets::asset_url("fonts/dm-sans/DMSans-Regular.woff2"),
+                "100 699"
+            ),
+            crate::assets::weighted_font_face_css(
+                "DM Sans",
+                &crate::assets::asset_url("fonts/dm-sans/DMSans-Bold.woff2"),
+                "700 1000"
+            ),
         )),
         "mukta" => Some(bucket_face("Mukta", "mukta", "Mukta")),
         "public-sans" => Some(bucket_face("Public Sans", "public-sans", "PublicSans")),
@@ -973,6 +1054,21 @@ mod tests {
     /// Jakarta Sans is OFL-1.1, so it is bucket-served like GORP without
     /// carrying GORP's `operator_licence_required` flag.
     #[test]
+    fn cyber_typefaces_are_self_hosted_with_the_approved_weights() {
+        for id in ["barlow-condensed", "dm-sans"] {
+            let face = typeface_by_id(id).expect("CyberInjuryLaw face is catalogued");
+            assert!(!face.operator_licence_required);
+            let css = font_face_for(Some(id), None).expect("self-hosted face");
+            assert!(css.contains(&format!("fonts/{id}/")));
+            assert!(!css.contains("googleapis"));
+            assert!(!css.contains("gstatic"));
+        }
+        let display = font_face_for(Some("barlow-condensed"), None).unwrap();
+        assert!(display.contains("font-weight:800"));
+        assert!(display.contains("BarlowCondensed-ExtraBold.woff2"));
+    }
+
+    #[test]
     fn the_typeface_list_is_closed_and_only_gorp_needs_a_licence() {
         let ids: Vec<_> = TYPEFACES.iter().map(|face| face.id).collect();
         assert_eq!(
@@ -990,7 +1086,9 @@ mod tests {
                 "pirata-one",
                 "mukta",
                 "public-sans",
-                "libre-franklin"
+                "libre-franklin",
+                "barlow-condensed",
+                "dm-sans"
             ]
         );
         assert!(

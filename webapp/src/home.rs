@@ -13,6 +13,8 @@ use crate::public_chrome::{PublicChrome, PublicFooter};
 pub use crate::components::PracticeMark;
 mod company;
 pub use company::CompanyContent;
+mod cyber_injury;
+pub use cyber_injury::CyberInjuryContent;
 mod daybridge;
 pub use daybridge::DaybridgeContent;
 mod death_and_divorce;
@@ -166,6 +168,9 @@ pub struct HomeContent {
     /// Death & Divorce's black-and-white practice surface.
     #[serde(default)]
     pub death_and_divorce: Option<DeathAndDivorceContent>,
+    /// CyberInjuryLaw campaign.
+    #[serde(default)]
+    pub cyber_injury: Option<CyberInjuryContent>,
 }
 
 /// The firm's notice and sign-in. When [`HomeContent::bare`] is set, this
@@ -273,6 +278,9 @@ pub fn HomePage(
     #[props(default)] lead_context: LeadCaptureContext,
     #[props(default)] testimonials: Vec<TestimonialCard>,
 ) -> Element {
+    if let Some(cyber) = content.cyber_injury.clone() {
+        return rsx! { cyber_injury::CyberInjuryHome { chrome, content, copy: cyber } };
+    }
     if let Some(bare) = content.bare.clone() {
         return rsx! {
             document::Title { "{content.head_title}" }
@@ -798,6 +806,7 @@ mod tests {
                         bare: None,
                         estate: None,
                         death_and_divorce: None,
+                        cyber_injury: None,
                     },
                 }
             }

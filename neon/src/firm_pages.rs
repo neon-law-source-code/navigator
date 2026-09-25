@@ -589,6 +589,13 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::blog_index_router(blog_posts),
         dioxus_app::blog_post_router(blog_post_set),
     ];
+    // Keep printed QR codes stable when the booking provider changes.
+    routers.push(Router::new().route(
+        "/consultation",
+        axum::routing::get(|| async {
+            axum::response::Redirect::temporary(views::brand::consultation_url())
+        }),
+    ));
     // Resolve the branding from `state.brand_bundle` (mirroring `bootstrap`)
     // rather than the ambient `current()`: this content is baked at
     // router-build time, before any request scopes branding.
@@ -895,6 +902,7 @@ fn resolve_firm_contact_content(
         | BrandKey::DeleteYourDebt
         | BrandKey::Summons
         | BrandKey::Daybridge
+        | BrandKey::CyberInjuryLaw
         | BrandKey::DeathAndDivorce => format!(
             "Reach {firm_name}, a practice of Shook Law PLLC, about legal services. \
              Attorney advertisement. Nothing here is legal advice without a signed retainer for \
@@ -943,6 +951,7 @@ pub(crate) fn resolve_firm_home_content(
         | BrandKey::Abhaya
         | BrandKey::DeleteYourDebt
         | BrandKey::Daybridge
+        | BrandKey::CyberInjuryLaw
         | BrandKey::DeathAndDivorce => locales::home_for_host(branding, deployment_host),
     }
 }
@@ -1069,6 +1078,7 @@ mod coming_soon_page_tests {
                     || content.company.is_some()
                     || content.daybridge.is_some()
                     || content.death_and_divorce.is_some()
+                    || content.cyber_injury.is_some()
                     || !content.practices.is_empty());
             let holding_design = content
                 .bare

@@ -72,6 +72,9 @@ const DELETE_YOUR_DEBT_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-debt/services.yaml");
 const SUMMONS_HOME_YAML: &str = include_str!("../locales/en/summons/home.yaml");
 const SUMMONS_SERVICES_YAML: &str = include_str!("../locales/en/summons/services.yaml");
+const CYBER_INJURY_SERVICES_YAML: &str =
+    include_str!("../locales/en/cyber-injury-law/services.yaml");
+const CYBER_INJURY_HOME_YAML: &str = include_str!("../locales/en/cyber-injury-law/home.yaml");
 const DAYBRIDGE_HOME_YAML: &str = include_str!("../locales/en/daybridge/home.yaml");
 const DAYBRIDGE_SERVICES_YAML: &str = include_str!("../locales/en/daybridge/services.yaml");
 // Death & Divorce keeps its home title to the brand name alone.
@@ -115,6 +118,8 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::DeleteYourDebt, "services") => Some(DELETE_YOUR_DEBT_SERVICES_YAML),
         (BrandKey::Summons, "home") => Some(SUMMONS_HOME_YAML),
         (BrandKey::Summons, "services") => Some(SUMMONS_SERVICES_YAML),
+        (BrandKey::CyberInjuryLaw, "services") => Some(CYBER_INJURY_SERVICES_YAML),
+        (BrandKey::CyberInjuryLaw, "home") => Some(CYBER_INJURY_HOME_YAML),
         (BrandKey::Daybridge, "home") => Some(DAYBRIDGE_HOME_YAML),
         (BrandKey::Daybridge, "services") => Some(DAYBRIDGE_SERVICES_YAML),
         (BrandKey::DeathAndDivorce, "home") => Some(DEATH_AND_DIVORCE_HOME_YAML),
@@ -735,6 +740,35 @@ fn privacy_content(copy: views::locales::PrivacyCopy) -> webapp::home::PrivacyCo
     }
 }
 
+fn cyber_injury_content(copy: views::locales::CyberInjuryCopy) -> webapp::home::CyberInjuryContent {
+    webapp::home::CyberInjuryContent {
+        eyebrow: copy.eyebrow,
+        hero_lines: copy.hero_lines,
+        hero_note: copy.hero_note,
+        fee_heading: copy.fee_heading,
+        fee_body: copy.fee_body,
+        fee_note: copy.fee_note,
+        calculation_note: copy.calculation_note,
+        discovery_heading: copy.discovery_heading,
+        discovery_body: copy.discovery_body,
+        discovery_cards: copy.discovery_cards,
+        discovery_note: copy.discovery_note,
+        assessment_heading: copy.assessment_heading,
+        assessment_body: copy.assessment_body,
+        assessment_note: copy.assessment_note,
+        recent_result: copy.recent_result,
+        deadline_result: copy.deadline_result,
+        evidence_tips: copy.evidence_tips,
+        medical_tips: copy.medical_tips,
+        deadline_tip: copy.deadline_tip,
+        result_note: copy.result_note,
+        closing_lines: copy.closing_lines,
+        footer_note: copy.footer_note,
+        hero_src: views::assets::asset_url(views::assets::CYBER_INJURY_HERO_KEY),
+        ad_src: views::assets::asset_url(views::assets::CYBER_INJURY_AD_KEY),
+    }
+}
+
 fn daybridge_content(copy: views::locales::DaybridgeCopy) -> webapp::home::DaybridgeContent {
     webapp::home::DaybridgeContent {
         eyebrow: copy.eyebrow,
@@ -820,6 +854,7 @@ pub fn home_for_host(
         lead: copy.lead,
         contact_href: match branding.brand_key {
             BrandKey::Misericordia => "tel:+15108002080".to_string(),
+            BrandKey::CyberInjuryLaw => "/consultation".to_string(),
             BrandKey::Vesta | BrandKey::DeleteYourData => branding.consultation_url.to_string(),
             _ => format!("mailto:{}", branding.firm_email),
         },
@@ -905,6 +940,7 @@ pub fn home_for_host(
         privacy: copy.privacy.map(privacy_content),
         daybridge: copy.daybridge.map(daybridge_content),
         death_and_divorce: copy.death_and_divorce.map(death_and_divorce_content),
+        cyber_injury: copy.cyber_injury.map(cyber_injury_content),
     }
 }
 

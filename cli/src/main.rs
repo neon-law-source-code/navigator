@@ -1835,6 +1835,10 @@ enum FontFamilyArg {
     LibreFranklin,
     /// Death & Divorce's gothic display face.
     PirataOne,
+    /// CyberInjuryLaw display face.
+    BarlowCondensed,
+    /// CyberInjuryLaw body face.
+    DmSans,
 }
 
 impl FontFamilyArg {
@@ -1849,18 +1853,20 @@ impl FontFamilyArg {
             Self::PublicSans => &assets::PUBLIC_SANS,
             Self::LibreFranklin => &assets::LIBRE_FRANKLIN,
             Self::PirataOne => &assets::PIRATA_ONE,
+            Self::BarlowCondensed => &assets::BARLOW_CONDENSED,
+            Self::DmSans => &assets::DM_SANS,
         }
     }
 }
 
 #[derive(Subcommand)]
 enum FontAction {
-    /// Upload a licensed web font family's Regular and Bold WOFF2 files to
+    /// Upload every required WOFF2 face for a licensed web font family to
     /// its bucket prefix in the public assets bucket. Auth is ADC; this is
     /// an operator action and the source directory is never committed.
     Upload {
-        /// Directory containing `<Family>-Regular.woff2` and
-        /// `<Family>-Bold.woff2` from the operator's delivery.
+        /// Directory containing every required `<Family>-<Weight>.woff2`
+        /// file from the operator's delivery.
         #[arg(long)]
         dir: PathBuf,
         /// Target bucket. Defaults to `NAVIGATOR_ASSETS_BUCKET` — the public

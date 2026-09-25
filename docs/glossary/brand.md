@@ -4,7 +4,7 @@ title: "Brand"
 
 A closed key naming which house brand a request resolves to — [`views::brand::BrandKey`](../../views/src/brand.rs)
 (`neon`, `delete-your-data`, `lawyer-shook`, `vesta`, `misericordia`, `abhaya`, `delete-your-debt`, `summons`,
-`daybridge`, `death-and-divorce`). **A brand is a registry entry, not a binary**: each key names its own
+`daybridge`, `death-and-divorce`, `cyber-injury-law`). **A brand is a registry entry, not a binary**: each key names its own
 [`Branding`](../../views/src/brand.rs), and the resolver that maps a request's `Host:` header onto a key
 ([`views::brand::registered_brand_key`](../../views/src/brand.rs)) runs inside the *same* `neon-server` binary for every
 key it serves. One repository, one running process, N house brands — adding one is a code change to the registry (a new
@@ -15,9 +15,8 @@ runtime flag that can move a page from one brand's hosts to another's.
 authorization/identity record, not a routing registry entry. `firm_id: None` is system-wide (Owner-created, every Firm
 sees it); a live `firm_id` is scoped to that Firm (created only by its Admin DRI). It carries no host: `hosts()` and
 `registered_brand_key` keep resolving only the compiled `BrandKey` enum above, and a runtime `brand` row publishes no
-marketing page. The ten compiled keys migrate into system-wide rows on first boot so the one authorization table names
-every brand a Firm may attach, but their real presentation — hosts, colours, fonts, logos, copy — stays exactly where
-this entry describes it, unchanged.
+marketing page. The compiled keys migrate into system-wide rows on first boot so the one authorization table names every
+brand a Firm may attach, while each brand's hosts, colours, fonts, logos, and copy stay with this entry.
 
 Owner (for a system-wide row) or a Firm's Admin DRI (for that Firm's own row) create, edit, and delete `brand` rows at
 `/app/admin/brands`, `/app/admin/brands/new`, and `/app/admin/brands/{key}/edit` (ENG-586). `primary_color` is a free

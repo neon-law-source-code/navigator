@@ -2880,6 +2880,12 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
         typeface: "pirata-one",
         primary_hex: "#B45535",
     },
+    CompiledBrand {
+        key: "cyber-injury-law",
+        name: "CyberInjuryLaw",
+        typeface: "dm-sans",
+        primary_hex: "#446300",
+    },
 ];
 
 /// The published wordmark [`COMPILED_BRANDS`] seeds for `key`, if it names a

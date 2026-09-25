@@ -50,10 +50,30 @@ pub fn css_single_quoted(value: &str) -> String {
 /// and URLs, never a copy of this builder.
 #[must_use]
 pub fn font_face_css(family: &str, regular_url: &str, bold_url: &str) -> String {
+    format!(
+        "{}\n{}",
+        weighted_font_face_css(family, regular_url, "400"),
+        weighted_font_face_css(family, bold_url, "700")
+    )
+}
+
+/// A self-hosted static weight or variable-font weight range.
+#[must_use]
+pub fn weighted_font_face_css(family: &str, url: &str, weight: &str) -> String {
     let family = css_single_quoted(family);
-    let regular_url = css_single_quoted(regular_url);
-    let bold_url = css_single_quoted(bold_url);
-    format!("@font-face{{font-family:'{family}';font-style:normal;font-weight:400;font-display:swap;src:url('{regular_url}') format('woff2')}}\n@font-face{{font-family:'{family}';font-style:normal;font-weight:700;font-display:swap;src:url('{bold_url}') format('woff2')}}")
+    let url = css_single_quoted(url);
+    // Only numeric CSS weights and one range separator enter the declaration.
+    let weight = if weight.split_whitespace().count() <= 2
+        && !weight.is_empty()
+        && weight
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || byte == b' ')
+    {
+        weight
+    } else {
+        "400"
+    };
+    format!("@font-face{{font-family:'{family}';font-style:normal;font-weight:{weight};font-display:swap;src:url('{url}') format('woff2')}}")
 }
 
 #[must_use]
@@ -71,6 +91,11 @@ pub const WIDTHS: [u32; 3] = [400, 800, 1200];
 /// Width of the plain `<img>` `src` fallback (browsers without
 /// `srcset` support, and the resource the preload scanner fetches).
 pub const FALLBACK_WIDTH: u32 = 1200;
+
+/// Approved CyberInjuryLaw campaign assets, restored through the public asset lane.
+pub const CYBER_INJURY_HERO_KEY: &str = "img/cyber-injury-law/cyber-warrior.png";
+/// Flat subway-ad artwork for the CyberInjuryLaw campaign.
+pub const CYBER_INJURY_AD_KEY: &str = "img/cyber-injury-law/canal-st-ad.png";
 
 /// Stable object key for the replaceable firm home presentation.
 pub const HOME_PRESENTATION_KEY: &str = "img/neon-home/neon-home-presentation.mp4";

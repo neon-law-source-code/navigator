@@ -915,6 +915,23 @@ pub static DEATH_AND_DIVORCE_BRANDING: Branding = Branding {
     brand_key: BrandKey::DeathAndDivorce,
 };
 
+/// CyberInjuryLaw uses the firm's verified contact and engagement identity.
+pub const CYBER_INJURY_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "CyberInjuryLaw",
+        tagline: "Personal injury. Re-engineered.",
+        logo_href: "/public/brand/cyber-injury-law.svg",
+        social_image: "/assets/img/cyber-injury-law/canal-st-ad.png",
+        ..DEFAULT_BRANDING.firm
+    },
+    primary_domain: "cyberinjurylaw.com",
+    mission_description: "We use AI to put more money in your pocket. Personal injury representation with a 20% attorney fee plus case expenses, subject to a signed agreement. No outcome is guaranteed.",
+    service_description: "AI-assisted personal injury representation, a 20% attorney fee plus case expenses, and free consultation.",
+    brand_key: BrandKey::CyberInjuryLaw,
+    firm_social: &[],
+    ..DEFAULT_BRANDING
+};
+
 /// A closed key naming which house brand a request resolves to. Distinct
 /// from `portal::hosting::Site`, which names the *binary*: a `BrandKey`
 /// names one request's resolved identity, and one running binary can resolve
@@ -937,6 +954,8 @@ pub enum BrandKey {
     Daybridge,
     /// Divorce, estate planning, and probate for endings and transitions.
     DeathAndDivorce,
+    /// AI-assisted personal injury representation.
+    CyberInjuryLaw,
 }
 
 impl BrandKey {
@@ -952,6 +971,7 @@ impl BrandKey {
         Self::Summons,
         Self::Daybridge,
         Self::DeathAndDivorce,
+        Self::CyberInjuryLaw,
     ];
 
     /// The compiled keys whose hosts currently serve a public site. The
@@ -983,6 +1003,7 @@ impl BrandKey {
             Self::Summons => "summons",
             Self::Daybridge => "daybridge",
             Self::DeathAndDivorce => "death-and-divorce",
+            Self::CyberInjuryLaw => "cyber-injury-law",
         }
     }
 
@@ -1014,6 +1035,7 @@ impl BrandKey {
             Self::Summons => "NYC summons defense at OATH hearings",
             Self::Daybridge => "divorce counsel with setup, daily, appearance, and trial fees",
             Self::DeathAndDivorce => "divorce, estate planning, and probate",
+            Self::CyberInjuryLaw => "AI-assisted personal injury representation",
         }
     }
 
@@ -1070,6 +1092,7 @@ impl BrandKey {
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
             Self::Neon => crate::locales::KNOWN_PAGES,
+            Self::CyberInjuryLaw => &["home", "services"],
             // Every practice brand publishes the two stems it actually
             // serves; a missing file is a loader-test failure rather than a
             // first-request panic.
@@ -1105,6 +1128,7 @@ impl BrandKey {
             ),
             Self::DeleteYourData => matches!(path, "/" | "/contact" | "/testimonials"),
             Self::LawyerShook => matches!(path, "/" | "/testimonials"),
+            Self::CyberInjuryLaw => matches!(path, "/" | "/contact" | "/consultation"),
             Self::Vesta => matches!(path, "/" | "/services" | "/contact" | "/testimonials"),
             Self::Misericordia | Self::Abhaya | Self::DeleteYourDebt => {
                 matches!(path, "/" | "/services" | "/contact" | "/testimonials")
@@ -1143,6 +1167,7 @@ impl BrandKey {
             Self::Summons => "summonsdefense.nyc",
             Self::Daybridge => "daybridgedivorce.com",
             Self::DeathAndDivorce => "deathanddivorcelaw.com",
+            Self::CyberInjuryLaw => "cyberinjurylaw.com",
         }
     }
 
@@ -1203,6 +1228,7 @@ impl BrandKey {
                 "www.deathanddivorcelaw.com",
                 "staging.deathanddivorcelaw.com",
             ],
+            Self::CyberInjuryLaw => &["www.cyberinjurylaw.com", "staging.cyberinjurylaw.com"],
         }
     }
 
@@ -1224,6 +1250,7 @@ impl BrandKey {
             Self::Summons => &SUMMONS_BRANDING,
             Self::Daybridge => &DAYBRIDGE_BRANDING,
             Self::DeathAndDivorce => &DEATH_AND_DIVORCE_BRANDING,
+            Self::CyberInjuryLaw => &CYBER_INJURY_BRANDING,
         }
     }
 
@@ -1253,6 +1280,7 @@ impl BrandKey {
             Self::Summons => Some("NAVIGATOR_LOCAL_SUMMONS_PORT"),
             Self::Daybridge => Some("NAVIGATOR_LOCAL_DAYBRIDGE_PORT"),
             Self::DeathAndDivorce => Some("NAVIGATOR_LOCAL_DEATH_AND_DIVORCE_PORT"),
+            Self::CyberInjuryLaw => Some("NAVIGATOR_LOCAL_CYBER_INJURY_LAW_PORT"),
         }
     }
 }

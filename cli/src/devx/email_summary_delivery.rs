@@ -32,9 +32,10 @@ async fn quarantined_async() -> Result<()> {
     let surreal = store::surreal::connect_from_env()
         .await
         .context("connect to SurrealDB")?;
-    let deliveries = store::email_deliveries::list_by_state(&surreal, store::email_deliveries::UNKNOWN)
-        .await
-        .context("list quarantined deliveries")?;
+    let deliveries =
+        store::email_deliveries::list_by_state(&surreal, store::email_deliveries::UNKNOWN)
+            .await
+            .context("list quarantined deliveries")?;
     if deliveries.is_empty() {
         println!("no quarantined deliveries");
         return Ok(());
@@ -54,12 +55,19 @@ async fn quarantined_async() -> Result<()> {
 /// `navigator ops email-summary reconcile-confirmed --receipt <uuid> --actor
 /// <actor> --channel <id> --timestamp <ts>` — record that a quarantined
 /// send actually reached Slack, so replay stops treating it as in doubt.
-pub fn reconcile_confirmed(receipt: Uuid, actor: String, channel: String, timestamp: String) -> Result<()> {
+pub fn reconcile_confirmed(
+    receipt: Uuid,
+    actor: String,
+    channel: String,
+    timestamp: String,
+) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .context("build tokio runtime")?;
-    runtime.block_on(reconcile_confirmed_async(receipt, actor, channel, timestamp))
+    runtime.block_on(reconcile_confirmed_async(
+        receipt, actor, channel, timestamp,
+    ))
 }
 
 async fn reconcile_confirmed_async(

@@ -420,7 +420,10 @@ pub async fn list_by_state(
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     let rows: Vec<DeliveryRow> = response.take(0)?;
-    Ok(rows.into_iter().filter_map(DeliveryRow::into_delivery).collect())
+    Ok(rows
+        .into_iter()
+        .filter_map(DeliveryRow::into_delivery)
+        .collect())
 }
 
 pub async fn attempts(
@@ -581,9 +584,7 @@ mod tests {
         assert_eq!(unknown.len(), 1);
         assert_eq!(unknown[0].receipt_id, receipt_id);
 
-        let confirmed = list_by_state(&db, CONFIRMED)
-            .await
-            .expect("list confirmed");
+        let confirmed = list_by_state(&db, CONFIRMED).await.expect("list confirmed");
         assert_eq!(confirmed.len(), 1);
         assert_eq!(confirmed[0].receipt_id, confirmed_receipt_id);
     }

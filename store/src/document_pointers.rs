@@ -242,7 +242,10 @@ mod tests {
         let plain_yaml = plain.to_yaml().unwrap();
         assert!(!plain_yaml.contains("docusign_envelope_id"));
         assert!(!plain_yaml.contains("xero_invoice_id"));
-        assert!(DocumentPointer::from_yaml(&plain_yaml).unwrap().validate().is_ok());
+        assert!(DocumentPointer::from_yaml(&plain_yaml)
+            .unwrap()
+            .validate()
+            .is_ok());
 
         plain.kind = "onboarding".into();
         plain.docusign_envelope_id = Some(Uuid::now_v7());

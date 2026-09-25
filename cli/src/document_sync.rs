@@ -1789,13 +1789,15 @@ mod tests {
         is_signed_pdf_filename, matches_digest, pull_target, pull_transaction_path, read_manifest,
         recover_interrupted_pull, strip_pointer_extension, validate_folder_pointer_keys,
         write_pull_transaction_state, PullTransactionPhase, PullTransactionState,
-        PullTransactionTarget, AUTHORITY_SIDECAR_EXTENSION, DOCUMENTS_GITIGNORE,
-        POINTER_EXTENSION, POINTER_READ_EXTENSIONS,
+        PullTransactionTarget, AUTHORITY_SIDECAR_EXTENSION, DOCUMENTS_GITIGNORE, POINTER_EXTENSION,
+        POINTER_READ_EXTENSIONS,
     };
     use std::path::Path;
     use uuid::Uuid;
 
-    fn onboarding_pointer(docusign_envelope_id: Option<Uuid>) -> store::document_pointers::DocumentPointer {
+    fn onboarding_pointer(
+        docusign_envelope_id: Option<Uuid>,
+    ) -> store::document_pointers::DocumentPointer {
         store::document_pointers::DocumentPointer {
             kind: "onboarding".into(),
             visibility: "internal".into(),

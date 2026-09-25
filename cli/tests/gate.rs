@@ -768,7 +768,11 @@ fn gate_enforces_the_onboarding_offboarding_and_invoice_pointer_keys() {
 
     // An onboarding pointer named without the `_signed.pdf` suffix but
     // carrying an envelope id is also rejected.
-    std::fs::remove_file(dir.path().join("documents/onboarding/retainer_signed.pdf.yaml")).unwrap();
+    std::fs::remove_file(
+        dir.path()
+            .join("documents/onboarding/retainer_signed.pdf.yaml"),
+    )
+    .unwrap();
     write(
         dir.path(),
         "documents/onboarding/retainer.pdf.yaml",

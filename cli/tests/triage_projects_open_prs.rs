@@ -24,3 +24,16 @@ fn refresh_records_open_pull_requests() {
         "refresh must record open pull requests, got:\n{body}"
     );
 }
+
+#[test]
+fn lanes_refuse_open_pull_request_overlap() {
+    let body = skill();
+    assert!(
+        body.contains("Drop any issue an open pull request already links"),
+        "lanes must refuse issues an open pull request already links, got:\n{body}"
+    );
+    assert!(
+        body.contains("touch a path an open pull request or active worktree already changes"),
+        "lanes must stay off paths an open pull request already changes, got:\n{body}"
+    );
+}

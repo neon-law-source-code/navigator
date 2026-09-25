@@ -16,8 +16,9 @@ Follow [workflows](../../../docs/agent-workflows.md) and [safety](../../../docs/
    Distinguish observations from inference; record commands, results, and explained skips.
 3. Report health, stale issues, untracked merges, and correlation gaps with Linear/main citations.
    Propose tracker changes without applying them.
-4. Check open PRs and active worktrees. Group issues into 1–4 lanes without overlapping files or cross-lane
-   dependencies. Rank open `LAW-` issues first: each one is a lawyer blocked on live work, so it outranks an `ENG-`
+4. Check open PRs and active worktrees. Drop any issue an open pull request already links, and do not
+   touch a path an open pull request or active worktree already changes. Group the rest into 1–4 lanes
+   without overlapping files or cross-lane dependencies. Rank open `LAW-` issues first: each one is a lawyer blocked on live work, so it outranks an `ENG-`
    issue of equal priority, and ready `LAW-` work takes the first lane. Where a `LAW-` issue is blocked on an `ENG-`
    issue, the unblocking `ENG-` issue inherits that rank.
 5. Ask only material scope, acceptance, or access questions before finalizing prompts. Include answers and defaults.

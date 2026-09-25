@@ -33,6 +33,11 @@ const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractiona
 const NEON_NOTATIONS_YAML: &str = include_str!("../locales/en/neon/notations.yaml");
 const NEON_NAVIGATOR_YAML: &str = include_str!("../locales/en/neon/navigator.yaml");
 const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml");
+/// `/delete-your-debt` — Neon's own gateway to the DeleteYourDebt.com
+/// practice. The first of a family of Neon-only practice gateways; see
+/// [`views::locales::KNOWN_PAGES`].
+const NEON_GATEWAY_DELETE_YOUR_DEBT_YAML: &str =
+    include_str!("../locales/en/neon/gateway-delete-your-debt.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
@@ -95,6 +100,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "notations") => Some(NEON_NOTATIONS_YAML),
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
+        (BrandKey::Neon, "gateway-delete-your-debt") => Some(NEON_GATEWAY_DELETE_YOUR_DEBT_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
             Some(NEON_SERVICES_CATALOG_YAML)
         }
@@ -933,6 +939,35 @@ pub fn legal_services(branding: &views::brand::Branding) -> PageContent {
     )
 }
 
+/// `/delete-your-debt` — Neon's own gateway page naming DeleteYourDebt.com as
+/// the destination for collection-defense work.
+///
+/// The hero CTA's `href` is not authored in `gateway-delete-your-debt.yaml`
+/// because a catalog file cannot know which deployment (production or
+/// staging) is rendering it. It is filled here the same way
+/// [`home_for_host`] fills a sibling practice's address: from
+/// [`sibling_practice_href`], resolved against `deployment_host`. The YAML's
+/// own `hero_cta.href` is a production fallback, kept only so the catalog
+/// still satisfies the typed schema; every real render overwrites it.
+pub fn delete_your_debt_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(
+        load_page(branding, "gateway-delete-your-debt"),
+        None,
+        branding,
+    );
+    if let Some(href) =
+        sibling_practice_href(views::brand::BrandKey::DeleteYourDebt, deployment_host)
+    {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
 /// The public notation format explanation, loaded from the English catalog.
 pub(crate) fn notations_content() -> PageContent {
     let branding = &views::brand::DEFAULT_BRANDING;
@@ -1429,6 +1464,50 @@ mod tests {
         assert_eq!(
             staging.estate_href.as_deref(),
             Some("https://staging.vestaestateplanning.com")
+        );
+    }
+
+    /// The gateway's CTA resolves the CTA destination from the actual
+    /// deployment host, the same way `home_for_host`'s sibling links do — not
+    /// from a hardcoded string in the YAML.
+    #[test]
+    fn delete_your_debt_gateway_resolves_the_cta_per_deployment() {
+        let production =
+            delete_your_debt_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.deleteyourdebt.com"
+        );
+
+        let staging =
+            delete_your_debt_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.deleteyourdebt.com"
+        );
+    }
+
+    /// The gateway's label names the destination, and it is Neon's own
+    /// `MarketingPageCopy` (the practice skin, so its hero CTA actually
+    /// renders — see `webapp::marketing_page`'s skin-gated hero).
+    #[test]
+    fn delete_your_debt_gateway_wears_the_practice_skin_and_names_the_destination() {
+        let content = delete_your_debt_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit DeleteYourDebt.com"
         );
     }
 

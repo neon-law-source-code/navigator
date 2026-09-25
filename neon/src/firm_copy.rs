@@ -21,6 +21,15 @@ pub fn legal_services(branding: &views::brand::Branding) -> PageContent {
     locales::legal_services(branding)
 }
 
+/// `/delete-your-debt` — Neon's own gateway to the DeleteYourDebt.com
+/// practice. See `locales/en/neon/gateway-delete-your-debt.yaml`.
+pub fn delete_your_debt_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::delete_your_debt_gateway(branding, deployment_host)
+}
+
 /// The regulated claims on the firm's public pages.
 ///
 /// `/navigator` and `/services` are the firm's, so the copy and the guards that
@@ -516,6 +525,72 @@ mod firm_copy_tests {
                 amount: "$25".to_string(),
                 plan: "Business plan".to_string(),
             })
+        );
+    }
+
+    /// The `/delete-your-debt` gateway names the destination and the firm
+    /// behind it, and its CTA is a destination-named handoff — never a claim
+    /// that Neon itself does the collection-defense work.
+    #[test]
+    fn the_delete_your_debt_gateway_names_the_destination_and_the_firm() {
+        let content = super::delete_your_debt_gateway(&views::brand::DEFAULT_BRANDING, None);
+        let text = format!(
+            "{} {} {} {} {}",
+            content.title,
+            content.tagline,
+            content.hero_lead,
+            content.meta_description,
+            page_text(&content.bands)
+        );
+        assert!(
+            text.contains("DeleteYourDebt.com"),
+            "the gateway names the destination by its proper name: {text}"
+        );
+        assert!(
+            text.contains("Shook Law PLLC"),
+            "the gateway factually identifies the destination as a Shook Law PLLC practice: {text}"
+        );
+        let cta = content
+            .hero_cta
+            .as_ref()
+            .expect("the gateway has a hero CTA");
+        assert_eq!(cta.label, "Visit DeleteYourDebt.com");
+    }
+
+    /// The hard rule from ENG-897: never promise debt is erased, reduced,
+    /// settled, or deleted, and the clarifier that draws that line survives.
+    #[test]
+    fn the_delete_your_debt_gateway_makes_no_outcome_promise() {
+        let content = super::delete_your_debt_gateway(&views::brand::DEFAULT_BRANDING, None);
+        let text = format!(
+            "{} {} {} {} {}",
+            content.title,
+            content.tagline,
+            content.hero_lead,
+            content.meta_description,
+            page_text(&content.bands)
+        )
+        .to_lowercase();
+        for promise in [
+            "we guarantee",
+            "guaranteed result",
+            "erase your debt",
+            "erase debt",
+            "delete your debt",
+            "eliminate your debt",
+            "reduce what you owe",
+            "settle your debt",
+            "negotiate your balance",
+            "pennies on the dollar",
+        ] {
+            assert!(
+                !text.contains(promise),
+                "the gateway promises {promise:?}: {text}"
+            );
+        }
+        assert!(
+            text.contains("does not settle debts") || text.contains("do not settle debts"),
+            "the clarifier survives: {text}"
         );
     }
 

@@ -298,6 +298,10 @@ fn truncated(s: &str) -> String {
 #[tokio::main]
 async fn main() {
     ListWorld::cucumber()
+        // Scenarios share the process-wide embedded SurrealDB from
+        // `features::shared_surreal`; releasing engine handles in parallel
+        // can drop an embedded runtime from another scenario's async task.
+        .max_concurrent_scenarios(1)
         .run_and_exit("tests/features/portal_projects_list.feature")
         .await;
 }

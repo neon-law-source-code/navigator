@@ -41,25 +41,35 @@ async fn get(app: &axum::Router, host: &str, path: &str) -> axum::response::Resp
         .expect("response")
 }
 
-/// A published brand answers an empty testimonials page and an empty home.
-/// Neither invents a quote card when the store has no approved row.
+/// A published brand answers its advertised testimonials route and home.
+/// Neither invents a quote card when the store has no approved row; brands
+/// that do not publish testimonials keep that route unpublished.
 async fn assert_clean_empty(app: &axum::Router, host: &str, key: BrandKey) {
     let response = get(app, host, "/testimonials").await;
-    assert_eq!(
-        response.status(),
-        200,
-        "{} testimonials route",
-        key.as_str()
-    );
-    let testimonials = body(response).await;
-    assert!(
-        testimonials.contains("Testimonials"),
-        "{host}: {testimonials}"
-    );
-    assert!(
-        !testimonials.contains("testimonial-card"),
-        "{host}: {testimonials}"
-    );
+    if key.publishes_firm_path("/testimonials") {
+        assert_eq!(
+            response.status(),
+            200,
+            "{} testimonials route",
+            key.as_str()
+        );
+        let testimonials = body(response).await;
+        assert!(
+            testimonials.contains("Testimonials"),
+            "{host}: {testimonials}"
+        );
+        assert!(
+            !testimonials.contains("testimonial-card"),
+            "{host}: {testimonials}"
+        );
+    } else {
+        assert_eq!(
+            response.status(),
+            404,
+            "{} does not publish testimonials",
+            key.as_str()
+        );
+    }
 
     let response = get(app, host, "/").await;
     assert_eq!(response.status(), 200, "{} home route", key.as_str());

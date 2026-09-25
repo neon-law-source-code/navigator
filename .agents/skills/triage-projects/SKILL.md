@@ -9,7 +9,8 @@ Follow [workflows](../../../docs/agent-workflows.md) and [safety](../../../docs/
 
 1. Refresh `origin/main`. Page through Linear projects, initiatives, issues, and selected conversations on both teams:
    Engineering (`ENG-`) and the `LAW` team, whose issues are what lawyers file when a matter's Project repository blocks
-   them. Correlate merged PRs across scoped repositories, preferring GitHub linkage.
+   them. Correlate merged PRs across scoped repositories, preferring GitHub linkage. In the same
+   pass, record every open pull request: repository, number, changed paths, and linked issue identifiers.
 2. Run `rtk cargo build -p cli`, relevant CLI commands against safe fixtures, and focused tests. Use RTK only to compact
    agent-facing Cargo output; it does not improve compile time or replace raw output where exact diagnostics matter.
    Distinguish observations from inference; record commands, results, and explained skips.

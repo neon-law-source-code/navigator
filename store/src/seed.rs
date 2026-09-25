@@ -2878,7 +2878,7 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
         key: "death-and-divorce",
         name: "Death & Divorce",
         typeface: "pirata-one",
-        primary_hex: "#BD5B3A",
+        primary_hex: "#B45535",
     },
 ];
 

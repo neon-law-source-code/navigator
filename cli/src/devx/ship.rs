@@ -4091,7 +4091,7 @@ mod tests {
                 "staging.lawyershook.com",
                 "staging.summonsdefense.nyc",
                 "staging.daybridgedivorce.com",
-                "staging.deathandivorcelaw.com",
+                "staging.deathanddivorcelaw.com",
             ],
             "a staging public host pulls in only the other brands' staging hosts"
         );

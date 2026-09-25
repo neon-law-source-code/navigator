@@ -39,9 +39,9 @@ own persistence logic.
   an asset-lane value — the same enum OpenAPI publishes on that operation. `navigator site sync` uses this door for each
   staged file and the scoped document `PATCH` door for pointer visibility; it never calls object storage or writes the
   store itself. `navigator site document slug` uses that same `PATCH` to set `slug` (and optionally `kind`) on a row
-  whose slug is null. `navigator site document repair` posts to
-  `POST /app/api/projects/{id}/documents/{asset_id}/storage`, an admin door that restores a missing object from a
-  same-hash sibling in the matter.
+  whose slug is null. `navigator site document repair` posts to `POST
+  /app/api/projects/{id}/documents/{asset_id}/storage`, an admin door that restores a missing object from a same-hash
+  sibling in the matter.
 - **MCP.** A tool in `mcp/src/tools/` translates its arguments into a shared command. The `mcp` crate cannot depend on
   `portal`, so it converges at the `store` / `workflows` layer — e.g. `link_person_project` calls
   `store::participation::add_participant` / `update_participant`, the same commands the participation `/app/api` door

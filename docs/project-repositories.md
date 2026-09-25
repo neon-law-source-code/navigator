@@ -233,8 +233,8 @@ one-click, one-confirm control removes the second reader a pull request review g
 
 **A slugless row receives its slug in place.** `navigator site document slug` sets `slug`, and optionally `kind`, on a
 row whose slug is null. The server refuses a row that already has a slug, and a slug that already names a revision
-chain, so the write never merges two documents. `sha256`, the storage key, and the bytes stay unchanged. Renaming a
-slug that already exists is a re-filing, not this command. A missing storage object is `navigator site document repair`,
+chain, so the write never merges two documents. `sha256`, the storage key, and the bytes stay unchanged. Renaming a slug
+that already exists is a re-filing, not this command. A missing storage object is `navigator site document repair`,
 which copies bytes from a same-hash sibling in the matter onto the content-addressed key, or re-points the row at that
 key, then verifies the sha256. It does not expunge the document.
 

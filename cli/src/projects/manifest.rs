@@ -802,6 +802,24 @@ fn lint_rowless(path: &Path, mapping: &serde_yaml::Mapping) -> Vec<ManifestFindi
 /// Parse a manifest that has already passed [`lint_contents`] (or a fixture
 /// known to be well-shaped). Unknown keys are ignored here the way serde
 /// default-denies nothing: callers that need the closed set call [`lint`].
+/// Read and parse `navigator.yaml` from `dir`. `None` covers both a missing
+/// file and one that fails to parse — callers that only want an optional
+/// fallback (a default `--host` or Project code) treat both the same way,
+/// the same as `project gate`'s own live-status check does.
+pub fn read(dir: &Path) -> Option<Manifest> {
+    let contents = std::fs::read_to_string(dir.join(FILE)).ok()?;
+    parse(&contents).ok()
+}
+
+/// Trim a manifest field to `None` if it is missing or blank, so a
+/// `host: ""` or all-whitespace value can never masquerade as declared.
+pub fn non_empty(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 pub fn parse(contents: &str) -> Result<Manifest, String> {
     let document: serde_yaml::Value = serde_yaml::from_str(contents)
         .map_err(|error| format!("navigator.yaml is not valid YAML: {error}"))?;

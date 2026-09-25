@@ -7,11 +7,13 @@
 //! through the same doors instead of inventing a second provisioning path.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 
+use crate::projects::manifest;
 use crate::projects::surfaces::{self, VisibleProject};
 use crate::remote::{self, IntegrationOutcome};
 
@@ -170,6 +172,43 @@ fn one_integration_result(results: &[IntegrationOutcome]) -> Result<IntegrationO
     }
 }
 
+/// Resolve `--host` and the Project code against `navigator.yaml` in `dir`
+/// before touching the network. A repository root already names both, the
+/// same way `project gate` reads them, so a bare `navigator project setup`
+/// run there needs neither flag. An explicit `--host` that disagrees with the
+/// manifest is refused rather than guessed at — the two can only name
+/// different deployments by mistake.
+fn resolve_from_manifest(
+    dir: &Path,
+    host: Option<&str>,
+    project_code: Option<&str>,
+    all: bool,
+) -> Result<(Option<String>, Option<String>)> {
+    let found = manifest::read(dir);
+    let manifest_host = found
+        .as_ref()
+        .and_then(|manifest| manifest::non_empty(manifest.host.as_deref()));
+    let manifest_project = found
+        .as_ref()
+        .and_then(|manifest| manifest::non_empty(manifest.project.as_deref()));
+
+    if let (Some(flag), Some(declared)) = (host, manifest_host.as_deref()) {
+        if flag != declared {
+            return Err(anyhow!(
+                "--host {flag} disagrees with navigator.yaml's project.host {declared}; refusing to guess which deployment you mean"
+            ));
+        }
+    }
+
+    let resolved_host = host.map(str::to_string).or(manifest_host);
+    let resolved_project = if all {
+        project_code.map(str::to_string)
+    } else {
+        project_code.map(str::to_string).or(manifest_project)
+    };
+    Ok((resolved_host, resolved_project))
+}
+
 /// Run setup for one visible Project or every visible Project admitted by the
 /// authenticated list. Each resource is attempted even if an earlier one
 /// fails, so a later invocation can retry only the incomplete provider work.
@@ -179,6 +218,16 @@ pub async fn run(
     all: bool,
     json: bool,
 ) -> ExitCode {
+    let (host, project_code) = match resolve_from_manifest(Path::new("."), host, project_code, all)
+    {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            eprintln!("navigator: {error:#}");
+            return ExitCode::from(2);
+        }
+    };
+    let host = host.as_deref();
+    let project_code = project_code.as_deref();
     let (base, token) = match remote::resolve(host) {
         Ok(pair) => pair,
         Err(error) => {
@@ -235,8 +284,55 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::{resource, succeeded, surface_results};
+    use super::{resolve_from_manifest, resource, succeeded, surface_results};
     use store::project_surfaces::{ProjectSurfaces, SurfaceStatus};
+
+    fn manifest_dir(contents: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("navigator.yaml"), contents).unwrap();
+        dir
+    }
+
+    #[test]
+    fn no_flags_resolves_host_and_code_from_the_manifest() {
+        let dir = manifest_dir("project:\n  host: www.neonlaw.com\n  name: acme\n");
+        let (host, code) = resolve_from_manifest(dir.path(), None, None, false).unwrap();
+        assert_eq!(host.as_deref(), Some("www.neonlaw.com"));
+        assert_eq!(code.as_deref(), Some("acme"));
+    }
+
+    #[test]
+    fn an_explicit_flag_overrides_a_manifest_with_no_conflict() {
+        let dir = manifest_dir("project:\n  host: www.neonlaw.com\n  name: acme\n");
+        let (host, code) =
+            resolve_from_manifest(dir.path(), None, Some("other-code"), false).unwrap();
+        assert_eq!(host.as_deref(), Some("www.neonlaw.com"));
+        assert_eq!(code.as_deref(), Some("other-code"));
+    }
+
+    #[test]
+    fn a_conflicting_host_flag_is_refused_rather_than_guessed() {
+        let dir = manifest_dir("project:\n  host: www.neonlaw.com\n  name: acme\n");
+        let error = resolve_from_manifest(dir.path(), Some("staging.neonlaw.com"), None, false)
+            .unwrap_err();
+        assert!(error.to_string().contains("disagrees"));
+    }
+
+    #[test]
+    fn all_ignores_the_manifest_project_code() {
+        let dir = manifest_dir("project:\n  host: www.neonlaw.com\n  name: acme\n");
+        let (host, code) = resolve_from_manifest(dir.path(), None, None, true).unwrap();
+        assert_eq!(host.as_deref(), Some("www.neonlaw.com"));
+        assert_eq!(code, None);
+    }
+
+    #[test]
+    fn no_manifest_resolves_to_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (host, code) = resolve_from_manifest(dir.path(), None, None, false).unwrap();
+        assert_eq!(host, None);
+        assert_eq!(code, None);
+    }
 
     #[test]
     fn skipped_existing_surfaces_are_required_setup_failures() {

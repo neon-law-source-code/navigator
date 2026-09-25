@@ -45,14 +45,7 @@ pub(crate) async fn live_status(dir: &Path) -> ExitCode {
 /// The deployment `navigator.yaml` names, which is the only host this gate
 /// speaks to. A repository that names none has no live row to check.
 fn manifest_host(dir: &Path) -> Option<String> {
-    let contents = std::fs::read_to_string(dir.join(manifest::FILE)).ok()?;
-    let parsed = manifest::parse(&contents).ok()?;
-    parsed
-        .host
-        .as_deref()
-        .map(str::trim)
-        .filter(|host| !host.is_empty())
-        .map(str::to_string)
+    manifest::non_empty(manifest::read(dir)?.host.as_deref())
 }
 
 fn can_mint_ci_session() -> bool {

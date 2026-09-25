@@ -650,8 +650,10 @@ enum ProjectsCmd {
     /// authenticated door and reported separately. A failed resource is safe
     /// to retry; already-recorded provider identities are never replaced.
     Setup {
-        /// Project code. Omit only when `--all` is supplied.
-        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        /// Project code. Defaults to `navigator.yaml`'s `project.name` when
+        /// run from a Project repository root; required otherwise, unless
+        /// `--all` is supplied.
+        #[arg(conflicts_with = "all")]
         project_code: Option<String>,
         /// Complete every Project visible to this login.
         #[arg(long)]

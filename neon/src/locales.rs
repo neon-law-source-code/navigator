@@ -1682,7 +1682,7 @@ mod tests {
 
     /// The `/immigration` gateway's CTA resolves per deployment, names
     /// Abhaya Immigration, never promises USCIS approval or timing, and
-    /// never coins a "{site_name} Immigration" trade name.
+    /// never coins a fused "Neon Law Immigration" trade name.
     #[test]
     fn immigration_gateway_never_promises_uscis_outcomes_or_a_fused_trade_name() {
         let production =

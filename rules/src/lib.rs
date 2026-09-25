@@ -89,6 +89,7 @@ pub mod m058;
 pub mod m059;
 pub mod m060;
 pub mod m061;
+pub mod project_skill;
 pub mod questionnaire_hover;
 pub mod s102;
 pub mod s103;
@@ -185,6 +186,7 @@ pub use m058::M058BlanksAroundTables;
 pub use m059::M059DescriptiveLinkText;
 pub use m060::M060TableColumnStyle;
 pub use m061::M061WebPortableLink;
+pub use project_skill::{catalog_violations as project_skill_catalog_violations, ProjectSkill, ProjectSkillError};
 pub use questionnaire_hover::{
     hover_markdown as questionnaire_prompt_hover, resolve_prompt, PromptProvenance, ResolvedPrompt,
 };
@@ -348,6 +350,8 @@ pub fn description_for_code(code: &str) -> &'static str {
             "A subsection under a numbered section must be a lettered block quote, not a \
              flush-left bold-led paragraph"
         }
+        "N126" => "Project Skill catalog entry frontmatter must parse and declare a seeded jurisdiction",
+        "N127" => "Project Skill catalog entries must have a unique (jurisdiction, practice_area) pair",
         "E001" => "Event must declare both a `starts_at` timestamp and a `timezone`",
         "E002" => "A file is either an event or a notation template, never both",
         "E004" => "Event must declare a `luma_url` to check it out on Luma",

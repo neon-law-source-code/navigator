@@ -3445,6 +3445,15 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     }
+    // Cross-file `N126`/`N127`: every `skills/` catalog entry must parse and
+    // declare a unique `(jurisdiction, practice_area)` pair.
+    match rules::project_skill_catalog_violations(dir, &rules::DefaultFileFilter::default()) {
+        Ok(mut found) => violations.append(&mut found),
+        Err(error) => {
+            eprintln!("navigator: {error}");
+            return ExitCode::from(2);
+        }
+    }
 
     let mut gate_errors = report_content_findings(dir, ci, &report, &violations);
 

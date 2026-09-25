@@ -47,9 +47,12 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
             codes.insert(rule.code());
         }
     }
-    // N111 and N124 are cross-file checks, not `Rule` impls, so no rule-set above carries them.
+    // N111, N124, N126, and N127 are cross-file checks, not `Rule` impls, so no rule-set above
+    // carries them.
     codes.insert("N111");
     codes.insert("N124");
+    codes.insert("N126");
+    codes.insert("N127");
     codes.insert(SEED_DOCUMENT_CODE);
     codes.insert(LOCALE_DOCUMENT_CODE);
     codes.insert(DOCUMENT_POINTER_CODE);
@@ -88,6 +91,6 @@ fn every_shipped_code_has_an_entry_in_the_gate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_one_hundred_and_three() {
-    assert_eq!(all_shipped_codes().len(), 103);
+fn the_shipped_code_count_is_one_hundred_and_five() {
+    assert_eq!(all_shipped_codes().len(), 105);
 }

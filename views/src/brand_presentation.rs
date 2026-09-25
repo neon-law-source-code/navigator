@@ -81,7 +81,7 @@ pub const TYPEFACES: &[Typeface] = &[
         stack: "ui-sans-serif, system-ui, sans-serif",
         operator_licence_required: false,
     },
-    // The six practice-brand faces. All OFL-1.1, so none sets
+    // The seven practice-brand faces. All OFL-1.1, so none sets
     // `operator_licence_required`: a fork may redistribute them, unlike GORP.
     // Their bytes ride the same bucket lane as every other web font here, so
     // a fresh clone carries none of them and no request ever leaves for a
@@ -134,7 +134,7 @@ pub const TYPEFACES: &[Typeface] = &[
     },
 ];
 
-/// Primaries and accents taken from the nine compiled house-brand token
+/// Primaries and accents taken from the ten compiled house-brand token
 /// sheets, named so a select can refuse free text.
 pub const PALETTE: &[Palette] = &[
     Palette {
@@ -245,7 +245,7 @@ pub const PALETTE: &[Palette] = &[
             border: Some("#8f842d"),
         },
     },
-    // --- The six practice brands -------------------------------------
+    // --- The seven practice brands -----------------------------------
     // Every primary below is a light-mode colour that clears WCAG AA on
     // white; each also carries a dark-mode primary raised to clear 7:1 on
     // the dark canvas, because the specified colours fail AA outright
@@ -485,11 +485,11 @@ pub const PALETTE: &[Palette] = &[
         id: "death-and-divorce",
         label: "Death & Divorce terracotta",
         light: PaletteScheme {
-            primary: "#BD5B3A",
-            primary_hover: "#9F4328",
-            primary_active: "#7F321E",
-            on_primary: "#111111",
-            on_brand: "#111111",
+            primary: "#B45535",
+            primary_hover: "#963F27",
+            primary_active: "#78321F",
+            on_primary: "#FFFFFF",
+            on_brand: "#FFFFFF",
             link: "#8A321E",
             link_hover: "#652313",
             surface_subtle: "#f5f1ee",
@@ -987,6 +987,7 @@ mod tests {
                 "eb-garamond",
                 "source-sans-3",
                 "source-serif-4",
+                "pirata-one",
                 "mukta",
                 "public-sans",
                 "libre-franklin"

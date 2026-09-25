@@ -9743,8 +9743,16 @@ async fn canonical_host_passes_through_when_disabled() {
 /// arrive in either order, matching `features/tests/brand_routing.rs`'s own
 /// matcher for the same tag.
 fn page_declares_og_site_name(body: &str, brand: &str) -> bool {
-    body.contains(&format!("og:site_name\" content=\"{brand}\""))
-        || body.contains(&format!("content=\"{brand}\" property=\"og:site_name\""))
+    let numeric_entity = brand.replace('&', "&#38;");
+    let named_entity = brand.replace('&', "&amp;");
+    [brand, numeric_entity.as_str(), named_entity.as_str()]
+        .iter()
+        .any(|candidate| {
+            body.contains(&format!("og:site_name\" content=\"{candidate}\""))
+                || body.contains(&format!(
+                    "content=\"{candidate}\" property=\"og:site_name\""
+                ))
+        })
 }
 
 #[derive(Clone, Copy)]
@@ -9821,6 +9829,13 @@ const LIVE_HOME_CONTRACTS: &[(views::brand::BrandKey, LiveHomeContract)] = &[
         LiveHomeContract::Authored {
             title: "<title>Daybridge Divorce Law | Home</title>",
             copy: "A way through divorce.",
+        },
+    ),
+    (
+        views::brand::BrandKey::DeathAndDivorce,
+        LiveHomeContract::Authored {
+            title: "<title>Death & Divorce</title>",
+            copy: "For endings, transitions, and the beyond.",
         },
     ),
 ];

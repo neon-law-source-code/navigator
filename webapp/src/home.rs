@@ -797,6 +797,7 @@ mod tests {
                         company: None,
                         bare: None,
                         estate: None,
+                        death_and_divorce: None,
                     },
                 }
             }

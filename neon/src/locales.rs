@@ -771,13 +771,10 @@ pub fn home_for_host(
         meta_description: copy.meta_description,
         heading: copy.heading,
         lead: copy.lead,
-        contact_href: if matches!(
-            branding.brand_key,
-            BrandKey::Vesta | BrandKey::DeleteYourData
-        ) {
-            branding.consultation_url.to_string()
-        } else {
-            format!("mailto:{}", branding.firm_email)
+        contact_href: match branding.brand_key {
+            BrandKey::Misericordia => "/contact".to_string(),
+            BrandKey::Vesta | BrandKey::DeleteYourData => branding.consultation_url.to_string(),
+            _ => format!("mailto:{}", branding.firm_email),
         },
         contact_label: copy.contact_label,
         service: copy.service.map(|ServiceSectionCopy { heading, body }| {
@@ -1222,6 +1219,27 @@ mod tests {
         assert_eq!(content.heading, "Keep building.");
         assert!(content.company.is_some());
         assert!(content.practices.is_empty());
+    }
+
+    /// Misericordia's call-labeled home CTA opens the published contact page,
+    /// while the phone remains reachable from the rendered home content.
+    #[test]
+    fn misericordia_home_cta_reaches_contact_page_and_keeps_phone_reachable() {
+        let branding =
+            views::brand::BrandKey::Misericordia.resolve_branding(&views::brand::DEFAULT_BRANDING);
+        let content = home(branding);
+
+        assert_eq!(content.contact_label, "Call for a free consultation");
+        assert_eq!(content.contact_href, "/contact");
+        assert!(content.lead.contains("+1 510 800 2080"));
+        assert!(content
+            .service
+            .as_ref()
+            .expect("Misericordia renders its service copy")
+            .body
+            .iter()
+            .flatten()
+            .any(|run| run.href.as_deref() == Some("tel:+15108002080")));
     }
 
     /// The firm's own site markets to businesses alone, never individuals.

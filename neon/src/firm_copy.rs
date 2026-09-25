@@ -39,6 +39,15 @@ pub fn delete_your_data_gateway(
     locales::delete_your_data_gateway(branding, deployment_host)
 }
 
+/// `/immigration` — Neon's own gateway to the Abhaya Immigration practice.
+/// See `locales/en/neon/gateway-immigration.yaml`.
+pub fn immigration_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    locales::immigration_gateway(branding, deployment_host)
+}
+
 /// The regulated claims on the firm's public pages.
 ///
 /// `/navigator` and `/services` are the firm's, so the copy and the guards that

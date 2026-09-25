@@ -184,6 +184,7 @@ async fn the_sitemap_advertises_the_firms_pages() {
         "/navigator",
         "/delete-your-debt",
         "/delete-your-data",
+        "/immigration",
         "/notations",
         "/contact",
         "/blog",
@@ -228,6 +229,24 @@ async fn only_neon_advertises_the_delete_your_data_gateway() {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert!(
             !body.contains("/delete-your-data<"),
+            "{host} must not advertise Neon's gateway: {body}"
+        );
+    }
+}
+
+/// Same as above, for the `/immigration` gateway.
+#[tokio::test]
+async fn only_neon_advertises_the_immigration_gateway() {
+    let app = app().await;
+    for host in [
+        "staging.deleteyourdata.com",
+        "staging.lawyershook.com",
+        "staging.abhayaimmigration.com",
+    ] {
+        let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            !body.contains("/immigration<"),
             "{host} must not advertise Neon's gateway: {body}"
         );
     }

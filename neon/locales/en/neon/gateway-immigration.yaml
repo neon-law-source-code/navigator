@@ -1,0 +1,28 @@
+head_title: "Immigration | {site_name}"
+meta_description: >-
+  Immigration work is offered through Abhaya Immigration, a Shook Law PLLC
+  practice: family petitions, employment visas, green cards, naturalization,
+  and consular processing. Government filing fees are separate, and no
+  approval or timeline is promised.
+title: Immigration
+tagline: Immigration help, through Abhaya.
+hero_mark: gavel
+hero_lead: >-
+  Family petitions, employment visas, green cards, naturalization, and
+  consular processing are offered through Abhaya Immigration, a Shook Law
+  PLLC practice. Government filing fees are set by USCIS and are separate
+  from the attorney fee. We cannot promise a case will be approved or how
+  long it will take; USCIS decides both.
+hero_cta:
+  href: "https://www.abhayaimmigration.com/"
+  label: Visit Abhaya Immigration
+skin: practice
+bands:
+  - kind: statement
+    heading: A Shook Law PLLC practice
+    body:
+      - - text: >-
+              Abhaya Immigration is a practice of Shook Law PLLC, the law
+              firm behind {site_name}. It trades under its own name; the
+              work is not offered as "{site_name} Immigration." A licensed
+              attorney handles the work there.

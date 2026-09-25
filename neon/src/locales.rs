@@ -42,6 +42,10 @@ const NEON_GATEWAY_DELETE_YOUR_DEBT_YAML: &str =
 /// practice. Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
 const NEON_GATEWAY_DELETE_YOUR_DATA_YAML: &str =
     include_str!("../locales/en/neon/gateway-delete-your-data.yaml");
+/// `/immigration` — Neon's own gateway to the Abhaya Immigration practice.
+/// Same family as [`NEON_GATEWAY_DELETE_YOUR_DEBT_YAML`].
+const NEON_GATEWAY_IMMIGRATION_YAML: &str =
+    include_str!("../locales/en/neon/gateway-immigration.yaml");
 /// The firm's individual services as records. Only Neon publishes one; the
 /// other house brands render `/services` without an individual-services band.
 const NEON_SERVICES_CATALOG_YAML: &str = include_str!("../locales/en/neon/services-catalog.yaml");
@@ -106,6 +110,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::Neon, "gateway-delete-your-debt") => Some(NEON_GATEWAY_DELETE_YOUR_DEBT_YAML),
         (BrandKey::Neon, "gateway-delete-your-data") => Some(NEON_GATEWAY_DELETE_YOUR_DATA_YAML),
+        (BrandKey::Neon, "gateway-immigration") => Some(NEON_GATEWAY_IMMIGRATION_YAML),
         (BrandKey::Neon, views::locales::services::SERVICES_CATALOG_STEM) => {
             Some(NEON_SERVICES_CATALOG_YAML)
         }
@@ -992,6 +997,22 @@ pub fn delete_your_data_gateway(
     content
 }
 
+/// `/immigration` — Neon's own gateway page naming Abhaya Immigration as the
+/// destination for immigration work. See [`delete_your_debt_gateway`], whose
+/// CTA-resolution shape this mirrors.
+pub fn immigration_gateway(
+    branding: &views::brand::Branding,
+    deployment_host: Option<&str>,
+) -> PageContent {
+    let mut content = marketing_page(load_page(branding, "gateway-immigration"), None, branding);
+    if let Some(href) = sibling_practice_href(views::brand::BrandKey::Abhaya, deployment_host) {
+        if let Some(cta) = content.hero_cta.as_mut() {
+            cta.href = href;
+        }
+    }
+    content
+}
+
 /// The public notation format explanation, loaded from the English catalog.
 pub(crate) fn notations_content() -> PageContent {
     let branding = &views::brand::DEFAULT_BRANDING;
@@ -1609,6 +1630,90 @@ mod tests {
         }
         assert!(
             text.contains("does not promise") || text.contains("cannot promise"),
+            "and says so plainly: {text}"
+        );
+    }
+
+    /// The `/immigration` gateway's CTA resolves per deployment, names
+    /// Abhaya Immigration, never promises USCIS approval or timing, and
+    /// never coins a "{site_name} Immigration" trade name.
+    #[test]
+    fn immigration_gateway_never_promises_uscis_outcomes_or_a_fused_trade_name() {
+        let production =
+            immigration_gateway(&views::brand::DEFAULT_BRANDING, Some("www.neonlaw.com"));
+        assert_eq!(
+            production
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://www.abhayaimmigration.com"
+        );
+        let staging =
+            immigration_gateway(&views::brand::DEFAULT_BRANDING, Some("staging.neonlaw.com"));
+        assert_eq!(
+            staging
+                .hero_cta
+                .as_ref()
+                .expect("gateway carries a hero CTA")
+                .href,
+            "https://staging.abhayaimmigration.com"
+        );
+
+        let content = immigration_gateway(&views::brand::DEFAULT_BRANDING, None);
+        assert!(matches!(
+            content.skin,
+            webapp::marketing_page::PageSkin::Practice
+        ));
+        assert_eq!(
+            content.hero_cta.as_ref().expect("hero CTA").label,
+            "Visit Abhaya Immigration"
+        );
+        let text = format!(
+            "{} {}",
+            content.hero_lead,
+            content
+                .bands
+                .iter()
+                .filter_map(|band| match band {
+                    RenderedBand::Statement { body, .. } => Some(
+                        body.iter()
+                            .flatten()
+                            .map(|run| run.text.clone())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    ),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+        .to_lowercase();
+        assert!(text.contains("abhaya immigration"), "{text}");
+        // "neon law immigration" may appear only inside the explicit denial
+        // sentence — the same disclaim-not-duplicate shape
+        // `delete_your_debt_only_names_settlement_to_disclaim_it` checks.
+        for sentence in text.split('.') {
+            if sentence.contains("neon law immigration") {
+                assert!(
+                    sentence.contains("not offered as"),
+                    "fused trade name outside a denial: {sentence:?}"
+                );
+            }
+        }
+        for claim in [
+            "guaranteed approval",
+            "fast-track",
+            "expedite your case",
+            "approval is certain",
+        ] {
+            assert!(
+                !text.contains(claim),
+                "immigration gateway implies {claim:?}"
+            );
+        }
+        assert!(
+            text.contains("cannot promise"),
             "and says so plainly: {text}"
         );
     }

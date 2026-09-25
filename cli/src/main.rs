@@ -682,6 +682,19 @@ enum ProjectSkillCmd {
         jurisdiction: String,
         practice_area: String,
     },
+    /// Pin a catalog entry's version onto the current Project's
+    /// `navigator.yaml`, and scaffold each Notation it bundles into
+    /// `templates/`.
+    ///
+    /// Reads the compiled-in catalog only — there is no network fetch.
+    /// Idempotent: re-running `use` for a pair already pinned at the same
+    /// version is a no-op, and a new catalog version updates the recorded
+    /// pin in place rather than duplicating it. Run from the Project
+    /// repository root.
+    Use {
+        jurisdiction: String,
+        practice_area: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2594,9 +2607,10 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
 }
 
 /// `navigator project skill ...` — dispatches to `cli/src/projects/skill.rs`.
-/// `list` and `show` read only the compiled-in catalog, so both run from the
-/// current directory — the same current-directory convention `navigator
-/// project gate` uses.
+/// `list` and `show` read only the compiled-in catalog; `use` additionally
+/// reads and writes `./navigator.yaml`, so all three run from the current
+/// directory rather than taking a `--dir` flag — the same current-directory
+/// convention `navigator project gate` uses.
 fn run_project_skill(action: ProjectSkillCmd) -> ExitCode {
     match action {
         ProjectSkillCmd::List => projects::skill::run_list(),
@@ -2604,6 +2618,10 @@ fn run_project_skill(action: ProjectSkillCmd) -> ExitCode {
             jurisdiction,
             practice_area,
         } => projects::skill::run_show(&jurisdiction, &practice_area),
+        ProjectSkillCmd::Use {
+            jurisdiction,
+            practice_area,
+        } => projects::skill::run_use(Path::new("."), &jurisdiction, &practice_area),
     }
 }
 

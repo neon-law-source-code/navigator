@@ -1,16 +1,24 @@
 //! `navigator project skill ...` — the Project Skill catalog
-//! (`skills/<jurisdiction>/<practice_area>.md`, compiled into this binary).
+//! (`skills/<jurisdiction>/<practice_area>.md`, compiled into this binary)
+//! and the pins a Project records against it in its own `navigator.yaml`.
 //!
 //! The catalog is embedded at compile time with [`include_dir`], exactly the
 //! way [`crate::notations_preview`] embeds the notation catalog through
-//! `portal::template_api::bundled_files`. `list` and `show` therefore need no
-//! network call and no database connection — the same bytes `cargo build`
-//! linked in are what a Project will later pin, so a checkout's gate and a
+//! `portal::template_api::bundled_files`. `list`, `show`, and `use` therefore
+//! need no network call and no database connection — the same bytes `cargo
+//! build` linked in are what a Project pins, so a checkout's gate and a
 //! Project's pin can never drift against two different catalogs.
+//! `navigator site projects repository sync-skills` (Agent-skill sync, a
+//! different feature entirely) is retired precisely because it fetched a
+//! catalog over the network; this module deliberately does not reintroduce
+//! that pattern.
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use include_dir::{include_dir, Dir};
+
+use super::manifest;
 
 static SKILLS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../skills");
 
@@ -164,9 +172,103 @@ pub fn run_show(jurisdiction: &str, practice_area: &str) -> ExitCode {
     }
 }
 
+/// `navigator project skill use <jurisdiction> <practice_area>` — pin the
+/// resolved entry's version onto the Project rooted at `dir`, and scaffold
+/// each Notation `code` it bundles.
+#[must_use]
+pub fn run_use(dir: &Path, jurisdiction: &str, practice_area: &str) -> ExitCode {
+    let entries = catalog();
+    let Some(entry) = find(&entries, jurisdiction, practice_area) else {
+        eprintln!(
+            "navigator: {}",
+            unresolved_message(&entries, jurisdiction, practice_area)
+        );
+        return ExitCode::from(1);
+    };
+
+    let manifest_path = dir.join(manifest::FILE);
+    let contents = match std::fs::read_to_string(&manifest_path) {
+        Ok(contents) => contents,
+        Err(error) => {
+            eprintln!("navigator: read {}: {error}", manifest_path.display());
+            return ExitCode::from(2);
+        }
+    };
+    let (updated, changed) =
+        match manifest::pin_skill(&contents, &entry.jurisdiction, &entry.practice_area, &entry.version) {
+            Ok(result) => result,
+            Err(error) => {
+                eprintln!("navigator: {error}");
+                return ExitCode::from(2);
+            }
+        };
+    if changed {
+        if let Err(error) = std::fs::write(&manifest_path, &updated) {
+            eprintln!("navigator: write {}: {error}", manifest_path.display());
+            return ExitCode::from(2);
+        }
+    }
+
+    for code in &entry.notations {
+        if let Err(error) = scaffold_notation(dir, code) {
+            eprintln!("navigator: {error}");
+            return ExitCode::from(2);
+        }
+    }
+
+    if changed {
+        println!(
+            "pinned {}/{} at {}",
+            entry.jurisdiction, entry.practice_area, entry.version
+        );
+    } else {
+        println!(
+            "{}/{} already pinned at {}",
+            entry.jurisdiction, entry.practice_area, entry.version
+        );
+    }
+    ExitCode::SUCCESS
+}
+
+/// Materialize one bundled Notation `code` into this Project's
+/// `templates/<code>.md`, the flat layout `N110` requires of a Project
+/// repository. A no-op when the file already exists — re-running `use`
+/// never overwrites an attorney's edits to a scaffolded template. Reads the
+/// bundled Notation catalog through [`portal::template_api::bundled_files`],
+/// the same compiled-in reader `navigator notation preview`
+/// (`crate::notations_preview::bundled_template`) already resolves a
+/// template's body from, so the catalog is read in exactly one place rather
+/// than embedded a second time.
+fn scaffold_notation(dir: &Path, code: &str) -> Result<(), String> {
+    let target = dir.join("templates").join(format!("{code}.md"));
+    if target.is_file() {
+        return Ok(());
+    }
+    // Matched by the template's own `code:` frontmatter, not its filename
+    // stem: only the `notations/forms/` shelf holds stem == code (`N110`);
+    // a `notations/neon_law/` template's stem (`onboarding.md`) commonly
+    // differs from its stable `code` (`onboarding__letter`).
+    let body = portal::template_api::bundled_files()
+        .into_iter()
+        .find(|(_, bytes)| {
+            std::str::from_utf8(bytes)
+                .ok()
+                .and_then(rules::frontmatter::extract)
+                .and_then(|fm| rules::frontmatter::field(fm, "code"))
+                .as_deref()
+                == Some(code)
+        })
+        .map(|(_, bytes)| bytes)
+        .ok_or_else(|| format!("bundled Notation `{code}` not found in this binary's catalog"))?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| format!("create {}: {error}", parent.display()))?;
+    }
+    std::fs::write(&target, body).map_err(|error| format!("write {}: {error}", target.display()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{catalog, find, unresolved_message};
+    use super::{catalog, find, run_use, unresolved_message};
 
     #[test]
     fn the_catalog_carries_both_seeded_entries() {
@@ -196,5 +298,49 @@ mod tests {
         let message = unresolved_message(&entries, "zz", "estates");
         assert!(message.contains("zz"), "{message}");
         assert!(message.contains("estates"), "{message}");
+    }
+
+    fn scaffold(dir: &std::path::Path, yaml: &str) {
+        std::fs::write(dir.join("navigator.yaml"), yaml).unwrap();
+    }
+
+    #[test]
+    fn use_pins_the_entry_and_scaffolds_its_notations() {
+        let dir = tempfile::tempdir().unwrap();
+        scaffold(dir.path(), "host: staging.neonlaw.com\nproject: acme\n");
+        let code = run_use(dir.path(), "nv", "estates");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        let manifest_contents = std::fs::read_to_string(dir.path().join("navigator.yaml")).unwrap();
+        assert!(manifest_contents.contains("skills"), "{manifest_contents}");
+        assert!(manifest_contents.contains("estates"), "{manifest_contents}");
+        assert!(
+            dir.path().join("templates/onboarding__letter.md").is_file(),
+            "the bundled onboarding__letter notation should be scaffolded"
+        );
+    }
+
+    #[test]
+    fn a_second_use_of_the_same_pin_does_not_duplicate_it() {
+        let dir = tempfile::tempdir().unwrap();
+        scaffold(dir.path(), "host: staging.neonlaw.com\nproject: acme\n");
+        assert_eq!(run_use(dir.path(), "nv", "estates"), std::process::ExitCode::SUCCESS);
+        assert_eq!(run_use(dir.path(), "NV", "estates"), std::process::ExitCode::SUCCESS);
+        let manifest_contents = std::fs::read_to_string(dir.path().join("navigator.yaml")).unwrap();
+        assert_eq!(
+            manifest_contents.matches("practice_area: estates").count(),
+            1,
+            "{manifest_contents}"
+        );
+    }
+
+    #[test]
+    fn use_of_an_unknown_pair_fails_without_touching_the_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml = "host: staging.neonlaw.com\nproject: acme\n";
+        scaffold(dir.path(), yaml);
+        let code = run_use(dir.path(), "zz", "estates");
+        assert_ne!(code, std::process::ExitCode::SUCCESS);
+        let after = std::fs::read_to_string(dir.path().join("navigator.yaml")).unwrap();
+        assert_eq!(after, yaml, "a failed use must not modify navigator.yaml");
     }
 }

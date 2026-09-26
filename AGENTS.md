@@ -14,10 +14,10 @@ to isolate development, and optionally use Kind for a full e2e parity check like
 
 ## Find the term first
 
-Before naming a table, field, state, or UI concept, search the glossary. Run `navigator glossary list` for term titles and
-plain-language descriptions, then `navigator glossary show "<Term>"` for a term's full definition. Use the glossary's
-term when one fits; when none fits, add a glossary entry in `docs/glossary/` in the same change rather than inventing a
-synonym.
+Before naming a table, field, state, or UI concept, search the glossary. Run `navigator glossary list` for term titles
+and plain-language descriptions. Then run `navigator glossary show "<Term>"` for a term's full definition. Use the
+glossary's term when one fits; when none fits, add a glossary entry in `docs/glossary/` in the same change rather than
+inventing a synonym.
 
 ## Helpful commands
 

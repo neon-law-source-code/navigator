@@ -626,6 +626,61 @@ async fn assigning_a_slug_is_lawyer_scoped_and_refuses_a_second_slug() {
     assert_eq!(body["error"], "slug_present");
 }
 
+/// A lawyer replaces a legacy kind the asset lane rejects on a slugged row.
+/// A client is forbidden, and an accepted kind is a conflict.
+#[tokio::test]
+async fn replacing_a_legacy_kind_is_lawyer_scoped_and_refuses_an_accepted_kind() {
+    let fx = build_fixture().await;
+    let asset = slugless_asset(&fx, b"legacy classification").await;
+    fx.surreal
+        .query("UPDATE $id SET slug = 'notes/note.txt', kind = 'Formation Filing'")
+        .bind(("id", store::surreal::record_id("asset", asset.id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+    assert_eq!(
+        patch_document(
+            &fx,
+            Some(&fx.client),
+            asset.id,
+            serde_json::json!({ "kind": "filing" }),
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
+    );
+
+    let set = patch_document(
+        &fx,
+        Some(&fx.lawyer),
+        asset.id,
+        serde_json::json!({ "kind": "filing" }),
+    )
+    .await;
+    assert_eq!(set.status(), StatusCode::OK);
+    let stored = store::assets::find_by_id(&fx.surreal, asset.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.kind.as_deref(), Some("filing"));
+    assert_eq!(stored.slug.as_deref(), Some("notes/note.txt"));
+    assert_eq!(stored.sha256_hex, asset.sha256_hex);
+
+    let again = patch_document(
+        &fx,
+        Some(&fx.lawyer),
+        asset.id,
+        serde_json::json!({ "kind": "letter" }),
+    )
+    .await;
+    assert_eq!(again.status(), StatusCode::CONFLICT);
+    let body: serde_json::Value =
+        serde_json::from_slice(&again.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["error"], "kind_accepted");
+}
+
 /// Storage repair is admin-only. A lawyer is forbidden. With no sibling the
 /// row is unchanged.
 #[tokio::test]

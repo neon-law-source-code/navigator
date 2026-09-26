@@ -3785,8 +3785,10 @@ struct UpdateDocumentRequest {
     /// slug or the slug already names a revision chain on this matter.
     #[serde(default)]
     slug: Option<String>,
-    /// Replaces `kind` only together with `slug`, and only while the row has
-    /// no slug.
+    /// Replaces `kind` together with `slug` while the row has no slug. Sent
+    /// alone, it replaces a kind the asset lane rejects — a legacy free-text
+    /// classification — on the row and its whole slug chain, and is refused
+    /// when the row's kind is already accepted.
     #[serde(default)]
     kind: Option<String>,
     /// Validate and report the write. The row is left unchanged.
@@ -3837,6 +3839,32 @@ fn assign_slug_response(error: store::assets::AssignSlugError) -> Result<Respons
     }
 }
 
+// Mirrors `assign_slug_response`: the door handlers carry `ApiError`.
+#[allow(clippy::result_large_err)]
+fn reclassify_kind_response(
+    error: store::assets::ReclassifyKindError,
+) -> Result<Response, ApiError> {
+    match error {
+        store::assets::ReclassifyKindError::NotOnProject => Err(ApiError::NotFound),
+        store::assets::ReclassifyKindError::KindAccepted(kind) => Ok(conflict(
+            "kind_accepted",
+            &format!("`{kind}` is already an accepted document kind; a valid kind is not changed."),
+        )),
+        store::assets::ReclassifyKindError::ChainHasAcceptedKind(slug) => Ok(conflict(
+            "kind_accepted",
+            &format!("Another revision of `{slug}` already carries an accepted kind."),
+        )),
+        store::assets::ReclassifyKindError::InvalidKind(kind) => Ok(bad_request(
+            "invalid_kind",
+            &format!(
+                "`{kind}` is not a document kind. Accepted values are: {}.",
+                accepted_asset_kinds().join(", ")
+            ),
+        )),
+        store::assets::ReclassifyKindError::Asset(error) => Err(ApiError::Asset(error)),
+    }
+}
+
 fn repair_storage_response(error: store::assets::RepairStorageError) -> Result<Response, ApiError> {
     match error {
         store::assets::RepairStorageError::NotOnProject => Err(ApiError::NotFound),
@@ -3860,8 +3888,9 @@ fn repair_storage_response(error: store::assets::RepairStorageError) -> Result<R
     }
 }
 
-/// Reconcile a committed pointer's visibility, or set `slug` (and optionally
-/// `kind`) on a row that has no slug. The standard API audit middleware
+/// Reconcile a committed pointer's visibility, set `slug` (and optionally
+/// `kind`) on a row that has no slug, or replace a legacy `kind` the asset
+/// lane rejects. The standard API audit middleware
 /// records the actor, scoped path, method, status, and request id for every
 /// attempt. Lawyer or admin, and both the matter and asset are scoped
 /// (out-of-scope → 404).
@@ -3930,10 +3959,30 @@ async fn update_document_door(
             "invalid_request",
             "Send `visibility` or `slug`, not both.",
         )),
-        (None, None) => Ok(bad_request(
-            "invalid_request",
-            "Send `visibility` or `slug`.",
-        )),
+        (None, None) => match input.kind.as_deref() {
+            Some(kind) => match store::assets::reclassify_kind(
+                &state.surreal,
+                project_id,
+                asset_id,
+                kind,
+                input.dry_run,
+            )
+            .await
+            {
+                Ok(asset) => Ok(Json(serde_json::json!({
+                    "asset_id": asset.id,
+                    "slug": asset.slug,
+                    "kind": asset.kind,
+                    "dry_run": input.dry_run,
+                }))
+                .into_response()),
+                Err(error) => reclassify_kind_response(error),
+            },
+            None => Ok(bad_request(
+                "invalid_request",
+                "Send `visibility`, `slug`, or `kind`.",
+            )),
+        },
     }
 }
 

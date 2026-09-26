@@ -192,9 +192,10 @@ live document the lens can see must have a pointer. A drifted pointer is rewritt
 `documents/<slug>.yaml`. A missing `documents/.gitignore` is written. The command never writes to the live site. A
 missing storage object needs a person: `navigator site document repair` restores it from a same-hash sibling in the
 matter. A live row with no slug needs a person: `navigator site document slug` sets the slug and, when passed, the kind.
-`--deep` re-hashes each object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix.
-Uploading a staged file, or filing a new revision, is `navigator site sync`. Plain `navigator project gate`, without
-`--check`, makes no document request.
+A kind the asset lane rejects needs a person: `navigator site document kind` replaces it. `--deep` re-hashes each
+object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix. Uploading a staged file,
+or filing a new revision, is `navigator site sync`. Plain `navigator project gate`, without `--check`, makes no document
+request.
 
 **`navigator project sync` reconciles the complete live Project into the checkout.** Run it with no positional arguments
 from the repository root. It reads the Project code and host from `navigator.yaml`, asks the live site for every
@@ -237,6 +238,12 @@ chain, so the write never merges two documents. `sha256`, the storage key, and t
 that already exists is a re-filing, not this command. A missing storage object is `navigator site document repair`,
 which copies bytes from a same-hash sibling in the matter onto the content-addressed key, or re-points the row at that
 key, then verifies the sha256. It does not expunge the document.
+
+**A legacy kind is replaced in place.** A row can carry a free-text kind from before the closed asset-lane list, and the
+gate rejects its pointer. Pass `--kind` to `navigator site document slug` while the row is slugless; once it has a slug,
+a revision cannot change its kind, so `navigator site document kind` replaces it on the row and every revision of its
+chain. The server refuses a row whose kind is already accepted, so it never turns one valid classification into another.
+`sha256`, the storage key, and the slug stay unchanged.
 
 **The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
 [`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to

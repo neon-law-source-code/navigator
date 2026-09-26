@@ -2373,8 +2373,8 @@ pub fn document_with_base(base: &str) -> Value {
         },
         "/app/api/projects/{id}/documents/{asset_id}": {
           "patch": {
-            "summary": "Reconcile visibility, or set a slug on a slugless row",
-            "description": "Send `visibility` to reconcile the visibility a committed Project pointer declares, or send `slug` (and optionally `kind`) to set those fields on a row whose slug is null. A row that already has a slug, or a slug that already names a revision chain on the matter, is `409`. `sha256`, `storage_key`, and byte size stay unchanged. `dry_run` validates and reports the slug write without changing the row. Authorization: lawyer or admin, and both the matter and asset are scoped (out-of-scope → 404). The API audit records the actor and operation.",
+            "summary": "Reconcile visibility, set a slug on a slugless row, or replace a legacy kind",
+            "description": "Send `visibility` to reconcile the visibility a committed Project pointer declares, or send `slug` (and optionally `kind`) to set those fields on a row whose slug is null. A row that already has a slug, or a slug that already names a revision chain on the matter, is `409`. `sha256`, `storage_key`, and byte size stay unchanged. Send `kind` alone to replace a kind the asset lane rejects (a legacy free-text classification) on the row and every revision of its slug chain; a row whose kind is already accepted, or a chain where any revision carries an accepted kind, is `409 kind_accepted`. `dry_run` validates and reports the slug or kind write without changing the row. Authorization: lawyer or admin, and both the matter and asset are scoped (out-of-scope → 404). The API audit records the actor and operation.",
             "parameters": [
               { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
               { "name": "asset_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
@@ -2383,17 +2383,17 @@ pub fn document_with_base(base: &str) -> Value {
               "type": "object", "properties": {
                 "visibility": { "type": "string", "enum": ["client", "internal"] },
                 "slug": { "type": "string", "description": "Document identity. Must carry the stored filename's extension. Accepted only while the row's slug is null." },
-                "kind": { "type": "string", "description": "Asset-lane kind, applied only together with `slug`.", "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "closed_repository", "invoice", "unclassified"] },
-                "dry_run": { "type": "boolean", "description": "When setting `slug`, validate and report without writing." }
+                "kind": { "type": "string", "description": "Asset-lane kind. Applied together with `slug` on a slugless row, or alone to replace a legacy kind the asset lane rejects.", "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "closed_repository", "invoice", "unclassified"] },
+                "dry_run": { "type": "boolean", "description": "When setting `slug` or `kind`, validate and report without writing." }
               }
             } } } },
             "responses": {
-              "200": { "description": "Visibility reconciled, or the slug was set (or would be set, when `dry_run`)" },
+              "200": { "description": "Visibility reconciled, or the slug or kind was set (or would be set, when `dry_run`)" },
               "400": { "description": "Invalid visibility, slug, or kind, or both `visibility` and `slug` were sent", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "404": { "description": "No such matter or asset, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "409": { "description": "The row already has a slug (`slug_present`), or the slug already names a chain (`slug_taken`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "409": { "description": "The row already has a slug (`slug_present`), the slug already names a chain (`slug_taken`), or the kind is already accepted (`kind_accepted`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "500": { "description": "The document could not be updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           }

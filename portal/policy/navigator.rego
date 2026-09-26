@@ -63,6 +63,31 @@ allow if {
     is_admin(input.session)
 }
 
+# Matter-scoped avatar upload and clear are explicit admin doors. The handler
+# checks the actor's and target person's participation on the matter.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "admin"
+    input.path[2] == "projects"
+    count(input.path) == 7
+    input.path[4] == "people"
+    input.path[6] == "avatar"
+    input.method == "POST"
+    is_admin(input.session)
+}
+
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "admin"
+    input.path[2] == "projects"
+    count(input.path) == 8
+    input.path[4] == "people"
+    input.path[6] == "avatar"
+    input.path[7] == "clear"
+    input.method == "POST"
+    is_admin(input.session)
+}
+
 # The service start door admits clients and lawyer-tier sessions. The handler
 # sends lawyer-tier POSTs to the existing lawyer start form; Clerk is not a
 # lawyer tier and must not reach this door.

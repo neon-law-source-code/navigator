@@ -622,6 +622,38 @@ test_anonymous_denied_admin_project_testimonial if {
 	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "testimonial"], "method": "POST", "session": null}
 }
 
+# ---------- POST /app/admin/projects/{code}/people/{person}/avatar ----------
+# Role admission is Rego's part of this door. The handler checks both the
+# acting admin's and target person's matter participation.
+
+test_client_denied_admin_project_person_avatar_upload if {
+	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "people", "person", "avatar"], "method": "POST", "session": client_session}
+}
+
+test_lawyer_denied_admin_project_person_avatar_upload if {
+	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "people", "person", "avatar"], "method": "POST", "session": lawyer_session}
+}
+
+test_admin_reaches_admin_project_person_avatar_upload if {
+	authz.allow with input as {"path": ["app", "admin", "projects", "matter", "people", "person", "avatar"], "method": "POST", "session": admin_session}
+}
+
+test_owner_reaches_admin_project_person_avatar_upload if {
+	authz.allow with input as {"path": ["app", "admin", "projects", "matter", "people", "person", "avatar"], "method": "POST", "session": owner_session}
+}
+
+test_anonymous_denied_admin_project_person_avatar_upload if {
+	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "people", "person", "avatar"], "method": "POST", "session": null}
+}
+
+test_admin_reaches_admin_project_person_avatar_clear if {
+	authz.allow with input as {"path": ["app", "admin", "projects", "matter", "people", "person", "avatar", "clear"], "method": "POST", "session": admin_session}
+}
+
+test_client_denied_admin_project_person_avatar_clear if {
+	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "people", "person", "avatar", "clear"], "method": "POST", "session": client_session}
+}
+
 # ---------- /app/api/testimonials/{id}/publish|unpublish (lawyer-tier door) ----------
 
 test_lawyer_tier_can_publish_or_unpublish_a_testimonial if {

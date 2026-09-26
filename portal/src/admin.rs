@@ -700,6 +700,14 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
             post(admin_project_testimonial_save),
         )
         .route(
+            "/app/admin/projects/{project_code}/people/{person_id}/avatar",
+            post(admin_project_person_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
+        )
+        .route(
+            "/app/admin/projects/{project_code}/people/{person_id}/avatar/clear",
+            post(admin_project_person_avatar_clear),
+        )
+        .route(
             &format!("{prefix}/{{project_code}}/people"),
             post(project_participation_create),
         )
@@ -996,6 +1004,90 @@ async fn admin_matter_project(
         .ok()
         .flatten()?;
     Some(project)
+}
+
+/// Resolve a target person who participates on the same matter as the acting
+/// admin. The existing global admin avatar route remains useful for directory
+/// administration; this matter route adds the narrower page-level boundary.
+async fn admin_matter_person(
+    state: &AdminState,
+    session: &SessionData,
+    code: &str,
+    person_id: Uuid,
+) -> Option<store::persons::Person> {
+    let project = admin_matter_project(&state.surreal, session, code).await?;
+    let person = store::persons::find_by_id(&state.surreal, person_id)
+        .await
+        .ok()
+        .flatten()?;
+    store::projects::participation_for_person(&state.surreal, person.id, project.id)
+        .await
+        .ok()
+        .flatten()?;
+    Some(person)
+}
+
+/// `POST /app/admin/projects/{project_code}/people/{person_id}/avatar` — set
+/// an avatar from the matter people list. Both the acting admin and target
+/// person must hold a participation row on the named matter.
+async fn admin_project_person_avatar_upload(
+    State(state): State<AdminState>,
+    Path((code, person_id)): Path<(String, Uuid)>,
+    cookies: tower_cookies::Cookies,
+    session: Option<Extension<SessionData>>,
+    mut multipart: Multipart,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let Some(Extension(session_data)) = session else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(person) = admin_matter_person(&state, &session_data, &code, person_id).await else {
+        return not_found_response();
+    };
+    let (content_type, bytes) = match read_avatar_upload(
+        &cookies,
+        &session_data,
+        &mut multipart,
+        person_avatar_content_types(person.role),
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(response) => return response,
+    };
+    if person_avatar_is_public(person.role) {
+        if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
+            return response;
+        }
+    }
+    match persist_person_avatar(&state, &person, &content_type, &bytes).await {
+        Ok(()) => Redirect::to(&format!("/app/projects/{code}")).into_response(),
+        Err(response) => response,
+    }
+}
+
+/// `POST /app/admin/projects/{project_code}/people/{person_id}/avatar/clear`
+/// — clear the target's avatar and its role-appropriate storage object.
+async fn admin_project_person_avatar_clear(
+    State(state): State<AdminState>,
+    Path((code, person_id)): Path<(String, Uuid)>,
+    session: Option<Extension<SessionData>>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let Some(session) = session.as_ref() else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(person) = admin_matter_person(&state, session, &code, person_id).await else {
+        return not_found_response();
+    };
+    match clear_person_avatar(&state, &person).await {
+        Ok(()) => Redirect::to(&format!("/app/projects/{code}")).into_response(),
+        Err(response) => response,
+    }
 }
 
 fn can_submit_testimonial(

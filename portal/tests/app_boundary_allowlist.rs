@@ -169,6 +169,7 @@ fn admin_registration_sample() -> Vec<String> {
         "/app/projects/x/documents/upload",
         "/app/projects/x/close",
         "/app/admin/projects/x/testimonial",
+        "/app/admin/projects/x/people/x/avatar",
     ]
     .into_iter()
     .map(str::to_string)

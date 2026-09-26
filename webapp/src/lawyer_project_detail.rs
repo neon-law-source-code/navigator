@@ -28,7 +28,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Field, FormCard, Heading};
+use crate::components::{Avatar, Field, FormCard, Heading};
 use crate::csrf::CsrfToken;
 use crate::people::ViewerRole;
 
@@ -92,6 +92,9 @@ pub struct ParticipationRow {
     /// answers for the matter, and any of them may close it.
     pub is_lawyer_dri: bool,
     pub is_client_dri: bool,
+    /// A same-origin avatar route when the person has an image; the stored
+    /// object key never crosses the server/client view boundary.
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -517,6 +520,10 @@ fn to_participation_rows(
                 participation: row.participation.clone(),
                 is_lawyer_dri: row.is_lawyer_dri,
                 is_client_dri: row.is_client_dri,
+                avatar_url: p
+                    .profile_image_url
+                    .as_ref()
+                    .map(|_| format!("/app/people/{}/avatar", p.id)),
             })
         })
         .collect()
@@ -857,6 +864,7 @@ pub fn LawyerProjectDetail() -> Element {
                 csrf: csrf.clone(),
                 participations: view.participations.clone(),
                 is_admin,
+                can_manage_avatars: is_admin,
                 may_govern_lawyer_side,
                 may_govern_client_side,
             }
@@ -972,6 +980,7 @@ pub fn ParticipationTable(
     csrf: String,
     participations: Vec<ParticipationRow>,
     is_admin: bool,
+    can_manage_avatars: bool,
     may_govern_lawyer_side: bool,
     may_govern_client_side: bool,
 ) -> Element {
@@ -995,6 +1004,9 @@ pub fn ParticipationTable(
                                 th { scope: "col", "System tier" }
                                 th { scope: "col", "Participation" }
                                 th { scope: "col", "Accountability" }
+                                if can_manage_avatars {
+                                    th { scope: "col", "Avatar" }
+                                }
                                 if is_admin {
                                     th { scope: "col", class: "nav-table__end", "" }
                                 }
@@ -1054,6 +1066,54 @@ pub fn ParticipationTable(
                                             }
                                         }
                                     }
+                                    if can_manage_avatars {
+                                        td { class: "matter-avatar-cell",
+                                            Avatar {
+                                                name: row.person_name.clone(),
+                                                image_url: row.avatar_url.clone(),
+                                                size: 40,
+                                                class: "matter-avatar".to_string(),
+                                            }
+                                            form {
+                                                class: "lawyer-detail__inline-form",
+                                                method: "post",
+                                                action: format!(
+                                                    "/app/admin/projects/{code}/people/{}/avatar",
+                                                    row.id
+                                                ),
+                                                enctype: "multipart/form-data",
+                                                "aria-label": "Set avatar for {row.person_name}",
+                                                input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
+                                                input {
+                                                    r#type: "file",
+                                                    name: "file",
+                                                    accept: "image/png,image/jpeg",
+                                                    required: true,
+                                                }
+                                                button {
+                                                    class: "nav-btn nav-btn--secondary",
+                                                    r#type: "submit",
+                                                    "Upload"
+                                                }
+                                            }
+                                            if row.avatar_url.is_some() {
+                                                form {
+                                                    class: "lawyer-detail__inline-form",
+                                                    method: "post",
+                                                    action: format!(
+                                                        "/app/admin/projects/{}/people/{}/avatar/clear",
+                                                        code, row.id
+                                                    ),
+                                                    input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
+                                                    button {
+                                                        class: "nav-btn nav-btn--secondary",
+                                                        r#type: "submit",
+                                                        "Clear"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     if is_admin {
                                         td { class: "nav-table__end",
                                             a {
@@ -1098,6 +1158,7 @@ mod tests {
             participation: "lawyer".to_string(),
             is_lawyer_dri: lawyer_dri,
             is_client_dri: false,
+            avatar_url: None,
         }
     }
 
@@ -1106,12 +1167,27 @@ mod tests {
         may_govern_lawyer_side: bool,
         is_admin: bool,
     ) -> String {
+        render_for_code(
+            "sample-litigation",
+            participations,
+            may_govern_lawyer_side,
+            is_admin,
+        )
+    }
+
+    fn render_for_code(
+        code: &str,
+        participations: Vec<ParticipationRow>,
+        may_govern_lawyer_side: bool,
+        is_admin: bool,
+    ) -> String {
         dioxus_ssr::render_element(rsx! {
             ParticipationTable {
-                code: "sample-litigation".to_string(),
+                code: code.to_string(),
                 csrf: "TOK".to_string(),
                 participations,
                 is_admin,
+                can_manage_avatars: is_admin,
                 may_govern_lawyer_side,
                 may_govern_client_side: true,
             }
@@ -1199,6 +1275,23 @@ mod tests {
             "{html}"
         );
         assert!(html.contains(r#"value="public" checked"#), "{html}");
+    }
+
+    #[test]
+    fn admin_matter_people_rows_offer_upload_and_clear_avatar_actions() {
+        let id = "00000000-0000-0000-0000-0000000000aa";
+        let mut person = row(id, false);
+        person.avatar_url = Some(format!("/app/people/{id}/avatar"));
+        let html = render_for_code("matter", vec![person], true, true);
+        assert!(
+            html.contains(r#"action="/app/admin/projects/matter/people/00000000-0000-0000-0000-0000000000aa/avatar""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"enctype="multipart/form-data""#), "{html}");
+        assert!(
+            html.contains(r#"action="/app/admin/projects/matter/people/00000000-0000-0000-0000-0000000000aa/avatar/clear""#),
+            "{html}"
+        );
     }
 
     fn view_with_documents(documents: Vec<LawyerDocRow>) -> LawyerDetailView {

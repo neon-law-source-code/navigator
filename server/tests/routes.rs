@@ -17886,6 +17886,191 @@ async fn view_as_client_testimonial_save_still_returns_forbidden() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+/// The matter people-list route reuses the avatar storage seam, scopes both
+/// people to the matter, and clears the canonical public object with the row.
+#[tokio::test]
+async fn admin_matter_person_avatar_upload_and_clear_are_matter_scoped() {
+    let (state, surreal) = state_with_engines().await;
+    let admin = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Actor",
+            "avatar-actor@example.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let target = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Participant",
+            "avatar-target@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let outsider = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Outsider",
+            "avatar-outsider@example.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Viewer",
+            "avatar-viewer@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: "matter-avatar".into(),
+            name: "Matter Avatar".into(),
+            status: "open".into(),
+            entity_id: uuid::Uuid::now_v7(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, admin.id, "admin")
+        .await
+        .unwrap();
+    store::projects::add_participation(&surreal, project.id, target.id, "lawyer")
+        .await
+        .unwrap();
+
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (admin_cookie, csrf) = session_cookie_and_csrf_for_person(&admin);
+    let boundary = "----navigator-test-matter-avatar-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "portrait.png", "image/png", ONE_PIXEL_PNG);
+    let upload = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/app/admin/projects/{}/people/{}/avatar",
+                    project.code, target.id
+                ))
+                .header(header::COOKIE, &admin_cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(upload.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        upload
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok()),
+        Some(format!("/app/projects/{}", project.code).as_str())
+    );
+    let key = format!("people/{}/avatar.png", target.id);
+    let target_row = store::persons::find_by_id(&surreal, target.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        target_row.profile_image_url.as_deref(),
+        Some(views::assets::bucket_asset_url(&key).as_str())
+    );
+    assert_eq!(
+        state.assets_storage.get(&key).await.unwrap().bytes,
+        ONE_PIXEL_PNG
+    );
+
+    let clear = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/app/admin/projects/{}/people/{}/avatar/clear",
+                    project.code, target.id
+                ))
+                .header(header::COOKIE, &admin_cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(format!("_csrf={csrf}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(clear.status(), StatusCode::SEE_OTHER);
+    assert!(store::persons::find_by_id(&surreal, target.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .profile_image_url
+        .is_none());
+    assert!(state.assets_storage.get(&key).await.is_err());
+
+    let (outsider_cookie, outsider_csrf) = session_cookie_and_csrf_for_person(&outsider);
+    let outsider_clear = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/app/admin/projects/{}/people/{}/avatar/clear",
+                    project.code, target.id
+                ))
+                .header(header::COOKIE, &outsider_cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(format!("_csrf={outsider_csrf}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(outsider_clear.status(), StatusCode::NOT_FOUND);
+
+    let (client_cookie, client_csrf) = session_cookie_and_csrf_for_person(&client);
+    let denied_body = avatar_multipart_body(
+        "----navigator-test-matter-avatar-client-boundary",
+        &client_csrf,
+        "portrait.png",
+        "image/png",
+        ONE_PIXEL_PNG,
+    );
+    let client_upload = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/app/admin/projects/{}/people/{}/avatar",
+                    project.code, target.id
+                ))
+                .header(header::COOKIE, &client_cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    "multipart/form-data; boundary=----navigator-test-matter-avatar-client-boundary",
+                )
+                .body(Body::from(denied_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(client_upload.status(), StatusCode::FORBIDDEN);
+}
+
 /// A one-pixel PNG, valid image bytes for the avatar upload tests below.
 const ONE_PIXEL_PNG: &[u8] = &[
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,

@@ -3,9 +3,19 @@ use std::sync::Arc;
 use cloud::{DriveService, FakeDrive, FsStorage, StorageService};
 use serde_json::json;
 use store::documents::{source, visibility};
-use store::drive_import::{import_project_files, DriveImportArgs};
+use store::drive_import::{import_project_files, DriveImportArgs, DriveImportError};
+use store::persons::{self, NewPerson, Role};
 use store::projects::{create, set_drive_folder_id, NewProject};
 use store::test_support::{mem_surreal, seed_entity};
+
+async fn owner(surreal: &store::surreal::SurrealDb) -> store::persons::Person {
+    persons::create(
+        surreal,
+        &NewPerson::with_role("Drive Operator", "drive-operator@example.com", Role::Owner),
+    )
+    .await
+    .expect("create operator")
+}
 
 #[tokio::test]
 async fn drive_files_become_project_assets_with_object_storage_provenance() {
@@ -23,6 +33,7 @@ async fn drive_files_become_project_assets_with_object_storage_provenance() {
     .await
     .expect("create matter");
     let drive = FakeDrive::default();
+    let actor = owner(&surreal).await;
     let folder = drive
         .create_folder(&project.code)
         .await
@@ -49,6 +60,7 @@ async fn drive_files_become_project_assets_with_object_storage_provenance() {
         &storage,
         &drive,
         project.id,
+        actor.id,
         &DriveImportArgs {
             kind: "unclassified",
             visibility: visibility::CLIENT,
@@ -92,6 +104,7 @@ async fn drive_files_become_project_assets_with_object_storage_provenance() {
         &storage,
         &drive,
         project.id,
+        actor.id,
         &DriveImportArgs {
             kind: "unclassified",
             visibility: visibility::CLIENT,
@@ -109,4 +122,128 @@ async fn drive_files_become_project_assets_with_object_storage_provenance() {
         1,
         "re-importing unchanged Drive bytes does not duplicate the asset"
     );
+}
+
+#[tokio::test]
+async fn unauthorized_drive_import_stops_before_listing_or_persisting() {
+    let surreal = mem_surreal().await;
+    let project = create(
+        &surreal,
+        &NewProject {
+            code: "drive-unauthorized".to_string(),
+            name: "Drive Unauthorized Matter".to_string(),
+            status: "open".to_string(),
+            entity_id: seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create matter");
+    let actor = persons::create(
+        &surreal,
+        &NewPerson::new("Drive Client", "drive-client@example.com"),
+    )
+    .await
+    .expect("create client");
+    let drive = FakeDrive::default();
+    let folder = drive
+        .create_folder(&project.code)
+        .await
+        .expect("folder creation");
+    set_drive_folder_id(&surreal, project.id, Some(&folder.id))
+        .await
+        .expect("set Drive folder")
+        .expect("matter exists");
+    let temp = tempfile::tempdir().expect("storage directory");
+    let storage: Arc<dyn StorageService> =
+        Arc::new(FsStorage::new(temp.path()).await.expect("storage"));
+
+    let error = import_project_files(
+        &surreal,
+        &storage,
+        &drive,
+        project.id,
+        actor.id,
+        &DriveImportArgs {
+            kind: "unclassified",
+            visibility: visibility::CLIENT,
+            description: None,
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(error, DriveImportError::Unauthorized));
+    assert_eq!(drive.list_files_calls(), 0);
+    assert_eq!(drive.download_calls(), 0);
+    assert!(store::assets::for_project(&surreal, project.id)
+        .await
+        .expect("asset listing")
+        .is_empty());
+}
+
+#[tokio::test]
+async fn cross_project_drive_folder_mismatch_stops_before_downloading() {
+    let surreal = mem_surreal().await;
+    let project = create(
+        &surreal,
+        &NewProject {
+            code: "drive-target".to_string(),
+            name: "Drive Target Matter".to_string(),
+            status: "open".to_string(),
+            entity_id: seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create matter");
+    let actor = owner(&surreal).await;
+    let drive = FakeDrive::default();
+    let _target_folder = drive
+        .create_folder(&project.code)
+        .await
+        .expect("target folder creation");
+    let other_folder = drive
+        .create_folder("drive-other")
+        .await
+        .expect("other folder creation");
+    drive
+        .add_file(
+            &other_folder.id,
+            "other.pdf",
+            "application/pdf",
+            b"other project bytes".to_vec(),
+            None,
+        )
+        .expect("other file creation");
+    set_drive_folder_id(&surreal, project.id, Some(&other_folder.id))
+        .await
+        .expect("set Drive folder")
+        .expect("matter exists");
+    let temp = tempfile::tempdir().expect("storage directory");
+    let storage: Arc<dyn StorageService> =
+        Arc::new(FsStorage::new(temp.path()).await.expect("storage"));
+
+    let error = import_project_files(
+        &surreal,
+        &storage,
+        &drive,
+        project.id,
+        actor.id,
+        &DriveImportArgs {
+            kind: "unclassified",
+            visibility: visibility::CLIENT,
+            description: None,
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(error, DriveImportError::FolderMismatch));
+    assert_eq!(drive.list_files_calls(), 0);
+    assert_eq!(drive.download_calls(), 0);
+    assert!(store::assets::for_project(&surreal, project.id)
+        .await
+        .expect("asset listing")
+        .is_empty());
 }

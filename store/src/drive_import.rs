@@ -15,13 +15,14 @@ use uuid::Uuid;
 
 use crate::assets::{self, Filed, RevisionError};
 use crate::documents::{self, DocumentIdentity, IngestArgs};
+use crate::persons;
 use crate::projects;
 use crate::surreal::SurrealDb;
 
 /// Maximum number of Drive files one import pass may admit.
 pub const MAX_FILES: usize = 50;
 /// Maximum size of one Drive file admitted to the buffered ingest seam.
-pub const MAX_FILE_BYTES: usize = documents::MAX_DOCUMENT_UPLOAD_BYTES;
+pub const MAX_FILE_BYTES: usize = cloud::MAX_DRIVE_DOWNLOAD_BYTES;
 /// Maximum total bytes one import pass may buffer and file.
 pub const MAX_TOTAL_BYTES: usize = 500 * 1024 * 1024;
 
@@ -31,10 +32,16 @@ pub enum DriveImportError {
     Drive(#[from] cloud::DriveError),
     #[error("project: {0}")]
     Project(#[from] projects::ProjectStoreError),
+    #[error("person: {0}")]
+    Person(#[from] persons::PersonError),
     #[error("asset: {0}")]
     Asset(#[from] RevisionError),
     #[error("Project has no Drive ingest folder")]
     MissingFolder,
+    #[error("Drive import is not authorized for this Project")]
+    Unauthorized,
+    #[error("stored Drive folder does not belong to this Project")]
+    FolderMismatch,
     #[error("Drive import contains {actual} files; the maximum is {MAX_FILES}")]
     TooManyFiles { actual: usize },
     #[error("Drive file `{file_id}` is {actual} bytes; the maximum is {MAX_FILE_BYTES}")]
@@ -61,6 +68,11 @@ pub struct ImportedDriveFile {
 
 /// Import the current direct children of a Project's Drive folder.
 ///
+/// The actor is resolved from the current Person row and must be authorized
+/// for the Project through the existing lawyer-tier Project access rule. The
+/// recorded Drive folder is then matched to the Project's canonical code
+/// before Drive lists or downloads any file.
+///
 /// Each file receives a stable Drive-specific document identity, so a
 /// changed Drive file becomes a new asset revision while an unchanged retry
 /// is a no-op. The stored row carries both `source = "drive"` and the Drive
@@ -70,15 +82,30 @@ pub async fn import_project_files(
     storage: &Arc<dyn StorageService>,
     drive: &dyn DriveService,
     project_id: Uuid,
+    actor_id: Uuid,
     args: &DriveImportArgs<'_>,
 ) -> Result<Vec<ImportedDriveFile>, DriveImportError> {
     let project = projects::find_by_id(db, project_id)
         .await?
         .ok_or(projects::ProjectStoreError::NoSuchProject(project_id))?;
+    let Some(actor) = persons::find_by_id(db, actor_id).await? else {
+        return Err(DriveImportError::Unauthorized);
+    };
+    if !projects::can_access_as_lawyer_in_surreal(db, Some(actor.id), actor.role, project_id)
+        .await?
+    {
+        return Err(DriveImportError::Unauthorized);
+    }
     let folder_id = project
         .drive_folder_id
         .as_deref()
         .ok_or(DriveImportError::MissingFolder)?;
+    let Some(folder) = drive.find_folder_by_name(&project.code).await? else {
+        return Err(DriveImportError::FolderMismatch);
+    };
+    if folder.id != folder_id {
+        return Err(DriveImportError::FolderMismatch);
+    }
     let listed_files = drive.list_files(folder_id).await?;
     if listed_files.len() > MAX_FILES {
         return Err(DriveImportError::TooManyFiles {

@@ -39,6 +39,7 @@ pub use audio::{decode_to_mono_pcm16, AudioError, DecodedAudio};
 pub use drive::{
     DriveError, DriveFile, DriveFileDownload, DriveFolder, DriveMember, DriveMemberKind, DriveRole,
     DriveService, DriveWorkspace, DriveWorkspaceConfig, FakeDrive, GoogleDrive,
+    MAX_DRIVE_DOWNLOAD_BYTES,
 };
 pub use forge::{
     FakeForge, ForgeError, ForgeRepository, ForgeService, GitHubForge, GITHUB_API_BASE_ENV,

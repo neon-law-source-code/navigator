@@ -8,6 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,9 @@ use thiserror::Error;
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
 const DRIVE_BASE_URL: &str = "https://www.googleapis.com/drive/v3";
 const FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
+/// Maximum number of bytes a Drive download may materialize in memory.
+pub const MAX_DRIVE_DOWNLOAD_BYTES: usize = 25 * 1024 * 1024;
+const DRIVE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 // The importer rejects more than 50 files. Return one sentinel item beyond
 // that limit so the caller can reject an oversized folder without listing it
 // indefinitely or downloading any bytes.
@@ -177,6 +181,8 @@ pub enum DriveError {
         #[source]
         source: reqwest::Error,
     },
+    #[error("Drive download is {actual} bytes; the maximum is {limit}")]
+    DownloadTooLarge { actual: u64, limit: usize },
     #[error("Drive API response while {action} did not include a folder id")]
     MissingFolderId { action: &'static str },
     #[error("Drive API response while {action} did not include a permission id")]
@@ -222,6 +228,7 @@ pub struct GoogleDrive {
     token_source: Arc<dyn google_cloud_token::TokenSource>,
     http: reqwest::Client,
     base_url: String,
+    request_timeout: Duration,
 }
 
 impl GoogleDrive {
@@ -260,11 +267,26 @@ impl GoogleDrive {
         token_source: Arc<dyn google_cloud_token::TokenSource>,
         base_url: &str,
     ) -> Self {
+        Self::from_parts_with_timeout(
+            projects_drive_id,
+            token_source,
+            base_url,
+            DRIVE_DOWNLOAD_TIMEOUT,
+        )
+    }
+
+    fn from_parts_with_timeout(
+        projects_drive_id: String,
+        token_source: Arc<dyn google_cloud_token::TokenSource>,
+        base_url: &str,
+        request_timeout: Duration,
+    ) -> Self {
         Self {
             projects_drive_id,
             token_source,
             http: reqwest::Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
+            request_timeout,
         }
     }
 
@@ -604,28 +626,52 @@ impl DriveService for GoogleDrive {
 
     async fn download_file(&self, file_id: &str) -> Result<DriveFileDownload, DriveError> {
         let token = self.token().await?;
-        let response = Self::checked(
+        let mut response = Self::checked(
             self.http
                 .get(self.file_url(file_id))
                 .bearer_auth(token)
                 .query(&[("alt", "media"), ("supportsAllDrives", "true")])
+                .timeout(self.request_timeout)
                 .send()
                 .await,
             "downloading project file",
         )?;
+        if let Some(content_length) = response.content_length() {
+            if content_length > MAX_DRIVE_DOWNLOAD_BYTES as u64 {
+                return Err(DriveError::DownloadTooLarge {
+                    actual: content_length,
+                    limit: MAX_DRIVE_DOWNLOAD_BYTES,
+                });
+            }
+        }
         let content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .map_or_else(|| "application/octet-stream".to_string(), str::to_string);
-        let bytes = response
-            .bytes()
+        let capacity = response.content_length().map_or(0, |length| {
+            usize::try_from(length)
+                .unwrap_or(usize::MAX)
+                .min(MAX_DRIVE_DOWNLOAD_BYTES)
+        });
+        let mut bytes = Vec::with_capacity(capacity);
+        while let Some(chunk) = response
+            .chunk()
             .await
             .map_err(|source| DriveError::Response {
                 action: "downloading project file",
                 source,
             })?
-            .to_vec();
+        {
+            let actual = bytes.len().saturating_add(chunk.len());
+            if actual > MAX_DRIVE_DOWNLOAD_BYTES {
+                return Err(DriveError::DownloadTooLarge {
+                    actual: actual as u64,
+                    limit: MAX_DRIVE_DOWNLOAD_BYTES,
+                });
+            }
+            bytes.extend_from_slice(&chunk);
+        }
         Ok(DriveFileDownload {
             bytes,
             content_type,
@@ -842,6 +888,8 @@ struct FakeDriveState {
     folders: BTreeMap<String, FakeFolder>,
     files: BTreeMap<String, FakeFile>,
     next_id: usize,
+    list_files_calls: usize,
+    download_calls: usize,
 }
 
 #[derive(Default)]
@@ -912,6 +960,22 @@ impl FakeDrive {
             .find(|folder| folder.id == folder_id)
             .is_some_and(|folder| folder.archived)
     }
+
+    #[must_use]
+    pub fn list_files_calls(&self) -> usize {
+        self.state
+            .lock()
+            .expect("fake drive mutex poisoned")
+            .list_files_calls
+    }
+
+    #[must_use]
+    pub fn download_calls(&self) -> usize {
+        self.state
+            .lock()
+            .expect("fake drive mutex poisoned")
+            .download_calls
+    }
 }
 
 #[async_trait]
@@ -964,7 +1028,8 @@ impl DriveService for FakeDrive {
     }
 
     async fn list_files(&self, folder_id: &str) -> Result<Vec<DriveFile>, DriveError> {
-        let state = self.state.lock().expect("fake drive mutex poisoned");
+        let mut state = self.state.lock().expect("fake drive mutex poisoned");
+        state.list_files_calls += 1;
         Ok(state
             .files
             .values()
@@ -974,7 +1039,8 @@ impl DriveService for FakeDrive {
     }
 
     async fn download_file(&self, file_id: &str) -> Result<DriveFileDownload, DriveError> {
-        let state = self.state.lock().expect("fake drive mutex poisoned");
+        let mut state = self.state.lock().expect("fake drive mutex poisoned");
+        state.download_calls += 1;
         let file = state.files.get(file_id).ok_or(DriveError::Api {
             action: "downloading project file",
             status: 404,
@@ -1047,10 +1113,11 @@ impl DriveService for FakeDrive {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
 
     use super::{
         DriveMember, DriveMemberKind, DriveRole, DriveService, DriveWorkspace,
-        DriveWorkspaceConfig, FakeDrive, GoogleDrive,
+        DriveWorkspaceConfig, FakeDrive, GoogleDrive, MAX_DRIVE_DOWNLOAD_BYTES,
     };
     use async_trait::async_trait;
     use wiremock::matchers::{body_json, method, path, query_param};
@@ -1168,6 +1235,71 @@ mod tests {
             drive.create_folder("matter-42").await.unwrap().id,
             "folder-42"
         );
+    }
+
+    #[tokio::test]
+    async fn google_drive_rejects_a_declared_oversized_download() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/files/file-oversized"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![
+                0u8;
+                MAX_DRIVE_DOWNLOAD_BYTES
+                    + 1
+            ]))
+            .mount(&server)
+            .await;
+        let drive = GoogleDrive::from_parts_with_timeout(
+            "projects-drive".into(),
+            Arc::new(StaticToken),
+            &server.uri(),
+            Duration::from_secs(1),
+        );
+
+        let error = drive.download_file("file-oversized").await.unwrap_err();
+        assert!(matches!(error, super::DriveError::DownloadTooLarge { .. }));
+    }
+
+    #[tokio::test]
+    async fn google_drive_rejects_an_oversized_chunked_download() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/files/file-chunked"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(vec![0u8; MAX_DRIVE_DOWNLOAD_BYTES + 1])
+                    .insert_header("transfer-encoding", "chunked"),
+            )
+            .mount(&server)
+            .await;
+        let drive = GoogleDrive::from_parts_with_timeout(
+            "projects-drive".into(),
+            Arc::new(StaticToken),
+            &server.uri(),
+            Duration::from_secs(1),
+        );
+
+        let error = drive.download_file("file-chunked").await.unwrap_err();
+        assert!(matches!(error, super::DriveError::DownloadTooLarge { .. }));
+    }
+
+    #[tokio::test]
+    async fn google_drive_times_out_a_slow_download() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/files/file-slow"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(100)))
+            .mount(&server)
+            .await;
+        let drive = GoogleDrive::from_parts_with_timeout(
+            "projects-drive".into(),
+            Arc::new(StaticToken),
+            &server.uri(),
+            Duration::from_millis(10),
+        );
+
+        let error = drive.download_file("file-slow").await.unwrap_err();
+        assert!(matches!(error, super::DriveError::Request { source, .. } if source.is_timeout()));
     }
 
     #[tokio::test]

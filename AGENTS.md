@@ -21,6 +21,17 @@ cargo run -p cli -- glossary list
 cargo run -p cli -- glossary show "Lawyer Review"
 ```
 
+### Reading the Project Skill catalog
+
+A Project Skill is a jurisdiction/practice-area playbook a Project pins onto its own `navigator.yaml` — distinct from
+the Agent Skills under `.agents/skills` this file just pointed you at. See
+[`docs/project-skills.md`](docs/project-skills.md) and `glossary show "Project Skill"`.
+
+```bash
+cargo run -p cli -- project skill list
+cargo run -p cli -- project skill show nv estates
+```
+
 ### Starting web
 
 ```bash

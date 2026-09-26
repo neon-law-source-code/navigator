@@ -62,6 +62,8 @@ cannot decay the way the old seven-line stub did.
 ## Project repositories and client portals
 
 - [`project-repositories.md`](project-repositories.md) — the Project workspace and repository contract.
+- [`project-skills.md`](project-skills.md) — the Project Skill catalog: layout, frontmatter, jurisdiction codes, and
+  pinning a playbook onto a Project.
 - [`vibe-coding.md`](vibe-coding.md) — building a Project's client portal quickly and safely.
 - [`design-mockups.md`](design-mockups.md) — translating an approved design into the portal surface.
 - [`design.md`](design.md) — the design system.

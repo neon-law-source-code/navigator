@@ -147,6 +147,27 @@ fn glossary_deadline_carries_its_authority_vocabulary_and_both_decisions() {
     assert!(!stdout.contains("## Deployment Environment"));
 }
 
+/// ENG-881 grounds the Project Skill catalog (`rules/src/project_skill.rs`,
+/// `cli/src/projects/skill.rs`) in the glossary and distinguishes it from an
+/// Agent Skill (`.agents/skills/`) — a distinction easy to blur since both
+/// are named "skill". Pin both halves so a later edit cannot quietly drop
+/// either.
+#[test]
+fn glossary_project_skill_distinguishes_itself_from_agent_skill() {
+    let out = navigator(&["glossary", "show", "Project Skill"]);
+    assert!(out.status.success(), "exit status: {:?}", out.status);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("## Project Skill"));
+    assert!(
+        stdout.contains("Not an Agent Skill"),
+        "the entry must call out the distinction by name: {stdout}"
+    );
+    assert!(stdout.contains(".agents/skills"));
+    assert!(stdout.contains("navigator project skill status"));
+    assert!(stdout.contains("jurisdiction"));
+    assert!(!stdout.contains("## Workflow Runtime"));
+}
+
 #[test]
 fn glossary_show_is_case_insensitive() {
     let out = navigator(&["glossary", "show", "lawyer review"]);

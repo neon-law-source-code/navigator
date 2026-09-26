@@ -1002,8 +1002,12 @@ pub async fn document_upload(
 /// `navigator site document transcribe <pointer>` — locally OCR the current
 /// source revision and file its linked transcript under a stable Project slug.
 pub async fn document_transcribe(pointer_path: &Path) -> ExitCode {
+    document_transcribe_from(Path::new("."), pointer_path).await
+}
+
+async fn document_transcribe_from(root: &Path, pointer_path: &Path) -> ExitCode {
     run(async {
-        let manifest = crate::projects::manifest::read(Path::new("."))
+        let manifest = crate::projects::manifest::read(root)
             .ok_or_else(|| anyhow!("no navigator.yaml in the current directory"))?;
         let host = manifest
             .host
@@ -1015,29 +1019,20 @@ pub async fn document_transcribe(pointer_path: &Path) -> ExitCode {
             .as_deref()
             .filter(|project| !project.trim().is_empty())
             .ok_or_else(|| anyhow!("navigator.yaml names no project.name"))?;
-        let pointer = crate::document_sync::read_pointer(pointer_path)?
+        let pointer_path = if pointer_path.is_absolute() {
+            pointer_path.to_path_buf()
+        } else {
+            root.join(pointer_path)
+        };
+        let pointer = crate::document_sync::read_pointer(&pointer_path)?
             .ok_or_else(|| anyhow!("{} does not exist", pointer_path.display()))?;
-        let source_slug = crate::document_read::slug_from_pointer(Path::new("."), pointer_path)?;
+        let source_slug = crate::document_read::slug_from_pointer(root, &pointer_path)?;
         if !source_slug.to_ascii_lowercase().ends_with(".pdf") {
             return Err(anyhow!("transcribe requires a PDF document pointer"));
         }
         let client = DocumentClient::connect(Some(host), project).await?;
         let revisions = client.list_revisions(&source_slug).await?;
-        let source = revisions
-            .revisions
-            .iter()
-            .find(|revision| revision.asset_id == pointer.current_version.asset_id)
-            .ok_or_else(|| {
-                anyhow!("source pointer revision is no longer on the live document chain")
-            })?;
-        if !source.operative
-            || source.version != pointer.current_version.version
-            || source.sha256 != pointer.current_version.sha256
-        {
-            return Err(anyhow!(
-                "source pointer is stale; run `navigator project gate --check` before transcribing"
-            ));
-        }
+        let source = source_revision(&pointer.current_version, &revisions.revisions)?;
         let bytes = client.download_revision(source.asset_id).await?;
         let digest = store::assets::sha256_hex(&bytes);
         if digest != source.sha256 {
@@ -1076,6 +1071,24 @@ pub async fn document_transcribe(pointer_path: &Path) -> ExitCode {
         Ok(())
     })
     .await
+}
+
+fn source_revision<'a>(
+    pointer: &store::document_pointers::PointerVersion,
+    revisions: &'a [RevisionSummary],
+) -> Result<&'a RevisionSummary> {
+    let source = revisions
+        .iter()
+        .find(|revision| revision.asset_id == pointer.asset_id)
+        .ok_or_else(|| {
+            anyhow!("source pointer revision is no longer on the live document chain")
+        })?;
+    if !source.operative || source.version != pointer.version || source.sha256 != pointer.sha256 {
+        return Err(anyhow!(
+            "source pointer is stale; run `navigator project gate --check` before transcribing"
+        ));
+    }
+    Ok(source)
 }
 
 /// `navigator site document slug <asset_id> --project <code> --slug …`
@@ -3312,13 +3325,14 @@ mod tests {
 
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
-        clause_list, create_notation_draft, document_repair, document_slug, document_upload,
-        ensure_no_unused_selections, fetch_status, mail_file, matter_close, notation_answers,
-        notation_approve, notation_create, notation_document, notation_list,
-        notation_request_changes, notation_status, notation_update, notion_ensure,
-        notion_reconcile, parse_scripted_selection, picker_selection_fields, projects_create,
-        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
-        select_candidate, slack_ensure, CoverageSummary, DocumentClient, SeedCredential,
+        clause_list, create_notation_draft, document_repair, document_slug,
+        document_transcribe_from, document_upload, ensure_no_unused_selections, fetch_status,
+        mail_file, matter_close, notation_answers, notation_approve, notation_create,
+        notation_document, notation_list, notation_request_changes, notation_status,
+        notation_update, notion_ensure, notion_reconcile, parse_scripted_selection,
+        picker_selection_fields, projects_create, retainer_approve, retainer_send,
+        scripted_picker_selection_fields, seed, seed_directory, select_candidate, slack_ensure,
+        source_revision, CoverageSummary, DocumentClient, RevisionSummary, SeedCredential,
         StepQuestion, StepResponse,
     };
     use super::{
@@ -4485,6 +4499,140 @@ mod tests {
             .unwrap()
             .iter()
             .all(|request| !request.url.path().ends_with("/documents")));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_upload_rejects_transcript_quality_for_other_asset_kinds() {
+        assert_eq!(
+            document_upload(
+                None,
+                "acme",
+                std::path::Path::new("missing.pdf"),
+                "filing",
+                None,
+                None,
+                None,
+                None,
+                Some("machine"),
+            )
+            .await,
+            ExitCode::from(2)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_transcribe_rejects_a_non_pdf_pointer_before_connecting() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("navigator.yaml"),
+            "project:\n  name: acme\n  host: https://navigator.example.com\n",
+        )
+        .unwrap();
+        let pointer_path = root.path().join("documents/cases/order.docx.yml");
+        std::fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
+        let pointer = store::document_pointers::DocumentPointer {
+            kind: "filing".into(),
+            visibility: "internal".into(),
+            current_version: store::document_pointers::PointerVersion {
+                version: 1,
+                asset_id: Uuid::now_v7(),
+                created_at: "2026-09-05T12:00:00Z".into(),
+                sha256: "0".repeat(64),
+                size_bytes: 1,
+                canonical_url: None,
+                checked_on: None,
+            },
+            previous_version: None,
+            authority_id: None,
+            docusign_envelope_id: None,
+            xero_invoice_id: None,
+        };
+        std::fs::write(&pointer_path, pointer.to_yaml().unwrap()).unwrap();
+
+        assert_eq!(
+            document_transcribe_from(root.path(), &pointer_path).await,
+            ExitCode::from(2)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_transcribe_rejects_missing_project_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        let pointer = std::path::Path::new("documents/cases/order.pdf.yml");
+        assert_eq!(
+            document_transcribe_from(root.path(), pointer).await,
+            ExitCode::from(2)
+        );
+
+        std::fs::write(
+            root.path().join("navigator.yaml"),
+            "project:\n  name: acme\n",
+        )
+        .unwrap();
+        assert_eq!(
+            document_transcribe_from(root.path(), pointer).await,
+            ExitCode::from(2)
+        );
+
+        std::fs::write(
+            root.path().join("navigator.yaml"),
+            "host: https://navigator.example.com\n",
+        )
+        .unwrap();
+        assert_eq!(
+            document_transcribe_from(root.path(), pointer).await,
+            ExitCode::from(2)
+        );
+
+        std::fs::write(
+            root.path().join("navigator.yaml"),
+            "project:\n  name: acme\n  host: https://navigator.example.com\n",
+        )
+        .unwrap();
+        assert_eq!(
+            document_transcribe_from(root.path(), pointer).await,
+            ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn transcript_source_revision_must_match_the_operative_pointer() {
+        let asset_id = Uuid::now_v7();
+        let pointer = store::document_pointers::PointerVersion {
+            version: 1,
+            asset_id,
+            created_at: "2026-09-05T12:00:00Z".into(),
+            sha256: "a".repeat(64),
+            size_bytes: 1,
+            canonical_url: None,
+            checked_on: None,
+        };
+        let revision = RevisionSummary {
+            version: 1,
+            asset_id,
+            created_at: "2026-09-05T12:00:00Z".into(),
+            sha256: "a".repeat(64),
+            size_bytes: 1,
+            filename: "order.pdf".into(),
+            visibility: "internal".into(),
+            operative: true,
+        };
+
+        assert!(source_revision(&pointer, &[])
+            .unwrap_err()
+            .to_string()
+            .contains("no longer on the live document chain"));
+        assert!(source_revision(&pointer, std::slice::from_ref(&revision)).is_ok());
+
+        let mut stale = revision.clone();
+        stale.operative = false;
+        assert!(source_revision(&pointer, std::slice::from_ref(&stale)).is_err());
+        stale.operative = true;
+        stale.version = 2;
+        assert!(source_revision(&pointer, std::slice::from_ref(&stale)).is_err());
+        stale.version = 1;
+        stale.sha256 = "b".repeat(64);
+        assert!(source_revision(&pointer, &[stale]).is_err());
     }
 
     #[tokio::test(flavor = "current_thread")]

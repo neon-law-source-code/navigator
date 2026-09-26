@@ -192,9 +192,10 @@ live document the lens can see must have a pointer. A drifted pointer is rewritt
 `documents/<slug>.yaml`. A missing `documents/.gitignore` is written. The command never writes to the live site. A
 missing storage object needs a person: `navigator site document repair` restores it from a same-hash sibling in the
 matter. A live row with no slug needs a person: `navigator site document slug` sets the slug and, when passed, the kind.
-`--deep` re-hashes each object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix.
-Uploading a staged file, or filing a new revision, is `navigator site sync`. Plain `navigator project gate`, without
-`--check`, makes no document request.
+A kind the asset lane rejects needs a person: `navigator site document kind` replaces it. `--deep` re-hashes each
+object. `--ci` writes nothing: a fix it would make fails the job and the output names the fix. Uploading a staged file,
+or filing a new revision, is `navigator site sync`. Plain `navigator project gate`, without `--check`, makes no document
+request.
 
 **`navigator project sync` reconciles the complete live Project into the checkout.** Run it with no positional arguments
 from the repository root. It reads the Project code and host from `navigator.yaml`, asks the live site for every
@@ -237,6 +238,12 @@ chain, so the write never merges two documents. `sha256`, the storage key, and t
 that already exists is a re-filing, not this command. A missing storage object is `navigator site document repair`,
 which copies bytes from a same-hash sibling in the matter onto the content-addressed key, or re-points the row at that
 key, then verifies the sha256. It does not expunge the document.
+
+**A legacy kind is replaced in place.** A row can carry a free-text kind from before the closed asset-lane list, and the
+gate rejects its pointer. Pass `--kind` to `navigator site document slug` while the row is slugless; once it has a slug,
+a revision cannot change its kind, so `navigator site document kind` replaces it on the row and every revision of its
+chain. The server refuses a row whose kind is already accepted, so it never turns one valid classification into another.
+`sha256`, the storage key, and the slug stay unchanged.
 
 **The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
 [`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to
@@ -603,15 +610,17 @@ empty provider makes the publisher no-op for an unprovisioned or forked reposito
 
 The applications bucket is **shared**: every Project's portal lives in it under its own `<code>/portal/` prefix, and
 that prefix is derived by the action rather than enforced by Google. So the publisher's grant carries an IAM condition
-naming exactly one prefix — `cli/src/devx/gcp/app_publisher.rs`, `publisher_condition_expression`. Without it, any
-Project's CI could overwrite any other Project's portal, which is privileged client-facing work product Navigator serves
-same-origin.
+naming exactly one prefix, plus the one `<code>/.publish-manifest` object beside it that pruning reads and rewrites —
+`cli/src/devx/gcp/app_publisher.rs`, `publisher_condition_expression`. Without it, any Project's CI could overwrite any
+other Project's portal, which is privileged client-facing work product Navigator serves same-origin. The manifest sits
+outside `<code>/portal/` so the gateway can never serve it, which is why the condition names it exactly: a grant that
+covers only the prefix uploads the bundle and then fails every publish writing the manifest.
 
-The role bound under that condition is a custom one holding exactly `storage.objects.create`, `storage.objects.get` and
-`storage.objects.update`. No predefined role is create-and-update without delete: `objectCreator` is create-only, and
-`objectUser` and `objectAdmin` both carry delete. It deliberately excludes `storage.objects.list`, which is evaluated
-against the *bucket* — no object-name condition can scope it, and granting it would leak every other Project's object
-names. The publish does not need it, because it uploads with `cp`, which never lists.
+The role bound under that condition is a custom one holding exactly `storage.objects.create`, `storage.objects.get`,
+`storage.objects.update` and `storage.objects.delete`, the last so a publish can prune a key a later build dropped. It
+deliberately excludes `storage.objects.list`, which is evaluated against the *bucket* — no object-name condition can
+scope it, and granting it would leak every other Project's object names. The publish does not need it, because it
+uploads with `cp` and prunes from its own manifest, so it never lists.
 
 **A condition lives on a binding, and a binding names one role and one member set, so a publisher account can carry
 exactly one prefix.** One publisher identity per Project therefore follows from the shape rather than from preference: a

@@ -21,8 +21,9 @@ over the files it never read. Run it from the root.
 `navigator.yaml`. It rewrites a drifted pointer, writes a missing pointer, and writes a missing `documents/.gitignore`.
 It never writes to the live site. A missing or corrupt object needs a person: `navigator site document repair` restores
 a missing object from a same-hash sibling in the matter. A live row with no slug needs a person: `navigator site
-document slug` sets the slug and, when passed, the kind. `--deep` re-hashes each object. Under `--ci` any fix this would
-make fails the job and the output names the fix. Without `--check`, `project gate` makes no document request.
+document slug` sets the slug and, when passed, the kind. A kind the asset lane rejects needs a person: `navigator site
+document kind` replaces it. `--deep` re-hashes each object. Under `--ci` any fix this would make fails the job and the
+output names the fix. Without `--check`, `project gate` makes no document request.
 
 A directory that is neither of those shapes — no `Cargo.toml`, no `navigator.yaml`, no assumption about the surrounding
 repository — still has the same rule set through `navigator validate [DIR]`. The directory defaults to `.`. `--fix`

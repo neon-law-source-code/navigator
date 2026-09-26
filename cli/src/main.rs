@@ -2153,9 +2153,34 @@ enum DocumentAction {
         /// Document identity. Must carry the stored filename's extension.
         #[arg(long)]
         slug: String,
-        /// Asset-lane kind. Omit to leave the stored kind unchanged.
+        /// Asset-lane kind. Omit to leave the stored kind unchanged; pass it
+        /// whenever the stored kind is not an accepted one, because a slugged
+        /// row's kind otherwise needs `navigator site document kind`.
         #[arg(long, value_parser = parse_asset_kind)]
         kind: Option<String>,
+        /// Validate and print the result. The row is left unchanged.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Replace a legacy `kind` the asset lane rejects on a live row and its
+    /// slug chain (`PATCH /app/api/projects/{id}/documents/{asset_id}`).
+    ///
+    /// Refuses a row whose kind is already accepted, so it never changes one
+    /// valid classification into another. `sha256`, the storage key, and the
+    /// slug stay unchanged. After it succeeds, `navigator project gate
+    /// --check` can rewrite the pointer.
+    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
+    Kind {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code (human-facing). Resolved against the matters this login can see.
+        #[arg(long)]
+        project: String,
+        /// Asset id of the row whose kind the asset lane rejects.
+        asset_id: uuid::Uuid,
+        /// Asset-lane kind to write.
+        #[arg(long, value_parser = parse_asset_kind)]
+        kind: String,
         /// Validate and print the result. The row is left unchanged.
         #[arg(long)]
         dry_run: bool,
@@ -2873,6 +2898,13 @@ async fn run_document(action: DocumentAction) -> ExitCode {
             )
             .await
         }
+        DocumentAction::Kind {
+            host,
+            project,
+            asset_id,
+            kind,
+            dry_run,
+        } => remote::document_kind(host.host.as_deref(), &project, asset_id, &kind, dry_run).await,
         DocumentAction::Repair {
             host,
             project,

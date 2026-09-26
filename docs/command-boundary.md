@@ -39,9 +39,9 @@ own persistence logic.
   an asset-lane value — the same enum OpenAPI publishes on that operation. `navigator site sync` uses this door for each
   staged file and the scoped document `PATCH` door for pointer visibility; it never calls object storage or writes the
   store itself. `navigator site document slug` uses that same `PATCH` to set `slug` (and optionally `kind`) on a row
-  whose slug is null. `navigator site document repair` posts to `POST
-  /app/api/projects/{id}/documents/{asset_id}/storage`, an admin door that restores a missing object from a same-hash
-  sibling in the matter.
+  whose slug is null, and `navigator site document kind` sends `kind` alone to replace a legacy kind the asset lane
+  rejects. `navigator site document repair` posts to `POST /app/api/projects/{id}/documents/{asset_id}/storage`, an
+  admin door that restores a missing object from a same-hash sibling in the matter.
 - **Public asset upload (ENG-909).** `navigator site asset upload --host <h1> [--host <h2> ...] ASSET_NAME` reads one
   local public-safe asset and sends it with the stored bearer to `POST /app/api/assets` (`portal::assets_api`), once per
   named host. Unlike document upload there is no `--project`: a public asset (a brand mark, a hero image, a font file)

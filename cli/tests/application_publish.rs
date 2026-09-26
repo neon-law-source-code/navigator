@@ -174,16 +174,27 @@ fn read_argv(log: &Path) -> Vec<String> {
 /// stubbed, and return every invocation (argv, space-split) in call order
 /// alongside the step's own result.
 ///
-/// `existing_manifest`, when given, is what `gcloud storage cat` prints back
-/// for the manifest key — simulating what a previous publish left. `None`
-/// simulates a Project's first publish: the stub exits non-zero for `cat`,
-/// the same shape a missing object produces against real `gcloud`. Unlike
+/// `previous` is what `gcloud storage cat` does for the manifest key: print
+/// what a previous publish left, fail the way a missing object fails against
+/// real `gcloud` (a Project's first publish), or fail the way a denied grant
+/// fails. Unlike
 /// [`run_step_with_gcloud_stub`], every call is recorded, not only the last —
 /// this step calls `gcloud` several times (`cat`, zero or more `rm`, then
 /// `cp`) and a test needs to see all of them in order.
+/// What the stubbed `gcloud storage cat` does for the previous manifest.
+#[derive(Clone, Copy)]
+enum PreviousManifest<'a> {
+    /// A previous publish left this manifest.
+    Present(&'a str),
+    /// No manifest yet: a Project's first publish.
+    Missing,
+    /// The publisher's grant does not reach the manifest key.
+    Denied,
+}
+
 fn run_prune_step(
     dist: &[&str],
-    existing_manifest: Option<&str>,
+    previous: PreviousManifest<'_>,
 ) -> (Vec<Vec<String>>, Result<(), String>) {
     let tmp = tempfile::tempdir().expect("temp dir");
     let root = tmp.path();
@@ -200,23 +211,33 @@ fn run_prune_step(
     fs::write(&calls_log, "").expect("create calls log");
 
     let manifest_fixture = root.join("manifest-fixture.txt");
-    fs::write(&manifest_fixture, existing_manifest.unwrap_or_default()).expect("write fixture");
+    let (manifest, cat_exit, cat_error) = match previous {
+        PreviousManifest::Present(manifest) => (manifest, 0, ""),
+        PreviousManifest::Missing => (
+            "",
+            1,
+            "ERROR: (gcloud.storage.cat) The following URLs matched no objects or files:",
+        ),
+        PreviousManifest::Denied => (
+            "",
+            1,
+            "ERROR: (gcloud.storage.cat) HTTPError 403: publisher does not have \
+             storage.objects.get access to the Google Cloud Storage object.",
+        ),
+    };
+    fs::write(&manifest_fixture, manifest).expect("write fixture");
 
     let stub = bin.join("gcloud");
     let stub_script = format!(
         "#!/usr/bin/env bash\n\
          printf '%s\\n' \"$*\" >> {calls}\n\
          if [ \"$1\" = storage ] && [ \"$2\" = cat ]; then\n\
-         \x20\x20\x20\x20if [ {present} = true ]; then\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20cat {manifest}\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20exit 0\n\
-         \x20\x20\x20\x20else\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20exit 1\n\
-         \x20\x20\x20\x20fi\n\
+         \x20\x20\x20\x20cat {manifest}\n\
+         \x20\x20\x20\x20printf '%s\\n' '{cat_error}' >&2\n\
+         \x20\x20\x20\x20exit {cat_exit}\n\
          fi\n\
          exit 0\n",
         calls = calls_log.display(),
-        present = existing_manifest.is_some(),
         manifest = manifest_fixture.display(),
     );
     fs::write(&stub, stub_script).expect("write gcloud stub");
@@ -262,7 +283,7 @@ fn run_prune_step(
 /// to diff against.
 #[test]
 fn a_first_publish_has_no_manifest_and_prunes_nothing() {
-    let (calls, result) = run_prune_step(&["index.html", "assets/a.js"], None);
+    let (calls, result) = run_prune_step(&["index.html", "assets/a.js"], PreviousManifest::Missing);
     result.expect("a first publish must succeed");
 
     assert!(
@@ -289,6 +310,26 @@ fn a_first_publish_has_no_manifest_and_prunes_nothing() {
     );
 }
 
+/// A manifest the publisher cannot read is not a first publish: reading it
+/// as empty would hide a broken grant, so the step stops before deleting or
+/// overwriting anything.
+#[test]
+fn a_denied_manifest_read_stops_the_publish_and_deletes_nothing() {
+    let (calls, result) = run_prune_step(&["index.html", "assets/a.js"], PreviousManifest::Denied);
+    let error = result.expect_err("a denied manifest read must fail the step");
+
+    assert!(
+        error.contains("could not read the publish manifest"),
+        "the step must say why it stopped: {error}"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call.get(1).map(String::as_str), Some("rm" | "cp"))),
+        "nothing may be deleted or overwritten after a denied read: {calls:?}"
+    );
+}
+
 /// A later publish deletes exactly the key the new build no longer carries,
 /// under this Project's own prefix, and leaves everything the build still
 /// has alone.
@@ -296,7 +337,7 @@ fn a_first_publish_has_no_manifest_and_prunes_nothing() {
 fn a_later_publish_prunes_exactly_what_the_build_dropped() {
     let (calls, result) = run_prune_step(
         &["index.html", "assets/a.js"],
-        Some("index.html\nassets/a.js\npdf/old.pdf\n"),
+        PreviousManifest::Present("index.html\nassets/a.js\npdf/old.pdf\n"),
     );
     result.expect("pruning one of three objects must succeed");
 
@@ -318,7 +359,7 @@ fn a_later_publish_prunes_exactly_what_the_build_dropped() {
 fn a_build_that_drops_too_much_is_refused_and_deletes_nothing() {
     let (calls, result) = run_prune_step(
         &["index.html"],
-        Some("index.html\nassets/a.js\nassets/b.js\n"),
+        PreviousManifest::Present("index.html\nassets/a.js\nassets/b.js\n"),
     );
     let error = result.expect_err("pruning two of three prior objects must be refused");
     assert!(error.contains("50%"), "{error}");

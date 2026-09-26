@@ -760,6 +760,37 @@ impl DocumentClient {
         serde_json::from_str(&text).context("parse document slug response")
     }
 
+    /// Replace a legacy kind the asset lane rejects on a row and its chain.
+    /// `dry_run` asks the server to validate and change nothing.
+    pub(crate) async fn reclassify_kind(
+        &self,
+        asset_id: Uuid,
+        kind: &str,
+        dry_run: bool,
+    ) -> Result<serde_json::Value> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents/{asset_id}",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .patch(&url)
+            .bearer_auth(&self.token)
+            .json(&serde_json::json!({ "kind": kind, "dry_run": dry_run }))
+            .send()
+            .await
+            .with_context(|| format!("PATCH {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "document kind failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse document kind response")
+    }
+
     /// Restore a missing storage object from a same-hash sibling.
     pub(crate) async fn repair_storage(
         &self,
@@ -918,6 +949,35 @@ pub async fn document_slug(
     run(async {
         let client = DocumentClient::connect(host, project_code).await?;
         let body = client.assign_slug(asset_id, slug, kind, dry_run).await?;
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        if let Some(stored) = body["kind"].as_str().filter(|stored| !is_asset_kind(stored)) {
+            eprintln!(
+                "warning: kind `{stored}` is not an accepted document kind, and the gate will reject \
+                 this row's pointer; replace it with `navigator site document kind {asset_id} \
+                 --project {project_code} --kind <kind>`"
+            );
+        }
+        Ok(())
+    })
+    .await
+}
+
+fn is_asset_kind(kind: &str) -> bool {
+    rules::kind::Kind::parse(kind).is_some_and(|parsed| parsed.valid_for(rules::kind::Lane::Asset))
+}
+
+/// `navigator site document kind <asset_id> --project <code> --kind …`
+/// — replace a legacy kind the asset lane rejects on a live row.
+pub async fn document_kind(
+    host: Option<&str>,
+    project_code: &str,
+    asset_id: Uuid,
+    kind: &str,
+    dry_run: bool,
+) -> ExitCode {
+    run(async {
+        let client = DocumentClient::connect(host, project_code).await?;
+        let body = client.reclassify_kind(asset_id, kind, dry_run).await?;
         println!("{}", serde_json::to_string_pretty(&body)?);
         Ok(())
     })

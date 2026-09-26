@@ -1027,6 +1027,111 @@ pub async fn assign_slug(
     Ok(written)
 }
 
+/// Why [`reclassify_kind`] wrote nothing.
+#[derive(Debug, thiserror::Error)]
+pub enum ReclassifyKindError {
+    /// The asset is missing or belongs to another Project.
+    #[error("asset is not on this project")]
+    NotOnProject,
+    /// The row's kind is already an asset-lane kind. A chain's kind is stable
+    /// once it is valid; this door only repairs a kind the lane rejects.
+    #[error("kind `{0}` is already an accepted document kind")]
+    KindAccepted(String),
+    /// Another revision in the row's chain already carries an accepted kind,
+    /// so rewriting the chain would change a valid classification.
+    #[error("another revision of `{0}` already carries an accepted kind")]
+    ChainHasAcceptedKind(String),
+    /// `kind` is not a [`rules::kind::Kind`] valid for [`rules::kind::Lane::Asset`].
+    #[error("`{0}` is not a document kind that can be filed on a matter")]
+    InvalidKind(String),
+    #[error(transparent)]
+    Asset(#[from] AssetError),
+}
+
+fn is_asset_kind(kind: Option<&str>) -> bool {
+    kind.and_then(rules::kind::Kind::parse)
+        .is_some_and(|parsed| parsed.valid_for(rules::kind::Lane::Asset))
+}
+
+/// Replace a `kind` that is not an asset-lane kind — a legacy free-text
+/// classification that predates the closed list — on one asset that belongs
+/// to `project_id`, and on every other revision of its slug chain.
+///
+/// A row whose kind is already accepted is refused, so this never changes one
+/// valid classification into another. A slugged row is rewritten with its
+/// whole chain, because a revision cannot change the chain's kind; a chain
+/// where any revision already carries an accepted kind is refused.
+/// `sha256_hex`, `storage_key`, `byte_size`, and `slug` stay as stored.
+/// Returns the requested row as written (or, with `dry_run`, as it would be).
+///
+/// # Errors
+/// [`ReclassifyKindError`] when the row is out of the Project, its kind (or a
+/// chain sibling's) is already accepted, or `kind` fails validation.
+pub async fn reclassify_kind(
+    db: &SurrealDb,
+    project_id: Uuid,
+    asset_id: Uuid,
+    kind: &str,
+    dry_run: bool,
+) -> Result<Asset, ReclassifyKindError> {
+    let Some(asset) = find_by_id(db, asset_id)
+        .await?
+        .filter(|asset| asset.project_id == Some(project_id))
+    else {
+        return Err(ReclassifyKindError::NotOnProject);
+    };
+    if is_asset_kind(asset.kind.as_deref()) {
+        return Err(ReclassifyKindError::KindAccepted(
+            asset.kind.clone().unwrap_or_default(),
+        ));
+    }
+    let kind = kind.trim();
+    if !is_asset_kind(Some(kind)) {
+        return Err(ReclassifyKindError::InvalidKind(kind.to_string()));
+    }
+    let chain = match asset.slug.as_deref() {
+        Some(slug) => revisions(db, project_id, slug).await?,
+        None => Vec::new(),
+    };
+    if let Some(slug) = asset.slug.as_deref() {
+        if chain.iter().any(|row| is_asset_kind(row.kind.as_deref())) {
+            return Err(ReclassifyKindError::ChainHasAcceptedKind(slug.to_string()));
+        }
+    }
+    if dry_run {
+        let mut preview = asset;
+        preview.kind = Some(kind.to_string());
+        return Ok(preview);
+    }
+    let mut ids: Vec<Uuid> = chain.iter().map(|row| row.id).collect();
+    if !ids.contains(&asset.id) {
+        ids.push(asset.id);
+    }
+    for id in ids {
+        let response = writing(|| {
+            db.query("UPDATE $id SET kind = $kind, updated_at = time::now()")
+                .bind(("id", record_id(TABLE, id)))
+                .bind(("kind", kind.to_string()))
+        })
+        .await
+        .map_err(AssetError::from)?;
+        if one(response)?.is_none() {
+            return Err(AssetError::WriteReturnedNothing.into());
+        }
+    }
+    let written = find_by_id(db, asset_id)
+        .await?
+        .ok_or(AssetError::WriteReturnedNothing)?;
+    if written.sha256_hex != asset.sha256_hex
+        || written.storage_key != asset.storage_key
+        || written.byte_size != asset.byte_size
+        || written.slug != asset.slug
+    {
+        return Err(AssetError::WriteReturnedNothing.into());
+    }
+    Ok(written)
+}
+
 /// Why [`repair_missing_object`] changed nothing.
 #[derive(Debug, thiserror::Error)]
 pub enum RepairStorageError {
@@ -1804,6 +1909,147 @@ mod tests {
         let stored = find_by_id(&db, row.id).await.unwrap().unwrap();
         assert!(stored.slug.is_none());
         assert_eq!(stored.kind.as_deref(), Some("unclassified"));
+    }
+
+    async fn force_kind(db: &SurrealDb, asset_id: uuid::Uuid, kind: &str) {
+        db.query("UPDATE $id SET kind = $kind")
+            .bind(("id", super::record_id(super::TABLE, asset_id)))
+            .bind(("kind", kind.to_string()))
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reclassify_kind_rewrites_a_legacy_kind_across_the_chain() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let first = ingest_named(
+            &db,
+            &storage,
+            project,
+            "filing.txt",
+            "unclassified",
+            Some("filing.txt"),
+            b"first revision",
+        )
+        .await;
+        let second = ingest_named(
+            &db,
+            &storage,
+            project,
+            "filing.txt",
+            "unclassified",
+            Some("filing.txt"),
+            b"second revision",
+        )
+        .await;
+        force_kind(&db, first.id, "Formation Filing").await;
+        force_kind(&db, second.id, "Formation Filing").await;
+
+        let preview = super::reclassify_kind(&db, project, second.id, "filing", true)
+            .await
+            .unwrap();
+        assert_eq!(preview.kind.as_deref(), Some("filing"));
+        let untouched = find_by_id(&db, second.id).await.unwrap().unwrap();
+        assert_eq!(untouched.kind.as_deref(), Some("Formation Filing"));
+
+        let written = super::reclassify_kind(&db, project, second.id, "filing", false)
+            .await
+            .unwrap();
+        assert_eq!(written.kind.as_deref(), Some("filing"));
+        assert_eq!(written.slug, second.slug);
+        assert_eq!(written.sha256_hex, second.sha256_hex);
+        assert_eq!(written.storage_key, second.storage_key);
+        let sibling = find_by_id(&db, first.id).await.unwrap().unwrap();
+        assert_eq!(sibling.kind.as_deref(), Some("filing"));
+    }
+
+    #[tokio::test]
+    async fn reclassify_kind_refuses_a_row_whose_kind_is_accepted() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let row = ingest_named(
+            &db,
+            &storage,
+            project,
+            "memo.txt",
+            "memo",
+            Some("memo.txt"),
+            b"a valid memo",
+        )
+        .await;
+
+        let err = super::reclassify_kind(&db, project, row.id, "letter", false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, super::ReclassifyKindError::KindAccepted(_)));
+        let stored = find_by_id(&db, row.id).await.unwrap().unwrap();
+        assert_eq!(stored.kind.as_deref(), Some("memo"));
+    }
+
+    #[tokio::test]
+    async fn reclassify_kind_refuses_a_target_outside_the_asset_lane() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let row = ingest_named(
+            &db,
+            &storage,
+            project,
+            "receipt.txt",
+            "unclassified",
+            Some("receipt.txt"),
+            b"legacy receipt",
+        )
+        .await;
+        force_kind(&db, row.id, "Receipt").await;
+
+        let err = super::reclassify_kind(&db, project, row.id, "review_queue_workbench", false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, super::ReclassifyKindError::InvalidKind(_)));
+        let stored = find_by_id(&db, row.id).await.unwrap().unwrap();
+        assert_eq!(stored.kind.as_deref(), Some("Receipt"));
+    }
+
+    #[tokio::test]
+    async fn reclassify_kind_refuses_a_chain_with_an_accepted_revision() {
+        let (db, storage, _tmp) = fixtures().await;
+        let project = crate::test_support::seed_project_surreal(&db, "matter").await;
+        let valid = ingest_named(
+            &db,
+            &storage,
+            project,
+            "contract.txt",
+            "agreement",
+            Some("contract.txt"),
+            b"valid revision",
+        )
+        .await;
+        let legacy = ingest_named(
+            &db,
+            &storage,
+            project,
+            "contract.txt",
+            "agreement",
+            Some("contract.txt"),
+            b"legacy revision",
+        )
+        .await;
+        force_kind(&db, legacy.id, "Consulting Contract").await;
+
+        let err = super::reclassify_kind(&db, project, legacy.id, "inbound_contract", false)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            super::ReclassifyKindError::ChainHasAcceptedKind(_)
+        ));
+        let stored = find_by_id(&db, legacy.id).await.unwrap().unwrap();
+        assert_eq!(stored.kind.as_deref(), Some("Consulting Contract"));
+        let head = find_by_id(&db, valid.id).await.unwrap().unwrap();
+        assert_eq!(head.kind.as_deref(), Some("agreement"));
     }
 
     #[tokio::test]

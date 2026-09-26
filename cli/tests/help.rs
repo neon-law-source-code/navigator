@@ -244,30 +244,13 @@ fn the_two_doctors_keep_distinct_headlines() {
     );
 }
 
-/// The glossary helpers sit next to each other under one parent and do
-/// opposite things: one rewrites entries inside the repository, another
-/// prints a page for a push out of it. Each has to say which it is on its own
-/// `--help`, or an operator reaching for the safe one runs the writer.
+/// The glossary Notion helper prints the page for a push out of the repository.
 #[test]
-fn the_glossary_sync_helpers_keep_distinct_headlines() {
-    let tables = unwrapped(&help(&["glossary", "tables", "--help"]));
-    assert!(
-        tables.contains("Check every term's schema box"),
-        "glossary tables headline: {tables}"
-    );
-    assert!(
-        tables.contains("--write") && !tables.contains("--path"),
-        "glossary tables offers --write and no target path: {tables}"
-    );
-
+fn the_glossary_notion_helper_keeps_its_headline() {
     let notion = unwrapped(&help(&["glossary", "notion", "--help"]));
     assert!(
         notion.contains("Print the glossary as one Markdown page Notion can hold"),
         "glossary notion headline: {notion}"
-    );
-    assert!(
-        !notion.contains("schema box"),
-        "glossary notion must not carry glossary tables' headline: {notion}"
     );
 }
 
@@ -277,7 +260,7 @@ fn the_glossary_sync_helpers_keep_distinct_headlines() {
 fn glossary_keeps_only_the_reference_helpers() {
     assert_eq!(
         command_names(&help(&["glossary", "--help"])),
-        vec!["list", "notion", "show", "tables", "help"]
+        vec!["list", "notion", "show", "help"]
     );
 }
 

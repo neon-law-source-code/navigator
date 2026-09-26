@@ -23,15 +23,3 @@ wrong data, not a security incident.
   [`store/src/schema/navigator.surql`](../../store/src/schema/navigator.surql)
 - Inertness guard: `cli/tests/external_identity_is_inert.rs`
 - Access model: [`access-model`](../access-model.md#what-an-external-system-identity-is-not)
-
-```text
-┌─ person_external_identity ──┐
-│ id           record         │
-│ external_id  string         │
-│ handle       option<string> │
-│ inserted_at  datetime       │
-│ person_id    record<person> │
-│ system       string         │
-│ updated_at   datetime       │
-└─────────────────────────────┘
-```

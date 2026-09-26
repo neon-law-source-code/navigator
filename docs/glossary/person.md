@@ -23,28 +23,3 @@ deleted, so a mailbox is reusable rather than locked out.
 
 - Schema: [`person` in `navigator.surql`](../../store/src/schema/navigator.surql) Queries:
   [`store::persons`](../../store/src/persons.rs)
-
-```text
-┌─ person ──────────────────────────┐
-│ id                 record         │
-│ apple_subject      option<string> │
-│ email              string         │
-│ email_confirmed    bool           │
-│ email_lower        string         │
-│ family_name        option<string> │
-│ given_name         option<string> │
-│ inserted_at        datetime       │
-│ is_admitted        bool           │
-│ linkedin_url       option<string> │
-│ microsoft_subject  option<string> │
-│ middle_name        option<string> │
-│ name               string         │
-│ oidc_subject       option<string> │
-│ phone              option<string> │
-│ profile_image_url  option<string> │
-│ role               string         │
-│ title              option<string> │
-│ updated_at         datetime       │
-│ xero_contact_id    option<string> │
-└───────────────────────────────────┘
-```

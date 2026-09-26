@@ -80,10 +80,9 @@ to say the same thing worse.
    the Notion text, say where it is and let a human decide.
 3. Apply the wording to `docs/glossary/<slug>.md` in its own idiom: sibling links, hard wrap at 120. A new term is a new
    file named for the slug of its `title:`.
-4. Refresh any schema box and run the gate:
+4. Run the gate:
 
    ```bash
-   cargo run -p cli --quiet -- glossary tables --write
    cargo run -p cli --quiet -- project gate
    rtk cargo nextest run -p cli -p store -p portal
    ```
@@ -94,7 +93,8 @@ to say the same thing worse.
 
 ## What not to do
 
-- **Don't hand-edit a schema box.** Run `glossary tables --write`. The test compares bytes.
+- **Describe terms in prose.** When a table matters, link to its `DEFINE TABLE` statement in
+  `store/src/schema/navigator.surql` rather than copying its fields into the definition.
 - **Don't rename a term to fix its wording** without grepping `glossary/<slug>.md` across the tree first. Changing the
   body is cheap; changing the slug is a cross-cutting rename.
 - **Don't add a second Notion page** for part of the vocabulary. One page mirrors one directory; a split copy is a copy

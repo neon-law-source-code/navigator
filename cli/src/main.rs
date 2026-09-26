@@ -1951,15 +1951,6 @@ enum GlossaryCmd {
         /// Term title or slug, e.g. `"Lawyer Review"` or `lawyer-review`.
         term: String,
     },
-    /// Check every term's schema box against the shipped
-    /// `navigator.surql`, or rewrite them with `--write`. A term naming a
-    /// `SurrealDB` table carries that table's columns and types as rendered
-    /// art; the boxes are derived data.
-    Tables {
-        /// Rewrite the boxes in place instead of only reporting drift.
-        #[arg(long)]
-        write: bool,
-    },
     /// Print the glossary as one Markdown page Notion can hold: every
     /// repository-relative link resolved to a public GitHub URL and
     /// sibling-term links unlinked. The push half of the Notion round trip.
@@ -2424,7 +2415,6 @@ fn main() -> ExitCode {
         Command::Glossary { action } => match action {
             GlossaryCmd::List => glossary::list(),
             GlossaryCmd::Show { term } => glossary::show(&term),
-            GlossaryCmd::Tables { write } => glossary::tables(write),
             GlossaryCmd::Notion => glossary::notion(),
         },
         Command::Forms { action } => match action {

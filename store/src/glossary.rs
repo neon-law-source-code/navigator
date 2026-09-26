@@ -38,7 +38,6 @@
 //! shape against the applied schema. A component that renders both reads
 //! two sources.
 
-use std::fmt::Write as _;
 use std::sync::LazyLock;
 
 use include_dir::{include_dir, Dir};
@@ -60,19 +59,7 @@ const TABLE: &str = "glossary_term";
 /// directory's `README.md` is its preamble, not a term.
 pub static GLOSSARY: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../docs/glossary");
 
-/// The authored glossary directory on disk — the same directory
-/// [`GLOSSARY`] embeds, named by the same path so a writer and the gate
-/// cannot point at different copies.
-///
-/// [`with_rendered_tables`] is checked against the embedded bytes by the
-/// workspace gate, so a writer that resolved its own target from the
-/// working directory could rewrite one tree while the gate kept reading
-/// another. Sharing this constant is what makes that mismatch
-/// unrepresentable.
-pub const GLOSSARY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary");
-
-/// How [`GLOSSARY_PATH`] is spelled in prose: the repository-relative path
-/// a reader can act on, rather than the absolute build path.
+/// The repository-relative glossary path used in diagnostics and links.
 pub const GLOSSARY_LABEL: &str = "docs/glossary";
 
 /// The directory's preamble file — prose about the glossary, not a term.
@@ -354,155 +341,6 @@ pub fn slugify(text: &str) -> String {
     out
 }
 
-/// Glossary terms whose heading does not slug to the table they name.
-///
-/// The rule is the slug: `## Person` is the `person` table. These are
-/// the terms the rule cannot reach — a heading that spells a join table
-/// with an en dash, or one that reads as the domain noun rather than
-/// the table name. A term absent from both the rule and this table
-/// simply renders no box; only a wrong table here is drift, and
-/// [`tests::every_alias_names_a_real_table`] pins that.
-const TABLE_ALIASES: &[(&str, &str)] = &[
-    ("Deadline", "statutory_deadline"),
-    ("Docket Entry", "case_docket_entry"),
-    ("External System Identity", "person_external_identity"),
-    ("Person\u{2013}Entity Role", "entity_role"),
-    ("Person\u{2013}Firm Role", "person_firm_role"),
-    ("Person\u{2013}Project Role", "person_project_role"),
-    ("Relationship Edge", "relationship"),
-    ("Repository", "git_repository"),
-];
-
-/// The Surreal table a glossary term names, if it names one.
-///
-/// A term earns a schema box when its heading slugs to a table in the
-/// shipped schema (`## Entity Type` → `entity_type`) or when
-/// [`TABLE_ALIASES`] maps it. Everything else — a workflow prefix, a
-/// role, a piece of vocabulary with no row behind it — returns `None`.
-#[must_use]
-pub fn table_for_term(title: &str) -> Option<String> {
-    let candidate = TABLE_ALIASES
-        .iter()
-        .find(|(term, _)| *term == title)
-        .map_or_else(
-            || slugify(title).replace('-', "_"),
-            |(_, t)| (*t).to_string(),
-        );
-    crate::schema::table_names()
-        .into_iter()
-        .find(|table| *table == candidate)
-}
-
-/// The opening character of a rendered schema box, and the marker
-/// [`with_rendered_tables`] looks for inside a `text` fence.
-const BOX_CORNER: char = '\u{250c}';
-
-/// Render one table as a box of columns.
-///
-/// Columns come from [`crate::schema::table_columns`], so the box is
-/// the shipped schema rather than a description of it: name column and
-/// type column are each padded to their widest entry, which keeps the
-/// art aligned without hand-counting.
-#[must_use]
-pub fn render_table_box(table: &str) -> Option<String> {
-    let columns = crate::schema::table_columns(table);
-    if columns.is_empty() {
-        return None;
-    }
-    let name_width = columns.iter().map(|(n, _)| n.chars().count()).max()?;
-    let type_width = columns.iter().map(|(_, t)| t.chars().count()).max()?;
-    // The row between the two borders: " " + name + "  " + type + " ".
-    let inner = 1 + name_width + 2 + type_width + 1;
-
-    let head = format!("{BOX_CORNER}\u{2500} {table} ");
-    let head_width = table.chars().count() + 4;
-    let mut out = head;
-    for _ in head_width..=inner {
-        out.push('\u{2500}');
-    }
-    out.push('\u{2510}');
-    out.push('\n');
-    for (name, ty) in &columns {
-        let _ = writeln!(
-            out,
-            "\u{2502} {name:name_width$}  {ty:type_width$} \u{2502}"
-        );
-    }
-    out.push('\u{2514}');
-    for _ in 0..inner {
-        out.push('\u{2500}');
-    }
-    out.push('\u{2518}');
-    out.push('\n');
-    Some(out)
-}
-
-/// The fence a rendered schema box is written inside.
-const BOX_FENCE: &str = "```text";
-
-/// One entry's body with its schema box rewritten from the shipped
-/// schema.
-///
-/// An entry keeps at most one box, at the end of its body: the prose
-/// says what the noun means, the box says what the row holds. A term
-/// that no longer names a table loses its box, and a term that gained
-/// one grows it, so an entry cannot drift from `navigator.surql`
-/// without this function's output changing.
-#[must_use]
-pub fn with_rendered_table(title: &str, body: &str) -> String {
-    let lines: Vec<&str> = body.lines().collect();
-    let mut kept = strip_table_box(&lines);
-    while kept.last().is_some_and(|l| l.trim().is_empty()) {
-        kept.pop();
-    }
-    let mut out = kept.join("\n");
-    if let Some(rendered) = table_for_term(title).and_then(|t| render_table_box(&t)) {
-        let _ = write!(out, "\n\n{BOX_FENCE}\n{rendered}```");
-    }
-    out
-}
-
-/// One authored entry file with its schema box rewritten — the
-/// frontmatter is kept byte for byte, and the file ends in exactly one
-/// newline (`M047`). `None` when the file is not a well-formed entry.
-#[must_use]
-pub fn rewrite_entry(stem: &str, raw: &str) -> Option<String> {
-    let term = parse_entry(stem, raw).ok()?;
-    let (_, body) = rules::frontmatter::split(raw)?;
-    let head = &raw[..raw.len() - body.len()];
-    Some(format!(
-        "{head}\n\n{body}\n",
-        head = head.trim_end(),
-        body = with_rendered_table(&term.title, &term.body)
-    ))
-}
-
-/// One body with its generated box (if any) removed.
-fn strip_table_box<'a>(section: &[&'a str]) -> Vec<&'a str> {
-    let mut out: Vec<&str> = Vec::with_capacity(section.len());
-    let mut index = 0;
-    while index < section.len() {
-        let opens_box = section[index] == BOX_FENCE
-            && section
-                .get(index + 1)
-                .is_some_and(|l| l.starts_with(BOX_CORNER));
-        if opens_box {
-            while out.last().is_some_and(|l| l.is_empty()) {
-                out.pop();
-            }
-            index += 1;
-            while index < section.len() && section[index] != "```" {
-                index += 1;
-            }
-            index += 1;
-            continue;
-        }
-        out.push(section[index]);
-        index += 1;
-    }
-    out
-}
-
 /// Materialize glossary terms — [`terms`] in the canonical seed — into
 /// `glossary_term` rows, keyed by slug.
 ///
@@ -608,71 +446,8 @@ pub async fn all(db: &SurrealDb) -> Result<Vec<GlossaryTerm>, GlossaryError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        find, parse_entry, preamble, render_table_box, rewrite_entry, slugify, table_for_term,
-        terms, EntryError, GLOSSARY, GLOSSARY_LABEL, GLOSSARY_PATH, README, TABLE_ALIASES,
+        find, parse_entry, preamble, slugify, terms, EntryError, GLOSSARY, GLOSSARY_LABEL, README,
     };
-
-    /// An alias naming a table the schema does not define would render no
-    /// box at all, silently — the term would just look like vocabulary.
-    #[test]
-    fn every_alias_names_a_real_table() {
-        let tables = crate::schema::table_names();
-        for (term, table) in TABLE_ALIASES {
-            assert!(
-                tables.iter().any(|t| t == table),
-                "alias `{term}` names `{table}`, which is not a table in the shipped schema"
-            );
-        }
-    }
-
-    /// Two terms claiming one table would render the same box twice and
-    /// leave a reader unsure which noun owns the row.
-    #[test]
-    fn no_two_terms_claim_the_same_table() {
-        let mut claimed: Vec<(String, String)> = Vec::new();
-        for term in terms() {
-            if let Some(table) = table_for_term(&term.title) {
-                if let Some((other, _)) = claimed.iter().find(|(_, t)| *t == table) {
-                    panic!("`{}` and `{other}` both claim table `{table}`", term.title);
-                }
-                claimed.push((term.title.clone(), table));
-            }
-        }
-        assert!(
-            claimed.len() > 20,
-            "the glossary should carry a schema box for most tables it names, got {}",
-            claimed.len()
-        );
-    }
-
-    /// The rule before the aliases: a heading that slugs to a table is
-    /// that table, and one that does not is not.
-    #[test]
-    fn table_for_term_follows_the_slug() {
-        assert_eq!(table_for_term("Person").as_deref(), Some("person"));
-        assert_eq!(
-            table_for_term("Entity Type").as_deref(),
-            Some("entity_type")
-        );
-        assert_eq!(
-            table_for_term("Person\u{2013}Project Role").as_deref(),
-            Some("person_project_role")
-        );
-        assert_eq!(table_for_term("Council"), None);
-        assert_eq!(table_for_term("Lawyer Review"), None);
-    }
-
-    /// Every row is padded to the same width, so the box closes.
-    #[test]
-    fn render_table_box_is_square() {
-        let rendered = render_table_box("schema_version").expect("schema_version is a table");
-        let widths: Vec<usize> = rendered.lines().map(|l| l.chars().count()).collect();
-        assert!(
-            widths.windows(2).all(|w| w[0] == w[1]),
-            "ragged box: {widths:?}\n{rendered}"
-        );
-        assert_eq!(render_table_box("not_a_table"), None);
-    }
 
     /// Every embedded entry file, as `(stem, raw)`, `README.md` excluded.
     fn entry_files() -> Vec<(String, &'static str)> {
@@ -686,47 +461,14 @@ mod tests {
             .collect()
     }
 
-    /// The strict drift gate: the boxes in the entries are the schema.
-    ///
-    /// A `DEFINE FIELD` added, retyped, or removed in `navigator.surql`
-    /// fails this until `navigator glossary tables --write` reruns, which
-    /// is the whole point of generating them.
     #[test]
-    fn glossary_schema_boxes_are_current() {
+    fn entries_explain_terms_without_generated_schema_boxes() {
         for (stem, raw) in entry_files() {
-            assert_eq!(
-                rewrite_entry(&stem, raw).as_deref(),
-                Some(raw),
-                "{GLOSSARY_LABEL}/{stem}.md schema box is stale; \
-                 re-run `navigator glossary tables --write`"
+            assert!(
+                !raw.lines().any(|line| line.starts_with("┌─ ")),
+                "{GLOSSARY_LABEL}/{stem}.md must not contain a generated table block"
             );
         }
-    }
-
-    /// Rewriting twice changes nothing the first pass did not.
-    #[test]
-    fn rendering_tables_is_idempotent() {
-        for (stem, raw) in entry_files() {
-            let once = rewrite_entry(&stem, raw).expect("well-formed entry");
-            assert_eq!(rewrite_entry(&stem, &once).as_deref(), Some(once.as_str()));
-        }
-    }
-
-    /// `glossary tables --write` writes under [`GLOSSARY_PATH`] while the
-    /// gate compares what [`GLOSSARY`] embedded. If the two ever named
-    /// different trees the writer would rewrite one copy and the gate would
-    /// keep failing on the other, so hold them to the same bytes.
-    #[test]
-    fn the_glossary_path_names_the_directory_the_glossary_embeds() {
-        for (stem, raw) in entry_files() {
-            let on_disk = std::fs::read_to_string(format!("{GLOSSARY_PATH}/{stem}.md"))
-                .expect("GLOSSARY_PATH must hold every embedded entry");
-            assert_eq!(on_disk, raw, "GLOSSARY_PATH and GLOSSARY diverge on {stem}");
-        }
-        assert!(
-            GLOSSARY_PATH.ends_with(GLOSSARY_LABEL),
-            "the prose label must be how GLOSSARY_PATH actually ends, got {GLOSSARY_PATH}"
-        );
     }
 
     #[test]

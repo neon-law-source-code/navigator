@@ -23,15 +23,3 @@ Values are stored folded — trimmed, lowercased, separators as single underscor
 
 - Schema: [`store::projects`](../../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../../store/src/schema/navigator.surql)
-
-```text
-┌─ person_project_role ──────────┐
-│ id             record          │
-│ inserted_at    string          │
-│ is_client_dri  bool            │
-│ is_lawyer_dri  bool            │
-│ person_id      record<person>  │
-│ project_id     record<project> │
-│ updated_at     string          │
-└────────────────────────────────┘
-```

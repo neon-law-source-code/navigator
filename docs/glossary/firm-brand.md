@@ -24,12 +24,3 @@ PLLC's.
 
 - Schema: [`firm_brand` in `navigator.surql`](../../store/src/schema/navigator.surql) ·
   [`store::firms`](../../store/src/firms.rs)
-
-```text
-┌─ firm_brand ──────────────┐
-│ id           record       │
-│ firm_id      record<firm> │
-│ inserted_at  string       │
-│ updated_at   string       │
-└───────────────────────────┘
-```

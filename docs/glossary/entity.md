@@ -10,17 +10,3 @@ A legal organization — an LLC, trust, corporation, foundation, etc. Has a name
   a claim in the `firm_anchor` table, whose record id is the anchor key, rather than by an advisory lock. The UNIQUE
   `entity_firm_anchor` index is the backstop behind it — it refuses a fork that is not a race, but racers write no
   shared key for the engine to conflict on, so the claim is what serializes them (ENG-272).
-
-```text
-┌─ entity ──────────────────────────────┐
-│ id               record               │
-│ entity_type_id   record<entity_type>  │
-│ firm_anchor_key  option<string>       │
-│ inserted_at      datetime             │
-│ jurisdiction_id  record<jurisdiction> │
-│ name             string               │
-│ phone            option<string>       │
-│ updated_at       datetime             │
-│ url              option<string>       │
-└───────────────────────────────────────┘
-```

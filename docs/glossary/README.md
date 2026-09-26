@@ -14,4 +14,5 @@ page at `/glossary`, anchored at `#<slug>`, and the CLI reads the same files thr
 `navigator glossary show <term>`.
 
 To add a term, create `<slug>.md` whose name is the slug of its `title:` (`Lawyer Review` → `lawyer-review.md`), link
-other entries as siblings (`[Matter](matter.md)`), and run `navigator glossary tables --write` if it names a table.
+other entries as siblings (`[Matter](matter.md)`). When a table matters to a definition, link to its `DEFINE TABLE`
+statement in `store/src/schema/navigator.surql` instead of copying the schema into the glossary.

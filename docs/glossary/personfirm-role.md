@@ -34,15 +34,3 @@ they are seeded `client` and promoted afterward, past the point this rule can se
 
 - Schema: [`store::firms`](../../store/src/firms.rs) ·
   [`store/src/schema/navigator.surql`](../../store/src/schema/navigator.surql)
-
-```text
-┌─ person_firm_role ──────────┐
-│ id           record         │
-│ firm_id      record<firm>   │
-│ inserted_at  string         │
-│ is_dri       bool           │
-│ membership   string         │
-│ person_id    record<person> │
-│ updated_at   string         │
-└─────────────────────────────┘
-```

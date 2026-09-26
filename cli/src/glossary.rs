@@ -7,7 +7,7 @@
 
 use std::process::ExitCode;
 
-use store::glossary::{link_target, terms, LinkTarget, Term, GLOSSARY_LABEL, GLOSSARY_PATH};
+use store::glossary::{link_target, terms, LinkTarget, Term, GLOSSARY_LABEL};
 
 use crate::palette;
 
@@ -41,59 +41,6 @@ fn print_term(term: &Term) {
     println!();
     println!("{}", term.body.trim());
     println!();
-}
-
-/// Check — or with `write`, refresh — every term's schema box.
-///
-/// The boxes are derived data: a term that names a `SurrealDB` table
-/// carries that table's columns and types, read from the shipped
-/// `navigator.surql` rather than transcribed. Hand-editing one is what
-/// would let the page claim a column the schema dropped.
-///
-/// The target is [`GLOSSARY_PATH`] and takes no flag: there is one
-/// authored glossary, and the unit gate compares against the copy
-/// [`store::glossary::GLOSSARY`] embeds from that path.
-#[must_use]
-pub fn tables(write: bool) -> ExitCode {
-    let mut stale = Vec::new();
-    for term in terms() {
-        let path = format!("{GLOSSARY_PATH}/{slug}.md", slug = term.slug);
-        let label = format!("{GLOSSARY_LABEL}/{slug}.md", slug = term.slug);
-        let raw = match std::fs::read_to_string(&path) {
-            Ok(raw) => raw,
-            Err(error) => {
-                eprintln!("navigator: glossary tables: {label}: {error}");
-                return ExitCode::from(1);
-            }
-        };
-        let Some(rendered) = store::glossary::rewrite_entry(&term.slug, &raw) else {
-            eprintln!("navigator: glossary tables: {label} is not a well-formed entry");
-            return ExitCode::from(1);
-        };
-        if rendered == raw {
-            continue;
-        }
-        if write {
-            if let Err(error) = std::fs::write(&path, rendered) {
-                eprintln!("navigator: glossary tables: {label}: {error}");
-                return ExitCode::from(1);
-            }
-            println!("{label}: schema box rewritten");
-        } else {
-            stale.push(label);
-        }
-    }
-    if stale.is_empty() {
-        if !write {
-            println!("{GLOSSARY_LABEL}: schema boxes are current");
-        }
-        return ExitCode::SUCCESS;
-    }
-    for label in &stale {
-        eprintln!("navigator: glossary tables: {label} schema box is stale");
-    }
-    eprintln!("Re-run with --write.");
-    ExitCode::from(1)
 }
 
 /// The public repository every rewritten source link points into.

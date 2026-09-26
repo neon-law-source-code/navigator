@@ -26,27 +26,3 @@ Deadlines module answers what is due.
 
 - Commands: [`store::cases`](../../store/src/cases.rs) · Schema:
   [`case_docket_entry`](../../store/src/schema/navigator.surql)
-
-```text
-┌─ case_docket_entry ────────────────────────────────────────────┐
-│ id                           record                            │
-│ case_id                      record<case>                      │
-│ document_asset_id            option<record<asset>>             │
-│ entry_number                 string                            │
-│ filed_or_served_on           option<string>                    │
-│ inserted_at                  datetime                          │
-│ integrity_checked_at         option<datetime>                  │
-│ integrity_matched            option<bool>                      │
-│ integrity_source_sha256_hex  option<string>                    │
-│ kind                         string                            │
-│ notation_id                  option<record<notation>>          │
-│ party                        option<string>                    │
-│ scheduled_on                 option<datetime>                  │
-│ stamp_case_number            option<string>                    │
-│ stamp_entry_number           option<string>                    │
-│ stamp_filed_on               option<string>                    │
-│ supersedes                   option<record<case_docket_entry>> │
-│ title                        string                            │
-│ updated_at                   datetime                          │
-└────────────────────────────────────────────────────────────────┘
-```

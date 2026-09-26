@@ -31,18 +31,3 @@ the client is never warned about that date.
 step updates its row instead of duplicating it. A hand-entered deadline leaves the key unset, so two genuinely different
 pleadings sharing a kind and a trigger date stay two rows — an idempotency key, not a natural key that silently merges
 malpractice-relevant records.
-
-```text
-┌─ statutory_deadline ─────────┐
-│ id           record          │
-│ due_on       string          │
-│ inserted_at  string          │
-│ kind         string          │
-│ project_id   record<project> │
-│ source       string          │
-│ status       string          │
-│ statute      string          │
-│ trigger_on   string          │
-│ updated_at   string          │
-└──────────────────────────────┘
-```

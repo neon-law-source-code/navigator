@@ -831,7 +831,7 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
         .expect("the home call to action has an href")
         .expect("the home call to action has an href");
     assert_eq!(
-        href, "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+        href, "https://calendar.notion.so/meet/nick-shook/or15n4yy7",
         "the home call to action opens the consultation calendar"
     );
 

@@ -205,7 +205,7 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     assert!(body.contains("Book a consultation"));
-    assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
+    assert!(body.contains("https://calendar.notion.so/meet/nick-shook/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("$5,000"));
     assert!(body.contains("/ once"));
     assert!(body.contains("One time comprehensive contract coverage. Scope agreed at the start."));
@@ -890,7 +890,7 @@ async fn home_presents_company_counsel_pricing_and_business_library() {
     assert!(body.contains("NEON LAW"));
     assert!(!body.contains("NEON LAW /"));
     assert!(!body.contains("Twelve business templates"));
-    assert!(body.contains(r#"href="https://calendar.notion.so/meet/shicholas/or15n4yy7""#));
+    assert!(body.contains(r#"href="https://calendar.notion.so/meet/nick-shook/or15n4yy7""#));
 }
 
 #[tokio::test]
@@ -1901,7 +1901,7 @@ async fn contact_returns_contact_page_html() {
     // mailbox some other CTAs write to.
     assert!(body.contains("mailto:contact@neonlaw.com"));
     assert!(
-        body.contains(r#"href="https://calendar.notion.so/meet/shicholas/or15n4yy7""#),
+        body.contains(r#"href="https://calendar.notion.so/meet/nick-shook/or15n4yy7""#),
         "the contact CTA reaches the firm: {body}"
     );
     // The page's own content, not just chrome that happens to mention contact

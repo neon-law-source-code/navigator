@@ -871,7 +871,6 @@ pub fn home_for_host(
             express_body: copy.express_body,
             page_note: copy.page_note,
             drafting_heading: copy.drafting_heading,
-            drafting_body: copy.drafting_body,
             drafting_packages: copy.drafting_packages,
             closing_heading: copy.closing_heading,
             closing_body: copy.closing_body,

@@ -933,7 +933,6 @@ pub struct CompanyCopy {
     pub express_body: String,
     pub page_note: String,
     pub drafting_heading: String,
-    pub drafting_body: String,
     pub drafting_packages: Vec<[String; 3]>,
     pub closing_heading: String,
     pub closing_body: String,

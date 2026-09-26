@@ -45,7 +45,6 @@ pub struct CompanyContent {
     pub express_body: String,
     pub page_note: String,
     pub drafting_heading: String,
-    pub drafting_body: String,
     pub drafting_packages: Vec<[String; 3]>,
     pub closing_heading: String,
     pub closing_body: String,
@@ -254,7 +253,6 @@ pub(super) fn CompanyHome(
                             p { class: "company-price", "{package[1]}" span { "{package[0]}" } }
                             p { "{package[2]}" }
                         }
-                        p { "{company.drafting_body}" }
                     }
                     article { class: "company-membership",
                         h3 { "{company.membership_label}" }

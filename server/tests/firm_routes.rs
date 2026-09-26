@@ -208,7 +208,7 @@ async fn the_home_books_consultations_and_retires_separate_service_pages() {
     assert!(body.contains("https://calendar.notion.so/meet/shicholas/or15n4yy7"));
     assert!(body.contains("Employment") && body.contains("$5,000"));
     assert!(body.contains("/ once"));
-    assert!(body.contains("One time. Contracts as you need them. Scope agreed at the start."));
+    assert!(body.contains("One time comprehensive contract coverage. Scope agreed at the start."));
     assert!(body.contains("img/neon-home/neon-home-presentation.mp4"));
     assert!(body.contains("<video") && body.contains("video/mp4"));
     assert!(body.contains("href=\"/notations\""));
@@ -878,7 +878,7 @@ async fn home_presents_company_counsel_pricing_and_business_library() {
     assert!(!body.contains("A few useful answers."));
     assert!(body.contains("Your contracts. One fee."));
     assert!(body.contains("/ once"));
-    assert!(body.contains("One time. Contracts as you need them. Scope agreed at the start."));
+    assert!(body.contains("One time comprehensive contract coverage. Scope agreed at the start."));
     assert!(body.matches("Keep building.").count() >= 2);
     assert!(body.contains(r#"href="/presentations/rust-in-peace""#));
     assert!(body.contains(r#"href="/presentations""#));
@@ -901,7 +901,7 @@ async fn home_explains_retainer_and_additional_fees() {
         "$50",
         "$500",
         "$5,000",
-        "One time. Contracts as you need them. Scope agreed at the start.",
+        "One time comprehensive contract coverage. Scope agreed at the start.",
         "A $10,000 retainer is held in trust when you sign up.",
         "We draw after we perform the work.",
         "The engagement letter sets scope, rates, and refunds.",

@@ -79,7 +79,7 @@ async fn vesta_offers_lifetime_edits_and_the_shared_booking_calendar() {
         "Available by request",
         "possible individual",
         "trustee appointment",
-        "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+        "https://calendar.notion.so/meet/nick-shook/or15n4yy7",
         "/public/brand/vesta.svg",
         "Shook Law PLLC",
         "site-footer",

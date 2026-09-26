@@ -54,7 +54,7 @@ async fn privacy_home_publishes_one_annual_offer_and_shared_footer() {
     assert!(!html.contains("Removal depends on the company"));
     assert!(!html.contains("href=\"/services\""));
     assert_eq!(
-        html.matches("href=\"https://calendar.notion.so/meet/shicholas/or15n4yy7\"")
+        html.matches("href=\"https://calendar.notion.so/meet/nick-shook/or15n4yy7\"")
             .count(),
         3
     );

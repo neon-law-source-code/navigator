@@ -140,7 +140,7 @@ impl NavLink {
 /// The company's public offer lives on one page; the next step is a call.
 const FIRM_NAV: &[NavLink] = &[NavLink::leaf(
     "Book Consultation",
-    "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+    "https://calendar.notion.so/meet/nick-shook/or15n4yy7",
 )];
 
 /// The rest of the firm's public surface, rendered in the footer rather than the
@@ -575,7 +575,7 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     firm_trademark: "",
     firm_trademark_registration: "",
     firm_trademark_record_url: "",
-    consultation_url: "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+    consultation_url: "https://calendar.notion.so/meet/nick-shook/or15n4yy7",
     terms_url: "/terms",
     privacy_url: "/privacy",
     base_url: "",
@@ -661,7 +661,7 @@ pub static VESTA_BRANDING: Branding = Branding {
     firm_trademark: "",
     firm_trademark_registration: "",
     firm_trademark_record_url: "",
-    consultation_url: "https://calendar.notion.so/meet/shicholas/or15n4yy7",
+    consultation_url: "https://calendar.notion.so/meet/nick-shook/or15n4yy7",
     terms_url: "/terms",
     privacy_url: "/privacy",
     base_url: "",
@@ -2474,7 +2474,7 @@ mod tests {
         assert_eq!(FIRM_BRAND.nav[0].label, "Book Consultation");
         assert_eq!(
             FIRM_BRAND.nav[0].href,
-            "https://calendar.notion.so/meet/shicholas/or15n4yy7"
+            "https://calendar.notion.so/meet/nick-shook/or15n4yy7"
         );
     }
 

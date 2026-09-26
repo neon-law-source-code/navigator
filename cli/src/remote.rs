@@ -2023,11 +2023,11 @@ fn print_notation_board(rows: &[webapp::lawyer_project_detail::ProjectNotationRo
                     "● {}",
                     row.state_entered_at
                         .get(state)
-                        .map(|time| time.get(5..16).unwrap_or(time))
+                        .map(String::as_str)
                         .unwrap_or("")
                 ));
             } else if let Some(time) = row.state_entered_at.get(state) {
-                cells.push(format!("✓ {}", time.get(5..16).unwrap_or(time)));
+                cells.push(format!("✓ {time}"));
             } else {
                 cells.push("·".to_string());
             }

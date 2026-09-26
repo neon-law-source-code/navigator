@@ -822,6 +822,46 @@ fn admin_testimonial_card(
             }
         }
     }
+fn notation_columns(rows: &[ProjectNotationRow]) -> Vec<String> {
+    let mut columns = Vec::new();
+    for row in rows {
+        for state in &row.workflow_states {
+            if !columns.contains(state) {
+                columns.push(state.clone());
+            }
+        }
+    }
+    columns
+}
+
+fn notation_state_cell(row: &ProjectNotationRow, state: &str) -> String {
+    if row.notation_id.is_none() {
+        return if row.workflow_states.iter().any(|item| item == state) {
+            "·".to_string()
+        } else {
+            "—".to_string()
+        };
+    }
+    if !row.workflow_states.iter().any(|item| item == state) {
+        return "—".to_string();
+    }
+    let entered = row.state_entered_at.get(state);
+    let mark = if row.current_state.as_deref() == Some(state) {
+        "●"
+    } else if entered.is_some() {
+        if state.contains("declined") || state.contains("failed") {
+            "✗"
+        } else {
+            "✓"
+        }
+    } else {
+        "·"
+    };
+    match entered {
+        Some(time) => format!("{mark} {time}"),
+        None => mark.to_string(),
+    }
+}
 }
 
 /// The Project's workflow board: current runs beside templates not yet opened.

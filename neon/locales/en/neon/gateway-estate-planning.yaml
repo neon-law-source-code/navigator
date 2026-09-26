@@ -18,12 +18,3 @@ hero_cta:
   href: "https://www.vestaestateplanning.com/"
   label: Visit Vesta Estate Planning
 skin: practice
-bands:
-  - kind: statement
-    heading: A Shook Law PLLC practice
-    body:
-      - - text: >-
-              Vesta Estate Planning is a practice of Shook Law PLLC, the law
-              firm behind {site_name}. A licensed attorney handles the work
-              there. The $5,000 price and unlimited-edits terms are Vesta's
-              own; court and recording costs are paid separately.

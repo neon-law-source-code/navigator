@@ -17,13 +17,3 @@ hero_cta:
   href: "https://www.deleteyourdata.com/"
   label: Visit DeleteYourData.com
 skin: practice
-bands:
-  - kind: statement
-    heading: A Shook Law PLLC practice
-    body:
-      - - text: >-
-              DeleteYourData.com is a practice of Shook Law PLLC, the law
-              firm behind {site_name}. A licensed attorney handles the work
-              there. The name describes what the practice offers, not a
-              promise that every trace of your personal information can be
-              erased.

@@ -15,12 +15,3 @@ hero_cta:
   href: "https://www.deleteyourdebt.com/"
   label: Visit DeleteYourDebt.com
 skin: practice
-bands:
-  - kind: statement
-    heading: A Shook Law PLLC practice
-    body:
-      - - text: >-
-              DeleteYourDebt.com is a practice of Shook Law PLLC, the law
-              firm behind {site_name}. A licensed attorney handles the work
-              there. The name describes what the practice defends against,
-              not a promise about your case or your debt.

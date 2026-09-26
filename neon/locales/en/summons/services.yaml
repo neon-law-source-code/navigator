@@ -14,8 +14,8 @@ hero_lines:
     accent_words: 0
 hero_lead: >-
   Shook Law PLLC is a private law firm. We are not affiliated with the City
-  of New York or with OATH. Flat fee per summons, or a monthly retainer
-  across a portfolio.
+  of New York or with OATH. $50 flat for a single hearing appearance, or a
+  monthly retainer across a portfolio.
 hero_cta:
   href: "mailto:{firm_email}"
   label: Contact us
@@ -111,13 +111,14 @@ bands:
     overline: Fees
     heading: What it costs
     description: >-
-      Flat fee per summons, or a monthly retainer across a portfolio. Agreed
-      in writing before work begins.
+      $50 flat for a single hearing appearance, or a monthly retainer across
+      a portfolio. Agreed in writing before work begins.
     items:
-      - title: Per summons
+      - title: A hearing appearance
         body:
           - - text: >-
-                A flat fee for one summons, quoted before we take it on.
+                $50 flat for an attorney to appear at one telephone hearing
+                and present what you send us beforehand. No retainer.
       - title: Monthly retainer
         body:
           - - text: >-

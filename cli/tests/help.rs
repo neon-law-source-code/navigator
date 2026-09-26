@@ -576,6 +576,7 @@ fn site_document_upload_help_requires_kind() {
         !output.contains("[--kind"),
         "kind must not be an optional flag, got: {output}"
     );
+    assert!(output.contains("--quality <QUALITY>"), "{output}");
     for kind in rules::kind::Kind::ALL
         .iter()
         .filter(|k| k.valid_for(rules::kind::Lane::Asset))
@@ -590,6 +591,13 @@ fn site_document_upload_help_requires_kind() {
         output.contains("default: internal"),
         "long help must state the default visibility, got: {output}"
     );
+}
+
+#[test]
+fn site_document_transcribe_reads_a_pointer_and_keeps_ocr_local() {
+    let output = unwrapped(&help(&["site", "document", "transcribe", "--help"])).to_lowercase();
+    assert!(output.contains("source document pointer"), "{output}");
+    assert!(output.contains("no ocr provider"), "{output}");
 }
 
 #[test]

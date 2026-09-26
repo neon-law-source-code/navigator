@@ -384,6 +384,18 @@ pub(crate) struct RevisionSummary {
 pub(crate) struct IntegrityAsset {
     pub(crate) asset_id: Uuid,
     pub(crate) slug: Option<String>,
+    #[serde(default)]
+    pub(crate) sha256: String,
+    #[serde(default)]
+    pub(crate) kind: Option<String>,
+    #[serde(default)]
+    pub(crate) derived_from: Option<serde_json::Value>,
+    #[serde(default)]
+    pub(crate) transcript_quality: Option<String>,
+    #[serde(default)]
+    pub(crate) operative: bool,
+    #[serde(default)]
+    pub(crate) version: Option<usize>,
     pub(crate) exists: bool,
     #[serde(default)]
     pub(crate) size_bytes: Option<i64>,
@@ -615,6 +627,7 @@ impl DocumentClient {
         description: Option<&str>,
         content_type: Option<&str>,
         slug: Option<&str>,
+        transcript_quality: Option<&str>,
     ) -> Result<store::document_pointers::DocumentPointer> {
         let bytes = std::fs::read(file).with_context(|| format!("read {}", file.display()))?;
         let filename = file
@@ -622,7 +635,7 @@ impl DocumentClient {
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
             .ok_or_else(|| anyhow!("file path has no filename"))?;
-        self.upload_bytes(
+        self.upload_bytes_with_details(
             filename,
             &bytes,
             kind,
@@ -631,6 +644,8 @@ impl DocumentClient {
             content_type,
             slug,
             None,
+            None,
+            transcript_quality,
         )
         .await
     }
@@ -652,6 +667,36 @@ impl DocumentClient {
         content_type: Option<&str>,
         slug: Option<&str>,
         metadata: Option<serde_json::Value>,
+    ) -> Result<store::document_pointers::DocumentPointer> {
+        self.upload_bytes_with_details(
+            filename,
+            bytes,
+            kind,
+            visibility,
+            description,
+            content_type,
+            slug,
+            metadata,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Upload a revision with the structured OCR provenance fields.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn upload_bytes_with_details(
+        &self,
+        filename: &str,
+        bytes: &[u8],
+        kind: &str,
+        visibility: Option<&str>,
+        description: Option<&str>,
+        content_type: Option<&str>,
+        slug: Option<&str>,
+        metadata: Option<serde_json::Value>,
+        derived_from: Option<serde_json::Value>,
+        transcript_quality: Option<&str>,
     ) -> Result<store::document_pointers::DocumentPointer> {
         validate_document_upload_size_in_bytes(bytes.len())?;
         let effective_slug = slug
@@ -675,6 +720,12 @@ impl DocumentClient {
         }
         if let Some(metadata) = metadata {
             body["metadata"] = metadata;
+        }
+        if let Some(derived_from) = derived_from {
+            body["derived_from"] = derived_from;
+        }
+        if let Some(transcript_quality) = transcript_quality {
+            body["transcript_quality"] = serde_json::Value::String(transcript_quality.to_string());
         }
         let url = format!(
             "{}/app/api/projects/{}/documents",
@@ -923,14 +974,105 @@ pub async fn document_upload(
     description: Option<&str>,
     content_type: Option<&str>,
     slug: Option<&str>,
+    transcript_quality: Option<&str>,
 ) -> ExitCode {
     run(async {
+        if transcript_quality.is_some() && kind != "transcript" {
+            return Err(anyhow!("--quality is valid only with --kind transcript"));
+        }
         validate_document_upload_size(file)?;
         let client = DocumentClient::connect(host, project_code).await?;
         let pointer = client
-            .upload(file, kind, visibility, description, content_type, slug)
+            .upload(
+                file,
+                kind,
+                visibility,
+                description,
+                content_type,
+                slug,
+                transcript_quality,
+            )
             .await?;
         print!("{}", pointer.to_yaml()?);
+        Ok(())
+    })
+    .await
+}
+
+/// `navigator site document transcribe <pointer>` — locally OCR the current
+/// source revision and file its linked transcript under a stable Project slug.
+pub async fn document_transcribe(pointer_path: &Path) -> ExitCode {
+    run(async {
+        let manifest = crate::projects::manifest::read(Path::new("."))
+            .ok_or_else(|| anyhow!("no navigator.yaml in the current directory"))?;
+        let host = manifest
+            .host
+            .as_deref()
+            .filter(|host| !host.trim().is_empty())
+            .ok_or_else(|| anyhow!("navigator.yaml names no host"))?;
+        let project = manifest
+            .project
+            .as_deref()
+            .filter(|project| !project.trim().is_empty())
+            .ok_or_else(|| anyhow!("navigator.yaml names no project.name"))?;
+        let pointer = crate::document_sync::read_pointer(pointer_path)?
+            .ok_or_else(|| anyhow!("{} does not exist", pointer_path.display()))?;
+        let source_slug = crate::document_read::slug_from_pointer(Path::new("."), pointer_path)?;
+        if !source_slug.to_ascii_lowercase().ends_with(".pdf") {
+            return Err(anyhow!("transcribe requires a PDF document pointer"));
+        }
+        let client = DocumentClient::connect(Some(host), project).await?;
+        let revisions = client.list_revisions(&source_slug).await?;
+        let source = revisions
+            .revisions
+            .iter()
+            .find(|revision| revision.asset_id == pointer.current_version.asset_id)
+            .ok_or_else(|| {
+                anyhow!("source pointer revision is no longer on the live document chain")
+            })?;
+        if !source.operative
+            || source.version != pointer.current_version.version
+            || source.sha256 != pointer.current_version.sha256
+        {
+            return Err(anyhow!(
+                "source pointer is stale; run `navigator project gate --check` before transcribing"
+            ));
+        }
+        let bytes = client.download_revision(source.asset_id).await?;
+        let digest = store::assets::sha256_hex(&bytes);
+        if digest != source.sha256 {
+            return Err(anyhow!(
+                "downloaded source bytes do not match the pointer SHA-256"
+            ));
+        }
+        let transcript = crate::document_ocr::transcribe_pdf(&bytes)?;
+        let stem = Path::new(&source_slug)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| !stem.is_empty())
+            .ok_or_else(|| anyhow!("source document slug has no filename stem"))?;
+        let filename = format!("{stem}.transcript.md");
+        let transcript_slug = format!("transcripts/{filename}");
+        let derived_from = serde_json::json!({
+            "document_id": source.asset_id,
+            "version": source.version,
+            "sha256": source.sha256,
+        });
+        let filed = client
+            .upload_bytes_with_details(
+                &filename,
+                transcript.as_bytes(),
+                "transcript",
+                Some("internal"),
+                Some("Machine-generated OCR; verify quotations against the source scan."),
+                Some("text/markdown; charset=utf-8"),
+                Some(&transcript_slug),
+                None,
+                Some(derived_from),
+                Some("machine"),
+            )
+            .await?;
+        print!("{}", filed.to_yaml()?);
         Ok(())
     })
     .await
@@ -3882,6 +4024,7 @@ mod tests {
                 None,
                 Some("text/plain"),
                 None,
+                None,
             )
             .await,
             ExitCode::SUCCESS
@@ -3988,6 +4131,7 @@ mod tests {
                 "synthetic-project",
                 &named,
                 "unclassified",
+                None,
                 None,
                 None,
                 None,
@@ -4201,6 +4345,7 @@ mod tests {
                 "not-a-matter",
                 &named,
                 "unclassified",
+                None,
                 None,
                 None,
                 None,

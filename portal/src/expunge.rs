@@ -225,6 +225,8 @@ mod tests {
             slug: None,
             published_at: None,
             metadata: None,
+            derived_from: None,
+            transcript_quality: None,
             source: None,
             received_at: None,
             description: None,

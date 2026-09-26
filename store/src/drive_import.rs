@@ -158,9 +158,11 @@ pub async fn import_project_files(
             slug: Some(&slug),
             published_at: None,
             metadata: Some(json!({
-                "drive_file_id": file.id,
+                    "drive_file_id": file.id,
                 "drive_modified_time": file.modified_time,
             })),
+            derived_from: None,
+            transcript_quality: None,
         };
         let ingest = IngestArgs {
             project_id,

@@ -261,6 +261,19 @@ pub struct DocumentIdentity<'a> {
     /// sequence. Validators belong in the `rules` crate, never a database
     /// CHECK.
     pub metadata: Option<serde_json::Value>,
+    /// JSON `derived_from` relation for generated Project documents such as
+    /// OCR transcripts. The shape is `{document_id, version, sha256}`.
+    pub derived_from: Option<serde_json::Value>,
+    /// Transcript provenance quality; other document kinds leave it unset.
+    pub transcript_quality: Option<&'a str>,
+}
+
+/// The exact source document revision a generated transcript was produced from.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DerivedFrom {
+    pub document_id: uuid::Uuid,
+    pub version: usize,
+    pub sha256: String,
 }
 
 /// Inbound-mail provenance for one filed attachment (ENG-517) — the sender,
@@ -515,7 +528,9 @@ async fn insert_asset_row(
              source_sender = $source_sender, \
              source_received_at = $source_received_at, \
              source_subject = $source_subject, \
-             metadata = $metadata \
+             metadata = $metadata, \
+             derived_from = $derived_from, \
+             transcript_quality = $transcript_quality \
              RETURN {SELECT}"
         ))
         .bind(("id", record_id(TABLE, id)))
@@ -550,6 +565,11 @@ async fn insert_asset_row(
         ))
         .bind(("source_subject", provenance.map(|p| p.subject.to_string())))
         .bind(("metadata", identity.metadata.clone()))
+        .bind(("derived_from", identity.derived_from.clone()))
+        .bind((
+            "transcript_quality",
+            identity.transcript_quality.map(String::from),
+        ))
     })
     .await?;
 

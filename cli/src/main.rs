@@ -11,6 +11,7 @@ mod authorities;
 mod credentials;
 mod cut_release;
 mod devx;
+mod document_ocr;
 mod document_read;
 mod document_sync;
 mod firms_doctor;
@@ -600,9 +601,10 @@ enum ProjectsCmd {
     /// is left needs a human. Every Project repository's CI runs this command.
     ///
     /// `--check` (LAW-62) runs only the live document check, comparing
-    /// committed pointers with the live record, and skips every offline pass
-    /// above entirely — a separate CI job asks it after `verify` has already
-    /// run those, including the origin pass, over the same tree.
+    /// committed pointers with the live record and checking transcript source
+    /// revisions, and skips every offline pass above entirely — a separate CI
+    /// job asks it after `verify` has already run those, including the origin
+    /// pass, over the same tree.
     Gate {
         /// Never writes to the live site.
         ///
@@ -2135,6 +2137,17 @@ enum DocumentAction {
         /// (for example, `--slug motion.pdf` for `motion.pdf`); defaults to the local filename.
         #[arg(long)]
         slug: Option<String>,
+        /// Transcript quality marker. Only accepted when `--kind transcript`.
+        #[arg(long, value_parser = parse_transcript_quality)]
+        quality: Option<String>,
+    },
+    /// OCR a PDF revision into a linked transcript document, without sending
+    /// the source bytes to an OCR provider. Requires local Poppler (`pdftoppm`)
+    /// and Tesseract with English and orientation data installed.
+    #[command(after_long_help = DOCUMENT_TRANSCRIBE_HELP)]
+    Transcribe {
+        /// Source document pointer under `documents/`.
+        pointer: PathBuf,
     },
     /// Set `slug` on a live row that has none
     /// (`PATCH /app/api/projects/{id}/documents/{asset_id}`).
@@ -2902,6 +2915,7 @@ async fn run_document(action: DocumentAction) -> ExitCode {
             description,
             content_type,
             slug,
+            quality,
         } => {
             remote::document_upload(
                 host.host.as_deref(),
@@ -2912,9 +2926,11 @@ async fn run_document(action: DocumentAction) -> ExitCode {
                 description.as_deref(),
                 content_type.as_deref(),
                 slug.as_deref(),
+                quality.as_deref(),
             )
             .await
         }
+        DocumentAction::Transcribe { pointer } => remote::document_transcribe(&pointer).await,
         DocumentAction::Slug {
             host,
             project,
@@ -4074,7 +4090,16 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
     }
 }
 
+fn parse_transcript_quality(value: &str) -> Result<String, String> {
+    match value {
+        "machine" | "proofread" => Ok(value.to_string()),
+        _ => Err("transcript quality must be `machine` or `proofread`".into()),
+    }
+}
+
 const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, invoice, unclassified.";
+
+const DOCUMENT_TRANSCRIBE_HELP: &str = "Each page is rendered locally, orientation-corrected, deskewed, and OCR'd before the transcript is uploaded as a `transcript` revision linked to the exact source asset id, version, and SHA-256. OCR requires local Poppler (`pdftoppm`) and Tesseract with the `eng` and `osd` language data. Source pages and transcript text are sent to no OCR provider and are never written into Git.";
 
 const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, invoices to invoice, memos to memo, transcripts to transcript, and everything else to unclassified — except documents/cases/** and documents/rules/**, which are not Project documents at all: each is routed through `site authorities create` (a sidecar carrying citation/class/title/canonical_url/checked_on is required beside each capture) and its committed pointer carries an authority_id rather than a plain kind inference. documents/cases/** is case_law only; documents/rules/** is every other Authority class (statute, regulation, administrative, secondary) — a sidecar whose class disagrees with its folder is refused. A documents/invoices/** filename must match `INV-<digits>.<ext>`. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
 

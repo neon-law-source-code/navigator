@@ -1275,6 +1275,10 @@ DEFINE FIELD OVERWRITE source_sender ON asset TYPE option<string>;
 DEFINE FIELD OVERWRITE source_received_at ON asset TYPE option<string>;
 DEFINE FIELD OVERWRITE source_subject ON asset TYPE option<string>;
 DEFINE FIELD OVERWRITE metadata ON asset TYPE any;
+-- LAW-76 transcript provenance. Both fields remain optional so rows written
+-- before the schema bump remain readable without a data backfill.
+DEFINE FIELD OVERWRITE derived_from ON asset TYPE any;
+DEFINE FIELD OVERWRITE transcript_quality ON asset TYPE option<string>;
 DEFINE FIELD OVERWRITE inserted_at ON asset TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON asset TYPE datetime DEFAULT time::now();
 -- The dedup probe (`sha256_hex`, narrowed by project for a document

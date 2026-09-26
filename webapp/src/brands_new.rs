@@ -148,10 +148,9 @@ fn new_body(view: &BrandNewView) -> Element {
 
     // Every brand is Firm-scoped (ENG-659) — `admin_has_no_firm` above is
     // the only refusal, so reaching here always means a real DRI Firm name.
-    let scope_note = view
-        .firm_name
-        .as_ref()
-        .map_or_else(String::new, |name| format!("This brand will be scoped to {name}."));
+    let scope_note = view.firm_name.as_ref().map_or_else(String::new, |name| {
+        format!("This brand will be scoped to {name}.")
+    });
 
     let fields = vec![
         Field::text("Name", "name", echoed(q.name.as_ref())).required(),

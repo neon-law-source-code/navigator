@@ -3090,7 +3090,10 @@ mod surreal_read_tests {
     /// Firm-scoped brand (ENG-659: `store::brands::create` refuses
     /// `firm_id: None`) — a one-liner for the tests below that only need
     /// *some* live brand key, not a particular Firm.
-    async fn practice_firm(db: &crate::surreal::SurrealDb, name: &str) -> (crate::firms::Firm, uuid::Uuid) {
+    async fn practice_firm(
+        db: &crate::surreal::SurrealDb,
+        name: &str,
+    ) -> (crate::firms::Firm, uuid::Uuid) {
         let admin = crate::persons::create(
             db,
             &crate::persons::NewPerson::with_role(

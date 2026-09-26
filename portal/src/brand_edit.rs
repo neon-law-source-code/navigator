@@ -38,7 +38,11 @@ pub async fn post_brand_edit(
     // Firm with no uploaded font yet has nothing valid to submit, and
     // `apply_brand_presentation` treats `None` that way for both fields
     // rather than erroring on a blank `typeface`.
-    let chosen_family = form.typeface.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let chosen_family = form
+        .typeface
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let typeface = chosen_family.map(|_| "uploaded");
     match apply_brand_presentation(
         &surreal,

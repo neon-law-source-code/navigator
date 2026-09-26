@@ -92,7 +92,10 @@ async fn seed_compiled_brands(db: &SurrealDb) {
             "CREATE $id SET name = $name, brand_key = $key, firm_id = $firm_id, \
              inserted_at = $now, updated_at = $now",
         )
-        .bind(("id", crate::surreal::record_id("brand", uuid::Uuid::now_v7())))
+        .bind((
+            "id",
+            crate::surreal::record_id("brand", uuid::Uuid::now_v7()),
+        ))
         .bind(("name", (*key).to_string()))
         .bind(("key", (*key).to_string()))
         .bind((

@@ -859,8 +859,7 @@ pub async fn apply_brand_presentation(
         &store::brands::BrandEdit {
             typeface: typeface.map(|value| Some(value.to_string())),
             primary_color: Some(Some(primary_color.to_string())),
-            font_family: font_family
-                .map(|value| (!value.is_empty()).then(|| value.to_string())),
+            font_family: font_family.map(|value| (!value.is_empty()).then(|| value.to_string())),
             ..store::brands::BrandEdit::default()
         },
     )

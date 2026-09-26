@@ -512,7 +512,10 @@ async fn create_unchecked(surreal: &SurrealDb, input: &NewBrand) -> Result<Brand
 /// [`update`] pair would correctly refuse — this path is why the boot seed
 /// does not need to be that caller. Every human- or API-driven path still
 /// goes through the authorized [`create`]/[`update`].
-pub(crate) async fn seed_upsert(surreal: &SurrealDb, input: &NewBrand) -> Result<Brand, BrandError> {
+pub(crate) async fn seed_upsert(
+    surreal: &SurrealDb,
+    input: &NewBrand,
+) -> Result<Brand, BrandError> {
     match create_unchecked(surreal, input).await {
         Ok(brand) => Ok(brand),
         Err(BrandError::DuplicateName | BrandError::DuplicateKey) => {

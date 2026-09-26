@@ -645,7 +645,10 @@ mod tests {
         apply(&db).await.unwrap();
 
         assert!(
-            crate::brands::find_by_id(&db, brand_id).await.unwrap().is_none(),
+            crate::brands::find_by_id(&db, brand_id)
+                .await
+                .unwrap()
+                .is_none(),
             "an unworn, unreferenced historical brand must be deleted, not left dangling"
         );
     }

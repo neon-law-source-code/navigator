@@ -172,8 +172,8 @@ a fresh clone and re-running `pull` afterward downloads nothing. It hydrates onl
 no pointer for is `site sync`'s and a browser filing's own lane, not `pull`'s. A pointer the caller's participation does
 not admit to read is reported rather than silently skipped, and the command refuses to write outside the checkout.
 `--dry-run` lists what would change without logging in, by comparing local digests to the committed pointers alone. The
-written bytes stay exactly where `sync` already keeps them out of Git: the repository gate refuses a raw document byte
-whether it was staged before a `sync` or just materialised by a `pull`.
+written bytes stay exactly where `sync` already keeps them out of Git: the repository gate skips Git-ignored bodies
+under `documents/`, whether staged before a `sync` or materialised by a `pull`, and still refuses tracked raw bytes.
 
 `pull` is all-or-nothing for document bytes. It downloads every nonmatching revision into a task-owned transaction area
 outside the checkout, then records backups before publishing any target. Every pointer must still be present and

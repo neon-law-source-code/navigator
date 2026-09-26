@@ -3677,12 +3677,18 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     }
 
     let question_codes = rules::canonical_question_codes();
+    // The Project's documents directory holds committed YAML pointers and
+    // Git-ignored local document bodies. Keep it out of Markdown lint/fix
+    // walks; `document_pointer_pass` below validates the committed pointers
+    // independently, and the repository layout check still rejects tracked
+    // raw document bytes.
+    let markdown_filter = ProjectGateMarkdownFilter::new(dir);
 
     // The markdown pass and the autofix are one walk: every safe-by-construction
     // edit lands first, and what it reports is what survived them.
     let mut report = match fix_directory(
         dir,
-        &rules::DefaultFileFilter::default(),
+        &markdown_filter,
         |file| rules::navigator_classified_rules_with_codes(file, &question_codes),
         !ci,
     ) {
@@ -3697,7 +3703,7 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     // Cross-file `N111`: notation template `code` must be unique across the
     // tree. Always run — only notation templates carry a `code`, so a
     // prose-only tree simply finds nothing.
-    match rules::code_uniqueness_violations(dir, &rules::DefaultFileFilter::default()) {
+    match rules::code_uniqueness_violations(dir, &markdown_filter) {
         Ok(mut found) => violations.append(&mut found),
         Err(error) => {
             eprintln!("navigator: {error}");
@@ -3706,7 +3712,7 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     }
     // Cross-file `N124`: every notation template named by a services catalog
     // must exist under `templates/notations/`.
-    match rules::service_template_violations(dir, &rules::DefaultFileFilter::default()) {
+    match rules::service_template_violations(dir, &markdown_filter) {
         Ok(mut found) => violations.append(&mut found),
         Err(error) => {
             eprintln!("navigator: {error}");
@@ -3715,7 +3721,7 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     }
     // Cross-file `N126`/`N127`: every `skills/` catalog entry must parse and
     // declare a unique `(jurisdiction, practice_area)` pair.
-    match rules::project_skill_catalog_violations(dir, &rules::DefaultFileFilter::default()) {
+    match rules::project_skill_catalog_violations(dir, &markdown_filter) {
         Ok(mut found) => violations.append(&mut found),
         Err(error) => {
             eprintln!("navigator: {error}");
@@ -3754,6 +3760,42 @@ async fn run_gate(ci: bool, check: bool, deep: bool) -> ExitCode {
     // The one question this tree cannot answer about itself: whether the
     // manifest still agrees with the row the deployment holds.
     projects::gate::live_status(dir).await
+}
+
+/// The Project gate validates authored Markdown throughout the repository,
+/// while raw document bodies beneath its root `documents/` directory are
+/// local ignored files rather than repository source. Keep the exclusion
+/// root-relative so an application-owned `documents/` directory elsewhere
+/// remains part of the authored tree.
+struct ProjectGateMarkdownFilter<'a> {
+    root: &'a Path,
+    default: rules::DefaultFileFilter,
+}
+
+impl<'a> ProjectGateMarkdownFilter<'a> {
+    fn new(root: &'a Path) -> Self {
+        Self {
+            root,
+            default: rules::DefaultFileFilter::default(),
+        }
+    }
+
+    fn is_project_documents_path(&self, path: &Path) -> bool {
+        path.strip_prefix(self.root)
+            .ok()
+            .and_then(|relative| relative.components().next())
+            .is_some_and(|component| component.as_os_str() == "documents")
+    }
+}
+
+impl rules::FileFilter for ProjectGateMarkdownFilter<'_> {
+    fn include_dir(&self, path: &Path) -> bool {
+        !self.is_project_documents_path(path) && self.default.include_dir(path)
+    }
+
+    fn include_file(&self, path: &Path) -> bool {
+        !self.is_project_documents_path(path) && self.default.include_file(path)
+    }
 }
 
 /// `--check` alone (LAW-62): the live document check, and nothing an offline

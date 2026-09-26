@@ -1157,6 +1157,60 @@ fn gate_ignores_raw_document_bytes_materialised_by_a_pull() {
 }
 
 #[test]
+fn gate_leaves_ignored_document_bodies_byte_for_byte_unchanged() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project");
+    fs::create_dir_all(dir.path().join("documents/memos")).unwrap();
+    let raw = dir.path().join("documents/memos/agreement.md");
+    let contents = concat!(
+        "The court applied §\n",
+        "2033.300 in *Case Name* (2008), describing *Elston* and the\n",
+        "applicable standard. See [the authority][authority].\n\n",
+        "[authority]: <https://www.example.com/cases/california/supreme-court/",
+        "extraordinarily-long-reference-path/2025/1234567890/",
+        "opinion?download=1&format=html#section-2033-300>\n",
+    );
+    fs::write(&raw, contents.as_bytes()).unwrap();
+    fs::write(
+        dir.path().join("documents/memos/agreement.pdf.yaml"),
+        "kind: agreement\nvisibility: internal\ncurrent_version:\n  version: 1\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T12:00:00Z\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  size_bytes: 42\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("authored.md"),
+        "Authored repository content with an unwrapped URL https://example.com/path.\n",
+    )
+    .unwrap();
+
+    let output = navigator()
+        .current_dir(dir.path())
+        .args(["project", "gate"])
+        .output()
+        .unwrap();
+
+    assert_eq!(fs::read(&raw).unwrap(), contents.as_bytes());
+    assert!(
+        !output.status.success(),
+        "the authored Markdown violation must still fail the gate:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("authored.md") && stdout.contains("M034"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Validated 1 document pointer(s), found 0 error(s)"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains(&raw.display().to_string()),
+        "ignored document body entered the Markdown walk:\n{stdout}"
+    );
+}
+
+#[test]
 fn gate_leaves_an_application_owned_templates_directory_alone() {
     // The published Project gate runs `navigator validate .` over the whole
     // checkout, and the layout permits application source under `apps/<app>/`

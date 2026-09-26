@@ -176,9 +176,7 @@ fn transcript_source_problem(asset: &IntegrityAsset, assets: &[IntegrityAsset]) 
     if asset.kind.as_deref() != Some("transcript") {
         return None;
     }
-    let Some(source) = asset.derived_from.as_ref() else {
-        return None;
-    };
+    let source = asset.derived_from.as_ref()?;
     let document_id = source
         .get("document_id")
         .and_then(serde_json::Value::as_str)

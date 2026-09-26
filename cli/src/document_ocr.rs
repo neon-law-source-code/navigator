@@ -5,6 +5,7 @@
 //! local projection-profile pass deskews each page before recognition.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Command;
 
@@ -54,7 +55,7 @@ pub(crate) fn transcribe_pdf(bytes: &[u8]) -> Result<String> {
             rotations = vec![0, 90, 180, 270];
             best = best_orientation(&image, &rotations, scratch.path())?;
         }
-        transcript.push_str(&format!("## Page {page_number}\n\n"));
+        let _ = writeln!(transcript, "## Page {page_number}\n");
         if best.text.trim().is_empty() {
             transcript.push_str("[No text recognized on this page.]\n\n");
         } else {
@@ -142,7 +143,8 @@ fn deskew(image: &image::DynamicImage) -> GrayImage {
 /// source image used by OCR.
 fn estimate_skew(image: &GrayImage) -> f32 {
     let sample = if image.width() > 500 {
-        let height = (u64::from(image.height()) * 500 / u64::from(image.width())) as u32;
+        let height = u32::try_from(u64::from(image.height()) * 500 / u64::from(image.width()))
+            .unwrap_or(u32::MAX);
         image::imageops::resize(
             image,
             500,
@@ -154,8 +156,8 @@ fn estimate_skew(image: &GrayImage) -> f32 {
     };
     let baseline = projection_score(&sample, 0.0);
     let mut best = (baseline, 0.0f32);
-    for half_degrees in -10..=10 {
-        let degrees = half_degrees as f32 * 0.5;
+    for half_degrees in -10_i16..=10 {
+        let degrees = f32::from(half_degrees) * 0.5;
         if degrees == 0.0 {
             continue;
         }
@@ -164,7 +166,7 @@ fn estimate_skew(image: &GrayImage) -> f32 {
             best = (score, degrees);
         }
     }
-    if best.0 as f64 <= baseline as f64 * 1.01 {
+    if best.0 <= baseline.saturating_add(baseline / 100) {
         0.0
     } else {
         best.1
@@ -174,21 +176,24 @@ fn estimate_skew(image: &GrayImage) -> f32 {
 fn projection_score(image: &GrayImage, radians: f32) -> u64 {
     let width = image.width();
     let height = image.height();
-    let center_x = (width as f32 - 1.0) / 2.0;
-    let center_y = (height as f32 - 1.0) / 2.0;
-    let (sin, cos) = radians.sin_cos();
-    let mut rows = vec![0u32; height as usize];
+    let center_x = (f64::from(width) - 1.0) / 2.0;
+    let center_y = (f64::from(height) - 1.0) / 2.0;
+    let (sin, cos) = f64::from(radians).sin_cos();
+    let Ok(row_count) = usize::try_from(height) else {
+        return 0;
+    };
+    let mut rows = vec![0u32; row_count];
     for (x, y, pixel) in image.enumerate_pixels() {
         if pixel[0] >= 180 {
             continue;
         }
-        let dx = x as f32 - center_x;
-        let dy = y as f32 - center_y;
-        let rotated_y = (dx * sin + dy * cos + center_y).round() as i32;
-        if rotated_y >= 0 {
-            if let Some(row) = rows.get_mut(rotated_y as usize) {
-                *row += 1;
-            }
+        let dx = f64::from(x) - center_x;
+        let dy = f64::from(y) - center_y;
+        let rotated_row = rounded_image_coordinate(dx * sin + dy * cos + center_y, height)
+            .and_then(|rotated_y| usize::try_from(rotated_y).ok())
+            .and_then(|row_index| rows.get_mut(row_index));
+        if let Some(row) = rotated_row {
+            *row += 1;
         }
     }
     rows.into_iter()
@@ -198,24 +203,39 @@ fn projection_score(image: &GrayImage, radians: f32) -> u64 {
 
 fn rotate_grayscale(image: &GrayImage, degrees: f32) -> GrayImage {
     let (width, height) = image.dimensions();
-    let center_x = (width as f32 - 1.0) / 2.0;
-    let center_y = (height as f32 - 1.0) / 2.0;
-    let radians = degrees.to_radians();
+    let center_x = (f64::from(width) - 1.0) / 2.0;
+    let center_y = (f64::from(height) - 1.0) / 2.0;
+    let radians = f64::from(degrees).to_radians();
     let (sin, cos) = radians.sin_cos();
     GrayImage::from_fn(width, height, |x, y| {
-        let dx = x as f32 - center_x;
-        let dy = y as f32 - center_y;
-        let source_x = (dx * cos + dy * sin + center_x).round() as i32;
-        let source_y = (-dx * sin + dy * cos + center_y).round() as i32;
-        if source_x >= 0 && source_y >= 0 {
+        let dx = f64::from(x) - center_x;
+        let dy = f64::from(y) - center_y;
+        if let (Some(source_x), Some(source_y)) = (
+            rounded_image_coordinate(dx * cos + dy * sin + center_x, width),
+            rounded_image_coordinate(-dx * sin + dy * cos + center_y, height),
+        ) {
             image
-                .get_pixel_checked(source_x as u32, source_y as u32)
+                .get_pixel_checked(source_x, source_y)
                 .copied()
                 .unwrap_or(Luma([255]))
         } else {
             Luma([255])
         }
     })
+}
+
+fn rounded_image_coordinate(value: f64, extent: u32) -> Option<u32> {
+    let rounded = value.round();
+    if !rounded.is_finite() || rounded < 0.0 || rounded >= f64::from(extent) {
+        return None;
+    }
+    // The bounds check proves this rounded value fits the positive u32 range.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "value is finite, integral, nonnegative, and below the u32 image extent"
+    )]
+    Some(rounded as u32)
 }
 
 fn parse_tsv(tsv: &str) -> OcrText {
@@ -230,7 +250,7 @@ fn parse_tsv(tsv: &str) -> OcrText {
         let Ok(score) = fields[10].parse::<f32>() else {
             continue;
         };
-        if score < 0.0 || fields[11].trim().is_empty() {
+        if !score.is_finite() || score < 0.0 || fields[11].trim().is_empty() {
             continue;
         }
         let key = (
@@ -244,7 +264,7 @@ fn parse_tsv(tsv: &str) -> OcrText {
             .or_default()
             .push((fields[5].parse().unwrap_or(0), word));
         recognized_words += usize::from(score >= 40.0);
-        confidence += score as u64;
+        confidence += confidence_points(score);
     }
     let text = lines
         .into_values()
@@ -262,6 +282,19 @@ fn parse_tsv(tsv: &str) -> OcrText {
         text,
         recognized_words,
         confidence,
+    }
+}
+
+fn confidence_points(score: f32) -> u64 {
+    let bounded = score.clamp(0.0, 100.0).round();
+    // Tesseract confidence is bounded to 0–100 before this conversion.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "bounded Tesseract confidence fits in u64"
+    )]
+    {
+        bounded as u64
     }
 }
 
@@ -299,7 +332,7 @@ mod tests {
         let mut image = GrayImage::from_pixel(800, 500, Luma([255]));
         for baseline in [100, 150, 200, 250, 300] {
             for x in 40..760 {
-                let y = baseline + (x as f32 * 0.05).round() as u32;
+                let y = baseline + (x + 10) / 20;
                 for thickness in 0..3 {
                     image.put_pixel(x, y + thickness, Luma([0]));
                 }

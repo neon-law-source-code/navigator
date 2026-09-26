@@ -16945,6 +16945,7 @@ async fn project_detail_page_renders_empty_state_when_project_has_no_documents()
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)] // Covers every started and never-started board row in one read.
 async fn lawyer_project_notation_board_lists_started_and_never_started_templates() {
     let (state, surreal) = state_with_engines().await;
     let (project_id, lawyer, cookie, _) = lawyer_project_fixture(&surreal).await;

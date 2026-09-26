@@ -1272,21 +1272,8 @@ async fn list_notations_door(
     Ok((StatusCode::OK, Json(notations)).into_response())
 }
 
-/// One private row in a Project's notation inventory. The CLI uses this
-/// projection rather than the client-readable notation list so an operator can
-/// identify a notation by template code and respondent without separately
-/// resolving internal ids.
-#[derive(Serialize)]
-struct NotationInventoryRow {
-    id: Uuid,
-    template_code: Option<String>,
-    state: String,
-    respondent_name: Option<String>,
-    respondent_email: Option<String>,
-}
-
 /// `GET /app/api/projects/{id}/notation-inventory` — a lawyer's private,
-/// matter-scoped inventory of the notations opened on one Project.
+/// matter-scoped board of runs and templates not yet opened on one Project.
 /// Participation is required of every tier, Owner and Admin included.
 async fn notation_inventory_door(
     State(state): State<ApiState>,
@@ -1297,24 +1284,10 @@ async fn notation_inventory_door(
         return Err(ApiError::NotFound);
     }
 
-    let notations = store::notations::list_by_project(&state.surreal, id).await?;
-    let mut rows = Vec::with_capacity(notations.len());
-    for notation in notations {
-        let template_code = store::templates::find_by_id(&state.surreal, notation.template_id)
+    let rows =
+        webapp::lawyer_project_detail::project_notation_board(&state.surreal, &state.storage, id)
             .await
-            .map_err(|error| ApiError::Db(error.to_string()))?
-            .map(|template| template.code);
-        let respondent = store::persons::find_by_id(&state.surreal, notation.person_id)
-            .await
-            .map_err(|error| ApiError::Db(error.to_string()))?;
-        rows.push(NotationInventoryRow {
-            id: notation.id,
-            template_code,
-            state: notation.state,
-            respondent_name: respondent.as_ref().map(|person| person.name.clone()),
-            respondent_email: respondent.map(|person| person.email),
-        });
-    }
+            .map_err(ApiError::Db)?;
     Ok((StatusCode::OK, Json(rows)).into_response())
 }
 

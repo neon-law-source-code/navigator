@@ -204,10 +204,22 @@ fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["project", "--help"])),
         vec![
-            "close", "create", "doctor", "drift", "gate", "portal", "setup", "skill", "sync",
+            "close",
+            "create",
+            "doctor",
+            "drift",
+            "gate",
+            "notations",
+            "portal",
+            "setup",
+            "skill",
+            "sync",
             "help"
         ]
     );
+    let notations = unwrapped(&help(&["project", "notations", "--help"]));
+    assert!(notations.contains("--stale"));
+    assert!(notations.contains("--json"));
     let setup = unwrapped(&help(&["project", "setup", "--help"]));
     assert!(setup.contains("--all"));
     assert!(setup.contains("--json"));

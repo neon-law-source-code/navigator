@@ -1908,64 +1908,154 @@ pub(crate) async fn create_notation_draft(
     Ok((created.id, format!("{base}{}", created.path)))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct NotationInventoryRow {
-    id: Uuid,
-    template_code: Option<String>,
-    state: String,
-    respondent_name: Option<String>,
-    respondent_email: Option<String>,
-}
-
 /// `navigator site notation list --project <code>` — inspect the private
 /// notation inventory for one matter without opening its browser workbench.
 pub async fn notation_list(host: Option<&str>, project_code: &str, json: bool) -> ExitCode {
     run(async {
-        let client = DocumentClient::connect(host, project_code).await?;
-        let url = format!(
-            "{}/app/api/projects/{}/notation-inventory",
-            client.base, client.project_id
-        );
-        let response = client
-            .client
-            .get(&url)
-            .bearer_auth(&client.token)
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?;
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        if !status.is_success() {
-            return Err(anyhow!(
-                "list notation inventory failed: {}",
-                server_error(status, &body)
-            ));
-        }
-        let rows: Vec<NotationInventoryRow> =
-            serde_json::from_str(&body).context("parse notation inventory")?;
+        let rows = fetch_notation_board(host, project_code).await?;
         if json {
             println!("{}", serde_json::to_string_pretty(&rows)?);
-        } else if rows.is_empty() {
-            println!("{}", palette::dim("no notations on this matter"));
         } else {
-            for row in rows {
-                let template = row.template_code.as_deref().unwrap_or("unknown template");
-                let respondent = row
-                    .respondent_name
-                    .as_deref()
-                    .unwrap_or("unknown respondent");
-                let email = row.respondent_email.as_deref().unwrap_or("unknown email");
-                println!(
-                    "{} {} ({respondent} <{email}>) — {}",
-                    palette::highlight(template),
-                    palette::dim(row.id),
-                    row.state
-                );
-            }
+            print_notation_board(&rows);
         }
         Ok(())
     })
     .await
+}
+
+/// `navigator project notations` — the manifest-scoped workflow board and its
+/// pre-flight status. Exit non-zero when a template has never run or a review
+/// state has exceeded the requested age.
+pub async fn project_notations(
+    host: Option<&str>,
+    project_code: &str,
+    stale_after: chrono::Duration,
+    json: bool,
+) -> ExitCode {
+    run(async {
+        let rows = fetch_notation_board(host, project_code).await?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&rows)?);
+        } else {
+            print_notation_board(&rows);
+        }
+        let now = chrono::Utc::now();
+        let stale = rows.iter().any(|row| {
+            let Some(state) = row.current_state.as_deref() else {
+                return false;
+            };
+            if !(state.starts_with("reask__client") || state.starts_with("lawyer_review")) {
+                return false;
+            }
+            row.last_transition_at
+                .as_deref()
+                .and_then(|time| chrono::DateTime::parse_from_rfc3339(time).ok())
+                .map(|entered| now.signed_duration_since(entered) > stale_after)
+                .unwrap_or(true)
+        });
+        let never_started = rows.iter().any(|row| row.notation_id.is_none());
+        if stale || never_started {
+            return Err(anyhow!(
+                "notation pre-flight found never-started or stale work"
+            ));
+        }
+        Ok(())
+    })
+    .await
+}
+
+async fn fetch_notation_board(
+    host: Option<&str>,
+    project_code: &str,
+) -> Result<Vec<webapp::lawyer_project_detail::ProjectNotationRow>> {
+    let client = DocumentClient::connect(host, project_code).await?;
+    let url = format!(
+        "{}/app/api/projects/{}/notation-inventory",
+        client.base, client.project_id
+    );
+    let response = client
+        .client
+        .get(&url)
+        .bearer_auth(&client.token)
+        .send()
+        .await
+        .with_context(|| format!("GET {url}"))?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "list notation inventory failed: {}",
+            server_error(status, &body)
+        ));
+    }
+    serde_json::from_str(&body).context("parse notation inventory")
+}
+
+fn print_notation_board(rows: &[webapp::lawyer_project_detail::ProjectNotationRow]) {
+    let mut states = Vec::new();
+    for row in rows {
+        for state in &row.workflow_states {
+            if !states.contains(state) {
+                states.push(state.clone());
+            }
+        }
+    }
+    let mut table = Table::new();
+    table.load_style(UTF8_FULL);
+    table
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(states.iter().cloned().chain([
+            "TEMPLATE".to_string(),
+            "NOTATION UUID".to_string(),
+            "CLIENT EMAIL".to_string(),
+            "SIGNATURE REQUEST".to_string(),
+            "LAST".to_string(),
+        ]));
+    for row in rows {
+        let mut cells = Vec::with_capacity(states.len() + 5);
+        for state in &states {
+            if !row.workflow_states.contains(state) {
+                cells.push("—".to_string());
+            } else if row.notation_id.is_none() {
+                cells.push("never started".to_string());
+            } else if row.current_state.as_deref() == Some(state) {
+                cells.push(format!(
+                    "● {}",
+                    row.state_entered_at
+                        .get(state)
+                        .map(|time| time.get(5..16).unwrap_or(time))
+                        .unwrap_or("")
+                ));
+            } else if let Some(time) = row.state_entered_at.get(state) {
+                cells.push(format!("✓ {}", time.get(5..16).unwrap_or(time)));
+            } else {
+                cells.push("·".to_string());
+            }
+        }
+        cells.push(row.template_code.clone());
+        cells.push(
+            row.notation_id
+                .clone()
+                .unwrap_or_else(|| "never started".to_string()),
+        );
+        cells.push(
+            row.respondent_email
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+        );
+        cells.push(
+            row.signature_request_id
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+        );
+        cells.push(
+            row.last_transition_at
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+        );
+        table.add_row(cells);
+    }
+    println!("{table}");
 }
 
 #[derive(Debug, Deserialize, Serialize)]

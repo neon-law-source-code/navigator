@@ -454,6 +454,16 @@ enum ProjectsCmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Show this Project's notation runs against each current workflow template.
+    /// Reads `navigator.yaml` in the current checkout to choose the live matter.
+    Notations {
+        /// Fail when a lawyer review or client re-ask has remained open this long.
+        #[arg(long, default_value = "3d")]
+        stale: String,
+        /// Emit the complete workflow board as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Open a matter through the live site's `POST /app/api/projects`, the
     /// caller's own bearer token attached so the conflict attestation stays
     /// a personal act.
@@ -2705,6 +2715,7 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         ProjectsCmd::Sync { dry_run } => {
             document_sync::run_project_sync(std::path::Path::new("."), dry_run).await
         }
+        ProjectsCmd::Notations { stale, json } => run_project_notations(&stale, json).await,
         ProjectsCmd::Create {
             name,
             code,
@@ -2765,6 +2776,37 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             host,
         } => projects::setup::run(host.host.as_deref(), project_code.as_deref(), all, json).await,
         ProjectsCmd::Skill { action } => run_project_skill(action),
+    }
+}
+
+async fn run_project_notations(stale: &str, json: bool) -> ExitCode {
+    let Some(manifest) = projects::manifest::read(Path::new(".")) else {
+        eprintln!("navigator project notations: no navigator.yaml in the current directory");
+        return ExitCode::from(2);
+    };
+    let (Some(host), Some(project_code)) = (manifest.host.as_deref(), manifest.project.as_deref())
+    else {
+        eprintln!("navigator project notations: navigator.yaml must declare host and project.name");
+        return ExitCode::from(2);
+    };
+    let Some(stale_after) = parse_stale_duration(stale) else {
+        eprintln!("navigator project notations: invalid --stale duration '{stale}' (use e.g. 3d, 12h, or 30m)");
+        return ExitCode::from(2);
+    };
+    remote::project_notations(Some(host), project_code, stale_after, json).await
+}
+
+fn parse_stale_duration(input: &str) -> Option<chrono::Duration> {
+    let (amount, unit) = input.split_at(input.find(|ch: char| !ch.is_ascii_digit())?);
+    let amount: i64 = amount.parse().ok()?;
+    if amount <= 0 {
+        return None;
+    }
+    match unit {
+        "d" => chrono::Duration::try_days(amount),
+        "h" => chrono::Duration::try_hours(amount),
+        "m" => chrono::Duration::try_minutes(amount),
+        _ => None,
     }
 }
 

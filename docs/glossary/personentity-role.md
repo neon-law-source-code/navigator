@@ -1,5 +1,7 @@
 ---
 title: "Person–Entity Role"
+description: >-
+  A Person–Entity Role records a Person's place in an Entity, such as manager, member, beneficiary, or trustee.
 ---
 
 A Person's role within an Entity (e.g. `manager`, `member`, `beneficiary`, `trustee`). These are the structural ties the
@@ -11,12 +13,3 @@ There is no surrogate key: a tie's identity is its two endpoints plus its `role`
 
 - Schema and queries: [`store::entity_roles`](../../store/src/entity_roles.rs) (SurrealDB; ENG-120) — Lives in the
   `entity_role` relation
-
-```text
-┌─ entity_role ─────────┐
-│ id           record   │
-│ inserted_at  datetime │
-│ role         string   │
-│ updated_at   datetime │
-└───────────────────────┘
-```

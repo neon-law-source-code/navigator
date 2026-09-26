@@ -1,5 +1,6 @@
 ---
 title: "Resource"
+description: "A Resource is one of the private or client-shared places where work on a Project happens."
 ---
 
 One of the six places work on a [Project](project.md) happens: a private Slack channel, a private Notion page, a private

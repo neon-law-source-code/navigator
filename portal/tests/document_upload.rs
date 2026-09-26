@@ -16,6 +16,8 @@ struct Fixture {
     app: Router,
     project_id: uuid::Uuid,
     session: portal::SessionData,
+    surreal: store::surreal::SurrealDb,
+    storage: std::sync::Arc<dyn cloud::StorageService>,
 }
 
 async fn fixture(code: &str) -> Fixture {
@@ -64,7 +66,135 @@ async fn fixture(code: &str) -> Fixture {
         app: portal::api::routes().with_state(api_state),
         project_id,
         session,
+        surreal: state.surreal.clone(),
+        storage: state.storage.clone(),
     }
+}
+
+async fn post_transcript(
+    fixture: &Fixture,
+    source_id: uuid::Uuid,
+    source_sha: &str,
+    bytes: &[u8],
+    quality: Option<&str>,
+    link: bool,
+) {
+    let mut body = json!({
+        "filename": "order.transcript.md",
+        "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        "content_type": "text/markdown",
+        "kind": "transcript",
+        "slug": "transcripts/order.transcript.md",
+        "visibility": "internal",
+    });
+    if let Some(quality) = quality {
+        body["transcript_quality"] = json!(quality);
+    }
+    if link {
+        body["derived_from"] = json!({
+            "document_id": source_id,
+            "version": 1,
+            "sha256": source_sha,
+        });
+    }
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/app/api/projects/{}/documents",
+                    fixture.project_id
+                ))
+                .header(header::CONTENT_TYPE, "application/json")
+                .extension(fixture.session.clone())
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+}
+
+#[tokio::test]
+async fn transcript_upload_records_source_link_and_proofread_revision_inherits_it() {
+    let fixture = fixture("transcript-provenance").await;
+    let source_slug = "pleadings/order.pdf";
+    let source_bytes = b"synthetic source PDF bytes";
+    let source_args = store::documents::IngestArgs {
+        project_id: fixture.project_id,
+        source: store::documents::source::UPLOAD,
+        filename: "order.pdf",
+        kind: "filing",
+        content_type: "application/pdf",
+        description: None,
+        secondary_storage_key: None,
+        visibility: store::documents::visibility::INTERNAL,
+    };
+    let source = store::assets::file_revision(
+        &fixture.surreal,
+        &fixture.storage,
+        &source_args,
+        &store::documents::DocumentIdentity {
+            slug: Some(source_slug),
+            ..Default::default()
+        },
+        source_bytes,
+    )
+    .await
+    .expect("file synthetic source revision");
+    let source_id = match source {
+        store::assets::Filed::Revision(asset) => asset.asset_id,
+        store::assets::Filed::Unchanged { asset_id } => asset_id,
+    };
+    let source_sha = store::assets::sha256_hex(source_bytes);
+
+    post_transcript(
+        &fixture,
+        source_id,
+        &source_sha,
+        b"machine text",
+        Some("machine"),
+        true,
+    )
+    .await;
+    post_transcript(
+        &fixture,
+        source_id,
+        &source_sha,
+        b"proofread text",
+        Some("proofread"),
+        false,
+    )
+    .await;
+    let revisions = store::assets::revisions(
+        &fixture.surreal,
+        fixture.project_id,
+        "transcripts/order.transcript.md",
+    )
+    .await
+    .expect("read transcript revisions");
+    assert_eq!(revisions.len(), 2);
+    assert_eq!(
+        revisions[0].transcript_quality.as_deref(),
+        Some("proofread")
+    );
+    assert_eq!(revisions[1].transcript_quality.as_deref(), Some("machine"));
+    assert_eq!(
+        revisions[0]
+            .derived_from
+            .as_ref()
+            .and_then(|value| value["document_id"].as_str()),
+        Some(source_id.to_string().as_str())
+    );
+    assert_eq!(
+        revisions[0]
+            .derived_from
+            .as_ref()
+            .and_then(|value| value["sha256"].as_str()),
+        Some(source_sha.as_str())
+    );
 }
 
 fn request_body(bytes: &[u8]) -> Vec<u8> {

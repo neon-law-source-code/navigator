@@ -1,11 +1,8 @@
-//! `navigator project build` — install, lint, and build every application a
-//! Project repository declares.
+//! `navigator project portal` — install, lint, and build the Project portal.
 //!
-//! `project-gate.yml` and `project-publish.yml` used to reimplement this
-//! detection in bash, once per reusable workflow, reading `application_workspaces`'s
-//! comment for the order rather than its code. This verb calls
-//! [`repository::discovered_applications`] directly, so the CLI is the one
-//! place that decides what an application is; the workflows just run it.
+//! Project repositories keep their portal at the fixed `portal/` path. This
+//! command runs its package lifecycle directly rather than discovering a list
+//! of applications.
 //!
 //! LAW-49: a Project repository's portal gate is lint and build, nothing
 //! more. `build` already runs `tsc -b`, so a separate `typecheck` verb is
@@ -21,23 +18,42 @@ use super::repository;
 
 const VERBS: [&str; 3] = ["install", "lint", "build"];
 
-/// Run `pnpm --dir <app> <verb>` for every discovered application, one
-/// application at a time, in discovery order, stopping at the first
-/// failure. A repository with no application prints a notice and succeeds —
-/// the gate still passes, it simply has nothing to build.
+/// Run `pnpm install`, `lint`, and `build` in the Project's portal.
 pub fn run(dir: &Path) -> ExitCode {
     run_with_pnpm_on(dir, None)
+}
+
+/// Keep the previous command working during its one-release deprecation.
+pub fn run_deprecated_build(dir: &Path) -> ExitCode {
+    eprintln!("navigator: `project build` is deprecated; use `project portal`");
+    run(dir)
+}
+
+/// Keep old reusable workflow calls working for one release.
+pub fn run_deprecated_applications(dir: &Path, manifest: bool) -> ExitCode {
+    eprintln!("navigator: `project applications` is deprecated; use `portal/package.json`");
+    if repository::portal_application(dir).is_some() {
+        if manifest {
+            if dir == Path::new(".") {
+                println!("portal/package.json");
+            } else {
+                println!("{}", dir.join("portal/package.json").display());
+            }
+        } else {
+            println!("portal");
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// Same as [`run`], but with `pnpm_dir` prepended to the child processes'
 /// `PATH` when given — how tests point this at a stub `pnpm` without
 /// touching the real process environment.
 fn run_with_pnpm_on(dir: &Path, pnpm_dir: Option<&OsStr>) -> ExitCode {
-    let applications = repository::discovered_applications(dir);
-    if applications.is_empty() {
-        println!("no application — nothing to build");
+    let Some(portal) = repository::portal_application(dir) else {
+        println!("no portal — nothing to build");
         return ExitCode::SUCCESS;
-    }
+    };
     let path = pnpm_dir.map(|extra| {
         let mut entries = vec![extra.to_os_string()];
         if let Some(existing) = std::env::var_os("PATH") {
@@ -46,32 +62,30 @@ fn run_with_pnpm_on(dir: &Path, pnpm_dir: Option<&OsStr>) -> ExitCode {
         }
         std::env::join_paths(entries).expect("PATH entries are valid")
     });
-    for application in &applications {
-        let app_dir = application.to_string_lossy().into_owned();
-        for verb in VERBS {
-            let mut args: Vec<&str> = vec!["--dir", &app_dir, verb];
-            if verb == "install" {
-                args.push("--frozen-lockfile");
+    let app_dir = portal.to_string_lossy().into_owned();
+    for verb in VERBS {
+        let mut args: Vec<&str> = vec!["--dir", &app_dir, verb];
+        if verb == "install" {
+            args.push("--frozen-lockfile");
+        }
+        println!("pnpm {}", args.join(" "));
+        let mut command = Command::new("pnpm");
+        command.args(&args);
+        if let Some(path) = &path {
+            command.env("PATH", path);
+        }
+        match command.status() {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                eprintln!("navigator: `pnpm {}` failed ({status})", args.join(" "));
+                return ExitCode::FAILURE;
             }
-            println!("pnpm {}", args.join(" "));
-            let mut command = Command::new("pnpm");
-            command.args(&args);
-            if let Some(path) = &path {
-                command.env("PATH", path);
-            }
-            match command.status() {
-                Ok(status) if status.success() => {}
-                Ok(status) => {
-                    eprintln!("navigator: `pnpm {}` failed ({status})", args.join(" "));
-                    return ExitCode::FAILURE;
-                }
-                Err(error) => {
-                    eprintln!(
-                        "navigator: could not run `pnpm {}`: {error}",
-                        args.join(" ")
-                    );
-                    return ExitCode::FAILURE;
-                }
+            Err(error) => {
+                eprintln!(
+                    "navigator: could not run `pnpm {}`: {error}",
+                    args.join(" ")
+                );
+                return ExitCode::FAILURE;
             }
         }
     }
@@ -110,14 +124,14 @@ mod tests {
     }
 
     #[test]
-    fn no_application_succeeds_without_running_pnpm() {
+    fn no_portal_succeeds_without_running_pnpm() {
         let root = tempfile::tempdir().unwrap();
         let status = run(root.path());
         assert_eq!(status, ExitCode::SUCCESS);
     }
 
     #[test]
-    fn legacy_portal_runs_every_verb_in_order() {
+    fn portal_runs_every_verb_in_order() {
         let root = tempfile::tempdir().unwrap();
         let portal = root.path().join("portal");
         fs::create_dir_all(&portal).unwrap();
@@ -148,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_application_is_discovered_under_apps() {
+    fn nested_application_is_not_treated_as_the_portal() {
         let root = tempfile::tempdir().unwrap();
         let app = root.path().join("apps").join("widgets");
         fs::create_dir_all(&app).unwrap();
@@ -164,16 +178,18 @@ mod tests {
 
         let status = run_with_pnpm_on(root.path(), Some(bin_dir.as_os_str()));
         assert_eq!(status, ExitCode::SUCCESS);
-        assert!(fs::read_to_string(&log).unwrap().contains("widgets"));
+        assert!(!log.exists());
     }
 
     #[test]
-    fn root_vite_workspace_is_discovered() {
+    fn portal_path_is_the_only_application_built() {
         let root = tempfile::tempdir().unwrap();
-        fs::write(root.path().join("package.json"), "{}").unwrap();
-        fs::write(root.path().join("vite.config.ts"), "").unwrap();
-        fs::write(root.path().join("tsconfig.json"), "{}").unwrap();
-        fs::write(root.path().join("vitest.config.ts"), "").unwrap();
+        let portal = root.path().join("portal");
+        fs::create_dir_all(&portal).unwrap();
+        fs::write(portal.join("package.json"), "{}").unwrap();
+        fs::write(portal.join("vite.config.ts"), "").unwrap();
+        fs::write(portal.join("tsconfig.json"), "{}").unwrap();
+        fs::write(portal.join("vitest.config.ts"), "").unwrap();
 
         let scratch = tempfile::tempdir().unwrap();
         let bin_dir = scratch.path().join("bin");
@@ -182,7 +198,7 @@ mod tests {
 
         let status = run_with_pnpm_on(root.path(), Some(bin_dir.as_os_str()));
         assert_eq!(status, ExitCode::SUCCESS);
-        let app_dir = root.path().to_string_lossy().into_owned();
+        let app_dir = portal.to_string_lossy().into_owned();
         assert!(fs::read_to_string(&log)
             .unwrap()
             .contains(&format!("--dir {app_dir} install --frozen-lockfile")));

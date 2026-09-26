@@ -14,6 +14,8 @@ description: >
 
 # The Council of Twelve
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 The build-side council: twelve practitioner-engineers, **chaired by Virgo**, who pressure-test architecture decisions,
 design planning, cross-cutting refactors, abstraction shape, PR sequencing ("one bundle or three?"), and doc-clarity
 reviews. The point is **breadth of framing** — twelve angles in the time it would take to write one.

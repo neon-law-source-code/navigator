@@ -1,5 +1,6 @@
 ---
 title: "Relationship Log"
+description: "A Relationship Log is an append-only audit trail of relationship changes."
 ---
 
 Append-only audit trail of relationship changes — entries like `person joined entity` or `project closed`. The source of
@@ -16,16 +17,3 @@ transaction spanning it.
 
 - Schema and queries: [`store::relationship_logs`](../../store/src/relationship_logs.rs) (SurrealDB; ENG-120) — Lives
   in: `relationship_log` table
-
-```text
-┌─ relationship_log ──────────────────────┐
-│ id               record                 │
-│ action           string                 │
-│ actor_person_id  option<record<person>> │
-│ detail           string                 │
-│ inserted_at      datetime               │
-│ subject_id       uuid                   │
-│ subject_type     string                 │
-│ updated_at       datetime               │
-└─────────────────────────────────────────┘
-```

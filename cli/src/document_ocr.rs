@@ -1,0 +1,559 @@
+//! Local, per-page OCR for Project PDF documents.
+//!
+//! Source bytes remain in memory/temp storage and are sent to no OCR provider.
+//! Poppler renders page images; Tesseract's OSD selects page orientation, and a
+//! local projection-profile pass deskews each page before recognition.
+
+use std::collections::BTreeMap;
+use std::ffi::OsStr;
+use std::fmt::Write as _;
+use std::path::Path;
+use std::process::Command;
+
+use anyhow::{anyhow, Context, Result};
+use image::{GrayImage, Luma};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OcrText {
+    text: String,
+    recognized_words: usize,
+    confidence: u64,
+}
+
+/// OCR a PDF one rendered page at a time, correcting each page's orientation.
+pub(crate) fn transcribe_pdf(bytes: &[u8]) -> Result<String> {
+    transcribe_pdf_with(bytes, OsStr::new("pdftoppm"), OsStr::new("tesseract"))
+}
+
+fn transcribe_pdf_with(bytes: &[u8], pdftoppm: &OsStr, tesseract: &OsStr) -> Result<String> {
+    let pages = pdf::page_count(bytes).context("read source PDF page count")?;
+    if pages == 0 {
+        return Err(anyhow!("source PDF has no pages"));
+    }
+    let scratch = tempfile::tempdir().context("create private OCR scratch directory")?;
+    let input = scratch.path().join("source.pdf");
+    std::fs::write(&input, bytes).context("write source PDF to private OCR scratch directory")?;
+
+    let mut transcript = String::new();
+    for page_number in 1..=pages {
+        let page = scratch.path().join(format!("page-{page_number}"));
+        run_command(
+            Command::new(pdftoppm)
+                .args([
+                    "-f",
+                    &page_number.to_string(),
+                    "-l",
+                    &page_number.to_string(),
+                ])
+                .args(["-singlefile", "-png", "-r", "300"])
+                .arg(&input)
+                .arg(&page),
+            "render PDF page (install Poppler's pdftoppm)",
+        )?;
+        let image_path = page.with_extension("png");
+        let image = image::open(&image_path)
+            .with_context(|| format!("open rendered page {page_number}"))?;
+        let suggested = orientation_with(&image_path, tesseract).unwrap_or(0);
+        let mut rotations = vec![suggested, (suggested + 180) % 360];
+        let mut best = best_orientation_with(&image, &rotations, scratch.path(), tesseract)?;
+        if best.recognized_words < 3 {
+            rotations = vec![0, 90, 180, 270];
+            best = best_orientation_with(&image, &rotations, scratch.path(), tesseract)?;
+        }
+        let _ = writeln!(transcript, "## Page {page_number}\n");
+        if best.text.trim().is_empty() {
+            transcript.push_str("[No text recognized on this page.]\n\n");
+        } else {
+            transcript.push_str(best.text.trim());
+            transcript.push_str("\n\n");
+        }
+    }
+    Ok(transcript)
+}
+
+fn orientation_with(image: &Path, tesseract: &OsStr) -> Result<u32> {
+    let output = Command::new(tesseract)
+        .arg(image)
+        .arg("stdout")
+        .args(["--psm", "0"])
+        .output()
+        .context(
+            "detect page orientation (install Tesseract with the eng and osd language data)",
+        )?;
+    if !output.status.success() {
+        return Err(anyhow!("Tesseract could not detect page orientation"));
+    }
+    orientation_from_report(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn orientation_from_report(report: &str) -> Result<u32> {
+    let rotation = report
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("Rotate:"))
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|degrees| matches!(degrees, 0 | 90 | 180 | 270))
+        .ok_or_else(|| anyhow!("Tesseract returned no usable page orientation"))?;
+    Ok(rotation)
+}
+
+fn best_orientation_with(
+    original: &image::DynamicImage,
+    rotations: &[u32],
+    scratch: &Path,
+    tesseract: &OsStr,
+) -> Result<OcrText> {
+    let mut best = OcrText {
+        text: String::new(),
+        recognized_words: 0,
+        confidence: 0,
+    };
+    for (index, rotation) in rotations.iter().copied().enumerate() {
+        let rotated = match rotation {
+            0 => original.clone(),
+            90 => image::DynamicImage::ImageRgba8(image::imageops::rotate90(original)),
+            180 => image::DynamicImage::ImageRgba8(image::imageops::rotate180(original)),
+            270 => image::DynamicImage::ImageRgba8(image::imageops::rotate270(original)),
+            _ => continue,
+        };
+        let candidate = scratch.join(format!("orientation-{index}.png"));
+        deskew(&rotated)
+            .save(&candidate)
+            .with_context(|| format!("write deskewed page image for orientation {rotation}"))?;
+        let output = Command::new(tesseract)
+            .arg(&candidate)
+            .arg("stdout")
+            .args(["--psm", "3", "tsv"])
+            .output()
+            .context("OCR page (install Tesseract with the eng language data)")?;
+        if !output.status.success() {
+            return Err(anyhow!("Tesseract failed while recognizing a page"));
+        }
+        let recognized = parse_tsv(&String::from_utf8_lossy(&output.stdout));
+        if (recognized.recognized_words, recognized.confidence)
+            > (best.recognized_words, best.confidence)
+        {
+            best = recognized;
+        }
+    }
+    Ok(best)
+}
+
+fn deskew(image: &image::DynamicImage) -> GrayImage {
+    let grayscale = image.to_luma8();
+    let correction = estimate_skew(&grayscale);
+    if correction.abs() < 0.2 {
+        return grayscale;
+    }
+    rotate_grayscale(&grayscale, correction)
+}
+
+/// Estimate the correction angle by maximizing horizontal ink projection.
+/// Downsampling bounds the work for phone-camera scans without changing the
+/// source image used by OCR.
+fn estimate_skew(image: &GrayImage) -> f32 {
+    let sample = if image.width() > 500 {
+        let height = u32::try_from(u64::from(image.height()) * 500 / u64::from(image.width()))
+            .unwrap_or(u32::MAX);
+        image::imageops::resize(
+            image,
+            500,
+            height.max(1),
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        image.clone()
+    };
+    let baseline = projection_score(&sample, 0.0);
+    let mut best = (baseline, 0.0f32);
+    for half_degrees in -10_i16..=10 {
+        let degrees = f32::from(half_degrees) * 0.5;
+        if degrees == 0.0 {
+            continue;
+        }
+        let score = projection_score(&sample, degrees.to_radians());
+        if score > best.0 || (score == best.0 && degrees.abs() < best.1.abs()) {
+            best = (score, degrees);
+        }
+    }
+    if best.0 <= baseline.saturating_add(baseline / 100) {
+        0.0
+    } else {
+        best.1
+    }
+}
+
+fn projection_score(image: &GrayImage, radians: f32) -> u64 {
+    let width = image.width();
+    let height = image.height();
+    let center_x = (f64::from(width) - 1.0) / 2.0;
+    let center_y = (f64::from(height) - 1.0) / 2.0;
+    let (sin, cos) = f64::from(radians).sin_cos();
+    let Ok(row_count) = usize::try_from(height) else {
+        return 0;
+    };
+    let mut rows = vec![0u32; row_count];
+    for (x, y, pixel) in image.enumerate_pixels() {
+        if pixel[0] >= 180 {
+            continue;
+        }
+        let dx = f64::from(x) - center_x;
+        let dy = f64::from(y) - center_y;
+        let rotated_row = rounded_image_coordinate(dx * sin + dy * cos + center_y, height)
+            .and_then(|rotated_y| usize::try_from(rotated_y).ok())
+            .and_then(|row_index| rows.get_mut(row_index));
+        if let Some(row) = rotated_row {
+            *row += 1;
+        }
+    }
+    rows.into_iter()
+        .map(|count| u64::from(count) * u64::from(count))
+        .sum()
+}
+
+fn rotate_grayscale(image: &GrayImage, degrees: f32) -> GrayImage {
+    let (width, height) = image.dimensions();
+    let center_x = (f64::from(width) - 1.0) / 2.0;
+    let center_y = (f64::from(height) - 1.0) / 2.0;
+    let radians = f64::from(degrees).to_radians();
+    let (sin, cos) = radians.sin_cos();
+    GrayImage::from_fn(width, height, |x, y| {
+        let dx = f64::from(x) - center_x;
+        let dy = f64::from(y) - center_y;
+        if let (Some(source_x), Some(source_y)) = (
+            rounded_image_coordinate(dx * cos + dy * sin + center_x, width),
+            rounded_image_coordinate(-dx * sin + dy * cos + center_y, height),
+        ) {
+            image
+                .get_pixel_checked(source_x, source_y)
+                .copied()
+                .unwrap_or(Luma([255]))
+        } else {
+            Luma([255])
+        }
+    })
+}
+
+fn rounded_image_coordinate(value: f64, extent: u32) -> Option<u32> {
+    let rounded = value.round();
+    if !rounded.is_finite() || rounded < 0.0 || rounded >= f64::from(extent) {
+        return None;
+    }
+    // The bounds check proves this rounded value fits the positive u32 range.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "value is finite, integral, nonnegative, and below the u32 image extent"
+    )]
+    Some(rounded as u32)
+}
+
+fn parse_tsv(tsv: &str) -> OcrText {
+    let mut lines: BTreeMap<(u32, u32, u32), Vec<(u32, String)>> = BTreeMap::new();
+    let mut recognized_words = 0;
+    let mut confidence = 0;
+    for row in tsv.lines().skip(1) {
+        let fields: Vec<_> = row.splitn(12, '\t').collect();
+        if fields.len() != 12 || fields[0] != "5" {
+            continue;
+        }
+        let Ok(score) = fields[10].parse::<f32>() else {
+            continue;
+        };
+        if !score.is_finite() || score < 0.0 || fields[11].trim().is_empty() {
+            continue;
+        }
+        let key = (
+            fields[2].parse().unwrap_or(0),
+            fields[3].parse().unwrap_or(0),
+            fields[4].parse().unwrap_or(0),
+        );
+        let word = fields[11].trim().to_string();
+        lines
+            .entry(key)
+            .or_default()
+            .push((fields[5].parse().unwrap_or(0), word));
+        recognized_words += usize::from(score >= 40.0);
+        confidence += confidence_points(score);
+    }
+    let text = lines
+        .into_values()
+        .map(|mut words| {
+            words.sort_by_key(|(index, _)| *index);
+            words
+                .into_iter()
+                .map(|(_, word)| word)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    OcrText {
+        text,
+        recognized_words,
+        confidence,
+    }
+}
+
+fn confidence_points(score: f32) -> u64 {
+    let bounded = score.clamp(0.0, 100.0).round();
+    // Tesseract confidence is bounded to 0–100 before this conversion.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "bounded Tesseract confidence fits in u64"
+    )]
+    {
+        bounded as u64
+    }
+}
+
+fn run_command(command: &mut Command, context: &str) -> Result<()> {
+    let output = command.output().with_context(|| context.to_string())?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .next()
+            .unwrap_or("command failed")
+            .to_string();
+        return Err(anyhow!("{context}: {detail}"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        best_orientation_with, confidence_points, deskew, estimate_skew, orientation_from_report,
+        orientation_with, parse_tsv, projection_score, rotate_grayscale, rounded_image_coordinate,
+        run_command, transcribe_pdf, transcribe_pdf_with,
+    };
+    use image::{DynamicImage, GrayImage, Luma};
+    use std::process::Command;
+
+    #[test]
+    fn tesseract_tsv_keeps_page_lines_and_uses_confident_words_for_scoring() {
+        let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+            5\t1\t1\t1\t1\t2\t10\t10\t20\t10\t91.5\tsecond\n\
+            5\t1\t1\t1\t1\t1\t1\t10\t20\t10\t88.0\tFirst\n\
+            5\t1\t1\t1\t2\t1\t1\t30\t20\t10\t20.0\tuncertain\n";
+        let result = parse_tsv(tsv);
+        assert_eq!(result.text, "First second\nuncertain");
+        assert_eq!(result.recognized_words, 2);
+    }
+
+    #[test]
+    fn deskew_estimates_the_inverse_of_slanted_text_lines() {
+        let mut image = GrayImage::from_pixel(800, 500, Luma([255]));
+        for baseline in [100, 150, 200, 250, 300] {
+            for x in 40..760 {
+                let y = baseline + (x + 10) / 20;
+                for thickness in 0..3 {
+                    image.put_pixel(x, y + thickness, Luma([0]));
+                }
+            }
+        }
+        let correction = estimate_skew(&image);
+        assert!((-4.0..-2.0).contains(&correction), "{correction}");
+    }
+
+    #[test]
+    fn blank_and_already_level_pages_need_no_rotation() {
+        let blank = GrayImage::from_pixel(40, 30, Luma([255]));
+        assert!(estimate_skew(&blank).abs() < 0.01);
+        assert_eq!(deskew(&DynamicImage::ImageLuma8(blank.clone())), blank);
+        assert_eq!(projection_score(&blank, 0.0), 0);
+    }
+
+    #[test]
+    fn rotated_grayscale_fills_outside_pixels_with_white() {
+        let image = GrayImage::from_pixel(9, 7, Luma([0]));
+        let rotated = rotate_grayscale(&image, 30.0);
+        assert_eq!(rotated.dimensions(), image.dimensions());
+        assert!(rotated.pixels().any(|pixel| pixel[0] == 255));
+        assert!(rotated.pixels().any(|pixel| pixel[0] == 0));
+    }
+
+    #[test]
+    fn image_coordinates_reject_nonfinite_and_out_of_bounds_values() {
+        assert_eq!(rounded_image_coordinate(1.6, 4), Some(2));
+        assert_eq!(rounded_image_coordinate(-0.6, 4), None);
+        assert_eq!(rounded_image_coordinate(4.0, 4), None);
+        assert_eq!(rounded_image_coordinate(f64::NAN, 4), None);
+        assert_eq!(rounded_image_coordinate(f64::INFINITY, 4), None);
+    }
+
+    #[test]
+    fn tsv_parser_skips_bad_rows_and_groups_by_page_line() {
+        let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+            4\t1\t1\t1\t1\t1\t0\t0\t0\t0\t90\tcontainer\n\
+            5\t1\t2\t1\t1\t1\t0\t0\t0\t0\tNaN\tbad-score\n\
+            5\t1\t2\t1\t1\t1\t0\t0\t0\t0\t90\t   \n\
+            5\t2\t1\t1\t1\t1\t0\t0\t0\t0\t-1\tnegative\n\
+            5\t2\t1\t1\t1\t2\t0\t0\t0\t0\t35.4\tuncertain\n\
+            5\t1\t2\t1\t1\t3\t0\t0\t0\t0\t99.5\tFirst\n\
+            malformed\n";
+        let result = parse_tsv(tsv);
+        assert_eq!(result.text, "uncertain\nFirst");
+        assert_eq!(result.recognized_words, 1);
+        assert_eq!(result.confidence, 135);
+        assert_eq!(confidence_points(-5.0), 0);
+        assert_eq!(confidence_points(101.0), 100);
+    }
+
+    #[test]
+    fn orientation_report_accepts_only_quarter_turns() {
+        for degrees in [0, 90, 180, 270] {
+            assert_eq!(
+                orientation_from_report(&format!("Page number: 1\nRotate: {degrees}\n")).unwrap(),
+                degrees
+            );
+        }
+        assert!(orientation_from_report("Rotate: 45").is_err());
+        assert!(orientation_from_report("Rotate: unknown").is_err());
+        assert!(orientation_from_report("no orientation").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn orientation_runs_tesseract_and_reports_a_failed_process() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("page.png");
+        std::fs::write(&image, []).unwrap();
+        let tesseract = dir.path().join("tesseract");
+        std::fs::write(&tesseract, "#!/bin/sh\nprintf 'Rotate: 90\\n'\n").unwrap();
+        std::fs::set_permissions(&tesseract, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(orientation_with(&image, tesseract.as_os_str()).unwrap(), 90);
+
+        std::fs::write(&tesseract, "#!/bin/sh\nexit 1\n").unwrap();
+        std::fs::set_permissions(&tesseract, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(orientation_with(&image, tesseract.as_os_str()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn best_orientation_tests_supported_rotations_and_ignores_invalid_ones() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let tesseract = dir.path().join("tesseract");
+        let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t0\t0\t0\t0\t90\tText\n";
+        std::fs::write(
+            &tesseract,
+            format!("#!/bin/sh\nprintf '%s\\n' '{} '\n", tsv.trim_end()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&tesseract, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let image = DynamicImage::ImageLuma8(GrayImage::from_pixel(20, 12, Luma([255])));
+        let result = best_orientation_with(
+            &image,
+            &[0, 90, 180, 270, 45],
+            dir.path(),
+            tesseract.as_os_str(),
+        )
+        .unwrap();
+        assert_eq!(result.text, "Text");
+        assert_eq!(result.recognized_words, 1);
+
+        std::fs::write(&tesseract, "#!/bin/sh\nexit 1\n").unwrap();
+        std::fs::set_permissions(&tesseract, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(best_orientation_with(&image, &[0], dir.path(), tesseract.as_os_str()).is_err());
+    }
+
+    #[test]
+    fn empty_pdf_and_command_failures_return_errors() {
+        assert!(transcribe_pdf(b"not a PDF").is_err());
+        assert!(run_command(Command::new("git").arg("--version"), "git").is_ok());
+        assert!(run_command(
+            Command::new("git").arg("navigator-not-a-git-command"),
+            "git command",
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("git command"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn transcribe_pdf_renders_pages_and_retries_all_rotations_when_text_is_sparse() {
+        let dir = tempfile::tempdir().unwrap();
+        let image_path = dir.path().join("render.png");
+        let rendered = GrayImage::from_pixel(60, 40, Luma([255]));
+        rendered.save(&image_path).unwrap();
+        let pdftoppm = fake_program(
+            dir.path(),
+            "pdftoppm",
+            &format!(
+                "#!/bin/sh\nfor arg do prefix=\"$arg\"; done\ncp {} \"${{prefix}}.png\"\n",
+                shell_quote(&image_path.display().to_string())
+            ),
+        );
+        let calls = dir.path().join("tesseract-calls.txt");
+        let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t0\t0\t0\t0\t90\tOne\n5\t1\t1\t1\t1\t2\t0\t0\t0\t0\t90\tTwo\n";
+        let tesseract = fake_program(
+            dir.path(),
+            "tesseract",
+            &format!(
+                "#!/bin/sh\necho \"$4\" >> {}\nif [ \"$4\" = 0 ]; then printf 'Rotate: 90\\n'; else printf '%s\\n' '{}'; fi\n",
+                shell_quote(&calls.display().to_string()),
+                tsv.trim_end()
+            ),
+        );
+        let pdf = include_bytes!("../../store/seeds/dev/initial-case-assessment.pdf");
+
+        let transcript =
+            transcribe_pdf_with(pdf, pdftoppm.as_os_str(), tesseract.as_os_str()).unwrap();
+
+        assert!(transcript.contains("## Page 1"));
+        assert!(transcript.contains("One Two"));
+        let calls = std::fs::read_to_string(calls).unwrap();
+        let recognition_calls = calls.lines().filter(|mode| *mode == "3").count();
+        assert!(recognition_calls >= 6);
+        assert_eq!(recognition_calls % 6, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn transcribe_pdf_marks_a_page_without_recognized_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let image_path = dir.path().join("render.png");
+        GrayImage::from_pixel(30, 20, Luma([255]))
+            .save(&image_path)
+            .unwrap();
+        let pdftoppm = fake_program(
+            dir.path(),
+            "pdftoppm",
+            &format!(
+                "#!/bin/sh\nfor arg do prefix=\"$arg\"; done\ncp {} \"${{prefix}}.png\"\n",
+                shell_quote(&image_path.display().to_string())
+            ),
+        );
+        let tesseract = fake_program(
+            dir.path(),
+            "tesseract",
+            "#!/bin/sh\nif [ \"$4\" = 0 ]; then printf 'Rotate: 0\\n'; else printf 'level\\tpage_num\\tblock_num\\tpar_num\\tline_num\\tword_num\\tleft\\ttop\\twidth\\theight\\tconf\\ttext\\n'; fi\n",
+        );
+        let pdf = include_bytes!("../../store/seeds/dev/initial-case-assessment.pdf");
+
+        let transcript =
+            transcribe_pdf_with(pdf, pdftoppm.as_os_str(), tesseract.as_os_str()).unwrap();
+
+        assert!(transcript.contains("[No text recognized on this page.]"));
+    }
+
+    #[cfg(unix)]
+    fn fake_program(directory: &std::path::Path, name: &str, script: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = directory.join(name);
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}

@@ -71,8 +71,7 @@ jobs:
               echo "host=${host}"
           } >> "${GITHUB_OUTPUT}"
 
-  # Installs, lints, typechecks, tests, and builds every application this
-  # repository declares, then runs the one gate over the whole tree.
+  # Installs, lints, and builds the portal, then gates the whole repository.
   verify:
     needs: read-manifest
     permissions:
@@ -81,8 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Installed first: `applications --manifest` below needs the CLI, and
-      # so does the origin gate at the end of this job.
+      # Installed first because the portal build and origin gate need the CLI.
       #
       # Self-referencing composite actions in this file are pinned to an
       # absolute tag, not to the ref the caller used, so they necessarily lag
@@ -94,27 +92,17 @@ jobs:
       - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.26
         with:
           version: ${{ needs.read-manifest.outputs.version }}
-      # Application discovery lives in the CLI (`cli/src/projects/repository.rs`)
-      # now, not in this workflow. This prints the one manifest path
-      # `pnpm/action-setup` reads its version pin from, or nothing when the
-      # repository declares no application.
-      - name: locate the application manifest
-        id: application
-        run: echo "manifest=$(navigator project applications --manifest)" >> "${GITHUB_OUTPUT}"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.application.outputs.manifest != ''
+        if: hashFiles('portal/package.json') != ''
         with:
           node-version: "22"
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: steps.application.outputs.manifest != ''
+        if: hashFiles('portal/package.json') != ''
         with:
-          package_json_file: ${{ steps.application.outputs.manifest }}
-      # Installs, lints, typechecks, tests, and builds every discovered
-      # application, one at a time, stopping at the first failure. A
-      # repository with none prints a notice and succeeds — the gate still
-      # passes, it simply has nothing to build.
-      - name: navigator project build
-        run: navigator project build --dir .
+          package_json_file: portal/package.json
+      # Installs, lints, and builds the one portal under portal/.
+      - name: navigator project portal
+        run: navigator project portal --dir .
       # One gate over the whole repository: content rules, YAML, seeds,
       # locales, layout, mount, and — because this is the job that ran the
       # builds — the origin pass (`Y009`) reading each `dist/`. `--ci` writes

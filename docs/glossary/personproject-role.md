@@ -1,5 +1,6 @@
 ---
 title: "Person–Project Role"
+description: "A Person–Project Role records a Person's participation on a Project."
 ---
 
 A Person's participation on a Project. The `participation` column records which side of the matter they are on, and it
@@ -23,15 +24,3 @@ Values are stored folded — trimmed, lowercased, separators as single underscor
 
 - Schema: [`store::projects`](../../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../../store/src/schema/navigator.surql)
-
-```text
-┌─ person_project_role ──────────┐
-│ id             record          │
-│ inserted_at    string          │
-│ is_client_dri  bool            │
-│ is_lawyer_dri  bool            │
-│ person_id      record<person>  │
-│ project_id     record<project> │
-│ updated_at     string          │
-└────────────────────────────────┘
-```

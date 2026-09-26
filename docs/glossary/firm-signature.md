@@ -1,5 +1,8 @@
 ---
 title: "Firm Signature"
+description: >-
+  The workflow prefix firm_signature records a lawyer-side signature, usually the firm's countersignature or closing
+  signature.
 ---
 
 The workflow prefix `firm_signature` records a lawyer-side signature, usually the firm's countersignature or closing

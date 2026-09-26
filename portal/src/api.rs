@@ -1272,21 +1272,8 @@ async fn list_notations_door(
     Ok((StatusCode::OK, Json(notations)).into_response())
 }
 
-/// One private row in a Project's notation inventory. The CLI uses this
-/// projection rather than the client-readable notation list so an operator can
-/// identify a notation by template code and respondent without separately
-/// resolving internal ids.
-#[derive(Serialize)]
-struct NotationInventoryRow {
-    id: Uuid,
-    template_code: Option<String>,
-    state: String,
-    respondent_name: Option<String>,
-    respondent_email: Option<String>,
-}
-
 /// `GET /app/api/projects/{id}/notation-inventory` — a lawyer's private,
-/// matter-scoped inventory of the notations opened on one Project.
+/// matter-scoped board of runs and templates not yet opened on one Project.
 /// Participation is required of every tier, Owner and Admin included.
 async fn notation_inventory_door(
     State(state): State<ApiState>,
@@ -1297,24 +1284,10 @@ async fn notation_inventory_door(
         return Err(ApiError::NotFound);
     }
 
-    let notations = store::notations::list_by_project(&state.surreal, id).await?;
-    let mut rows = Vec::with_capacity(notations.len());
-    for notation in notations {
-        let template_code = store::templates::find_by_id(&state.surreal, notation.template_id)
+    let rows =
+        webapp::lawyer_project_detail::project_notation_board(&state.surreal, &state.storage, id)
             .await
-            .map_err(|error| ApiError::Db(error.to_string()))?
-            .map(|template| template.code);
-        let respondent = store::persons::find_by_id(&state.surreal, notation.person_id)
-            .await
-            .map_err(|error| ApiError::Db(error.to_string()))?;
-        rows.push(NotationInventoryRow {
-            id: notation.id,
-            template_code,
-            state: notation.state,
-            respondent_name: respondent.as_ref().map(|person| person.name.clone()),
-            respondent_email: respondent.map(|person| person.email),
-        });
-    }
+            .map_err(ApiError::Db)?;
     Ok((StatusCode::OK, Json(rows)).into_response())
 }
 
@@ -3224,6 +3197,10 @@ struct UploadDocumentRequest {
     /// instance (ENG-481). Never inferred here; passed through verbatim
     /// to the asset row's own `metadata` column.
     metadata: Option<serde_json::Value>,
+    /// Exact source revision for a generated transcript.
+    derived_from: Option<store::documents::DerivedFrom>,
+    /// Quality for a transcript revision; absent on unrelated upload lanes.
+    transcript_quality: Option<String>,
 }
 
 fn invalid_document_slug_response(filename: &str, slug: &str) -> Option<Response> {
@@ -3279,6 +3256,65 @@ async fn upload_document_door(
             ),
         ));
     };
+    if let Some(quality) = input.transcript_quality.as_deref() {
+        if kind != "transcript" || !matches!(quality, "machine" | "proofread") {
+            return Ok(bad_request(
+                "invalid_transcript_quality",
+                "Transcript quality must be `machine` or `proofread` and requires kind `transcript`.",
+            ));
+        }
+    }
+    if input.derived_from.is_some() && kind != "transcript" {
+        return Ok(bad_request(
+            "invalid_derived_from",
+            "A source revision may be attached only to a transcript.",
+        ));
+    }
+    if let Some(source) = input.derived_from.as_ref() {
+        if source.version == 0
+            || source.sha256.len() != 64
+            || !source
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Ok(bad_request(
+                "invalid_derived_from",
+                "The source revision needs a positive version and a lowercase SHA-256 digest.",
+            ));
+        }
+        let Some(source_asset) = store::assets::find_by_id(&state.surreal, source.document_id)
+            .await
+            .map_err(ApiError::Asset)?
+        else {
+            return Ok(bad_request(
+                "invalid_derived_from",
+                "The source revision is not a current document on this matter.",
+            ));
+        };
+        let Some(source_slug) = source_asset
+            .slug
+            .as_deref()
+            .filter(|_| source_asset.project_id == Some(id))
+        else {
+            return Ok(bad_request(
+                "invalid_derived_from",
+                "The source revision is not a current document on this matter.",
+            ));
+        };
+        let revisions = store::assets::revisions(&state.surreal, id, source_slug)
+            .await
+            .map_err(ApiError::Asset)?;
+        if revisions.first().map(|current| current.id) != Some(source.document_id)
+            || revisions.len() != source.version
+            || source_asset.sha256_hex != source.sha256
+        {
+            return Ok(bad_request(
+                "invalid_derived_from",
+                "The source revision is no longer operative on this matter.",
+            ));
+        }
+    }
     let bytes = {
         use base64::Engine as _;
         match base64::engine::general_purpose::STANDARD.decode(input.content_base64.as_bytes()) {
@@ -3311,6 +3347,29 @@ async fn upload_document_door(
     if let Some(response) = invalid_document_slug_response(filename, slug) {
         return Ok(response);
     }
+    let inherited_source = if kind == "transcript"
+        && input.transcript_quality.as_deref() == Some("proofread")
+        && input.derived_from.is_none()
+    {
+        store::assets::revisions(&state.surreal, id, slug)
+            .await
+            .map_err(ApiError::Asset)?
+            .first()
+            .and_then(|current| current.derived_from.clone())
+    } else {
+        None
+    };
+    let derived_from = input
+        .derived_from
+        .as_ref()
+        .map(|source| {
+            serde_json::json!({
+                "document_id": source.document_id,
+                "version": source.version,
+                "sha256": source.sha256,
+            })
+        })
+        .or(inherited_source);
     let args = store::documents::IngestArgs {
         project_id: id,
         source: store::documents::source::UPLOAD,
@@ -3338,6 +3397,12 @@ async fn upload_document_door(
             slug: Some(slug),
             published_at: None,
             metadata: input.metadata.clone(),
+            derived_from,
+            transcript_quality: if kind == "transcript" {
+                input.transcript_quality.as_deref()
+            } else {
+                None
+            },
         },
         &bytes,
     )
@@ -3575,6 +3640,8 @@ async fn file_mail_attachments(
             slug: Some(&slug),
             published_at: None,
             metadata: None,
+            derived_from: None,
+            transcript_quality: None,
         };
         let provenance = store::documents::MailProvenance {
             message_id: &message_id_str,
@@ -3704,6 +3771,19 @@ struct IntegrityQuery {
 struct IntegrityAsset {
     asset_id: Uuid,
     slug: Option<String>,
+    kind: Option<String>,
+    sha256: String,
+    /// Structured transcript source revision. Returned to the lawyer gate only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    derived_from: Option<serde_json::Value>,
+    /// `machine` or `proofread`, when the row is a transcript.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transcript_quality: Option<String>,
+    /// Whether this asset is the current revision of its slug chain.
+    operative: bool,
+    /// One-based position in the slug chain, newest is the total revision count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<usize>,
     /// Whether the object at `storage_key` exists.
     exists: bool,
     /// Byte size of that object. Absent when the object is missing.
@@ -3745,6 +3825,33 @@ async fn document_integrity_door(
     if matches!(lens, store::access::ProjectLens::Client) {
         assets.retain(|asset| asset.visibility == store::documents::visibility::CLIENT);
     }
+    let mut current_by_slug = std::collections::BTreeMap::new();
+    let mut version_by_id = std::collections::BTreeMap::new();
+    for asset in &assets {
+        let Some(slug) = asset.slug.as_deref() else {
+            continue;
+        };
+        if current_by_slug.contains_key(slug) {
+            continue;
+        }
+        let mut revisions = store::assets::revisions(&state.surreal, id, slug)
+            .await
+            .map_err(ApiError::Asset)?;
+        if matches!(lens, store::access::ProjectLens::Client) {
+            revisions.retain(|revision| {
+                revision.visibility == store::documents::visibility::CLIENT
+                    && revision.published_at.is_some()
+            });
+        }
+        let count = revisions.len();
+        for (index, revision) in revisions.iter().enumerate() {
+            version_by_id.insert(revision.id, count - index);
+        }
+        current_by_slug.insert(
+            slug.to_string(),
+            revisions.first().map(|revision| revision.id),
+        );
+    }
     let integrations = crate::document_integrations::findings(&assets);
     let mut rows = Vec::with_capacity(assets.len());
     for asset in &assets {
@@ -3763,6 +3870,24 @@ async fn document_integrity_door(
         rows.push(IntegrityAsset {
             asset_id: asset.id,
             slug: asset.slug.clone(),
+            kind: asset.kind.clone(),
+            sha256: asset.sha256_hex.clone(),
+            derived_from: if matches!(lens, store::access::ProjectLens::Lawyer) {
+                asset.derived_from.clone()
+            } else {
+                None
+            },
+            transcript_quality: if matches!(lens, store::access::ProjectLens::Lawyer) {
+                asset.transcript_quality.clone()
+            } else {
+                None
+            },
+            operative: asset
+                .slug
+                .as_deref()
+                .and_then(|slug| current_by_slug.get(slug))
+                .is_some_and(|current_id| *current_id == Some(asset.id)),
+            version: version_by_id.get(&asset.id).copied(),
             exists: head.is_some(),
             size_bytes: stored_size,
             recorded_size: asset.byte_size,
@@ -5530,6 +5655,8 @@ mod tests {
             slug: Some("agreement.pdf"),
             published_at,
             metadata: None,
+            derived_from: None,
+            transcript_quality: None,
         };
         store::documents::ingest_bytes_as(
             surreal,

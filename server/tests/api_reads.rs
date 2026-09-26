@@ -407,7 +407,7 @@ async fn notation_inventory_is_lawyer_only_and_matter_scoped() {
         .to_bytes();
     let inventory: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(inventory.as_array().unwrap().len(), 1);
-    assert_eq!(inventory[0]["id"], fx.notation_id.to_string());
+    assert_eq!(inventory[0]["notation_id"], fx.notation_id.to_string());
     assert_eq!(inventory[0]["template_code"], "test__read_walk");
     assert_eq!(inventory[0]["respondent_email"], "client@example.com");
 

@@ -1,5 +1,6 @@
 ---
 title: "Revision"
+description: "A Revision is one assets row under a Document Identity, representing one version of a living document."
 ---
 
 One `assets` row under a [Document Identity](document-identity.md) — a single version of a living document. Revisions

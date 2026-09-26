@@ -1,5 +1,6 @@
 ---
 title: "Verification"
+description: "A Verification records evidence that a licensed human checked a citation before filing."
 ---
 
 Evidence that a licensed human checked a citation before it was filed. A **domain record with an audit trail, not
@@ -25,17 +26,3 @@ axis, the outcome, the verifier, the revision SHA, and a duration. No quote, no 
 - Vocabulary: [`rules::citation`](../../rules/src/citation.rs) · Schema:
   [`verification` in `navigator.surql`](../../store/src/schema/navigator.surql) Queries:
   [`store::verifications`](../../store/src/verifications.rs) Lives in: the `verification` table in SurrealDB
-
-```text
-┌─ verification ───────────────────────┐
-│ id                  record           │
-│ citation_id         record<citation> │
-│ inserted_at         datetime         │
-│ revision_sha        string           │
-│ status_citation     string           │
-│ status_proposition  string           │
-│ status_quote        string           │
-│ updated_at          datetime         │
-│ verifier_person_id  record<person>   │
-└──────────────────────────────────────┘
-```

@@ -1,5 +1,6 @@
 ---
 title: "Statement of the present"
+description: "The Statement of the present is SurrealDB's current schema, applied as one idempotent file."
 ---
 
 How SurrealDB's schema is kept, in contrast to a migration chain. `store/src/schema/navigator.surql` is one idempotent

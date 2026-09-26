@@ -1,5 +1,8 @@
 ---
 title: "Document Drafts"
+description: >-
+  The workflow prefix document_drafts is a system wait state for web-rendered review-document rows, used by workflows
+  that generate multiple client-reviewable instruments.
 ---
 
 The workflow prefix `document_drafts` is a system wait state for web-rendered review-document rows, used by workflows

@@ -1,5 +1,6 @@
 ---
 title: "Workflow"
+description: "A Workflow is the state machine that drives a Notation from submission to final disposition."
 ---
 
 The state machine that drives a [Notation](../notation.md#notation) from initial submission to final disposition. Two

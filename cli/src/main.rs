@@ -11,6 +11,7 @@ mod authorities;
 mod credentials;
 mod cut_release;
 mod devx;
+mod document_ocr;
 mod document_read;
 mod document_sync;
 mod firms_doctor;
@@ -454,6 +455,16 @@ enum ProjectsCmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Show this Project's notation runs against each current workflow template.
+    /// Reads `navigator.yaml` in the current checkout to choose the live matter.
+    Notations {
+        /// Fail when a lawyer review or client re-ask has remained open this long.
+        #[arg(long, default_value = "3d")]
+        stale: String,
+        /// Emit the complete workflow board as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Open a matter through the live site's `POST /app/api/projects`, the
     /// caller's own bearer token attached so the conflict attestation stays
     /// a personal act.
@@ -590,9 +601,10 @@ enum ProjectsCmd {
     /// is left needs a human. Every Project repository's CI runs this command.
     ///
     /// `--check` (LAW-62) runs only the live document check, comparing
-    /// committed pointers with the live record, and skips every offline pass
-    /// above entirely — a separate CI job asks it after `verify` has already
-    /// run those, including the origin pass, over the same tree.
+    /// committed pointers with the live record and checking transcript source
+    /// revisions, and skips every offline pass above entirely — a separate CI
+    /// job asks it after `verify` has already run those, including the origin
+    /// pass, over the same tree.
     Gate {
         /// Never writes to the live site.
         ///
@@ -624,24 +636,26 @@ enum ProjectsCmd {
         #[arg(long)]
         ci: bool,
     },
-    /// Install, lint, typecheck, test, and build every application this
-    /// Project repository declares, one application at a time, stopping at
-    /// the first failure. A repository with none still passes.
-    Build {
-        /// Repository root holding the application(s). Defaults to the
-        /// current directory.
+    /// Build the Project repository's portal application.
+    Portal {
+        /// Repository root holding the portal. Defaults to the current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
     },
-    /// List the application(s) this Project repository declares, in the
-    /// same discovery order `build` runs them in.
-    Applications {
-        /// Repository root holding the application(s). Defaults to the
-        /// current directory.
+    /// Deprecated alias for `portal`, retained for one release.
+    #[command(hide = true)]
+    Build {
+        /// Repository root holding `portal/`. Defaults to current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
-        /// Print only the one concrete `package.json` path pnpm's own
-        /// version pin needs, instead of every discovered application.
+    },
+    /// Deprecated application manifest lookup, retained for one release.
+    #[command(hide = true)]
+    Applications {
+        /// Repository root holding `portal/`. Defaults to current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        /// Print `portal/package.json` for one-release workflow compatibility.
         #[arg(long)]
         manifest: bool,
     },
@@ -1942,23 +1956,12 @@ enum FormsAction {
 
 #[derive(Subcommand)]
 enum GlossaryCmd {
-    /// List every term as its slug and title, alphabetical by slug. The
-    /// slug is the term's `/glossary#<slug>` anchor.
+    /// List every term by its title and one-sentence description.
     List,
-    /// Print one term's definition. Accepts the title in any case or its
-    /// slug.
+    /// Print one term's definition. Accepts its title in any case.
     Show {
-        /// Term title or slug, e.g. `"Lawyer Review"` or `lawyer-review`.
+        /// Term title, e.g. `"Lawyer Review"`.
         term: String,
-    },
-    /// Check every term's schema box against the shipped
-    /// `navigator.surql`, or rewrite them with `--write`. A term naming a
-    /// `SurrealDB` table carries that table's columns and types as rendered
-    /// art; the boxes are derived data.
-    Tables {
-        /// Rewrite the boxes in place instead of only reporting drift.
-        #[arg(long)]
-        write: bool,
     },
     /// Print the glossary as one Markdown page Notion can hold: every
     /// repository-relative link resolved to a public GitHub URL and
@@ -2134,6 +2137,17 @@ enum DocumentAction {
         /// (for example, `--slug motion.pdf` for `motion.pdf`); defaults to the local filename.
         #[arg(long)]
         slug: Option<String>,
+        /// Transcript quality marker. Only accepted when `--kind transcript`.
+        #[arg(long, value_parser = parse_transcript_quality)]
+        quality: Option<String>,
+    },
+    /// OCR a PDF revision into a linked transcript document, without sending
+    /// the source bytes to an OCR provider. Requires local Poppler (`pdftoppm`)
+    /// and Tesseract with English and orientation data installed.
+    #[command(after_long_help = DOCUMENT_TRANSCRIBE_HELP)]
+    Transcribe {
+        /// Source document pointer under `documents/`.
+        pointer: PathBuf,
     },
     /// Set `slug` on a live row that has none
     /// (`PATCH /app/api/projects/{id}/documents/{asset_id}`).
@@ -2424,7 +2438,6 @@ fn main() -> ExitCode {
         Command::Glossary { action } => match action {
             GlossaryCmd::List => glossary::list(),
             GlossaryCmd::Show { term } => glossary::show(&term),
-            GlossaryCmd::Tables { write } => glossary::tables(write),
             GlossaryCmd::Notion => glossary::notion(),
         },
         Command::Forms { action } => match action {
@@ -2715,6 +2728,7 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         ProjectsCmd::Sync { dry_run } => {
             document_sync::run_project_sync(std::path::Path::new("."), dry_run).await
         }
+        ProjectsCmd::Notations { stale, json } => run_project_notations(&stale, json).await,
         ProjectsCmd::Create {
             name,
             code,
@@ -2763,8 +2777,11 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             json,
         } => projects::drift::run(host.host.as_deref(), &dir, all, json).await,
         ProjectsCmd::Gate { ci, check, deep } => run_gate(ci, check, deep).await,
-        ProjectsCmd::Build { dir } => projects::build::run(&dir),
-        ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
+        ProjectsCmd::Portal { dir } => projects::portal::run(&dir),
+        ProjectsCmd::Build { dir } => projects::portal::run_deprecated_build(&dir),
+        ProjectsCmd::Applications { dir, manifest } => {
+            projects::portal::run_deprecated_applications(&dir, manifest)
+        }
         ProjectsCmd::Setup {
             project_code,
             all,
@@ -2772,6 +2789,39 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             host,
         } => projects::setup::run(host.host.as_deref(), project_code.as_deref(), all, json).await,
         ProjectsCmd::Skill { action } => run_project_skill(action),
+    }
+}
+
+async fn run_project_notations(stale: &str, json: bool) -> ExitCode {
+    let Some(manifest) = projects::manifest::read(Path::new(".")) else {
+        eprintln!("navigator project notations: no navigator.yaml in the current directory");
+        return ExitCode::from(2);
+    };
+    let (Some(host), Some(project_code)) = (manifest.host.as_deref(), manifest.project.as_deref())
+    else {
+        eprintln!("navigator project notations: navigator.yaml must declare host and project.name");
+        return ExitCode::from(2);
+    };
+    let Some(stale_after) = parse_stale_duration(stale) else {
+        eprintln!(
+            "navigator project notations: invalid --stale duration (use e.g. 3d, 12h, or 30m)"
+        );
+        return ExitCode::from(2);
+    };
+    remote::project_notations(Some(host), project_code, stale_after, json).await
+}
+
+fn parse_stale_duration(input: &str) -> Option<chrono::Duration> {
+    let (amount, unit) = input.split_at(input.find(|ch: char| !ch.is_ascii_digit())?);
+    let amount: i64 = amount.parse().ok()?;
+    if amount <= 0 {
+        return None;
+    }
+    match unit {
+        "d" => chrono::Duration::try_days(amount),
+        "h" => chrono::Duration::try_hours(amount),
+        "m" => chrono::Duration::try_minutes(amount),
+        _ => None,
     }
 }
 
@@ -2867,6 +2917,7 @@ async fn run_document(action: DocumentAction) -> ExitCode {
             description,
             content_type,
             slug,
+            quality,
         } => {
             remote::document_upload(
                 host.host.as_deref(),
@@ -2877,9 +2928,11 @@ async fn run_document(action: DocumentAction) -> ExitCode {
                 description.as_deref(),
                 content_type.as_deref(),
                 slug.as_deref(),
+                quality.as_deref(),
             )
             .await
         }
+        DocumentAction::Transcribe { pointer } => remote::document_transcribe(&pointer).await,
         DocumentAction::Slug {
             host,
             project,
@@ -4039,7 +4092,16 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
     }
 }
 
+fn parse_transcript_quality(value: &str) -> Result<String, String> {
+    match value {
+        "machine" | "proofread" => Ok(value.to_string()),
+        _ => Err("transcript quality must be `machine` or `proofread`".into()),
+    }
+}
+
 const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, invoice, unclassified.";
+
+const DOCUMENT_TRANSCRIBE_HELP: &str = "Each page is rendered locally, orientation-corrected, deskewed, and OCR'd before the transcript is uploaded as a `transcript` revision linked to the exact source asset id, version, and SHA-256. OCR requires local Poppler (`pdftoppm`) and Tesseract with the `eng` and `osd` language data. Source pages and transcript text are sent to no OCR provider and are never written into Git.";
 
 const DOCUMENT_SYNC_HELP: &str = "Defaults: staged pointers are internal-visible and preserve that visibility when they already exist. Kind inference maps pleadings to filing, exhibits to exhibit, agreements to agreement, invoices to invoice, memos to memo, transcripts to transcript, and everything else to unclassified — except documents/cases/** and documents/rules/**, which are not Project documents at all: each is routed through `site authorities create` (a sidecar carrying citation/class/title/canonical_url/checked_on is required beside each capture) and its committed pointer carries an authority_id rather than a plain kind inference. documents/cases/** is case_law only; documents/rules/** is every other Authority class (statute, regulation, administrative, secondary) — a sidecar whose class disagrees with its folder is refused. A documents/invoices/** filename must match `INV-<digits>.<ext>`. Storage remains content-addressed under the existing Project documents keys; sync does not rename or migrate those keys. A folder outside those categories is therefore intentionally unclassified, not an error.";
 

@@ -116,6 +116,12 @@ pub(crate) async fn check(
                 message,
             });
         }
+        if let Some(message) = transcript_source_problem(asset, &integrity.assets) {
+            errors.push(CheckFailure {
+                location: location_for(asset, &locals),
+                message,
+            });
+        }
     }
     for finding in &integrity.integrations {
         errors.push(CheckFailure {
@@ -164,6 +170,43 @@ pub(crate) async fn check(
     }
     reconcile_gitignore(dir, write, &mut fixes)?;
     Ok(Outcome { errors, fixes })
+}
+
+fn transcript_source_problem(asset: &IntegrityAsset, assets: &[IntegrityAsset]) -> Option<String> {
+    if asset.kind.as_deref() != Some("transcript") {
+        return None;
+    }
+    let source = asset.derived_from.as_ref()?;
+    let document_id = source
+        .get("document_id")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|id| Uuid::parse_str(id).ok());
+    let version = source
+        .get("version")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|version| usize::try_from(version).ok());
+    let sha256 = source.get("sha256").and_then(serde_json::Value::as_str);
+    let (Some(document_id), Some(version), Some(sha256)) = (document_id, version, sha256) else {
+        return Some(
+            "transcript source linkage is incomplete; re-transcribe from the source pointer".into(),
+        );
+    };
+    let Some(source_asset) = assets
+        .iter()
+        .find(|candidate| candidate.asset_id == document_id)
+    else {
+        return Some("transcript source revision is missing from the live matter".into());
+    };
+    if !source_asset.operative
+        || source_asset.version != Some(version)
+        || source_asset.sha256 != sha256
+    {
+        return Some(
+            "transcript source revision is stale; re-transcribe from the current source pointer"
+                .into(),
+        );
+    }
+    None
 }
 
 fn live_slugs(assets: &[IntegrityAsset]) -> BTreeSet<String> {
@@ -519,6 +562,114 @@ mod tests {
 
     const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const OTHER_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    #[test]
+    fn transcript_gate_rejects_a_source_revision_that_is_no_longer_operative() {
+        let source_id = Uuid::now_v7();
+        let transcript = IntegrityAsset {
+            asset_id: Uuid::now_v7(),
+            slug: Some("transcripts/order.transcript.md".into()),
+            kind: Some("transcript".into()),
+            sha256: OTHER_SHA.into(),
+            derived_from: Some(serde_json::json!({
+                "document_id": source_id,
+                "version": 1,
+                "sha256": SHA,
+            })),
+            transcript_quality: Some("machine".into()),
+            operative: true,
+            version: Some(1),
+            exists: true,
+            size_bytes: Some(100),
+            recorded_size: 100,
+            sha256_matches: None,
+        };
+        let source = IntegrityAsset {
+            asset_id: source_id,
+            slug: Some("pleadings/order.pdf".into()),
+            kind: Some("filing".into()),
+            sha256: SHA.into(),
+            derived_from: None,
+            transcript_quality: None,
+            operative: false,
+            version: Some(1),
+            exists: true,
+            size_bytes: Some(200),
+            recorded_size: 200,
+            sha256_matches: None,
+        };
+        let message = transcript_source_problem(&transcript, &[transcript.clone(), source])
+            .expect("stale transcript is a gate failure");
+        assert!(message.contains("source revision is stale"));
+    }
+
+    #[test]
+    fn transcript_gate_checks_linkage_and_accepts_the_current_source_revision() {
+        let source_id = Uuid::now_v7();
+        let transcript = IntegrityAsset {
+            asset_id: Uuid::now_v7(),
+            slug: Some("transcripts/order.transcript.md".into()),
+            kind: Some("transcript".into()),
+            sha256: OTHER_SHA.into(),
+            derived_from: Some(serde_json::json!({
+                "document_id": source_id,
+                "version": 1,
+                "sha256": SHA,
+            })),
+            transcript_quality: Some("machine".into()),
+            operative: true,
+            version: Some(1),
+            exists: true,
+            size_bytes: Some(100),
+            recorded_size: 100,
+            sha256_matches: None,
+        };
+        let source = IntegrityAsset {
+            asset_id: source_id,
+            slug: Some("pleadings/order.pdf".into()),
+            kind: Some("filing".into()),
+            sha256: SHA.into(),
+            derived_from: None,
+            transcript_quality: None,
+            operative: true,
+            version: Some(1),
+            exists: true,
+            size_bytes: Some(200),
+            recorded_size: 200,
+            sha256_matches: None,
+        };
+        assert!(transcript_source_problem(&transcript, std::slice::from_ref(&source)).is_none());
+
+        let mut stale_source = source.clone();
+        stale_source.version = Some(2);
+        assert!(
+            transcript_source_problem(&transcript, &[stale_source.clone()])
+                .expect("a changed version is stale")
+                .contains("source revision is stale")
+        );
+        stale_source.version = Some(1);
+        stale_source.sha256 = OTHER_SHA.into();
+        assert!(transcript_source_problem(&transcript, &[stale_source])
+            .expect("changed bytes are stale")
+            .contains("source revision is stale"));
+
+        let incomplete = IntegrityAsset {
+            derived_from: Some(serde_json::json!({"document_id": "not-a-uuid"})),
+            ..transcript.clone()
+        };
+        assert!(transcript_source_problem(&incomplete, &[])
+            .expect("invalid linkage is rejected")
+            .contains("linkage is incomplete"));
+        assert!(transcript_source_problem(&transcript, &[])
+            .expect("missing source is rejected")
+            .contains("source revision is missing"));
+
+        let ordinary_asset = IntegrityAsset {
+            kind: Some("filing".into()),
+            ..transcript
+        };
+        assert!(transcript_source_problem(&ordinary_asset, &[]).is_none());
+    }
 
     fn pointer_yaml(asset_id: Uuid, sha: &str) -> String {
         format!(

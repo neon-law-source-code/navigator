@@ -101,6 +101,12 @@ pub struct Asset {
     /// nested object, or an array. Validators belong in the `rules` crate
     /// per the S103 discipline, never in a database constraint.
     pub metadata: Option<Json>,
+    /// Source revision for a generated transcript, if this row derives from
+    /// another Project document. Optional for rows written before LAW-76.
+    pub derived_from: Option<Json>,
+    /// `machine` or `proofread` when transcript quality is known; absent for
+    /// legacy and user-authored transcripts without an explicit assertion.
+    pub transcript_quality: Option<String>,
     pub inserted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -141,6 +147,8 @@ struct AssetRow {
     source_received_at: Option<String>,
     source_subject: Option<String>,
     metadata: Option<Json>,
+    derived_from: Option<Json>,
+    transcript_quality: Option<String>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
 }
@@ -174,6 +182,8 @@ impl AssetRow {
             source_received_at: self.source_received_at,
             source_subject: self.source_subject,
             metadata: self.metadata,
+            derived_from: self.derived_from,
+            transcript_quality: self.transcript_quality,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
         })
@@ -185,6 +195,7 @@ impl AssetRow {
 pub(crate) const SELECT: &str = "id, storage_key, secondary_storage_key, content_type, byte_size, \
      sha256_hex, project_id, filename, kind, source, received_at, description, visibility, slug, \
      published_at, source_message_id, source_sender, source_received_at, source_subject, metadata, \
+     derived_from, transcript_quality, \
      inserted_at, updated_at";
 
 /// Errors from [`ingest_content`] / [`fetch`].
@@ -1568,6 +1579,8 @@ mod tests {
                     slug: None,
                     published_at: None,
                     metadata: Some(metadata.clone()),
+                    derived_from: None,
+                    transcript_quality: None,
                 },
                 format!("bytes for {shape}").as_bytes(),
             )
@@ -1593,6 +1606,24 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(find_by_id(&db, id).await.unwrap().unwrap().metadata, None);
+    }
+
+    #[tokio::test]
+    async fn a_historical_asset_without_transcript_fields_still_reads() {
+        let (db, storage, _tmp) = fixtures().await;
+        let id = ingest_content(&db, &storage, b"pre-LAW-76 asset", "text/plain")
+            .await
+            .unwrap();
+        db.query("UPDATE $id UNSET derived_from, transcript_quality")
+            .bind(("id", crate::surreal::record_id(super::TABLE, id)))
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+
+        let row = find_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(row.derived_from, None);
+        assert_eq!(row.transcript_quality, None);
     }
 
     #[tokio::test]
@@ -1639,6 +1670,8 @@ mod tests {
                         slug: Some("agreement"),
                         published_at: Some(published),
                         metadata: None,
+                        derived_from: None,
+                        transcript_quality: None,
                     },
                     bytes,
                 )
@@ -1696,6 +1729,8 @@ mod tests {
                         slug: Some("agreement"),
                         published_at: published,
                         metadata: None,
+                        derived_from: None,
+                        transcript_quality: None,
                     },
                     bytes,
                 )
@@ -1759,6 +1794,8 @@ mod tests {
                 slug,
                 published_at: None,
                 metadata: None,
+                derived_from: None,
+                transcript_quality: None,
             },
             bytes,
         )

@@ -1,5 +1,6 @@
 ---
 title: "Person–Firm Role"
+description: "A Person–Firm Role records a Person's membership at a Firm."
 ---
 
 A Person's membership at a [Firm](firm.md). Shaped like [Person–Project Role](personproject-role.md): `person_id`,
@@ -34,15 +35,3 @@ they are seeded `client` and promoted afterward, past the point this rule can se
 
 - Schema: [`store::firms`](../../store/src/firms.rs) ·
   [`store/src/schema/navigator.surql`](../../store/src/schema/navigator.surql)
-
-```text
-┌─ person_firm_role ──────────┐
-│ id           record         │
-│ firm_id      record<firm>   │
-│ inserted_at  string         │
-│ is_dri       bool           │
-│ membership   string         │
-│ person_id    record<person> │
-│ updated_at   string         │
-└─────────────────────────────┘
-```

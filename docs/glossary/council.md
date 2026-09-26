@@ -1,5 +1,6 @@
 ---
 title: "Council"
+description: "A Council is a group of experts convened for a structured, twelve-voice review."
 ---
 
 A **group of experts** the workspace convenes for a structured, twelve-voice review — spelled c-o-u-n-c-i-l.

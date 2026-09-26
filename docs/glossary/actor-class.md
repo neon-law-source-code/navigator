@@ -1,5 +1,6 @@
 ---
 title: "Actor Class"
+description: "Actor Class identifies who advances the workflow out of a given State."
 ---
 
 Who advances the workflow out of a given State:

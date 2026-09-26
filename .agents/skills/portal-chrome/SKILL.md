@@ -10,6 +10,8 @@ description: >
 
 # The portal wears the library, unmodified
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 A Project portal is served by Navigator, from Navigator's own host, at `/app/projects/<code>/portal/`. A reader crosses
 into it from the matter show page one segment up and does not experience that as leaving the product. So the portal has
 to look like the product, and the way it does that is by rendering `@neon-law-source-code/navigator-ux` exactly as the

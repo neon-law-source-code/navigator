@@ -1,5 +1,6 @@
 ---
 title: "Inquiry"
+description: "An Inquiry is a question a transcript-bearing session must answer."
 ---
 
 One thing a transcript-bearing session should answer. By default, an Inquiry is the normalized live-coverage projection

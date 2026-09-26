@@ -1,5 +1,6 @@
 ---
 title: "Matter"
+description: "Matter is the client-English name for a Project."
 ---
 
 Client-English synonym for **[Project](project.md)**. The same row, under the noun a lawyer or a client uses out loud.

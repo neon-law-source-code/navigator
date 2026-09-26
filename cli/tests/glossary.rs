@@ -69,18 +69,39 @@ fn glossary_requires_a_subcommand() {
 }
 
 #[test]
-fn glossary_list_prints_every_term_as_slug_and_title() {
+fn glossary_list_prints_every_term_as_title_and_description() {
     let out = navigator(&["glossary", "list"]);
     assert!(out.status.success(), "exit status: {:?}", out.status);
     let stdout = String::from_utf8_lossy(&out.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
     let terms = store::glossary::terms();
     assert_eq!(lines.len(), terms.len(), "one line per term: {stdout}");
-    for (line, term) in lines.iter().zip(terms) {
-        assert_eq!(*line, format!("{}\t{}", term.slug, term.title));
+    let mut titles: Vec<_> = terms.iter().map(|term| term.title.as_str()).collect();
+    titles.sort_unstable();
+    let listed_titles: Vec<_> = lines
+        .iter()
+        .map(|line| {
+            line.split_once(" — ")
+                .expect("title and description separator")
+        })
+        .map(|(title, _)| title)
+        .collect();
+    assert_eq!(listed_titles, titles);
+    for line in &lines {
+        assert!(!line.contains('\t'), "slugs must not appear: {line}");
+        let (title, description) = line.split_once(" — ").expect("title and description");
+        let term = terms
+            .iter()
+            .find(|term| term.title == title)
+            .expect("listed term");
+        assert_eq!(description, term.description);
     }
-    assert!(lines.contains(&"lawyer-review\tLawyer Review"));
-    assert!(lines.contains(&"workflow-runtime\tWorkflow Runtime"));
+    assert!(lines
+        .iter()
+        .any(|line| line.starts_with("Lawyer Review — ")));
+    assert!(lines
+        .iter()
+        .any(|line| line.starts_with("Workflow Runtime — ")));
 }
 
 #[test]
@@ -101,6 +122,15 @@ fn glossary_show_with_known_term_prints_just_that_term() {
     assert!(stdout.contains("`lawyer_review`"));
     assert!(stdout.contains("notation-authoring.md"));
     assert!(!stdout.contains("## Workflow Runtime"));
+}
+
+#[test]
+fn glossary_show_does_not_accept_the_anchor_slug() {
+    let out = navigator(&["glossary", "show", "lawyer-review"]);
+    assert!(!out.status.success(), "slug lookup must be rejected");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("unknown term"), "{stderr}");
+    assert!(stderr.contains("show \"<Term>\""), "{stderr}");
 }
 
 /// #539 defines **Deadline** as a first-class term before the schema that
@@ -176,14 +206,6 @@ fn glossary_show_is_case_insensitive() {
     assert!(stdout.contains("## Lawyer Review"));
     // One term only — no other heading bleeds in.
     assert!(!stdout.contains("## Workflow Runtime"));
-}
-
-#[test]
-fn glossary_show_accepts_a_slug() {
-    let out = navigator(&["glossary", "show", "lawyer-review"]);
-    assert!(out.status.success());
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("## Lawyer Review"));
 }
 
 const PROJECT_LIST_RS: &str = include_str!(concat!(
@@ -278,6 +300,10 @@ fn glossary_show_unknown_term_exits_non_zero_with_helpful_stderr() {
     assert!(
         stderr.contains("Run `navigator glossary list`"),
         "expected hint in stderr, got: {stderr}",
+    );
+    assert!(
+        stderr.contains("navigator glossary show \"<Term>\""),
+        "expected quoted title lookup hint, got: {stderr}"
     );
 }
 

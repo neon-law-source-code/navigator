@@ -36,6 +36,8 @@ pub struct GlossaryEntry {
     pub slug: String,
     /// The term as a reader says it (`Lawyer Review`).
     pub title: String,
+    /// The one-sentence lede beneath its title.
+    pub description: String,
     /// The rendered definition (already sanitized; NOT raw markdown).
     pub body_html: String,
 }
@@ -212,6 +214,7 @@ pub fn glossary_body(view: &GlossaryPageView) -> Element {
                             h2 { id: "{entry.slug}-title", class: "glossary__term-title",
                                 a { class: "glossary__anchor", href: "#{entry.slug}", {title_element(&entry.title)} }
                             }
+                            p { class: "glossary__lede", "{entry.description}" }
                             div {
                                 class: "glossary__definition",
                                 dangerous_inner_html: "{entry.body_html}",
@@ -248,6 +251,7 @@ mod tests {
                     .map(|(slug, title, body_html)| GlossaryEntry {
                         slug: (*slug).to_string(),
                         title: (*title).to_string(),
+                        description: "A short definition.".to_string(),
                         body_html: (*body_html).to_string(),
                     })
                     .collect(),
@@ -283,6 +287,10 @@ mod tests {
         assert!(
             out.contains("<p>A byte artifact.</p>"),
             "definition verbatim"
+        );
+        assert!(
+            out.contains("<p class=\"glossary__lede\">A short definition.</p>"),
+            "the description appears as a lede beneath its term"
         );
         assert!(
             !out.contains("&lt;p"),

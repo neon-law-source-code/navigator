@@ -1,5 +1,6 @@
 ---
 title: "Project"
+description: "A Project is what clients call a Matter."
 ---
 
 A **[Matter](matter.md)** in client English. The durable container every [Notation](../notation.md#notation) lives in.
@@ -101,22 +102,3 @@ access, never source-forge access. `store::project_surfaces` creates or adopts t
 
 - Schema and commands: [`store::projects`](../../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../../store/src/schema/navigator.surql)
-
-```text
-┌─ project ──────────────────────────────────┐
-│ id                          record         │
-│ closed_at                   option<string> │
-│ description                 option<string> │
-│ drive_folder_id             option<string> │
-│ entity_id                   record<entity> │
-│ external_slack_channel_url  option<string> │
-│ forge_provisioned_at        option<string> │
-│ git_initialized_at          option<string> │
-│ inserted_at                 string         │
-│ internal_slack_channel_url  option<string> │
-│ name                        string         │
-│ shared_notion_page_url      option<string> │
-│ status                      string         │
-│ updated_at                  string         │
-└────────────────────────────────────────────┘
-```

@@ -1201,6 +1201,12 @@ pub(crate) fn discovered_applications(root: &Path) -> Vec<PathBuf> {
     application_workspaces(root, &mut errors)
 }
 
+/// Resolve the Project's one portal application at its canonical path.
+pub(crate) fn portal_application(root: &Path) -> Option<PathBuf> {
+    let portal = root.join(PORTAL_DIRECTORY);
+    portal.join("package.json").is_file().then_some(portal)
+}
+
 /// One discovered application's build shape.
 fn validate_application(application: &Path, errors: &mut Vec<Finding>) {
     let mut missing: Vec<&str> = VITE_ENTRYPOINTS
@@ -2489,6 +2495,10 @@ jobs:
     fn every_synced_skill_documents_only_commands_that_resolve() {
         let tree = crate::navigator_command();
         for (name, contents) in SYNCED_SKILLS {
+            assert!(
+                contents.contains("Find the term first"),
+                "synced skill `{name}` must point Project contributors to glossary guidance"
+            );
             let found = crate::projects::cli_docs::unresolved_invocations(contents, &tree);
             assert!(
                 found.is_empty(),
@@ -2727,8 +2737,8 @@ jobs:
             .expect("verify is not followed by documents")
             .0;
         let build = verify
-            .find("navigator project build --dir .")
-            .expect("verify does not build:\n{verify}");
+            .find("navigator project portal --dir .")
+            .expect("verify does not build the portal:\n{verify}");
         let gate = verify
             .find("navigator project gate --ci")
             .unwrap_or_else(|| panic!("verify does not run the origin gate:\n{verify}"));
@@ -2763,7 +2773,7 @@ jobs:
             .expect("documents is not followed by seeds")
             .0;
         assert!(
-            !documents.contains("navigator project build"),
+            !documents.contains("navigator project portal"),
             "documents has nothing to build now that `--check` runs only the \
              live document check:\n{documents}"
         );
@@ -2777,22 +2787,19 @@ jobs:
         );
     }
 
-    /// ENG-674: application discovery is a CLI call now (`navigator site
-    /// project applications --manifest`, then `navigator project
-    /// build`), not a `hashFiles(...)`/glob guard reimplemented in the
-    /// workflow. The CLI's own discovery (`application_workspaces`, above)
-    /// is what wakes the JS steps for a root Vite workspace or any other
-    /// layout, at run time rather than at whatever the workflow's own
-    /// bash happened to check for.
+    /// LAW-75: the workflow uses the fixed portal path instead of asking the
+    /// deprecated CLI manifest-discovery command.
     #[test]
-    fn the_application_steps_discover_every_workspace_at_run_time() {
+    fn the_application_steps_use_the_fixed_portal_manifest() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(
-            generated.contains("navigator project applications --manifest"),
+            generated.contains("package_json_file: portal/package.json"),
             "{generated}"
         );
+        assert!(generated.contains("hashFiles('portal/package.json') != ''"));
+        assert!(!generated.contains("navigator project applications --manifest"));
         assert!(
-            generated.contains("navigator project build --dir ."),
+            generated.contains("navigator project portal --dir ."),
             "{generated}"
         );
         assert!(

@@ -1,5 +1,6 @@
 ---
 title: "Deployment Environment"
+description: "A Deployment Environment is the infrastructure profile selected by NAVIGATOR_ENVIRONMENT."
 ---
 
 The infrastructure profile selected by `NAVIGATOR_ENVIRONMENT`. Exact `dev` serves local KIND; exact `production`,

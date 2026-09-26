@@ -1,5 +1,7 @@
 ---
 title: "Extract"
+description: >-
+  The workflow prefix extract is a system wait state for structured-data extraction from a previously ingested artifact.
 ---
 
 The workflow prefix `extract` is a system wait state for structured-data extraction from a previously ingested artifact.

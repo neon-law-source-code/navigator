@@ -1,5 +1,6 @@
 ---
 title: "Brand"
+description: "A Brand is a registered house identity with its own branding configuration."
 ---
 
 A closed key naming a house brand — [`views::brand::BrandKey`](../../views/src/brand.rs): (`neon`, `delete-your-data`,
@@ -74,20 +75,3 @@ names *the serving binary's own composition*, and `SiteBrand` names *what the pa
 those three: it is the owning practice beneath the brand registry.
 
 - Deployment map: [`environments`](../environments.md#why-the-brand-is-the-image)
-
-```text
-┌─ brand ─────────────────────────────────┐
-│ id                 record               │
-│ accent_color       option<string>       │
-│ brand_key          string               │
-│ firm_id            option<record<firm>> │
-│ font_licence       option<string>       │
-│ font_object_key    option<string>       │
-│ inserted_at        string               │
-│ is_law_firm        bool                 │
-│ legal_entity       option<string>       │
-│ logo_content_type  option<string>       │
-│ name               string               │
-│ updated_at         string               │
-└─────────────────────────────────────────┘
-```

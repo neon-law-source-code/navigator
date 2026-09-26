@@ -1,5 +1,7 @@
 ---
 title: "Ingestion"
+description: >-
+  An Ingestion is an inbound artifact that lands on a Project, such as an email attachment, scan, upload, fax, or video.
 ---
 
 One inbound artifact landing on a [Project](project.md) — an email attachment, a scanned letter, an upload from a

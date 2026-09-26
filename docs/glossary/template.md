@@ -1,5 +1,7 @@
 ---
 title: "Template"
+description: >-
+  A Template is the authored Markdown file that supplies a Notation’s metadata, questionnaire, workflow, and body.
 ---
 
 The authored Markdown file under `templates/` that a Notation is created from — the firm's drafted text together with
@@ -14,21 +16,3 @@ declared an actual `metadata:` mapping would be malformed. The full anatomy is d
 A Template is versioned by append rather than by edit: `templates.is_current` marks the live revision and a change adds
 a row. Every Notation pins the exact `templates` row it was created from, which is what keeps approved text from
 silently re-rendering out of a later revision.
-
-```text
-┌─ template ─────────────────────────────────┐
-│ id                 record                  │
-│ asset_id           option<record<asset>>   │
-│ code               string                  │
-│ current_key        option<string>          │
-│ form_code          option<string>          │
-│ inserted_at        datetime                │
-│ is_current         bool                    │
-│ kind               option<string>          │
-│ project_id         option<record<project>> │
-│ respondent_type    string                  │
-│ source_commit_sha  option<string>          │
-│ title              string                  │
-│ updated_at         datetime                │
-└────────────────────────────────────────────┘
-```

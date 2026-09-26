@@ -1,5 +1,8 @@
 ---
 title: "Authority"
+description: >-
+  An Authority is a case, statute, regulation, administrative proceeding, or secondary source held as global reference
+  data.
 ---
 
 One case, statute, regulation, administrative proceeding, or secondary source, as **global reference data**. An
@@ -24,20 +27,3 @@ instead is the failure mode: it drifts from the record and cannot be re-verified
 - Vocabulary: [`rules::citation`](../../rules/src/citation.rs) · Schema:
   [`authority` in `navigator.surql`](../../store/src/schema/navigator.surql) Queries:
   [`store::authorities`](../../store/src/authorities.rs) Lives in: the `authority` table in SurrealDB
-
-```text
-┌─ authority ──────────────────────────────┐
-│ id                 record                │
-│ archived_asset_id  option<record<asset>> │
-│ canonical_url      option<string>        │
-│ checked_on         option<string>        │
-│ citation           string                │
-│ class              string                │
-│ inserted_at        datetime              │
-│ issued_on          option<string>        │
-│ publisher          option<string>        │
-│ short_cite         option<string>        │
-│ title              string                │
-│ updated_at         datetime              │
-└──────────────────────────────────────────┘
-```

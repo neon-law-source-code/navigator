@@ -1,5 +1,6 @@
 ---
 title: "Onboarding"
+description: "Onboarding is the codebase term for a Notation that opens a matter."
 ---
 
 The codebase term for the notation that **opens a matter** — `rules::kind::Kind::Onboarding`, classified by

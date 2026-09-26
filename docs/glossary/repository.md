@@ -1,5 +1,6 @@
 ---
 title: "Repository"
+description: "A Repository is a provenance record for an external Git source used by a Notation."
 ---
 
 A provenance record for an external git repository that notation content came from. The `git_repositories` row holds a
@@ -13,13 +14,3 @@ repository, and it is unrelated to Projects (see [Project](project.md)), which h
 
 - Schema and queries: [`store::git_repositories`](../../store/src/git_repositories.rs) (SurrealDB; #1093, ENG-20) —
   [`store/src/schema/navigator.surql`](../../store/src/schema/navigator.surql)
-
-```text
-┌─ git_repository ──────────┐
-│ id               record   │
-│ inserted_at      datetime │
-│ last_commit_sha  string   │
-│ remote_hash      string   │
-│ updated_at       datetime │
-└───────────────────────────┘
-```

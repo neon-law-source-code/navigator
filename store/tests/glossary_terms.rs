@@ -44,6 +44,7 @@ async fn materialize_is_idempotent_and_updates_in_place() {
     let edited = glossary::Term {
         slug: "lawyer-review".to_string(),
         title: "Lawyer Review".to_string(),
+        description: "A lawyer reviews the work.".to_string(),
         body: "Rewritten body.".to_string(),
     };
     glossary::materialize(&db, &[edited]).await.expect("edit");

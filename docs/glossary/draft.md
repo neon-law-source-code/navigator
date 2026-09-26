@@ -1,5 +1,6 @@
 ---
 title: "Draft"
+description: "Draft is the lawyer’s English name for a Template."
 ---
 
 A **[Template](template.md)** in the lawyer's English. The same authored Markdown file, under the noun said out loud in

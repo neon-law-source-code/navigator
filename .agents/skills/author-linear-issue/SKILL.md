@@ -5,6 +5,8 @@ description: Create or correct a Linear issue or project from current repository
 
 # Author Linear issues
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Read [`docs/agent-workflows.md`](../../../docs/agent-workflows.md),
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md), and the governing source first.
 

@@ -1,5 +1,6 @@
 ---
 title: "Firm Brand"
+description: "A Firm Brand links a Firm to the house-brand keys it can use."
 ---
 
 Which house-brand keys a [Firm](firm.md) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key`, and
@@ -24,12 +25,3 @@ PLLC's.
 
 - Schema: [`firm_brand` in `navigator.surql`](../../store/src/schema/navigator.surql) ·
   [`store::firms`](../../store/src/firms.rs)
-
-```text
-┌─ firm_brand ──────────────┐
-│ id           record       │
-│ firm_id      record<firm> │
-│ inserted_at  string       │
-│ updated_at   string       │
-└───────────────────────────┘
-```

@@ -197,32 +197,72 @@ fn site_sync_help_discloses_defaults_and_preserved_keys() {
 /// The retired `projects application` verb (singular, for registering one
 /// application name) is asserted gone rather than merely absent from this
 /// list: a Project has one portal, so there was no application name for an
-/// operator to register. `applications` (plural) is a different, later verb —
-/// ENG-674's read-only discovery query, listing what `build` finds rather
-/// than naming an application for the operator to create.
+/// operator to register. `build` and `applications` remain hidden aliases
+/// during their one-release transitions to the portal-only interface.
 #[test]
 fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["project", "--help"])),
         vec![
-            "applications",
-            "build",
             "close",
             "create",
             "doctor",
             "drift",
             "gate",
+            "notations",
+            "portal",
             "setup",
             "skill",
             "sync",
             "help"
         ]
     );
+    let notations = unwrapped(&help(&["project", "notations", "--help"]));
+    assert!(notations.contains("--stale"));
+    assert!(notations.contains("--json"));
     let setup = unwrapped(&help(&["project", "setup", "--help"]));
     assert!(setup.contains("--all"));
     assert!(setup.contains("--json"));
     assert!(setup
         .contains("Complete an existing Project's Drive, repository, Slack, and Notion setup."));
+}
+
+#[test]
+fn hidden_project_build_alias_warns_during_the_transition() {
+    let root = tempfile::tempdir().expect("temporary Project repository");
+    let output = Command::cargo_bin("navigator")
+        .unwrap()
+        .args(["project", "build", "--dir"])
+        .arg(root.path())
+        .output()
+        .expect("run the legacy alias");
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("`project build` is deprecated; use `project portal`"));
+}
+
+#[test]
+fn hidden_project_applications_alias_warns_and_prints_the_fixed_manifest() {
+    let root = tempfile::tempdir().expect("temporary Project repository");
+    let portal = root.path().join("portal");
+    std::fs::create_dir_all(&portal).expect("create portal");
+    std::fs::write(portal.join("package.json"), "{}\n").expect("write portal manifest");
+    let output = Command::cargo_bin("navigator")
+        .unwrap()
+        .current_dir(root.path())
+        .args(["project", "applications", "--manifest"])
+        .output()
+        .expect("run the legacy alias");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "portal/package.json"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("`project applications` is deprecated")
+    );
 }
 
 /// Two commands are spelled `doctor` and they diagnose different things.
@@ -244,30 +284,13 @@ fn the_two_doctors_keep_distinct_headlines() {
     );
 }
 
-/// The glossary helpers sit next to each other under one parent and do
-/// opposite things: one rewrites entries inside the repository, another
-/// prints a page for a push out of it. Each has to say which it is on its own
-/// `--help`, or an operator reaching for the safe one runs the writer.
+/// The glossary Notion helper prints the page for a push out of the repository.
 #[test]
-fn the_glossary_sync_helpers_keep_distinct_headlines() {
-    let tables = unwrapped(&help(&["glossary", "tables", "--help"]));
-    assert!(
-        tables.contains("Check every term's schema box"),
-        "glossary tables headline: {tables}"
-    );
-    assert!(
-        tables.contains("--write") && !tables.contains("--path"),
-        "glossary tables offers --write and no target path: {tables}"
-    );
-
+fn the_glossary_notion_helper_keeps_its_headline() {
     let notion = unwrapped(&help(&["glossary", "notion", "--help"]));
     assert!(
         notion.contains("Print the glossary as one Markdown page Notion can hold"),
         "glossary notion headline: {notion}"
-    );
-    assert!(
-        !notion.contains("schema box"),
-        "glossary notion must not carry glossary tables' headline: {notion}"
     );
 }
 
@@ -277,7 +300,7 @@ fn the_glossary_sync_helpers_keep_distinct_headlines() {
 fn glossary_keeps_only_the_reference_helpers() {
     assert_eq!(
         command_names(&help(&["glossary", "--help"])),
-        vec!["list", "notion", "show", "tables", "help"]
+        vec!["list", "notion", "show", "help"]
     );
 }
 
@@ -553,6 +576,7 @@ fn site_document_upload_help_requires_kind() {
         !output.contains("[--kind"),
         "kind must not be an optional flag, got: {output}"
     );
+    assert!(output.contains("--quality <QUALITY>"), "{output}");
     for kind in rules::kind::Kind::ALL
         .iter()
         .filter(|k| k.valid_for(rules::kind::Lane::Asset))
@@ -567,6 +591,13 @@ fn site_document_upload_help_requires_kind() {
         output.contains("default: internal"),
         "long help must state the default visibility, got: {output}"
     );
+}
+
+#[test]
+fn site_document_transcribe_reads_a_pointer_and_keeps_ocr_local() {
+    let output = unwrapped(&help(&["site", "document", "transcribe", "--help"])).to_lowercase();
+    assert!(output.contains("source document pointer"), "{output}");
+    assert!(output.contains("no ocr provider"), "{output}");
 }
 
 #[test]

@@ -10,6 +10,8 @@ description: >
 
 # Stay inside this repository
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Read, search, and edit only files inside this repository's own checkout. Do not open, read, or search files elsewhere on
 the machine — not the home directory, not a sibling checkout, not another Project's repository, not system paths, and
 not another worktree of this repository.

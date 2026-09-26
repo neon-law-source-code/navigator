@@ -45,6 +45,8 @@ async fn insert_revision(
             slug,
             published_at,
             metadata: None,
+            derived_from: None,
+            transcript_quality: None,
         },
         bytes,
     )

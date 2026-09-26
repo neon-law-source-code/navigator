@@ -238,6 +238,8 @@ mod tests {
                 slug: Some(kind),
                 published_at: None,
                 metadata: Some(json!({ "commit_sha": commit_sha })),
+                derived_from: None,
+                transcript_quality: None,
             },
             b"a zip archive's bytes",
         )

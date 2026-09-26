@@ -1,5 +1,6 @@
 ---
 title: "Lead"
+description: "A Lead is a public request for contact."
 ---
 
 A public request for contact. Capture writes a `lead` row: mailbox, optional phone, brand, source path, consent, status,
@@ -11,22 +12,3 @@ Talking to a lead is attorney work under professional ethics (advertising and so
 
 - Schema: [`lead` in `navigator.surql`](../../store/src/schema/navigator.surql) Queries:
   [`store::leads`](../../store/src/leads.rs)
-
-```text
-┌─ lead ──────────────────────────────────┐
-│ id               record                 │
-│ brand_key        string                 │
-│ consent_version  string                 │
-│ consented_at     datetime               │
-│ email            string                 │
-│ email_lower      string                 │
-│ inserted_at      datetime               │
-│ person_id        option<record<person>> │
-│ phone            option<string>         │
-│ source_path      string                 │
-│ status           string                 │
-│ submissions      int                    │
-│ unsubscribed_at  option<datetime>       │
-│ updated_at       datetime               │
-└─────────────────────────────────────────┘
-```

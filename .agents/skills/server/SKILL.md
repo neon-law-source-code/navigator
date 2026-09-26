@@ -10,6 +10,8 @@ description: >
 
 # Start the portal on a random port
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 A Project repository has `navigator.yaml` at its root declaring `host` and `project`, and a `portal/` beside it holding
 a React and Vite app. This starts that app and hands back a URL a browser can open.
 

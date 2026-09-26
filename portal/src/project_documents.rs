@@ -310,6 +310,8 @@ async fn file_one(
         slug: Some(&file_name),
         published_at: None,
         metadata: None,
+        derived_from: None,
+        transcript_quality: None,
     };
     let result = store::assets::file_revision(
         &state.surreal,

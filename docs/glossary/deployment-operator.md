@@ -1,5 +1,6 @@
 ---
 title: "Deployment Operator"
+description: "A Deployment Operator is the person or automation responsible for Navigator infrastructure and rollouts."
 ---
 
 The person or automation that owns Kubernetes, cloud accounts, secrets, domains, mounted deployment configuration, and

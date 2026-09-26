@@ -1,5 +1,8 @@
 ---
 title: "`devx`"
+description: >-
+  The developer-environment orchestration for this workspace, part of the navigator CLI (the cli crate), implemented in
+  the cli/src/devx/ module — there is no separate devx crate or binary.
 ---
 
 The **developer-environment orchestration** for this workspace, part of the `navigator` CLI (the `cli` crate),

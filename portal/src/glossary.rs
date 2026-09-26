@@ -50,6 +50,7 @@ pub fn content() -> &'static GlossaryContent {
             .map(|term| GlossaryEntry {
                 slug: term.slug.clone(),
                 title: term.title.clone(),
+                description: term.description.clone(),
                 body_html: render_markdown(&term.body),
             })
             .collect(),

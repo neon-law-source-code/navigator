@@ -1,5 +1,6 @@
 ---
 title: "Brand Seed"
+description: "A Brand Seed is the data layer a Site applies on every boot of its binary, including production."
 ---
 
 The seed layer a [`Site`](brand.md) owns, applied on every boot of that binary **including production**. Keyed to the

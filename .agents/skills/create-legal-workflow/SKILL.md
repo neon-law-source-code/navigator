@@ -5,6 +5,8 @@ description: Add a legal workflow through the existing template, questionnaire, 
 
 # Create a legal workflow
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Read [`docs/notation-authoring.md`](../../../docs/notation-authoring.md),
 [`docs/durable-workflows.md`](../../../docs/durable-workflows.md), and
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md) before changing a workflow.

@@ -1,5 +1,6 @@
 ---
 title: "Restate"
+description: "Restate is the durable execution layer Navigator uses in production."
 ---
 
 The **durable execution layer** in production — [restate.dev](https://restate.dev). An open-source workflow orchestrator

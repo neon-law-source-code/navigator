@@ -1,5 +1,6 @@
 ---
 title: "Offboarding"
+description: "Offboarding is the codebase term for a Notation that closes a matter."
 ---
 
 The codebase term for the notation that **closes a matter** — `rules::kind::Kind::Offboarding`, classified by

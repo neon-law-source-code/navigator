@@ -76,6 +76,135 @@ pub struct LawyerDocRow {
     pub revisions: Vec<LawyerDocRevision>,
 }
 
+/// One run or never-started template in a Project's workflow board.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ProjectNotationRow {
+    pub template_code: String,
+    pub notation_id: Option<String>,
+    pub current_state: Option<String>,
+    pub workflow_states: Vec<String>,
+    pub state_entered_at: std::collections::BTreeMap<String, String>,
+    pub respondent_email: Option<String>,
+    pub signature_request_id: Option<String>,
+    pub last_transition_at: Option<String>,
+}
+
+/// Assemble the private Project notation board from its current templates,
+/// runs, transition journal, respondents, and signature records.
+#[cfg(feature = "server")]
+pub async fn project_notation_board(
+    surreal: &store::surreal::SurrealDb,
+    storage: &std::sync::Arc<dyn cloud::StorageService>,
+    project_id: uuid::Uuid,
+) -> Result<Vec<ProjectNotationRow>, String> {
+    let templates = store::templates::list_for_project(surreal, project_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let notations = store::notations::list_by_project(surreal, project_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut rows = Vec::with_capacity(templates.len() + notations.len());
+    let mut started = std::collections::BTreeSet::new();
+
+    for notation in notations {
+        let template = store::templates::find_by_id(surreal, notation.template_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let Some(template) = template else { continue };
+        let workflow_states = match store::templates::body(surreal, storage, &template).await {
+            Ok(markdown) => workflow_state_order(&markdown),
+            // Template registrations can exist before their source body is
+            // attached. Keep the matter board readable while the workflow
+            // definition is incomplete; other storage and integrity errors
+            // still fail the read.
+            Err(store::templates::TemplateBodyError::MissingBody(_)) => Vec::new(),
+            Err(error) => return Err(error.to_string()),
+        };
+        let events = store::notation_events::for_notation(surreal, notation.id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let mut state_entered_at = std::collections::BTreeMap::new();
+        for event in events
+            .iter()
+            .filter(|event| event.machine_kind == store::notation_events::MACHINE_WORKFLOW)
+        {
+            state_entered_at.insert(event.to_state.clone(), event.recorded_at.clone());
+        }
+        if notation.state == "BEGIN" {
+            state_entered_at
+                .entry("BEGIN".to_string())
+                .or_insert_with(|| notation.inserted_at.to_rfc3339());
+        }
+        let respondent = store::persons::find_by_id(surreal, notation.person_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let signature_request_id = store::signatures::request_id_for_notation(surreal, notation.id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let last_transition_at = state_entered_at
+            .get(&notation.state)
+            .cloned()
+            .or_else(|| Some(notation.updated_at.to_rfc3339()));
+        started.insert(notation.template_id);
+        rows.push(ProjectNotationRow {
+            template_code: template.code,
+            notation_id: Some(notation.id.to_string()),
+            current_state: Some(notation.state),
+            workflow_states,
+            state_entered_at,
+            respondent_email: respondent.map(|person| person.email),
+            signature_request_id,
+            last_transition_at,
+        });
+    }
+
+    for template in templates {
+        if started.contains(&template.id) {
+            continue;
+        }
+        let workflow_states = match store::templates::body(surreal, storage, &template).await {
+            Ok(markdown) => workflow_state_order(&markdown),
+            Err(store::templates::TemplateBodyError::MissingBody(_)) => Vec::new(),
+            Err(error) => return Err(error.to_string()),
+        };
+        rows.push(ProjectNotationRow {
+            template_code: template.code,
+            workflow_states,
+            ..ProjectNotationRow::default()
+        });
+    }
+    rows.sort_by(|a, b| {
+        a.template_code
+            .cmp(&b.template_code)
+            .then(a.notation_id.cmp(&b.notation_id))
+    });
+    Ok(rows)
+}
+
+#[cfg(feature = "server")]
+fn workflow_state_order(markdown: &str) -> Vec<String> {
+    let Some(frontmatter) = markdown
+        .strip_prefix("---")
+        .and_then(|text| text.split_once("---").map(|(yaml, _)| yaml))
+    else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(frontmatter) else {
+        return Vec::new();
+    };
+    value
+        .get("workflow")
+        .and_then(serde_yaml::Value::as_mapping)
+        .map(|workflow| {
+            workflow
+                .keys()
+                .filter_map(serde_yaml::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// One participation-ledger row: who is assigned, their system tier, the
 /// participation derived from it, and the row id for the edit/remove actions.
 /// Both columns render because the tier is what *explains* the participation —
@@ -144,6 +273,8 @@ pub struct LawyerDetailView {
     #[serde(default)]
     pub testimonial: Option<AdminTestimonialView>,
     pub documents: Vec<LawyerDocRow>,
+    #[serde(default)]
+    pub notations: Vec<ProjectNotationRow>,
     /// The document-upload form's `?error=` flash, set when a re-upload's
     /// kind conflicts with the chain it would join.
     #[serde(default)]
@@ -304,6 +435,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     };
 
     let surreal = consume_context::<store::surreal::SurrealDb>();
+    let storage = consume_context::<std::sync::Arc<dyn cloud::StorageService>>();
     let Some(project) = store::projects::find_by_code(&surreal, &code)
         .await
         .map_err(server_error)?
@@ -414,6 +546,9 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
                 .collect(),
         })
         .collect();
+    let notations = project_notation_board(&surreal, &storage, id)
+        .await
+        .map_err(server_error)?;
 
     // The participation ledger: the rows, plus the linked people in one batched
     // query so the system tier is visible without conflating it with
@@ -476,6 +611,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         participations,
         testimonial,
         documents,
+        notations,
         error,
         asset_kind_choices: asset_kind_choices(),
         csrf_token,
@@ -694,6 +830,89 @@ fn admin_testimonial_card(
     }
 }
 
+fn notation_columns(rows: &[ProjectNotationRow]) -> Vec<String> {
+    let mut columns = Vec::new();
+    for row in rows {
+        for state in &row.workflow_states {
+            if !columns.contains(state) {
+                columns.push(state.clone());
+            }
+        }
+    }
+    columns
+}
+
+fn notation_state_cell(row: &ProjectNotationRow, state: &str) -> String {
+    if row.notation_id.is_none() {
+        return if row.workflow_states.iter().any(|item| item == state) {
+            "·".to_string()
+        } else {
+            "—".to_string()
+        };
+    }
+    if !row.workflow_states.iter().any(|item| item == state) {
+        return "—".to_string();
+    }
+    let entered = row.state_entered_at.get(state);
+    let mark = if row.current_state.as_deref() == Some(state) {
+        "●"
+    } else if entered.is_some() {
+        if state.contains("declined") || state.contains("failed") {
+            "✗"
+        } else {
+            "✓"
+        }
+    } else {
+        "·"
+    };
+    match entered {
+        Some(time) => format!("{mark} {time}"),
+        None => mark.to_string(),
+    }
+}
+
+/// The Project's workflow board: current runs beside templates not yet opened.
+#[component]
+pub fn ProjectNotationBoard(rows: Vec<ProjectNotationRow>) -> Element {
+    let columns = notation_columns(&rows);
+    rsx! {
+        section { class: "lawyer-detail__section project-notations",
+            h2 { "Notation workflows" }
+            if rows.is_empty() {
+                p { class: "projects-empty", "No notation templates are registered on this project." }
+            } else {
+                p { class: "nav-muted", "Every project template appears here, including ones never started." }
+                div { class: "nav-table-wrap",
+                    table { class: "nav-table",
+                        thead { tr {
+                            for state in columns.iter() { th { scope: "col", "{state}" } }
+                            th { scope: "col", "Template" }
+                            th { scope: "col", "Notation UUID" }
+                            th { scope: "col", "Client email" }
+                            th { scope: "col", "Signature request" }
+                            th { scope: "col", "Last transition" }
+                        } }
+                        tbody {
+                            for row in rows.iter() {
+                                tr {
+                                    for state in columns.iter() {
+                                        td { "{notation_state_cell(row, state)}" }
+                                    }
+                                    th { scope: "row", "{row.template_code}" }
+                                    td { "{row.notation_id.as_deref().unwrap_or(\"never started\")}" }
+                                    td { "{row.respondent_email.as_deref().unwrap_or(\"—\")}" }
+                                    td { "{row.signature_request_id.as_deref().unwrap_or(\"—\")}" }
+                                    td { "{row.last_transition_at.as_deref().unwrap_or(\"—\")}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The lawyer matter-detail workbench, server-side rendered.
 #[component]
 pub fn LawyerProjectDetail() -> Element {
@@ -858,6 +1077,8 @@ pub fn LawyerProjectDetail() -> Element {
                 dir: view.calendar_dir.clone(),
                 events: view.calendar_events.clone(),
             }
+
+            ProjectNotationBoard { rows: view.notations.clone() }
 
             ParticipationTable {
                 code: view.code.clone(),
@@ -1145,8 +1366,10 @@ pub fn ParticipationTable(
 #[cfg(test)]
 mod tests {
     use super::{
-        admin_testimonial_card, documents_table, may_govern_lawyer_dri, AdminTestimonialView,
-        LawyerDetailView, LawyerDocRevision, LawyerDocRow, ParticipationRow, ParticipationTable,
+        admin_testimonial_card, documents_table, may_govern_lawyer_dri, notation_state_cell,
+        to_participation_rows, workflow_state_order, AdminTestimonialView, LawyerDetailView,
+        LawyerDocRevision, LawyerDocRow, ParticipationRow, ParticipationTable,
+        ProjectNotationBoard, ProjectNotationRow,
     };
     use dioxus::prelude::*;
 
@@ -1245,6 +1468,62 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "server")]
+    fn participation_projection_joins_people_and_omits_unresolved_rows() {
+        let person_id = uuid::Uuid::now_v7();
+        let project_id = uuid::Uuid::now_v7();
+        let person = store::persons::Person {
+            id: person_id,
+            name: "Avery Attorney".to_string(),
+            given_name: None,
+            family_name: None,
+            middle_name: None,
+            email: "avery@example.test".to_string(),
+            oidc_subject: None,
+            microsoft_subject: None,
+            apple_subject: None,
+            role: store::persons::Role::Lawyer,
+            title: None,
+            phone: None,
+            xero_contact_id: None,
+            profile_image_url: Some("https://example.test/avatar.png".to_string()),
+            linkedin_url: None,
+            email_confirmed: false,
+            inserted_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let participation = |person_id| store::projects::PersonProjectRole {
+            id: uuid::Uuid::now_v7(),
+            person_id,
+            project_id,
+            participation: "lawyer".to_string(),
+            is_lawyer_dri: true,
+            is_client_dri: false,
+            inserted_at: "2026-09-25T00:00:00Z".to_string(),
+            updated_at: "2026-09-25T00:00:00Z".to_string(),
+        };
+        let rows = to_participation_rows(
+            &[
+                participation(person_id),
+                participation(uuid::Uuid::now_v7()),
+            ],
+            &[person],
+        );
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].person_name, "Avery Attorney");
+        assert_eq!(rows[0].person_email, "avery@example.test");
+        assert_eq!(rows[0].person_role, "lawyer");
+        assert_eq!(rows[0].participation, "lawyer");
+        assert!(rows[0].is_lawyer_dri);
+        assert!(!rows[0].is_client_dri);
+        assert_eq!(
+            rows[0].avatar_url.as_deref(),
+            Some(format!("/app/people/{person_id}/avatar").as_str())
+        );
+    }
+
+    #[test]
     fn an_empty_lawyer_set_lets_a_lawyer_on_the_matter_govern() {
         assert!(may_govern_lawyer_dri(false, false, true));
         assert!(!may_govern_lawyer_dri(false, false, false));
@@ -1308,6 +1587,21 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_document_table_shows_the_empty_state_and_error_flash() {
+        let view = LawyerDetailView {
+            error: Some("The document could not be updated.".to_string()),
+            ..LawyerDetailView::default()
+        };
+        let html = dioxus_ssr::render_element(documents_table(&view));
+        assert!(html.contains("No documents yet."), "{html}");
+        assert!(
+            html.contains("The document could not be updated."),
+            "{html}"
+        );
+        assert!(html.contains(r#"role="alert""#), "{html}");
+    }
+
+    #[test]
     fn a_document_with_an_internal_operative_revision_reads_as_internal() {
         let html = render_documents(vec![LawyerDocRow {
             id: "00000000-0000-0000-0000-0000000000aa".to_string(),
@@ -1341,6 +1635,123 @@ mod tests {
         }]);
         assert!(html.contains("Visibility"), "{html}");
         assert!(html.contains("<td>internal</td>"), "{html}");
+    }
+
+    #[test]
+    #[cfg(feature = "server")]
+    fn workflow_state_columns_follow_the_template_frontmatter() {
+        let states = workflow_state_order(
+            "---\nworkflow:\n  BEGIN:\n    label: Started\n  lawyer_review:\n    label: Review\n  reask__client:\n    label: Client\n---\n# Template\n",
+        );
+        assert_eq!(states, ["BEGIN", "lawyer_review", "reask__client"]);
+    }
+
+    #[test]
+    #[cfg(feature = "server")]
+    fn malformed_or_missing_workflow_frontmatter_has_no_state_columns() {
+        assert!(workflow_state_order("# No frontmatter\n").is_empty());
+        assert!(workflow_state_order("---\nworkflow: [\n---\n").is_empty());
+        assert!(workflow_state_order("---\nworkflow: not-a-map\n---\n").is_empty());
+        assert!(workflow_state_order("---\ntitle: Plain template\n---\n").is_empty());
+    }
+
+    #[test]
+    fn a_new_admin_testimonial_defaults_to_private_with_empty_fields() {
+        let html = dioxus_ssr::render_element(admin_testimonial_card("project", "TOK", None));
+        assert!(html.contains(r#"value="private" checked"#), "{html}");
+        assert!(html.contains(r#"name="quote""#), "{html}");
+        assert!(html.contains(r#"name="attribution""#), "{html}");
+        assert!(!html.contains(r#"value="public" checked"#), "{html}");
+    }
+
+    #[test]
+    fn notation_board_shows_never_started_templates_and_live_run_metadata() {
+        let live = ProjectNotationRow {
+            template_code: "engagement".to_string(),
+            notation_id: Some("notation-uuid".to_string()),
+            current_state: Some("lawyer_review".to_string()),
+            workflow_states: vec!["BEGIN".to_string(), "lawyer_review".to_string()],
+            state_entered_at: [(
+                "lawyer_review".to_string(),
+                "2026-09-25T14:03:00Z".to_string(),
+            )]
+            .into(),
+            respondent_email: Some("client@example.test".to_string()),
+            signature_request_id: Some("signature-uuid".to_string()),
+            last_transition_at: Some("2026-09-25T14:03:00Z".to_string()),
+        };
+        let waiting = ProjectNotationRow {
+            template_code: "will".to_string(),
+            workflow_states: vec!["BEGIN".to_string(), "lawyer_review".to_string()],
+            ..ProjectNotationRow::default()
+        };
+        let html = dioxus_ssr::render_element(rsx! {
+            ProjectNotationBoard { rows: vec![live, waiting] }
+        });
+        assert!(html.contains("engagement"), "{html}");
+        assert!(html.contains("notation-uuid"), "{html}");
+        assert!(html.contains("client@example.test"), "{html}");
+        assert!(html.contains("signature-uuid"), "{html}");
+        assert!(html.contains("never started"), "{html}");
+        assert!(html.contains("2026-09-25T14:03:00Z"), "{html}");
+    }
+
+    #[test]
+    fn an_empty_notation_board_explains_that_no_templates_are_registered() {
+        let html = dioxus_ssr::render_element(rsx! { ProjectNotationBoard { rows: vec![] } });
+        assert!(
+            html.contains("No notation templates are registered on this project."),
+            "{html}"
+        );
+        assert!(!html.contains("Notation UUID"), "{html}");
+    }
+
+    #[test]
+    fn notation_state_cells_distinguish_current_completed_and_unvisited_states() {
+        let row = ProjectNotationRow {
+            notation_id: Some("notation-uuid".to_string()),
+            current_state: Some("lawyer_review".to_string()),
+            workflow_states: vec![
+                "BEGIN".to_string(),
+                "lawyer_review".to_string(),
+                "filed".to_string(),
+            ],
+            state_entered_at: [("BEGIN".to_string(), "2026-09-24T09:00:00Z".to_string())].into(),
+            ..ProjectNotationRow::default()
+        };
+        assert!(notation_state_cell(&row, "BEGIN").starts_with("✓"));
+        assert!(notation_state_cell(&row, "lawyer_review").starts_with("●"));
+        assert_eq!(notation_state_cell(&row, "filed"), "·");
+        assert_eq!(notation_state_cell(&row, "not_in_workflow"), "—");
+    }
+
+    #[test]
+    fn notation_state_cells_mark_never_started_and_unsuccessful_runs() {
+        let waiting = ProjectNotationRow {
+            workflow_states: vec!["BEGIN".to_string(), "filed".to_string()],
+            ..ProjectNotationRow::default()
+        };
+        assert_eq!(notation_state_cell(&waiting, "BEGIN"), "·");
+        assert_eq!(notation_state_cell(&waiting, "other"), "—");
+
+        let completed = ProjectNotationRow {
+            notation_id: Some("notation-uuid".to_string()),
+            workflow_states: vec!["declined".to_string(), "failed".to_string()],
+            state_entered_at: [
+                ("declined".to_string(), "2026-09-25T15:00:00Z".to_string()),
+                ("failed".to_string(), "2026-09-25T16:00:00Z".to_string()),
+            ]
+            .into(),
+            ..ProjectNotationRow::default()
+        };
+        assert_eq!(
+            notation_state_cell(&completed, "declined"),
+            "✗ 2026-09-25T15:00:00Z"
+        );
+        assert_eq!(
+            notation_state_cell(&completed, "failed"),
+            "✗ 2026-09-25T16:00:00Z"
+        );
     }
 
     #[test]

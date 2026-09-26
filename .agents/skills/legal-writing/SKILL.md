@@ -13,6 +13,8 @@ description: >
 
 # Legal writing
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Three standards, modeled — not spoken for. This skill does not claim to write as Wachtell, Cravath, or Quinn Emanuel; it
 holds Navigator's own writing to the discipline those firms are known for.
 

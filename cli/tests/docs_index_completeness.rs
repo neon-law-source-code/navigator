@@ -78,3 +78,25 @@ fn the_index_names_every_file_it_finds_in_a_synthetic_tree() {
         vec!["alpha.md".to_string(), "sub/beta.md".to_string()]
     );
 }
+
+#[test]
+fn agent_instructions_point_to_glossary_lookup_commands() {
+    let root = repo_root();
+    for path in [
+        root.join("AGENTS.md"),
+        root.join("cli/src/projects/agent_contract.md"),
+    ] {
+        let instructions =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert!(
+            instructions.contains("navigator glossary list"),
+            "{} must show how to list glossary terms",
+            path.display()
+        );
+        assert!(
+            instructions.contains("navigator glossary show \"<Term>\""),
+            "{} must show how to inspect a glossary term",
+            path.display()
+        );
+    }
+}

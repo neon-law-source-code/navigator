@@ -1,5 +1,6 @@
 ---
 title: "State"
+description: "A State is a named position in a questionnaire or workflow machine."
 ---
 
 One named position in a questionnaire or workflow machine. Notation rows carry the current state as a string. State

@@ -1,5 +1,6 @@
 ---
 title: "Data Export"
+description: "A Data Export is a snapshot of SurrealDB tables written as Parquet and Iceberg metadata for BigQuery."
 ---
 
 A snapshot of one or more SurrealDB tables, written to Parquet (and Iceberg metadata) on a dedicated GCS bucket,

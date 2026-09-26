@@ -1,5 +1,6 @@
 ---
 title: "Project Skill"
+description: "A Project Skill is a jurisdiction and practice-area playbook that bundles Notation codes."
 ---
 
 One practice playbook in the catalog at `skills/<jurisdiction_code_lowercase>/<practice_area>.md`: a jurisdiction, a

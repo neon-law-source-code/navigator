@@ -1,5 +1,6 @@
 ---
 title: "Presentation"
+description: "A Presentation is a repo-authored deck of teaching or speaking material."
 ---
 
 A repo-authored deck of teaching or speaking material. Presentations live only at the top-level `/presentations`

@@ -1,5 +1,6 @@
 ---
 title: "Firm"
+description: "A Firm is an owning legal practice."
 ---
 
 An owning practice. The `firm` table is the tenancy boundary for [Projects](project.md) and for the people who work
@@ -43,14 +44,3 @@ cents beside paid cents) in inline server-rendered SVG, following the no-chartin
 
 - Schema: [`firm` in `navigator.surql`](../../store/src/schema/navigator.surql) ·
   [`store::firms`](../../store/src/firms.rs)
-
-```text
-┌─ firm ──────────────────────────────┐
-│ id           record                 │
-│ entity_id    option<record<entity>> │
-│ inserted_at  string                 │
-│ name         string                 │
-│ status       string                 │
-│ updated_at   string                 │
-└─────────────────────────────────────┘
-```

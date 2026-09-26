@@ -5,6 +5,8 @@ description: Audit teaching surfaces changed by a branch and write one citation-
 
 # Author docs
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Read [`docs/agent-workflows.md`](../../../docs/agent-workflows.md) and
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md) first. Code is the source of truth;
 docs, comments, tests, workshops, and skills follow it.

@@ -1,5 +1,6 @@
 ---
 title: "Participation"
+description: "Participation is the person_project_role.participation column."
 ---
 
 The `person_project_role.participation` column. It is a property of a [Person–Project Role](personproject-role.md) row,

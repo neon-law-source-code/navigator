@@ -11,10 +11,11 @@ description: >
 
 Two copies of one vocabulary, and they are not peers:
 
-- **[`docs/glossary/`](../../../docs/glossary/README.md) is the source of truth.** One file per term, reviewed in pull
-  requests, embedded in the binary through `store::glossary::GLOSSARY`, materialized into `glossary_term` rows on every
-  boot, published on one page at `/glossary`, and read by `navigator glossary list` / `navigator glossary show <term>`.
-  A definition is not real until it lands here.
+- **[`docs/glossary/`](../../../docs/glossary/README.md) is the source of truth.** One file per term, with a
+  one-sentence plain-text `description:` in frontmatter, reviewed in pull requests, embedded in the binary through
+  `store::glossary::GLOSSARY`, materialized into `glossary_term` rows on every boot, published on one page at
+  `/glossary`, and read by `navigator glossary list` / `navigator glossary show <term>`. A definition is not real until
+  it lands here.
 - **The Notion page is the reading and proposing surface** — a colleague without a checkout can open it, comment, and
   type. Its page URL is `https://app.notion.com/p/3d8c909308608139829dff990512a174`, titled **Glossary** in the **✏️
   Writing** database (`Type: Guideline`). Every push rewrites it wholesale, so an edit made there survives only until
@@ -27,9 +28,9 @@ editing a copy that gets overwritten, has been misled by us.
 
 `store::glossary::terms` is the reader of record for both directions:
 
-- **Every `<slug>.md` beside the README is one term.** Its frontmatter carries `title:` (the term as a reader says it),
-  and its body is the definition. `store::glossary::parse_entry` refuses a file whose name is not the slug of its title,
-  so the file a reader opens and the anchor a link uses cannot disagree.
+- **Every `<slug>.md` beside the README is one term.** Its frontmatter carries `title:` (the term as a reader says it)
+  and a one-sentence plain-text `description:`; its body is the definition. `store::glossary::parse_entry` refuses a
+  file whose name is not the slug of its title, so the file a reader opens and the anchor a link uses cannot disagree.
 - **The slug is a public API.** `store::glossary::slugify` turns `Lawyer Review` into `lawyer-review`: the file name,
   the `/glossary#lawyer-review` anchor, and the `glossary_term.slug` row key. Places across `docs/*.md`,
   `store/src/projects.rs`, `mcp/src/tools/*.rs`, and `portal/src/api.rs` link `glossary/<slug>.md`. Renaming a term
@@ -80,10 +81,9 @@ to say the same thing worse.
    the Notion text, say where it is and let a human decide.
 3. Apply the wording to `docs/glossary/<slug>.md` in its own idiom: sibling links, hard wrap at 120. A new term is a new
    file named for the slug of its `title:`.
-4. Refresh any schema box and run the gate:
+4. Run the gate:
 
    ```bash
-   cargo run -p cli --quiet -- glossary tables --write
    cargo run -p cli --quiet -- project gate
    rtk cargo nextest run -p cli -p store -p portal
    ```
@@ -94,7 +94,8 @@ to say the same thing worse.
 
 ## What not to do
 
-- **Don't hand-edit a schema box.** Run `glossary tables --write`. The test compares bytes.
+- **Describe terms in prose.** When a table matters, link to its `DEFINE TABLE` statement in
+  `store/src/schema/navigator.surql` rather than copying its fields into the definition.
 - **Don't rename a term to fix its wording** without grepping `glossary/<slug>.md` across the tree first. Changing the
   body is cheap; changing the slug is a cross-cutting rename.
 - **Don't add a second Notion page** for part of the vocabulary. One page mirrors one directory; a split copy is a copy

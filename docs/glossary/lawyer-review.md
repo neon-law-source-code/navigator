@@ -1,5 +1,8 @@
 ---
 title: "Lawyer Review"
+description: >-
+  The workflow prefix lawyer_review is the mandatory human attorney/lawyer gate before a document is sent for binding
+  signature, certified mail, e-filing, or another outbound submission.
 ---
 
 The workflow prefix `lawyer_review` is the mandatory human attorney/lawyer gate before a document is sent for binding

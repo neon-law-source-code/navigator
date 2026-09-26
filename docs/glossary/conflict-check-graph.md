@@ -1,5 +1,8 @@
 ---
 title: "Conflict-Check Graph"
+description: >-
+  A Conflict-Check Graph is the graph the firm checks before opening a matter to identify conflicts with current
+  clients.
 ---
 
 The graph the firm walks **before opening a matter** to decide whether the new engagement would conflict with a client

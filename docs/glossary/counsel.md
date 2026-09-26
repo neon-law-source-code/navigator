@@ -1,5 +1,6 @@
 ---
 title: "Counsel"
+description: "Counsel means an attorney."
 ---
 
 An **attorney** — spelled c-o-u-n-s-e-l. The members of the [Legal Council](council.md) are counsels; "ethics counsel,"

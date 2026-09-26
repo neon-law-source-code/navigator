@@ -1,5 +1,6 @@
 ---
 title: "Asset"
+description: "An Asset is one row in the assets table that stores a pointer to a static byte artifact."
 ---
 
 One row in the `assets` table: the canonical store for a static byte artifact. It holds the byte pointer (content type,
@@ -14,29 +15,3 @@ matter-detail listing and "download all documents" archive; every ingest call si
 - Schema: [`asset` in `navigator.surql`](../../store/src/schema/navigator.surql) (SurrealDB; #1093, ENG-121) · Write
   lanes: [`store::documents::ingest_bytes`](../../store/src/documents.rs) (document assets),
   [`store::assets::ingest_content`](../../store/src/assets.rs) (bare content).
-
-```text
-┌─ asset ────────────────────────────────────────┐
-│ id                     record                  │
-│ byte_size              int                     │
-│ content_type           string                  │
-│ description            option<string>          │
-│ filename               option<string>          │
-│ inserted_at            datetime                │
-│ kind                   option<string>          │
-│ metadata               any                     │
-│ project_id             option<record<project>> │
-│ published_at           option<string>          │
-│ received_at            option<string>          │
-│ secondary_storage_key  option<string>          │
-│ sha256_hex             string                  │
-│ slug                   option<string>          │
-│ source                 option<string>          │
-│ source_received_at     option<string>          │
-│ source_sender          option<string>          │
-│ source_subject         option<string>          │
-│ storage_key            string                  │
-│ updated_at             datetime                │
-│ visibility             string                  │
-└────────────────────────────────────────────────┘
-```

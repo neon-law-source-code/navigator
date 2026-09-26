@@ -1,5 +1,6 @@
 ---
 title: "`ctx.run`"
+description: "ctx.run is Restate's journaled side-effect primitive."
 ---
 
 The journaled **side-effect primitive**. Wraps any non-deterministic operation — a store write, an outbound HTTP call,

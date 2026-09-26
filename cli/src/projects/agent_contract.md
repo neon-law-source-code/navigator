@@ -3,6 +3,12 @@
 This repository holds source-only material for one Project. Project identity and matter coordinates belong in
 `navigator.yaml` and Navigator's live Project row, not in this contract.
 
+## Find the term first
+
+Before naming a table, field, state, or UI concept, run `navigator glossary list` to find a term and its plain-language
+description, then `navigator glossary show "<Term>"` for its full definition. Use the glossary's term when one fits; if
+none fits, add a term under `docs/glossary/` in the same Navigator change rather than inventing a synonym.
+
 Run `navigator project gate` before opening a pull request; it is the required gate for every proposed repository
 change. CI runs `navigator project gate --ci` in the `verify` job (after building, so the origin pass can read a built
 `dist/`) and, separately, `navigator project gate --check --ci` in the `documents` job. `--check` (LAW-62) runs only the

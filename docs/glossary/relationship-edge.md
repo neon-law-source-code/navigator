@@ -1,5 +1,6 @@
 ---
 title: "Relationship Edge"
+description: "A Relationship Edge is a typed graph connection between a Person or Entity on each end."
 ---
 
 A typed graph edge with a [Person](person.md) or [Entity](entity.md) on **each** end — the canonical two-sided
@@ -16,16 +17,3 @@ Both endpoints are native `record<person|entity>` links, so an endpoint-kind typ
 
 - Schema and queries: [`store::relationships`](../../store/src/relationships.rs) (SurrealDB; ENG-120) — Lives in the
   `relationship` relation
-
-```text
-┌─ relationship ──────────────────────────────────────────────┐
-│ id              record                                      │
-│ confidence_pct  int                                         │
-│ detail          option<string>                              │
-│ inserted_at     datetime                                    │
-│ kind            string                                      │
-│ source_id       option<record<relationship_log|disclosure>> │
-│ source_kind     string                                      │
-│ updated_at      datetime                                    │
-└─────────────────────────────────────────────────────────────┘
-```

@@ -1,5 +1,6 @@
 ---
 title: "Workshop"
+description: "A Workshop is a teaching Matter that people are invited to."
 ---
 
 Client-English for a **teaching [Matter](matter.md)** — a [Project](project.md) people are invited to, not a page they

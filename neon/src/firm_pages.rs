@@ -1037,7 +1037,7 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
         }),
         ..locales::home(branding)
     };
-    content.practices_heading = "The Shook Law PLLC family".to_string();
+    content.practices_heading = "Our Family".to_string();
     content.practices = portfolio_practices();
     content
 }

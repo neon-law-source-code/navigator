@@ -503,15 +503,17 @@ async fn create_unchecked(surreal: &SurrealDb, input: &NewBrand) -> Result<Brand
 }
 
 /// System/seed-only: create `input`, or, if its name or key already exists,
-/// refresh only its `typeface` and `primary_color` — with no authorization
-/// check (ENG-659). This is the boot seed's own migration of each compiled
-/// house brand into a `brand` row scoped to the resolved practice Firm
-/// (`store::seed::seed_brands`); it must succeed even against a test engine
-/// where an unrelated fixture Firm already registered the same compiled keys
+/// re-anchor its `firm_id` onto `input.firm_id` and refresh its `typeface`
+/// and `primary_color` — with no authorization check (ENG-659). This is the
+/// boot seed's own migration of each compiled house brand into a `brand` row
+/// scoped to the resolved practice Firm (`store::seed::seed_brands`); it must
+/// succeed even against a test engine where an unrelated fixture Firm
+/// already registered the same compiled keys
 /// (`store::surreal::test_support::mem`), which the authorized [`create`]/
 /// [`update`] pair would correctly refuse — this path is why the boot seed
 /// does not need to be that caller. Every human- or API-driven path still
-/// goes through the authorized [`create`]/[`update`].
+/// goes through the authorized [`create`]/[`update`], which never lets
+/// `firm_id` move.
 pub(crate) async fn seed_upsert(
     surreal: &SurrealDb,
     input: &NewBrand,
@@ -522,6 +524,27 @@ pub(crate) async fn seed_upsert(
             let existing = find_by_key(surreal, &input.key)
                 .await?
                 .ok_or_else(|| BrandError::NoSuchBrand(Uuid::nil()))?;
+            // Re-anchor a stale `firm_id` onto the resolved practice Firm.
+            // `update` never lets a caller move this field (ENG-659's whole
+            // point), but a compiled brand's own re-seed is the one place
+            // that must: a database prepared before this boot's practice
+            // Firm existed — a test fixture's own throwaway id
+            // (`store::surreal::test_support::mem`) is the only case this
+            // reaches in practice — otherwise carries this row under a
+            // Firm id nothing in this boot can resolve. Every production
+            // boot's row already carries the same id, so this is a no-op
+            // restatement there.
+            if let Some(firm_id) = input.firm_id {
+                if existing.firm_id != Some(firm_id) {
+                    writing(|| {
+                        surreal
+                            .query("UPDATE $id SET firm_id = $firm_id")
+                            .bind(("id", record_id(TABLE, existing.id)))
+                            .bind(("firm_id", record_id(FIRM_TABLE, firm_id)))
+                    })
+                    .await?;
+                }
+            }
             update_unchecked(
                 surreal,
                 existing.id,
@@ -1837,5 +1860,66 @@ mod tests {
         assert_eq!(expected, FirmCapabilityDecision::FirmNotFound);
         let actual = authorize_existing(&db, Role::Owner, None, Some(missing_firm)).await;
         assert!(matches!(actual, Err(BrandError::NoSuchFirm(id)) if id == missing_firm));
+    }
+
+    /// ENG-659: `seed_upsert` re-anchors an already-existing row's `firm_id`
+    /// onto its target Firm, not only its typeface and colour. A database
+    /// carrying the compiled key under some other Firm — a test fixture's
+    /// own throwaway id (`store::surreal::test_support::mem`) is the only
+    /// case this reaches in practice — must converge onto the resolved
+    /// practice Firm on the next boot rather than staying anchored
+    /// permanently to a Firm nothing in that boot can resolve. Owner can
+    /// then act on the row through the ordinary authorized `update`/
+    /// `set_logo`, which the stale Firm id would otherwise refuse.
+    #[tokio::test]
+    async fn seed_upsert_re_anchors_a_stale_firm_id_onto_the_target_firm() {
+        let db = mem_surreal().await;
+        let stale_firm = Uuid::now_v7();
+        let stale_id = Uuid::now_v7();
+        let now = chrono::Utc::now().to_rfc3339();
+        db.query(
+            "CREATE $id SET name = 'Stale Anchor', brand_key = 'stale-anchor', \
+             firm_id = $firm_id, inserted_at = $now, updated_at = $now",
+        )
+        .bind(("id", record_id(TABLE, stale_id)))
+        .bind(("firm_id", record_id(FIRM_TABLE, stale_firm)))
+        .bind(("now", now))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        let (firm, _admin) = practice(&db, "Re-Anchor Practice").await;
+        let reseeded = seed_upsert(
+            &db,
+            &NewBrand {
+                name: "Stale Anchor".to_string(),
+                key: "stale-anchor".to_string(),
+                firm_id: Some(firm.id),
+                typeface: Some("gorp-serif".to_string()),
+                primary_color: Some("#007c91".to_string()),
+                ..NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(reseeded.firm_id, Some(firm.id));
+        assert_eq!(reseeded.typeface.as_deref(), Some("gorp-serif"));
+
+        // Owner can now act on the row: the stale, unresolvable Firm id
+        // would have refused this with `NoSuchFirm`.
+        let updated = update(
+            &db,
+            Role::Owner,
+            None,
+            reseeded.id,
+            &BrandEdit {
+                primary_color: Some(Some("#123456".to_string())),
+                ..BrandEdit::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.primary_color.as_deref(), Some("#123456"));
     }
 }

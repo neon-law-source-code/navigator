@@ -105,9 +105,9 @@ ManageBrand on. Only a Firm's own Admin DRI creates that Firm's brand at `/app/a
 Owner holds no Firm membership, so there is no Firm to scope a new row to. Owner still edits any existing Firm-scoped
 brand's palette, typeface, and assets at `/app/admin/brands/{key}/edit` and `PATCH /app/api/brands/{key}`; those two
 paths admit Admin at the route so a Firm's Admin DRI can edit that Firm's own brand, and the store refuses anyone else.
-Lawyer and Clerk are denied the editor, the create form, and the PATCH. Only an Owner may create,
-edit, or demote an Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only, so no
-privileged identity is deletable through that command.
+Lawyer and Clerk are denied the editor, the create form, and the PATCH. Only an Owner may create, edit, or demote an
+Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only, so no privileged identity is
+deletable through that command.
 
 ### `client`
 

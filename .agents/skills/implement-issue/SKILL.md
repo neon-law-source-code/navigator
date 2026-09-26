@@ -9,6 +9,8 @@ description: >
 
 # `/implement-issue` — ground and implement one issue
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Turn one issue identifier into one grounded, minimal, proven implementation and one ready pull request in one session.
 This skill owns the grounding, implementation, and ship loop. Use the deprecated
 [`triage-issue`](../triage-issue/SKILL.md) compatibility command only when the user explicitly wants a Linear plan

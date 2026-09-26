@@ -18,6 +18,8 @@ of the firm's *counsels* (c-o-u-n-s-e-l, the attorneys): a council of counsels. 
 
 # The Legal Council
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 The draft-side council: a *council* (c-o-u-n-c-i-l, a group) of the firm's *counsels* (c-o-u-n-s-e-l, the attorneys) — a
 council of counsels, the legal-drafting sibling of the engineering `/council`. Navigator MCP is the *agent* that exposes
 it as a tool (`spawn_legal_council`), not the name of the council itself.

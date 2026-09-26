@@ -11,6 +11,8 @@ description: >
 
 # `/review` — review one pull request
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 The required input is a positive GitHub pull-request number. Resolve the repository from the current checkout rather
 than assuming a repository slug.
 

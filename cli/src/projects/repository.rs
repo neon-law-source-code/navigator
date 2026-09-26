@@ -2489,6 +2489,10 @@ jobs:
     fn every_synced_skill_documents_only_commands_that_resolve() {
         let tree = crate::navigator_command();
         for (name, contents) in SYNCED_SKILLS {
+            assert!(
+                contents.contains("Find the term first"),
+                "synced skill `{name}` must point Project contributors to glossary guidance"
+            );
             let found = crate::projects::cli_docs::unresolved_invocations(contents, &tree);
             assert!(
                 found.is_empty(),

@@ -10,6 +10,8 @@ description: >
 
 # Surreal migrations
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Read the module docs in [`store/src/schema/mod.rs`](../../../store/src/schema/mod.rs) and the "Production database"
 section of [`docs/cloud-operations.md`](../../../docs/cloud-operations.md) before acting. The schema is a statement of
 the present, not a chain of steps, and that choice is what makes a data change your job rather than the engine's.

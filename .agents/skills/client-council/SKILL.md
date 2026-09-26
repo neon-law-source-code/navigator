@@ -17,6 +17,8 @@ description: >
 
 # The Client Council
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 The **demand-side** council: twelve kinds of human who walk in the door, each anchoring a zodiac stance to a
 representative client situation. Where `/council` is the engineers who *build* Navigator and `legal-council` is the
 counsels who *draft* its copy, this bench asks: **does a real person walk in, and stay?**

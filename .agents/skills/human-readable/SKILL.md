@@ -9,6 +9,8 @@ description: >-
 
 # Human-readable documents
 
+Before naming a table, field, state, or UI concept, follow the **Find the term first** section in `AGENTS.md`.
+
 Write short, glanceable documents in plain professional language. Decide the content first, then organize it. Refactor
 whenever the document is updated.
 

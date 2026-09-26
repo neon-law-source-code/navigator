@@ -17712,6 +17712,7 @@ async fn admin_person_update_via_native_form_persists_and_redirects() {
 
 /// The admin matter form writes the testimonial owned by the matter's client
 /// DRI, not a testimonial owned by the acting admin.
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn admin_matter_testimonial_creates_for_the_client_dri_and_rejects_outsiders() {
     let (state, surreal) = state_with_engines().await;
@@ -17888,6 +17889,7 @@ async fn view_as_client_testimonial_save_still_returns_forbidden() {
 
 /// The matter people-list route reuses the avatar storage seam, scopes both
 /// people to the matter, and clears the canonical public object with the row.
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn admin_matter_person_avatar_upload_and_clear_are_matter_scoped() {
     let (state, surreal) = state_with_engines().await;

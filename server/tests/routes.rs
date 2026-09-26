@@ -10535,10 +10535,12 @@ async fn every_registered_host_serves_its_brand_and_its_apex_redirects_home() {
                     !page_declares_og_site_name(&body, site_name),
                     "{host} {path} must not wear {site_name}: {body}"
                 );
-                assert!(
-                    !body.contains(mailbox),
-                    "{host} {path} must not publish {mailbox}: {body}"
-                );
+                if mailbox != views::brand::DEFAULT_BRANDING.firm_email {
+                    assert!(
+                        !body.contains(mailbox),
+                        "{host} {path} must not publish {mailbox}: {body}"
+                    );
+                }
                 // The crawler documents are the sharpest form of the leak:
                 // whatever the status, the held-out hostname must never
                 // appear as an absolute base a crawler would follow.

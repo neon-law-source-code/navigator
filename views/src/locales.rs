@@ -15,6 +15,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+mod cyber_injury;
+pub use cyber_injury::CyberInjuryCopy;
 mod daybridge;
 mod death_and_divorce;
 mod estate;
@@ -135,6 +137,9 @@ pub struct HomeCopy {
     /// Divorce, estate planning, and probate for the Death & Divorce brand.
     #[serde(default)]
     pub death_and_divorce: Option<DeathAndDivorceCopy>,
+    /// AI-assisted personal injury campaign.
+    #[serde(default)]
+    pub cyber_injury: Option<CyberInjuryCopy>,
 }
 
 /// The home page's provenance section: the flow a request follows, the

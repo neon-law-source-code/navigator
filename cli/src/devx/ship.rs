@@ -4076,6 +4076,7 @@ mod tests {
                 "www.summonsdefense.nyc",
                 "www.daybridgedivorce.com",
                 "www.deathanddivorcelaw.com",
+                "www.cyberinjurylaw.com",
             ],
             "a production public host pulls in every other registered brand's production host — \
              ENG-808: the full registry, not only the launched ones"
@@ -4092,6 +4093,7 @@ mod tests {
                 "staging.summonsdefense.nyc",
                 "staging.daybridgedivorce.com",
                 "staging.deathanddivorcelaw.com",
+                "staging.cyberinjurylaw.com",
             ],
             "a staging public host pulls in only the other brands' staging hosts"
         );

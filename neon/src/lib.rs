@@ -49,6 +49,7 @@ pub const PUBLIC_PATHS: &[&str] = &[
     // a crawler to index, and a redirect belongs in the first but not the
     // second.
     "/personal",
+    "/consultation",
     "/services",
     "/start/{service_id}",
     "/disputes",
@@ -139,6 +140,10 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
             .map(|path| (*path).to_string())
             .collect(),
         // Lawyer Shook is a bare holding page: `/` is the whole surface.
+        BrandKey::CyberInjuryLaw => ["/", "/contact"]
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect(),
         BrandKey::LawyerShook => ["/", "/testimonials"]
             .iter()
             .map(|path| (*path).to_string())
@@ -205,7 +210,10 @@ fn practice_brand_llms_txt(key: BrandKey) -> portal::LlmsTxt {
                 path: "/services".to_string(),
                 description: branding.service_description.to_string(),
             },
-        ],
+        ]
+        .into_iter()
+        .filter(|page| key.publishes_firm_path(&page.path))
+        .collect(),
         sections: Vec::new(),
     }
 }
@@ -234,7 +242,8 @@ pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
         | BrandKey::DeleteYourDebt
         | BrandKey::Summons
         | BrandKey::Daybridge
-        | BrandKey::DeathAndDivorce) => practice_brand_llms_txt(key),
+        | BrandKey::DeathAndDivorce
+        | BrandKey::CyberInjuryLaw) => practice_brand_llms_txt(key),
         BrandKey::DeleteYourData => {
             let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
             let mark = branding.firm.site_name;

@@ -124,6 +124,7 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "uuid",
     "views",
     "walkdir",
+    "web-sys",
     "webapp",
     "webp",
     "wiremock",

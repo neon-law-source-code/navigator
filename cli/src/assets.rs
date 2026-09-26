@@ -34,7 +34,7 @@ use workflows::notify::{Notifier, SlackNotifier};
 const ASSET_CACHE_CONTROL: &str = "public, max-age=604800";
 
 /// One web font family the deployment serves from its public assets bucket:
-/// the directory it publishes under and the filename stem its two faces
+/// the directory it publishes under and the filename stem its faces
 /// carry. `upload_font_family` and `font_family_refs` are generic over this,
 /// so a brand's typeface is a row in [`BUCKET_FONT_FAMILIES`] rather than a
 /// second copy of the upload/verify machinery.
@@ -50,14 +50,15 @@ pub struct FontFamily {
     label: &'static str,
     /// Directory under `fonts/`, matching the brand's typeface id.
     dir: &'static str,
-    /// Filename stem both faces share (e.g. `EBGaramond`).
+    /// Filename stem the faces share (e.g. `EBGaramond`).
     stem: &'static str,
+    /// Additional static weights beyond Regular and Bold.
+    extra_weights: &'static [&'static str],
 }
 
 impl FontFamily {
-    /// The two weights every brand head preloads. A face is a Regular or a
-    /// Bold; a browser synthesises nothing else, and `upload_font_family`
-    /// refuses a delivery missing either.
+    /// The base weights every family provides. Some families additionally
+    /// publish static weights; `upload_font_family` requires every listed face.
     const WEIGHTS: [&'static str; 2] = ["Regular", "Bold"];
 
     /// The bucket prefix this family's objects publish under.
@@ -70,6 +71,7 @@ impl FontFamily {
     fn files(&self) -> impl Iterator<Item = String> + '_ {
         Self::WEIGHTS
             .iter()
+            .chain(self.extra_weights)
             .map(|weight| format!("{}-{weight}.woff2", self.stem))
     }
 }
@@ -83,6 +85,7 @@ pub const GORP_SERIF: FontFamily = FontFamily {
     label: "GORP",
     dir: "gorp-serif",
     stem: "GORPSerif",
+    extra_weights: &[],
 };
 
 /// DeleteYourData.com's Plus Jakarta Sans faces. Unlike GORP, the font itself
@@ -95,6 +98,7 @@ pub const PLUS_JAKARTA_SANS: FontFamily = FontFamily {
     label: "Plus Jakarta Sans",
     dir: "plus-jakarta-sans",
     stem: "PlusJakartaSans",
+    extra_weights: &[],
 };
 
 /// Vesta Estate Planning's single face for headings and body copy.
@@ -102,6 +106,7 @@ pub const EB_GARAMOND: FontFamily = FontFamily {
     label: "EB Garamond",
     dir: "eb-garamond",
     stem: "EBGaramond",
+    extra_weights: &[],
 };
 
 /// Misericordia Injury Law's body face.
@@ -109,6 +114,7 @@ pub const SOURCE_SANS_3: FontFamily = FontFamily {
     label: "Source Sans 3",
     dir: "source-sans-3",
     stem: "SourceSans3",
+    extra_weights: &[],
 };
 
 /// Misericordia Injury Law's display face.
@@ -116,6 +122,7 @@ pub const SOURCE_SERIF_4: FontFamily = FontFamily {
     label: "Source Serif 4",
     dir: "source-serif-4",
     stem: "SourceSerif4",
+    extra_weights: &[],
 };
 
 /// Abhaya Immigration's single face. The bucket holds latin instances while
@@ -126,6 +133,7 @@ pub const MUKTA: FontFamily = FontFamily {
     label: "Mukta",
     dir: "mukta",
     stem: "Mukta",
+    extra_weights: &[],
 };
 
 /// DeleteYourDebt.com's single face.
@@ -133,6 +141,7 @@ pub const PUBLIC_SANS: FontFamily = FontFamily {
     label: "Public Sans",
     dir: "public-sans",
     stem: "PublicSans",
+    extra_weights: &[],
 };
 
 /// The NYC summons practice's single face.
@@ -140,6 +149,23 @@ pub const LIBRE_FRANKLIN: FontFamily = FontFamily {
     label: "Libre Franklin",
     dir: "libre-franklin",
     stem: "LibreFranklin",
+    extra_weights: &[],
+};
+
+/// `CyberInjuryLaw`'s condensed display face, including its actual 800 weight.
+pub const BARLOW_CONDENSED: FontFamily = FontFamily {
+    label: "Barlow Condensed",
+    dir: "barlow-condensed",
+    stem: "BarlowCondensed",
+    extra_weights: &["ExtraBold"],
+};
+
+/// `CyberInjuryLaw`'s variable sans-serif body face.
+pub const DM_SANS: FontFamily = FontFamily {
+    label: "DM Sans",
+    dir: "dm-sans",
+    stem: "DMSans",
+    extra_weights: &[],
 };
 
 /// Death & Divorce's gothic display face.
@@ -147,6 +173,7 @@ pub const PIRATA_ONE: FontFamily = FontFamily {
     label: "Pirata One",
     dir: "pirata-one",
     stem: "PirataOne",
+    extra_weights: &[],
 };
 
 /// Every family this binary publishes and verifies — the one list both halves
@@ -168,6 +195,8 @@ pub const BUCKET_FONT_FAMILIES: &[&FontFamily] = &[
     &PUBLIC_SANS,
     &LIBRE_FRANKLIN,
     &PIRATA_ONE,
+    &BARLOW_CONDENSED,
+    &DM_SANS,
 ];
 
 /// Slide markdown is embedded in the release binary so `ops ship` can discover
@@ -698,6 +727,8 @@ fn reachable_image_keys(content_root: &Path) -> anyhow::Result<BTreeSet<String>>
     keys.extend(gallery_variant_keys());
     keys.insert(views::assets::HOME_PRESENTATION_KEY.to_owned());
     keys.insert(views::assets::VESTA_EXPLAINER_KEY.to_owned());
+    keys.insert(views::assets::CYBER_INJURY_HERO_KEY.to_owned());
+    keys.insert(views::assets::CYBER_INJURY_AD_KEY.to_owned());
     Ok(keys)
 }
 
@@ -815,7 +846,7 @@ fn parse_image_refs(markdown: &str) -> Vec<String> {
 }
 
 /// The public asset keys the design system loads from Rust rather than from
-/// markdown: `family`'s two faces, which `portal::dioxus_app` preloads in the
+/// markdown: `family`'s faces, which `portal::dioxus_app` preloads in the
 /// head of every page the brands wearing them serve. [`parse_image_refs`]
 /// only ever sees `](img/…)` in content, so without these the gate reports
 /// success while every page silently falls back to its system font —
@@ -1110,6 +1141,8 @@ pub(crate) fn embedded_asset_refs() -> BTreeSet<String> {
     refs.extend(gallery_variant_keys());
     refs.insert(views::assets::HOME_PRESENTATION_KEY.to_owned());
     refs.insert(views::assets::VESTA_EXPLAINER_KEY.to_owned());
+    refs.insert(views::assets::CYBER_INJURY_HERO_KEY.to_owned());
+    refs.insert(views::assets::CYBER_INJURY_AD_KEY.to_owned());
     for family in BUCKET_FONT_FAMILIES {
         refs.extend(font_family_refs(family));
     }
@@ -2520,6 +2553,8 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         for key in [
             views::assets::HOME_PRESENTATION_KEY,
             views::assets::VESTA_EXPLAINER_KEY,
+            views::assets::CYBER_INJURY_HERO_KEY,
+            views::assets::CYBER_INJURY_AD_KEY,
         ] {
             Mock::given(method("HEAD"))
                 .and(path(format!("/{key}")))
@@ -3356,7 +3391,29 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
             .is_err());
     }
 
-    /// Every family in the table publishes both faces under its own prefix as
+    #[tokio::test]
+    async fn upload_font_family_requires_extra_bold_before_writing_any_barlow_face() {
+        let source = TempDir::new().unwrap();
+        for face in ["Regular", "Bold"] {
+            fs::write(
+                source.path().join(format!("BarlowCondensed-{face}.woff2")),
+                b"fixture",
+            )
+            .unwrap();
+        }
+        let bucket = TempDir::new().unwrap();
+        let storage = FsStorage::new(bucket.path().to_path_buf()).await.unwrap();
+        let err = upload_font_family(&storage, source.path(), &super::BARLOW_CONDENSED)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("BarlowCondensed-ExtraBold.woff2"));
+        assert!(storage
+            .get("fonts/barlow-condensed/BarlowCondensed-Regular.woff2")
+            .await
+            .is_err());
+    }
+
+    /// Every family in the table publishes all faces under its own prefix as
     /// `font/woff2` — the acceptance test for `--family <name>`, run over the
     /// whole table rather than over one family, because a row that names a
     /// directory or a stem the brand does not use publishes objects no page
@@ -3379,8 +3436,8 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
                 upload_font_family(&storage, source.path(), family)
                     .await
                     .unwrap(),
-                2,
-                "{} publishes a Regular and a Bold",
+                family.files().count(),
+                "{} publishes all declared weights",
                 family.label
             );
 
@@ -3392,12 +3449,12 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         }
     }
 
-    /// `published_asset_refs` must name both faces of every family in the
+    /// `published_asset_refs` must name all faces of every family in the
     /// table, or `assets verify` reports success on a deployment that never
     /// uploaded them — the silent-fallback gap `font_family_refs`'s own doc
     /// comment warns about, and the one six families sat inside.
     #[test]
-    fn published_asset_refs_names_both_faces_of_every_font_family() {
+    fn published_asset_refs_names_all_faces_of_every_font_family() {
         let content = TempDir::new().unwrap();
         let refs = published_asset_refs(content.path()).unwrap();
         let mut probed = 0;
@@ -3407,7 +3464,13 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
                 probed += 1;
             }
         }
-        assert_eq!(probed, 18, "nine families, a Regular and a Bold each");
+        assert_eq!(
+            probed,
+            BUCKET_FONT_FAMILIES
+                .iter()
+                .map(|family| family.files().count())
+                .sum::<usize>()
+        );
     }
 
     /// The tracked half of the font lane: faces whose WOFF2 bytes ship in

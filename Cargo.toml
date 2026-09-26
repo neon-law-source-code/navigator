@@ -42,6 +42,7 @@ license = "BUSL-1.1"
 publish = false
 
 [workspace.dependencies]
+web-sys = { version = "0.3.103", features = ["Window", "Document"] }
 anyhow = "1"
 aes-gcm = "0.11"
 # Dioxus 0.7 fullstack — the client-side framework the UI is migrating onto

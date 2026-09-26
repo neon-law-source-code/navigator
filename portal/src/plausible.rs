@@ -31,18 +31,19 @@ const UNCONFIGURED_DEATH_AND_DIVORCE_ID: &str = "pa-unconfigured-death-and-divor
 ///
 /// Not a secret: it ships in the HTML every visitor receives.
 #[must_use]
-pub const fn script_id(key: BrandKey) -> &'static str {
+pub const fn script_id(key: BrandKey) -> Option<&'static str> {
     match key {
-        BrandKey::Neon => "pa-dktgfAn-5R5ufpXARu6zb",
-        BrandKey::Vesta => "pa-0NXcwgtQALjMsqFs8YbfN",
-        BrandKey::DeleteYourData => "pa-h5nRTkQB8L0g9LJDlCctG",
-        BrandKey::LawyerShook => "pa-tN2nM3ILjPwZ3kHAqRT2j",
-        BrandKey::Abhaya => "pa-VFh7XqWwYjyX-p1k26flH",
-        BrandKey::Misericordia => "pa-FRRt7d62fXf8Ixsc6ZmSh",
-        BrandKey::DeleteYourDebt => "pa-S3SbSActjysFwN64GUe6D",
-        BrandKey::Daybridge => "pa-j2JWmqoBTNJPRb64xIZ2o",
-        BrandKey::Summons => "pa-WUB2cKHxULoouY7ALHjwH",
-        BrandKey::DeathAndDivorce => UNCONFIGURED_DEATH_AND_DIVORCE_ID,
+        BrandKey::CyberInjuryLaw => None,
+        BrandKey::Neon => Some("pa-dktgfAn-5R5ufpXARu6zb"),
+        BrandKey::Vesta => Some("pa-0NXcwgtQALjMsqFs8YbfN"),
+        BrandKey::DeleteYourData => Some("pa-h5nRTkQB8L0g9LJDlCctG"),
+        BrandKey::LawyerShook => Some("pa-tN2nM3ILjPwZ3kHAqRT2j"),
+        BrandKey::Abhaya => Some("pa-VFh7XqWwYjyX-p1k26flH"),
+        BrandKey::Misericordia => Some("pa-FRRt7d62fXf8Ixsc6ZmSh"),
+        BrandKey::DeleteYourDebt => Some("pa-S3SbSActjysFwN64GUe6D"),
+        BrandKey::Daybridge => Some("pa-j2JWmqoBTNJPRb64xIZ2o"),
+        BrandKey::Summons => Some("pa-WUB2cKHxULoouY7ALHjwH"),
+        BrandKey::DeathAndDivorce => Some(UNCONFIGURED_DEATH_AND_DIVORCE_ID),
     }
 }
 
@@ -59,20 +60,24 @@ pub fn enabled_from<F: Fn(&str) -> Option<String>>(get: F) -> bool {
 /// One brand's Plausible site, named by its script id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlausibleSite {
-    script_id: &'static str,
+    script_id: Option<&'static str>,
 }
 
 impl PlausibleSite {
     /// `key`'s compiled site.
     #[must_use]
     pub const fn for_brand(key: BrandKey) -> Self {
-        Self::new(script_id(key))
+        Self {
+            script_id: script_id(key),
+        }
     }
 
     /// A site with `script_id`, for tests that inject one on the request.
     #[must_use]
     pub const fn new(script_id: &'static str) -> Self {
-        Self { script_id }
+        Self {
+            script_id: Some(script_id),
+        }
     }
 
     /// The two `<script>` elements that start analytics, for injection at the
@@ -86,13 +91,16 @@ impl PlausibleSite {
     /// an inline block after an `async` tag.
     #[must_use]
     pub fn script_tags(&self) -> String {
-        if self.script_id == UNCONFIGURED_DEATH_AND_DIVORCE_ID {
+        let Some(script_id) = self.script_id else {
+            return String::new();
+        };
+        if script_id == UNCONFIGURED_DEATH_AND_DIVORCE_ID {
             return String::new();
         }
         format!(
             "<script src=\"{PLAUSIBLE_LOADER_HREF}\" defer></script>\
              <script src=\"{PLAUSIBLE_ORIGIN}/js/{id}.js\" defer></script>",
-            id = webapp::html_escape::escape_attr(self.script_id),
+            id = webapp::html_escape::escape_attr(script_id),
         )
     }
 }
@@ -135,7 +143,10 @@ mod tests {
     /// worth asserting about a table of compiled constants.
     #[test]
     fn every_brand_resolves_a_distinct_plausible_script_id() {
-        let ids: Vec<_> = BrandKey::ALL.iter().map(|key| script_id(*key)).collect();
+        let ids: Vec<_> = BrandKey::ALL
+            .iter()
+            .filter_map(|key| script_id(*key))
+            .collect();
         for id in &ids {
             assert!(id.starts_with("pa-"), "{id}");
             assert!(
@@ -146,6 +157,15 @@ mod tests {
         }
         let unique: std::collections::HashSet<_> = ids.iter().collect();
         assert_eq!(ids.len(), unique.len(), "{ids:?}");
+    }
+
+    #[test]
+    fn an_unconfigured_campaign_has_no_analytics() {
+        assert_eq!(script_id(BrandKey::CyberInjuryLaw), None);
+        assert!(PlausibleSite::for_brand(BrandKey::CyberInjuryLaw)
+            .script_tags()
+            .is_empty());
+        assert!(BrandKey::LIVE.iter().all(|key| script_id(*key).is_some()));
     }
 
     /// Stub first, vendor second, both deferred, neither inline.

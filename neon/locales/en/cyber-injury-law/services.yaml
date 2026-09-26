@@ -1,0 +1,27 @@
+head_title: "Personal injury — {site_name}"
+meta_description: "AI-assisted injury representation. 20% attorney fee plus case expenses. Attorney advertisement."
+title: Personal injury representation
+hero_mark: scales
+tagline: Personal injury. Re-engineered.
+hero_lines:
+  - text: Your recovery comes first.
+    accent_words: 0
+hero_lead: >-
+  Data engineering reduces repetitive discovery work. Lawyers review the
+  evidence, make strategic decisions, and handle negotiations.
+hero_cta:
+  href: "/#cyber-assessment"
+  label: Get my free case assessment
+skin: practice
+bands:
+  - kind: cards
+    anchor: fees
+    overline: Our fee
+    heading: 20% attorney fee plus case expenses
+    description: >-
+      Actual fees and responsibility for expenses are governed by a signed
+      engagement agreement and applicable law. No outcome is guaranteed.
+    items:
+      - title: Free consultation
+        body:
+          - - text: A lawyer reviews the facts before accepting an engagement.

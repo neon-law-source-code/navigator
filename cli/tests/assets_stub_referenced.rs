@@ -11,11 +11,11 @@ fn expected_gallery_placeholders() -> usize {
     GALLERY.len() * WIDTHS.len() * 3
 }
 
-/// Both faces of every `cli::assets::BUCKET_FONT_FAMILIES` entry. Spelled out
+/// Every face of each `cli::assets::BUCKET_FONT_FAMILIES` entry. Spelled out
 /// because `cli` ships no library target an integration test could read the
 /// table from; the in-crate `published_asset_refs_names_both_faces_of_every_font_family`
 /// holds the table itself to this same number.
-const EXPECTED_FONT_PLACEHOLDERS: usize = 18;
+const EXPECTED_FONT_PLACEHOLDERS: usize = 23;
 
 /// Every stubbed face under `out`, so the assertion follows the table instead
 /// of naming families a second time.
@@ -50,7 +50,7 @@ fn stub_referenced_writes_the_gallery_and_licensed_fonts_without_content_images(
         .success()
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 2
+            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 4
         )));
 
     let faces = stubbed_faces(out.path());
@@ -86,6 +86,14 @@ fn stub_referenced_writes_the_gallery_and_licensed_fonts_without_content_images(
         .path()
         .join(views::assets::VESTA_EXPLAINER_KEY)
         .is_file());
+    assert!(out
+        .path()
+        .join(views::assets::CYBER_INJURY_HERO_KEY)
+        .is_file());
+    assert!(out
+        .path()
+        .join(views::assets::CYBER_INJURY_AD_KEY)
+        .is_file());
 }
 
 #[test]
@@ -113,11 +121,11 @@ fn stub_referenced_writes_valid_placeholder_files_at_content_paths() {
         .arg(out.path())
         .assert()
         .success()
-        // Four content images, every gallery variant, plus both faces of every
-        // bucket-served family.
+        // Four content images, every gallery variant, every licensed font
+        // face, and the four non-font assets that ships always verifies.
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 6
+            expected_gallery_placeholders() + EXPECTED_FONT_PLACEHOLDERS + 8
         )));
 
     let png = fs::read(out.path().join("img/demo/hero.png")).unwrap();

@@ -111,3 +111,7 @@ server/public/dioxus/
 # tracked, but SDK restore/build artifacts are not.
 /word/adapter/bin/
 /word/adapter/obj/
+
+/server/public/fonts/barlow-condensed/*.woff2
+/server/public/fonts/dm-sans/*.woff2
+/cyberinjurylaw/

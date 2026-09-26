@@ -181,6 +181,12 @@ fn plan(path: &str) -> AuditPlan {
     if ["/robots.txt", "/sitemap.xml", "/llms.txt"].contains(&path) {
         return AuditPlan::Skip("a crawler document, not an HTML page");
     }
+    // Printed QR destination: its redirect contract is covered by
+    // cyber_injury_home. The third-party calendar has no app-rendered HTML
+    // for this suite to audit and must not receive synthetic login state.
+    if path == "/consultation" {
+        return AuditPlan::Skip("an external booking redirect, not an HTML page");
+    }
     // The certificate request itself is a `POST` handler; the page a reader
     // lands on afterwards is `…/certificate/sent`, which is audited.
     if path.ends_with("/certificate") {

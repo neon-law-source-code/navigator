@@ -549,6 +549,12 @@ static DELETE_YOUR_DEBT_HEAD: std::sync::LazyLock<String> =
 static SUMMONS_HEAD: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| bucket_font_head("Libre Franklin", "libre-franklin/LibreFranklin"));
 
+static CYBER_INJURY_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    let display = views::brand::font_face_for(Some("barlow-condensed"), None).unwrap_or_default();
+    let body = views::brand::font_face_for(Some("dm-sans"), None).unwrap_or_default();
+    format!("<style>{display}{body}</style>")
+});
+
 static DAYBRIDGE_HEAD: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| bucket_font_head("Source Serif 4", "source-serif-4/SourceSerif4"));
 
@@ -597,6 +603,7 @@ pub fn font_head(key: views::brand::BrandKey) -> &'static str {
         views::brand::BrandKey::Summons => &SUMMONS_HEAD,
         views::brand::BrandKey::Daybridge => &DAYBRIDGE_HEAD,
         views::brand::BrandKey::DeathAndDivorce => &DEATH_AND_DIVORCE_HEAD,
+        views::brand::BrandKey::CyberInjuryLaw => &CYBER_INJURY_HEAD,
     }
 }
 

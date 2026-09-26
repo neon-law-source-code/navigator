@@ -266,6 +266,10 @@ fn truncated(s: &str) -> String {
 #[tokio::main]
 async fn main() {
     DetailWorld::cucumber()
+        // Every scenario uses the process-wide embedded SurrealDB from
+        // `features::shared_surreal`; concurrent worlds can release their
+        // final engine handles while another scenario is still running.
+        .max_concurrent_scenarios(1)
         .run_and_exit("tests/features/portal_projects_detail.feature")
         .await;
 }

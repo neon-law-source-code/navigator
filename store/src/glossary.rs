@@ -182,7 +182,7 @@ pub fn parse_entry(stem: &str, raw: &str) -> Result<Term, EntryError> {
 }
 
 fn valid_description(description: &str) -> bool {
-    if description.contains("\n") || description.contains("](") || !description.ends_with('.') {
+    if description.contains('\n') || description.contains("](") || !description.ends_with('.') {
         return false;
     }
     !description.char_indices().any(|(index, ch)| {

@@ -77,7 +77,7 @@ fn glossary_list_prints_every_term_as_title_and_description() {
     let terms = store::glossary::terms();
     assert_eq!(lines.len(), terms.len(), "one line per term: {stdout}");
     let mut titles: Vec<_> = terms.iter().map(|term| term.title.as_str()).collect();
-    titles.sort();
+    titles.sort_unstable();
     let listed_titles: Vec<_> = lines
         .iter()
         .map(|line| {

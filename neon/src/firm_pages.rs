@@ -1215,6 +1215,7 @@ mod lawyer_shook_holding_page_tests {
             headings,
             vec![
                 "Abhaya Immigration",
+                "CyberInjuryLaw",
                 "Daybridge Divorce Law",
                 "Death & Divorce",
                 "DeleteYourData.com",

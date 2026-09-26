@@ -2092,8 +2092,7 @@ pub async fn project_notations(
             row.last_transition_at
                 .as_deref()
                 .and_then(|time| chrono::DateTime::parse_from_rfc3339(time).ok())
-                .map(|entered| now.signed_duration_since(entered) > stale_after)
-                .unwrap_or(true)
+                .is_none_or(|entered| now.signed_duration_since(entered) > stale_after)
         });
         let never_started = rows.iter().any(|row| row.notation_id.is_none());
         if stale || never_started {
@@ -2163,10 +2162,7 @@ fn print_notation_board(rows: &[webapp::lawyer_project_detail::ProjectNotationRo
             } else if row.current_state.as_deref() == Some(state) {
                 cells.push(format!(
                     "● {}",
-                    row.state_entered_at
-                        .get(state)
-                        .map(String::as_str)
-                        .unwrap_or("")
+                    row.state_entered_at.get(state).map_or("", String::as_str)
                 ));
             } else if let Some(time) = row.state_entered_at.get(state) {
                 cells.push(format!("✓ {time}"));

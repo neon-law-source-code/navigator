@@ -99,11 +99,13 @@ Owner — it lists every matter in the deployment, the same administrative-listi
 reads for its own deployment-wide question — which is what gives the detail page's participation-only carve-out
 somewhere to navigate from. `/app/owner` is Owner only: it lists every practice and the house brands each one wears.
 Admin is denied that inventory. `/app/admin/brands` is the house-of-brands home: Owner and Admin reach it through the
-same `/app/admin` route bypass as the people directory and the lead queue; Lawyer and Clerk stay denied. The listing is
-system-wide rows plus every Firm-scoped row for Owner, or only the Firms an Admin holds ManageBrand on. Owner edits a
-system-wide or existing Firm-scoped brand's typeface, palette, and assets at `/app/admin/brands/{key}/edit` and `PATCH
-/app/api/brands/{key}`; those two paths admit Admin at the route so a Firm's Admin DRI can edit that Firm's own brands,
-and the store refuses anyone else. Lawyer and Clerk are denied both the editor and the PATCH. Only an Owner may create,
+same `/app/admin` route bypass as the people directory and the lead queue; Lawyer and Clerk stay denied. Every `brand`
+row is Firm-scoped (ENG-659) — the listing is every Firm-scoped row for Owner, or only the Firms an Admin holds
+ManageBrand on. Only a Firm's own Admin DRI creates that Firm's brand at `/app/admin/brands/new`; Owner creates none —
+Owner holds no Firm membership, so there is no Firm to scope a new row to. Owner still edits any existing Firm-scoped
+brand's palette, typeface, and assets at `/app/admin/brands/{key}/edit` and `PATCH /app/api/brands/{key}`; those two
+paths admit Admin at the route so a Firm's Admin DRI can edit that Firm's own brand, and the store refuses anyone else.
+Lawyer and Clerk are denied the editor, the create form, and the PATCH. Only an Owner may create,
 edit, or demote an Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only, so no
 privileged identity is deletable through that command.
 
@@ -169,9 +171,10 @@ navigate to. The people directory and the matter directory at `/app/admin` are s
 navigate to rather than an invisible widening of a shared route, which is what makes a lens bug distinguishable from an
 intended bypass — the two are otherwise indistinguishable from a response body. Admin cannot create, edit, or demote an
 Owner. `/app/owner` is not an Admin surface. `/app/admin/brands` is: Owner and Admin reach the registry. An Admin sees
-system-wide brands and their own Firm-scoped rows, never another Firm's, and an Admin DRI may change that Firm's
-typeface and palette from the closed catalogs, and replace its logo and uploaded font; a system-wide brand stays
-Owner's. `/app/admin/leads` is the same Owner/Admin door: the public contact queue, not a matter surface.
+only their own Firm-scoped rows, never another Firm's — every brand is Firm-scoped now (ENG-659), so there is no
+system-wide row left to also see. That Firm's Admin DRI creates its brand, and may change its palette, replace its logo
+and uploaded font, and choose among its own already-uploaded font family names — never a compiled catalog, and never
+another Firm's row. `/app/admin/leads` is the same Owner/Admin door: the public contact queue, not a matter surface.
 
 ### *anonymous*
 

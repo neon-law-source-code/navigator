@@ -11,24 +11,30 @@ one running process, N house brands — adding one is a code change to the regis
 with a covering test, which is the right cost for a legal identity, and there is no runtime flag that can move a page
 from one brand's hosts to another's.
 
-**Distinct from the data-driven `brand` table** (`store::brands`, ENG-496) — a name, a unique key, and an
-authorization/identity record, not a routing registry entry. `firm_id: None` is system-wide (Owner-created, every Firm
-sees it); a live `firm_id` is scoped to that Firm (created only by its Admin DRI). It carries no host: `hosts()` and
-`registered_brand_key` keep resolving only the compiled `BrandKey` enum above, and a runtime `brand` row publishes no
-marketing page. The compiled keys migrate into system-wide rows on first boot so the one authorization table names every
-brand a Firm may attach, while each brand's hosts, colours, fonts, logos, and copy stay with this entry.
+**Distinct from the data-driven `brand` table** (`store::brands`, ENG-496, ENG-659) — a name, a unique key, and an
+authorization/identity record, not a routing registry entry. Every row is Firm-scoped: `firm_id` is required, created
+only by that Firm's own Admin DRI. It carries no host: `hosts()` and `registered_brand_key` keep resolving only the
+compiled `BrandKey` enum above, and a runtime `brand` row publishes no marketing page. The compiled keys migrate into
+a Firm-scoped row on first boot — the practice Firm's own Admin DRI creates each one — so the one authorization table
+names every brand a Firm may attach, while each brand's hosts, colours, fonts, logos, and copy stay with this entry. A
+`firm_id IS NONE` row is a historical fact only: ENG-659's schema migration backfilled every such row onto the Firm
+that wears it through `firm_brand`, or the anchor Firm when only a `project.brand` still named it, and deleted the rest;
+nothing can write a new one.
 
-Owner (for a system-wide row) or a Firm's Admin DRI (for that Firm's own row) create, edit, and delete `brand` rows at
-`/app/admin/brands`, `/app/admin/brands/new`, and `/app/admin/brands/{key}/edit` (ENG-586). `primary_color` is a free
-`#rrggbb` hex, gated against the two fixed backgrounds it actually renders on (ENG-629): its deterministically-chosen
-on-primary text colour (white or black, whichever contrasts more, not "the best of both") must clear WCAG AA 4.5:1, and
-the primary itself must clear 3:1 against the light page surface — never a closed palette id. A row may also carry an
-uploaded logo (PNG or SVG, sanitized against script content) and an uploaded `.woff2` font (attested under a closed
-open-licence list), both served from the public assets bucket; `typeface = "uploaded"` is what tells the tokens
-stylesheet to read the row's own font rather than a compiled catalog entry. Deleting a row is refused while any
-`firm_brand` or `project.brand` value still names its key. None of this touches the ten compiled keys' own served hosts,
-marketing pages, or fallback presentation. Editing the `neon` row changes the token stylesheet, not which hosts resolve
-to it.
+A Firm's own Admin DRI creates, edits, and deletes that Firm's `brand` rows at `/app/admin/brands`,
+`/app/admin/brands/new`, and `/app/admin/brands/{key}/edit` (ENG-586, ENG-659); Owner governs every *existing* row the
+same way but creates none — Owner holds no Firm membership, so Owner has no Firm to scope a new one to.
+`primary_color` is a free `#rrggbb` hex, gated against the two fixed backgrounds it actually renders on (ENG-629): its
+deterministically-chosen on-primary text colour (white or black, whichever contrasts more, not "the best of both") must
+clear WCAG AA 4.5:1, and the primary itself must clear 3:1 against the light page surface — never a closed palette id.
+A row may also carry an uploaded logo (PNG or SVG, sanitized against script content) and an uploaded `.woff2` font
+(attested under a closed open-licence list), both served from the public assets bucket; `typeface = "uploaded"` is what
+tells the tokens stylesheet to read the row's own font rather than a compiled catalog entry. The Admin edit page's
+typeface control is a `<select>` populated only from that Firm's own already-uploaded font family names (ENG-659) —
+never the compiled `views::brand_presentation::TYPEFACES` catalog, and empty until that Firm has uploaded a font.
+Deleting a row is refused while any `firm_brand` or `project.brand` value still names its key. None of this touches the
+ten compiled keys' own served hosts, marketing pages, or fallback presentation. Editing the `neon` row changes the token
+stylesheet, not which hosts resolve to it.
 
 An uploaded logo also renders on `/app` (ENG-590), not only on the public site:
 `webapp::app_chrome::resolve_app_brand_mark` prefers the resolved brand's `brand.logo_object_key` over the compiled

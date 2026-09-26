@@ -17,12 +17,3 @@ hero_cta:
   href: "https://www.abhayaimmigration.com/"
   label: Visit Abhaya Immigration
 skin: practice
-bands:
-  - kind: statement
-    heading: A Shook Law PLLC practice
-    body:
-      - - text: >-
-              Abhaya Immigration is a practice of Shook Law PLLC, the law
-              firm behind {site_name}. It trades under its own name; the
-              work is not offered as "{site_name} Immigration." A licensed
-              attorney handles the work there.

@@ -1,15 +1,16 @@
-head_title: "{site_name} | NYC summons defense"
+head_title: "{site_name} | We attend your OATH hearing for $50"
 meta_description: >-
-  Shook Law PLLC defends New York City summonses at the OATH Hearings
-  Division for property owners, managing agents, restaurants, and
-  contractors. A private law firm, not affiliated with the City of New York
-  or OATH. This is an attorney advertisement.
-heading: We defend City summonses at OATH.
+  A licensed attorney appears at your OATH hearing by phone for $50 flat —
+  Shook Law PLLC defends New York City summonses for property owners,
+  managing agents, restaurants, and contractors. A private law firm, not
+  affiliated with the City of New York or OATH. This is an attorney
+  advertisement.
+heading: We attend your hearing. You don't have to.
 lead: >-
-  Shook Law PLLC is a private law firm. We are not affiliated with the City
-  of New York or with the Office of Administrative Trials and Hearings. We
-  represent property owners, managing agents, restaurants, and contractors
-  with recurring summonses. Nothing here is legal advice without a signed
+  A licensed attorney appears at your OATH hearing by phone for $50 flat, no
+  retainer required. Shook Law PLLC is a private law firm. We are not
+  affiliated with the City of New York or with the Office of Administrative
+  Trials and Hearings. Nothing here is legal advice without a signed
   retainer for an active project.
 contact_label: Contact us
 service:
@@ -29,6 +30,11 @@ service:
           front of the hearing officer, at the right time, by someone whose
           job that is.
     - - text: >-
+          For $50, an attorney appears at your telephone hearing, presents
+          what you send us beforehand, and reports back what happened. No
+          retainer, no consultation required first — send the summons and
+          your evidence, and we take the call.
+    - - text: >-
           A hearing officer can dismiss the summons, give cure credit,
           reduce the penalty, or uphold it. Either side has thirty days to
           appeal to the Appeals Unit, including the agency.
@@ -40,28 +46,37 @@ service:
           it is granted automatically when the request is filed within 75
           days of the missed hearing.
     - - text: >-
-          This practice is for portfolios rather than for a single ticket.
-          OATH tells respondents they do not need a lawyer and runs a free
-          Help Center at every hearing location, and for one summons that is
-          often the right answer. We are worth paying when the summonses
-          keep coming and a licence is on the line.
+          Property owners, managing agents, restaurants, and contractors
+          with summonses on a recurring basis can retain us monthly across a
+          portfolio instead of paying per hearing. OATH tells respondents
+          they do not need a lawyer and runs a free Help Center at every
+          hearing location; for one summons that is often the right answer.
+          We are worth paying when a hearing is worth showing up for and you
+          cannot.
     - - text: "Write to "
       - text: "{firm_email}"
         href: "mailto:{firm_email}"
       - text: >-
-          . Tell us how many open summonses you have, which agencies wrote
-          them, and whether any hearing date has already passed.
+          . Tell us your hearing date, which agency wrote the summons, and
+          send what you want said on the record.
 practices_heading: The work
 practices:
   - mark: scales
-    heading: Hearings and appeals
+    heading: We attend your hearing — $50
     body: >-
-      Representation at OATH hearings, and appeals to the Appeals Unit
-      within thirty days. This is an attorney advertisement.
+      A licensed attorney appears at your OATH hearing by phone so you do
+      not have to. Flat $50 fee, no retainer required. This is an attorney
+      advertisement.
     href: /services
   - mark: gavel
     heading: Missed a hearing?
     body: >-
       A new hearing is granted automatically if it is requested within 75
       days of the missed date.
+    href: /services
+  - mark: scales
+    heading: Recurring summonses?
+    body: >-
+      Property owners, managing agents, restaurants, and contractors can
+      retain us monthly across a portfolio instead of paying per hearing.
     href: /services

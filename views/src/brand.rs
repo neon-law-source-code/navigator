@@ -826,8 +826,8 @@ pub static SUMMONS_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "summonsdefense.nyc",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Summons Defense represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. Flat fee per summons, or a monthly retainer across a portfolio. This is an attorney advertisement, not a promise about a result.",
-    service_description: "NYC summons defense from Summons Defense at the OATH Hearings Division. Flat fee per summons, or a monthly retainer across a portfolio.",
+    mission_description: "Summons Defense represents respondents at New York City's OATH Hearings Division against summonses written by City enforcement agencies. It is a private law firm and is not affiliated with the City of New York or with OATH, which runs a free Help Center at every hearing location. A licensed attorney appears at your hearing by phone for $50 flat, or takes a monthly retainer across a portfolio of summonses. This is an attorney advertisement, not a promise about a result.",
+    service_description: "NYC summons defense from Summons Defense at the OATH Hearings Division. A licensed attorney appears at your hearing by phone for $50 flat, or a monthly retainer across a portfolio.",
     portal_only: false,
     brand_key: BrandKey::Summons,
 };

@@ -2867,7 +2867,7 @@ const COMPILED_BRANDS: &[CompiledBrand] = &[
         key: "summons",
         name: "Summons Defense",
         typeface: "libre-franklin",
-        primary_hex: "#4A2545",
+        primary_hex: "#2F4550",
     },
     CompiledBrand {
         key: "daybridge",

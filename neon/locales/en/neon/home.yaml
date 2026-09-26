@@ -33,14 +33,14 @@ company:
   membership_label: Counsel on call.
   membership_price: "$50"
   membership_unit: / day
-  membership_body: A daily minimum that keeps us on the line. Ask questions in Slack. Pay for the days we’re engaged and the work you approve.
+  membership_body: A daily minimum that keeps us on the line. Ask questions in Slack. Pay only for the days the project is active.
   membership_features:
     - Day-to-day questions over Slack
     - Standard contract reviews returned within five business days
   express_heading: Expedited reviews.
   express_price: "$500"
   express_unit: / contract
-  express_body: A lawyer reviews your contract, explains the risks, and gives you a practical next step within one business day.
+  express_body: A lawyer reviews your contract and provides feedback within in one business day.
   page_note: "Each contract includes up to 50 pages. Each additional page is $5. A page is US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt."
   drafting_heading: Your contracts. One fee.
   drafting_packages:
